@@ -114,6 +114,120 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StrictValidatorAcceptsChunkIndexWithoutMessageIndexes()
+        {
+            using var stream = new MemoryStream();
+            using (var recorder = new McapRecorder(
+                       stream,
+                       null,
+                       new McapWriterOptions
+                       {
+                           UseChunking = true,
+                           IndexTypes = McapIndexTypes.Chunk,
+                           UseStatistics = true,
+                           ChunkSizeBytes = 1024
+                       },
+                       leaveOpen: true))
+            {
+                recorder.AddChannel(1, "/mcap/coarse", "json", "mcap.Schema", "jsonschema", "{}");
+                recorder.WriteMessage(1, 10, Encoding.UTF8.GetBytes("{}"));
+                recorder.Close();
+            }
+
+            stream.Position = 0;
+            var summary = McapStrictValidator.Validate(stream);
+
+            Assert.Single(summary.ChunkIndexes);
+            Assert.Empty(summary.ChunkIndexes[0].MessageIndexOffsets);
+        }
+
+        [Fact]
+        public void StrictValidatorRejectsChunkIndexMessageOffsetWithoutMessageIndexRecord()
+        {
+            var bytes = CreateTwoChunkIndexedMcap();
+            var chunkIndexOffset = FindRecordOffsets(bytes, McapWriter.OpcodeChunkIndex)[0];
+            var messageIndexValueOffset = checked((int)chunkIndexOffset + McapWriter.RecordHeaderLength + 38);
+            WriteU64LittleEndian(bytes, messageIndexValueOffset, 0xDEADBEEFUL);
+            using var stream = new MemoryStream(bytes, writable: false);
+
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(
+                stream,
+                new McapStrictValidationOptions { ValidateCrcs = false }));
+
+            Assert.Contains("Message Index", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StrictValidatorRejectsChunkIndexMessageOffsetFromAnotherChunk()
+        {
+            var bytes = CreateTwoChunkIndexedMcap();
+            var chunkIndexOffsets = FindRecordOffsets(bytes, McapWriter.OpcodeChunkIndex);
+            var messageIndexOffsets = FindRecordOffsets(bytes, McapWriter.OpcodeMessageIndex);
+            Assert.Equal(2, chunkIndexOffsets.Count);
+            Assert.Equal(2, messageIndexOffsets.Count);
+
+            var firstMapValueOffset = checked((int)chunkIndexOffsets[0] + McapWriter.RecordHeaderLength + 38);
+            WriteU64LittleEndian(bytes, firstMapValueOffset, (ulong)messageIndexOffsets[1]);
+            using var stream = new MemoryStream(bytes, writable: false);
+
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(
+                stream,
+                new McapStrictValidationOptions { ValidateCrcs = false }));
+
+            Assert.Contains("does not match its data Message Index", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StrictValidatorRejectsChunkAndIndexTimeBoundsThatDisagreeWithMessages()
+        {
+            var bytes = CreateTwoChunkIndexedMcap();
+            var chunkOffset = FindRecordOffsets(bytes, McapWriter.OpcodeChunk)[0];
+            var chunkIndexOffset = FindRecordOffsets(bytes, McapWriter.OpcodeChunkIndex)[0];
+
+            // Keep the Chunk header and its summary Chunk Index mutually
+            // consistent, but make both disagree with the message timestamps
+            // decoded from the chunk payload.
+            WriteU64LittleEndian(bytes,
+                checked((int)chunkOffset + McapWriter.RecordHeaderLength), 999);
+            WriteU64LittleEndian(bytes,
+                checked((int)chunkOffset + McapWriter.RecordHeaderLength + sizeof(ulong)), 1000);
+            WriteU64LittleEndian(bytes,
+                checked((int)chunkIndexOffset + McapWriter.RecordHeaderLength), 999);
+            WriteU64LittleEndian(bytes,
+                checked((int)chunkIndexOffset + McapWriter.RecordHeaderLength + sizeof(ulong)), 1000);
+
+            using var stream = new MemoryStream(bytes, writable: false);
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(
+                stream,
+                new McapStrictValidationOptions { ValidateCrcs = false }));
+
+            Assert.Contains("message time bounds", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StrictValidatorRejectsChunkWithoutMatchingChunkIndex()
+        {
+            var bytes = CreateTwoChunkIndexedMcap();
+            var chunkIndexOffsets = FindRecordOffsets(bytes, McapWriter.OpcodeChunkIndex);
+            Assert.Equal(2, chunkIndexOffsets.Count);
+
+            var first = checked((int)chunkIndexOffsets[0]);
+            var lengthOffset = checked(first + 1);
+            var contentLength = checked((int)McapBinaryReader.ReadU64LE(bytes, ref lengthOffset));
+            var recordLength = McapWriter.RecordHeaderLength + contentLength;
+            var shortened = new byte[bytes.Length - recordLength];
+            Buffer.BlockCopy(bytes, 0, shortened, 0, first);
+            Buffer.BlockCopy(bytes, first + recordLength, shortened, first, bytes.Length - first - recordLength);
+
+            using var stream = new MemoryStream(shortened, writable: false);
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(
+                stream,
+                new McapStrictValidationOptions { ValidateCrcs = false }));
+
+            Assert.Contains("exactly one Chunk Index for every data Chunk", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ReadSummaryDoesNotDependOnCallerStreamPosition()
         {
             using var stream = CreateMcap(writer =>
@@ -326,6 +440,92 @@ namespace Unity.FoxgloveSDK.UnitTests
             var message = Assert.Single(messages);
             Assert.Equal(0U, message.Sequence);
             Assert.Equal(20UL, message.LogTime);
+        }
+
+        [Fact]
+        [Trait("Evidence", "FaultInjection")]
+        public void TopLevelPartialMetadataWriteRollsBackBeforeRecoverableClose()
+        {
+            using var stream = new FailOnceWriteStream();
+            using var recorder = new McapRecorder(stream, leaveOpen: true);
+
+            stream.ThrowOnceAfterWrittenBytes(3);
+            var failure = Assert.Throws<IOException>(() =>
+                recorder.WriteMetadata("phase187.partial", "{}"));
+            Assert.Equal("Injected partial MCAP write failure.", failure.Message);
+
+            recorder.Close();
+            stream.Position = 0;
+            var summary = McapStrictValidator.Validate(stream);
+            Assert.Empty(summary.MetadataIndexes);
+            Assert.True(summary.Statistics == null || summary.Statistics.MessageCount == 0);
+        }
+
+        [Fact]
+        [Trait("Evidence", "FaultInjection")]
+        public void TopLevelPartialSchemaWriteRollsBackBeforeRecoverableClose()
+        {
+            using var stream = new FailOnceWriteStream();
+            using var recorder = new McapRecorder(stream, leaveOpen: true);
+
+            stream.ThrowOnceAfterWrittenBytes(3);
+            var failure = Assert.Throws<IOException>(() => recorder.AddChannel(
+                1,
+                "/phase187/partial-schema",
+                "json",
+                "phase187.PartialSchema",
+                "jsonschema",
+                "{}"));
+            Assert.Equal("Injected partial MCAP write failure.", failure.Message);
+
+            recorder.Close();
+            stream.Position = 0;
+            var summary = McapStrictValidator.Validate(stream);
+            Assert.Empty(summary.Schemas);
+            Assert.Empty(summary.Channels);
+            Assert.True(summary.Statistics == null || summary.Statistics.MessageCount == 0);
+        }
+
+        [Fact]
+        [Trait("Evidence", "FaultInjection")]
+        public void TopLevelPartialChannelWriteRollsBackBeforeRecoverableClose()
+        {
+            using var stream = new FailOnceWriteStream();
+            using var recorder = new McapRecorder(stream, leaveOpen: true);
+
+            stream.ThrowOnceAfterWrittenBytes(3);
+            var failure = Assert.Throws<IOException>(() => recorder.AddChannel(
+                1,
+                "/phase187/partial-channel",
+                "json",
+                "",
+                "",
+                ""));
+            Assert.Equal("Injected partial MCAP write failure.", failure.Message);
+
+            recorder.Close();
+            stream.Position = 0;
+            var summary = McapStrictValidator.Validate(stream);
+            Assert.Empty(summary.Channels);
+            Assert.True(summary.Statistics == null || summary.Statistics.MessageCount == 0);
+        }
+
+        [Fact]
+        public void ChunkBoundaryWriterDoesNotExceedPairedReaderLimit()
+        {
+            const int chunkLimit = 64;
+            const int messageRecordOverhead = McapWriter.RecordHeaderLength + 2 + 4 + 8 + 8;
+            var exactPayloadLength = chunkLimit - messageRecordOverhead;
+
+            Assert.True(McapRecorder.IsChunkedMessageRecordWithinLimit(
+                exactPayloadLength,
+                chunkLimit));
+            Assert.False(McapRecorder.IsChunkedMessageRecordWithinLimit(
+                exactPayloadLength + 1,
+                chunkLimit));
+            Assert.Equal(
+                (ulong)McapWriterOptions.MaxChunkSizeBytes,
+                McapReader.DefaultChunkUncompressedSizeLimit);
         }
 
         [Fact]
@@ -690,6 +890,38 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             stream.Position = 0;
             return stream;
+        }
+
+        private static byte[] CreateTwoChunkIndexedMcap()
+        {
+            using var stream = new MemoryStream();
+            using (var recorder = new McapRecorder(
+                       stream,
+                       null,
+                       new McapWriterOptions
+                       {
+                           UseChunking = true,
+                           IndexTypes = McapIndexTypes.Chunk | McapIndexTypes.Message,
+                           UseStatistics = true,
+                           UseSummaryOffsets = false,
+                           EnableCrcs = false,
+                           ChunkSizeBytes = 32
+                       },
+                       leaveOpen: true))
+            {
+                recorder.AddChannel(1, "/mcap/indexed", "json", "mcap.Schema", "jsonschema", "{}");
+                recorder.WriteMessage(1, 10, new byte[] { 1 });
+                recorder.WriteMessage(1, 20, new byte[] { 2 });
+                recorder.Close();
+            }
+
+            return stream.ToArray();
+        }
+
+        private static void WriteU64LittleEndian(byte[] bytes, int offset, ulong value)
+        {
+            for (var i = 0; i < sizeof(ulong); i++)
+                bytes[offset + i] = (byte)(value >> (8 * i));
         }
 
         private static void WriteUncheckedRecord(McapWriter writer, byte opcode, byte[] content)

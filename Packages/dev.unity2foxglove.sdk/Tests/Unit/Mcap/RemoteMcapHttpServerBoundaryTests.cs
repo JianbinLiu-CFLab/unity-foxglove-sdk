@@ -166,6 +166,50 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
         }
 
+        [Fact]
+        public async Task ScheduledRequestIsTrackedBeforeASynchronousHandlerCanBlock()
+        {
+            var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var secondEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            var first = RemoteMcapHttpServer.ScheduleRequest(async () =>
+            {
+                entered.TrySetResult(true);
+                await release.Task.ConfigureAwait(false);
+            });
+
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.False(first.IsCompleted);
+
+            var second = RemoteMcapHttpServer.ScheduleRequest(() =>
+            {
+                secondEntered.TrySetResult(true);
+                return Task.CompletedTask;
+            });
+            await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await second.WaitAsync(TimeSpan.FromSeconds(2));
+
+            release.TrySetResult(true);
+            await first.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+
+        [Fact]
+        public void CancelledRangeConstructionStopsBeforeOpeningTheSource()
+        {
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+            var source = new RemoteMcapDataSourcePrototype(
+                Path.Combine(Path.GetTempPath(), "r4-f03-003-missing.mcap"),
+                "r4",
+                "r4",
+                string.Empty);
+
+            Assert.Throws<OperationCanceledException>(() => source.GetDataStream(
+                new RemoteMcapRequest { SourceId = "r4" },
+                cancellation.Token));
+        }
+
         private static RemoteMcapHttpServer StartLoopbackServerWithRetry(
             RemoteMcapHttpOptions options)
         {

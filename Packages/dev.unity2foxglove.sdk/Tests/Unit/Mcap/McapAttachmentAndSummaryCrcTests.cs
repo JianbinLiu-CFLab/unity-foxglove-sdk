@@ -375,6 +375,34 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void SummaryCrcOptOutIsHonoredForSummaryPresentFiles()
+        {
+            var bytes = CreateSummaryWithBadCrc();
+
+            using var rejecting = new MemoryStream(bytes, writable: false);
+            Assert.Throws<InvalidDataException>(() => new McapReader(rejecting).ReadSummary(validateCrcs: true));
+
+            using var permissive = new MemoryStream(bytes, writable: false);
+            var summary = new McapReader(permissive).ReadSummary(validateCrcs: false);
+            Assert.NotEmpty(summary.Schemas);
+        }
+
+        [Fact]
+        public void StrictSummaryCrcOptOutIsHonored()
+        {
+            var bytes = CreateSummaryWithBadCrc();
+
+            using var rejecting = new MemoryStream(bytes, writable: false);
+            Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(rejecting));
+
+            using var permissive = new MemoryStream(bytes, writable: false);
+            var summary = McapStrictValidator.Validate(
+                permissive,
+                new McapStrictValidationOptions { ValidateCrcs = false });
+            Assert.NotEmpty(summary.Schemas);
+        }
+
+        [Fact]
         public void ZeroSummaryCrcBackwardCompatibility()
         {
             using var ms = new MemoryStream();
@@ -398,6 +426,27 @@ namespace Unity.FoxgloveSDK.UnitTests
             var summary = reader.ReadSummary();
             Assert.True(summary.Schemas.Count == 1, "34C-3: zero-CRC file loads without error");
             Assert.True(summary.Schemas[0].Name == "test.OldSchema", "34C-3b: zero-CRC file schema name is correct");
+        }
+
+        private static byte[] CreateSummaryWithBadCrc()
+        {
+            using var stream = new MemoryStream();
+            var logger = new ConsoleLogger();
+            using (var recorder = new McapRecorder(stream, logger))
+            {
+                recorder.AddChannel(1, "/round4/f02/crc", "json", "round4.Crc", "jsonschema", "{}");
+                recorder.WriteMessage(1, 1, Encoding.UTF8.GetBytes("{}"));
+                recorder.Close();
+            }
+
+            var bytes = stream.ToArray();
+            var footerOffset = bytes.Length - McapWriter.MagicLength - McapWriter.RecordHeaderLength - McapWriter.FooterContentLength;
+            var summaryCrcOffset = footerOffset + 1 + sizeof(ulong) + sizeof(ulong) + sizeof(ulong);
+            bytes[summaryCrcOffset] = 0x12;
+            bytes[summaryCrcOffset + 1] = 0x34;
+            bytes[summaryCrcOffset + 2] = 0x56;
+            bytes[summaryCrcOffset + 3] = 0x78;
+            return bytes;
         }
 
         [Fact]

@@ -82,6 +82,8 @@ namespace Unity.FoxgloveSDK.IO
                         }
                         if (total != uncompressedSize)
                             throw new InvalidDataException($"LZ4 decompressed size mismatch: expected {uncompressedSize}, got {total}");
+                        if (lz4.ReadByte() >= 0)
+                            throw new InvalidDataException("LZ4 decompressed payload contains undeclared trailing bytes.");
                         return buf;
                     }
                 case "zstd":

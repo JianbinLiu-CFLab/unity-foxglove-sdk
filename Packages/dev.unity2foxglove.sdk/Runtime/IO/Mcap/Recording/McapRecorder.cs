@@ -264,13 +264,14 @@ namespace Unity.FoxgloveSDK.IO
                     Signature = signature
                 };
                 var meta = CreateChannelMetadata(McapChannelDirection.Output);
+                var channelRecordStart = _writer.Position;
                 try
                 {
                     _writer.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
                 }
                 catch (Exception ex)
                 {
-                    Fail("Channel write failed: " + ex.Message);
+                    HandleTopLevelRecordWriteFailure(channelRecordStart, ex, "Channel");
                     throw;
                 }
                 _serverChannelWriteStates[fId] = state;
@@ -343,13 +344,14 @@ namespace Unity.FoxgloveSDK.IO
                             Signature = signature
                         };
                         var meta = CreateChannelMetadata(McapChannelDirection.Input);
+                        var channelRecordStart = _writer.Position;
                         try
                         {
                             _writer.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
                         }
                         catch (Exception ex)
                         {
-                            Fail("Client channel write failed: " + ex.Message);
+                            HandleTopLevelRecordWriteFailure(channelRecordStart, ex, "Client channel");
                             throw;
                         }
                         _clientChannelWriteState[key] = map;
@@ -366,16 +368,25 @@ namespace Unity.FoxgloveSDK.IO
         // Message writing
         private void WriteMessageToChannelWriteState(ChannelWriteState map, ulong logNs, byte[] payload)
         {
+            WriteMessageToChannelWriteState(map, map.Seq, logNs, logNs, payload, advanceSequence: true);
+        }
+
+        private void WriteMessageToChannelWriteState(
+            ChannelWriteState map,
+            uint seq,
+            ulong logNs,
+            ulong publishNs,
+            byte[] payload,
+            bool advanceSequence)
+        {
             if (_recordingFailed || _closed) return;
-            var seq = map.Seq;
             var payloadLength = payload?.Length ?? 0;
             if (!_options.UseChunking)
             {
                 var recordStartPosition = _writer.Position;
                 try
                 {
-                    // MCAP publish_time intentionally mirrors log_time for Unity live recording.
-                    _writer.WriteMessage(map.McapId, seq, logNs, logNs, payload);
+                    _writer.WriteMessage(map.McapId, seq, logNs, publishNs, payload);
                 }
                 catch (Exception writeError)
                 {
@@ -395,7 +406,8 @@ namespace Unity.FoxgloveSDK.IO
                     throw;
                 }
 
-                map.Seq++;
+                if (advanceSequence)
+                    map.Seq++;
                 map.MsgCount++;
                 TrackMessageTimes(logNs);
                 return;
@@ -410,6 +422,14 @@ namespace Unity.FoxgloveSDK.IO
 
             var contentLength = checked(messagePrefixLength + payloadLength);
             var recordLength = checked(McapWriter.RecordHeaderLength + contentLength);
+            if (!IsChunkedMessageRecordWithinLimit(
+                    payloadLength,
+                    McapReader.DefaultChunkUncompressedSizeLimit))
+            {
+                Fail(
+                    $"Message record size {recordLength} exceeds the paired reader chunk limit {McapReader.DefaultChunkUncompressedSizeLimit}.");
+                return;
+            }
             FlushChunkBeforeLargeWriteIfNeeded(recordLength);
             var off = (ulong)_chunkBuf.Position;
             var header = _messageRecordHeader;
@@ -418,11 +438,12 @@ namespace Unity.FoxgloveSDK.IO
             McapWriter.WriteU16(header, McapWriter.RecordHeaderLength, map.McapId);
             McapWriter.WriteU32(header, McapWriter.RecordHeaderLength + 2, seq);
             McapWriter.WriteU64(header, McapWriter.RecordHeaderLength + 2 + 4, logNs);
-            McapWriter.WriteU64(header, McapWriter.RecordHeaderLength + 2 + 4 + 8, logNs);
+            McapWriter.WriteU64(header, McapWriter.RecordHeaderLength + 2 + 4 + 8, publishNs);
             _chunkBuf.Write(header, 0, header.Length);
             if (payloadLength > 0)
                 _chunkBuf.Write(payload, 0, payloadLength);
-            map.Seq++;
+            if (advanceSequence)
+                map.Seq++;
             map.MsgCount++;
             map.Pending.Add((logNs, off));
             if (_msgSt == ulong.MaxValue || logNs < _msgSt) _msgSt = logNs;
@@ -458,7 +479,15 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_recordingFailed || _closed) return;
                 var off = (ulong)_writer.Position;
-                _writer.WriteMetadata(name, new Dictionary<string, string> { ["value"] = jsonValue });
+                try
+                {
+                    _writer.WriteMetadata(name, new Dictionary<string, string> { ["value"] = jsonValue });
+                }
+                catch (Exception ex)
+                {
+                    HandleTopLevelRecordWriteFailure((long)off, ex, "Metadata");
+                    throw;
+                }
                 var len = (ulong)_writer.Position - off;
                 _metaIdx.Add(new MetadataIndexState { Offset = off, Length = len, Name = name });
                 _metadataCount++;
@@ -475,7 +504,17 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_recordingFailed || _closed) return;
                 FlushChunk();
-                var index = _writer.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data, _options.EnableCrcs);
+                var attachmentRecordStart = _writer.Position;
+                McapAttachmentIndex index;
+                try
+                {
+                    index = _writer.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data, _options.EnableCrcs);
+                }
+                catch (Exception ex)
+                {
+                    HandleTopLevelRecordWriteFailure(attachmentRecordStart, ex, "Attachment");
+                    throw;
+                }
                 _attachmentIdx.Add(index);
                 _attachmentCount++;
             }
@@ -490,6 +529,25 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_recordingFailed || _closed || !_serverChannelWriteStates.TryGetValue(fId, out var map)) return;
                 WriteMessageToChannelWriteState(map, logNs, payload);
+            }
+        }
+
+        /// <summary>
+        /// Writes a server message while preserving the source MCAP sequence
+        /// and publish timestamp. Used by lossless range re-emission paths;
+        /// ordinary live recording continues to derive both values locally.
+        /// </summary>
+        internal void WriteMessagePreservingMcapMetadata(
+            uint fId,
+            uint sequence,
+            ulong logNs,
+            ulong publishNs,
+            byte[] payload)
+        {
+            lock (_lock)
+            {
+                if (_recordingFailed || _closed || !_serverChannelWriteStates.TryGetValue(fId, out var map)) return;
+                WriteMessageToChannelWriteState(map, sequence, logNs, publishNs, payload, advanceSequence: false);
             }
         }
 
@@ -852,6 +910,42 @@ namespace Unity.FoxgloveSDK.IO
         {
             if (_chunkBuf.Length > 0 && _chunkBuf.Length + nextRecordLength >= _chunkSz)
                 FlushChunk();
+        }
+
+        internal static bool IsChunkedMessageRecordWithinLimit(
+            int payloadLength,
+            ulong chunkUncompressedSizeLimit)
+        {
+            if (payloadLength < 0)
+                return false;
+
+            const ulong messageRecordOverhead =
+                McapWriter.RecordHeaderLength + 2UL + 4UL + 8UL + 8UL;
+            return (ulong)payloadLength <= chunkUncompressedSizeLimit
+                   && (ulong)payloadLength + messageRecordOverhead <= chunkUncompressedSizeLimit;
+        }
+
+        private void HandleTopLevelRecordWriteFailure(
+            long recordStartPosition,
+            Exception writeError,
+            string recordName)
+        {
+            try
+            {
+                _writer.TruncateToPosition(recordStartPosition);
+            }
+            catch (Exception rollbackError)
+            {
+                _closed = true;
+                Fail($"{recordName} write and rollback failed: {rollbackError.Message}");
+                throw new IOException(
+                    $"MCAP recorder could not roll back an incomplete {recordName} record.",
+                    new AggregateException(writeError, rollbackError));
+            }
+
+            _failedChunkStartPosition ??= recordStartPosition;
+            _chunkFlushFailure ??= writeError;
+            Fail($"{recordName} write failed: {writeError.Message}");
         }
 
         /// <summary>

@@ -51,13 +51,14 @@ namespace Unity.FoxgloveSDK.IO
 
             if (_nextSchemaId == 0) { Fail("Schema ID overflow"); return 0; }
             sid = _nextSchemaId++;
+            var schemaRecordStart = _writer.Position;
             try
             {
                 _writer.WriteSchema(sid, key.Item1, key.Item2, schemaData);
             }
             catch (Exception ex)
             {
-                Fail("Schema write failed: " + ex.Message);
+                HandleTopLevelRecordWriteFailure(schemaRecordStart, ex, "Schema");
                 throw;
             }
             _schemaIdsBySignature[key] = sid;

@@ -147,6 +147,9 @@ namespace Unity.FoxgloveSDK.Core
     public sealed class UnityReplayCursorEndpoint : IDisposable
     {
         private const int WorkerJoinTimeoutMilliseconds = 500;
+        private const int MaxRetiringGenerations = 1;
+        private const string RetirementCapacityExceededMessage =
+            "Replay cursor endpoint retirement capacity is exhausted; the current generation remains active.";
 
         private static readonly byte[] AcceptedCursorResponseBytes =
             Encoding.UTF8.GetBytes("{\"accepted\":true,\"message\":\"Cursor accepted.\"}");
@@ -180,12 +183,14 @@ namespace Unity.FoxgloveSDK.Core
                 Options = options;
                 Queue = queue ?? throw new ArgumentNullException(nameof(queue));
                 StateProvider = stateProvider;
+                GenerationLease = new ReplayCursorGenerationLease();
             }
 
             public HttpListener Listener { get; }
             public UnityReplayCursorEndpointOptions Options { get; }
             public Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> Queue { get; }
             public Func<ReplayCursorState> StateProvider { get; }
+            public ReplayCursorGenerationLease GenerationLease { get; }
             public Thread Worker { get; set; }
             public bool StopRequested => Volatile.Read(ref _stopRequested) != 0;
 
@@ -194,6 +199,7 @@ namespace Unity.FoxgloveSDK.Core
 
         private readonly IFoxgloveLogger _logger;
         private readonly object _lifecycleGate = new object();
+        private readonly List<WorkerGeneration> _retiringGenerations = new List<WorkerGeneration>();
         private volatile WorkerGeneration _generation;
         private volatile bool _running;
 
@@ -206,6 +212,19 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Whether the endpoint is currently listening.</summary>
         public bool IsRunning => _running;
 
+        /// <summary>Number of generations still being retired after a bounded stop wait.</summary>
+        internal int RetiringGenerationCount
+        {
+            get
+            {
+                lock (_lifecycleGate)
+                {
+                    ReapRetiredGenerationsNoLock();
+                    return _retiringGenerations.Count;
+                }
+            }
+        }
+
         /// <summary>Start listening if options are enabled.</summary>
         public void Start(
             UnityReplayCursorEndpointOptions options,
@@ -214,6 +233,14 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_lifecycleGate)
             {
+                ReapRetiredGenerationsNoLock();
+                if (options.Enabled
+                    && _generation != null
+                    && _retiringGenerations.Count >= MaxRetiringGenerations)
+                {
+                    throw new InvalidOperationException(RetirementCapacityExceededMessage);
+                }
+
                 StopNoLock();
                 if (!options.Enabled)
                 {
@@ -253,6 +280,7 @@ namespace Unity.FoxgloveSDK.Core
                         _running = false;
                         _generation = null;
                         generation.RequestStop();
+                        generation.GenerationLease.Revoke();
                         throw;
                     }
                 }
@@ -282,6 +310,7 @@ namespace Unity.FoxgloveSDK.Core
 
         private void StopNoLock()
         {
+            ReapRetiredGenerationsNoLock();
             _running = false;
             var generation = _generation;
             if (generation == null)
@@ -290,6 +319,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             generation.RequestStop();
+            generation.GenerationLease.Revoke();
 
             try
             {
@@ -309,16 +339,39 @@ namespace Unity.FoxgloveSDK.Core
                 // Close is best-effort during Unity lifecycle teardown.
             }
 
-            if (generation.Worker != null
-                && generation.Worker != Thread.CurrentThread
-                && generation.Worker.IsAlive
-                && !generation.Worker.Join(WorkerJoinTimeoutMilliseconds))
+            var workerRetired = generation.Worker == null
+                || generation.Worker == Thread.CurrentThread
+                || !generation.Worker.IsAlive
+                || generation.Worker.Join(WorkerJoinTimeoutMilliseconds);
+            var movedToRetiring = false;
+            if (!workerRetired && _retiringGenerations.Count < MaxRetiringGenerations)
             {
+                _retiringGenerations.Add(generation);
+                movedToRetiring = true;
                 _logger?.LogWarning(
                     "Replay cursor endpoint worker did not retire within the bounded stop wait.");
             }
+            else if (!workerRetired)
+            {
+                _logger?.LogWarning(RetirementCapacityExceededMessage);
+            }
 
-            _generation = null;
+            if (workerRetired || movedToRetiring)
+            {
+                _generation = null;
+            }
+        }
+
+        private void ReapRetiredGenerationsNoLock()
+        {
+            for (var i = _retiringGenerations.Count - 1; i >= 0; i--)
+            {
+                var worker = _retiringGenerations[i].Worker;
+                if (worker == null || !worker.IsAlive)
+                {
+                    _retiringGenerations.RemoveAt(i);
+                }
+            }
         }
 
         private void ListenLoop(WorkerGeneration generation)
@@ -451,7 +504,7 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            var result = generation.Queue(request);
+            var result = generation.Queue(request.WithGenerationLease(generation.GenerationLease));
             if (result.Success && string.Equals(result.Message, "Cursor accepted.", StringComparison.Ordinal))
             {
                 TryWrite(context, 202, AcceptedCursorResponseBytes, cors);

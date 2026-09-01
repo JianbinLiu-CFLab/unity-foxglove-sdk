@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.IO
@@ -167,7 +168,14 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>Returns an owned MCAP stream for the requested inclusive log-time range.</summary>
         public RemoteMcapDataStreamResponse GetDataStream(RemoteMcapRequest request)
+            => GetDataStream(request, CancellationToken.None);
+
+        /// <summary>Returns an owned MCAP stream while observing request cancellation during range construction.</summary>
+        internal RemoteMcapDataStreamResponse GetDataStream(
+            RemoteMcapRequest request,
+            CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             request = request ?? new RemoteMcapRequest();
             var authorization = Authorize(request);
             if (!authorization.Allowed)
@@ -194,7 +202,15 @@ namespace Unity.FoxgloveSDK.IO
             MemoryStream slice;
             try
             {
-                slice = RemoteMcapRangeWriter.CreateSlice(_mcapPath, request, _maxInMemoryDataBytes);
+                slice = RemoteMcapRangeWriter.CreateSlice(
+                    _mcapPath,
+                    request,
+                    _maxInMemoryDataBytes,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (RemoteMcapRangeTooLargeException ex)
             {

@@ -25,16 +25,21 @@ namespace Unity.FoxgloveSDK.Core
 
         private readonly struct ReplayCallbackDispatch
         {
-            private ReplayCallbackDispatch(ReplayMessageContext? messageContext, ReplayBatchContext? batchContext, bool isBatch)
+            private ReplayCallbackDispatch(ReplayMessageContext? messageContext, ReplayBatchContext? batchContext, bool isBatch, long generation = 0)
             {
                 MessageContext = messageContext;
                 BatchContext = batchContext;
                 IsBatch = isBatch;
+                Generation = generation;
             }
 
             public ReplayMessageContext? MessageContext { get; }
             public ReplayBatchContext? BatchContext { get; }
             public bool IsBatch { get; }
+            public long Generation { get; }
+
+            public ReplayCallbackDispatch WithGeneration(long generation)
+                => new ReplayCallbackDispatch(MessageContext, BatchContext, IsBatch, generation);
 
             public static ReplayCallbackDispatch ForMessage(ReplayMessageContext context)
                 => new ReplayCallbackDispatch(context, null, isBatch: false);

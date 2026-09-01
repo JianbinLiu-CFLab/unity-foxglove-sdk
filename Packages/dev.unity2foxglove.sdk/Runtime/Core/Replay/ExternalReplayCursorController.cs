@@ -4,6 +4,7 @@
 // Module: Runtime/Core/Replay
 // Purpose: Coalesces optional external replay cursor requests for main-thread drain.
 
+using System;
 using System.Threading;
 
 namespace Unity.FoxgloveSDK.Core
@@ -21,7 +22,10 @@ namespace Unity.FoxgloveSDK.Core
         ReplayUnavailable,
 
         /// <summary>The request repeats the latest accepted cursor value.</summary>
-        Duplicate
+        Duplicate,
+
+        /// <summary>The endpoint generation that owned the request has been retired.</summary>
+        StaleGeneration
     }
 
     /// <summary>
@@ -37,13 +41,22 @@ namespace Unity.FoxgloveSDK.Core
         private bool _hasPending;
         private bool _hasLastAccepted;
         private ulong _lastAcceptedNs;
+        private ReplayCursorGenerationLease _lastAcceptedLease;
         private ReplayCursorRequest _pending;
 
         /// <summary>Whether the optional cursor bridge should accept requests.</summary>
         public bool Enabled
         {
             get => Volatile.Read(ref _enabled) != 0;
-            set => Volatile.Write(ref _enabled, value ? 1 : 0);
+            set
+            {
+                lock (_gate)
+                {
+                    Volatile.Write(ref _enabled, value ? 1 : 0);
+                    if (!value)
+                        ClearNoLock();
+                }
+            }
         }
 
         /// <summary>Queue a cursor request after disabled, replay, duplicate, and range checks.</summary>
@@ -54,22 +67,52 @@ namespace Unity.FoxgloveSDK.Core
             ulong endNs,
             out string message)
         {
-            if (!Enabled)
+            var lease = request.GenerationLease;
+            if (lease == null)
+                return TryEnqueueCore(request, replayEnabled, startNs, endNs, out message);
+
+            var result = ExternalReplayCursorEnqueueResult.StaleGeneration;
+            string localMessage = null;
+            if (!lease.TryExecuteIfActive(() =>
+                result = TryEnqueueCore(request, replayEnabled, startNs, endNs, out localMessage)))
             {
-                message = "External replay cursor bridge is disabled.";
-                return ExternalReplayCursorEnqueueResult.Disabled;
+                message = "Stale replay cursor endpoint generation.";
+                return ExternalReplayCursorEnqueueResult.StaleGeneration;
             }
 
-            if (!replayEnabled || endNs < startNs)
-            {
-                message = "Replay is not available for external cursor control.";
-                return ExternalReplayCursorEnqueueResult.ReplayUnavailable;
-            }
+            message = localMessage;
+            return result;
+        }
 
-            var clampedTimeNs = Clamp(request.TimeNs, startNs, endNs);
+        private ExternalReplayCursorEnqueueResult TryEnqueueCore(
+            ReplayCursorRequest request,
+            bool replayEnabled,
+            ulong startNs,
+            ulong endNs,
+            out string message)
+        {
             lock (_gate)
             {
-                if (_hasLastAccepted && _lastAcceptedNs == clampedTimeNs)
+                if (Volatile.Read(ref _enabled) == 0)
+                {
+                    message = "External replay cursor bridge is disabled.";
+                    return ExternalReplayCursorEnqueueResult.Disabled;
+                }
+
+                if (!replayEnabled || endNs < startNs)
+                {
+                    message = "Replay is not available for external cursor control.";
+                    return ExternalReplayCursorEnqueueResult.ReplayUnavailable;
+                }
+
+                var clampedTimeNs = Clamp(request.TimeNs, startNs, endNs);
+                // An explicit seek is a restoration command, not a duplicate
+                // advance. It must be accepted even when its timestamp equals
+                // the last accepted cursor so a rebuilt scene can be replayed.
+                if (_hasLastAccepted &&
+                    ReferenceEquals(_lastAcceptedLease, request.GenerationLease) &&
+                    _lastAcceptedNs == clampedTimeNs &&
+                    !request.DidSeek)
                 {
                     message = "Duplicate cursor ignored.";
                     return ExternalReplayCursorEnqueueResult.Duplicate;
@@ -80,6 +123,7 @@ namespace Unity.FoxgloveSDK.Core
                 Volatile.Write(ref _hasPendingFast, 1);
                 _hasLastAccepted = true;
                 _lastAcceptedNs = clampedTimeNs;
+                _lastAcceptedLease = request.GenerationLease;
                 message = "Cursor accepted.";
                 return ExternalReplayCursorEnqueueResult.Accepted;
             }
@@ -106,7 +150,74 @@ namespace Unity.FoxgloveSDK.Core
                 _pending = default;
                 _hasPending = false;
                 Volatile.Write(ref _hasPendingFast, 0);
+            }
+
+            if (Enabled && (request.GenerationLease == null || request.GenerationLease.IsActive))
                 return true;
+
+            lock (_gate)
+            {
+                if (ReferenceEquals(_lastAcceptedLease, request.GenerationLease))
+                {
+                    _hasLastAccepted = false;
+                    _lastAcceptedNs = 0;
+                    _lastAcceptedLease = null;
+                }
+            }
+            request = default;
+            return false;
+        }
+
+        /// <summary>
+        /// Drains and applies the latest request while holding the controller
+        /// gate and, when present, its generation lease. Lifecycle disable or
+        /// endpoint replacement therefore cannot revoke the request between the
+        /// drain and the runtime's state mutation.
+        /// </summary>
+        public bool TryDrainLatest(Action<ReplayCursorRequest> apply)
+        {
+            if (apply == null)
+                throw new ArgumentNullException(nameof(apply));
+            if (Volatile.Read(ref _hasPendingFast) == 0)
+                return false;
+
+            while (true)
+            {
+                ReplayCursorGenerationLease lease;
+                lock (_gate)
+                {
+                    if (!_hasPending)
+                        return false;
+                    lease = _pending.GenerationLease;
+                }
+
+                var applied = false;
+                if (lease != null)
+                {
+                    if (!lease.TryExecuteIfActive(() =>
+                    {
+                        // Keep the controller gate paired with the generation
+                        // lease through the drain and callback. Otherwise a
+                        // concurrent disable can clear authority while the
+                        // callback is still applying the request.
+                        lock (_gate)
+                            applied = TryDrainAndApplyNoLock(lease, apply);
+                    }))
+                    {
+                        ClearStalePending(lease);
+                        return false;
+                    }
+                }
+                else
+                {
+                    lock (_gate)
+                        applied = TryDrainAndApplyNoLock(null, apply);
+                }
+
+                if (applied)
+                    return true;
+                if (Volatile.Read(ref _hasPendingFast) == 0)
+                    return false;
             }
         }
 
@@ -114,13 +225,52 @@ namespace Unity.FoxgloveSDK.Core
         public void Clear()
         {
             lock (_gate)
+                ClearNoLock();
+        }
+
+        private bool TryDrainAndApplyNoLock(
+            ReplayCursorGenerationLease expectedLease,
+            Action<ReplayCursorRequest> apply)
+        {
+            if (!_hasPending)
+                return false;
+
+            var request = _pending;
+            if (!ReferenceEquals(request.GenerationLease, expectedLease))
+                return false;
+            if (Volatile.Read(ref _enabled) == 0 ||
+                (expectedLease != null && !expectedLease.IsActive))
             {
-                _pending = default;
-                _hasPending = false;
-                Volatile.Write(ref _hasPendingFast, 0);
-                _hasLastAccepted = false;
-                _lastAcceptedNs = 0;
+                ClearNoLock();
+                return false;
             }
+
+            _pending = default;
+            _hasPending = false;
+            Volatile.Write(ref _hasPendingFast, 0);
+            // Keep the gate/lease held through the state mutation. A concurrent
+            // disable or generation revoke must wait until the callback returns.
+            apply(request);
+            return true;
+        }
+
+        private void ClearStalePending(ReplayCursorGenerationLease staleLease)
+        {
+            lock (_gate)
+            {
+                if (_hasPending && ReferenceEquals(_pending.GenerationLease, staleLease))
+                    ClearNoLock();
+            }
+        }
+
+        private void ClearNoLock()
+        {
+            _pending = default;
+            _hasPending = false;
+            Volatile.Write(ref _hasPendingFast, 0);
+            _hasLastAccepted = false;
+            _lastAcceptedNs = 0;
+            _lastAcceptedLease = null;
         }
 
         private static ulong Clamp(ulong value, ulong min, ulong max)

@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.IO;
@@ -182,6 +183,20 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             var zstd = McapCompression.Compress("zstd", payload);
             Assert.Throws<InvalidDataException>(() => McapCompression.Decompress("zstd", zstd, payload.Length + 2));
+        }
+
+        [Fact]
+        public void Lz4RejectsUndeclaredDecompressedTail()
+        {
+            var prefix = Encoding.UTF8.GetBytes("declared");
+            var hiddenTail = Encoding.UTF8.GetBytes("|hidden-tail");
+            var raw = prefix.Concat(hiddenTail).ToArray();
+            var compressed = McapCompression.Compress("lz4", raw);
+
+            var error = Assert.Throws<InvalidDataException>(() =>
+                McapCompression.Decompress("lz4", compressed, prefix.Length));
+
+            Assert.Contains("trailing", error.Message, StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]

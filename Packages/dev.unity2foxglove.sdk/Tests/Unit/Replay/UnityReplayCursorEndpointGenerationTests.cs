@@ -146,6 +146,174 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public async Task RetirementCapacityRefusesThirdGenerationWithoutStoppingSecond()
+        {
+            using var endpoint = new UnityReplayCursorEndpoint();
+            using var firstQueueEntered = new ManualResetEventSlim();
+            using var releaseFirstQueue = new ManualResetEventSlim();
+            using var secondQueueEntered = new ManualResetEventSlim();
+            using var releaseSecondQueue = new ManualResetEventSlim();
+            var firstPort = ReserveFreeLoopbackPort();
+            var secondPort = ReserveFreeLoopbackPort();
+            var thirdPort = ReserveFreeLoopbackPort();
+            Task<HttpStatusCode> firstRequest = null;
+            Task<HttpStatusCode> secondRequest = null;
+
+            try
+            {
+                endpoint.Start(
+                    Options(firstPort, "/retire-first", "retire-first-token"),
+                    _ =>
+                    {
+                        firstQueueEntered.Set();
+                        releaseFirstQueue.Wait(TimeSpan.FromSeconds(10));
+                        return new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.");
+                    });
+                firstRequest = PostCursorAsync(firstPort, "/retire-first", "retire-first-token");
+                Assert.True(
+                    firstQueueEntered.Wait(TimeSpan.FromSeconds(5)),
+                    "First worker never entered its queue callback.");
+
+                endpoint.Start(
+                    Options(secondPort, "/retire-second", "retire-second-token"),
+                    _ =>
+                    {
+                        secondQueueEntered.Set();
+                        releaseSecondQueue.Wait(TimeSpan.FromSeconds(10));
+                        return new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.");
+                    });
+                secondRequest = PostCursorAsync(secondPort, "/retire-second", "retire-second-token");
+                Assert.True(
+                    secondQueueEntered.Wait(TimeSpan.FromSeconds(5)),
+                    "Second worker never entered its queue callback.");
+
+                var error = Record.Exception(() => endpoint.Start(
+                    Options(thirdPort, "/retire-third", "retire-third-token"),
+                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.")));
+
+                var capacityError = Assert.IsType<InvalidOperationException>(error);
+                Assert.Equal(
+                    "Replay cursor endpoint retirement capacity is exhausted; the current generation remains active.",
+                    capacityError.Message);
+                Assert.Equal(1, endpoint.RetiringGenerationCount);
+
+                releaseSecondQueue.Set();
+                await ObserveRetiredRequestAsync(secondRequest);
+                Assert.True(endpoint.IsRunning);
+                Assert.Equal(
+                    HttpStatusCode.Accepted,
+                    await PostCursorAsync(secondPort, "/retire-second", "retire-second-token"));
+
+                releaseFirstQueue.Set();
+                await ObserveRetiredRequestAsync(firstRequest);
+                for (var i = 0; i < 200 && endpoint.RetiringGenerationCount != 0; i++)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(25));
+                }
+                Assert.Equal(0, endpoint.RetiringGenerationCount);
+                endpoint.Start(
+                    Options(thirdPort, "/retire-third", "retire-third-token"),
+                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
+                Assert.Equal(
+                    HttpStatusCode.Accepted,
+                    await PostCursorAsync(thirdPort, "/retire-third", "retire-third-token"));
+            }
+            finally
+            {
+                releaseFirstQueue.Set();
+                releaseSecondQueue.Set();
+                if (firstRequest != null)
+                {
+                    await ObserveRetiredRequestAsync(firstRequest);
+                }
+                if (secondRequest != null)
+                {
+                    await ObserveRetiredRequestAsync(secondRequest);
+                }
+            }
+        }
+
+        [Fact]
+        public async Task RetiredGenerationCannotOverwriteNewerCursor()
+        {
+            using var endpoint = new UnityReplayCursorEndpoint();
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            using var oldQueueEntered = new ManualResetEventSlim();
+            using var releaseOldQueue = new ManualResetEventSlim();
+            using var newQueueEntered = new ManualResetEventSlim();
+            var oldPort = ReserveFreeLoopbackPort();
+            var newPort = ReserveFreeLoopbackPort();
+            Task<HttpStatusCode> oldRequest = null;
+
+            try
+            {
+                endpoint.Start(
+                    Options(oldPort, "/authority-old", "authority-old-token"),
+                    request =>
+                    {
+                        oldQueueEntered.Set();
+                        releaseOldQueue.Wait(TimeSpan.FromSeconds(10));
+                        var result = controller.TryEnqueue(
+                            request,
+                            replayEnabled: true,
+                            startNs: 0,
+                            endNs: 10_000_000_000UL,
+                            out var message);
+                        return new UnityReplayCursorEndpointQueueResult(
+                            result == ExternalReplayCursorEnqueueResult.Accepted
+                            || result == ExternalReplayCursorEnqueueResult.Duplicate,
+                            message);
+                    });
+                oldRequest = PostCursorAsync(
+                    oldPort,
+                    "/authority-old",
+                    "authority-old-token",
+                    CursorJsonFor(sequence: 1, sec: 2, nsec: 3));
+                Assert.True(oldQueueEntered.Wait(TimeSpan.FromSeconds(5)), "Old worker never entered its queue callback.");
+
+                endpoint.Start(
+                    Options(newPort, "/authority-new", "authority-new-token"),
+                    request =>
+                    {
+                        var result = controller.TryEnqueue(
+                            request,
+                            replayEnabled: true,
+                            startNs: 0,
+                            endNs: 10_000_000_000UL,
+                            out var message);
+                        newQueueEntered.Set();
+                        return new UnityReplayCursorEndpointQueueResult(
+                            result == ExternalReplayCursorEnqueueResult.Accepted
+                            || result == ExternalReplayCursorEnqueueResult.Duplicate,
+                            message);
+                    });
+                Assert.Equal(
+                    HttpStatusCode.Accepted,
+                    await PostCursorAsync(
+                        newPort,
+                        "/authority-new",
+                        "authority-new-token",
+                        CursorJsonFor(sequence: 2, sec: 3, nsec: 4)));
+                Assert.True(newQueueEntered.Wait(TimeSpan.FromSeconds(5)), "New worker never entered its queue callback.");
+
+                releaseOldQueue.Set();
+                await ObserveRetiredRequestAsync(oldRequest);
+                Assert.True(controller.TryDrainLatest(out var drained));
+                Assert.Equal(2, drained.Sequence);
+                Assert.Equal(3_000_000_004UL, drained.TimeNs);
+            }
+            finally
+            {
+                releaseOldQueue.Set();
+                if (oldRequest != null)
+                {
+                    await ObserveRetiredRequestAsync(oldRequest);
+                }
+                controller.Clear();
+            }
+        }
+
+        [Fact]
         public void WorkerLoopAndHandlersUseOnlyTheirCapturedGeneration()
         {
             var source = TestSources.Text(
@@ -166,6 +334,276 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.DoesNotContain("_queue", handle, StringComparison.Ordinal);
             Assert.Contains("generation.Worker.Join", stop, StringComparison.Ordinal);
             Assert.Contains("ManagedWebSocketOptions.FixedTimeEqualsUtf8", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ExplicitSameTimeSeekIsAcceptedAfterAnAdvance()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var advance = ReplayCursorRequest.CreateForTests(
+                7_000_000_009UL,
+                "phase187",
+                sequence: 1,
+                didSeek: false);
+            var seek = ReplayCursorRequest.CreateForTests(
+                7_000_000_009UL,
+                "phase187",
+                sequence: 2,
+                didSeek: true);
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(advance, replayEnabled: true, startNs: 0, endNs: 10_000_000_000UL, out _));
+            Assert.True(controller.TryDrainLatest(out var drainedAdvance));
+            Assert.False(drainedAdvance.DidSeek);
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(seek, replayEnabled: true, startNs: 0, endNs: 10_000_000_000UL, out _));
+            Assert.True(controller.TryDrainLatest(out var drainedSeek));
+            Assert.True(drainedSeek.DidSeek);
+            Assert.Equal(2, drainedSeek.Sequence);
+        }
+
+        [Fact]
+        public void NewGenerationAcceptsSameTimeAdvanceAfterOldGenerationRevoke()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var oldLease = new ReplayCursorGenerationLease();
+            var newLease = new ReplayCursorGenerationLease();
+            var oldRequest = ReplayCursorRequest.CreateForTests(
+                    7_000_000_009UL,
+                    "phase187",
+                    sequence: 1,
+                    didSeek: false)
+                .WithGenerationLease(oldLease);
+            var newRequest = ReplayCursorRequest.CreateForTests(
+                    7_000_000_009UL,
+                    "phase187",
+                    sequence: 2,
+                    didSeek: false)
+                .WithGenerationLease(newLease);
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(oldRequest, replayEnabled: true, startNs: 0, endNs: 10_000_000_000UL, out _));
+            oldLease.Revoke();
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(newRequest, replayEnabled: true, startNs: 0, endNs: 10_000_000_000UL, out _));
+            Assert.True(controller.TryDrainLatest(out var drained));
+            Assert.Equal(2, drained.Sequence);
+        }
+
+        [Fact]
+        public void DisablingControllerClearsAlreadyQueuedRequest()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var request = ReplayCursorRequest.CreateForTests(
+                7_000_000_009UL,
+                "phase187",
+                sequence: 1,
+                didSeek: false);
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(
+                    request,
+                    replayEnabled: true,
+                    startNs: 0,
+                    endNs: 10_000_000_000UL,
+                    out _));
+
+            controller.Enabled = false;
+
+            Assert.False(controller.TryDrainLatest(out _));
+        }
+
+        [Fact]
+        public async Task AtomicDrainAppliesBeforeDisableCanClearAuthority()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var request = ReplayCursorRequest.CreateForTests(
+                7_000_000_009UL,
+                "phase187",
+                sequence: 1,
+                didSeek: true);
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(
+                    request,
+                    replayEnabled: true,
+                    startNs: 0,
+                    endNs: 10_000_000_000UL,
+                    out _));
+
+            using var callbackEntered = new ManualResetEventSlim();
+            using var releaseCallback = new ManualResetEventSlim();
+            var appliedWhileEnabled = false;
+            var drain = Task.Run(() => controller.TryDrainLatest(drained =>
+            {
+                appliedWhileEnabled = controller.Enabled;
+                callbackEntered.Set();
+                releaseCallback.Wait(TimeSpan.FromSeconds(5));
+                Assert.Equal(1, drained.Sequence);
+            }));
+
+            Assert.True(callbackEntered.Wait(TimeSpan.FromSeconds(5)));
+            var disableStarted = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var disable = Task.Run(() =>
+            {
+                disableStarted.SetResult(true);
+                controller.Enabled = false;
+            });
+            await disableStarted.Task;
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100));
+                Assert.False(disable.IsCompleted);
+            }
+            finally
+            {
+                releaseCallback.Set();
+            }
+            Assert.True(await Task.WhenAny(drain, Task.Delay(TimeSpan.FromSeconds(5))) == drain);
+            await drain;
+            await disable;
+            Assert.True(appliedWhileEnabled);
+            Assert.False(controller.TryDrainLatest(out _));
+        }
+
+        [Fact]
+        public async Task AtomicLeasedDrainAppliesBeforeDisableCanRevokeGeneration()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var lease = new ReplayCursorGenerationLease();
+            var request = ReplayCursorRequest.CreateForTests(
+                    7_000_000_009UL,
+                    "phase187",
+                    sequence: 1,
+                    didSeek: true)
+                .WithGenerationLease(lease);
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(
+                    request,
+                    replayEnabled: true,
+                    startNs: 0,
+                    endNs: 10_000_000_000UL,
+                    out _));
+
+            using var callbackEntered = new ManualResetEventSlim();
+            using var releaseCallback = new ManualResetEventSlim();
+            var appliedWhileEnabled = false;
+            var drain = Task.Run(() => controller.TryDrainLatest(drained =>
+            {
+                appliedWhileEnabled = controller.Enabled;
+                callbackEntered.Set();
+                releaseCallback.Wait(TimeSpan.FromSeconds(5));
+                Assert.Equal(1, drained.Sequence);
+            }));
+
+            Assert.True(callbackEntered.Wait(TimeSpan.FromSeconds(5)));
+            var disableStarted = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var disable = Task.Run(() =>
+            {
+                disableStarted.SetResult(true);
+                controller.Enabled = false;
+            });
+            await disableStarted.Task;
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            Assert.False(disable.IsCompleted);
+            releaseCallback.Set();
+            Assert.True(await Task.WhenAny(drain, Task.Delay(TimeSpan.FromSeconds(5))) == drain);
+            await drain;
+            await disable;
+            Assert.True(appliedWhileEnabled);
+            Assert.False(controller.TryDrainLatest(out _));
+        }
+
+        [Fact]
+        public async Task AtomicLeasedDrainHoldsGenerationLeaseUntilApplyCompletes()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var lease = new ReplayCursorGenerationLease();
+            var request = ReplayCursorRequest.CreateForTests(
+                    7_000_000_009UL,
+                    "phase187",
+                    sequence: 1,
+                    didSeek: true)
+                .WithGenerationLease(lease);
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(
+                    request,
+                    replayEnabled: true,
+                    startNs: 0,
+                    endNs: 10_000_000_000UL,
+                    out _));
+
+            using var callbackEntered = new ManualResetEventSlim();
+            using var releaseCallback = new ManualResetEventSlim();
+            var appliedWhileActive = false;
+            var drain = Task.Run(() => controller.TryDrainLatest(drained =>
+            {
+                appliedWhileActive = lease.IsActive;
+                callbackEntered.Set();
+                releaseCallback.Wait(TimeSpan.FromSeconds(5));
+                Assert.Equal(1, drained.Sequence);
+            }));
+
+            Assert.True(callbackEntered.Wait(TimeSpan.FromSeconds(5)));
+            var revokeStarted = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var revoke = Task.Run(() =>
+            {
+                revokeStarted.SetResult(true);
+                lease.Revoke();
+            });
+            await revokeStarted.Task;
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100));
+                Assert.False(revoke.IsCompleted);
+            }
+            finally
+            {
+                releaseCallback.Set();
+            }
+            Assert.True(await Task.WhenAny(drain, Task.Delay(TimeSpan.FromSeconds(5))) == drain);
+            await drain;
+            await revoke;
+            Assert.True(appliedWhileActive);
+            Assert.False(lease.IsActive);
+        }
+
+        [Fact]
+        public void LeasedDrainRejectsARevokedGenerationBeforeApplying()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var lease = new ReplayCursorGenerationLease();
+            var request = ReplayCursorRequest.CreateForTests(
+                    7_000_000_009UL,
+                    "phase187",
+                    sequence: 1,
+                    didSeek: true)
+                .WithGenerationLease(lease);
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(
+                    request,
+                    replayEnabled: true,
+                    startNs: 0,
+                    endNs: 10_000_000_000UL,
+                    out _));
+
+            lease.Revoke();
+            var applied = false;
+            Assert.False(controller.TryDrainLatest(_ => applied = true));
+            Assert.False(applied);
         }
 
         [Fact]
@@ -221,7 +659,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                 bearerToken: bearerToken,
                 maxBodyBytes: UnityReplayCursorEndpointOptions.Default.MaxBodyBytes);
 
-        private static async Task<HttpStatusCode> PostCursorAsync(int port, string path, string bearerToken)
+        private static Task<HttpStatusCode> PostCursorAsync(int port, string path, string bearerToken)
+            => PostCursorAsync(port, path, bearerToken, CursorJson);
+
+        private static async Task<HttpStatusCode> PostCursorAsync(
+            int port,
+            string path,
+            string bearerToken,
+            string json)
         {
             using var request = new HttpRequestMessage(
                 HttpMethod.Post,
@@ -229,10 +674,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
                 "Bearer",
                 bearerToken);
-            request.Content = new StringContent(CursorJson, Encoding.UTF8, "application/json");
+            request.Content = new StringContent(json, Encoding.UTF8, "application/json");
             using var response = await Client.SendAsync(request);
             return response.StatusCode;
         }
+
+        private static string CursorJsonFor(long sequence, long sec, int nsec)
+            => "{\"source\":\"phase187\",\"sequence\":"
+               + sequence
+               + ",\"mode\":\"seek\",\"time\":{\"sec\":"
+               + sec
+               + ",\"nsec\":"
+               + nsec
+               + "}}";
 
         private static async Task ObserveRetiredRequestAsync(Task<HttpStatusCode> request)
         {

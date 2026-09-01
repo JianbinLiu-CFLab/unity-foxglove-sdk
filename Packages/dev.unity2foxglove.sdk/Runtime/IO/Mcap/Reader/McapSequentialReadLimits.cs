@@ -11,16 +11,19 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>
     /// Memory guardrails for unindexed MCAP sequential fallback queries.
     /// Exceeding either guard throws <see cref="InvalidOperationException"/>
-    /// before more messages are retained.
+    /// before more messages are retained. These limits apply to eager
+    /// <c>ReadMessages</c> and <see cref="McapStreamingReader.Read"/> result
+    /// sets; the forward-only lazy iterator does not retain a result set and
+    /// therefore does not apply these cumulative retention counters.
     /// Call <see cref="Validate"/> after customizing mutable fields and before
     /// passing an instance to an MCAP reader.
     /// </summary>
     public sealed class McapSequentialReadLimits
     {
-        /// <summary>Default retained message count limit for no-index sequential fallback.</summary>
+        /// <summary>Default retained message count limit for eager no-index sequential fallback.</summary>
         public const int DefaultMaxMessages = 100000;
 
-        /// <summary>Default retained payload byte limit for no-index sequential fallback.</summary>
+        /// <summary>Default retained payload byte limit for eager no-index sequential fallback.</summary>
         public const long DefaultMaxPayloadBytes = 256L * 1024L * 1024L;
         /// <summary>Default retained metadata record limit for streaming scans.</summary>
         public const int DefaultMaxMetadataRecords = 10000;
@@ -31,10 +34,10 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Default retained attachment byte limit for streaming scans.</summary>
         public const long DefaultMaxAttachmentBytes = 256L * 1024L * 1024L;
 
-        /// <summary>Maximum retained messages. A value of 0 disables the count limit.</summary>
+        /// <summary>Maximum retained messages for eager fallback. A value of 0 disables the count limit.</summary>
         public int MaxMessages = DefaultMaxMessages;
 
-        /// <summary>Maximum retained payload bytes. A value of 0 disables the payload-byte limit.</summary>
+        /// <summary>Maximum retained payload bytes for eager fallback. A value of 0 disables the payload-byte limit.</summary>
         public long MaxPayloadBytes = DefaultMaxPayloadBytes;
         /// <summary>Maximum retained metadata records. A value of 0 disables the count limit.</summary>
         public int MaxMetadataRecords = DefaultMaxMetadataRecords;

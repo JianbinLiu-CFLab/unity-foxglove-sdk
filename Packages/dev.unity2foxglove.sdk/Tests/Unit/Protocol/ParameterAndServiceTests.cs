@@ -366,6 +366,23 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void InvalidServicePublicationDoesNotBroadcastBeforeGraphValidation()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            var descriptor = new ServiceDescriptor
+            {
+                Name = " ", Type = "/invalid",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            };
+
+            Assert.Throws<ArgumentException>(() => session.RegisterService(descriptor));
+            Assert.Empty(fake.BroadcastTexts);
+            Assert.Empty(session.Services.GetAll());
+        }
+
+        [Fact]
         public void ServiceCallEnqueueComplete()
         {
             var fake = new Phase6FakeTransport();

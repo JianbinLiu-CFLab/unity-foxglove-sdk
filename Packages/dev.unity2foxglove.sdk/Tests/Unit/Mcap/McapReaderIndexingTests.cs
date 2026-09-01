@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using Unity.FoxgloveSDK.IO;
@@ -67,6 +68,108 @@ namespace Unity.FoxgloveSDK.UnitTests
             var result = reader.Read(new McapReadOptions { ValidateCrcs = false });
             Assert.True(result.Summary.Schemas.Count == 1,
                 "134-9B-2: streaming DataEnd CRC mismatch can be ignored for compatibility");
+        }
+
+        [Fact]
+        public void StreamingReaderRejectsMessageAfterDataEnd()
+        {
+            using var stream = CreatePostDataEndMessageMcap();
+            using var reader = new McapStreamingReader(stream, leaveOpen: true);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.Read());
+
+            Assert.Contains("after DataEnd", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void IndexedLinearFallbackRejectsMessageAfterDataEnd()
+        {
+            using var stream = CreatePostDataEndMessageMcap();
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.ReadMessages());
+
+            Assert.Contains("after DataEnd", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void IndexedLinearFallbackSupportsSummarylessFooterWithoutDataEnd()
+        {
+            using var stream = CreateSummarylessFooterWithoutDataEndMcap();
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+
+            var messages = reader.ReadMessages(new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder
+            });
+
+            var message = Assert.Single(messages);
+            Assert.Equal(42UL, message.LogTime);
+            Assert.Equal("summaryless", Encoding.UTF8.GetString(message.Data));
+        }
+
+        [Fact]
+        public void PublicStreamingReaderStillRequiresDataEndForSummarylessFooter()
+        {
+            using var stream = CreateSummarylessFooterWithoutDataEndMcap();
+            using var reader = new McapStreamingReader(stream, leaveOpen: true);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.Read());
+
+            Assert.Contains("before DataEnd", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void LazyLinearFallbackDoesNotApplyEagerRetentionLimits()
+        {
+            using var stream = CreateSimpleMessageMcap(2);
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                new McapSequentialReadLimits
+                {
+                    MaxMessages = 1,
+                    MaxPayloadBytes = 1
+                });
+
+            var messages = new List<McapMessage>();
+            foreach (var message in reader.EnumerateMessages(new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder
+            }))
+            {
+                messages.Add(message);
+            }
+
+            Assert.Equal(2, messages.Count);
+        }
+
+        [Fact]
+        public void StreamingReaderRejectsDuplicateDataEnd()
+        {
+            using var stream = CreateDuplicateDataEndMcap();
+            using var reader = new McapStreamingReader(stream, leaveOpen: true);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.Read());
+
+            Assert.Contains("DataEnd", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StreamingReaderRequiresFooterAndTrailingMagic()
+        {
+            using var stream = CreateIncompleteMcapEnvelope();
+            using var reader = new McapStreamingReader(stream, leaveOpen: true);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.Read());
+
+            Assert.Contains("Footer", error.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -131,6 +234,37 @@ namespace Unity.FoxgloveSDK.UnitTests
             var ex = Assert.Throws<InvalidDataException>(() => McapRecordReader.DecodeMessageIndex(content.ToArray()));
 
             Assert.Contains("exceeds remaining payload length", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StrictValidatorRejectsIncompletePerChunkMessageIndexes()
+        {
+            using var stream = CreateIncompleteMessageIndexMcap();
+
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(stream));
+
+            Assert.Contains("Message Index", error.Message, StringComparison.Ordinal);
+            Assert.Contains("channel 2", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void IndexedChannelFilterInspectsChunkWhenMessageIndexMapIsIncomplete()
+        {
+            using var stream = CreateIncompleteMessageIndexMcap();
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+
+            var messages = reader.ReadMessages(new McapReadOptions
+            {
+                ChannelIds = new List<ushort> { 2 },
+                Order = McapReadOrder.FileOrder
+            });
+
+            var message = Assert.Single(messages);
+            Assert.Equal((ushort)2, message.ChannelId);
+            Assert.Equal(20UL, message.LogTime);
         }
 
         [Fact]
@@ -226,6 +360,28 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void IndexedFileOrderMaxMessagesStopsBeforeReadingLaterChunks()
+        {
+            var bytes = CreateTwoChunkIndexedMcap(out var secondChunkOffset);
+            using var stream = new CountingSeekStream(bytes, (long)secondChunkOffset);
+            using var reader = new McapIndexedReader(
+                stream,
+                leaveOpen: true,
+                McapSequentialReadLimits.UnlimitedForTests);
+            stream.ResetTargetHits();
+
+            var messages = reader.ReadMessages(new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder,
+                MaxMessages = 1
+            });
+
+            var message = Assert.Single(messages);
+            Assert.Equal(1UL, message.LogTime);
+            Assert.Equal(0, stream.TargetHits);
+        }
+
+        [Fact]
         public void IndexedReaderThrowsAfterDispose()
         {
             using var stream = CreateSimpleMessageMcap(3);
@@ -280,6 +436,47 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Null(firstException);
             Assert.Null(secondException);
             Assert.Equal(1, stream.DisposeCount);
+        }
+
+        [Fact]
+        public void CompositeReadersReleaseReusableBuffersOnDispose()
+        {
+            var bytes = CreateLargeRecordMcap();
+
+            using (var indexedStream = new MemoryStream(bytes, writable: false))
+            {
+                var indexed = new McapIndexedReader(
+                    indexedStream,
+                    leaveOpen: true,
+                    McapSequentialReadLimits.UnlimitedForTests);
+                indexed.ReadMessages();
+                var nestedReader = typeof(McapIndexedReader)
+                    .GetField("_reader", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(indexed);
+                var nestedBuffer = typeof(McapReader)
+                    .GetField("_recordContentBuffer", BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(nestedBuffer.GetValue(nestedReader));
+
+                indexed.Dispose();
+
+                Assert.Null(nestedBuffer.GetValue(nestedReader));
+            }
+
+            using (var streamingStream = new MemoryStream(bytes, writable: false))
+            {
+                var streaming = new McapStreamingReader(
+                    streamingStream,
+                    leaveOpen: true,
+                    sequentialReadLimits: McapSequentialReadLimits.UnlimitedForTests);
+                streaming.Read();
+                var streamingBuffer = typeof(McapStreamingReader)
+                    .GetField("_contentBuffer", BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(streamingBuffer.GetValue(streaming));
+
+                streaming.Dispose();
+
+                Assert.Null(streamingBuffer.GetValue(streaming));
+            }
         }
 
         [Fact]
@@ -522,6 +719,30 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
+        private sealed class CountingSeekStream : MemoryStream
+        {
+            private readonly long _target;
+            private int _targetHits;
+
+            public CountingSeekStream(byte[] buffer, long target)
+                : base(buffer, writable: false)
+            {
+                _target = target;
+            }
+
+            public int TargetHits => Volatile.Read(ref _targetHits);
+
+            public void ResetTargetHits() => Interlocked.Exchange(ref _targetHits, 0);
+
+            public override long Seek(long offset, SeekOrigin loc)
+            {
+                var position = base.Seek(offset, loc);
+                if (position == _target)
+                    Interlocked.Increment(ref _targetHits);
+                return position;
+            }
+        }
+
         private static MemoryStream CreateSummaryRecordCrossingFooterMcap()
         {
             var stream = new MemoryStream();
@@ -581,6 +802,74 @@ namespace Unity.FoxgloveSDK.UnitTests
             return stream;
         }
 
+        private static MemoryStream CreatePostDataEndMessageMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-post-data-end");
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02", "json", new Dictionary<string, string>());
+                writer.WriteDataEnd();
+                writer.WriteMessage(1, 1, 99, 99, Encoding.UTF8.GetBytes("late"));
+                writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream CreateSummarylessFooterWithoutDataEndMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f-review-summaryless");
+                writer.WriteSchema(1, "round4.Review", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/review", "json", new Dictionary<string, string>());
+                writer.WriteMessage(1, 1, 42, 42, Encoding.UTF8.GetBytes("summaryless"));
+                writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream CreateDuplicateDataEndMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-duplicate-data-end");
+                writer.WriteDataEnd();
+                writer.WriteDataEnd();
+                writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream CreateIncompleteMcapEnvelope()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-incomplete-envelope");
+                writer.WriteDataEnd();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
         private static MemoryStream CreateSimpleMessageMcap(int messageCount)
         {
             return new MemoryStream(CreateSimpleMessageMcapBytes(messageCount), writable: false);
@@ -609,6 +898,85 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             stream.Position = 0;
             return stream;
+        }
+
+        private static byte[] CreateLargeRecordMcap()
+        {
+            using var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-dispose-buffer");
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02/buffer", "json", new Dictionary<string, string>());
+                writer.WriteMessage(1, 1, 1, 1, new byte[4096]);
+                writer.WriteDataEnd();
+                writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            return stream.ToArray();
+        }
+
+        private static byte[] CreateTwoChunkIndexedMcap(out ulong secondChunkOffset)
+        {
+            byte[] firstRecords;
+            byte[] secondRecords;
+            using (var records = new MemoryStream())
+            {
+                using (var writer = new McapWriter(records, leaveOpen: true))
+                    writer.WriteMessage(1, 1, 1, 1, Encoding.UTF8.GetBytes("first"));
+                firstRecords = records.ToArray();
+            }
+            using (var records = new MemoryStream())
+            {
+                using (var writer = new McapWriter(records, leaveOpen: true))
+                    writer.WriteMessage(1, 2, 2, 2, Encoding.UTF8.GetBytes("second"));
+                secondRecords = records.ToArray();
+            }
+
+            var stream = new MemoryStream();
+            ulong firstChunkOffset;
+            ulong firstChunkLength;
+            ulong firstIndexOffset;
+            ulong firstIndexLength;
+            ulong secondChunkLength;
+            ulong secondIndexOffset;
+            ulong secondIndexLength;
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-bounded-read");
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02/bounded", "json", new Dictionary<string, string>());
+
+                firstChunkOffset = (ulong)writer.Position;
+                writer.WriteChunk(1, 1, (ulong)firstRecords.Length, 0, "", (ulong)firstRecords.Length, firstRecords);
+                firstChunkLength = (ulong)writer.Position - firstChunkOffset;
+                firstIndexOffset = (ulong)writer.Position;
+                writer.WriteMessageIndex(1, new List<(ulong, ulong)> { (1, 0) });
+                firstIndexLength = (ulong)writer.Position - firstIndexOffset;
+
+                secondChunkOffset = (ulong)writer.Position;
+                writer.WriteChunk(2, 2, (ulong)secondRecords.Length, 0, "", (ulong)secondRecords.Length, secondRecords);
+                secondChunkLength = (ulong)writer.Position - secondChunkOffset;
+                secondIndexOffset = (ulong)writer.Position;
+                writer.WriteMessageIndex(1, new List<(ulong, ulong)> { (2, 0) });
+                secondIndexLength = (ulong)writer.Position - secondIndexOffset;
+
+                writer.WriteDataEnd();
+                var summaryStart = (ulong)writer.Position;
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02/bounded", "json", new Dictionary<string, string>());
+                writer.WriteChunkIndex(1, 1, firstChunkOffset, firstChunkLength,
+                    new Dictionary<ushort, ulong> { [1] = firstIndexOffset }, firstIndexLength, "", (ulong)firstRecords.Length, (ulong)firstRecords.Length);
+                writer.WriteChunkIndex(2, 2, secondChunkOffset, secondChunkLength,
+                    new Dictionary<ushort, ulong> { [1] = secondIndexOffset }, secondIndexLength, "", (ulong)secondRecords.Length, (ulong)secondRecords.Length);
+                writer.WriteFooter(summaryStart, 0, 0);
+                writer.WriteMagic();
+            }
+
+            return stream.ToArray();
         }
 
         private static byte[] CreateSimpleMessageMcapBytes(int messageCount)
@@ -654,6 +1022,58 @@ namespace Unity.FoxgloveSDK.UnitTests
                 chunkLength = (ulong)writer.Position - chunkStart;
                 writer.WriteDataEnd();
                 writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream CreateIncompleteMessageIndexMcap()
+        {
+            using var chunkRecords = new MemoryStream();
+            ulong channel1Offset;
+            using (var chunkWriter = new McapWriter(chunkRecords, leaveOpen: true))
+            {
+                channel1Offset = (ulong)chunkWriter.Position;
+                chunkWriter.WriteMessage(1, 1, 10, 10, Encoding.UTF8.GetBytes("one"));
+                chunkWriter.WriteMessage(2, 1, 20, 20, Encoding.UTF8.GetBytes("two"));
+            }
+
+            var records = chunkRecords.ToArray();
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "round4-f02-incomplete-index");
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02/one", "json", new Dictionary<string, string>());
+                writer.WriteChannel(2, 1, "/round4/f02/two", "json", new Dictionary<string, string>());
+
+                var chunkOffset = (ulong)writer.Position;
+                writer.WriteChunk(10, 20, (ulong)records.Length, 0, "", (ulong)records.Length, records);
+                var chunkLength = (ulong)writer.Position - chunkOffset;
+
+                var channel1IndexOffset = (ulong)writer.Position;
+                writer.WriteMessageIndex(1, new List<(ulong, ulong)> { (10, channel1Offset) });
+                var messageIndexLength = (ulong)writer.Position - channel1IndexOffset;
+
+                writer.WriteDataEnd();
+                var summaryStart = (ulong)writer.Position;
+                writer.WriteSchema(1, "round4.F02", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/round4/f02/one", "json", new Dictionary<string, string>());
+                writer.WriteChannel(2, 1, "/round4/f02/two", "json", new Dictionary<string, string>());
+                writer.WriteChunkIndex(
+                    10,
+                    20,
+                    chunkOffset,
+                    chunkLength,
+                    new Dictionary<ushort, ulong> { [1] = channel1IndexOffset },
+                    messageIndexLength,
+                    "",
+                    (ulong)records.Length,
+                    (ulong)records.Length);
+                writer.WriteFooter(summaryStart, 0, 0);
                 writer.WriteMagic();
             }
 

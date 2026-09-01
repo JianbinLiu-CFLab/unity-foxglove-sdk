@@ -75,6 +75,8 @@ namespace Unity.FoxgloveSDK.Core
         private ulong _replaySessionId;
         private readonly object _replayHandlersGate = new();
         private bool _isDrainingReplayCallbacks;
+        // Monotonic fence that invalidates callbacks transferred to a drain when replay stops.
+        private long _replayCallbackGeneration;
 
         /// <summary>Whether replay is enabled and the engine is loaded.</summary>
         public bool IsEnabled => Volatile.Read(ref _replayEnabled);
@@ -300,10 +302,21 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     var messages = _replayEngine.Tick(timeNs, _replayTickBuffer);
                     if (messages == null || messages.Count == 0) return;
+                    var expectedSceneCallbacks = 0;
+                    var queuedSceneCallbacks = 0;
                     foreach (var msg in messages)
                         if (TryGetReplayTopic(msg.ChannelId, out _))
-                            ForwardReplayMessageToScene(msg);
-                    FireReplayBatchCompleted(messages, messages[messages.Count - 1].LogTime, "ExternalCursor");
+                        {
+                            expectedSceneCallbacks++;
+                            if (ForwardReplayMessageToScene(msg))
+                                queuedSceneCallbacks++;
+                        }
+                    FireReplayBatchCompleted(
+                        messages,
+                        messages[messages.Count - 1].LogTime,
+                        "ExternalCursor",
+                        expectedSceneCallbacks,
+                        queuedSceneCallbacks);
                 }
                 finally
                 {
@@ -403,12 +416,17 @@ namespace Unity.FoxgloveSDK.Core
                 if (!Volatile.Read(ref _replayEnabled) || _replayEngine == null) return;
                 var messages = _replayEngine.Snapshot(timeNs, _replaySnapshotBuffer);
                 if (messages == null) return;
+                var queuedSceneCallbacks = 0;
                 foreach (var msg in messages)
-                {
-                    ForwardReplayMessageToScene(msg);
-                }
+                    if (ForwardReplayMessageToScene(msg))
+                        queuedSceneCallbacks++;
 
-                FireReplayBatchCompleted(messages, timeNs, "Snapshot");
+                FireReplayBatchCompleted(
+                    messages,
+                    timeNs,
+                    "Snapshot",
+                    messages.Count,
+                    queuedSceneCallbacks);
             }
 
             if (!deferCallbacks)
@@ -427,6 +445,8 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             ulong latestLogTime = 0;
+            var expectedSceneCallbacks = 0;
+            var queuedSceneCallbacks = 0;
             if (messages != null)
             {
                 foreach (var msg in messages)
@@ -437,11 +457,20 @@ namespace Unity.FoxgloveSDK.Core
                     if (msg.LogTime > latestLogTime) latestLogTime = msg.LogTime;
 
                     if (forwardToScene && topic != null)
-                        ForwardReplayMessageToScene(msg);
+                    {
+                        expectedSceneCallbacks++;
+                        if (ForwardReplayMessageToScene(msg))
+                            queuedSceneCallbacks++;
+                    }
                 }
 
                 if (forwardToScene)
-                    FireReplayBatchCompleted(messages, latestLogTime, source);
+                    FireReplayBatchCompleted(
+                        messages,
+                        latestLogTime,
+                        source,
+                        expectedSceneCallbacks,
+                        queuedSceneCallbacks);
             }
 
             if (!broadcastTimeNs.HasValue && latestLogTime > 0)
@@ -452,10 +481,10 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        private void ForwardReplayMessageToScene(McapMessage message)
+        private bool ForwardReplayMessageToScene(McapMessage message)
         {
             var context = CreateReplayMessageContext(message);
-            TryQueueReplayCallback(ReplayCallbackDispatch.ForMessage(context));
+            return TryQueueReplayCallback(ReplayCallbackDispatch.ForMessage(context));
         }
 
         private bool TryGetReplayTopic(ushort channelId, out string topic)
@@ -473,15 +502,32 @@ namespace Unity.FoxgloveSDK.Core
             return false;
         }
 
-        private void FireReplayBatchCompleted(IReadOnlyList<McapMessage> messages, ulong batchLogTimeNs, string source)
+        private void FireReplayBatchCompleted(
+            IReadOnlyList<McapMessage> messages,
+            ulong batchLogTimeNs,
+            string source,
+            int expectedMessageCount,
+            int queuedMessageCount)
         {
-            if (messages == null || messages.Count == 0)
+            if (messages == null || expectedMessageCount <= 0)
                 return;
+
+            if (queuedMessageCount != expectedMessageCount)
+            {
+                _logger?.LogWarning(
+                    "Skipped replay batch completion because scene callback admission was incomplete. expected="
+                    + expectedMessageCount
+                    + " queued="
+                    + queuedMessageCount
+                    + " source="
+                    + source);
+                return;
+            }
 
             TryQueueReplayCallback(ReplayCallbackDispatch.ForBatch(new ReplayBatchContext(
                 batchLogTimeNs,
                 _replayEngine?.StartTimeNs ?? 0UL,
-                messages.Count,
+                expectedMessageCount,
                 source,
                 replaySessionId: _replaySessionId)));
         }
@@ -517,15 +563,19 @@ namespace Unity.FoxgloveSDK.Core
                     for (var i = 0; i < _drainBuffer.Count; i++)
                     {
                         var callback = _drainBuffer[i];
+                        if (!IsReplayCallbackCurrent(callback.Generation))
+                            continue;
+
                         if (callback.IsBatch)
                         {
-                            InvokeReplayBatchCompleted(callback.BatchContext.Value);
+                            InvokeReplayBatchCompleted(callback.BatchContext.Value, callback.Generation);
                             continue;
                         }
 
                         var context = callback.MessageContext.Value;
-                        InvokeReplayMessageContext(context);
-                        InvokeReplayMessage(context.Topic, context.Payload);
+                        InvokeReplayMessageContext(context, callback.Generation);
+                        if (IsReplayCallbackCurrent(callback.Generation))
+                            InvokeReplayMessage(context.Topic, context.Payload, callback.Generation);
                     }
                 }
             }
@@ -541,7 +591,8 @@ namespace Unity.FoxgloveSDK.Core
 
         private bool TryQueueReplayCallback(ReplayCallbackDispatch dispatch)
         {
-            if (_pendingReplayCallbacks.TryEnqueue(dispatch, out var overflow))
+            var stamped = dispatch.WithGeneration(Interlocked.Read(ref _replayCallbackGeneration));
+            if (_pendingReplayCallbacks.TryEnqueue(stamped, out var overflow))
                 return true;
 
             WarnReplayCallbackQueueOverflow(overflow);
@@ -588,31 +639,40 @@ namespace Unity.FoxgloveSDK.Core
             return dispatch.MessageContext.Value.Payload?.Length ?? 0;
         }
 
-        private void InvokeReplayMessage(string topic, byte[] data)
+        private bool IsReplayCallbackCurrent(long generation)
+            => Interlocked.Read(ref _replayCallbackGeneration) == generation;
+
+        private void InvokeReplayMessage(string topic, byte[] data, long generation)
         {
             var handlers = _replayMessageHandlers;
             foreach (var handler in handlers)
             {
+                if (!IsReplayCallbackCurrent(generation))
+                    break;
                 try { handler(topic, data); }
                 catch (Exception ex) { _logger?.LogWarning($"Replay message listener failed: {ex.Message}"); }
             }
         }
 
-        private void InvokeReplayMessageContext(ReplayMessageContext context)
+        private void InvokeReplayMessageContext(ReplayMessageContext context, long generation)
         {
             var handlers = _replayMessageContextHandlers;
             foreach (var handler in handlers)
             {
+                if (!IsReplayCallbackCurrent(generation))
+                    break;
                 try { handler(context); }
                 catch (Exception ex) { _logger?.LogWarning($"Replay message context listener failed: {ex.Message}"); }
             }
         }
 
-        private void InvokeReplayBatchCompleted(ReplayBatchContext context)
+        private void InvokeReplayBatchCompleted(ReplayBatchContext context, long generation)
         {
             var handlers = _replayBatchCompletedHandlers;
             foreach (var handler in handlers)
             {
+                if (!IsReplayCallbackCurrent(generation))
+                    break;
                 try { handler(context); }
                 catch (Exception ex) { _logger?.LogWarning($"Replay batch listener failed: {ex.Message}"); }
             }

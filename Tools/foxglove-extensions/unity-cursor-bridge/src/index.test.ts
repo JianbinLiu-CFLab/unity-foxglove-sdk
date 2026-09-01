@@ -208,6 +208,7 @@ describe("Unity Replay Sync panel lifecycle", () => {
     expect(endpointAfterRender).toBe(endpoint);
     expect(endpointAfterRender?.value).toBe("http://127.0.0.1:9999/typing");
     expect(typeof cleanup).toBe("function");
+    cleanup?.();
   });
 
   test("initPanel persists endpoint and enabled state but not token", () => {
@@ -313,6 +314,218 @@ describe("Unity Replay Sync panel lifecycle", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     cleanup?.();
     nowSpy.mockRestore();
+  });
+
+  test("forwards the latest cursor observed while the prior POST is in flight", async () => {
+    vi.useFakeTimers();
+    let resolveFirst: ((response: Response) => void) | undefined;
+    let resolveSecond: ((response: Response) => void) | undefined;
+    const firstResponse = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondResponse = new Promise<Response>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const endpoint = "http://127.0.0.1:9998/f04-latest";
+    let ownCallCount = 0;
+    const fetchMock = vi.fn((requestEndpoint: string, _init?: RequestInit) => {
+      if (requestEndpoint !== endpoint) {
+        return Promise.reject(new Error("test-only unrelated request"));
+      }
+      ownCallCount++;
+      return ownCallCount === 1 ? firstResponse : secondResponse;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.setSystemTime(1_000_000);
+    const context = makeContext({ endpoint });
+    const cleanup = initPanel(context);
+    try {
+      context.onRender?.({ currentTime: { sec: 1, nsec: 0 } }, vi.fn());
+      vi.setSystemTime(1_001_000); // beyond the cadence interval; only in-flight backpressure blocks.
+      context.onRender?.({ currentTime: { sec: 2, nsec: 0 } }, vi.fn());
+      expect(ownCallCount).toBe(1);
+
+      resolveFirst?.(new Response("{}", { status: 202 }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ownCallCount).toBe(2);
+      const ownCalls = fetchMock.mock.calls.filter((call) => call[0] === endpoint && call[1] != undefined);
+      const secondCall = ownCalls[ownCalls.length - 1];
+      expect(secondCall).toBeDefined();
+      const secondInit = secondCall![1] as RequestInit;
+      expect(JSON.parse(String(secondInit.body)).time).toEqual({ sec: 2, nsec: 0 });
+      resolveSecond?.(new Response("{}", { status: 202 }));
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
+  });
+
+  test("forwards an explicit same-time seek after the cursor was already delivered", async () => {
+    vi.useFakeTimers();
+    const endpoint = "http://127.0.0.1:9998/f04-seek";
+    let ownCallCount = 0;
+    const fetchMock = vi.fn((requestEndpoint: string, _init?: RequestInit) => {
+      if (requestEndpoint !== endpoint) {
+        return Promise.reject(new Error("test-only unrelated request"));
+      }
+      ownCallCount++;
+      return Promise.resolve(new Response("{}", { status: 202 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.setSystemTime(2_000_000);
+    const context = makeContext({ endpoint });
+    const cleanup = initPanel(context);
+    try {
+      context.onRender?.({ currentTime: { sec: 7, nsec: 9 }, didSeek: false }, vi.fn());
+      await vi.advanceTimersByTimeAsync(0);
+
+      vi.setSystemTime(2_001_000);
+      context.onRender?.({ currentTime: { sec: 7, nsec: 9 }, didSeek: true }, vi.fn());
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ownCallCount).toBe(2);
+      const ownCalls = fetchMock.mock.calls.filter((call) => call[0] === endpoint);
+      const seekPayload = JSON.parse(String(ownCalls[1]![1]?.body));
+      expect(seekPayload.mode).toBe("seek");
+      expect(seekPayload.didSeek).toBe(true);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
+  });
+
+  test("forwards an explicit same-time seek queued while an advance is in flight", async () => {
+    vi.useFakeTimers();
+    let resolveFirst: ((response: Response) => void) | undefined;
+    let resolveSecond: ((response: Response) => void) | undefined;
+    const firstResponse = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondResponse = new Promise<Response>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const endpoint = "http://127.0.0.1:9998/f04-same-time-inflight";
+    let ownCallCount = 0;
+    const fetchMock = vi.fn((requestEndpoint: string, _init?: RequestInit) => {
+      if (requestEndpoint !== endpoint) {
+        return Promise.reject(new Error("test-only unrelated request"));
+      }
+      ownCallCount++;
+      return ownCallCount === 1 ? firstResponse : secondResponse;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.setSystemTime(3_000_000);
+    const context = makeContext({ endpoint });
+    const cleanup = initPanel(context);
+    try {
+      context.onRender?.({ currentTime: { sec: 7, nsec: 9 }, didSeek: false }, vi.fn());
+      vi.setSystemTime(3_001_000);
+      context.onRender?.({ currentTime: { sec: 7, nsec: 9 }, didSeek: true }, vi.fn());
+      expect(ownCallCount).toBe(1);
+
+      resolveFirst?.(new Response("{}", { status: 202 }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ownCallCount).toBe(2);
+      const ownCalls = fetchMock.mock.calls.filter((call) => call[0] === endpoint);
+      const secondPayload = JSON.parse(String(ownCalls[1]![1]?.body));
+      expect(secondPayload.time).toEqual({ sec: 7, nsec: 9 });
+      expect(secondPayload.mode).toBe("seek");
+      expect(secondPayload.didSeek).toBe(true);
+      resolveSecond?.(new Response("{}", { status: 202 }));
+      await vi.advanceTimersByTimeAsync(0);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
+  });
+
+  test("follow mode honors the master sync-enabled switch", async () => {
+    vi.useFakeTimers();
+    const endpoint = "http://127.0.0.1:9998/f04-enabled";
+    const seekPlayback = vi.fn();
+    const fetchMock = vi.fn(async (requestEndpoint: string) => {
+      if (requestEndpoint !== endpoint) {
+        return Promise.reject(new Error("test-only unrelated request"));
+      }
+      return new Response("{}", { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const context = makeContext({ enabled: false, followUnity: true, endpoint });
+    (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
+    const cleanup = initPanel(context);
+    try {
+      context.onRender?.({ currentTime: { sec: 5, nsec: 0 } }, vi.fn());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(seekPlayback).not.toHaveBeenCalled();
+
+      const enabledInput = context.panelElement.querySelector<HTMLInputElement>("#enabled");
+      expect(enabledInput).not.toBeNull();
+      enabledInput!.checked = true;
+      enabledInput!.dispatchEvent(new Event("change"));
+      context.onRender?.({ currentTime: { sec: 5, nsec: 0 } }, vi.fn());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const seekCountBeforeDisable = seekPlayback.mock.calls.length;
+
+      enabledInput!.checked = false;
+      enabledInput!.dispatchEvent(new Event("change"));
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(seekPlayback).toHaveBeenCalledTimes(seekCountBeforeDisable);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
+  });
+
+  test("disabled sync clears an in-flight cursor without queuing a stale request", async () => {
+    vi.useFakeTimers();
+    let resolveFirst: ((response: Response) => void) | undefined;
+    const firstResponse = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const endpoint = "http://127.0.0.1:9998/disabled-inflight";
+    let ownCallCount = 0;
+    const fetchMock = vi.fn((requestEndpoint: string) => {
+      if (requestEndpoint !== endpoint) {
+        return Promise.reject(new Error("test-only unrelated request"));
+      }
+      ownCallCount++;
+      return ownCallCount === 1
+        ? firstResponse
+        : Promise.resolve(new Response("{}", { status: 202 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const context = makeContext({ endpoint, enabled: true });
+    const cleanup = initPanel(context);
+    try {
+      context.onRender?.({ currentTime: { sec: 1, nsec: 0 } }, vi.fn());
+      expect(ownCallCount).toBe(1);
+
+      const enabledInput = context.panelElement.querySelector<HTMLInputElement>("#enabled");
+      expect(enabledInput).not.toBeNull();
+      enabledInput!.checked = false;
+      enabledInput!.dispatchEvent(new Event("change"));
+
+      // This render occurs while the first request is still in flight. The
+      // disabled transition must clear any queued cursor before the response
+      // can flush it.
+      context.onRender?.({ currentTime: { sec: 2, nsec: 0 } }, vi.fn());
+
+      enabledInput!.checked = true;
+      enabledInput!.dispatchEvent(new Event("change"));
+      resolveFirst?.(new Response("{}", { status: 202 }));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(ownCallCount).toBe(1);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
   });
 
   test("a stalled cursor request times out, aborts, and the panel resumes sending", () => {

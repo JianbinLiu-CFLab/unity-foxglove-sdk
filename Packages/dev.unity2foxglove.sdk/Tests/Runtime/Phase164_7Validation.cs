@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Linq;
+using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -13,6 +15,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             VerifyRecorderChunkFlushReusesScratchState();
+            VerifyDirectionalChannelMetadataRoundtrip();
             VerifyWriterStringPathsAvoidPerFieldArraysAndLinq();
             VerifyCompressionAndAmendmentBuffersAreReusable();
             VerifyParameterChangeUsesStableDto();
@@ -40,10 +43,36 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!summary.Contains(".ToDictionary(", StringComparison.Ordinal)
                   && recorder.Contains("BuildChannelMessageCounts()", StringComparison.Ordinal),
                 "164-7A-3: final statistics build channel message counts without LINQ");
-            Check(recorder.Contains("EmptyChannelMetadata", StringComparison.Ordinal)
-                  && recorder.Contains("CreateChannelMetadata()", StringComparison.Ordinal)
+            Check(recorder.Contains("CreateChannelMetadata(McapChannelDirection.Output)", StringComparison.Ordinal)
+                  && recorder.Contains("CreateChannelMetadata(McapChannelDirection.Input)", StringComparison.Ordinal)
+                  && recorder.Contains("CreateEmptyChannelMetadata()", StringComparison.Ordinal)
                   && recorder.Contains("SnapshotChannelMetadata(meta)", StringComparison.Ordinal),
-                "164-7A-4: empty channel metadata uses a shared sentinel instead of a per-channel dictionary");
+                "164-7A-4: directional channel metadata is snapshotted for durable summary records");
+        }
+
+        private static void VerifyDirectionalChannelMetadataRoundtrip()
+        {
+            using var stream = new MemoryStream();
+            using (var recorder = new McapRecorder(stream, leaveOpen: true))
+            {
+                recorder.AddChannel(1, "/phase164-7/output", "json", "", "", "");
+                recorder.WriteClientMessage(
+                    7,
+                    1,
+                    10,
+                    new byte[] { 1 },
+                    "/phase164-7/input");
+                recorder.Close();
+            }
+
+            stream.Position = 0;
+            using var reader = new McapReader(stream);
+            var channels = reader.ReadSummary().Channels;
+            var output = channels.Single(channel => channel.Topic == "/phase164-7/output");
+            var input = channels.Single(channel => channel.Topic == "/phase164-7/input");
+            Check(output.Metadata[McapRecorder.DataDirectionMetadataKey] == "output"
+                  && input.Metadata[McapRecorder.DataDirectionMetadataKey] == "input",
+                "164-7A-5: directional channel metadata roundtrips through the maintained reader");
         }
 
         private static void VerifyWriterStringPathsAvoidPerFieldArraysAndLinq()
@@ -105,6 +134,12 @@ namespace Unity.FoxgloveSDK.Tests
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             Check(registry.Contains("\"--phase164-7\"", StringComparison.Ordinal), "164-7E-1: validation registry exposes Phase164-7");
             Check(project.Contains("Phase164_7Validation.cs", StringComparison.Ordinal), "164-7E-2: runtime validation project compiles Phase164-7");
+            var validation = PhaseValidationRegistry.Find(new[] { "--phase164-7" });
+            Check(validation != null
+                  && !validation.IncludeInDefault
+                  && PhaseValidationRegistry.DefaultValidations(includeLocalEvidence: false)
+                      .All(item => item != validation),
+                "164-7E-3: Phase164-7 remains explicit-only and directly selectable");
         }
 
         private static string SourceMethod(string source, string signature)

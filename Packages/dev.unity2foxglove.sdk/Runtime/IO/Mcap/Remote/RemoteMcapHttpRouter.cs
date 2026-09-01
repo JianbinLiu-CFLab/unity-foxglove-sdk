@@ -85,7 +85,7 @@ namespace Unity.FoxgloveSDK.IO
                 return;
             }
 
-            using (var data = _source.GetDataStream(request))
+            using (var data = _source.GetDataStream(request, cancellationToken))
             {
                 if (data.Status != RemoteMcapResponseStatus.Ok)
                 {

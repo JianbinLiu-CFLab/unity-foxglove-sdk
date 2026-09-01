@@ -36,6 +36,19 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         private McapFileSummary _summary;
         private readonly McapReplayPendingQueue _pending = new();
+        // Future records retain a view into their owning decompressed chunk
+        // instead of allocating a second payload-sized array.
+        private readonly List<DeferredReplayMessage> _deferredPending = new();
+        private int _deferredPendingHead;
+        // Records that could not be admitted because the owner/count bound was
+        // reached keep only a chunk/record cursor. Their payload is re-read
+        // when the record becomes due, so the scan can continue without
+        // retaining another decompressed chunk owner.
+        private readonly List<DeferredReplayRetry> _deferredRetries = new();
+        private readonly Dictionary<ulong, DeferredReplayRetry> _deferredRetryByKey = new();
+        private bool _deferredRetriesSorted;
+        private readonly Dictionary<byte[], int> _deferredOwnerReferences = new();
+        private long _deferredOwnerBytes;
         private readonly List<McapMessage> _defaultTickBuffer = new();
         private readonly Dictionary<ushort, McapMessage> _snapshotLatestByChannel = new();
         private readonly IFoxgloveLogger _logger;
@@ -78,10 +91,40 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         private int _maxMessagesPerTick = 8;
 
+        private const long DefaultMaxDeferredOwnerBytes = (long)McapReader.DefaultChunkUncompressedSizeLimit;
+        private const int DefaultMaxDeferredMessages = 100000;
+        // Retry entries contain only bounded scalar metadata and are not
+        // counted as owner-retained payloads. Keep a separate hard ceiling so
+        // a file with an unbounded number of rejected future records cannot
+        // grow the metadata queue indefinitely.
+        private const int DefaultMaxDeferredRetryRecords = 100000;
+        private long _maxDeferredOwnerBytes = DefaultMaxDeferredOwnerBytes;
+        private int _maxDeferredMessages = DefaultMaxDeferredMessages;
+
         public int MaxMessagesPerTick
         {
             get => _maxMessagesPerTick;
             set => _maxMessagesPerTick = value < 0 ? 0 : value;
+        }
+
+        /// <summary>
+        /// Maximum decompressed chunk-owner bytes retained by deferred future
+        /// replay messages. A non-positive value restores the default bound.
+        /// </summary>
+        public long MaxDeferredOwnerBytes
+        {
+            get => _maxDeferredOwnerBytes;
+            set => _maxDeferredOwnerBytes = value > 0 ? value : DefaultMaxDeferredOwnerBytes;
+        }
+
+        /// <summary>
+        /// Maximum number of future replay messages retained as deferred views.
+        /// A non-positive value restores the default bound.
+        /// </summary>
+        public int MaxDeferredMessages
+        {
+            get => _maxDeferredMessages;
+            set => _maxDeferredMessages = value > 0 ? value : DefaultMaxDeferredMessages;
         }
 
         /// <summary>
@@ -236,6 +279,7 @@ namespace Unity.FoxgloveSDK.IO
             var clampedNow = nowNs > EndTimeNs ? EndTimeNs : nowNs;
             _currentTimeNs = clampedNow;
             var emitAfter = _lastEmitTime;
+            var stopScanning = false;
 
             // Flush previously buffered messages that are now due.
             // Filter against emitAfter to drop stale overflow messages
@@ -243,11 +287,29 @@ namespace Unity.FoxgloveSDK.IO
             SortPending();
             while (PendingCount > 0)
             {
-                var pending = PeekPending();
-                if (pending.LogTime > clampedNow) break;
-                if (pending.LogTime < emitAfter) { DropPending(); continue; }
+                var pendingLogTime = PeekPendingLogTime();
+                if (pendingLogTime > clampedNow) break;
+                if (pendingLogTime < emitAfter) { DropPending(); continue; }
+                if (ShouldStopBeforeDueRecord(pendingLogTime, result))
+                    break;
                 result.Add(PopPending());
             }
+
+            // Once the returned batch has reached its scan boundary, do not
+            // materialize later due pending entries into the result just to move
+            // them back into another queue. Same-time groups remain intact.
+            if (PendingCount > 0 && HasReachedScanBudget(result))
+            {
+                var pendingLogTime = PeekPendingLogTime();
+                if (pendingLogTime <= clampedNow &&
+                    pendingLogTime > ScanBudgetBoundaryTime(result))
+                    stopScanning = true;
+            }
+
+            // Retry records whose owner/count admission was previously
+            // blocked. They are materialized only once due and only while the
+            // normal per-tick boundary permits them.
+            FlushDeferredRetries(clampedNow, emitAfter, result);
 
             if (!CanSeek)
                 return FinishTickResultAndUpdateStatus(result);
@@ -260,38 +322,63 @@ namespace Unity.FoxgloveSDK.IO
                 if (_currentChunkIdx < 0 || _readOffset >= (_currentUncompressed?.Length ?? 0))
                 {
                     var nextChunkIdx = _currentChunkIdx + 1;
-                    if (nextChunkIdx < chunkIndexes.Count && chunkIndexes[nextChunkIdx].MessageStartTime > clampedNow)
+                    if (nextChunkIdx < chunkIndexes.Count
+                        && ShouldStopBeforeNextChunk(chunkIndexes[nextChunkIdx], clampedNow, result))
+                    {
                         break;
+                    }
                     if (!LoadNextChunk()) break;
                 }
 
-                // Read messages from current chunk
+                // Read messages from current chunk. If a future record cannot
+                // be retained under the owner bound, retain only its cursor
+                // and keep scanning for due records. The cursor is retried
+                // from the source once it becomes due.
                 while (_readOffset + 9 <= _currentUncompressed.Length)
                 {
+                    var recordStart = _readOffset;
                     var record = McapReplayChunkRecordReader.ReadNext(_currentUncompressed, ref _readOffset);
                     if (!record.IsMessage)
                         continue;
 
                     var logNs = record.LogTime;
-                    var dataLen = record.DataLength;
                     if (logNs < emitAfter)
                         continue;
 
-                    var data = new byte[dataLen];
-                    Buffer.BlockCopy(_currentUncompressed, record.DataOffset, data, 0, dataLen);
-
                     if (logNs > clampedNow)
                     {
-                        AddPending(new McapMessage
+                        // Keep metadata plus a view into the current chunk. The
+                        // payload is copied only when the message is emitted.
+                        if (!TryAddDeferred(record, _currentUncompressed))
                         {
-                            ChannelId = record.ChannelId,
-                            Sequence = record.Sequence,
-                            LogTime = logNs,
-                            PublishTime = record.PublishTime,
-                            Data = data
-                        });
+                            if (!TryQueueDeferredRetry(
+                                    _currentChunkIdx,
+                                    recordStart,
+                                    record.ChannelId,
+                                    record.Sequence,
+                                    record.LogTime,
+                                    record.PublishTime))
+                                throw new InvalidOperationException(
+                                    "Replay deferred retry metadata bound was exceeded.");
+                        }
+                        else
+                            RemoveDeferredRetry(_currentChunkIdx, recordStart);
                         continue;
                     }
+
+                    if (ShouldStopBeforeDueRecord(logNs, result))
+                    {
+                        // The record belongs to a later scan window. Rewind so
+                        // the next Tick can consume it without materializing a
+                        // large all-due backlog into pending.
+                        _readOffset = recordStart;
+                        stopScanning = true;
+                        break;
+                    }
+
+                    var dataLen = record.DataLength;
+                    var data = new byte[dataLen];
+                    Buffer.BlockCopy(_currentUncompressed, record.DataOffset, data, 0, dataLen);
 
                     // Collect all eligible messages; FinishTickResult caps
                     // at MaxMessagesPerTick and moves the sorted tail to
@@ -305,6 +392,9 @@ namespace Unity.FoxgloveSDK.IO
                         Data = data
                     });
                 }
+
+                if (stopScanning)
+                    break;
             }
 
             SortPending();
@@ -488,6 +578,7 @@ namespace Unity.FoxgloveSDK.IO
 
             var clampedTimeNs = ClampReplayTime(timeNs);
             _pending.Clear();
+            ClearDeferredPending();
             _lastEmitTime = clampedTimeNs;
             _currentTimeNs = clampedTimeNs;
 
@@ -543,6 +634,7 @@ namespace Unity.FoxgloveSDK.IO
             _reader = null;
             _summary = null;
             _pending.Clear();
+            ClearDeferredPending();
             _currentChunkIdx = -1;
             _currentUncompressed = null;
             _readOffset = 0;
@@ -572,18 +664,91 @@ namespace Unity.FoxgloveSDK.IO
             return true;
         }
 
-        private int PendingCount => _pending.Count;
+        private bool ShouldStopBeforeNextChunk(
+            McapChunkIndex nextChunk,
+            ulong clampedNow,
+            List<McapMessage> result)
+        {
+            if (nextChunk.MessageStartTime > clampedNow)
+                return true;
+            if (!HasReachedScanBudget(result))
+                return false;
+            return nextChunk.MessageStartTime > ScanBudgetBoundaryTime(result);
+        }
 
-        private McapMessage PeekPending() => _pending.Peek();
+        private bool ShouldStopBeforeDueRecord(ulong logTime, List<McapMessage> result)
+        {
+            if (!HasReachedScanBudget(result))
+                return false;
+            return logTime > ScanBudgetBoundaryTime(result);
+        }
+
+        private bool HasReachedScanBudget(List<McapMessage> result)
+            => MaxMessagesPerTick > 0 && result.Count >= MaxMessagesPerTick;
+
+        private ulong ScanBudgetBoundaryTime(List<McapMessage> result)
+        {
+            if (MaxMessagesPerTick <= 0 || result.Count < MaxMessagesPerTick)
+                return ulong.MaxValue;
+            if (result.Count > 1)
+                result.Sort(CompareMessages);
+            return result[MaxMessagesPerTick - 1].LogTime;
+        }
+
+        private int PendingCount => _pending.Count + DeferredPendingCount;
+
+        private int DeferredPendingCount => _deferredPending.Count - _deferredPendingHead;
+
+        private ulong PeekPendingLogTime()
+        {
+            if (DeferredPendingCount <= 0)
+                return _pending.Peek().LogTime;
+            if (_pending.Count <= 0)
+                return _deferredPending[_deferredPendingHead].LogTime;
+
+            var deferred = _deferredPending[_deferredPendingHead];
+            return CompareDeferredToMessage(deferred, _pending.Peek()) <= 0
+                ? deferred.LogTime
+                : _pending.Peek().LogTime;
+        }
 
         /// <summary>
         /// Dequeues the oldest pending message.
         /// </summary>
         private McapMessage PopPending()
-            => _pending.Pop();
+        {
+            if (DeferredPendingCount <= 0)
+                return _pending.Pop();
+            if (_pending.Count <= 0)
+                return PopDeferred();
+
+            return CompareDeferredToMessage(
+                       _deferredPending[_deferredPendingHead],
+                       _pending.Peek()) <= 0
+                ? PopDeferred()
+                : _pending.Pop();
+        }
 
         private void DropPending()
-            => _pending.Drop();
+        {
+            if (DeferredPendingCount <= 0)
+            {
+                _pending.Drop();
+                return;
+            }
+            if (_pending.Count <= 0)
+            {
+                DropDeferred();
+                return;
+            }
+
+            if (CompareDeferredToMessage(
+                    _deferredPending[_deferredPendingHead],
+                    _pending.Peek()) <= 0)
+                DropDeferred();
+            else
+                _pending.Drop();
+        }
 
         private void AddPending(McapMessage message)
             => _pending.Add(message);
@@ -597,7 +762,275 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         private void SortPending()
-            => _pending.Sort(CompareMessages);
+        {
+            // The materialized-only fast path remains equivalent to
+            // `=> _pending.Sort(CompareMessages)` for the established hot-path
+            // contract; deferred views are sorted alongside it below.
+            _pending.Sort(CompareMessages);
+            CompactDeferredPending();
+            if (DeferredPendingCount > 1)
+                _deferredPending.Sort(CompareDeferredMessages);
+        }
+
+        private bool TryAddDeferred(McapReplayChunkRecord record, byte[] owner)
+        {
+            if (owner == null)
+                return false;
+            if (MaxDeferredMessages > 0 && DeferredPendingCount >= MaxDeferredMessages)
+                return false;
+
+            if (!_deferredOwnerReferences.TryGetValue(owner, out var ownerReferences))
+            {
+                var ownerBytes = owner.LongLength;
+                if (MaxDeferredOwnerBytes > 0 &&
+                    (_deferredOwnerBytes > MaxDeferredOwnerBytes - ownerBytes))
+                    return false;
+
+                _deferredOwnerReferences[owner] = 1;
+                _deferredOwnerBytes += ownerBytes;
+            }
+            else
+            {
+                _deferredOwnerReferences[owner] = ownerReferences + 1;
+            }
+
+            _deferredPending.Add(new DeferredReplayMessage
+            {
+                ChannelId = record.ChannelId,
+                Sequence = record.Sequence,
+                LogTime = record.LogTime,
+                PublishTime = record.PublishTime,
+                Owner = owner,
+                DataOffset = record.DataOffset,
+                DataLength = record.DataLength
+            });
+            return true;
+        }
+
+        private bool TryQueueDeferredRetry(
+            int chunkIndex,
+            int recordOffset,
+            ushort channelId,
+            uint sequence,
+            ulong logTime,
+            ulong publishTime)
+        {
+            var key = MakeDeferredRetryKey(chunkIndex, recordOffset);
+            if (_deferredRetryByKey.ContainsKey(key))
+                return true;
+
+            if (_deferredRetryByKey.Count >= DefaultMaxDeferredRetryRecords)
+                return false;
+
+            var retry = new DeferredReplayRetry
+            {
+                ChunkIndex = chunkIndex,
+                RecordOffset = recordOffset,
+                ChannelId = channelId,
+                Sequence = sequence,
+                LogTime = logTime,
+                PublishTime = publishTime
+            };
+            _deferredRetryByKey.Add(key, retry);
+            _deferredRetries.Add(retry);
+            _deferredRetriesSorted = false;
+            return true;
+        }
+
+        private void RemoveDeferredRetry(int chunkIndex, int recordOffset)
+        {
+            _deferredRetryByKey.Remove(MakeDeferredRetryKey(chunkIndex, recordOffset));
+        }
+
+        private int DeferredRetryCount => _deferredRetryByKey.Count;
+
+        private static ulong MakeDeferredRetryKey(int chunkIndex, int recordOffset)
+            => ((ulong)(uint)chunkIndex << 32) | (uint)recordOffset;
+
+        private void FlushDeferredRetries(
+            ulong clampedNow,
+            ulong emitAfter,
+            List<McapMessage> result)
+        {
+            if (DeferredRetryCount == 0)
+            {
+                _deferredRetries.Clear();
+                _deferredRetriesSorted = true;
+                return;
+            }
+
+            if (!_deferredRetriesSorted && _deferredRetries.Count > 1)
+            {
+                _deferredRetries.Sort(CompareDeferredRetries);
+                _deferredRetriesSorted = true;
+            }
+
+            var writeIndex = 0;
+            for (var readIndex = 0; readIndex < _deferredRetries.Count; readIndex++)
+            {
+                var retry = _deferredRetries[readIndex];
+                var key = MakeDeferredRetryKey(retry.ChunkIndex, retry.RecordOffset);
+                if (!_deferredRetryByKey.TryGetValue(key, out var activeRetry) ||
+                    !ReferenceEquals(activeRetry, retry))
+                    continue;
+
+                if (retry.LogTime < emitAfter)
+                {
+                    _deferredRetryByKey.Remove(key);
+                    continue;
+                }
+
+                if (retry.LogTime > clampedNow || ShouldStopBeforeDueRecord(retry.LogTime, result))
+                {
+                    _deferredRetries[writeIndex++] = retry;
+                    continue;
+                }
+
+                _deferredRetryByKey.Remove(key);
+                var message = ReadDeferredRetry(retry);
+                if (message != null)
+                    result.Add(message);
+            }
+
+            if (writeIndex < _deferredRetries.Count)
+                _deferredRetries.RemoveRange(writeIndex, _deferredRetries.Count - writeIndex);
+        }
+
+        private static int CompareDeferredRetries(DeferredReplayRetry left, DeferredReplayRetry right)
+        {
+            var cmp = left.LogTime.CompareTo(right.LogTime);
+            if (cmp != 0) return cmp;
+            cmp = left.ChunkIndex.CompareTo(right.ChunkIndex);
+            if (cmp != 0) return cmp;
+            return left.RecordOffset.CompareTo(right.RecordOffset);
+        }
+
+        private McapMessage ReadDeferredRetry(DeferredReplayRetry retry)
+        {
+            if (_summary?.ChunkIndexes == null ||
+                retry.ChunkIndex < 0 || retry.ChunkIndex >= _summary.ChunkIndexes.Count)
+                throw new InvalidDataException("Deferred replay retry references an invalid chunk.");
+
+            var chunk = _summary.ChunkIndexes[retry.ChunkIndex];
+            var owner = _reader.ReadChunkRecords(chunk.ChunkStartOffset, chunk.ChunkLength, out var crcValid);
+            if (!ShouldUseChunkRecords($"Deferred retry chunk {retry.ChunkIndex}", crcValid))
+                return null;
+
+            var offset = retry.RecordOffset;
+            var record = McapReplayChunkRecordReader.ReadNext(owner, ref offset);
+            if (!record.IsMessage ||
+                record.ChannelId != retry.ChannelId ||
+                record.Sequence != retry.Sequence ||
+                record.LogTime != retry.LogTime ||
+                record.PublishTime != retry.PublishTime)
+                throw new InvalidDataException("Deferred replay retry no longer matches its source record.");
+
+            var data = new byte[record.DataLength];
+            if (record.DataLength > 0)
+                Buffer.BlockCopy(owner, record.DataOffset, data, 0, record.DataLength);
+            return new McapMessage
+            {
+                ChannelId = record.ChannelId,
+                Sequence = record.Sequence,
+                LogTime = record.LogTime,
+                PublishTime = record.PublishTime,
+                Data = data
+            };
+        }
+
+        private McapMessage PopDeferred()
+        {
+            var deferred = _deferredPending[_deferredPendingHead++];
+            var owner = deferred.Owner;
+            var message = deferred.Materialize();
+            ReleaseDeferredOwner(owner);
+            CompactDeferredPendingIfUseful();
+            return message;
+        }
+
+        private void DropDeferred()
+        {
+            var deferred = _deferredPending[_deferredPendingHead++];
+            var owner = deferred.Owner;
+            deferred.Owner = null;
+            ReleaseDeferredOwner(owner);
+            CompactDeferredPendingIfUseful();
+        }
+
+        private void ClearDeferredPending()
+        {
+            _deferredPending.Clear();
+            _deferredPendingHead = 0;
+            _deferredRetries.Clear();
+            _deferredRetryByKey.Clear();
+            _deferredRetriesSorted = false;
+            _deferredOwnerReferences.Clear();
+            _deferredOwnerBytes = 0;
+        }
+
+        private void ReleaseDeferredOwner(byte[] owner)
+        {
+            if (owner == null || !_deferredOwnerReferences.TryGetValue(owner, out var references))
+                return;
+
+            if (references <= 1)
+            {
+                _deferredOwnerReferences.Remove(owner);
+                _deferredOwnerBytes -= owner.LongLength;
+            }
+            else
+            {
+                _deferredOwnerReferences[owner] = references - 1;
+            }
+        }
+
+        private void CompactDeferredPending()
+        {
+            if (_deferredPendingHead <= 0)
+                return;
+            if (_deferredPendingHead >= _deferredPending.Count)
+            {
+                _deferredPending.Clear();
+                _deferredPendingHead = 0;
+                return;
+            }
+
+            _deferredPending.RemoveRange(0, _deferredPendingHead);
+            _deferredPendingHead = 0;
+        }
+
+        private void CompactDeferredPendingIfUseful()
+        {
+            if (_deferredPendingHead > 32
+                && _deferredPendingHead * 2 >= _deferredPending.Count)
+                CompactDeferredPending();
+        }
+
+        private static int CompareDeferredMessages(
+            DeferredReplayMessage left,
+            DeferredReplayMessage right)
+        {
+            var cmp = left.LogTime.CompareTo(right.LogTime);
+            if (cmp != 0) return cmp;
+            cmp = left.ChannelId.CompareTo(right.ChannelId);
+            if (cmp != 0) return cmp;
+            cmp = left.Sequence.CompareTo(right.Sequence);
+            if (cmp != 0) return cmp;
+            return left.PublishTime.CompareTo(right.PublishTime);
+        }
+
+        private static int CompareDeferredToMessage(
+            DeferredReplayMessage left,
+            McapMessage right)
+        {
+            var cmp = left.LogTime.CompareTo(right.LogTime);
+            if (cmp != 0) return cmp;
+            cmp = left.ChannelId.CompareTo(right.ChannelId);
+            if (cmp != 0) return cmp;
+            cmp = left.Sequence.CompareTo(right.Sequence);
+            if (cmp != 0) return cmp;
+            return left.PublishTime.CompareTo(right.PublishTime);
+        }
 
         private bool ShouldUseChunkRecords(string scope, bool crcValid)
         {
@@ -646,7 +1079,7 @@ namespace Unity.FoxgloveSDK.IO
 
         private void UpdatePostTickStatus(List<McapMessage> result)
         {
-            if (PendingCount > 0)
+            if (PendingCount > 0 || DeferredRetryCount > 0)
             {
                 CurrentStatus = Status.Buffering;
                 return;
@@ -655,6 +1088,7 @@ namespace Unity.FoxgloveSDK.IO
             if (CanSeek &&
                 result.Count == 0 &&
                 _summary?.ChunkIndexes != null &&
+                DeferredRetryCount == 0 &&
                 _currentChunkIdx >= _summary.ChunkIndexes.Count - 1 &&
                 _readOffset >= (_currentUncompressed?.Length ?? 0))
             {
@@ -703,6 +1137,43 @@ namespace Unity.FoxgloveSDK.IO
             cmp = a.MessageEndTime.CompareTo(b.MessageEndTime);
             if (cmp != 0) return cmp;
             return a.ChunkStartOffset.CompareTo(b.ChunkStartOffset);
+        }
+
+        private sealed class DeferredReplayMessage
+        {
+            internal ushort ChannelId;
+            internal uint Sequence;
+            internal ulong LogTime;
+            internal ulong PublishTime;
+            internal byte[] Owner;
+            internal int DataOffset;
+            internal int DataLength;
+
+            internal McapMessage Materialize()
+            {
+                var data = new byte[DataLength];
+                if (DataLength > 0)
+                    Buffer.BlockCopy(Owner, DataOffset, data, 0, DataLength);
+                Owner = null;
+                return new McapMessage
+                {
+                    ChannelId = ChannelId,
+                    Sequence = Sequence,
+                    LogTime = LogTime,
+                    PublishTime = PublishTime,
+                    Data = data
+                };
+            }
+        }
+
+        private sealed class DeferredReplayRetry
+        {
+            internal int ChunkIndex;
+            internal int RecordOffset;
+            internal ushort ChannelId;
+            internal uint Sequence;
+            internal ulong LogTime;
+            internal ulong PublishTime;
         }
     }
 }

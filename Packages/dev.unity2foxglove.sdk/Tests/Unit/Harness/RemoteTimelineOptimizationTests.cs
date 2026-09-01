@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Text;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -58,7 +59,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("const DEFAULT_MAX_HZ = 60;", source, StringComparison.Ordinal);
             Assert.Contains("let minIntervalMs = 1000 / state.maxHz;", source, StringComparison.Ordinal);
             Assert.Contains("minIntervalMs = 1000 / state.maxHz;", source, StringComparison.Ordinal);
-            Assert.Contains("shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, minIntervalMs)", render, StringComparison.Ordinal);
+            Assert.Contains("shouldSendCursor(", render, StringComparison.Ordinal);
+            Assert.Contains("state.enabled", render, StringComparison.Ordinal);
+            Assert.Contains("currentTime", render, StringComparison.Ordinal);
+            Assert.Contains("lastCursorSec", render, StringComparison.Ordinal);
+            Assert.Contains("lastCursorNsec", render, StringComparison.Ordinal);
+            Assert.Contains("lastSentAtMs", render, StringComparison.Ordinal);
+            Assert.Contains("nowMs", render, StringComparison.Ordinal);
+            Assert.Contains("minIntervalMs", render, StringComparison.Ordinal);
+            Assert.Contains("renderState.didSeek === true", render, StringComparison.Ordinal);
+            Assert.Contains(
+                "shouldSendCursor(state.enabled,currentTime,lastCursorSec,lastCursorNsec,lastSentAtMs,nowMs,minIntervalMs,renderState.didSeek===true,)",
+                CompactWhitespace(render),
+                StringComparison.Ordinal);
             Assert.DoesNotContain("1000 / state.maxHz", render, StringComparison.Ordinal);
             Assert.Contains("function buildPanelDom", source, StringComparison.Ordinal);
             Assert.Contains("panel.replayTime.textContent", render, StringComparison.Ordinal);
@@ -244,6 +257,18 @@ function later() { dropMe(); }";
             }
 
             return count;
+        }
+
+        private static string CompactWhitespace(string source)
+        {
+            var compact = new StringBuilder(source.Length);
+            foreach (var character in source)
+            {
+                if (!char.IsWhiteSpace(character))
+                    compact.Append(character);
+            }
+
+            return compact.ToString();
         }
 
         private static string FindRepoRoot()

@@ -208,7 +208,14 @@ namespace Unity.FoxgloveSDK.IO
             }
 
             foreach (var message in EnumerateIndexedMessagesInFileOrder(options))
-                result.Add(message);
+            {
+                if (!McapIndexedReaderHelpers.TryAddBoundedMessage(result, message, options, out _))
+                    break;
+                if (options.Order == McapReadOrder.FileOrder &&
+                    options.MaxMessages > 0 &&
+                    result.Count >= options.MaxMessages)
+                    break;
+            }
 
             McapIndexedReaderHelpers.ApplyOrderingAndLimit(result, options);
 
@@ -220,6 +227,8 @@ namespace Unity.FoxgloveSDK.IO
         /// The returned enumerable is forward-only and can be enumerated once.
         /// Do not interleave this enumeration with other read calls on the same
         /// reader instance; all indexed reads share one seekable stream.
+        /// No eager sequential-retention limits are applied to the no-index
+        /// fallback because each yielded message is released by the caller.
         /// </summary>
         /// <param name="options">Optional query options. Only <see cref="McapReadOrder.FileOrder"/> is supported.</param>
         /// <returns>A single-pass enumerable over matching messages.</returns>
@@ -254,16 +263,7 @@ namespace Unity.FoxgloveSDK.IO
                 return result;
 
             var messages = ReadLinearMessages(options);
-            for (var i = 0; i < messages.Count; i++)
-            {
-                var message = messages[i];
-                if (!McapIndexedReaderHelpers.IsInTimeRange(message.LogTime, options))
-                    continue;
-                if (selectedChannelIds != null && !selectedChannelIds.Contains(message.ChannelId))
-                    continue;
-
-                result.Add(message);
-            }
+            result.AddRange(messages);
 
             McapIndexedReaderHelpers.ApplyOrderingAndLimit(result, options);
 
@@ -301,11 +301,23 @@ namespace Unity.FoxgloveSDK.IO
 
         private IEnumerable<McapMessage> EnumerateSequentialMessagesInFileOrder(McapReadOptions options)
         {
-            var result = ReadSequentialMessages(options, new List<McapMessage>());
-            for (var i = 0; i < result.Count; i++)
+            var selectedChannelIds = ResolveSelectedChannelIds(options);
+            if (selectedChannelIds != null && selectedChannelIds.Count == 0)
+                yield break;
+
+            foreach (var message in _reader.EnumerateSequentialMessages(
+                         _summary.DataSectionEndOffset,
+                         options,
+                         // Lazy enumeration yields each message directly to
+                         // the caller and retains no result set. Applying the
+                         // eager fallback's cumulative retention counters here
+                         // would reject an otherwise bounded forward stream
+                         // after earlier messages have already been consumed.
+                         sequentialLimits: null,
+                         selectedChannelIds))
             {
                 ThrowIfDisposed();
-                yield return result[i];
+                yield return message;
             }
         }
 
@@ -327,12 +339,6 @@ namespace Unity.FoxgloveSDK.IO
             {
                 ThrowIfDisposed();
                 if (chunkIndex.MessageEndTime < options.StartTimeNs || McapIndexedReaderHelpers.IsAtOrPastEnd(chunkIndex.MessageStartTime, options))
-                    continue;
-
-                if (selectedChannelIds != null &&
-                    chunkIndex.MessageIndexOffsets != null &&
-                    chunkIndex.MessageIndexOffsets.Count > 0 &&
-                    !McapIndexedReaderHelpers.ContainsAnySelectedChannel(chunkIndex.MessageIndexOffsets, selectedChannelIds))
                     continue;
 
                 var uncompressed = _reader.ReadChunkRecords(
@@ -428,12 +434,6 @@ namespace Unity.FoxgloveSDK.IO
                     continue;
                 if (McapIndexedReaderHelpers.CanStopLatestScan(latestByChannel, expectedCount, chunkIndex.MessageEndTime))
                     break;
-                if (selectedChannelIds != null &&
-                    chunkIndex.MessageIndexOffsets != null &&
-                    chunkIndex.MessageIndexOffsets.Count > 0 &&
-                    !McapIndexedReaderHelpers.ContainsAnySelectedChannel(chunkIndex.MessageIndexOffsets, selectedChannelIds))
-                    continue;
-
                 var uncompressed = _reader.ReadChunkRecords(
                     chunkIndex.ChunkStartOffset,
                     chunkIndex.ChunkLength,
@@ -472,16 +472,28 @@ namespace Unity.FoxgloveSDK.IO
         {
             var scanOptions = new McapReadOptions
             {
-                EndTimeNs = ulong.MaxValue,
-                MaxMessages = 0,
-                Order = McapReadOrder.FileOrder,
+                StartTimeNs = options.StartTimeNs,
+                EndTimeNs = options.EndTimeNs,
+                Topics = options.Topics == null ? null : new List<string>(options.Topics),
+                ChannelIds = options.ChannelIds == null ? null : new List<ushort>(options.ChannelIds),
+                MaxMessages = options.MaxMessages,
+                Order = options.Order,
                 AllowLinearFallback = true,
+                UseOfficialEndTimeSemantics = options.UseOfficialEndTimeSemantics,
                 ValidateCrcs = options.ValidateCrcs,
                 ChunkUncompressedSizeLimit = options.ChunkUncompressedSizeLimit
             };
 
             _stream.Seek(0, SeekOrigin.Begin);
-            using var streamingReader = new McapStreamingReader(_stream, leaveOpen: true, _sequentialReadLimits);
+            // Summaryless direct files produced by the compatibility path can
+            // omit DataEnd and terminate data with a zeroed Footer.  The public
+            // streaming reader remains strict; indexed fallback opts into this
+            // narrowly scoped envelope compatibility mode.
+            using var streamingReader = new McapStreamingReader(
+                _stream,
+                leaveOpen: true,
+                _sequentialReadLimits,
+                allowSummarylessFooter: true);
             return streamingReader.Read(scanOptions).Messages;
         }
 
@@ -521,6 +533,8 @@ namespace Unity.FoxgloveSDK.IO
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
 
+            _reader.Dispose();
+            _chunkIndexesByDescendingEndTime = null;
             if (_ownsStream)
                 _stream.Dispose();
         }
@@ -590,25 +604,9 @@ namespace Unity.FoxgloveSDK.IO
             HashSet<ushort> selectedChannelIds,
             List<McapChunkIndex> chunkIndexes)
         {
-            var expected = new HashSet<ushort>();
-            for (var i = 0; i < chunkIndexes.Count; i++)
-            {
-                var chunkIndex = chunkIndexes[i];
-                if (McapIndexedReaderHelpers.IsAtOrPastEnd(chunkIndex.MessageStartTime, options) ||
-                    chunkIndex.MessageEndTime < options.StartTimeNs)
-                    continue;
-
-                if (chunkIndex.MessageIndexOffsets == null || chunkIndex.MessageIndexOffsets.Count == 0)
-                    return ExpectedLatestChannelCount(selectedChannelIds);
-
-                foreach (var channelId in chunkIndex.MessageIndexOffsets.Keys)
-                {
-                    if (selectedChannelIds == null || selectedChannelIds.Contains(channelId))
-                        expected.Add(channelId);
-                }
-            }
-
-            return expected.Count;
+            // ChunkIndex maps come from untrusted files. A missing key cannot
+            // prove that the corresponding channel is absent from the chunk.
+            return ExpectedLatestChannelCount(selectedChannelIds);
         }
 
     }

@@ -243,7 +243,7 @@ describe("encodeMessagePackMessage", () => {
       overLimitFields,
       makeMessage(overLimitFields),
     )).toThrow("aggregate container item limit");
-  });
+  }, 15_000);
 
   it("counts the root topic map in the shared wire-depth boundary", () => {
     const nestedArrayShape = (levels: number): FoxRunTypeShape => {

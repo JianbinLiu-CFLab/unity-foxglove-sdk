@@ -93,6 +93,22 @@ namespace Unity.FoxgloveSDK.IO
             private bool _sawDataEnd;
             private bool _sawFooter;
             private bool _messageIndexMayFollow;
+            private readonly HashSet<ulong> _messageIndexRecordOffsets = new HashSet<ulong>();
+            private readonly Dictionary<ulong, ValidatedChunkState> _validatedChunks =
+                new Dictionary<ulong, ValidatedChunkState>();
+            private readonly HashSet<ulong> _validatedChunkIndexOffsets = new HashSet<ulong>();
+            private Dictionary<ushort, Dictionary<ulong, ulong>> _pendingChunkMessages;
+            private readonly HashSet<ushort> _pendingMessageIndexChannels = new HashSet<ushort>();
+            private readonly Dictionary<ushort, ulong> _pendingMessageIndexOffsets =
+                new Dictionary<ushort, ulong>();
+            private ulong _pendingChunkRecordStart;
+            private ulong _pendingChunkRecordLength;
+            private ulong _pendingChunkMessageStartTime;
+            private ulong _pendingChunkMessageEndTime;
+            private string _pendingChunkCompression;
+            private ulong _pendingChunkCompressedSize;
+            private ulong _pendingChunkUncompressedSize;
+            private ulong _pendingMessageIndexLength;
             private long _firstSummaryRecordOffset = -1;
             private long _dataEndEndOffset = -1;
             private McapFooter _footer;
@@ -132,6 +148,11 @@ namespace Unity.FoxgloveSDK.IO
                         $"Footer summary_start {_footer.SummaryStart} does not match the strict summary boundary {expectedSummaryStart}.");
                 if (_firstSummaryRecordOffset >= 0 && _dataEndEndOffset != _firstSummaryRecordOffset)
                     throw new InvalidDataException("The summary section must begin immediately after DataEnd.");
+
+                if (_validatedChunkIndexOffsets.Count > 0 &&
+                    _validatedChunkIndexOffsets.Count != _validatedChunks.Count)
+                    throw new InvalidDataException(
+                        "Summary must contain exactly one Chunk Index for every data Chunk when Chunk Index records are present.");
             }
 
             private void ValidateRecord(long recordStart, byte opcode, byte[] content)
@@ -150,6 +171,7 @@ namespace Unity.FoxgloveSDK.IO
                     if (_sawDataEnd)
                         throw new InvalidDataException(
                             $"Private opcode 0x{opcode:X2} is not allowed in the MCAP summary section.");
+                    CompletePendingMessageIndexes();
                     _messageIndexMayFollow = false;
                     return;
                 }
@@ -163,7 +185,10 @@ namespace Unity.FoxgloveSDK.IO
             private void ValidateDataRecord(long recordStart, byte opcode, byte[] content)
             {
                 if (opcode != McapWriter.OpcodeMessageIndex)
+                {
+                    CompletePendingMessageIndexes();
                     _messageIndexMayFollow = false;
+                }
 
                 switch (opcode)
                 {
@@ -184,13 +209,24 @@ namespace Unity.FoxgloveSDK.IO
                         ValidateMessage(content);
                         break;
                     case McapWriter.OpcodeChunk:
-                        ValidateChunk(content);
+                        var chunkHeader = ValidateChunk(content);
+                        _pendingChunkRecordStart = (ulong)recordStart;
+                        _pendingChunkRecordLength = (ulong)_stream.Position - (ulong)recordStart;
+                        _pendingChunkMessageStartTime = chunkHeader.MessageStartTime;
+                        _pendingChunkMessageEndTime = chunkHeader.MessageEndTime;
+                        _pendingChunkCompression = chunkHeader.Compression;
+                        _pendingChunkCompressedSize = chunkHeader.CompressedSize;
+                        _pendingChunkUncompressedSize = chunkHeader.UncompressedSize;
                         _messageIndexMayFollow = true;
                         break;
                     case McapWriter.OpcodeMessageIndex:
                         if (!_messageIndexMayFollow)
                             throw new InvalidDataException("Message Index records must immediately follow a Chunk.");
-                        ValidateMessageIndex(content);
+                        var channelId = ValidateMessageIndex(content);
+                        var messageIndexOffset = (ulong)recordStart;
+                        _messageIndexRecordOffsets.Add(messageIndexOffset);
+                        _pendingMessageIndexOffsets[channelId] = messageIndexOffset;
+                        _pendingMessageIndexLength += (ulong)_stream.Position - messageIndexOffset;
                         _messageIndexMayFollow = true;
                         break;
                     case McapWriter.OpcodeAttachment:
@@ -250,7 +286,8 @@ namespace Unity.FoxgloveSDK.IO
                         break;
                     case McapWriter.OpcodeChunkIndex:
                         ValidateCurrentVersionLength(opcode, content);
-                        McapRecordDecoder.DecodeChunkIndex(content);
+                        var chunkIndex = McapRecordDecoder.DecodeChunkIndex(content);
+                        ValidateChunkIndex(chunkIndex);
                         break;
                     case McapWriter.OpcodeAttachmentIndex:
                         ValidateCurrentVersionLength(opcode, content);
@@ -291,16 +328,18 @@ namespace Unity.FoxgloveSDK.IO
                 McapRecordDecoder.AddChannel(_channels, channel);
             }
 
-            private void ValidateMessage(byte[] content)
+            private McapMessage ValidateMessage(byte[] content)
             {
                 var message = McapRecordDecoder.DecodeMessage(content, 0, content.Length);
                 if (!ContainsChannel(message.ChannelId))
                     throw new InvalidDataException($"Message references unknown channel {message.ChannelId}.");
+                return message;
             }
 
-            private void ValidateChunk(byte[] content)
+            private ChunkHeader ValidateChunk(byte[] content)
             {
                 ValidateCurrentVersionLength(McapWriter.OpcodeChunk, content);
+                var header = ReadChunkHeader(content);
                 var records = McapRecordDecoder.DecodeChunkRecordsContent(
                     content,
                     out var crcValid,
@@ -308,9 +347,14 @@ namespace Unity.FoxgloveSDK.IO
                 if (_options.ValidateCrcs && !crcValid)
                     throw new InvalidDataException("MCAP chunk CRC mismatch.");
 
+                var messages = new Dictionary<ushort, Dictionary<ulong, ulong>>();
+                var hasMessages = false;
+                var messageStartTime = ulong.MaxValue;
+                var messageEndTime = 0UL;
                 var off = 0;
                 while (off < records.Length)
                 {
+                    var recordOffset = (ulong)off;
                     if (records.Length - off < McapWriter.RecordHeaderLength)
                         throw new InvalidDataException("Chunk inner record header is truncated.");
                     var opcode = records[off++];
@@ -339,8 +383,21 @@ namespace Unity.FoxgloveSDK.IO
                             AddChannel(inner);
                             break;
                         case McapWriter.OpcodeMessage:
-                            ValidateMessage(inner);
+                        {
+                            var message = ValidateMessage(inner);
+                            hasMessages = true;
+                            if (message.LogTime < messageStartTime)
+                                messageStartTime = message.LogTime;
+                            if (message.LogTime > messageEndTime)
+                                messageEndTime = message.LogTime;
+                            if (!messages.TryGetValue(message.ChannelId, out var channelMessages))
+                            {
+                                channelMessages = new Dictionary<ulong, ulong>();
+                                messages.Add(message.ChannelId, channelMessages);
+                            }
+                            channelMessages.Add(recordOffset, message.LogTime);
                             break;
+                        }
                         case McapWriter.OpcodeMetadata:
                             ValidateCurrentVersionLength(opcode, inner);
                             McapRecordDecoder.DecodeMetadata(inner);
@@ -350,15 +407,196 @@ namespace Unity.FoxgloveSDK.IO
                     }
                     off += contentLength;
                 }
+
+                if (hasMessages &&
+                    (header.MessageStartTime != messageStartTime || header.MessageEndTime != messageEndTime))
+                    throw new InvalidDataException(
+                        "Chunk header message time bounds do not match its decoded Message records.");
+
+                _pendingChunkMessages = messages;
+                _pendingMessageIndexChannels.Clear();
+                return header;
             }
 
-            private void ValidateMessageIndex(byte[] content)
+            private static ChunkHeader ReadChunkHeader(byte[] content)
+            {
+                var off = 0;
+                var messageStartTime = ReadU64(content, ref off);
+                var messageEndTime = ReadU64(content, ref off);
+                var uncompressedSize = ReadU64(content, ref off);
+                ReadU32(content, ref off); // uncompressed CRC is checked during decompression.
+                var compression = McapBinaryReader.ReadString(content, ref off);
+                var compressedSize = ReadU64(content, ref off);
+                return new ChunkHeader
+                {
+                    MessageStartTime = messageStartTime,
+                    MessageEndTime = messageEndTime,
+                    UncompressedSize = uncompressedSize,
+                    Compression = compression,
+                    CompressedSize = compressedSize
+                };
+            }
+
+            private ushort ValidateMessageIndex(byte[] content)
             {
                 ValidateCurrentVersionLength(McapWriter.OpcodeMessageIndex, content);
                 var off = 0;
                 var channelId = McapBinaryReader.ReadU16LE(content, ref off);
                 if (!ContainsChannel(channelId))
                     throw new InvalidDataException($"Message Index references unknown channel {channelId}.");
+                if (_pendingChunkMessages == null || !_pendingChunkMessages.TryGetValue(channelId, out var expectedMessages))
+                    throw new InvalidDataException($"Message Index references channel {channelId}, which has no message in the preceding Chunk.");
+                if (!_pendingMessageIndexChannels.Add(channelId))
+                    throw new InvalidDataException($"Chunk has more than one Message Index for channel {channelId}.");
+
+                var recordsLength = McapBinaryReader.ReadU32LE(content, ref off);
+                var recordsEnd = checked(off + (int)recordsLength);
+                var indexedOffsets = new HashSet<ulong>();
+                while (off < recordsEnd)
+                {
+                    var timestamp = McapBinaryReader.ReadU64LE(content, ref off);
+                    var offset = McapBinaryReader.ReadU64LE(content, ref off);
+                    if (!expectedMessages.TryGetValue(offset, out var expectedTimestamp) || expectedTimestamp != timestamp)
+                        throw new InvalidDataException(
+                            $"Message Index for channel {channelId} contains an invalid timestamp/offset entry ({timestamp}, {offset}).");
+                    if (!indexedOffsets.Add(offset))
+                        throw new InvalidDataException($"Message Index for channel {channelId} contains duplicate offset {offset}.");
+                }
+
+                if (indexedOffsets.Count != expectedMessages.Count)
+                    throw new InvalidDataException(
+                        $"Message Index for channel {channelId} does not index every message in the preceding Chunk.");
+
+                return channelId;
+            }
+
+            private void CompletePendingMessageIndexes()
+            {
+                if (_pendingChunkMessages == null)
+                    return;
+
+                // Message Index records are optional. An entirely absent set
+                // is the valid coarse-index form represented by an empty
+                // ChunkIndex.message_index_offsets map. If a file emits any
+                // Message Index for a chunk, however, keep enforcing the
+                // all-channels completeness contract below.
+                if (_pendingMessageIndexChannels.Count == 0)
+                {
+                    SavePendingChunk();
+                    _pendingChunkMessages = null;
+                    return;
+                }
+
+                foreach (var channelId in _pendingChunkMessages.Keys)
+                {
+                    if (!_pendingMessageIndexChannels.Contains(channelId))
+                        throw new InvalidDataException(
+                            $"Chunk is missing the required Message Index for channel {channelId}.");
+                }
+                if (_pendingMessageIndexChannels.Count != _pendingChunkMessages.Count)
+                    throw new InvalidDataException("Chunk Message Index channel set does not match its message channel set.");
+
+                SavePendingChunk();
+                _pendingChunkMessages = null;
+                _pendingMessageIndexChannels.Clear();
+            }
+
+            private void SavePendingChunk()
+            {
+                if (_pendingChunkRecordLength == 0)
+                    return;
+
+                _validatedChunks[_pendingChunkRecordStart] = new ValidatedChunkState
+                {
+                    RecordLength = _pendingChunkRecordLength,
+                    MessageStartTime = _pendingChunkMessageStartTime,
+                    MessageEndTime = _pendingChunkMessageEndTime,
+                    Compression = _pendingChunkCompression,
+                    CompressedSize = _pendingChunkCompressedSize,
+                    UncompressedSize = _pendingChunkUncompressedSize,
+                    MessageIndexOffsets = new Dictionary<ushort, ulong>(_pendingMessageIndexOffsets),
+                    MessageIndexLength = _pendingMessageIndexLength
+                };
+                _pendingMessageIndexOffsets.Clear();
+                _pendingMessageIndexLength = 0;
+                _pendingChunkRecordStart = 0;
+                _pendingChunkRecordLength = 0;
+                _pendingChunkMessageStartTime = 0;
+                _pendingChunkMessageEndTime = 0;
+                _pendingChunkCompression = null;
+                _pendingChunkCompressedSize = 0;
+                _pendingChunkUncompressedSize = 0;
+            }
+
+            private void ValidateChunkIndex(McapChunkIndex chunkIndex)
+            {
+                if (!_validatedChunkIndexOffsets.Add(chunkIndex.ChunkStartOffset))
+                    throw new InvalidDataException(
+                        $"Summary contains more than one Chunk Index for chunk offset {chunkIndex.ChunkStartOffset}.");
+
+                foreach (var messageIndexOffset in chunkIndex.MessageIndexOffsets.Values)
+                {
+                    if (!_messageIndexRecordOffsets.Contains(messageIndexOffset))
+                    {
+                        throw new InvalidDataException(
+                            $"Chunk Index references Message Index offset {messageIndexOffset}, but no Message Index record exists at that offset.");
+                    }
+                }
+
+                if (!_validatedChunks.TryGetValue(chunkIndex.ChunkStartOffset, out var actual))
+                    throw new InvalidDataException(
+                        $"Chunk Index references missing data Chunk at offset {chunkIndex.ChunkStartOffset}.");
+
+                if (chunkIndex.MessageStartTime != actual.MessageStartTime ||
+                    chunkIndex.MessageEndTime != actual.MessageEndTime)
+                    throw new InvalidDataException(
+                        "Chunk Index message time bounds do not match its data Chunk header.");
+
+                if (chunkIndex.ChunkLength != actual.RecordLength)
+                    throw new InvalidDataException(
+                        $"Chunk Index length {chunkIndex.ChunkLength} does not match data Chunk length {actual.RecordLength}.");
+
+                if (chunkIndex.MessageIndexLength != actual.MessageIndexLength)
+                    throw new InvalidDataException(
+                        $"Chunk Index message_index_length {chunkIndex.MessageIndexLength} does not match data Message Index length {actual.MessageIndexLength}.");
+
+                if (!string.Equals(chunkIndex.Compression, actual.Compression, StringComparison.Ordinal) ||
+                    chunkIndex.CompressedSize != actual.CompressedSize ||
+                    chunkIndex.UncompressedSize != actual.UncompressedSize)
+                    throw new InvalidDataException(
+                        "Chunk Index compression or size fields do not match its data Chunk header.");
+
+                if (chunkIndex.MessageIndexOffsets.Count != actual.MessageIndexOffsets.Count)
+                    throw new InvalidDataException(
+                        "Chunk Index message_index_offsets channel set does not match data Message Index records.");
+
+                foreach (var pair in actual.MessageIndexOffsets)
+                {
+                    if (!chunkIndex.MessageIndexOffsets.TryGetValue(pair.Key, out var offset) || offset != pair.Value)
+                        throw new InvalidDataException(
+                            $"Chunk Index message_index_offsets for channel {pair.Key} does not match its data Message Index record.");
+                }
+            }
+
+            private sealed class ValidatedChunkState
+            {
+                public ulong RecordLength;
+                public ulong MessageStartTime;
+                public ulong MessageEndTime;
+                public string Compression;
+                public ulong CompressedSize;
+                public ulong UncompressedSize;
+                public Dictionary<ushort, ulong> MessageIndexOffsets;
+                public ulong MessageIndexLength;
+            }
+
+            private sealed class ChunkHeader
+            {
+                public ulong MessageStartTime;
+                public ulong MessageEndTime;
+                public ulong UncompressedSize;
+                public string Compression;
+                public ulong CompressedSize;
             }
 
             private void ValidateCurrentVersionLength(byte opcode, byte[] content)
