@@ -307,7 +307,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && cleanup.Contains("RuntimeStopCleanupStep.Session", StringComparison.Ordinal)
                   && detachIndex >= 0 && disposeIndex > detachIndex,
                 "51B-15b: runtime Start rollback runs recording detach before session disposal through retryable cleanup steps");
-            Check(start.Contains("ExceptionDispatchInfo.Capture(startException).Throw()", StringComparison.Ordinal)
+            Check(start.Contains("throw;", StringComparison.Ordinal)
+                  && !start.Contains("ExceptionDispatchInfo.Capture(startException).Throw()", StringComparison.Ordinal)
                   && start.Contains("preserving the original Start exception", StringComparison.OrdinalIgnoreCase)
                   && cleanup.Contains("ref firstFailure", StringComparison.Ordinal),
                 "51B-15c: runtime Start rollback preserves the original startup exception while retaining cleanup failures");

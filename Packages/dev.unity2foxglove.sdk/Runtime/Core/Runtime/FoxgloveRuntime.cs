@@ -336,7 +336,7 @@ namespace Unity.FoxgloveSDK.Core
                 _replayOrchestrator.Attach(_replay, session);
                 _stopped = false;
             }
-            catch (Exception startException)
+            catch (Exception)
             {
                 // Run every cleanup step independently. The original Start
                 // failure remains primary; cleanup failures are retained in
@@ -346,7 +346,6 @@ namespace Unity.FoxgloveSDK.Core
                 if (cleanupFailure != null)
                     _logger.LogWarning(
                         $"Startup cleanup was incomplete; preserving the original Start exception: {cleanupFailure.SourceException.Message}");
-                ExceptionDispatchInfo.Capture(startException).Throw();
                 throw;
             }
         }

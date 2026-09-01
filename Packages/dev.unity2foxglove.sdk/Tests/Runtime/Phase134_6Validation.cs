@@ -147,7 +147,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(connectionSource.Contains("StopwatchTicksPerMillisecond", StringComparison.Ordinal)
                   && connectionSource.Contains("Stopwatch.GetTimestamp() / StopwatchTicksPerMillisecond", StringComparison.Ordinal),
                 "134-6C-6b: connection monotonic milliseconds avoid floating-point precision loss");
-            Check(connectionSource.Contains("public EnqueueResult SendTextEncoded", StringComparison.Ordinal)
+            Check(connectionSource.Contains("EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)", StringComparison.Ordinal)
                   && !connectionSource.Contains("private void WriteFrame(byte opcode", StringComparison.Ordinal),
                 "134-6C-6c: WebSocket connection exposes encoded text enqueue path and removes dead single-frame writer");
             Check(certSource.Contains("_rootCaSha256Fingerprint", StringComparison.Ordinal)

@@ -24,14 +24,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAssetRegistryAvoidsFetchAllocations()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Assets/FoxgloveAssetRegistry.cs");
-            var tryResolveStart = source.IndexOf("private bool TryResolve(", StringComparison.Ordinal);
-            var tryResolve = tryResolveStart >= 0 ? source.Substring(tryResolveStart) : string.Empty;
-            var tryReadStart = source.IndexOf("private static bool TryReadResolvedFile(", StringComparison.Ordinal);
-            var tryRead = tryReadStart >= 0 ? source.Substring(tryReadStart) : string.Empty;
+            var tryResolve = SourceMethod(source, "private bool TryResolve(");
+            var tryRead = SourceMethod(source, "private static bool TryReadResolvedFile(");
 
-            Check(tryResolveStart >= 0
-                  && tryResolve.Contains("out string registeredRoot", StringComparison.Ordinal)
-                  && tryReadStart >= 0
+            Check(tryResolve.Contains("out string registeredRoot", StringComparison.Ordinal)
+                  && !tryResolve.Contains("private static bool TryReadResolvedFile(", StringComparison.Ordinal)
                   && !source.Contains("using System.Linq;", StringComparison.Ordinal)
                   && !tryResolve.Contains(".OrderByDescending", StringComparison.Ordinal)
                   && !tryResolve.Contains(".ToList()", StringComparison.Ordinal)
@@ -102,6 +99,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            var validation = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase164_4Validation.cs");
+            Check(validation.Contains("var tryResolve = SourceMethod(source, \"private bool TryResolve(\")", StringComparison.Ordinal)
+                  && validation.Contains("var tryRead = SourceMethod(source, \"private static bool TryReadResolvedFile(\")", StringComparison.Ordinal),
+                "164-4A-0: asset checks use brace-bounded method extraction rather than file-tail substrings");
             Check(registry.Contains("\"--phase164-4\"", StringComparison.Ordinal), "164-4E-1: validation registry exposes Phase164-4");
             Check(project.Contains("Phase164_4Validation.cs", StringComparison.Ordinal), "164-4E-2: runtime validation project compiles Phase164-4");
         }
