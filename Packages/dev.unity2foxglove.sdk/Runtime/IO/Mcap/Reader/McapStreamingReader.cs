@@ -281,7 +281,11 @@ namespace Unity.FoxgloveSDK.IO
 
             if (opcode == McapWriter.OpcodeDataEnd)
                 throw new InvalidDataException("MCAP contains more than one DataEnd record.");
-            if (IsDataOnlyOpcode(opcode) || McapWriter.IsPrivateOpcode(opcode))
+            // Private records are forward-compatible and may be present in the
+            // post-DataEnd envelope.  Keep rejecting known data-only records,
+            // which would otherwise make a malformed data section look like a
+            // valid summary.
+            if (IsDataOnlyOpcode(opcode))
                 throw new InvalidDataException($"MCAP data opcode 0x{opcode:X2} appears after DataEnd.");
         }
 
