@@ -564,6 +564,17 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
+        /// Returns every validation classified as CI-safe, including entries
+        /// intentionally omitted from the fast default sweep. This explicit
+        /// view keeps the opt-in suites auditable without conflating them with
+        /// manual or environment-dependent evidence lanes.
+        /// </summary>
+        public static IEnumerable<PhaseValidationCase> CiSafeValidations()
+        {
+            return All.Where(item => item.Category == ValidationCategory.CiSafe);
+        }
+
+        /// <summary>
         /// Finds the first validation case matching CLI args.
         /// </summary>
         public static PhaseValidationCase Find(IReadOnlyCollection<string> args)

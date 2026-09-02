@@ -28,7 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
             var broadcastText = SourceMethod(backend, "public void BroadcastText(string json)");
             var broadcastBinary = SourceMethod(backend, "public void BroadcastBinary(byte[] data)");
 
-            Check(connection.Contains("public EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)", StringComparison.Ordinal)
+            Check(connection.Contains("EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)", StringComparison.Ordinal)
                   && broadcastText.Contains("Encoding.UTF8.GetBytes(json ?? string.Empty)", StringComparison.Ordinal)
                   && broadcastText.Contains("conn.SendTextEncoded", StringComparison.Ordinal),
                 "164-5A-1: text broadcasts encode once and enqueue pre-encoded frames");
@@ -81,7 +81,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-5D-1: stats snapshot iterates connected clients without array snapshots");
             Check(connection.Contains("StopwatchTicksPerMillisecond", StringComparison.Ordinal)
                   && !monotonic.Contains("Stopwatch.Frequency", StringComparison.Ordinal)
-                  && !monotonic.Contains("%", StringComparison.Ordinal),
+                  && !monotonic.Contains("%", StringComparison.Ordinal)
+                  && monotonic.Contains("Stopwatch.GetTimestamp() / StopwatchTicksPerMillisecond", StringComparison.Ordinal),
                 "164-5D-2: monotonic millisecond conversion uses cached frequency scaling");
         }
 

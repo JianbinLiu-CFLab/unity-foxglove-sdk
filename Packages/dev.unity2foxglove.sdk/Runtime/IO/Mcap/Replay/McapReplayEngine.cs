@@ -148,6 +148,13 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public ulong CurrentTimeNs => _currentTimeNs;
         /// <summary>
+        /// Number of chunk records inspected by the most recent Tick call.
+        /// This diagnostic is intentionally observable so callers can verify
+        /// that the per-tick scan budget, rather than only the emitted-message
+        /// cap, bounds work inside a large chunk.
+        /// </summary>
+        public int LastTickScannedRecordCount { get; private set; }
+        /// <summary>
         /// Channels defined in the loaded MCAP file.
         /// </summary>
         public IReadOnlyList<McapChannel> Channels => _summary?.Channels;
@@ -272,6 +279,7 @@ namespace Unity.FoxgloveSDK.IO
             if (result == null) throw new ArgumentNullException(nameof(result));
             ThrowIfDisposed();
             result.Clear();
+            LastTickScannedRecordCount = 0;
 
             if (!IsLoaded || CurrentStatus == Status.Paused || CurrentStatus == Status.Ended)
                 return result;
@@ -338,6 +346,7 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     var recordStart = _readOffset;
                     var record = McapReplayChunkRecordReader.ReadNext(_currentUncompressed, ref _readOffset);
+                    LastTickScannedRecordCount++;
                     if (!record.IsMessage)
                         continue;
 
@@ -640,6 +649,7 @@ namespace Unity.FoxgloveSDK.IO
             _readOffset = 0;
             _lastEmitTime = 0;
             _currentTimeNs = 0;
+            LastTickScannedRecordCount = 0;
             StartTimeNs = 0;
             EndTimeNs = 0;
             CanSeek = false;

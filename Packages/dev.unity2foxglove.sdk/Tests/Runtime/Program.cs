@@ -94,6 +94,17 @@ class Program
             return 1;
         }
 
+        if (argSet.Contains("--all-ci-safe"))
+        {
+            if (argList.Count != 1)
+            {
+                Console.Error.WriteLine("--all-ci-safe cannot be combined with other validation options.");
+                return 1;
+            }
+
+            return RunAllCiSafeValidations();
+        }
+
         if (TryRunRegisteredValidation(argList, argSet, out var registeredValidationExitCode))
             return registeredValidationExitCode;
 
@@ -317,7 +328,8 @@ class Program
     private static bool IsUnknownDefaultFlag(string arg)
     {
         return arg.StartsWith("--", StringComparison.Ordinal)
-            && !string.Equals(arg, "--local-evidence", StringComparison.Ordinal);
+            && !string.Equals(arg, "--local-evidence", StringComparison.Ordinal)
+            && !string.Equals(arg, "--all-ci-safe", StringComparison.Ordinal);
     }
 
     private static bool IsCiEnvironment()
@@ -641,6 +653,37 @@ class Program
 
         Console.WriteLine("\nAll checks passed.");
         return 0;
+    }
+
+    /// <summary>
+    /// Runs every registry entry classified as CI-safe and collects all
+    /// failures before returning. The fast default sweep intentionally omits
+    /// some expensive or historical selectors; this explicit gate makes that
+    /// coverage visible and prevents the first failure from hiding later ones.
+    /// </summary>
+    private static int RunAllCiSafeValidations()
+    {
+        var validations = PhaseValidationRegistry.CiSafeValidations().ToList();
+        var failures = new List<string>();
+
+        Console.WriteLine("=== FoxgloveSDK all CI-safe validation registry ===\n");
+        foreach (var validation in validations)
+        {
+            if (RunValidation(validation) != 0)
+                failures.Add(validation.Name);
+        }
+
+        var passed = validations.Count - failures.Count;
+        Console.WriteLine(
+            $"\nCI-safe registry coverage: passed={passed} failed={failures.Count} total={validations.Count}");
+        if (failures.Count == 0)
+        {
+            Console.WriteLine("All CI-safe validations passed.");
+            return 0;
+        }
+
+        Console.Error.WriteLine("Failed CI-safe validations: " + string.Join("; ", failures));
+        return 1;
     }
 
     /// <summary>Runs the manual Phase139B loopback server used by browser and Python acceptance probes.</summary>

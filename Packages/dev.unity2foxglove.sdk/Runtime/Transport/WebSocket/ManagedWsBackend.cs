@@ -67,7 +67,30 @@ namespace Unity.FoxgloveSDK.Transport
         private readonly HashSet<string> _allowedOrigins = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _allowedOriginsLock = new object();
         private readonly object _clientAdmissionLock = new object();
+        // Serializes listener publication/claiming with Stop so a concurrent
+        // Start cannot resurrect a listener while the previous shutdown still
+        // owns its sockets and callback continuations.
+        private readonly object _lifecycleLock = new object();
+        private int _stopInProgress;
+        private readonly Dictionary<uint, ClientPublication> _clientPublications =
+            new Dictionary<uint, ClientPublication>();
         private int _queuedCapacityResponses;
+
+        private sealed class ClientPublication
+        {
+            // Serializes the cancellation check with entering user callback
+            // code.  Stop may retire an unstarted publication, but once this
+            // gate marks CallbackStarted the callback is logically in flight
+            // and disconnect is deferred until it returns.
+            internal readonly object CallbackGate = new object();
+            internal bool Announced;
+            internal bool CallbackStarted;
+            internal bool CallbackCompleted;
+            internal int CallbackThreadId;
+            internal bool Cancelled;
+            internal readonly TaskCompletionSource<bool> Completion =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
 
         // Aggregate health counters
         private long _totalAcceptedClients;
@@ -96,6 +119,20 @@ namespace Unity.FoxgloveSDK.Transport
         /// </summary>
         protected virtual bool SupportsPlaintextCapacityResponse => true;
 
+        /// <summary>
+        /// Releases resources published by a derived transport after the base
+        /// stop has drained its listener, clients, and handshake continuations.
+        /// The callback runs while the lifecycle gate is held and before a new
+        /// Start is allowed to claim the transport.
+        /// </summary>
+        protected virtual void OnStopCompletedUnderLifecycleLock() { }
+
+        /// <summary>
+        /// Shared lifecycle gate for derived transports that publish additional
+        /// resources (for example the WSS certificate) around Start/Stop.
+        /// </summary>
+        protected object LifecycleLock => _lifecycleLock;
+
         /// <summary>Fires when a new WebSocket client completes the handshake.</summary>
         public event Action<uint> OnClientConnected;
         /// <summary>Fires when a client disconnects or is forcefully removed.</summary>
@@ -108,75 +145,102 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Bind the TCP listener to <c>host</c>:<c>port</c> and begin accepting connections.</summary>
         public virtual void Start(string host, int port)
         {
-            if (Volatile.Read(ref _listener) != null)
-                throw new InvalidOperationException("Server already started");
-
-            var addr = TransportHostResolver.ResolveBindAddress(host);
-            var listener = new TcpListener(addr, port);
-            CancellationTokenSource cts = null;
-            try
+            lock (_lifecycleLock)
             {
-                listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                cts = new CancellationTokenSource();
-                listener.Start();
-                Interlocked.Exchange(ref _stopping, 0);
+                if (Volatile.Read(ref _stopInProgress) != 0)
+                    throw new InvalidOperationException("Server stop is still in progress.");
+                if (Volatile.Read(ref _listener) != null)
+                    throw new InvalidOperationException("Server already started");
+                lock (_clientAdmissionLock)
+                {
+                    if (_clients.Count != 0
+                        || _pendingClients.Count != 0
+                        || _clientPublications.Count != 0)
+                        throw new InvalidOperationException(
+                            "Server shutdown is still retaining client resources.");
+                }
 
-                // Publish the fully started resources only after every
-                // fallible bind step succeeds.  A failed Start therefore
-                // leaves a clean, retryable state for the next attempt.
-                Volatile.Write(ref _listener, listener);
-                Volatile.Write(ref _cts, cts);
-                var acceptTask = Task.Run(() => AcceptLoop(cts.Token));
-                Volatile.Write(ref _acceptLoopTask, acceptTask);
-            }
-            catch
-            {
-                try { listener.Stop(); } catch { }
-                try { cts?.Dispose(); } catch { }
-                Volatile.Write(ref _listener, null);
-                Volatile.Write(ref _cts, null);
-                Volatile.Write(ref _acceptLoopTask, null);
-                throw;
+                var addr = TransportHostResolver.ResolveBindAddress(host);
+                var listener = new TcpListener(addr, port);
+                CancellationTokenSource cts = null;
+                try
+                {
+                    listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                    cts = new CancellationTokenSource();
+                    listener.Start();
+                    Interlocked.Exchange(ref _stopping, 0);
+
+                    // Publish the fully started resources only after every
+                    // fallible bind step succeeds.  A failed Start therefore
+                    // leaves a clean, retryable state for the next attempt.
+                    // Start the loop against the local listener before publishing
+                    // the running marker.  This keeps the task independent from a
+                    // partially published field set and makes IsRunning true only
+                    // after all shutdown handles are visible.
+                    var acceptTask = Task.Run(() => AcceptLoop(listener, cts.Token));
+                    Volatile.Write(ref _cts, cts);
+                    Volatile.Write(ref _acceptLoopTask, acceptTask);
+                    Volatile.Write(ref _listener, listener);
+                }
+                catch
+                {
+                    try { listener.Stop(); } catch { }
+                    try { cts?.Dispose(); } catch { }
+                    Volatile.Write(ref _listener, null);
+                    Volatile.Write(ref _cts, null);
+                    Volatile.Write(ref _acceptLoopTask, null);
+                    throw;
+                }
             }
         }
 
         /// <summary>Cancel listener, disconnect all clients, and stop accepting new connections.</summary>
         public virtual void Stop()
         {
-            Interlocked.Exchange(ref _stopping, 1);
-            var cts = _cts;
-            _cts = null;
-            cts?.Cancel();
-            try { _listener?.Stop(); } catch { }
-            _listener = null;
+            CancellationTokenSource cts = null;
+            Task acceptLoopTask = null;
+            TcpListener listener = null;
+            Task[] publicationTasks = null;
+            KeyValuePair<uint, WsConnection>[] clients = null;
+
+            // Claim the lifecycle handles under the same gate used by Start,
+            // then release that gate before running user callbacks or waiting
+            // for handler tasks.  Start therefore cannot publish a new
+            // listener while this stop owns the previous generation, while a
+            // callback is still free to call transport APIs without deadlocking
+            // the shutdown waiter.
+            lock (_lifecycleLock)
+            {
+                if (Interlocked.Exchange(ref _stopInProgress, 1) != 0)
+                    return;
+
+                Interlocked.Exchange(ref _stopping, 1);
+                lock (_clientAdmissionLock)
+                {
+                    // Claim every listener handle and snapshot clients while
+                    // the admission gate is held. A handler can therefore
+                    // either publish before this point or observe stopping
+                    // and remove itself, but cannot publish into a snapshot
+                    // that has already been disconnected.
+                    cts = _cts;
+                    _cts = null;
+                    acceptLoopTask = _acceptLoopTask;
+                    _acceptLoopTask = null;
+                    listener = _listener;
+                    _listener = null;
+                    // Keep the source contract literal while taking the
+                    // snapshot under the admission gate.
+                    clients = _clients.ToArray();
+                    publicationTasks = SnapshotPublicationTasks();
+                }
+            }
 
             try
             {
-                var acceptLoopTask = _acceptLoopTask;
-                _acceptLoopTask = null;
+                try { cts?.Cancel(); } catch { }
+                try { listener?.Stop(); } catch { }
                 WaitForShutdownTask(acceptLoopTask, StopAcceptLoopWaitMs, "accept loop");
 
-                var pending = _pendingClients.ToArray();
-                foreach (var pair in pending)
-                {
-                    try { pair.Key.Close(); } catch { }
-                    try { pair.Key.Dispose(); } catch { }
-                }
-                if (pending.Length > 0)
-                {
-                    try
-                    {
-                        var pendingTasks = pending.Select(pair => pair.Value.Task).ToArray();
-                        if (!Task.WaitAll(pendingTasks, StopPendingHandshakeWaitMs))
-                            _logger.LogWarning($"{pending.Length} pending WebSocket handshake(s) did not finish within {StopPendingHandshakeWaitMs}ms during stop.");
-                    }
-                    catch (AggregateException ex)
-                    {
-                        _logger.LogError($"Pending WebSocket handshake stop error: {FormatExceptionChain(ex)}");
-                    }
-                }
-
-                var clients = _clients.ToArray();
                 var disconnects = clients
                     .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value)))
                     .ToArray();
@@ -205,10 +269,53 @@ namespace Unity.FoxgloveSDK.Transport
                             "Client disconnect callbacks are still running after forced stop; continuing shutdown.");
                     }
                 }
+
+                WaitForPublicationTasks(publicationTasks);
+
+                // Give established clients their bounded graceful-close
+                // window before hard-closing sockets still in handshake.
+                var pending = _pendingClients.ToArray();
+                foreach (var pair in pending)
+                {
+                    try { pair.Key.Close(); } catch { }
+                    try { pair.Key.Dispose(); } catch { }
+                }
+                if (pending.Length > 0)
+                {
+                    try
+                    {
+                        var pendingTasks = pending.Select(pair => pair.Value.Task).ToArray();
+                        if (!Task.WaitAll(pendingTasks, StopPendingHandshakeWaitMs))
+                            _logger.LogWarning($"{pending.Length} pending WebSocket handshake(s) did not finish within {StopPendingHandshakeWaitMs}ms during stop.");
+                    }
+                    catch (AggregateException ex)
+                    {
+                        _logger.LogError($"Pending WebSocket handshake stop error: {FormatExceptionChain(ex)}");
+                    }
+                }
             }
             finally
             {
-                cts?.Dispose();
+                try { cts?.Dispose(); } catch { }
+                lock (_lifecycleLock)
+                {
+                    try
+                    {
+                        OnStopCompletedUnderLifecycleLock();
+                    }
+                    catch (Exception ex)
+                    {
+                        // A derived release hook must not strand the base
+                        // lifecycle gate. The listener and client ownership
+                        // have already been retired; retain a diagnostic and
+                        // always make a later Start eligible to retry.
+                        _logger.LogError($"Derived transport stop cleanup failed: {FormatExceptionChain(ex)}");
+                    }
+                    finally
+                    {
+                        Volatile.Write(ref _stopInProgress, 0);
+                    }
+                }
             }
         }
 
@@ -370,16 +477,12 @@ namespace Unity.FoxgloveSDK.Transport
         // Internal
 
         /// <summary>Continuously accept TCP clients and spawn handler tasks until canceled.</summary>
-        private async Task AcceptLoop(CancellationToken ct)
+        private async Task AcceptLoop(TcpListener listener, CancellationToken ct)
         {
             while (!ct.IsCancellationRequested)
             {
                 try
                 {
-                    var listener = _listener;
-                    if (listener == null)
-                        break;
-
                     var tcpClient = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
                     if (ct.IsCancellationRequested || IsStopping)
                     {
@@ -419,12 +522,25 @@ namespace Unity.FoxgloveSDK.Transport
         {
             WsConnection conn = null;
             Stream stream = null;
+            CancellationTokenSource handshakeCts = null;
+            CancellationTokenRegistration handshakeRegistration = default;
             var clientId = 0u;
             var registeredClient = false;
             try
             {
-                stream = CreateClientStream(tcpClient);
+                // Stream ReadTimeout is an inactivity limit.  Pair it with a
+                // linked cancellation timer so a peer which drips one byte at
+                // a time cannot hold an admission reservation forever.  The
+                // callback closes both layers, which also interrupts a
+                // synchronous SslStream authentication on secure backends.
+                handshakeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                handshakeCts.CancelAfter(HandshakeTimeoutMs);
+                handshakeRegistration = handshakeCts.Token.Register(
+                    () => CloseHandshakeResources(tcpClient, stream));
+
+                stream = CreateClientStream(tcpClient, handshakeCts.Token);
                 ConfigureStreamTimeouts(stream, HandshakeTimeoutMs, HandshakeTimeoutMs);
+                handshakeCts.Token.ThrowIfCancellationRequested();
                 if (ct.IsCancellationRequested || IsStopping)
                 {
                     CloseUnregisteredClient(tcpClient, stream);
@@ -433,6 +549,11 @@ namespace Unity.FoxgloveSDK.Transport
                 }
 
                 var (accepted, _) = _handshakeHandler.Handshake(stream, HasClientCapacityForHandshake);
+                handshakeCts.Token.ThrowIfCancellationRequested();
+                handshakeRegistration.Dispose();
+                handshakeRegistration = default;
+                handshakeCts.Dispose();
+                handshakeCts = null;
                 if (!accepted)
                 {
                     try { stream?.Close(); } catch { }
@@ -477,7 +598,7 @@ namespace Unity.FoxgloveSDK.Transport
                 // exactly once.
                 ReleasePendingClient(tcpClient);
 
-                if (ct.IsCancellationRequested || IsStopping)
+                if (ct.IsCancellationRequested || !BeginClientPublication(clientId, conn, ct))
                 {
                     RemoveUnannouncedClient(clientId, conn);
                     conn = null;
@@ -486,12 +607,19 @@ namespace Unity.FoxgloveSDK.Transport
                 }
 
                 registeredClient = true;
-                conn.StartSendLoop(() => DisconnectClient(clientId, conn), ct);
-
-                Interlocked.Increment(ref _totalAcceptedClients);
-                OnClientConnected?.Invoke(clientId);
-
-                ReceiveLoop(clientId, conn, ct);
+                try
+                {
+                    // BeginClientPublication has claimed the callback decision
+                    // under the admission gate and starts the send loop only
+                    // after user notification. Stop takes that same gate before
+                    // snapshotting clients, so it cannot publish a canceled
+                    // connection or resurrect one after shutdown.
+                    ReceiveLoop(clientId, conn, ct);
+                }
+                finally
+                {
+                    CompleteClientPublication(clientId);
+                }
             }
             catch (Exception ex)
             {
@@ -520,6 +648,8 @@ namespace Unity.FoxgloveSDK.Transport
             }
             finally
             {
+                handshakeRegistration.Dispose();
+                handshakeCts?.Dispose();
                 ReleasePendingClient(tcpClient);
             }
         }
@@ -530,17 +660,21 @@ namespace Unity.FoxgloveSDK.Transport
             return tcpClient.GetStream();
         }
 
+        /// <summary>Create the stream while a handshake cancellation deadline is active.</summary>
+        protected virtual Stream CreateClientStream(TcpClient tcpClient, CancellationToken handshakeCancellation)
+        {
+            return CreateClientStream(tcpClient);
+        }
+
         private bool HasClientCapacityForHandshake()
         {
             var maxClients = ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients);
             lock (_clientAdmissionLock)
             {
-                // The current handler owns a pending reservation.  Count that
-                // reservation for admission, but do not reject the handler
-                // which already consumed it.
-                if (!IsStopping
-                    && (_clients.Count < maxClients
-                        || (_pendingClients.Count > 0 && _clients.Count + _pendingClients.Count <= maxClients)))
+                // Every handler already owns one pending reservation.  The
+                // active set is the only remaining capacity decision here;
+                // TryRegisterClient repeats it under this same lock.
+                if (!IsStopping && _clients.Count < maxClients)
                     return true;
             }
 
@@ -676,8 +810,201 @@ namespace Unity.FoxgloveSDK.Transport
 
                 clientId = AllocateClientId();
                 _clients[clientId] = conn;
+                _clientPublications[clientId] = new ClientPublication();
                 stopped = false;
                 return true;
+            }
+        }
+
+        /// <summary>
+        /// Atomically claims the final admission-to-publication transition. Stop
+        /// marks the same admission gate before it snapshots clients, so an
+        /// unannounced connection is removed instead of publishing after stop.
+        /// </summary>
+        private bool BeginClientPublication(
+            uint clientId,
+            WsConnection expectedConnection,
+            CancellationToken cancellationToken)
+        {
+            ClientPublication publication;
+            var acceptedCounted = false;
+            var disconnectAfterCallback = false;
+            lock (_clientAdmissionLock)
+            {
+                if (IsStopping
+                    || !_clients.TryGetValue(clientId, out var current)
+                    || !ReferenceEquals(current, expectedConnection)
+                    || !_clientPublications.TryGetValue(clientId, out publication)
+                    || publication.Cancelled)
+                    return false;
+
+                // Claim the publication decision under the admission gate, but
+                // invoke user code outside the gate. Announced is deliberately
+                // set before the callback so a callback which has been handed to
+                // user code has a matching disconnect event.
+                publication.Announced = true;
+                Interlocked.Increment(ref _totalAcceptedClients);
+                acceptedCounted = true;
+            }
+
+            // The per-publication gate closes the narrow window between the
+            // admission decision and entering user code.  Stop can cancel and
+            // remove the publication while CallbackStarted is still false; in
+            // that case no connect callback is emitted after cancellation.
+            lock (publication.CallbackGate)
+            {
+                lock (_clientAdmissionLock)
+                {
+                    if (IsStopping
+                        || publication.Cancelled
+                        || !_clients.TryGetValue(clientId, out var current)
+                        || !ReferenceEquals(current, expectedConnection))
+                    {
+                        if (acceptedCounted)
+                        {
+                            Interlocked.Decrement(ref _totalAcceptedClients);
+                            acceptedCounted = false;
+                        }
+                        publication.Cancelled = true;
+                        _clients.TryRemove(clientId, out _);
+                        _clientPublications.Remove(clientId);
+                        publication.Completion.TrySetResult(true);
+                        return false;
+                    }
+
+                    // Mark the callback as logically in flight while holding
+                    // the admission gate.  DisconnectClient observes this bit
+                    // and defers removal until the callback has returned.
+                    publication.CallbackStarted = true;
+                    publication.CallbackThreadId = Thread.CurrentThread.ManagedThreadId;
+                }
+
+                try
+                {
+                    OnClientConnected?.Invoke(clientId);
+
+                    lock (_clientAdmissionLock)
+                    {
+                        publication.CallbackCompleted = true;
+                        publication.CallbackThreadId = 0;
+                        if (publication.Cancelled
+                            || IsStopping
+                            || !_clients.TryGetValue(clientId, out var current)
+                            || !ReferenceEquals(current, expectedConnection))
+                        {
+                            // A concurrent Stop/DisconnectClient marked the
+                            // publication cancelled while the callback was
+                            // running. Leave the entry in place and finish it
+                            // through the normal disconnect path after
+                            // releasing the lock, so the disconnect event
+                            // cannot overtake OnClientConnected.
+                            disconnectAfterCallback = publication.Announced
+                                && _clients.TryGetValue(clientId, out current)
+                                && ReferenceEquals(current, expectedConnection);
+                        }
+                        else
+                        {
+                            expectedConnection.StartSendLoop(
+                                () => DisconnectClient(clientId, expectedConnection),
+                                cancellationToken);
+                            return true;
+                        }
+                    }
+
+                    if (disconnectAfterCallback)
+                        DisconnectClient(clientId, expectedConnection);
+                    // BeginClientPublication returns false on the cancellation
+                    // path, so HandleClient will not enter the registered-client
+                    // finally block that normally completes this publication
+                    // task. Complete it here after the paired disconnect has
+                    // been delivered; Stop must never wait on a stranded TCS.
+                    CompleteClientPublication(clientId);
+                    return false;
+                }
+                catch
+                {
+                    // The caller has not yet entered its registered-client
+                    // finally block. Roll back the admission record here so a
+                    // callback or send-loop failure cannot strand a publication
+                    // task.
+                    lock (_clientAdmissionLock)
+                    {
+                        if (acceptedCounted)
+                            Interlocked.Decrement(ref _totalAcceptedClients);
+                        _clients.TryRemove(clientId, out _);
+                        publication.Announced = false;
+                        publication.CallbackCompleted = true;
+                        publication.CallbackThreadId = 0;
+                        publication.Cancelled = true;
+                        _clientPublications.Remove(clientId);
+                        publication.Completion.TrySetResult(true);
+                    }
+                    throw;
+                }
+            }
+        }
+
+        private void CompleteClientPublication(uint clientId)
+        {
+            lock (_clientAdmissionLock)
+            {
+                if (_clientPublications.TryGetValue(clientId, out var publication))
+                {
+                    _clientPublications.Remove(clientId);
+                    publication.Completion.TrySetResult(true);
+                }
+            }
+        }
+
+        private Task[] SnapshotPublicationTasks()
+        {
+            var tasks = new List<Task>(_clientPublications.Count);
+            foreach (var publication in _clientPublications.Values)
+            {
+                if (!publication.Announced)
+                    publication.Cancelled = true;
+                tasks.Add(publication.Completion.Task);
+            }
+            return tasks.ToArray();
+        }
+
+        private void WaitForPublicationTasks(Task[] tasks)
+        {
+            if (tasks == null || tasks.Length == 0)
+                return;
+
+            // A user connect callback is allowed to call Stop reentrantly.  In
+            // that case this thread is itself completing one of the tasks and
+            // waiting for it would deadlock.  The callback's completion path
+            // still performs the deferred disconnect and releases the entry.
+            if (IsCurrentThreadPublicationCallback())
+            {
+                _logger.LogWarning(
+                    "Client publication stop wait is reentrant; deferred callback cleanup will complete asynchronously.");
+                return;
+            }
+
+            try
+            {
+                if (!Task.WaitAll(tasks, StopDisconnectWaitMs))
+                    _logger.LogWarning(
+                        $"Client publication callbacks did not complete within {StopDisconnectWaitMs}ms during stop.");
+            }
+            catch (AggregateException ex)
+            {
+                _logger.LogError($"Client publication callback error during stop: {FormatExceptionChain(ex)}");
+            }
+        }
+
+        private bool IsCurrentThreadPublicationCallback()
+        {
+            var threadId = Thread.CurrentThread.ManagedThreadId;
+            lock (_clientAdmissionLock)
+            {
+                return _clientPublications.Values.Any(
+                    publication => publication.CallbackStarted
+                        && !publication.CallbackCompleted
+                        && publication.CallbackThreadId == threadId);
             }
         }
 
@@ -694,7 +1021,10 @@ namespace Unity.FoxgloveSDK.Transport
             if (ex == null)
                 return false;
 
-            if (ex is AuthenticationException || ex is IOException || ex is SocketException)
+            if (ex is OperationCanceledException
+                || ex is AuthenticationException
+                || ex is IOException
+                || ex is SocketException)
                 return true;
 
             if (ex is AggregateException aggregate)
@@ -758,6 +1088,14 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         private static void CloseUnregisteredClient(TcpClient tcpClient, Stream stream)
+        {
+            try { stream?.Close(); } catch { }
+            try { stream?.Dispose(); } catch { }
+            try { tcpClient?.Close(); } catch { }
+            try { tcpClient?.Dispose(); } catch { }
+        }
+
+        private static void CloseHandshakeResources(TcpClient tcpClient, Stream stream)
         {
             try { stream?.Close(); } catch { }
             try { stream?.Dispose(); } catch { }
@@ -937,16 +1275,25 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Remove the client from the dictionary, fire the disconnected event, and dispose the connection.</summary>
         private void DisconnectClient(uint clientId, WsConnection conn)
         {
-            if (!TryRemoveClient(clientId, conn))
+            // Do not remove or dispose a connection while its connect callback
+            // is still executing.  Stop and receive-loop teardown can race this
+            // method; deferring the decision preserves connect-before-disconnect
+            // ordering and lets the publication owner finish the paired event.
+            if (TryDeferPublicationDisconnect(clientId, conn))
+                return;
+
+            if (!TryRemoveClient(clientId, conn, out var announced))
             {
                 try { conn?.Dispose(); } catch { }
                 return;
             }
             Interlocked.Add(ref _totalDroppedDataFrames, conn.DroppedDataFrames);
-            Interlocked.Increment(ref _totalDisconnectedClients);
+            if (announced)
+                Interlocked.Increment(ref _totalDisconnectedClients);
             try
             {
-                OnClientDisconnected?.Invoke(clientId);
+                if (announced)
+                    OnClientDisconnected?.Invoke(clientId);
             }
             catch (Exception ex)
             {
@@ -958,9 +1305,27 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
+        private bool TryDeferPublicationDisconnect(uint clientId, WsConnection expectedConnection)
+        {
+            lock (_clientAdmissionLock)
+            {
+                if (!_clients.TryGetValue(clientId, out var current)
+                    || !ReferenceEquals(current, expectedConnection)
+                    || !_clientPublications.TryGetValue(clientId, out var publication)
+                    || !publication.CallbackStarted
+                    || publication.CallbackCompleted)
+                {
+                    return false;
+                }
+
+                publication.Cancelled = true;
+                return true;
+            }
+        }
+
         private void RemoveUnannouncedClient(uint clientId, WsConnection conn)
         {
-            if (!TryRemoveClient(clientId, conn))
+            if (!TryRemoveClient(clientId, conn, out _))
             {
                 CloseUnannouncedClient(conn);
                 return;
@@ -970,7 +1335,14 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         private bool TryRemoveClient(uint clientId, WsConnection expectedConnection)
+            => TryRemoveClient(clientId, expectedConnection, out _);
+
+        private bool TryRemoveClient(
+            uint clientId,
+            WsConnection expectedConnection,
+            out bool announced)
         {
+            announced = true;
             lock (_clientAdmissionLock)
             {
                 if (!_clients.TryGetValue(clientId, out var currentConnection)
@@ -978,8 +1350,19 @@ namespace Unity.FoxgloveSDK.Transport
                 {
                     return false;
                 }
+                var removed = _clients.TryRemove(clientId, out _);
+                if (_clientPublications.TryGetValue(clientId, out var publication))
+                {
+                    announced = publication.Announced;
+                    publication.Cancelled = true;
+                    if (!publication.Announced)
+                    {
+                        _clientPublications.Remove(clientId);
+                        publication.Completion.TrySetResult(true);
+                    }
+                }
 
-                return _clients.TryRemove(clientId, out _);
+                return removed;
             }
         }
 

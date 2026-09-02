@@ -51,6 +51,8 @@ namespace Unity.FoxgloveSDK.Transport
         // configured path for every request could otherwise serve bytes from a
         // different certificate generation than the page displayed.
         private byte[] _rootCaBytes;
+        private byte[] _rootCaPemBytes;
+        private int _rootCaPemTooLarge;
         private int _activeClientHandlers;
         private int _running;
         private bool _acceptingClients;
@@ -106,6 +108,18 @@ namespace Unity.FoxgloveSDK.Transport
 
                 _rootCaSha256Fingerprint = ComputeSha256Fingerprint(rootCaBytes);
                 Volatile.Write(ref _rootCaBytes, rootCaBytes);
+                var pemBytes = (string.IsNullOrWhiteSpace(_rootCaPemPath)
+                    || !File.Exists(_rootCaPemPath))
+                    ? null
+                    : ReadFileWithinLimit(_rootCaPemPath, MaxCertificateFileBytes);
+                Volatile.Write(
+                    ref _rootCaPemTooLarge,
+                    !string.IsNullOrWhiteSpace(_rootCaPemPath)
+                        && File.Exists(_rootCaPemPath)
+                        && pemBytes == null
+                        ? 1
+                        : 0);
+                Volatile.Write(ref _rootCaPemBytes, pemBytes);
                 var address = TransportHostResolver.ResolveBindAddress(host);
                 TcpListener listener = null;
                 CancellationTokenSource cts = null;
@@ -134,6 +148,8 @@ namespace Unity.FoxgloveSDK.Transport
                 {
                     Volatile.Write(ref _running, 0);
                     Volatile.Write(ref _rootCaBytes, null);
+                    Volatile.Write(ref _rootCaPemBytes, null);
+                    Volatile.Write(ref _rootCaPemTooLarge, 0);
                     _rootCaSha256Fingerprint = null;
                     _listener = null;
                     _cts = null;
@@ -247,6 +263,8 @@ namespace Unity.FoxgloveSDK.Transport
             }
             cts?.Dispose();
             Volatile.Write(ref _rootCaBytes, null);
+            Volatile.Write(ref _rootCaPemBytes, null);
+            Volatile.Write(ref _rootCaPemTooLarge, 0);
             _rootCaSha256Fingerprint = null;
             return handlersIdle;
         }
@@ -384,7 +402,10 @@ namespace Unity.FoxgloveSDK.Transport
 
                     if (parts[1] == "/rootCA.pem" && !string.IsNullOrWhiteSpace(_rootCaPemPath))
                     {
-                        WriteFile(stream, _rootCaPemPath, "application/x-pem-file");
+                        if (Volatile.Read(ref _rootCaPemTooLarge) != 0)
+                            WriteText(stream, "413 Payload Too Large", "text/plain", "Certificate file is too large.");
+                        else
+                            WriteFile(stream, Volatile.Read(ref _rootCaPemBytes), "application/x-pem-file");
                         return;
                     }
 

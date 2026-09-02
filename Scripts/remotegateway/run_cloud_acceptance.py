@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BUILD_SCRIPT = ROOT / "Scripts" / "remotegateway" / "build_foxglove_c_win64.py"
 DEFAULT_PROJECT = ROOT / "Unity2Foxglove"
 PLUGIN_DIR = ROOT / "Packages" / "dev.unity2foxglove.remotegateway.win64" / "Runtime" / "Plugins" / "Windows" / "x86_64"
+PACKAGE_MANIFEST_NAME = "foxglove-gateway-native-artifact.json"
 TOKEN_ENV = "FOXGLOVE_DEVICE_TOKEN"
 EXPECTED_START_LOG = "[Foxglove] Remote gateway started. Publishing to Foxglove Cloud."
 UNSUPPORTED_V1 = "ClientPublish, Services, Parameters, Assets, ConnectionGraph"
@@ -78,10 +79,10 @@ def main() -> int:
     copy_editor_log(run_dir, "before")
 
     if args.skip_native_build:
-        ensure_native_artifact()
+        ensure_native_artifact(require_committed=True)
     else:
-        build_and_copy_native()
-        ensure_native_artifact()
+        generated_manifest = build_and_copy_native()
+        ensure_native_artifact(manifest_path=generated_manifest)
 
     checklist = write_checklist(run_dir, unity_exe, project_path)
     print_summary(run_dir, checklist, unity_exe, project_path)
@@ -164,8 +165,8 @@ def create_run_dir() -> Path:
     return Path(tempfile.mkdtemp(prefix=f"{timestamp}-", dir=root))
 
 
-def build_and_copy_native() -> None:
-    """Build foxglove_c and copy approved native artifacts into the package."""
+def build_and_copy_native() -> Path:
+    """Build foxglove_c, copy binaries, and return its transient manifest."""
     print("Building foxglove_c and copying approved native artifacts into the optional package.")
     subprocess.run(
         [sys.executable, str(BUILD_SCRIPT), "--copy-to-package"],
@@ -173,6 +174,7 @@ def build_and_copy_native() -> None:
         check=True,
         env=native_build_environment(),
     )
+    return ROOT / "build" / "remotegateway" / "foxglove-c-win64" / PACKAGE_MANIFEST_NAME
 
 
 def native_build_environment() -> dict[str, str]:
@@ -182,18 +184,38 @@ def native_build_environment() -> dict[str, str]:
     return environment
 
 
-def ensure_native_artifact() -> None:
-    """Verify that the optional package contains the reviewed native artifact."""
+def ensure_native_artifact(
+    *,
+    manifest_path: Path | None = None,
+    require_committed: bool = False,
+) -> None:
+    """Verify a package DLL against a staged or committed manifest."""
     dll = PLUGIN_DIR / "foxglove.dll"
-    manifest = PLUGIN_DIR / "foxglove-gateway-native-artifact.json"
+    manifest = manifest_path or (PLUGIN_DIR / PACKAGE_MANIFEST_NAME)
     if not dll.is_file() or not manifest.is_file():
         raise SystemExit(
             "Native gateway artifact is missing from the optional package. Run without --skip-native-build first."
         )
 
     try:
-        metadata = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        manifest_bytes = manifest.read_bytes()
+    except OSError as error:
+        raise SystemExit(f"Native artifact manifest could not be read: {manifest}: {error}") from error
+
+    if require_committed:
+        expected_manifest = PLUGIN_DIR / PACKAGE_MANIFEST_NAME
+        if manifest.resolve() != expected_manifest.resolve():
+            raise SystemExit("Native artifact trust validation requires the package manifest.")
+        committed = read_committed_manifest(manifest)
+        if manifest_bytes != committed:
+            raise SystemExit(
+                "Native artifact manifest does not match the committed trust anchor; "
+                "commit or restore the package manifest before using --skip-native-build."
+            )
+
+    try:
+        metadata = json.loads(manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise SystemExit(f"Native artifact manifest is not valid JSON: {manifest}: {error}") from error
     if not isinstance(metadata, dict):
         raise SystemExit(f"Native artifact manifest must contain a JSON object: {manifest}")
@@ -229,7 +251,31 @@ def ensure_native_artifact() -> None:
         )
 
     print(f"Native artifact present: {dll.relative_to(ROOT)}")
+    print(f"Native artifact manifest verified: {manifest}")
     print("Do not submit generated foxglove.dll, foxglove.dll.lib, or foxglove.pdb.")
+
+
+def read_committed_manifest(manifest: Path) -> bytes:
+    """Read the exact manifest blob recorded at HEAD for skip-build trust."""
+    try:
+        relative = manifest.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError as error:
+        raise SystemExit("Native artifact manifest must be inside the repository trust boundary.") from error
+
+    result = subprocess.run(
+        ["git", "show", f"HEAD:{relative}"],
+        cwd=str(ROOT),
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise SystemExit(
+            "Native artifact committed trust anchor could not be read"
+            + (f": {detail}" if detail else ".")
+        )
+    return result.stdout
 
 
 def sha256_file(path: Path) -> str:

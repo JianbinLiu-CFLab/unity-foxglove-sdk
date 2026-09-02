@@ -25,10 +25,16 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<string, AssetRoot> _roots = new();
         /// <summary>Lock guarding root map modifications and queries.</summary>
         private readonly object _lock = new();
+        private readonly Func<bool> _mutationAllowed;
         private static StringComparison FileSystemPathComparison =>
             Path.DirectorySeparatorChar == '\\'
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal;
+
+        public FoxgloveAssetRegistry(Func<bool> mutationAllowed = null)
+        {
+            _mutationAllowed = mutationAllowed;
+        }
 
         /// <summary>True if at least one asset root is registered.</summary>
         public bool HasRoots { get { lock (_lock) return _roots.Count > 0; } }
@@ -40,11 +46,19 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void RegisterRoot(string uriPrefix, string localRoot, long maxBytes = 16 * 1024 * 1024)
         {
+            ThrowIfMutationBlocked();
             if (string.IsNullOrEmpty(uriPrefix)) throw new ArgumentException("uriPrefix is required", nameof(uriPrefix));
             if (string.IsNullOrWhiteSpace(localRoot)) throw new ArgumentException("localRoot is required", nameof(localRoot));
             var normalizedPrefix = NormalizeUriPrefix(uriPrefix);
             var fullRoot = Path.GetFullPath(localRoot);
             lock (_lock) { _roots[normalizedPrefix] = new AssetRoot { LocalRoot = fullRoot, MaxBytes = Math.Max(0, maxBytes) }; }
+        }
+
+        private void ThrowIfMutationBlocked()
+        {
+            if (_mutationAllowed != null && !_mutationAllowed())
+                throw new InvalidOperationException(
+                    "Asset registry mutations are unavailable while session cleanup is pending.");
         }
 
         /// <summary>

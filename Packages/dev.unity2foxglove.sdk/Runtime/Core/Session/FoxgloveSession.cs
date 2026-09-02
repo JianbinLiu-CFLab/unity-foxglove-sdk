@@ -40,6 +40,10 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IPrioritizedFoxgloveTransport _prioritizedTransport;
         private readonly IFoxgloveClock _clock;
         private readonly object _channelLifecycleLock = new object();
+        // Serializes service registry changes with client-visible advertise /
+        // unadvertise frames. Service calls take the same lock while they are
+        // admitted so a request cannot race a staged removal.
+        private readonly object _serviceLifecycleLock = new object();
         private readonly ChannelRegistry _channels = new();
         private readonly HashSet<uint> _recordingOnlyChannels = new();
         private readonly SubscriptionRegistry _subscriptions = new();
@@ -950,18 +954,49 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public uint RegisterService(Protocol.ServiceDescriptor descriptor)
         {
-            var id = _services.Register(descriptor);
-            try
+            lock (_serviceLifecycleLock)
             {
-                AdvertiseRegisteredService(id);
-                return id;
+                var id = _services.Register(descriptor);
+                try
+                {
+                    AdvertiseRegisteredServiceCore(id);
+                    return id;
+                }
+                catch
+                {
+                    // Publication is part of registration. Do not leave a
+                    // service in the registry when its first advertisement
+                    // failed; the core also retracts a possibly partial frame.
+                    _services.Unregister(id);
+                    throw;
+                }
             }
-            catch
+        }
+
+        /// <summary>
+        /// Register a runtime-owned service while holding the same publication
+        /// lock as the session-facing overload. This closes the gap between
+        /// inserting the descriptor and advertising it to connected clients.
+        /// </summary>
+        internal uint RegisterServiceFromRuntime(
+            Protocol.ServiceDescriptor descriptor,
+            Func<JToken, JToken> handler)
+        {
+            lock (_serviceLifecycleLock)
             {
-                // Publication is part of registration. Do not leave a service
-                // in the registry when its first advertisement failed.
-                _services.Unregister(id);
-                throw;
+                var id = handler != null
+                    ? _services.Register(descriptor, handler)
+                    : _services.Register(descriptor);
+                try
+                {
+                    AdvertiseRegisteredServiceCore(id);
+                    return id;
+                }
+                catch
+                {
+                    _services.Unregister(id);
+                    throw;
+                }
             }
         }
 
@@ -971,37 +1006,67 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public bool UnregisterService(uint serviceId)
         {
-            var service = _services.GetById(serviceId);
-            if (service == null)
-                return false;
-
-            _transport.BroadcastText(JsonConvert.SerializeObject(new UnadvertiseServices
+            lock (_serviceLifecycleLock)
             {
-                ServiceIds = new List<uint> { serviceId }
-            }));
-
-            try
-            {
-                _graph.RemoveAdvertisedService(service.Name);
-                _graph.BroadcastUpdate();
-                if (!_services.Unregister(serviceId))
+                if (!_services.TryRemove(serviceId, out var service, out var handler))
                     return false;
-                return true;
-            }
-            catch
-            {
-                // Keep the registry and graph coherent for a retry if graph
-                // publication fails after the unadvertise was sent.
+
+                var graphRemoved = false;
+                // Mark the attempt before invoking the transport: a custom
+                // transport may write a frame and then throw.
+                var unadvertiseAttempted = false;
+                var unadvertiseJson = JsonConvert.SerializeObject(new UnadvertiseServices
+                {
+                    ServiceIds = new List<uint> { serviceId }
+                });
+                var advertiseJson = JsonConvert.SerializeObject(new AdvertiseServices
+                {
+                    Services = new List<ServiceDescriptor> { service }
+                });
+
                 try
                 {
-                    _graph.AddAdvertisedService(service.Name);
+                    // Remove the server-side admission entry first. The lock
+                    // also protects the service-call admission check below.
+                    _graph.RemoveAdvertisedService(service.Name);
+                    graphRemoved = true;
                     _graph.BroadcastUpdate();
+                    unadvertiseAttempted = true;
+                    _transport.BroadcastText(unadvertiseJson);
+                    return true;
                 }
                 catch
                 {
-                    // Preserve the original publication exception.
+                    if (unadvertiseAttempted)
+                        TryBroadcastServiceCompensation(advertiseJson, "advertise");
+
+                    if (graphRemoved)
+                    {
+                        try
+                        {
+                            _graph.AddAdvertisedService(service.Name);
+                            _graph.BroadcastUpdate();
+                        }
+                        catch (Exception compensationFailure)
+                        {
+                            _logger.LogWarning(
+                                $"Service graph rollback failed for {serviceId}: " +
+                                $"{compensationFailure.GetType().Name}: {compensationFailure.Message}");
+                        }
+                    }
+
+                    try
+                    {
+                        _services.Restore(serviceId, service, handler);
+                    }
+                    catch (Exception restoreFailure)
+                    {
+                        _logger.LogError(
+                            $"Service registry rollback failed for {serviceId}: " +
+                            $"{restoreFailure.GetType().Name}: {restoreFailure.Message}");
+                    }
+                    throw;
                 }
-                throw;
             }
         }
 
@@ -1011,24 +1076,46 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         internal void AdvertiseRegisteredService(uint serviceId)
         {
+            lock (_serviceLifecycleLock)
+            {
+                AdvertiseRegisteredServiceCore(serviceId);
+            }
+        }
+
+        private void AdvertiseRegisteredServiceCore(uint serviceId)
+        {
             var service = _services.GetById(serviceId);
             if (service == null)
                 return;
 
-            var adv = new Protocol.AdvertiseServices { Services = new List<ServiceDescriptor> { service } };
+            var advertiseJson = JsonConvert.SerializeObject(
+                new Protocol.AdvertiseServices { Services = new List<ServiceDescriptor> { service } });
             var graphAdded = false;
+            var advertiseAttempted = false;
             try
             {
                 // Validate and publish the graph entry before advertising the
-                // service to clients.  A malformed service name must fail
+                // service to clients. A malformed service name must fail
                 // before any client-visible advertise frame is emitted.
                 _graph.AddAdvertisedService(service.Name);
                 graphAdded = true;
                 _graph.BroadcastUpdate();
-                _transport.BroadcastText(JsonConvert.SerializeObject(adv));
+                // A transport is allowed to make a partial write before
+                // reporting failure, so every attempted advertise gets a
+                // best-effort client-visible compensation.
+                advertiseAttempted = true;
+                _transport.BroadcastText(advertiseJson);
             }
             catch
             {
+                if (advertiseAttempted)
+                    TryBroadcastServiceCompensation(
+                        JsonConvert.SerializeObject(new UnadvertiseServices
+                        {
+                            ServiceIds = new List<uint> { serviceId }
+                        }),
+                        "unadvertise");
+
                 if (graphAdded)
                 {
                     try
@@ -1036,12 +1123,28 @@ namespace Unity.FoxgloveSDK.Core
                         _graph.RemoveAdvertisedService(service.Name);
                         _graph.BroadcastUpdate();
                     }
-                    catch
+                    catch (Exception compensationFailure)
                     {
-                        // Preserve the original publication exception.
+                        _logger.LogWarning(
+                            $"Service graph rollback failed for {serviceId}: " +
+                            $"{compensationFailure.GetType().Name}: {compensationFailure.Message}");
                     }
                 }
                 throw;
+            }
+        }
+
+        private void TryBroadcastServiceCompensation(string json, string operation)
+        {
+            try
+            {
+                _transport.BroadcastText(json);
+            }
+            catch (Exception compensationFailure)
+            {
+                _logger.LogWarning(
+                    $"Service {operation} compensation failed: " +
+                    $"{compensationFailure.GetType().Name}: {compensationFailure.Message}");
             }
         }
 

@@ -22,10 +22,17 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<string, ParameterEntry> _params = new();
         private readonly object _lock = new();
         private readonly IFoxgloveLogger _logger;
+        private readonly Func<bool> _mutationAllowed;
 
         public FoxgloveParameterStore(IFoxgloveLogger logger = null)
         {
             _logger = logger;
+        }
+
+        internal FoxgloveParameterStore(IFoxgloveLogger logger, Func<bool> mutationAllowed)
+            : this(logger)
+        {
+            _mutationAllowed = mutationAllowed;
         }
 
         /// <summary>
@@ -56,13 +63,14 @@ namespace Unity.FoxgloveSDK.Core
             public void Dispose()
             {
                 if (Interlocked.Exchange(ref _disposed, 1) == 0)
-                    _store.UnregisterOwned(this);
+                    _store.UnregisterOwnedDuringCleanup(this);
             }
         }
 
         /// <summary>Register a parameter. Overwrites if already exists. Fires OnParameterChanged.</summary>
         public void Register(string name, JToken value, string type, bool writable)
         {
+            ThrowIfMutationBlocked();
             var normalizedType = NormalizeParameterType(type);
             if (!IsSupportedParameterType(normalizedType))
                 throw new ArgumentException($"Unsupported parameter type: {normalizedType}", nameof(type));
@@ -89,6 +97,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public ParameterRegistration RegisterOwned(string name, JToken value, string type, bool writable)
         {
+            ThrowIfMutationBlocked();
             var normalizedType = NormalizeParameterType(type);
             if (!IsSupportedParameterType(normalizedType))
                 throw new ArgumentException($"Unsupported parameter type: {normalizedType}", nameof(type));
@@ -120,11 +129,21 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Unregister a parameter.</summary>
         public bool Unregister(string name)
         {
+            ThrowIfMutationBlocked();
             lock (_lock) { return _params.Remove(name); }
         }
 
         /// <summary>Remove an entry only when it is still owned by the supplied lease.</summary>
         public bool UnregisterOwned(ParameterRegistration registration)
+        {
+            ThrowIfMutationBlocked();
+            return UnregisterOwnedCore(registration);
+        }
+
+        private bool UnregisterOwnedDuringCleanup(ParameterRegistration registration)
+            => UnregisterOwnedCore(registration);
+
+        private bool UnregisterOwnedCore(ParameterRegistration registration)
         {
             if (registration == null || !registration.BelongsTo(this))
                 return false;
@@ -140,6 +159,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Set a parameter's value from a client request. Silently no-ops for unknown/read-only params.</summary>
         public bool TrySetFromClient(string name, JToken value)
         {
+            ThrowIfMutationBlocked();
             string type;
             JToken normalizedValue;
             lock (_lock)
@@ -312,7 +332,21 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Remove all parameters.</summary>
         public void Clear()
         {
+            ThrowIfMutationBlocked();
             lock (_lock) { _params.Clear(); }
+        }
+
+        /// <summary>Clear runtime-owned entries while the owning session is being retired.</summary>
+        internal void ClearDuringCleanup()
+        {
+            lock (_lock) { _params.Clear(); }
+        }
+
+        private void ThrowIfMutationBlocked()
+        {
+            if (_mutationAllowed != null && !_mutationAllowed())
+                throw new InvalidOperationException(
+                    "Parameter store mutations are unavailable while session cleanup is pending.");
         }
 
         private sealed class ParameterEntry

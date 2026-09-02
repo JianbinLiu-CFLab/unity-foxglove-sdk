@@ -23,7 +23,9 @@ Unsupported in Phase 171:
 Native artifacts are built by `Scripts/remotegateway/build_foxglove_c_win64.py`.
 The script builds outside `Packages/` first, records artifact metadata, and only
 copies approved plugin files into `Runtime/Plugins/Windows/x86_64/` when
-explicitly requested.
+explicitly requested. The tracked manifest stays unchanged during that copy and
+remains the skip-build trust anchor; use `--update-package-manifest` only when a
+reviewed artifact replacement is intended, then commit the resulting manifest.
 
 ## Real Foxglove Cloud acceptance
 
@@ -46,9 +48,11 @@ python Scripts/remotegateway/run_cloud_acceptance.py --unity-exe "C:\Program Fil
 ```
 
 The helper runs `Scripts/remotegateway/build_foxglove_c_win64.py
---copy-to-package`, checks that `foxglove.dll` is present in the optional
-package, starts Unity with `-projectPath Unity2Foxglove`, and writes a
-run-specific checklist under `build/remotegateway/cloud-acceptance/`.
+--copy-to-package`, checks the copied `foxglove.dll` against the freshly staged
+manifest (without replacing the tracked package manifest), starts Unity with
+`-projectPath Unity2Foxglove`, and writes a run-specific checklist under
+`build/remotegateway/cloud-acceptance/`. With `--skip-native-build`, it first
+requires the package manifest bytes to match the manifest committed at `HEAD`.
 
 Manual validation steps:
 

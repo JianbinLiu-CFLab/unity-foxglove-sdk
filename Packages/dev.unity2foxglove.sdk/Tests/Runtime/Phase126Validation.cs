@@ -58,6 +58,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyValidationRegistry()
         {
             var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            var registrySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var phase126 = PhaseValidationRegistry.Find(new[] { "--phase126" });
             var phase138b = PhaseValidationRegistry.Find(new[] { "--phase138b" });
@@ -68,6 +69,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(program.Contains("PhaseValidationRegistry.FindAll", StringComparison.Ordinal)
                   && program.Contains("RunTests(argSet.Contains(\"--local-evidence\"))", StringComparison.Ordinal),
                 "126B-1: Program.cs dispatches through the phase validation registry");
+            Check(program.Contains("--all-ci-safe", StringComparison.Ordinal)
+                  && program.Contains("RunAllCiSafeValidations", StringComparison.Ordinal)
+                  && registrySource.Contains("CiSafeValidations", StringComparison.Ordinal),
+                "126B-1b: the runner exposes an explicit all-CI-safe registry gate");
             Check(phase126 != null
                   && phase126.Category == ValidationCategory.CiSafe
                   && phase126.Evidence == ValidationEvidence.Structural

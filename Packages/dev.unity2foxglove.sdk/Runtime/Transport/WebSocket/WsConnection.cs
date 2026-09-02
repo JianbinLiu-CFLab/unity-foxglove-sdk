@@ -110,7 +110,7 @@ namespace Unity.FoxgloveSDK.Transport
             return _sendQueue.Enqueue(new QueuedFrame(OpText, payload, priority));
         }
 
-        public EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)
+        internal EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)
         {
             return _sendQueue.Enqueue(new QueuedFrame(OpText, utf8Json ?? Array.Empty<byte>(), priority));
         }

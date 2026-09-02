@@ -173,6 +173,36 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void FileOrderBoundedHelperRejectsTheFirstMessageAtTheConfiguredLimit()
+        {
+            var result = new List<McapMessage>();
+            var options = new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder,
+                MaxMessages = 1
+            };
+
+            Assert.True(McapIndexedReaderHelpers.TryAddBoundedMessage(
+                result, Message(1, 1, 1), options, out _));
+            Assert.False(McapIndexedReaderHelpers.TryAddBoundedMessage(
+                result, Message(1, 2, 2), options, out _));
+            Assert.Single(result);
+            Assert.Equal(1UL, result[0].LogTime);
+        }
+
+        [Fact]
+        public void StreamingReaderRejectsFooterWithoutTrailingMagic()
+        {
+            var bytes = CreateSimpleMessageMcapBytes(1);
+            Array.Resize(ref bytes, bytes.Length - McapWriter.MagicLength);
+            using var stream = new MemoryStream(bytes, writable: false);
+            using var reader = new McapStreamingReader(stream, leaveOpen: true);
+
+            var error = Assert.Throws<InvalidDataException>(() => reader.Read());
+            Assert.Contains("trailing magic", error.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void TruncatedMessageContentThrowsInvalidData()
         {
             Assert.True(ThrowsInvalidData(() => McapRecordDecoder.DecodeMessage(new byte[10], 0, 10)),

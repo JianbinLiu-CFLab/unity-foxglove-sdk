@@ -130,6 +130,31 @@ namespace Unity.FoxgloveSDK.Components
             bool hasPendingSessionCleanup)
             => isRunning || hasActiveSession || hasPendingSessionCleanup;
 
+        /// <summary>
+        /// Runs a set of pre-tail cleanup actions to completion and returns the
+        /// first captured failure without throwing. StopServer uses this for
+        /// event-detach and registry steps that must not prevent the mandatory
+        /// runtime-stop tail from running.
+        /// </summary>
+        internal static ExceptionDispatchInfo RunCleanupReturningFirstFailure(
+            params Action[] steps)
+        {
+            ExceptionDispatchInfo firstFailure = null;
+            foreach (var step in steps)
+            {
+                try
+                {
+                    step?.Invoke();
+                }
+                catch (Exception exception)
+                {
+                    firstFailure ??= ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+
+            return firstFailure;
+        }
+
         private static void ReportFailure(Action<Exception> reportFailure, Exception exception)
         {
             try

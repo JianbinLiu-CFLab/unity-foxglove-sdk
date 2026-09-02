@@ -30,14 +30,16 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         /// <param name="id">Connected Foxglove client identifier.</param>
         private void EnqueueConnect(uint id) =>
-            EnqueueClientLifecycleEvent(ClientEvent.Connect(id));
+            EnqueueClientLifecycleEvent(ClientEvent.Connect(
+                Volatile.Read(ref _connectionState.ChannelSessionGeneration), id));
 
         /// <summary>
         /// Queues a transport disconnect event for main-thread delivery.
         /// </summary>
         /// <param name="id">Disconnected Foxglove client identifier.</param>
         private void EnqueueDisconnect(uint id) =>
-            EnqueueClientLifecycleEvent(ClientEvent.Disconnect(id));
+            EnqueueClientLifecycleEvent(ClientEvent.Disconnect(
+                Volatile.Read(ref _connectionState.ChannelSessionGeneration), id));
 
         private void EnqueueClientLifecycleEvent(ClientEvent evt)
         {
@@ -106,6 +108,12 @@ namespace Unity.FoxgloveSDK.Components
             {
                 foreach (var evt in _clientEventDrainScratch)
                 {
+                    // A transport callback may already be in flight when the
+                    // manager detaches it during Stop.  Its stamped event must
+                    // never be delivered to the next session epoch.
+                    if (!ClientEventGenerationGate.IsCurrent(evt.Generation, generation))
+                        continue;
+
                     bool dispatched;
                     if (evt.IsMessage)
                     {
@@ -179,8 +187,9 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal readonly struct ClientEvent
     {
-        private ClientEvent(uint clientId, uint channelId, string topic, string encoding, byte[] payload, bool isConnect, bool isMessage)
+        private ClientEvent(ulong generation, uint clientId, uint channelId, string topic, string encoding, byte[] payload, bool isConnect, bool isMessage)
         {
+            Generation = generation;
             ClientId = clientId;
             ChannelId = channelId;
             Topic = topic;
@@ -191,13 +200,29 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         public static ClientEvent Connect(uint clientId) =>
-            new(clientId, 0, null, null, null, isConnect: true, isMessage: false);
+            Connect(0, clientId);
+
+        public static ClientEvent Connect(ulong generation, uint clientId) =>
+            new(generation, clientId, 0, null, null, null, isConnect: true, isMessage: false);
 
         public static ClientEvent Disconnect(uint clientId) =>
-            new(clientId, 0, null, null, null, isConnect: false, isMessage: false);
+            Disconnect(0, clientId);
+
+        public static ClientEvent Disconnect(ulong generation, uint clientId) =>
+            new(generation, clientId, 0, null, null, null, isConnect: false, isMessage: false);
 
         public static ClientEvent Message(uint clientId, uint channelId, string topic, string encoding, byte[] payload) =>
-            new(clientId, channelId, topic, encoding, payload, isConnect: false, isMessage: true);
+            Message(0, clientId, channelId, topic, encoding, payload);
+
+        public static ClientEvent Message(ulong generation, uint clientId, uint channelId, string topic, string encoding, byte[] payload) =>
+            new(generation, clientId, channelId, topic, encoding, payload, isConnect: false, isMessage: true);
+
+        /// <summary>
+        /// Session generation captured by the producer callback.  Zero is
+        /// reserved for legacy test/factory callers; live Manager callbacks
+        /// always use the non-zero generation assigned at StartServer.
+        /// </summary>
+        public readonly ulong Generation;
 
         /// <summary>
         /// Foxglove client identifier associated with the event.

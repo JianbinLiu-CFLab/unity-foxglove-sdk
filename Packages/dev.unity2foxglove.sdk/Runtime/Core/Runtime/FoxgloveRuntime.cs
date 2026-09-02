@@ -51,6 +51,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveClock _wallClock;
         private readonly PlaybackClock _playbackClock;
         private readonly ISchemaRegistry _schemaRegistry;
+        private readonly ISchemaRegistry _publicSchemaRegistry;
         private readonly IFoxgloveLogger _logger;
         private bool _protobufSchemasRegistered;
         private readonly HashSet<string> _additionalMessageEncodings =
@@ -70,7 +71,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Runtime-owned service registry; survives Stop/Start cycles.</summary>
         private readonly FoxgloveServiceRegistry _services = new();
         /// <summary>Runtime-owned asset registry for fetchAsset capability.</summary>
-        private readonly FoxgloveAssetRegistry _assets = new();
+        private readonly FoxgloveAssetRegistry _assets;
 
         /// <summary>Recording lifecycle controller.</summary>
         private readonly RecordingController _recording;
@@ -104,6 +105,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Add a browser origin to the transport's CSWSH allowlist. No-op if unsupported.</summary>
         public void AddAllowedOrigin(string origin)
         {
+            ThrowIfSessionCleanupPending();
             if (_transport is IOriginGuardedFoxgloveTransport originGuard)
                 originGuard.AddAllowedOrigin(origin);
         }
@@ -111,6 +113,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Clear the transport's browser origin allowlist, blocking all browser clients.</summary>
         public void ClearAllowedOrigins()
         {
+            ThrowIfSessionCleanupPending();
             if (_transport is IOriginGuardedFoxgloveTransport originGuard)
                 originGuard.ClearAllowedOrigins();
         }
@@ -123,7 +126,11 @@ namespace Unity.FoxgloveSDK.Core
             _playbackClock = new PlaybackClock(_wallClock);
             _schemaRegistry = schemaRegistry ?? throw new ArgumentNullException(nameof(schemaRegistry));
             _logger = logger ?? new ConsoleLogger();
-            _parameters = new FoxgloveParameterStore(_logger);
+            _parameters = new FoxgloveParameterStore(_logger, () => _sessionPendingCleanup == null);
+            _assets = new FoxgloveAssetRegistry(() => _sessionPendingCleanup == null);
+            _publicSchemaRegistry = new GuardedSchemaRegistry(
+                _schemaRegistry,
+                () => _sessionPendingCleanup == null);
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
             TryRegisterProtobufSchemas();
             _recording = new RecordingController(_logger, _playbackClock);
@@ -143,13 +150,14 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Whether a registered channel has live subscriber or MCAP recording demand.</summary>
         public bool HasChannelDemand(uint channelId) => _session?.HasChannelDemand(channelId) ?? false;
         /// <summary>Schema registry used by this runtime.</summary>
-        public ISchemaRegistry Schemas => _schemaRegistry;
+        public ISchemaRegistry Schemas => _publicSchemaRegistry;
         /// <summary>
         /// Adds one Provider-owned message encoding to future session
         /// serverInfo snapshots. Configuration is frozen while running.
         /// </summary>
         public void EnableMessageEncoding(string encoding)
         {
+            ThrowIfSessionCleanupPending();
             if (_session != null)
                 throw new InvalidOperationException(
                     "Message encodings must be configured before the runtime starts.");
@@ -171,6 +179,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <exception cref="InvalidOperationException">The session is already started.</exception>
         public void SetSinkChannelFilter(FoxgloveSinkKind sink, ISinkChannelFilter filter)
         {
+            ThrowIfSessionCleanupPending();
             if (_session != null)
                 throw new InvalidOperationException(
                     "Sink channel filters must be configured before the session starts; " +
@@ -203,6 +212,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Attach or detach an optional live-data mirror sink.</summary>
         public void SetMirrorSink(IFoxgloveMirrorSink sink)
         {
+            ThrowIfSessionCleanupPending();
             Volatile.Write(ref _mirrorSink, sink);
             _session?.SetMirrorSink(sink);
         }
@@ -212,16 +222,25 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Register a named parameter. Can be called before Start; stored for later advertisement.</summary>
         public void RegisterParameter(string name, JToken value, string type, bool writable)
-            => _parameters.Register(name, value, type, writable);
+        {
+            ThrowIfSessionCleanupPending();
+            _parameters.Register(name, value, type, writable);
+        }
 
         /// <summary>Register a parameter with a lease that owns only this registration.</summary>
         public FoxgloveParameterStore.ParameterRegistration RegisterParameterOwned(
             string name, JToken value, string type, bool writable)
-            => _parameters.RegisterOwned(name, value, type, writable);
+        {
+            ThrowIfSessionCleanupPending();
+            return _parameters.RegisterOwned(name, value, type, writable);
+        }
 
         /// <summary>Unregister a named parameter. Safe no-op for unknown names.</summary>
         public bool UnregisterParameter(string name)
-            => _parameters.Unregister(name);
+        {
+            ThrowIfSessionCleanupPending();
+            return _parameters.Unregister(name);
+        }
 
         /// <summary>
         /// Update a writable runtime-owned parameter and notify Foxglove clients
@@ -229,6 +248,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public bool TrySetParameter(string name, JToken value)
         {
+            ThrowIfSessionCleanupPending();
             if (!_parameters.TrySetFromClient(name, value))
                 return false;
             _singleParameterBroadcastName[0] = name;
@@ -252,22 +272,19 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public uint RegisterService(ServiceDescriptor descriptor, Func<JToken, JToken> handler = null)
         {
+            ThrowIfSessionCleanupPending();
+            // Once a session is active, let it stage the registry mutation and
+            // client-visible advertisement under one lifecycle lock. This
+            // prevents a request from observing the descriptor between those
+            // two operations.
+            if (_session != null)
+                return _session.RegisterServiceFromRuntime(descriptor, handler);
+
             var id = handler != null
                 ? _services.Register(descriptor, handler)
                 : _services.Register(descriptor);
-            // Re-advertise immediately so connected clients pick up the new service
-            if (_session != null)
-            {
-                try
-                {
-                    _session.AdvertiseRegisteredService(id);
-                }
-                catch
-                {
-                    _services.Unregister(id);
-                    throw;
-                }
-            }
+            // Before Start there are no connected clients; the next session
+            // snapshot advertises the retained runtime-owned definition.
             return id;
         }
 
@@ -276,6 +293,23 @@ namespace Unity.FoxgloveSDK.Core
         /// is currently serving a session.
         /// </summary>
         public bool UnregisterService(uint serviceId)
+        {
+            ThrowIfSessionCleanupPending();
+            if (serviceId == 0)
+                return false;
+
+            return _session != null
+                ? _session.UnregisterService(serviceId)
+                : _services.Unregister(serviceId);
+        }
+
+        /// <summary>
+        /// Removes a Manager-owned service while the runtime is completing a
+        /// retired-session cleanup epoch. This bypasses the public mutation
+        /// guard but still routes through the active session when one exists so
+        /// client-visible unadvertise ordering is preserved.
+        /// </summary>
+        internal bool UnregisterServiceDuringCleanup(uint serviceId)
         {
             if (serviceId == 0)
                 return false;
@@ -340,7 +374,7 @@ namespace Unity.FoxgloveSDK.Core
                 _replayOrchestrator.Attach(_replay, session);
                 _stopped = false;
             }
-            catch (Exception startException)
+            catch (Exception)
             {
                 // Run every cleanup step independently. The original Start
                 // failure remains primary; cleanup failures are retained in
@@ -350,7 +384,6 @@ namespace Unity.FoxgloveSDK.Core
                 if (cleanupFailure != null)
                     _logger.LogWarning(
                         $"Startup cleanup was incomplete; preserving the original Start exception: {cleanupFailure.SourceException.Message}");
-                ExceptionDispatchInfo.Capture(startException).Throw();
                 throw;
             }
         }
@@ -606,7 +639,10 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Register a local file system root for fetchAsset under the given URI prefix.</summary>
         public void RegisterAssetRoot(string uriPrefix, string localRoot, long maxBytes = 16 * 1024 * 1024)
-            => _assets.RegisterRoot(uriPrefix, localRoot, maxBytes);
+        {
+            ThrowIfSessionCleanupPending();
+            _assets.RegisterRoot(uriPrefix, localRoot, maxBytes);
+        }
 
         /// <summary>Asset registry for fetchAsset capability.</summary>
         public FoxgloveAssetRegistry Assets => _assets;
@@ -618,7 +654,10 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Enable MCAP recording for the next session start.</summary>
         public void EnableRecording(string filePath, int chunkSizeBytes = McapRecorder.DefaultChunkSizeBytes, string compression = "", string coordinateMode = "")
-            => _recording.Enable(filePath, chunkSizeBytes, compression, coordinateMode);
+        {
+            ThrowIfSessionCleanupPending();
+            _recording.Enable(filePath, chunkSizeBytes, compression, coordinateMode);
+        }
 
         /// <summary>Enable MCAP recording with explicit output and input coordinate conventions.</summary>
         public void EnableRecording(
@@ -627,16 +666,22 @@ namespace Unity.FoxgloveSDK.Core
             string compression,
             string outputCoordinateMode,
             string inputCoordinateMode)
-            => _recording.Enable(
+        {
+            ThrowIfSessionCleanupPending();
+            _recording.Enable(
                 filePath,
                 chunkSizeBytes,
                 compression,
                 outputCoordinateMode,
                 inputCoordinateMode);
+        }
 
         /// <summary>Enable MCAP recording with advanced writer options for the next session start.</summary>
         public void EnableRecording(string filePath, McapWriterOptions options, string coordinateMode = "")
-            => _recording.Enable(filePath, options, coordinateMode);
+        {
+            ThrowIfSessionCleanupPending();
+            _recording.Enable(filePath, options, coordinateMode);
+        }
 
         /// <summary>Enable MCAP recording with paired coordinate conventions.</summary>
         public void EnableRecording(
@@ -644,20 +689,34 @@ namespace Unity.FoxgloveSDK.Core
             McapWriterOptions options,
             string outputCoordinateMode,
             string inputCoordinateMode)
-            => _recording.Enable(filePath, options, outputCoordinateMode, inputCoordinateMode);
+        {
+            ThrowIfSessionCleanupPending();
+            _recording.Enable(filePath, options, outputCoordinateMode, inputCoordinateMode);
+        }
 
         /// <summary>Set the coordinate mode on the recording controller.</summary>
-        public void SetRecordingCoordinateMode(string mode) => _recording.SetCoordinateMode(mode);
+        public void SetRecordingCoordinateMode(string mode)
+        {
+            ThrowIfSessionCleanupPending();
+            _recording.SetCoordinateMode(mode);
+        }
         /// <summary>Set paired coordinate conventions on the recording controller.</summary>
         public void SetRecordingCoordinateModes(string outputMode, string inputMode)
-            => _recording.SetCoordinateModes(outputMode, inputMode);
+        {
+            ThrowIfSessionCleanupPending();
+            _recording.SetCoordinateModes(outputMode, inputMode);
+        }
         /// <summary>Disable recording.</summary>
         public void DisableRecording() => _recording.Disable();
 
         // ── Playback Control ──
 
         /// <summary>Enable the playback clock range from start to end nanoseconds.</summary>
-        public void EnablePlaybackControl(ulong startNs, ulong endNs) => _playbackClock.EnableRange(startNs, endNs);
+        public void EnablePlaybackControl(ulong startNs, ulong endNs)
+        {
+            ThrowIfSessionCleanupPending();
+            _playbackClock.EnableRange(startNs, endNs);
+        }
         /// <summary>Whether playback control is enabled.</summary>
         public bool PlaybackEnabled => _tickCoordinator.IsPlaybackEnabled(_playbackClock);
         /// <summary>Get the playback start time in nanoseconds.</summary>
@@ -667,7 +726,10 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Apply a playback command to the clock.</summary>
         public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs)
-            => _tickCoordinator.ApplyPlaybackCommand(cmd, speed, hasSeek, seekNs, _playbackClock, _logger);
+        {
+            ThrowIfSessionCleanupPending();
+            _tickCoordinator.ApplyPlaybackCommand(cmd, speed, hasSeek, seekNs, _playbackClock, _logger);
+        }
 
         /// <summary>Get a snapshot of the playback clock state for a response.</summary>
         public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
@@ -685,9 +747,12 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Apply a decoded playback control request on the runtime owner thread.</summary>
         public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(
             byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId)
-            => _tickCoordinator.ApplyPlaybackControl(
+        {
+            ThrowIfSessionCleanupPending();
+            return _tickCoordinator.ApplyPlaybackControl(
                 cmd, speed, hasSeek, seekNs, requestId,
                 _replay, _playbackClock, _wallClock, _logger);
+        }
 
         // ── Replay (delegated) ──
 
@@ -702,10 +767,16 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Enable MCAP replay; fails if recording is active.</summary>
         public void EnableReplay(string filePath)
-            => _replay.Enable(filePath);
+        {
+            ThrowIfSessionCleanupPending();
+            _replay.Enable(filePath);
+        }
         /// <summary>Enable MCAP replay using the selected schema identity policy.</summary>
         public void EnableReplay(string filePath, SchemaIdentityMode identityMode)
-            => _replay.Enable(filePath, identityMode);
+        {
+            ThrowIfSessionCleanupPending();
+            _replay.Enable(filePath, identityMode);
+        }
 
         /// <summary>Enable MCAP replay with explicit output and input coordinate conventions.</summary>
         public void EnableReplay(
@@ -713,7 +784,10 @@ namespace Unity.FoxgloveSDK.Core
             SchemaIdentityMode identityMode,
             string outputCoordinateMode,
             string inputCoordinateMode)
-            => _replay.Enable(filePath, outputCoordinateMode, inputCoordinateMode, identityMode);
+        {
+            ThrowIfSessionCleanupPending();
+            _replay.Enable(filePath, outputCoordinateMode, inputCoordinateMode, identityMode);
+        }
         /// <summary>Disable replay and dispose the engine.</summary>
         public void DisableReplay()
             => _tickCoordinator.DisableReplay(_replay);
@@ -730,6 +804,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Enable or disable the optional external replay cursor queue.</summary>
         public void SetExternalReplayCursorEnabled(bool enabled)
         {
+            ThrowIfSessionCleanupPending();
             _externalReplayCursorController.Enabled = enabled;
             if (!enabled)
                 _externalReplayCursorController.Clear();
@@ -742,6 +817,7 @@ namespace Unity.FoxgloveSDK.Core
             ReplayCursorRequest request,
             out string message)
         {
+            ThrowIfSessionCleanupPending();
             return _externalReplayCursorController.TryEnqueue(
                 request,
                 ReplayEnabled,
@@ -752,7 +828,10 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Request a replay panel-history backfill for newly subscribed clients.</summary>
         public void RequestReplaySubscriberBackfill()
-            => _tickCoordinator.RequestReplaySubscriberBackfill(_replay, _playbackClock, _wallClock);
+        {
+            ThrowIfSessionCleanupPending();
+            _tickCoordinator.RequestReplaySubscriberBackfill(_replay, _playbackClock, _wallClock);
+        }
 
         /// <summary>Internal: get the list of replay channels for test/runtime introspection.</summary>
         internal IReadOnlyList<McapChannel> GetReplayChannels() => _replay.GetChannels();
@@ -811,7 +890,7 @@ namespace Unity.FoxgloveSDK.Core
                 }
 
                 TryCleanup(
-                    () => _parameters.Clear(),
+                    () => _parameters.ClearDuringCleanup(),
                     ref _parametersCleared,
                     ref firstFailure);
                 TryCleanup(
@@ -913,5 +992,59 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        private void ThrowIfSessionCleanupPending()
+        {
+            if (_sessionPendingCleanup != null)
+                throw new InvalidOperationException(
+                    "Runtime configuration is unavailable while the previous session cleanup is pending.");
+        }
+
+        /// <summary>
+        /// Public schema access is a guarded view rather than the raw injected
+        /// registry.  Callers may retain the view across a failed Stop, but a
+        /// registration cannot mutate the next-session definition set until the
+        /// retired session has finished cleanup.
+        /// </summary>
+        private sealed class GuardedSchemaRegistry : IEncodingAwareSchemaRegistry
+        {
+            private readonly ISchemaRegistry _inner;
+            private readonly Func<bool> _mutationAllowed;
+
+            internal GuardedSchemaRegistry(ISchemaRegistry inner, Func<bool> mutationAllowed)
+            {
+                _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+                _mutationAllowed = mutationAllowed;
+            }
+
+            public bool TryGetSchema(string name, out SchemaEntry entry)
+                => _inner.TryGetSchema(name, out entry);
+
+            public bool TryGetSchema(string name, string encoding, out SchemaEntry entry)
+            {
+                if (_inner is IEncodingAwareSchemaRegistry encodingAware)
+                    return encodingAware.TryGetSchema(name, encoding, out entry);
+
+                if (!_inner.TryGetSchema(name, out entry))
+                    return false;
+
+                return string.Equals(entry.Encoding, encoding, StringComparison.OrdinalIgnoreCase);
+            }
+
+            public void Register(SchemaEntry entry)
+            {
+                if (_mutationAllowed != null && !_mutationAllowed())
+                    throw new InvalidOperationException(
+                        "Schema registry mutations are unavailable while session cleanup is pending.");
+                _inner.Register(entry);
+            }
+        }
+
+    }
+
+    /// <summary>Shared executable generation predicate for main-thread client events.</summary>
+    internal static class ClientEventGenerationGate
+    {
+        internal static bool IsCurrent(ulong eventGeneration, ulong currentGeneration)
+            => eventGeneration == currentGeneration;
     }
 }

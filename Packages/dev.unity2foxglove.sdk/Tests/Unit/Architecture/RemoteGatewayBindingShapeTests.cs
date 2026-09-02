@@ -115,13 +115,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
-        public void ManagerLookupRetriesWhenManagerAppearsAfterInitialEnable()
+        public void ManagerLookupRetriesAfterBoundedDiscoveryBackoff()
         {
             var result = InvokeBehaviorProbe("LateManagerDiscovery");
 
             Assert.False(ReadProperty<bool>(result, "FirstLookupSucceeded"));
             Assert.True(ReadProperty<bool>(result, "SecondLookupSucceeded"));
+            Assert.Equal(1, ReadProperty<int>(result, "CallsBeforeManagerAppears"));
             Assert.Equal(2, ReadProperty<int>(result, "FindObjectOfTypeCalls"));
+            Assert.Equal(60, ReadProperty<int>(result, "SuppressedLookupAttempts"));
         }
 
         [Fact]
@@ -131,8 +133,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
             Assert.True(ReadProperty<bool>(result, "RetainedStatus"));
             Assert.Equal("Connected", ReadProperty<string>(result, "Status"));
+            Assert.True(ReadProperty<bool>(result, "InitialStatusAccepted"));
+            Assert.True(ReadProperty<bool>(result, "ReplacementStatusAccepted"));
             Assert.True(ReadProperty<long>(result, "DroppedCount") >= 1);
             Assert.True(ReadProperty<int>(result, "PeakCount") <= 2);
+            Assert.Equal(0, ReadProperty<int>(result, "RemainingCount"));
+        }
+
+        [Fact]
+        public void CapacityOneReservesTheOnlySlotForConnectionStatus()
+        {
+            var result = InvokeBehaviorProbe("CapacityOneStatusReservation");
+
+            Assert.True(ReadProperty<bool>(result, "StatusAccepted"));
+            Assert.False(ReadProperty<bool>(result, "WorkAccepted"));
+            Assert.Equal("Connected", ReadProperty<string>(result, "Status"));
+            Assert.Equal(1, ReadProperty<int>(result, "PeakCount"));
+            Assert.Equal(1L, ReadProperty<long>(result, "DroppedCount"));
             Assert.Equal(0, ReadProperty<int>(result, "RemainingCount"));
         }
 
@@ -200,6 +217,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.DoesNotContain("internal static RemoteGatewayEvent ConnectionStatus(", source, StringComparison.Ordinal);
             Assert.DoesNotContain(".Wait(", source, StringComparison.Ordinal);
             Assert.DoesNotContain(".Result", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void EventQueueReportsOverflowWhenItDropsOldestWork()
+        {
+            var result = InvokeBehaviorProbe("StatusSurvivesQueueSaturation");
+            Assert.True(ReadProperty<bool>(result, "InitialStatusAccepted")
+                || ReadProperty<bool>(result, "ReplacementStatusAccepted"));
+            Assert.True(ReadProperty<long>(result, "DroppedCount") > 0);
+            Assert.False(ReadProperty<bool>(result, "WorkReplacementAccepted"));
+
+            var capacityOne = InvokeBehaviorProbe("CapacityOneStatusReservation");
+            Assert.True(ReadProperty<bool>(capacityOne, "StatusAccepted"));
+            Assert.False(ReadProperty<bool>(capacityOne, "WorkAccepted"));
+            Assert.Equal("Connected", ReadProperty<string>(capacityOne, "Status"));
         }
 
         [Fact]
@@ -608,13 +640,20 @@ namespace Unity.FoxgloveSDK.RemoteGateway
     {
         public bool FirstLookupSucceeded { get; set; }
         public bool SecondLookupSucceeded { get; set; }
+        public int CallsBeforeManagerAppears { get; set; }
         public int FindObjectOfTypeCalls { get; set; }
+        public int SuppressedLookupAttempts { get; set; }
     }
 
     public sealed class QueueProbeResult
     {
         public bool RetainedStatus { get; set; }
         public string Status { get; set; }
+        public bool InitialStatusAccepted { get; set; }
+        public bool ReplacementStatusAccepted { get; set; }
+        public bool WorkReplacementAccepted { get; set; }
+        public bool StatusAccepted { get; set; }
+        public bool WorkAccepted { get; set; }
         public long DroppedCount { get; set; }
         public int PeakCount { get; set; }
         public int RemainingCount { get; set; }
@@ -654,6 +693,14 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                 BindingFlags.Instance | BindingFlags.NonPublic);
 
             var first = (bool)ensureManager.Invoke(controller, null);
+            var callsBeforeManagerAppears = UnityEngine.Object.FindObjectOfTypeCalls;
+            var suppressedLookupAttempts = 0;
+            for (var i = 0; i < 60; i++)
+            {
+                if ((bool)ensureManager.Invoke(controller, null))
+                    throw new InvalidOperationException(""Manager lookup unexpectedly succeeded during the backoff window."");
+                suppressedLookupAttempts++;
+            }
             UnityEngine.Object.FindObjectOfTypeResult = new Unity.FoxgloveSDK.Components.FoxgloveManager();
             var second = (bool)ensureManager.Invoke(controller, null);
             var calls = UnityEngine.Object.FindObjectOfTypeCalls;
@@ -662,7 +709,9 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             {
                 FirstLookupSucceeded = first,
                 SecondLookupSucceeded = second,
-                FindObjectOfTypeCalls = calls
+                CallsBeforeManagerAppears = callsBeforeManagerAppears,
+                FindObjectOfTypeCalls = calls,
+                SuppressedLookupAttempts = suppressedLookupAttempts
             };
         }
 
@@ -670,11 +719,14 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         public static QueueProbeResult StatusSurvivesQueueSaturation()
         {
             var queue = new RemoteGatewayEventQueue(2);
-            queue.TryEnqueue(RemoteGatewayEvent.ConnectionStatusChanged(
-                RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Connected));
             queue.TryEnqueue(RemoteGatewayEvent.ClientEvent(RemoteGatewayEventKind.ClientSubscribed, 1U));
             queue.TryEnqueue(RemoteGatewayEvent.ClientEvent(RemoteGatewayEventKind.ClientUnsubscribed, 2U));
-            queue.TryEnqueue(RemoteGatewayEvent.ClientEvent(RemoteGatewayEventKind.ClientAdvertised, 3U));
+            var initialStatusAccepted = queue.TryEnqueue(RemoteGatewayEvent.ConnectionStatusChanged(
+                RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Connected));
+            var replacementStatusAccepted = queue.TryEnqueue(RemoteGatewayEvent.ConnectionStatusChanged(
+                RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Connected));
+            var workReplacementAccepted = queue.TryEnqueue(RemoteGatewayEvent.ClientEvent(
+                RemoteGatewayEventKind.ClientSubscribed, 3U));
             var peakCount = queue.Count;
 
             var controller = new FoxgloveRemoteGatewayController();
@@ -690,8 +742,40 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             {
                 RetainedStatus = string.Equals(status, ""Connected"", StringComparison.Ordinal),
                 Status = status,
+                InitialStatusAccepted = initialStatusAccepted,
+                ReplacementStatusAccepted = replacementStatusAccepted,
+                WorkReplacementAccepted = workReplacementAccepted,
                 DroppedCount = queue.DroppedCount,
                 PeakCount = peakCount,
+                RemainingCount = queue.Count
+            };
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static QueueProbeResult CapacityOneStatusReservation()
+        {
+            var queue = new RemoteGatewayEventQueue(1);
+            var statusAccepted = queue.TryEnqueue(RemoteGatewayEvent.ConnectionStatusChanged(
+                RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Connected));
+            var workAccepted = queue.TryEnqueue(RemoteGatewayEvent.ClientEvent(
+                RemoteGatewayEventKind.ClientSubscribed, 1U));
+            var peakCount = queue.Count;
+
+            var controller = new FoxgloveRemoteGatewayController();
+            typeof(FoxgloveRemoteGatewayController).GetField(
+                ""_events"",
+                BindingFlags.Instance | BindingFlags.NonPublic).SetValue(controller, queue);
+            typeof(FoxgloveRemoteGatewayController).GetMethod(
+                ""DrainGatewayEvents"",
+                BindingFlags.Instance | BindingFlags.NonPublic).Invoke(controller, null);
+
+            return new QueueProbeResult
+            {
+                StatusAccepted = statusAccepted,
+                WorkAccepted = workAccepted,
+                Status = controller.ConnectionStatus,
+                PeakCount = peakCount,
+                DroppedCount = queue.DroppedCount,
                 RemainingCount = queue.Count
             };
         }

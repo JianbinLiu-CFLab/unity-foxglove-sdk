@@ -382,6 +382,100 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Empty(session.Services.GetAll());
         }
 
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData(" ")]
+        [InlineData("\t\r\n")]
+        public void ServiceRegistryRejectsMissingNamesBeforeAllocatingAnId(string name)
+        {
+            var registry = new FoxgloveServiceRegistry();
+            var descriptor = new ServiceDescriptor
+            {
+                Name = name,
+                Type = "/invalid",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            };
+
+            Assert.Throws<ArgumentException>(() => registry.Register(descriptor));
+            Assert.Empty(registry.GetAll());
+            var validId = registry.Register(new ServiceDescriptor { Name = "/valid", Type = "/valid" });
+            Assert.Equal(1u, validId);
+        }
+
+        [Fact]
+        public void ServicePublicationFailureRetractsPartiallyBroadcastAdvertisement()
+        {
+            var fake = new Phase6FakeTransport
+            {
+                ThrowBroadcastCount = 1,
+                RecordBroadcastBeforeThrow = true
+            };
+            var session = new FoxgloveSession("Test", fake);
+            var descriptor = new ServiceDescriptor
+            {
+                Name = "/partial", Type = "/partial",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            };
+
+            Assert.Throws<InvalidOperationException>(() => session.RegisterService(descriptor));
+
+            var operations = fake.BroadcastTexts.Select(text => JObject.Parse(text)["op"]?.ToString()).ToList();
+            Assert.Equal(new[] { "advertiseServices", "unadvertiseServices" }, operations);
+            Assert.Empty(session.Services.GetAll());
+        }
+
+        [Fact]
+        public void UnregisterGraphFailureDoesNotWithdrawClientAdvertisement()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            var serviceId = session.RegisterService(new ServiceDescriptor
+            {
+                Name = "/unregister-retry", Type = "/unregister-retry",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            });
+
+            fake.BroadcastTexts.Clear();
+            fake.SimulateConnect(1);
+            fake.SimulateText(1, "{\"op\":\"subscribeConnectionGraph\"}");
+            fake.ThrowSendTextCount = 1;
+
+            Assert.Throws<InvalidOperationException>(() => session.UnregisterService(serviceId));
+            Assert.NotNull(session.Services.GetById(serviceId));
+
+            var operations = fake.BroadcastTexts.Select(text => JObject.Parse(text)["op"]?.ToString()).ToList();
+            Assert.Empty(operations);
+            Assert.True(session.UnregisterService(serviceId));
+            Assert.Null(session.Services.GetById(serviceId));
+        }
+
+        [Fact]
+        public void UnregisterPartialBroadcastRestoresClientAdvertisement()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            var serviceId = session.RegisterService(new ServiceDescriptor
+            {
+                Name = "/unregister-partial", Type = "/unregister-partial",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            });
+
+            fake.BroadcastTexts.Clear();
+            fake.ThrowBroadcastCount = 1;
+            fake.RecordBroadcastBeforeThrow = true;
+
+            Assert.Throws<InvalidOperationException>(() => session.UnregisterService(serviceId));
+            Assert.NotNull(session.Services.GetById(serviceId));
+
+            var operations = fake.BroadcastTexts.Select(text => JObject.Parse(text)["op"]?.ToString()).ToList();
+            Assert.Equal(new[] { "unadvertiseServices", "advertiseServices" }, operations);
+        }
+
         [Fact]
         public void ServiceCallEnqueueComplete()
         {
@@ -599,12 +693,19 @@ namespace Unity.FoxgloveSDK.UnitTests
             public readonly List<string> BroadcastTexts = new();
             public uint? ThrowBinaryForClientId { get; set; }
             public int ThrowBroadcastCount { get; set; }
+            public bool RecordBroadcastBeforeThrow { get; set; }
+            public int ThrowSendTextCount { get; set; }
 
             public void Start(string host, int port) { }
             public void Stop() { }
             public void Dispose() { }
             public void SendText(uint clientId, string json)
             {
+                if (ThrowSendTextCount > 0)
+                {
+                    ThrowSendTextCount--;
+                    throw new InvalidOperationException("Injected text send failure.");
+                }
                 if (!_sentTexts.ContainsKey(clientId)) _sentTexts[clientId] = new();
                 _sentTexts[clientId].Add(json);
             }
@@ -620,6 +721,8 @@ namespace Unity.FoxgloveSDK.UnitTests
                 if (ThrowBroadcastCount > 0)
                 {
                     ThrowBroadcastCount--;
+                    if (RecordBroadcastBeforeThrow)
+                        BroadcastTexts.Add(json);
                     throw new InvalidOperationException("Injected broadcast failure.");
                 }
                 BroadcastTexts.Add(json);
