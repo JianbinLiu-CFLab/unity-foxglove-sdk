@@ -1434,6 +1434,8 @@ namespace Demo
                 "/phase187/e01/readonly-response");
             Assert.Contains(reflection, diagnostic => diagnostic.Id == "FOXSERVICE004"
                                                        && diagnostic.Path == "Response.Handle");
+            Assert.Contains(reflection, diagnostic => diagnostic.Id == "FOXSERVICE004"
+                                                       && diagnostic.Path == "Response.ReadonlyProperty");
 
             var result = RunGenerator(@"
 using System;
@@ -1444,6 +1446,7 @@ namespace Phase187E01
     public sealed class Response
     {
         public readonly IntPtr Handle;
+        public IntPtr ReadonlyProperty { get { return IntPtr.Zero; } }
     }
 
     public partial class Host
@@ -1455,6 +1458,8 @@ namespace Phase187E01
 
             Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXSERVICE004"
                                                                && diagnostic.GetMessage().Contains("Response.Handle", StringComparison.Ordinal));
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXSERVICE004"
+                                                               && diagnostic.GetMessage().Contains("Response.ReadonlyProperty", StringComparison.Ordinal));
         }
 
         [Fact]
@@ -3870,6 +3875,7 @@ namespace Demo
         private sealed class E01ReadonlyResponse
         {
             public readonly IntPtr Handle;
+            public IntPtr ReadonlyProperty { get; }
         }
 
         private sealed class Phase184ContextDiagnosticProbe
