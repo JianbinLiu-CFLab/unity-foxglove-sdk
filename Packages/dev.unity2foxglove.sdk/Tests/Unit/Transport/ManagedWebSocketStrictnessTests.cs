@@ -11,6 +11,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -160,6 +162,65 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         }
 
         [Fact]
+        public void SecureBackendStopHookReleasesDeferredCertificate()
+        {
+            using var backend = new ProbeWssBackend();
+            var field = typeof(ManagedWssBackend).GetField(
+                "_serverCertificate",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            using var certificate = new X509Certificate2();
+            field.SetValue(backend, certificate);
+
+            var hook = typeof(ManagedWssBackend).GetMethod(
+                "OnStopCompletedUnderLifecycleLock",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(hook);
+            hook.Invoke(backend, null);
+
+            Assert.Null(field.GetValue(backend));
+        }
+
+        [Fact]
+        public void SecureBackendDuplicateStartLeavesTheActiveCertificateUsable()
+        {
+            var directory = Path.Combine(
+                Path.GetTempPath(), "foxglove-wss-start-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            var pfxPath = Path.Combine(directory, "server.pfx");
+            try
+            {
+                using (var rsa = RSA.Create(2048))
+                {
+                    var request = new CertificateRequest(
+                        "CN=localhost",
+                        rsa,
+                        HashAlgorithmName.SHA256,
+                        RSASignaturePadding.Pkcs1);
+                    using var certificate = request.CreateSelfSigned(
+                        DateTimeOffset.UtcNow.AddMinutes(-1),
+                        DateTimeOffset.UtcNow.AddHours(1));
+                    File.WriteAllBytes(pfxPath, certificate.Export(X509ContentType.Pfx));
+                }
+
+                using var backend = new ManagedWssBackend(new FoxgloveTlsOptions
+                {
+                    CertificatePfxPath = pfxPath
+                });
+                var port = GetFreeTcpPort();
+                backend.Start("127.0.0.1", port);
+                Assert.Throws<InvalidOperationException>(() => backend.Start("127.0.0.1", port));
+                Assert.True(backend.IsRunning);
+                backend.Stop();
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, recursive: true);
+            }
+        }
+
+        [Fact]
         public void HandshakeAdmissionRequiresExactUpgradeTokenAndSixteenByteKey()
         {
             var handlerType = typeof(ManagedWsBackend).Assembly.GetType(
@@ -198,6 +259,56 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         }
 
         [Fact]
+        public async Task StopDefersDisconnectUntilConnectCallbackReturns()
+        {
+            using var backend = new ManagedWsBackend(new ManagedWebSocketOptions { MaxClients = 2 });
+            var port = GetFreeTcpPort();
+            var connectEntered = new ManualResetEventSlim(false);
+            var releaseConnect = new ManualResetEventSlim(false);
+            var disconnectObserved = new ManualResetEventSlim(false);
+            var order = new ConcurrentQueue<string>();
+            backend.OnClientConnected += _ =>
+            {
+                order.Enqueue("connect");
+                connectEntered.Set();
+                releaseConnect.Wait(TimeSpan.FromSeconds(5));
+            };
+            backend.OnClientDisconnected += _ =>
+            {
+                order.Enqueue("disconnect");
+                disconnectObserved.Set();
+            };
+            backend.Start("127.0.0.1", port);
+            using var client = ConnectAndWriteHandshake(port);
+
+            try
+            {
+                Assert.True(
+                    connectEntered.Wait(TimeSpan.FromSeconds(2)),
+                    "The connection callback did not enter its controlled pause.");
+
+                var stopTask = Task.Run(() => backend.Stop());
+                Assert.True(
+                    SpinWait.SpinUntil(() => !backend.IsRunning, TimeSpan.FromSeconds(2)),
+                    "Stop did not retire the listener before waiting for callbacks.");
+                Assert.False(
+                    disconnectObserved.Wait(TimeSpan.FromMilliseconds(300)),
+                    "Disconnect must not overtake an in-flight connect callback.");
+
+                releaseConnect.Set();
+                Assert.True(
+                    await Task.WhenAny(stopTask, Task.Delay(TimeSpan.FromSeconds(4))) == stopTask,
+                    "Stop did not complete after the connect callback was released.");
+                await stopTask;
+                Assert.Equal(new[] { "connect", "disconnect" }, order.ToArray());
+            }
+            finally
+            {
+                releaseConnect.Set();
+            }
+        }
+
+        [Fact]
         public void MalformedRequiredHandshakeHeadersReturnConsistentBadRequest()
         {
             var requests = new[]
@@ -224,6 +335,34 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                 Assert.StartsWith(
                     "HTTP/1.1 400 Bad Request",
                     Encoding.ASCII.GetString(stream.WrittenBytes));
+            }
+        }
+
+        [Fact]
+        public void NetworkHandshakeRejectsConnectionSubstringThatOnlyContainsUpgrade()
+        {
+            using var backend = new ManagedWsBackend(new ManagedWebSocketOptions { MaxClients = 2 });
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+            try
+            {
+                using var client = new TcpClient();
+                client.Connect("127.0.0.1", port);
+                var stream = client.GetStream();
+                stream.ReadTimeout = 2000;
+                stream.WriteTimeout = 2000;
+                var request = Encoding.ASCII.GetBytes(BuildHandshakeRequest(connection: "NotUpgrade"));
+                stream.Write(request, 0, request.Length);
+
+                var response = ReadHttpHeaders(stream);
+                Assert.StartsWith("HTTP/1.1 400 Bad Request", response);
+                Assert.True(
+                    SpinWait.SpinUntil(() => backend.GetStatsSnapshot().ActiveClientCount == 0,
+                        TimeSpan.FromSeconds(2)));
+            }
+            finally
+            {
+                backend.Stop();
             }
         }
 

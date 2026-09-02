@@ -220,6 +220,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
+        public void EventQueueReportsOverflowWhenItDropsOldestWork()
+        {
+            var result = InvokeBehaviorProbe("StatusSurvivesQueueSaturation");
+            Assert.True(ReadProperty<bool>(result, "InitialStatusAccepted")
+                || ReadProperty<bool>(result, "ReplacementStatusAccepted"));
+            Assert.True(ReadProperty<long>(result, "DroppedCount") > 0);
+            Assert.False(ReadProperty<bool>(result, "WorkReplacementAccepted"));
+
+            var capacityOne = InvokeBehaviorProbe("CapacityOneStatusReservation");
+            Assert.True(ReadProperty<bool>(capacityOne, "StatusAccepted"));
+            Assert.False(ReadProperty<bool>(capacityOne, "WorkAccepted"));
+            Assert.Equal("Connected", ReadProperty<string>(capacityOne, "Status"));
+        }
+
+        [Fact]
         public void LifecycleGateBlocksNativeStartDuringEditorReloadQuit()
         {
             var source = Text(RuntimeRoot + "/RemoteGatewayLifecycleGate.cs");
@@ -636,6 +651,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         public string Status { get; set; }
         public bool InitialStatusAccepted { get; set; }
         public bool ReplacementStatusAccepted { get; set; }
+        public bool WorkReplacementAccepted { get; set; }
         public bool StatusAccepted { get; set; }
         public bool WorkAccepted { get; set; }
         public long DroppedCount { get; set; }
@@ -709,6 +725,8 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                 RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Connected));
             var replacementStatusAccepted = queue.TryEnqueue(RemoteGatewayEvent.ConnectionStatusChanged(
                 RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Connected));
+            var workReplacementAccepted = queue.TryEnqueue(RemoteGatewayEvent.ClientEvent(
+                RemoteGatewayEventKind.ClientSubscribed, 3U));
             var peakCount = queue.Count;
 
             var controller = new FoxgloveRemoteGatewayController();
@@ -726,6 +744,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                 Status = status,
                 InitialStatusAccepted = initialStatusAccepted,
                 ReplacementStatusAccepted = replacementStatusAccepted,
+                WorkReplacementAccepted = workReplacementAccepted,
                 DroppedCount = queue.DroppedCount,
                 PeakCount = peakCount,
                 RemainingCount = queue.Count

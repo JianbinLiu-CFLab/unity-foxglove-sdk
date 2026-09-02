@@ -29,6 +29,8 @@
 
   <ItemGroup>
     <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs;../NativeCompileStubs/**/*.cs" />
+    <Compile Remove="Fixtures/CertificateGeneratorUnityStubs.cs"
+             Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Remove="Ros2ForUnity/**/*.cs;Architecture/FoxRunRos2NativeBoundaryTests.cs;Manager/FoxRunRos2CustomTypesupportInspectorPresentationTests.cs;FoxRun/FoxRunRos2*.cs;FoxRun/FoxRunCustomNativeContractDemandPolicyTests.cs;FoxRun/Fixtures/Phase181CustomInterfaceFixture.cs;Harness/R2fuGuardHelperOptimizationTests.cs;Harness/SensorRos2OptimizationTests.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true'" />
     <Compile Remove="Ros2ForUnity/FoxRunAnalyzerCompositionContractTests.cs"

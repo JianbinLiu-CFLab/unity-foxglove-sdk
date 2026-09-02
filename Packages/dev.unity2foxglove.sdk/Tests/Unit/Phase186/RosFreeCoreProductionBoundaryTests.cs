@@ -218,6 +218,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Phase186
 
             Assert.Matches(
                 @"public void StartServer\(\)\s*\{\s*"
+                + @"(?:if \(!IsRunning && HasRetainedRuntimeForwarders\(\)\)\s*"
+                + @"throw new InvalidOperationException\([\s\S]*?\);\s*)?"
                 + @"if \(!BeginFoxRunTransportSessionIfNeeded\(\)\)\s*"
                 + @"\{\s*_startServerAfterTransportCapture = true;\s*"
                 + @"return;\s*\}",

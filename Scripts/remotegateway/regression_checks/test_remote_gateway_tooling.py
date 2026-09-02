@@ -361,6 +361,7 @@ class RemoteGatewayToolingTests(unittest.TestCase):
             manifest = root / "foxglove-gateway-native-artifact.json"
 
             def validate(declared: object, expected: str) -> None:
+                """Write one manifest variant and assert that validation rejects it."""
                 manifest.write_text(json.dumps(declared), encoding="utf-8")
                 with mock.patch.object(self.acceptance, "ROOT", root), mock.patch.object(
                     self.acceptance,

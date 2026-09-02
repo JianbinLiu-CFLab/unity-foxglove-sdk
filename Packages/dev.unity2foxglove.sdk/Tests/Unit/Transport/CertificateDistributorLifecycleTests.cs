@@ -92,6 +92,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         }
 
         [Fact]
+        public void OptionalPemDownloadRemainsBoundToStartedSnapshot()
+        {
+            var certificatePath = CreateCertificateFixture("certificate-A");
+            var pemPath = CreateCertificateFixture("pem-A");
+            var distributor = new FoxgloveCertificateDistributor(certificatePath, pemPath);
+            try
+            {
+                distributor.Start("127.0.0.1", 0);
+                var endpoint = GetListenerEndpoint(distributor);
+                Assert.Equal("pem-A", ReadHttpBody(endpoint, "/rootCA.pem"));
+
+                File.WriteAllText(pemPath, "pem-B", Encoding.ASCII);
+                Assert.Equal("pem-A", ReadHttpBody(GetListenerEndpoint(distributor), "/rootCA.pem"));
+            }
+            finally
+            {
+                distributor.Dispose();
+                File.Delete(certificatePath);
+                File.Delete(pemPath);
+            }
+        }
+
+        [Fact]
         public void DisposeAbortsPartialClientAndWaitsForHandlerExit()
         {
             var certificatePath = CreateCertificateFixture();

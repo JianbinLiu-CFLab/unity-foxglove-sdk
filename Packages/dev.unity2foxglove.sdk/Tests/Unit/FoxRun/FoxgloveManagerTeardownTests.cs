@@ -152,6 +152,23 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void PreTailCleanupRunsEveryStepAndReturnsTheFirstFailure()
+        {
+            var calls = new List<string>();
+            var primary = new InvalidOperationException("pre-tail-primary");
+            var secondary = new ArgumentException("pre-tail-secondary");
+
+            var failure = FoxgloveManagerTeardownState.RunCleanupReturningFirstFailure(
+                Step(calls, "first", primary),
+                Step(calls, "second", secondary),
+                Step(calls, "third"));
+
+            Assert.NotNull(failure);
+            Assert.Same(primary, failure.SourceException);
+            Assert.Equal(new[] { "first", "second", "third" }, calls);
+        }
+
+        [Fact]
         public void StopServerWiresTheFailureResilientTailHelper()
         {
             var source = TestSources.Text(

@@ -419,12 +419,21 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             var stop = ExtractMethodBody(source, "private void StopServer");
             var stopIndex = source.IndexOf("private void StopServer", StringComparison.Ordinal);
-            var detachIndex = source.IndexOf("transport.OnClientConnected -=", stopIndex, StringComparison.Ordinal);
-            var runtimeStopIndex = source.IndexOf("_runtime.Stop,", stopIndex, StringComparison.Ordinal);
+            var detachCallIndex = stop.IndexOf(
+                "DetachTransportForwarders(cleanupSession)",
+                StringComparison.Ordinal);
+            var runtimeStopIndex = stop.IndexOf("_runtime.Stop,", StringComparison.Ordinal);
+            var detachImplementationIndex = source.IndexOf(
+                "transport.OnClientConnected -=",
+                stopIndex,
+                StringComparison.Ordinal);
             Check(stop.Contains("capture and detach") || stop.Contains("Capture and detach"),
                 "51B-27: StopServer documents that callbacks are detached before runtime Stop clears Session");
             Check(stop.Contains("FoxgloveManagerTeardownState.RunStopServer(", StringComparison.Ordinal)
-                  && detachIndex >= 0 && runtimeStopIndex >= 0 && detachIndex < runtimeStopIndex,
+                  && detachCallIndex >= 0
+                  && runtimeStopIndex >= 0
+                  && detachCallIndex < runtimeStopIndex
+                  && detachImplementationIndex >= 0,
                 "51B-28: StopServer detaches transport callbacks before the centralized runtime Stop step");
         }
 

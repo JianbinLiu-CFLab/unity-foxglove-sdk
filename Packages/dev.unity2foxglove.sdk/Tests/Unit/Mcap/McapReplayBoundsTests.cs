@@ -45,9 +45,9 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
-        public void DistinctDueChunksRespectPerTickScanBudget()
+        public void IntraChunkDueRecordsRespectPerTickScanBudget()
         {
-            var path = CreateMcap(pathName: "r4-f03-005", chunkSizeBytes: 64,
+            var path = CreateMcap(pathName: "r4-f03-005", chunkSizeBytes: 4096,
                 writeMessages: recorder =>
                 {
                     for (var i = 0; i < 100; i++)
@@ -64,13 +64,10 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 var firstMessage = Assert.Single(first);
                 Assert.Equal(1UL, firstMessage.LogTime);
                 Assert.Equal(0, PendingCount(engine));
-
-                var chunkField = typeof(McapReplayEngine).GetField(
-                    "_currentChunkIdx",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-                Assert.NotNull(chunkField);
-                var currentChunk = (int)chunkField.GetValue(engine);
-                Assert.InRange(currentChunk, 0, 1);
+                Assert.InRange(
+                    engine.LastTickScannedRecordCount,
+                    1,
+                    2);
 
                 var emitted = 1;
                 var previousTime = firstMessage.LogTime;

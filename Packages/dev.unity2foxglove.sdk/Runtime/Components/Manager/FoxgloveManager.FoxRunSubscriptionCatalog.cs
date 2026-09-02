@@ -45,8 +45,15 @@ namespace Unity.FoxgloveSDK.Components
             if (_foxRunSubscriptionCatalogServiceId == 0)
                 return;
 
-            UnregisterService(_foxRunSubscriptionCatalogServiceId);
-            _foxRunSubscriptionCatalogServiceId = 0;
+            // Teardown may have already retired the active session while a
+            // failed cleanup retry still owns the shared registry. Use the
+            // runtime's cleanup-aware path so this manager-owned service can be
+            // removed without admitting a new user mutation into that epoch.
+            if (_runtime == null
+                || _runtime.UnregisterServiceDuringCleanup(_foxRunSubscriptionCatalogServiceId))
+            {
+                _foxRunSubscriptionCatalogServiceId = 0;
+            }
         }
 
         private JToken HandleFoxRunSubscriptionCatalogRequest(JToken request)

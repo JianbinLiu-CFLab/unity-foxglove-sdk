@@ -37,30 +37,37 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Load the configured certificate before opening the listener.</summary>
         public override void Start(string host, int port)
         {
-            DisposeServerCertificate();
-            _serverCertificate = _tlsOptions.LoadCertificate();
-            try
+            lock (LifecycleLock)
             {
-                base.Start(host, port);
-            }
-            catch
-            {
+                // Do not tear down the certificate owned by a live listener
+                // before the base lifecycle gate reports the duplicate start.
+                // A failed repeated Start must leave the active TLS generation
+                // usable for subsequent handshakes.
+                if (IsRunning)
+                    throw new System.InvalidOperationException("Server already started");
+
                 DisposeServerCertificate();
-                throw;
+                _serverCertificate = _tlsOptions.LoadCertificate();
+                try
+                {
+                    base.Start(host, port);
+                }
+                catch
+                {
+                    DisposeServerCertificate();
+                    throw;
+                }
             }
         }
 
         /// <summary>Stop the listener and release the active server certificate.</summary>
         public override void Stop()
         {
-            try
-            {
-                base.Stop();
-            }
-            finally
-            {
-                DisposeServerCertificate();
-            }
+            // ManagedWsBackend owns the lifecycle gate and invokes the derived
+            // release hook only after all client/handshake waits complete. Do
+            // not hold the gate across those waits: a callback may call Stop
+            // reentrantly and a concurrent Start must observe stop-in-progress.
+            base.Stop();
         }
 
         /// <summary>Dispose the active certificate after stopping the listener.</summary>
@@ -80,6 +87,11 @@ namespace Unity.FoxgloveSDK.Transport
         {
             _serverCertificate?.Dispose();
             _serverCertificate = null;
+        }
+
+        protected override void OnStopCompletedUnderLifecycleLock()
+        {
+            DisposeServerCertificate();
         }
 
         /// <summary>Authenticate the accepted TCP stream as a TLS server stream.</summary>

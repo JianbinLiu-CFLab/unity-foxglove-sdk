@@ -81,8 +81,15 @@ namespace UnityEngine
 
     public static class Application
     {
+        public static string dataPath => "Project/Assets";
+        public static RuntimePlatform platform => RuntimePlatform.WindowsEditor;
         public static bool isPlaying { get; set; }
         public static event Action quitting;
+    }
+
+    public enum RuntimePlatform
+    {
+        WindowsEditor
     }
 
     public static class Time
