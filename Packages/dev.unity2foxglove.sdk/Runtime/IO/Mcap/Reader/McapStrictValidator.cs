@@ -450,7 +450,14 @@ namespace Unity.FoxgloveSDK.IO
                     throw new InvalidDataException($"Chunk has more than one Message Index for channel {channelId}.");
 
                 var recordsLength = McapBinaryReader.ReadU32LE(content, ref off);
-                var recordsEnd = checked(off + (int)recordsLength);
+                if ((recordsLength & 0x0Fu) != 0)
+                    throw new InvalidDataException(
+                        $"Message Index records length {recordsLength} is not divisible by 16.");
+                var remainingPayloadLength = content.Length - off;
+                if ((ulong)recordsLength > (ulong)remainingPayloadLength)
+                    throw new InvalidDataException(
+                        $"Message Index records length {recordsLength} exceeds remaining payload length {remainingPayloadLength}.");
+                var recordsEnd = off + (int)recordsLength;
                 var indexedOffsets = new HashSet<ulong>();
                 while (off < recordsEnd)
                 {

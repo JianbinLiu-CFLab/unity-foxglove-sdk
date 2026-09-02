@@ -178,6 +178,46 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StrictValidatorRejectsNonMultipleMessageIndexLengthWhenTrailingFieldsAllowed()
+        {
+            var bytes = CreateTwoChunkIndexedMcap();
+            var messageIndexOffset = FindRecordOffsets(bytes, McapWriter.OpcodeMessageIndex)[0];
+            var recordsLengthOffset = checked((int)messageIndexOffset + McapWriter.RecordHeaderLength + sizeof(ushort));
+            WriteU32LittleEndian(bytes, recordsLengthOffset, 15);
+            using var stream = new MemoryStream(bytes, writable: false);
+
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(
+                stream,
+                new McapStrictValidationOptions
+                {
+                    ValidateCrcs = false,
+                    RequireCurrentVersionRecordLengths = false
+                }));
+
+            Assert.Contains("divisible by 16", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StrictValidatorReportsOversizedMessageIndexLengthAsInvalidData()
+        {
+            var bytes = CreateTwoChunkIndexedMcap();
+            var messageIndexOffset = FindRecordOffsets(bytes, McapWriter.OpcodeMessageIndex)[0];
+            var recordsLengthOffset = checked((int)messageIndexOffset + McapWriter.RecordHeaderLength + sizeof(ushort));
+            WriteU32LittleEndian(bytes, recordsLengthOffset, 0xFFFFFFF0);
+            using var stream = new MemoryStream(bytes, writable: false);
+
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(
+                stream,
+                new McapStrictValidationOptions
+                {
+                    ValidateCrcs = false,
+                    RequireCurrentVersionRecordLengths = false
+                }));
+
+            Assert.Contains("exceeds remaining payload length", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void StrictValidatorRejectsChunkAndIndexTimeBoundsThatDisagreeWithMessages()
         {
             var bytes = CreateTwoChunkIndexedMcap();
@@ -459,6 +499,47 @@ namespace Unity.FoxgloveSDK.UnitTests
             var summary = McapStrictValidator.Validate(stream);
             Assert.Empty(summary.MetadataIndexes);
             Assert.True(summary.Statistics == null || summary.Statistics.MessageCount == 0);
+        }
+
+        [Fact]
+        [Trait("Evidence", "FaultInjection")]
+        public void TopLevelWriteFailureFlushesPreviouslyBufferedMessagesOnClose()
+        {
+            using var stream = new FailOnceWriteStream();
+            using var recorder = new McapRecorder(
+                stream,
+                null,
+                new McapWriterOptions
+                {
+                    UseChunking = true,
+                    ChunkSizeBytes = 1024,
+                    IndexTypes = McapIndexTypes.Chunk | McapIndexTypes.Message,
+                    UseStatistics = true,
+                    UseSummaryOffsets = true,
+                    EnableCrcs = true,
+                    EnableDataCrcs = true
+                },
+                leaveOpen: true);
+
+            recorder.AddChannel(1, "/mcap/top-level-failure", "json", "mcap.TopLevelFailure", "jsonschema", "{}");
+            recorder.WriteMessage(1, 10, new byte[] { 1, 2, 3 });
+            var bytesBeforeFailure = SnapshotBytes(stream);
+
+            stream.ThrowOnceAfterWrittenBytes(3);
+            Assert.Throws<IOException>(() => recorder.WriteMetadata("phase187.failed", "{}"));
+            Assert.Equal(bytesBeforeFailure, SnapshotBytes(stream));
+
+            recorder.Close();
+            stream.Position = 0;
+            var summary = McapStrictValidator.Validate(stream);
+            Assert.NotNull(summary.Statistics);
+            Assert.Equal(1UL, summary.Statistics.MessageCount);
+            Assert.Equal(1UL, summary.Statistics.ChannelMessageCounts[1]);
+            Assert.Single(summary.ChunkIndexes);
+
+            var message = Assert.Single(ReadMessages(stream));
+            Assert.Equal(10UL, message.LogTime);
+            Assert.Equal(new byte[] { 1, 2, 3 }, message.Data);
         }
 
         [Fact]
@@ -924,6 +1005,12 @@ namespace Unity.FoxgloveSDK.UnitTests
                 bytes[offset + i] = (byte)(value >> (8 * i));
         }
 
+        private static void WriteU32LittleEndian(byte[] bytes, int offset, uint value)
+        {
+            for (var i = 0; i < sizeof(uint); i++)
+                bytes[offset + i] = (byte)(value >> (8 * i));
+        }
+
         private static void WriteUncheckedRecord(McapWriter writer, byte opcode, byte[] content)
         {
             var streamField = typeof(McapWriter).GetField("_stream", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -1023,6 +1110,23 @@ namespace Unity.FoxgloveSDK.UnitTests
                 leaveOpen: true,
                 McapSequentialReadLimits.UnlimitedForTests);
             return reader.ReadMessages();
+        }
+
+        private static byte[] SnapshotBytes(Stream stream)
+        {
+            var originalPosition = stream.Position;
+            stream.Position = 0;
+            var bytes = new byte[stream.Length];
+            var offset = 0;
+            while (offset < bytes.Length)
+            {
+                var read = stream.Read(bytes, offset, bytes.Length - offset);
+                if (read <= 0)
+                    throw new EndOfStreamException("Could not snapshot the complete MCAP stream.");
+                offset += read;
+            }
+            stream.Position = originalPosition;
+            return bytes;
         }
 
         private static List<long> FindRecordOffsets(byte[] bytes, byte opcode)
