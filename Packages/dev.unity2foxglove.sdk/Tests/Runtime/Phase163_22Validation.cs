@@ -5,8 +5,10 @@
 // Purpose: Phase 163-22 validation for FoxRun emitter model and descriptor contracts.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
@@ -35,6 +37,7 @@ namespace Unity.FoxgloveSDK.Tests
             JsonWritersEscapeSurrogatePairs();
             SourceShapeGuardsArePresent();
             PhaseWiringIsPresent();
+            DefaultRunnerAggregatesEveryValidationFailure();
 
             Console.WriteLine($"Phase 163-22: {_passed} checks passed.");
         }
@@ -149,6 +152,8 @@ namespace Unity.FoxgloveSDK.Tests
             var firstObserverCalls = 0;
             var secondObserverCalls = 0;
             Exception escaped = null;
+            var originalError = Console.Error;
+            using var observerError = new StringWriter();
             void ThrowingObserver(string message, Exception exception)
             {
                 firstObserverCalls++;
@@ -166,6 +171,7 @@ namespace Unity.FoxgloveSDK.Tests
             FoxRunSchemaInfoRegistry.GeneratedSchemaRegistrationFailed += RecordingObserver;
             try
             {
+                Console.SetError(observerError);
                 var manifest = new FoxRunSchemaManifestInfo(
                     1,
                     "Unity2Foxglove",
@@ -201,6 +207,8 @@ namespace Unity.FoxgloveSDK.Tests
                       && firstObserverCalls == 1
                       && secondObserverCalls == 1,
                     "163-22C-5: recoverable observer failures do not abort diagnostic dispatch");
+                Check(observerError.ToString().Contains("observer failure", StringComparison.Ordinal),
+                    "163-22C-5a: recoverable observer failures remain visible on non-Unity runtimes");
                 Check(registry.TryGetSchema(
                           "Demo.ObserverGood",
                           FoxgloveSchemaDefinitions.JsonSchemaEncoding,
@@ -210,6 +218,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
             finally
             {
+                Console.SetError(originalError);
                 FoxRunSchemaInfoRegistry.GeneratedSchemaRegistrationFailed -= ThrowingObserver;
                 FoxRunSchemaInfoRegistry.GeneratedSchemaRegistrationFailed -= RecordingObserver;
                 FoxRunSchemaInfoRegistry.ClearForTests();
@@ -324,12 +333,40 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            var defaultFlags = PhaseValidationRegistry.DefaultValidations(false)
+                .Select(item => item.Flag)
+                .ToHashSet(StringComparer.Ordinal);
 
             Check(project.Contains("Phase163_22Validation.cs", StringComparison.Ordinal),
                 "163-22H-1: runtime test project compiles Phase163_22Validation");
             Check(registry.Contains("--phase163-22", StringComparison.Ordinal)
-                  && registry.Contains("Phase163_22Validation.Validate", StringComparison.Ordinal),
-                "163-22H-2: validation registry exposes --phase163-22");
+                  && registry.Contains("Phase163_22Validation.Validate", StringComparison.Ordinal)
+                  && defaultFlags.Contains("--phase163-22"),
+                "163-22H-2: validation registry exposes --phase163-22 in the default lane");
+        }
+
+        private static void DefaultRunnerAggregatesEveryValidationFailure()
+        {
+            var method = typeof(global::Program).GetMethod(
+                "CollectValidationFailures",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            Check(method != null,
+                "163-22I-1: default runner exposes an aggregation seam");
+            if (method == null)
+                return;
+
+            var invoked = new List<string>();
+            var cases = new (string Name, Func<int> Run)[]
+            {
+                ("first", () => { invoked.Add("first"); return 1; }),
+                ("second", () => { invoked.Add("second"); return 0; }),
+                ("third", () => { invoked.Add("third"); return 1; })
+            };
+            var failures = (IReadOnlyList<string>)method.Invoke(null, new object[] { cases });
+
+            Check(invoked.SequenceEqual(new[] { "first", "second", "third" })
+                  && failures.SequenceEqual(new[] { "first", "third" }),
+                "163-22I-2: default runner executes every validation and reports all failures");
         }
 
         private static FoxRunGenerationModel Model(FoxRunGenerationMember member)

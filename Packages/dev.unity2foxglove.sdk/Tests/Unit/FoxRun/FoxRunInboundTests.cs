@@ -808,6 +808,25 @@ namespace Demo
         }
 
         [Fact]
+        public void RouterReportsFallbackDiagnosticWhenGeneratedInputRejectsSilently()
+        {
+            var input = new SilentRejectingInput("/phase187/silent-rejection");
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+
+            var result = router.Dispatch(
+                "/phase187/silent-rejection",
+                new byte[] { 1 },
+                "json",
+                nowSeconds: 1);
+
+            Assert.Equal(FoxRunInputDispatchStatus.DecodeRejected, result.Status);
+            Assert.Equal(0, result.StagedCount);
+            Assert.Contains("rejected the payload without a diagnostic", result.Diagnostic,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RouterRejectsWrongEncodingBeforeItConsumesTheTopicRateQuota()
         {
             var input = new RecordingInput("/phase182/encoding");
@@ -1101,6 +1120,31 @@ namespace Demo
                 ApplyCount++;
                 error = string.Empty;
                 return true;
+            }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+        }
+
+        private sealed class SilentRejectingInput : IFoxgloveInputSource
+        {
+            private readonly FoxgloveInputTopicInfo _topic;
+
+            public SilentRejectingInput(string topic)
+            {
+                _topic = new FoxgloveInputTopicInfo(topic, "json", FoxRunFlow.Subscribe);
+            }
+
+            public int FoxgloveInput_TopicCount => 1;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
+
+            public bool FoxgloveInput_TryStage(
+                int topicIndex,
+                byte[] payload,
+                string encoding,
+                out string error)
+            {
+                error = string.Empty;
+                return false;
             }
 
             public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;

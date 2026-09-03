@@ -308,7 +308,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase163-19", "Phase 163-19: validation for ROS2 CDR writer and generator review fixes", Phase163_19Validation.Validate, includeInDefault: false),
             Ci("--phase163-20", "Phase 163-20: validation for ROS2 Bridge and R2FU boundary review fixes", Phase163_20Validation.Validate, includeInDefault: false),
             Ci("--phase163-21", "Phase 163-21: validation for FoxRun runtime bus, sinks, and inbound gates", Phase163_21Validation.Validate, includeInDefault: false),
-            Ci("--phase163-22", "Phase 163-22: validation for FoxRun emitter model and descriptor contracts", Phase163_22Validation.Validate, includeInDefault: false),
+            Ci("--phase163-22", "Phase 163-22: validation for FoxRun emitter model and descriptor contracts", Phase163_22Validation.Validate),
             Ci("--phase163-23", "Phase 163-23: validation for source generator and analyzer behavior", Phase163_23Validation.Validate),
             Ci("--phase163-24", "Phase 163-24: validation for schema evidence and build tooling guards", Phase163_24Validation.Validate, includeInDefault: false),
             Ci("--phase163-25", "Phase 163-25: validation for Inspector UI lifecycle and state guards", Phase163_25Validation.Validate, includeInDefault: false),
