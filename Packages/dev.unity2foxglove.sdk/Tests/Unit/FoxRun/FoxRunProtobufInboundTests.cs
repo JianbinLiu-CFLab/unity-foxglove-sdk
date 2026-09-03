@@ -92,6 +92,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void UnpackedRepeatedVarintsAppendAfterSuccessfulDecode()
+        {
+            var field = new FoxRunProtobufField(3, 0, new byte[] { 0x96, 0x01 });
+            var values = new System.Collections.Generic.List<int> { 7 };
+
+            Assert.True(FoxRunInboundProtobuf.TryReadRepeatedInt32(field, values, out var error));
+            Assert.Empty(error);
+            Assert.Equal(new[] { 7, 150 }, values);
+        }
+
+        [Fact]
         public void NarrowIntegerReadersPreserveValidValuesAndRejectOverflowAtomically()
         {
             var payload = new System.Collections.Generic.List<byte>();

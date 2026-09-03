@@ -280,7 +280,10 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Decodes a generator-validated DTO shape without enabling polymorphic
         /// type metadata. The source generator emits this call only for a
-        /// statically inspected object or enum graph.
+        /// statically inspected object or enum graph. The generated wire
+        /// envelope is closed: it contains exactly the requested root field,
+        /// so an extra root property is rejected instead of being silently
+        /// ignored.
         /// </summary>
         public static bool TryReadObject<T>(
             byte[] payload,

@@ -5,9 +5,11 @@
 // Purpose: Guards Phase175B direct FoxRun dual-codec generation and client encoding routing.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Components;
@@ -244,32 +246,75 @@ namespace Unity.FoxgloveSDK.Tests
                 if (bytes == null || bytes.Length == 0)
                     continue;
 
-                // Parse emitted bytes independently of the registry traversal,
-                // then check every dependency edge.
-                var subset = FileDescriptorSet.Parser.ParseFrom(bytes);
-                var positions = subset.File
-                    .Select((file, index) => new { file.Name, Index = index })
-                    .ToDictionary(item => item.Name, item => item.Index, StringComparer.Ordinal);
-
-                foreach (var file in subset.File)
-                {
-                    foreach (var dependency in file.Dependency)
-                    {
-                        if (!positions.TryGetValue(dependency, out var dependencyIndex))
-                            continue;
-
-                        checkedDependencies++;
-                        if (dependencyIndex >= positions[file.Name])
-                            orderingFailures++;
-                    }
-                }
-
+                TryValidateDescriptorSet(
+                    bytes,
+                    out var subsetDependencies,
+                    out var subsetFailures);
+                checkedDependencies += subsetDependencies;
+                orderingFailures += subsetFailures;
                 checkedSubsets++;
             }
 
             return checkedSubsets >= 40
                    && checkedDependencies > 0
                    && orderingFailures == 0;
+        }
+
+        /// <summary>
+        /// Validates one descriptor set independently of the registry. Keeping
+        /// this seam public lets the runtime gate exercise both a valid set and
+        /// a deliberately reversed dependency order without relying on source
+        /// spelling or the current bundled data.
+        /// </summary>
+        public static bool TryValidateDescriptorSet(
+            byte[] bytes,
+            out int checkedDependencies,
+            out int orderingFailures)
+        {
+            checkedDependencies = 0;
+            orderingFailures = 0;
+            if (bytes == null || bytes.Length == 0)
+            {
+                orderingFailures = 1;
+                return false;
+            }
+
+            FileDescriptorSet subset;
+            try
+            {
+                subset = FileDescriptorSet.Parser.ParseFrom(bytes);
+            }
+            catch (InvalidProtocolBufferException)
+            {
+                orderingFailures = 1;
+                return false;
+            }
+
+            var positions = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var index = 0; index < subset.File.Count; index++)
+            {
+                var name = subset.File[index].Name;
+                if (string.IsNullOrEmpty(name) || !positions.TryAdd(name, index))
+                {
+                    orderingFailures = 1;
+                    return false;
+                }
+            }
+
+            foreach (var file in subset.File)
+            {
+                foreach (var dependency in file.Dependency)
+                {
+                    if (!positions.TryGetValue(dependency, out var dependencyIndex))
+                        continue;
+
+                    checkedDependencies++;
+                    if (dependencyIndex >= positions[file.Name])
+                        orderingFailures++;
+                }
+            }
+
+            return orderingFailures == 0;
         }
     }
 }
