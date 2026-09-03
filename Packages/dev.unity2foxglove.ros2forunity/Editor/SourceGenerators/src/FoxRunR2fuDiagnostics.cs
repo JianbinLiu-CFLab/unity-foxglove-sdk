@@ -43,7 +43,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public static readonly DiagnosticDescriptor MixedDirectionalQos =
             Create("FOXR2F016", "R2FU directional QoS mismatch");
         public static readonly DiagnosticDescriptor HostIdentity =
-            Create("FOXR2F017", "R2FU declaring host identity unsupported");
+            Create(
+                "FOXR2F017",
+                "R2FU declaring host identity unsupported",
+                "FoxRun declaring host identity cannot be represented by the R2FU partial-class contract: {0}");
 
         public static bool TryGet(
             string id,
@@ -74,11 +77,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
         }
 
-        private static DiagnosticDescriptor Create(string id, string title)
+        private static DiagnosticDescriptor Create(
+            string id,
+            string title,
+            string messageFormat = "{0}")
             => new DiagnosticDescriptor(
                 id,
                 title,
-                "{0}",
+                messageFormat,
                 "FoxRun.R2FU",
                 DiagnosticSeverity.Error,
                 true);

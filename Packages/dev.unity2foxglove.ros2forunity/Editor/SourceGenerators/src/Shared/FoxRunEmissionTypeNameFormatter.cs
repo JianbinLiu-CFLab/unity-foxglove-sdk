@@ -87,6 +87,23 @@ namespace Unity.FoxgloveSDK.Editor
             return NormalizeCSharpTypeName(QualifiedName(type));
         }
 
+        /// <summary>
+        /// Returns a reflection type identity in CLR spelling while preserving
+        /// a user-defined type whose name would otherwise be parsed as a C#
+        /// built-in alias. Primitive runtime types remain unescaped.
+        /// </summary>
+        public static string ReflectionIdentityName(Type type)
+        {
+            if (type == null)
+                return string.Empty;
+
+            var name = (type.FullName ?? type.Name).Replace('+', '.');
+            if (IsRuntimeAliasType(type))
+                return name;
+
+            return EscapeReflectionAliasLeaf(name);
+        }
+
         public static string NormalizeCSharpTypeName(string typeName)
         {
             var name = (typeName ?? string.Empty).Trim();
@@ -199,12 +216,72 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string QualifiedName(Type type)
         {
+            // Keep CLR primitive names intact so NormalizeCSharpTypeName can
+            // map System.Int32/System.String (and friends) back to their C#
+            // aliases. Only user-defined types whose names resemble aliases
+            // need an escaped leaf.
+            var leaf = IsRuntimeAliasType(type)
+                ? type.Name
+                : EscapeReflectionAliasLeaf(type.Name);
             if (type.DeclaringType != null)
-                return FromReflectionType(type.DeclaringType) + "." + type.Name;
+                return FromReflectionType(type.DeclaringType) + "." + leaf;
 
             return string.IsNullOrEmpty(type.Namespace)
-                ? type.Name
-                : type.Namespace + "." + type.Name;
+                ? leaf
+                : type.Namespace + "." + leaf;
+        }
+
+        private static string EscapeReflectionAliasLeaf(string qualifiedName)
+        {
+            var name = qualifiedName ?? string.Empty;
+            var leafStart = name.LastIndexOf('.') + 1;
+            var leaf = name.Substring(leafStart);
+            var tick = leaf.IndexOf('`');
+            var bare = tick >= 0 ? leaf.Substring(0, tick) : leaf;
+            if (!IsAliasSpelling(bare)
+                || bare.StartsWith("@", StringComparison.Ordinal))
+            {
+                return name;
+            }
+
+            var prefix = name.Substring(0, leafStart);
+            return prefix + "@" + leaf;
+        }
+
+        private static bool IsRuntimeAliasType(Type type)
+            => type == typeof(bool)
+               || type == typeof(byte)
+               || type == typeof(sbyte)
+               || type == typeof(short)
+               || type == typeof(ushort)
+               || type == typeof(int)
+               || type == typeof(uint)
+               || type == typeof(long)
+               || type == typeof(ulong)
+               || type == typeof(float)
+               || type == typeof(double)
+               || type == typeof(decimal)
+               || type == typeof(string)
+               || type == typeof(char)
+               || type == typeof(object)
+               || type == typeof(void);
+
+        private static bool IsAliasSpelling(string value)
+        {
+            if (Aliases.ContainsKey(value ?? string.Empty))
+                return true;
+
+            switch (value)
+            {
+                case "bool": case "byte": case "sbyte": case "short":
+                case "ushort": case "int": case "uint": case "long":
+                case "ulong": case "float": case "double": case "decimal":
+                case "string": case "char": case "object": case "void":
+                case "dynamic": case "nint": case "nuint":
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static int FindTopLevel(string value, char needle)

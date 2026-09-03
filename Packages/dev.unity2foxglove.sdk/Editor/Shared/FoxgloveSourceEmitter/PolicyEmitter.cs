@@ -40,10 +40,10 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine($"{pad}    private bool __hasLast_{i};");
                 sb.AppendLine($"{pad}    private double __lastPublishSec_{i};");
                 for (int j = 0; j < fields.Count; j++)
-                    sb.AppendLine($"{pad}    private {fields[j].TypeName} __last_{i}_{j};");
+                    sb.AppendLine($"{pad}    private {IdentifierUtils.EscapeTypeName(fields[j].TypeName)} __last_{i}_{j};");
                 sb.AppendLine($"{pad}    private bool __hasRecorded_{i};");
                 for (int j = 0; j < fields.Count; j++)
-                    sb.AppendLine($"{pad}    private {fields[j].TypeName} __lastRecorded_{i}_{j};");
+                    sb.AppendLine($"{pad}    private {IdentifierUtils.EscapeTypeName(fields[j].TypeName)} __lastRecorded_{i}_{j};");
             }
             sb.AppendLine();
 

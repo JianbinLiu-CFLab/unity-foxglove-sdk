@@ -168,6 +168,24 @@ namespace Unity.FoxgloveSDK.Editor
                     type.FullName,
                     "generic declaring types are not supported");
 
+            if (!type.IsClass)
+                throw CreateUnsupportedHostIdentityException(
+                    "FOXRUN623",
+                    type.FullName,
+                    "only class declaring types are supported");
+
+            if (type.IsAbstract && type.IsSealed)
+                throw CreateUnsupportedHostIdentityException(
+                    "FOXRUN623",
+                    type.FullName,
+                    "static declaring classes are not supported");
+
+            if (IsRecordClass(type))
+                throw CreateUnsupportedHostIdentityException(
+                    "FOXRUN623",
+                    type.FullName,
+                    "record declaring types are not supported");
+
             ValidatePhysicalHostIdentity(
                 type.Namespace ?? string.Empty,
                 type.Name,
@@ -184,7 +202,9 @@ namespace Unity.FoxgloveSDK.Editor
                 : ns + "." + (className ?? string.Empty);
             if (string.IsNullOrEmpty(className)
                 || className.IndexOf('`') >= 0
-                || className.IndexOf('+') >= 0)
+                || className.IndexOf('+') >= 0
+                || className.IndexOf('<') >= 0
+                || className.IndexOf('>') >= 0)
             {
                 throw CreateUnsupportedHostIdentityException(
                     diagnosticId,
@@ -192,67 +212,33 @@ namespace Unity.FoxgloveSDK.Editor
                     "the declaring class name is not representable");
             }
 
-            if (IsPhysicalHostKeyword(className))
-            {
-                throw CreateUnsupportedHostIdentityException(
-                    diagnosticId,
-                    identity,
-                    "keyword declaring class names are not supported");
-            }
-
             foreach (var component in string.IsNullOrEmpty(ns)
                          ? Array.Empty<string>()
                          : ns.Split('.'))
             {
-                if (component.Length == 0 || IsPhysicalHostKeyword(component))
+                if (component.Length == 0)
                 {
                     throw CreateUnsupportedHostIdentityException(
                         diagnosticId,
                         identity,
-                        "keyword namespace components are not supported");
+                        "empty namespace components are not supported");
                 }
             }
         }
 
-        private static bool IsPhysicalHostKeyword(string value)
+        private static bool IsRecordClass(Type type)
         {
-            switch (value)
-            {
-                case "abstract": case "as": case "base": case "bool":
-                case "break": case "byte": case "case": case "catch":
-                case "char": case "checked": case "class": case "const":
-                case "continue": case "decimal": case "default": case "delegate":
-                case "do": case "double": case "else": case "enum":
-                case "event": case "explicit": case "extern": case "false":
-                case "finally": case "fixed": case "float": case "for":
-                case "foreach": case "goto": case "if": case "implicit":
-                case "in": case "int": case "interface": case "internal":
-                case "is": case "lock": case "long": case "namespace":
-                case "new": case "null": case "object": case "operator":
-                case "out": case "override": case "params": case "private":
-                case "protected": case "public": case "readonly": case "ref":
-                case "return": case "sbyte": case "sealed": case "short":
-                case "sizeof": case "stackalloc": case "static": case "string":
-                case "struct": case "switch": case "this": case "throw":
-                case "true": case "try": case "typeof": case "uint":
-                case "ulong": case "unchecked": case "unsafe": case "ushort":
-                case "using": case "virtual": case "void": case "volatile":
-                case "while":
-                case "add": case "alias": case "and": case "ascending":
-                case "async": case "await": case "by": case "descending":
-                case "dynamic": case "equals": case "file": case "from":
-                case "get": case "global": case "group": case "init":
-                case "into": case "join": case "let": case "managed":
-                case "nameof": case "nint": case "not": case "notnull":
-                case "on": case "or": case "orderby": case "partial":
-                case "record": case "remove": case "required": case "select":
-                case "set": case "unmanaged": case "value": case "var":
-                case "when": case "where": case "with": case "yield":
-                case "scoped":
-                    return true;
-                default:
-                    return false;
-            }
+            if (type == null)
+                return false;
+
+            // The compiler-generated <Clone>$ member is unique to record
+            // classes and survives metadata-only reflection.
+            return type.GetMethod(
+                       "<Clone>$",
+                       BindingFlags.Instance
+                       | BindingFlags.Public
+                       | BindingFlags.NonPublic)
+                   != null;
         }
 
         private static InvalidOperationException CreateUnsupportedHostIdentityException(

@@ -23,7 +23,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         internal static readonly DiagnosticDescriptor HostIdentity =
             Create(
                 "FOXBRG003",
-                "Bridge declaring host identity unsupported");
+                "Bridge declaring host identity unsupported",
+                "FoxRun declaring host identity cannot be represented by the Bridge partial-class contract: {0}");
 
         internal static DiagnosticDescriptor For(string id)
             => string.Equals(
@@ -40,11 +41,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         private static DiagnosticDescriptor Create(
             string id,
-            string title)
+            string title,
+            string messageFormat = "{0}")
             => new DiagnosticDescriptor(
                 id,
                 title,
-                "{0}",
+                messageFormat,
                 "FoxRun.Bridge",
                 DiagnosticSeverity.Error,
                 isEnabledByDefault: true);

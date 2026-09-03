@@ -354,7 +354,7 @@ namespace Unity.FoxgloveSDK.Editor
                 (string Ns, string ClassName),
                 List<FoxServiceSourceEmitter.ServiceMethod>> serviceByClass)
         {
-            var runHints = new Dictionary<string, string>(StringComparer.Ordinal);
+            var runHints = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var type in model?.Types
                          ?? Array.Empty<FoxRunGenerationType>())
             {
@@ -386,7 +386,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (serviceByClass == null)
                 return;
 
-            var serviceHints = new Dictionary<string, string>(StringComparer.Ordinal);
+            var serviceHints = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var pair in serviceByClass)
             {
                 ValidatePhysicalHostIdentity(
@@ -421,7 +421,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static void ValidateLinkTypeIdentities(
             List<(string AsmName, string Ns, string ClassName)> types)
         {
-            var hints = new Dictionary<string, string>(StringComparer.Ordinal);
+            var hints = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var type in types ?? new List<(string, string, string)>())
             {
                 ValidatePhysicalHostIdentity(

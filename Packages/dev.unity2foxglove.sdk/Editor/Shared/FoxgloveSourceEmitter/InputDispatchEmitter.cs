@@ -402,11 +402,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string GlobalTypeName(string typeName)
         {
-            if (string.IsNullOrWhiteSpace(typeName) || typeName.StartsWith("global::", System.StringComparison.Ordinal))
-                return typeName;
-            if (typeName.EndsWith("[]", System.StringComparison.Ordinal))
-                return GlobalTypeName(typeName.Substring(0, typeName.Length - 2)) + "[]";
-            switch (typeName)
+            var escaped = IdentifierUtils.EscapeTypeName(typeName);
+            if (string.IsNullOrWhiteSpace(escaped) || escaped.StartsWith("global::", System.StringComparison.Ordinal))
+                return escaped;
+            if (escaped.EndsWith("[]", System.StringComparison.Ordinal))
+                return GlobalTypeName(escaped.Substring(0, escaped.Length - 2)) + "[]";
+            switch (escaped)
             {
                 case "bool":
                 case "byte":
@@ -423,9 +424,13 @@ namespace Unity.FoxgloveSDK.Editor
                 case "string":
                 case "char":
                 case "object":
-                    return typeName;
+                case "void":
+                case "dynamic":
+                case "nint":
+                case "nuint":
+                    return escaped;
             }
-            return "global::" + typeName;
+            return "global::" + escaped;
         }
 
         private static int IndexOf(IReadOnlyList<string> values, string value)
