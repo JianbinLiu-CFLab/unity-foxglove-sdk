@@ -83,6 +83,9 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxrunMemberData.cs" Link="Editor/FoxRun/FoxrunMemberData.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" Link="Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" />
+    <!-- C9: execute the manager client-event drain in the focused surface;
+         source-text assertions alone cannot protect its retirement barrier. -->
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs" Link="Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs" Condition="'$(IncludeClientEventManagerSurface)' == 'true'" />
     <!-- C5: exercise the actual reflection discovery and code-generation
          boundary in the focused unit project, rather than only text-slicing it. -->
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxrunAssemblyScanner.cs" Link="Editor/FoxRun/FoxrunAssemblyScanner.cs" Condition="'$(IncludeFoxRunEditorDiscoverySurface)' == 'true'" />

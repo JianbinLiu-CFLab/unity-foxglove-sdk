@@ -122,6 +122,8 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         {
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
+            var serverSource = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
 
             Assert.Contains(
                 "ClientEventGenerationGate.IsCurrent(evt.Generation, generation)",
@@ -135,10 +137,41 @@ namespace Unity.FoxgloveSDK.Tests.Manager
                 "_clientEventDispatchState.InvokeMessage(",
                 source,
                 StringComparison.Ordinal);
-            Assert.Contains("WarnClientEventRetirementDrop(discardedEvents, generation)", source, StringComparison.Ordinal);
+            Assert.Contains(
+                "WarnClientEventRetirementDrop(discardedEvents, discardedBytes, generation)",
+                source,
+                StringComparison.Ordinal);
             Assert.Contains("drainIndex = _clientEventDrainScratch.Count", source, StringComparison.Ordinal);
             Assert.DoesNotContain("InvokeIfLive", source, StringComparison.Ordinal);
             Assert.DoesNotContain("System.Func<bool>", source, StringComparison.Ordinal);
+            Assert.Contains(
+                "session.OnClientMessageWithEncoding += _clientMessageForwarder",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_runtimeForwarderSession = session",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "session ??= _runtimeForwarderSession ?? _runtime?.CleanupSession",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "private void ClearRuntimeForwarderSessionIfDetached()",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ClearRuntimeForwarderSessionIfDetached();\n            firstFailure?.Throw();",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "_runtime.Session.OnClientMessageWithEncoding += _clientMessageForwarder",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "private void CleanupStartupAfterFailure()\n        {\n            RetireClientEventIngress();",
+                serverSource,
+                StringComparison.Ordinal);
         }
     }
 }

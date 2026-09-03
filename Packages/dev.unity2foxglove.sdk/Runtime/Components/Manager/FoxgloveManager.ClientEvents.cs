@@ -4,6 +4,7 @@
 // Module: Runtime/Components/Manager
 // Purpose: Main-thread delivery queue for Foxglove client transport events.
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Unity.FoxgloveSDK.Core;
@@ -25,6 +26,7 @@ namespace Unity.FoxgloveSDK.Components
             new(MaxQueuedClientEvents, MaxQueuedClientEventPayloadBytes, MeasureClientEventPayloadBytes);
         private readonly List<ClientEvent> _clientEventDrainScratch = new();
         private readonly ClientEventDispatchState _clientEventDispatchState = new();
+        private readonly ClientEventAdmissionState _clientEventAdmission = new();
 
         /// <summary>
         /// Queues a transport connect event for main-thread delivery.
@@ -44,22 +46,36 @@ namespace Unity.FoxgloveSDK.Components
 
         private void EnqueueClientLifecycleEvent(ClientEvent evt)
         {
-            if (_clientLifecycleEvents.TryEnqueue(evt, out var overflow))
+            var result = _clientEventAdmission.TryEnqueue(
+                _clientLifecycleEvents,
+                evt.Generation,
+                evt,
+                MeasureClientEventPayloadBytes,
+                out var overflow);
+            if (result == ClientEventAdmissionResult.Enqueued)
             {
                 return;
             }
 
-            WarnClientEventQueueOverflow(evt, overflow);
+            if (result == ClientEventAdmissionResult.QueueFull)
+                WarnClientEventQueueOverflow(evt, overflow);
         }
 
         private void EnqueueClientMessageEvent(ClientEvent evt)
         {
-            if (_clientMessageEvents.TryEnqueue(evt, out var overflow))
+            var result = _clientEventAdmission.TryEnqueue(
+                _clientMessageEvents,
+                evt.Generation,
+                evt,
+                MeasureClientEventPayloadBytes,
+                out var overflow);
+            if (result == ClientEventAdmissionResult.Enqueued)
             {
                 return;
             }
 
-            WarnClientEventQueueOverflow(evt, overflow);
+            if (result == ClientEventAdmissionResult.QueueFull)
+                WarnClientEventQueueOverflow(evt, overflow);
         }
 
         private void WarnClientEventQueueOverflow(ClientEvent evt, BoundedEventQueueOverflow overflow)
@@ -102,11 +118,13 @@ namespace Unity.FoxgloveSDK.Components
         {
             var generation = Volatile.Read(ref _connectionState.ChannelSessionGeneration);
             queue.DrainTo(_clientEventDrainScratch);
-            var discardedEvents = 0;
+            WarnClientEventRetirementDrops(_clientEventAdmission.TakeRetirementDrops());
+            var discardedEvents = 0L;
+            var discardedBytes = 0L;
             var drainIndex = 0;
             try
             {
-                for (; drainIndex < _clientEventDrainScratch.Count; drainIndex++)
+                while (drainIndex < _clientEventDrainScratch.Count)
                 {
                     var evt = _clientEventDrainScratch[drainIndex];
 
@@ -121,6 +139,7 @@ namespace Unity.FoxgloveSDK.Components
                             currentGeneration))
                     {
                         discardedEvents += _clientEventDrainScratch.Count - drainIndex;
+                        discardedBytes += MeasureScratchPayloadBytes(drainIndex);
                         drainIndex = _clientEventDrainScratch.Count;
                         break;
                     }
@@ -132,9 +151,16 @@ namespace Unity.FoxgloveSDK.Components
                     if (!ClientEventGenerationGate.IsCurrent(evt.Generation, generation))
                     {
                         discardedEvents++;
+                        discardedBytes += MeasureClientEventPayloadBytes(evt);
+                        drainIndex++;
                         continue;
                     }
 
+                    // Advance before invoking user code.  If a non-recoverable
+                    // subscriber exception escapes, only the not-yet-started
+                    // suffix is a discarded remainder; the current event did
+                    // reach at least its first subscriber.
+                    drainIndex++;
                     if (evt.IsMessage)
                     {
                         _clientEventDispatchState.InvokeMessage(
@@ -169,13 +195,33 @@ namespace Unity.FoxgloveSDK.Components
                 // remainder undelivered.  Account for it before clearing the
                 // scratch list so that every discarded event is observable.
                 if (drainIndex < _clientEventDrainScratch.Count)
+                {
                     discardedEvents += _clientEventDrainScratch.Count - drainIndex;
-                WarnClientEventRetirementDrop(discardedEvents, generation);
-                _clientEventDrainScratch.Clear();
+                    discardedBytes += MeasureScratchPayloadBytes(drainIndex);
+                }
+                try
+                {
+                    WarnClientEventRetirementDrop(discardedEvents, discardedBytes, generation);
+                }
+                finally
+                {
+                    _clientEventDrainScratch.Clear();
+                }
             }
         }
 
-        private void WarnClientEventRetirementDrop(int discardedEvents, ulong generation)
+        private long MeasureScratchPayloadBytes(int startIndex)
+        {
+            long bytes = 0;
+            for (var i = startIndex; i < _clientEventDrainScratch.Count; i++)
+                bytes += MeasureClientEventPayloadBytes(_clientEventDrainScratch[i]);
+            return bytes;
+        }
+
+        private void WarnClientEventRetirementDrop(
+            long discardedEvents,
+            long discardedBytes,
+            ulong generation)
         {
             if (discardedEvents <= 0
                 || !WarningDebouncer.TryUpdateCooldown(
@@ -191,7 +237,21 @@ namespace Unity.FoxgloveSDK.Components
                 + discardedEvents
                 + " queued client event(s) from retired session generation="
                 + generation
+                + " payloadBytes="
+                + discardedBytes
                 + ".");
+        }
+
+        private void WarnClientEventRetirementDrops(ClientEventDropSnapshot[] drops)
+        {
+            if (drops == null)
+                return;
+
+            foreach (var drop in drops)
+                WarnClientEventRetirementDrop(
+                    drop.Events,
+                    drop.PayloadBytes,
+                    drop.Generation);
         }
 
         private static void WarnClientEventSubscriberFailure(
@@ -205,8 +265,36 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ClearClientEvents()
         {
+            _clientEventAdmission.InvalidateAndClear(ClearClientEventQueuesCore);
+            FlushClientEventRetirementDrops();
+        }
+
+        private ClientEventDropCounts ClearClientEventQueuesCore()
+        {
+            var droppedEvents = _clientLifecycleEvents.Count + _clientMessageEvents.Count;
+            var droppedBytes = _clientMessageEvents.QueuedBytes;
+
             _clientLifecycleEvents.Clear();
             _clientMessageEvents.Clear();
+            return new ClientEventDropCounts(droppedEvents, droppedBytes);
+        }
+
+        /// <summary>
+        /// Atomically closes transport-thread admission before callbacks are
+        /// detached.  A callback retained by a delegate snapshot can then only
+        /// become a counted retirement drop; it cannot repopulate a cleared
+        /// queue or be mistaken for the next session.
+        /// </summary>
+        private void RetireClientEventIngress()
+        {
+            _clientEventAdmission.InvalidateAndClear(ClearClientEventQueuesCore);
+            AdvanceChannelSessionGeneration();
+            FlushClientEventRetirementDrops();
+        }
+
+        private void FlushClientEventRetirementDrops()
+        {
+            WarnClientEventRetirementDrops(_clientEventAdmission.TakeRetirementDrops());
         }
     }
 

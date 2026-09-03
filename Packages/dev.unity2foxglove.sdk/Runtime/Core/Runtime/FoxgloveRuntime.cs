@@ -326,6 +326,21 @@ namespace Unity.FoxgloveSDK.Core
         /// when the proto assembly is available.
         /// </summary>
         public void Start(string name, string host = "127.0.0.1", int port = 8765)
+            => StartWithSessionSetup(name, host, port, null);
+
+        /// <summary>
+        /// Starts a session after allowing an owning bridge to attach its
+        /// callbacks to the freshly constructed session.  The setup callback
+        /// runs before the transport listener starts, closing the small window
+        /// in which a fast client could otherwise be consumed without reaching
+        /// the owner.  This overload is internal so the public runtime API
+        /// remains source compatible.
+        /// </summary>
+        internal void StartWithSessionSetup(
+            string name,
+            string host,
+            int port,
+            Action<FoxgloveSession> beforeTransportStart)
         {
             if (Volatile.Read(ref _disposeRequested) != 0)
                 throw new ObjectDisposedException(nameof(FoxgloveRuntime));
@@ -368,8 +383,9 @@ namespace Unity.FoxgloveSDK.Core
                     Volatile.Read(ref _liveWebSocketChannelFilter),
                     Volatile.Read(ref _mcapRecordingChannelFilter),
                     Volatile.Read(ref _mirrorSink));
-                session.Start(host, port);
+                beforeTransportStart?.Invoke(session);
                 _session = session;
+                session.Start(host, port);
                 ClearReplaySuppressionWarnings();
                 _replayOrchestrator.Attach(_replay, session);
                 _stopped = false;

@@ -22,9 +22,22 @@ namespace UnityEngine
 
     public static class Debug
     {
+        public static int WarningCount { get; private set; }
+        public static int ErrorCount { get; private set; }
+        public static string LastWarning { get; private set; }
         public static void Log(string message) { }
-        public static void LogWarning(string message) { }
-        public static void LogError(string message) { }
+        public static void LogWarning(string message)
+        {
+            WarningCount++;
+            LastWarning = message;
+        }
+        public static void LogError(string message) { ErrorCount++; }
+        public static void Reset()
+        {
+            WarningCount = 0;
+            ErrorCount = 0;
+            LastWarning = null;
+        }
     }
 
     // The focused unit lane compiles the Editor FoxRun reflection boundary.
