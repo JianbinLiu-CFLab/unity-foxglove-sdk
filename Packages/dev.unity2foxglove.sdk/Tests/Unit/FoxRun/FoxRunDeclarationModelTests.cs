@@ -1296,6 +1296,76 @@ namespace Phase187E02
         }
 
         [Fact]
+        [Trait("Phase", "187-R4-C5")]
+        public void RoslynGeneratorIgnoresLookalikeFoxRunAttributes()
+        {
+            var result = RunGenerator(@"
+using System;
+
+namespace MyCorp
+{
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class FoxRunAttribute : Attribute
+    {
+        public FoxRunAttribute(string topic) { }
+    }
+}
+
+namespace Phase187R4C5
+{
+    public partial class Host
+    {
+        [MyCorp.FoxRun(""/c5/lookalike"")]
+        private int _value;
+    }
+}");
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id.StartsWith(
+                    "FOXRUN",
+                    StringComparison.Ordinal));
+            Assert.DoesNotContain(
+                result.Results
+                    .SelectMany(run => run.GeneratedSources)
+                    .Select(source => source.SourceText.ToString()),
+                source => source.Contains("/c5/lookalike", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C5")]
+        public void RoslynGeneratorDoesNotDiagnoseOrdinaryMultiDeclaratorAttributes()
+        {
+            var result = RunGenerator(@"
+using System;
+
+namespace UnityEngine
+{
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class SerializeField : Attribute { }
+}
+
+namespace Phase187R4C5
+{
+    public partial class Host
+    {
+        [UnityEngine.SerializeField]
+        private int _first, _second;
+    }
+}");
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN004");
+            Assert.DoesNotContain(
+                result.Results
+                    .SelectMany(run => run.GeneratedSources)
+                    .Select(source => source.SourceText.ToString()),
+                source => source.Contains("_first", StringComparison.Ordinal)
+                          || source.Contains("_second", StringComparison.Ordinal));
+        }
+
+        [Fact]
         [Trait("Phase", "187-R2-E02-002")]
         public void RoslynGeneratorRejectsCollidingFoxRunHostHintsBeforeAddSource()
         {

@@ -9,6 +9,11 @@
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityNative)' == 'true' and '$(IncludeRos2ForUnityAdapter)' == ''">true</IncludeRos2ForUnityAdapter>
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityAdapter)' == ''">false</IncludeRos2ForUnityAdapter>
     <IncludeRos2Bridge Condition="'$(IncludeRos2Bridge)' == ''">false</IncludeRos2Bridge>
+    <!-- Compile the reflection discovery boundary in the default focused lane;
+         optional analyzer lanes use a different Unity compile-stub surface. -->
+    <IncludeFoxRunEditorDiscoverySurface
+      Condition="'$(IncludeFoxRunEditorDiscoverySurface)' == '' and '$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true' and '$(IncludeRos2Bridge)' != 'true'">true</IncludeFoxRunEditorDiscoverySurface>
+    <IncludeFoxRunEditorDiscoverySurface Condition="'$(IncludeFoxRunEditorDiscoverySurface)' == ''">false</IncludeFoxRunEditorDiscoverySurface>
     <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY</DefineConstants>
     <Phase179OptionalCompilationLane>default</Phase179OptionalCompilationLane>
     <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityAdapter)' == 'true'">adapter</Phase179OptionalCompilationLane>
@@ -31,6 +36,8 @@
     <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs;../NativeCompileStubs/**/*.cs" />
     <Compile Remove="Fixtures/CertificateGeneratorUnityStubs.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Remove="Fixtures/FoxRunEditorDiscoveryCompileStubs.cs;FoxRun/FoxrunAssemblyScannerTests.cs"
+             Condition="'$(IncludeFoxRunEditorDiscoverySurface)' != 'true'" />
     <Compile Remove="Ros2ForUnity/**/*.cs;Architecture/FoxRunRos2NativeBoundaryTests.cs;Manager/FoxRunRos2CustomTypesupportInspectorPresentationTests.cs;FoxRun/FoxRunRos2*.cs;FoxRun/FoxRunCustomNativeContractDemandPolicyTests.cs;FoxRun/Fixtures/Phase181CustomInterfaceFixture.cs;Harness/R2fuGuardHelperOptimizationTests.cs;Harness/SensorRos2OptimizationTests.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true'" />
     <Compile Remove="Ros2ForUnity/FoxRunAnalyzerCompositionContractTests.cs"

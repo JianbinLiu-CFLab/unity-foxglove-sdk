@@ -30,8 +30,16 @@ namespace Unity.FoxgloveSDK.Editor
 
                 var members = ScanType(type);
                 var methods = ScanServiceType(type);
-                if (members.Count > 0 || methods.Count > 0)
-                    ValidatePhysicalHostIdentity(type);
+                if ((members.Count > 0 || methods.Count > 0)
+                    && !TryValidatePhysicalHostIdentity(
+                        type,
+                        ignoreReflectionTypeLoadExceptions))
+                {
+                    // A malformed host is isolated to this type during an
+                    // Editor refresh. Build-time scans pass false and still
+                    // fail closed by propagating the validation exception.
+                    return;
+                }
 
                 if (members.Count > 0)
                 {
@@ -63,8 +71,15 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var ns = type.Namespace ?? "";
                 var members = ScanType(type);
-                if (members.Count > 0)
-                    ValidatePhysicalHostIdentity(type);
+                if (members.Count > 0
+                    && !TryValidatePhysicalHostIdentity(
+                        type,
+                        ignoreReflectionTypeLoadExceptions))
+                {
+                    // Keep a single unsupported host from cancelling the
+                    // entire best-effort manifest refresh.
+                    return;
+                }
                 AddFoxRunMembers(
                     (ns, type.Name),
                     members,
@@ -190,6 +205,22 @@ namespace Unity.FoxgloveSDK.Editor
                 type.Namespace ?? string.Empty,
                 type.Name,
                 "FOXRUN623");
+        }
+
+        private static bool TryValidatePhysicalHostIdentity(
+            Type type,
+            bool bestEffort)
+        {
+            try
+            {
+                ValidatePhysicalHostIdentity(type);
+                return true;
+            }
+            catch (InvalidOperationException ex) when (bestEffort)
+            {
+                WarnSkippedHost(type, ex);
+                return false;
+            }
         }
 
         internal static void ValidatePhysicalHostIdentity(
@@ -432,6 +463,16 @@ namespace Unity.FoxgloveSDK.Editor
             Debug.LogWarning(
                 "[FoxrunCodeGenerator] Skipped assembly '" + assemblyName + "' while scanning [FoxRun] members because type loading failed. " +
                 LoaderExceptionSummary(ex));
+        }
+
+        private static void WarnSkippedHost(Type type, InvalidOperationException ex)
+        {
+            var hostName = type == null ? "<unknown>" : type.FullName;
+            Debug.LogWarning(
+                "[FoxrunCodeGenerator] Skipped FoxRun host '"
+                + (hostName ?? "<unknown>")
+                + "' during best-effort Editor discovery: "
+                + (ex == null ? "unsupported host identity." : ex.Message));
         }
 
         private static string LoaderExceptionSummary(ReflectionTypeLoadException ex)

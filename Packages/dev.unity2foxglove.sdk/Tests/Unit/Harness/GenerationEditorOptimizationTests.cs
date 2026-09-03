@@ -202,6 +202,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             Assert.Equal("alpha\nbeta", slice);
         }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C5")]
+        public void TestSourceSlicesRejectMissingEndMarkers()
+        {
+            var error = Assert.ThrowsAny<Xunit.Sdk.XunitException>(
+                () => TestSources.Slice("alpha\nbeta", "alpha", "missing"));
+
+            Assert.Contains(
+                "Could not locate source slice end: missing",
+                error.Message,
+                StringComparison.Ordinal);
+        }
     }
 
     [Trait("Phase", "140-69")]
@@ -215,7 +228,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var models = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Models.cs");
             var candidate = TestSources.Slice(source, "private static bool IsFoxRunCandidate", "private static bool IsServiceCandidate");
             var extractMember = TestSources.Slice(source, "private static MemberData ExtractMember", "private static TopicEntry ReadTopic");
-            var generate = TestSources.Slice(source, "private static void Generate", "private static void EmitClass");
+            var generate = TestSources.Slice(source, "private static void Generate", "private static string DiagnosticDeclaringType");
             var toRoslynMembers = TestSources.Slice(models, "ToRoslynMembers()", "    internal sealed class TopicEntry");
 
             Assert.Contains("AttributeLists.Count > 0", candidate, StringComparison.Ordinal);
@@ -241,7 +254,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
             var descriptor = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxRunDescriptorCarrierEmitter.cs");
             var generate = TestSources.Slice(source, "private static void Generate", "private static string DiagnosticDeclaringType");
-            var services = TestSources.Slice(source, "private static void GenerateServices", "        /// <summary>\r\n        /// Emits the generated partial class");
+            var services = TestSources.Slice(source, "private static void GenerateServices", "private static string DeclaringTypeName");
             var locationFor = TestSources.ExtractMethod(source, "private static Location LocationFor");
             var chunkedDescriptor = TestSources.ExtractMethod(descriptor, "public static string ChunkedDescriptorCarrierSource");
             var escape = TestSources.ExtractMethod(descriptor, "public static string EscapeStringLiteral");
@@ -506,7 +519,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void RosSupportAndExecutorSpinUsesReusableSnapshots()
         {
             var ros2 = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
-            var checkSupport = TestSources.Slice(ros2, "private void CheckROSSupport(string ros2Codename)", "    private void CheckRmwImplementation()");
+            var checkSupport = TestSources.Slice(ros2, "private void CheckROSSupport(string ros2Codename)", "    private void RegisterCtrlCHandler()");
             var component = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs");
             var core = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/ROS2UnityCore.cs");
 
