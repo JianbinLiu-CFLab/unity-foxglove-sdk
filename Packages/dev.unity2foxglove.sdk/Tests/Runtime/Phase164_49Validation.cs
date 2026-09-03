@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -60,17 +62,20 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyGenerationValidatorMaterializesTopicGroups()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
-            // Keep the unique validator source as the semantic anchor. Its
-            // parameter list is intentionally allowed to evolve from List to
-            // ICollection while the materialization invariant remains fixed.
-            var validate = source;
+            // Select the syntax-aware method span rather than the entire file;
+            // the validator contains several nearby LINQ-heavy helpers.
+            var validate = SourceMethod(source, "ValidateTopicGroups");
 
             Check(validate.Contains("var members = group.ToList();", StringComparison.Ordinal)
                   && validate.Contains("members.Select(member => member.SchemaName)", StringComparison.Ordinal)
-                  && validate.Contains("members.Any(", StringComparison.Ordinal)
-                  && validate.Contains("member.IsAggregateMember", StringComparison.Ordinal)
-                  && validate.Contains("var first = members[0];", StringComparison.Ordinal),
-                "164-49C-1: topic-group validation materializes each group once before repeated checks");
+                  && Regex.IsMatch(
+                      validate,
+                      @"members\.Any\(\s*member\s*=>\s*member\.IsAggregateMember",
+                      RegexOptions.CultureInvariant)
+                  && validate.Contains("var first = members[0];", StringComparison.Ordinal)
+                  && !validate.Contains("private static void ValidateDirectionalJsonNames", StringComparison.Ordinal)
+                  && !validate.Contains("private static bool HasMixedSchedule", StringComparison.Ordinal),
+                "164-49C-1: ValidateTopicGroups materializes each group once before repeated checks");
         }
 
         private static void VerifyRoslynReferenceCacheAndHasherOptimizations()
@@ -95,7 +100,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(registry.Contains("\"--phase164-49\"", StringComparison.Ordinal), "164-49E-1: validation registry exposes Phase164-49");
+            Check(registry.Contains("\"--phase164-49\"", StringComparison.Ordinal)
+                  && PhaseValidationRegistry.DefaultValidations(false)
+                      .Any(item => item.Flag == "--phase164-49"),
+                "164-49E-1: validation registry executes Phase164-49 in the default lane");
             Check(project.Contains("Phase164_49Validation.cs", StringComparison.Ordinal), "164-49E-2: runtime validation project compiles Phase164-49");
         }
 

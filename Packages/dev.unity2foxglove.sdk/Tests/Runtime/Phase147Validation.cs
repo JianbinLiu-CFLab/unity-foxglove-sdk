@@ -146,11 +146,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyValidationRegistryEntry()
         {
             var entry = PhaseValidationRegistry.Find(new[] { "--phase147" });
+            var inDefaultLane = PhaseValidationRegistry.DefaultValidations(false)
+                .Any(item => item.Flag == "--phase147");
             Check(entry != null
                   && entry.Name.StartsWith("Phase 147:", StringComparison.Ordinal)
                   && entry.Name.Contains(
                       "generated-source literal and determinism validation",
-                      StringComparison.Ordinal),
+                      StringComparison.Ordinal)
+                  && inDefaultLane,
                 "147-14: PhaseValidationRegistry wires --phase147");
         }
 

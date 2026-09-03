@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -12,7 +13,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             VerifyTopicMetadataHasherIsReused();
-            VerifyGenerationModelAvoidsRedundantSorts();
+            VerifyGenerationModelOrderingContract();
             VerifyCanonicalTypesFlowToEmitter();
             VerifySourceFileWriteSkipsLengthMismatches();
             VerifyRegistry();
@@ -34,30 +35,34 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-22A-2: topic fingerprinting avoids per-topic SHA256 allocation");
         }
 
-        private static void VerifyGenerationModelAvoidsRedundantSorts()
+        private static void VerifyGenerationModelOrderingContract()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModel.cs");
             var fromMembers = PhaseValidationSourceHelpers.SourceMethod(source, "public static FoxRunGenerationModel FromMembers");
             var copyTypes = PhaseValidationSourceHelpers.SourceMethod(source, "private static IReadOnlyList<FoxRunGenerationType> CopyTypes");
             var type = PhaseValidationSourceHelpers.SourceType(source, "FoxRunGenerationType");
 
+            // The old 164-22 fast-path assertion described an optimization
+            // that was reverted before this validation was promoted. Keep the
+            // current defensive-ordering contract explicit instead of hiding
+            // the inversion behind the original check identifiers.
             Check(fromMembers.Contains(".GroupBy(", StringComparison.Ordinal)
                   && fromMembers.Contains(".OrderBy(", StringComparison.Ordinal)
                   && fromMembers.Contains("new FoxRunGenerationType(", StringComparison.Ordinal)
                   && fromMembers.Contains("return new FoxRunGenerationModel(types)", StringComparison.Ordinal),
-                "164-22B-1: FromMembers groups and orders members before model construction");
+                "164-22B-1 (current defensive ordering): FromMembers groups and orders members before model construction");
             Check(copyTypes.Contains(".OrderBy(type => type.DeclaringType", StringComparison.Ordinal)
                   && copyTypes.Contains("new FoxRunGenerationType(", StringComparison.Ordinal)
                   && copyTypes.Contains(".AsReadOnly()", StringComparison.Ordinal)
                   && source.Contains("Types = CopyTypes(types)", StringComparison.Ordinal),
-                "164-22B-2: model copy path preserves deterministic type order and read-only ownership");
+                "164-22B-2 (current defensive ordering): model copy path preserves deterministic type order and read-only ownership");
             Check(type.Contains("public FoxRunGenerationType(", StringComparison.Ordinal)
                   && type.Contains(".OrderBy(member => member.Topic", StringComparison.Ordinal)
                   && type.Contains(".ThenBy(member => member.MemberName", StringComparison.Ordinal)
                   && type.Contains(".ThenBy(member => member.SchemaName", StringComparison.Ordinal)
                   && type.Contains(".ThenBy(member => member.CanonicalType", StringComparison.Ordinal)
                   && type.Contains(".AsReadOnly()", StringComparison.Ordinal),
-                "164-22B-3: public generation type constructor still sorts defensively");
+                "164-22B-3 (current defensive ordering): public generation type constructor sorts defensively");
         }
 
         private static void VerifyCanonicalTypesFlowToEmitter()
@@ -92,7 +97,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(registry.Contains("\"--phase164-22\"", StringComparison.Ordinal), "164-22E-1: validation registry exposes Phase164-22");
+            Check(registry.Contains("\"--phase164-22\"", StringComparison.Ordinal)
+                  && PhaseValidationRegistry.DefaultValidations(false)
+                      .Any(item => item.Flag == "--phase164-22"),
+                "164-22E-1: validation registry executes Phase164-22 in the default lane");
             Check(project.Contains("Phase164_22Validation.cs", StringComparison.Ordinal), "164-22E-2: runtime validation project compiles Phase164-22");
         }
 

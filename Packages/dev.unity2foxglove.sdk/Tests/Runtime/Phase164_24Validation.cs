@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -38,12 +39,12 @@ namespace Unity.FoxgloveSDK.Tests
             var scanner = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
             var preprocess = PhaseValidationSourceHelpers.SourceMethod(build, "public void OnPreprocessBuild");
             var ensureWithTypes = PhaseValidationSourceHelpers.SourceMethod(build, "EnsureFoxRunLinkXml");
-            // Keep this check resilient to tuple-parameter line wrapping while
-            // retaining the exact cached-type handoff assertions below.
+            // Keep this check resilient to tuple-parameter line wrapping and
+            // anchor it on a body statement not asserted below.
             var generate = PhaseValidationSourceHelpers.SourceMethodContaining(
                 codegen,
                 "GenerateSourceFiles",
-                "foxRunTypes = editorScan.FoxRunTypes;");
+                "var byClass = scan.ByClass;");
             var combined = PhaseValidationSourceHelpers.SourceMethod(scanner, "private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices");
 
             Check(preprocess.Contains("GenerateSourceFiles(out manifest, out foxRunTypes)", StringComparison.Ordinal)
@@ -120,7 +121,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(registry.Contains("\"--phase164-24\"", StringComparison.Ordinal), "164-24E-1: validation registry exposes Phase164-24");
+            Check(registry.Contains("\"--phase164-24\"", StringComparison.Ordinal)
+                  && PhaseValidationRegistry.DefaultValidations(false)
+                      .Any(item => item.Flag == "--phase164-24"),
+                "164-24E-1: validation registry executes Phase164-24 in the default lane");
             Check(project.Contains("Phase164_24Validation.cs", StringComparison.Ordinal), "164-24E-2: runtime validation project compiles Phase164-24");
         }
 

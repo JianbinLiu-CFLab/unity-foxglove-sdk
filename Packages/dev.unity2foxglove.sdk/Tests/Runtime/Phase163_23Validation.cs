@@ -148,8 +148,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(csproj.Contains("Phase163_23Validation.cs", StringComparison.Ordinal),
                 "163-23G-1: runtime test project compiles Phase163_23Validation");
             Check(registry.Contains("\"--phase163-23\"", StringComparison.Ordinal)
-                  && registry.Contains("Phase163_23Validation.Validate", StringComparison.Ordinal),
-                "163-23G-2: validation registry exposes --phase163-23");
+                  && registry.Contains("Phase163_23Validation.Validate", StringComparison.Ordinal)
+                  && PhaseValidationRegistry.DefaultValidations(false)
+                      .Any(item => item.Flag == "--phase163-23"),
+                "163-23G-2: validation registry executes --phase163-23 in the default lane");
         }
 
         private static string ReadRepoText(string relativePath)
