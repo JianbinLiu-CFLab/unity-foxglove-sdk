@@ -11,6 +11,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
@@ -368,7 +370,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void InvalidServicePublicationDoesNotBroadcastBeforeGraphValidation()
         {
-            var fake = new Phase6FakeTransport();
+            var fake = new ConnectRaceTransport();
             var session = new FoxgloveSession("Test", fake);
             var descriptor = new ServiceDescriptor
             {
@@ -377,8 +379,42 @@ namespace Unity.FoxgloveSDK.UnitTests
                 Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
             };
 
+            fake.SimulateConnect(7);
+            fake.ClearMessages();
             Assert.Throws<ArgumentException>(() => session.RegisterService(descriptor));
-            Assert.Empty(fake.BroadcastTexts);
+            Assert.Empty(
+                fake.MessagesFor(7)
+                    .Select(text => JObject.Parse(text)["op"]?.ToString())
+                    .Where(op => op == "advertiseServices"));
+            Assert.Empty(session.Services.GetAll());
+        }
+
+        [Fact]
+        public void ServicePublicationDoesNotAdvertiseWhenGraphBroadcastFails()
+        {
+            var fake = new ConnectRaceTransport();
+            var session = new FoxgloveSession("Test", fake);
+            fake.SimulateConnect(7);
+            fake.SimulateText(7, "{\"op\":\"subscribeConnectionGraph\"}");
+            fake.ClearMessages();
+            // The pre-6928 order would consume the first send on advertise;
+            // fail the subsequent graph update instead.
+            fake.ThrowSendTextCount = 2;
+            fake.RecordBeforeThrow = true;
+
+            var descriptor = new ServiceDescriptor
+            {
+                Name = "/graph-broadcast-failure", Type = "/graph-broadcast-failure",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            };
+
+            Assert.Throws<InvalidOperationException>(() => session.RegisterService(descriptor));
+            var operations = fake.MessagesFor(7)
+                .Select(text => JObject.Parse(text)["op"]?.ToString())
+                .Where(op => op == "advertiseServices" || op == "unadvertiseServices")
+                .ToList();
+            Assert.DoesNotContain("advertiseServices", operations);
             Assert.Empty(session.Services.GetAll());
         }
 
@@ -474,6 +510,77 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             var operations = fake.BroadcastTexts.Select(text => JObject.Parse(text)["op"]?.ToString()).ToList();
             Assert.Equal(new[] { "unadvertiseServices", "advertiseServices" }, operations);
+        }
+
+        [Fact]
+        public async Task ClientConnectSerializesServiceSnapshotWithUnregister()
+        {
+            var fake = new ConnectRaceTransport();
+            var session = new FoxgloveSession("Test", fake);
+            var serviceId = session.RegisterService(new ServiceDescriptor
+            {
+                Name = "/connect-race", Type = "/connect-race",
+                Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+            });
+
+            fake.ClearMessages();
+            var connectTask = Task.Run(() => fake.SimulateConnect(1));
+            Assert.True(
+                fake.ServerInfoEntered.Wait(TimeSpan.FromSeconds(5)),
+                "connect did not enter the session snapshot");
+
+            var unregisterStarted = new ManualResetEventSlim(false);
+            var unregisterCompleted = new ManualResetEventSlim(false);
+            Exception unregisterFailure = null;
+            var unregisterTask = Task.Run(() =>
+            {
+                unregisterStarted.Set();
+                try
+                {
+                    session.UnregisterService(serviceId);
+                }
+                catch (Exception ex)
+                {
+                    unregisterFailure = ex;
+                }
+                finally
+                {
+                    unregisterCompleted.Set();
+                }
+            });
+
+            try
+            {
+                Assert.True(
+                    unregisterStarted.Wait(TimeSpan.FromSeconds(5)),
+                    "unregister did not start");
+                Assert.False(
+                    unregisterCompleted.Wait(TimeSpan.FromMilliseconds(500)),
+                    "service mutation ran while the client snapshot was in progress");
+            }
+            finally
+            {
+                fake.ReleaseServerInfo.Set();
+            }
+
+            await Task.WhenAll(connectTask, unregisterTask);
+            Assert.Null(unregisterFailure);
+
+            var serviceOperations = fake.MessagesFor(1)
+                .Select(text => JObject.Parse(text)["op"]?.ToString())
+                .Where(op => op == "advertiseServices" || op == "unadvertiseServices")
+                .ToList();
+            Assert.Equal("unadvertiseServices", serviceOperations.Last());
+
+            fake.SimulateConnect(2);
+            fake.SimulateText(2, "{\"op\":\"subscribeConnectionGraph\"}");
+            var graphSnapshot = fake.MessagesFor(2)
+                .Select(text => JObject.Parse(text))
+                .Last(obj => obj["op"]?.ToString() == "connectionGraphUpdate");
+            Assert.DoesNotContain(
+                (JArray)graphSnapshot["advertisedServices"],
+                service => service["name"]?.ToString() == "/connect-race");
         }
 
         [Fact]
@@ -733,6 +840,98 @@ namespace Unity.FoxgloveSDK.UnitTests
             public void SimulateConnect(uint clientId) => OnClientConnected?.Invoke(clientId);
             public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
             public void SimulateBinary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);
+        }
+
+        private sealed class ConnectRaceTransport : IFoxgloveTransport
+        {
+            private readonly object _gate = new();
+            private readonly HashSet<uint> _connected = new();
+            private readonly Dictionary<uint, List<string>> _sentTexts = new();
+            private int _serverInfoBlockEntered;
+
+            public bool IsRunning => true;
+            public event Action<uint> OnClientConnected;
+            public event Action<uint> OnClientDisconnected;
+            public event Action<uint, string> OnTextReceived;
+            public event Action<uint, byte[]> OnBinaryReceived;
+            public readonly ManualResetEventSlim ServerInfoEntered = new(false);
+            public readonly ManualResetEventSlim ReleaseServerInfo = new(false);
+            public int ThrowSendTextCount { get; set; }
+            public bool RecordBeforeThrow { get; set; }
+
+            public void Start(string host, int port) { }
+            public void Stop() { }
+            public void Dispose() { }
+
+            public void SendText(uint clientId, string json)
+            {
+                if (ThrowSendTextCount > 0)
+                {
+                    if (RecordBeforeThrow)
+                        RecordText(clientId, json);
+                    ThrowSendTextCount--;
+                    throw new InvalidOperationException("Injected text send failure.");
+                }
+
+                RecordText(clientId, json);
+
+                if (clientId == 1
+                    && JObject.Parse(json)["op"]?.ToString() == "serverInfo"
+                    && Interlocked.Exchange(ref _serverInfoBlockEntered, 1) == 0)
+                {
+                    ServerInfoEntered.Set();
+                    ReleaseServerInfo.Wait();
+                }
+            }
+
+            private void RecordText(uint clientId, string json)
+            {
+                lock (_gate)
+                {
+                    if (!_sentTexts.TryGetValue(clientId, out var messages))
+                    {
+                        messages = new List<string>();
+                        _sentTexts[clientId] = messages;
+                    }
+                    messages.Add(json);
+                }
+            }
+
+            public void SendBinary(uint clientId, byte[] data) { }
+
+            public void BroadcastText(string json)
+            {
+                uint[] clients;
+                lock (_gate)
+                    clients = _connected.ToArray();
+                foreach (var clientId in clients)
+                    SendText(clientId, json);
+            }
+
+            public void BroadcastBinary(byte[] data) { }
+
+            public List<string> MessagesFor(uint clientId)
+            {
+                lock (_gate)
+                    return _sentTexts.TryGetValue(clientId, out var messages)
+                        ? new List<string>(messages)
+                        : new List<string>();
+            }
+
+            public void ClearMessages()
+            {
+                lock (_gate)
+                    _sentTexts.Clear();
+            }
+
+            public void SimulateConnect(uint clientId)
+            {
+                lock (_gate)
+                    _connected.Add(clientId);
+                OnClientConnected?.Invoke(clientId);
+            }
+
+            public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
         }
     }
 }

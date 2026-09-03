@@ -1350,11 +1350,19 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_channelLifecycleLock)
             {
-                var chs = FilterLiveChannels(_channels.GetAll());
-                var svcs = _services.GetAll();
+                // Keep the service snapshot, its client-visible frames, and
+                // graph seeding in the same lifecycle epoch as register /
+                // unregister. Otherwise an unregister can remove a service
+                // after this snapshot is captured and the stale service can
+                // be re-seeded into the graph after the client is notified.
+                lock (_serviceLifecycleLock)
+                {
+                    var chs = FilterLiveChannels(_channels.GetAll());
+                    var svcs = _services.GetAll();
 
-                SendSessionSnapshot(clientId, chs, svcs);
-                _graph.SeedUnityState(chs, svcs);
+                    SendSessionSnapshot(clientId, chs, svcs);
+                    _graph.SeedUnityState(chs, svcs);
+                }
             }
         }
 
