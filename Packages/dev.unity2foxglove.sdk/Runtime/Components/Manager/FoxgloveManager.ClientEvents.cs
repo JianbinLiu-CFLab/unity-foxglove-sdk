@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Components
         private const int MaxQueuedClientEvents = 4096;
         private const long MaxQueuedClientEventPayloadBytes = 16L * 1024L * 1024L;
         private const long ClientEventOverflowWarningIntervalTicks = 5L * 1000L * 1000L * 10L;
+        private long _lastClientEventRetirementWarningTicks;
 
         private readonly BoundedEventQueue<ClientEvent> _clientLifecycleEvents =
             new(MaxQueuedClientLifecycleEvents, 0, MeasureClientEventPayloadBytes);
@@ -100,70 +101,97 @@ namespace Unity.FoxgloveSDK.Components
         private void DrainClientEventQueue(BoundedEventQueue<ClientEvent> queue)
         {
             var generation = Volatile.Read(ref _connectionState.ChannelSessionGeneration);
-            System.Func<bool> isLive = () =>
-                Volatile.Read(ref _connectionState.ChannelSessionGeneration)
-                == generation;
             queue.DrainTo(_clientEventDrainScratch);
+            var discardedEvents = 0;
+            var drainIndex = 0;
             try
             {
-                foreach (var evt in _clientEventDrainScratch)
+                for (; drainIndex < _clientEventDrainScratch.Count; drainIndex++)
                 {
-                    // A transport callback may already be in flight when the
-                    // manager detaches it during Stop.  Its stamped event must
-                    // never be delivered to the next session epoch.
-                    if (!ClientEventGenerationGate.IsCurrent(evt.Generation, generation))
-                        continue;
+                    var evt = _clientEventDrainScratch[drainIndex];
 
-                    bool dispatched;
+                    // StopServer advances the generation on the main thread.
+                    // Once that happens, do not start another event from this
+                    // drain snapshot; the remainder belongs to the retired
+                    // delivery epoch.
+                    var currentGeneration =
+                        Volatile.Read(ref _connectionState.ChannelSessionGeneration);
+                    if (!ClientEventGenerationGate.IsCurrent(
+                            generation,
+                            currentGeneration))
+                    {
+                        discardedEvents += _clientEventDrainScratch.Count - drainIndex;
+                        drainIndex = _clientEventDrainScratch.Count;
+                        break;
+                    }
+
+                    // A transport callback can be in flight while StopServer
+                    // detaches it and clears the queue.  Its event may arrive
+                    // after that clear, so reject it by the generation stamped
+                    // at the callback's session boundary.
+                    if (!ClientEventGenerationGate.IsCurrent(evt.Generation, generation))
+                    {
+                        discardedEvents++;
+                        continue;
+                    }
+
                     if (evt.IsMessage)
                     {
-                        dispatched = _clientEventDispatchState.InvokeIfLive(
-                            isLive,
-                            () => _clientEventDispatchState.Invoke(
-                                OnClientMessage,
-                                evt.ClientId,
-                                evt.ChannelId,
-                                evt.Topic,
-                                evt.Payload,
-                                WarnClientEventSubscriberFailure),
-                            () => _clientEventDispatchState.Invoke(
-                                OnClientMessageWithEncoding,
-                                evt.ClientId,
-                                evt.ChannelId,
-                                evt.Topic,
-                                evt.Encoding,
-                                evt.Payload,
-                                WarnClientEventSubscriberFailure));
+                        _clientEventDispatchState.InvokeMessage(
+                            OnClientMessage,
+                            OnClientMessageWithEncoding,
+                            evt.ClientId,
+                            evt.ChannelId,
+                            evt.Topic,
+                            evt.Encoding,
+                            evt.Payload,
+                            WarnClientEventSubscriberFailure);
                     }
                     else if (evt.IsConnect)
                     {
-                        dispatched = _clientEventDispatchState.InvokeIfLive(
-                            isLive,
-                            () => _clientEventDispatchState.Invoke(
-                                OnClientConnected,
-                                evt.ClientId,
-                                WarnClientEventSubscriberFailure),
-                            null);
+                        _clientEventDispatchState.Invoke(
+                            OnClientConnected,
+                            evt.ClientId,
+                            WarnClientEventSubscriberFailure);
                     }
                     else
                     {
-                        dispatched = _clientEventDispatchState.InvokeIfLive(
-                            isLive,
-                            () => _clientEventDispatchState.Invoke(
-                                OnClientDisconnected,
-                                evt.ClientId,
-                                WarnClientEventSubscriberFailure),
-                            null);
+                        _clientEventDispatchState.Invoke(
+                            OnClientDisconnected,
+                            evt.ClientId,
+                            WarnClientEventSubscriberFailure);
                     }
-
-                    if (!dispatched)
-                        break;
                 }
             }
             finally
             {
+                // A non-recoverable subscriber exception can also leave the
+                // remainder undelivered.  Account for it before clearing the
+                // scratch list so that every discarded event is observable.
+                if (drainIndex < _clientEventDrainScratch.Count)
+                    discardedEvents += _clientEventDrainScratch.Count - drainIndex;
+                WarnClientEventRetirementDrop(discardedEvents, generation);
                 _clientEventDrainScratch.Clear();
             }
+        }
+
+        private void WarnClientEventRetirementDrop(int discardedEvents, ulong generation)
+        {
+            if (discardedEvents <= 0
+                || !WarningDebouncer.TryUpdateCooldown(
+                    ref _lastClientEventRetirementWarningTicks,
+                    System.DateTime.UtcNow.Ticks,
+                    ClientEventOverflowWarningIntervalTicks))
+            {
+                return;
+            }
+
+            Debug.LogWarning(
+                "[Foxglove] Dropped "
+                + discardedEvents
+                + " queued client event(s) from retired session generation="
+                + generation
+                + ".");
         }
 
         private static void WarnClientEventSubscriberFailure(
