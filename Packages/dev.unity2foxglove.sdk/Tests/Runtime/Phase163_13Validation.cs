@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Google.Protobuf;
+using Google.Protobuf.Reflection;
 using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
@@ -26,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             ProtobufDescriptorSubsetsAreDependencyFirst();
+            ProtobufDescriptorOrderingRejectsReversedDependencyOrder();
             NegativeAbsolutePointTimeOffsetsThrow();
             TimestampConversionDoesNotOverflowAtUlongMax();
             CameraAutoIntrinsicsSupportsProtobuf();
@@ -48,6 +51,24 @@ namespace Unity.FoxgloveSDK.Tests
                 + $"({checkedSubsets} subsets, {checkedDependencies} dependency edges, {orderingFailures} ordering failures)");
             Check(checkedSubsets >= 40,
                 "163-13A-2: protobuf descriptor ordering validation inspected bundled schemas");
+        }
+
+        private static void ProtobufDescriptorOrderingRejectsReversedDependencyOrder()
+        {
+            var reversed = new FileDescriptorSet();
+            var dependent = new FileDescriptorProto { Name = "phase187/dependent.proto" };
+            dependent.Dependency.Add("phase187/base.proto");
+            reversed.File.Add(dependent);
+            reversed.File.Add(new FileDescriptorProto { Name = "phase187/base.proto" });
+
+            var valid = ProtobufDescriptorOrderingFixture.TryValidateDescriptorSet(
+                reversed.ToByteArray(),
+                out var checkedDependencies,
+                out var orderingFailures);
+
+            Check(
+                !valid && checkedDependencies == 1 && orderingFailures == 1,
+                "163-13A-3: descriptor ordering validation rejects a dependent emitted before its dependency");
         }
 
         private static void NegativeAbsolutePointTimeOffsetsThrow()

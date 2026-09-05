@@ -58,13 +58,13 @@ namespace Unity.FoxgloveSDK.Editor
                         publishTopics[topicIndex],
                         member);
                     sb.AppendLine(
-                        $"{pad}    private {member.EmissionTypeName} __FoxRunRead_{suffix}() => __foxRunCapture_{topicIndex}_{fieldIndex};");
+                        $"{pad}    private {IdentifierUtils.EscapeTypeName(member.EmissionTypeName)} __FoxRunRead_{suffix}() => __foxRunCapture_{topicIndex}_{fieldIndex};");
                 }
 
                 if (canWrite)
                 {
                     sb.AppendLine(
-                        $"{pad}    private void __FoxRunWrite_{suffix}({member.EmissionTypeName} value) => {access} = value;");
+                        $"{pad}    private void __FoxRunWrite_{suffix}({IdentifierUtils.EscapeTypeName(member.EmissionTypeName)} value) => {access} = value;");
                 }
 
                 sb.AppendLine();
@@ -119,7 +119,7 @@ namespace Unity.FoxgloveSDK.Editor
                     : "null";
                 sb.AppendLine($"{pad}            case {index}:");
                 sb.AppendLine(
-                    $"{pad}                return __foxRunTransportMember_{index} ??= new FoxRunGeneratedMemberAccess<{member.EmissionTypeName}>(");
+                    $"{pad}                return __foxRunTransportMember_{index} ??= new FoxRunGeneratedMemberAccess<{IdentifierUtils.EscapeTypeName(member.EmissionTypeName)}>(");
                 sb.AppendLine(
                     $"{pad}                    \"{stableId}\",");
                 sb.AppendLine(

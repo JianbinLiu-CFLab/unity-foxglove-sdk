@@ -200,6 +200,10 @@ namespace Unity.FoxgloveSDK.Components
         private System.Action<uint, uint, string, string, byte[]> _clientMessageForwarder;
         private System.Action<uint> _clientConnectedForwarder;
         private System.Action<uint> _clientDisconnectedForwarder;
+        // The runtime may dispose a just-created session before returning a
+        // startup failure. Retain the owner reference until every Manager
+        // forwarder has been detached so cleanup never loses its transport.
+        private FoxgloveSession _runtimeForwarderSession;
 
         /// <summary>
         /// Compatibility alias for the coordinate convention used by Manager-owned output.

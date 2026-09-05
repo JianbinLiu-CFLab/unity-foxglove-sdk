@@ -42,7 +42,7 @@ namespace Unity.FoxgloveSDK.Editor
                 case "Color":
                     return $"global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.r, {lastVar}.r, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.g, {lastVar}.g, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.b, {lastVar}.b, {eps}) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged({access}.a, {lastVar}.a, {eps})";
                 default:
-                    return $"!EqualityComparer<{type}>.Default.Equals({access}, {lastVar})";
+                    return $"!EqualityComparer<{IdentifierUtils.EscapeTypeName(type)}>.Default.Equals({access}, {lastVar})";
             }
         }
 

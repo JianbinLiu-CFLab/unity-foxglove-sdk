@@ -455,9 +455,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string FullTypeName(Type type)
         {
-            return type == null
-                ? string.Empty
-                : (type.FullName ?? type.Name).Replace('+', '.');
+            return FoxRunEmissionTypeNameFormatter
+                .ReflectionIdentityName(type);
         }
     }
 }

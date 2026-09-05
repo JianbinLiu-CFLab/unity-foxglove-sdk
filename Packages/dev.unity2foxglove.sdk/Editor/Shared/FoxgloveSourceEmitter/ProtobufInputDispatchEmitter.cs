@@ -90,11 +90,12 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var typeMetadata = FindTypeMetadata(rootMetadata, shape.TypeName);
             sb.AppendLine();
-            sb.AppendLine($"{pad}    private static bool __TryReadFoxRunProtobufObject_{rootIndex}_{shapeIndex}(byte[] payload, out global::{shape.TypeName} value, out string error)");
+            var objectType = GlobalTypeName(shape.TypeName);
+            sb.AppendLine($"{pad}    private static bool __TryReadFoxRunProtobufObject_{rootIndex}_{shapeIndex}(byte[] payload, out {objectType} value, out string error)");
             sb.AppendLine($"{pad}    {{");
             sb.AppendLine($"{pad}        var __fields = new global::System.Collections.Generic.List<FoxRunProtobufField>();");
             sb.AppendLine($"{pad}        if (!FoxRunInboundProtobuf.TryReadFields(payload, __fields, out error)) {{ value = default; return false; }}");
-            sb.AppendLine($"{pad}        var __value = new global::{shape.TypeName}();");
+            sb.AppendLine($"{pad}        var __value = new {objectType}();");
             foreach (var field in shape.Fields.Where(candidate => candidate.Repeated).OrderBy(candidate => candidate.MemberName, StringComparer.Ordinal))
                 sb.AppendLine($"{pad}        var __{field.MemberName}Values = new global::System.Collections.Generic.List<{RepeatedStorageType(CollectionElementOrSelf(field.TypeShape))}>();");
             sb.AppendLine($"{pad}        foreach (var __field in __fields)");
@@ -374,18 +375,19 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string GlobalTypeName(string typeName)
         {
-            if (string.IsNullOrWhiteSpace(typeName) || typeName.StartsWith("global::", StringComparison.Ordinal))
-                return typeName;
-            if (typeName.EndsWith("[]", StringComparison.Ordinal))
-                return GlobalTypeName(typeName.Substring(0, typeName.Length - 2)) + "[]";
-            switch (typeName)
+            var escaped = IdentifierUtils.EscapeTypeName(typeName);
+            if (string.IsNullOrWhiteSpace(escaped) || escaped.StartsWith("global::", StringComparison.Ordinal))
+                return escaped;
+            if (escaped.EndsWith("[]", StringComparison.Ordinal))
+                return GlobalTypeName(escaped.Substring(0, escaped.Length - 2)) + "[]";
+            switch (escaped)
             {
                 case "bool": case "byte": case "sbyte": case "short": case "ushort":
                 case "int": case "uint": case "long": case "ulong": case "float":
                 case "double": case "decimal": case "string": case "char": case "object":
-                    return typeName;
+                    return escaped;
                 default:
-                    return "global::" + typeName;
+                    return "global::" + escaped;
             }
         }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -12,6 +13,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             VerifyRoslynCandidateScanIsSinglePass();
+            VerifySourceMethodContainingFailsClosed();
             VerifyEditorFallbackUsesCombinedScan();
             VerifyPayloadExprAvoidsJsonNameList();
             VerifySourceGeneratorFreshnessUsesHashCompare();
@@ -40,16 +42,49 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-23A-2: semantic extraction resolves canonical FoxRun and aggregate attribute metadata");
         }
 
+        private static void VerifySourceMethodContainingFailsClosed()
+        {
+            var missingMarker = false;
+            try
+            {
+                PhaseValidationSourceHelpers.SourceMethodContaining(
+                    "class Demo { private void Build() { return; } }",
+                    "Build",
+                    "missing marker;");
+            }
+            catch (InvalidOperationException)
+            {
+                missingMarker = true;
+            }
+
+            var ambiguousMarker = false;
+            try
+            {
+                PhaseValidationSourceHelpers.SourceMethodContaining(
+                    "class Demo { private void Build() { return; } private void Build(int value) { return; } }",
+                    "Build",
+                    "return;");
+            }
+            catch (InvalidOperationException)
+            {
+                ambiguousMarker = true;
+            }
+
+            Check(missingMarker && ambiguousMarker,
+                "164-23A-3: source method selectors fail closed when a marker is missing or ambiguous");
+        }
+
         private static void VerifyEditorFallbackUsesCombinedScan()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
             var scanner = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
-            // Anchor the overload by its stable leading parameters; tuple
-            // element formatting is intentionally not part of the selector.
+            // Anchor the overload with a stable body statement that is not
+            // itself one of the assertions below; tuple formatting is not
+            // part of the selector.
             var generate = PhaseValidationSourceHelpers.SourceMethodContaining(
                 source,
                 "GenerateSourceFiles",
-                "foxRunTypes = editorScan.FoxRunTypes;");
+                "var byClass = scan.ByClass;");
             var combined = PhaseValidationSourceHelpers.SourceMethod(scanner, "private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices");
             var sharedTraversal = PhaseValidationSourceHelpers.SourceMethod(scanner, "private static void VisitLoadedFoxRunComponentTypes");
 
@@ -96,7 +131,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(registry.Contains("\"--phase164-23\"", StringComparison.Ordinal), "164-23E-1: validation registry exposes Phase164-23");
+            Check(registry.Contains("\"--phase164-23\"", StringComparison.Ordinal)
+                  && PhaseValidationRegistry.DefaultValidations(false)
+                      .Any(item => item.Flag == "--phase164-23"),
+                "164-23E-1: validation registry executes Phase164-23 in the default lane");
             Check(project.Contains("Phase164_23Validation.cs", StringComparison.Ordinal), "164-23E-2: runtime validation project compiles Phase164-23");
         }
 

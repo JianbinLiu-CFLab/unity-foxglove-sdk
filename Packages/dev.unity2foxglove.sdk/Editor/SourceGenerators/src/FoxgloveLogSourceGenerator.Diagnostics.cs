@@ -242,7 +242,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         public static readonly DiagnosticDescriptor UnsupportedHostIdentity = new DiagnosticDescriptor(
             "FOXRUN623", "FoxRun declaring host identity unsupported",
-            "FoxRun declaring host identity cannot be represented by the generated partial-class contract",
+            "FoxRun declaring host identity cannot be represented by the generated partial-class contract: {0}",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         #endregion
@@ -316,7 +316,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         public static readonly DiagnosticDescriptor UnsupportedServiceHostIdentity = new DiagnosticDescriptor(
             "FOXSERVICE010", "FoxService declaring host identity unsupported",
-            "FoxService declaring host identity cannot be represented by the generated partial-class contract",
+            "FoxService declaring host identity cannot be represented by the generated partial-class contract: {0}",
             "FoxService", DiagnosticSeverity.Error, true);
 
         public static DiagnosticDescriptor Shared(string id)

@@ -355,6 +355,179 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "187-R2-E01-001")]
+        public void ProtobufDescriptorRejectsEnumValueCollisionsAcrossTypes()
+        {
+            var first = FoxRunTypeShape.Enum(
+                "Demo.FirstState",
+                new[]
+                {
+                    new FoxRunEnumValue("first_none", 0),
+                    new FoxRunEnumValue("ready", 1)
+                });
+            var second = FoxRunTypeShape.Enum(
+                "Demo.SecondState",
+                new[]
+                {
+                    new FoxRunEnumValue("second_none", 0),
+                    new FoxRunEnumValue("ready", 1)
+                });
+            var contract = new FoxRunProtobufContractInput(
+                "Demo.EnumSource",
+                "/phase187/e01/enum-scope",
+                "Demo.EnumEnvelope",
+                new[]
+                {
+                    new FoxRunProtobufFieldInput(
+                        "first",
+                        "First",
+                        first.TypeName,
+                        false,
+                        protobufFieldNumber: 1,
+                        typeShape: first),
+                    new FoxRunProtobufFieldInput(
+                        "second",
+                        "Second",
+                        second.TypeName,
+                        false,
+                        protobufFieldNumber: 2,
+                        typeShape: second)
+                });
+
+            var error = Assert.Throws<InvalidOperationException>(
+                () => FoxRunProtobufContractBuilder.Build(contract));
+            Assert.Contains("enum", error.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("ready", error.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R2-E01-001")]
+        public void ProtobufDescriptorUsesUniqueSyntheticEnumZeroNamesAcrossTypes()
+        {
+            var first = FoxRunTypeShape.Enum(
+                "Demo.FirstState",
+                new[] { new FoxRunEnumValue("ready", 1) });
+            var second = FoxRunTypeShape.Enum(
+                "Demo.SecondState",
+                new[] { new FoxRunEnumValue("running", 1) });
+            var contract = new FoxRunProtobufContractInput(
+                "Demo.EnumSource",
+                "/phase187/e01/enum-synthetic-scope",
+                "Demo.EnumEnvelope",
+                new[]
+                {
+                    new FoxRunProtobufFieldInput(
+                        "first",
+                        "First",
+                        first.TypeName,
+                        false,
+                        protobufFieldNumber: 1,
+                        typeShape: first),
+                    new FoxRunProtobufFieldInput(
+                        "second",
+                        "Second",
+                        second.TypeName,
+                        false,
+                        protobufFieldNumber: 2,
+                        typeShape: second)
+                });
+
+            var descriptor = FileDescriptorSet.Parser.ParseFrom(
+                FoxRunProtobufContractBuilder.Build(contract).FileDescriptorSet);
+            var values = Assert.Single(descriptor.File).EnumType
+                .Select(enumDescriptor => enumDescriptor.Value[0].Name)
+                .ToArray();
+
+            Assert.Equal(new[] { "UNSPECIFIED", "UNSPECIFIED_2" }, values);
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R2-E01-001")]
+        public void ProtobufDescriptorSyntheticEnumZeroNamesAvoidFutureDeclaredValues()
+        {
+            var first = FoxRunTypeShape.Enum(
+                "Demo.FirstState",
+                new[] { new FoxRunEnumValue("UNSPECIFIED_2", 1) });
+            var second = FoxRunTypeShape.Enum(
+                "Demo.SecondState",
+                new[] { new FoxRunEnumValue("UNSPECIFIED", 1) });
+            var contract = new FoxRunProtobufContractInput(
+                "Demo.EnumSource",
+                "/phase187/e01/enum-synthetic-future",
+                "Demo.EnumEnvelope",
+                new[]
+                {
+                    new FoxRunProtobufFieldInput(
+                        "a",
+                        "A",
+                        first.TypeName,
+                        false,
+                        protobufFieldNumber: 1,
+                        typeShape: first),
+                    new FoxRunProtobufFieldInput(
+                        "b",
+                        "B",
+                        second.TypeName,
+                        false,
+                        protobufFieldNumber: 2,
+                        typeShape: second)
+                });
+
+            var descriptor = FileDescriptorSet.Parser.ParseFrom(
+                FoxRunProtobufContractBuilder.Build(contract).FileDescriptorSet);
+            var values = Assert.Single(descriptor.File).EnumType
+                .SelectMany(enumDescriptor => enumDescriptor.Value)
+                .Where(value => value.Number == 0)
+                .Select(value => value.Name)
+                .ToArray();
+
+            Assert.Equal(new[] { "UNSPECIFIED_3", "UNSPECIFIED_4" }, values);
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R2-E01-001")]
+        public void ProtobufDescriptorSuffixesTypeBeforeFutureEnumValueCollision()
+        {
+            var objectShape = FoxRunTypeShape.Object(
+                "Demo_Ready",
+                Array.Empty<FoxRunTypeField>());
+            var enumShape = FoxRunTypeShape.Enum(
+                "Demo.Enum",
+                new[] { new FoxRunEnumValue("Demo_Ready", 0) });
+            var contract = new FoxRunProtobufContractInput(
+                "Demo.Source",
+                "/phase187/e01/type-value-order",
+                "Demo.Envelope",
+                new[]
+                {
+                    new FoxRunProtobufFieldInput(
+                        "object",
+                        "A",
+                        objectShape.TypeName,
+                        false,
+                        protobufFieldNumber: 1,
+                        typeShape: objectShape),
+                    new FoxRunProtobufFieldInput(
+                        "enum",
+                        "B",
+                        enumShape.TypeName,
+                        false,
+                        protobufFieldNumber: 2,
+                        typeShape: enumShape)
+                });
+
+            var descriptor = FileDescriptorSet.Parser.ParseFrom(
+                FoxRunProtobufContractBuilder.Build(contract).FileDescriptorSet);
+
+            Assert.Contains(
+                Assert.Single(descriptor.File).MessageType,
+                message => message.Name == "Demo_Ready_2");
+            Assert.Contains(
+                Assert.Single(descriptor.File).EnumType,
+                enumDescriptor => enumDescriptor.Value.Any(value => value.Name == "Demo_Ready"));
+        }
+
+        [Fact]
         public void NestedDtoFieldNumberCollisionNamesTheExplicitTagEscapeHatch()
         {
             var conflictingDto = FoxRunTypeShape.Object(

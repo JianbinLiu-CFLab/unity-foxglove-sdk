@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Manager
@@ -64,55 +66,112 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
-        public void RetirementStopsRemainingEventSurfacesAndLaterEvents()
+        public void MessageSurfacesRemainAtomicWhenRetirementOccursDuringFirstSurface()
         {
             var state = new ClientEventDispatchState();
-            var live = true;
+            var retired = false;
             var legacyCalls = 0;
             var encodedCalls = 0;
-            var laterCalls = 0;
             var failures = new List<Exception>();
 
-            Action<uint> legacy = _ =>
+            Action<uint, uint, string, byte[]> legacy = (clientId, channelId, topic, payload) =>
             {
+                Assert.Equal(1U, clientId);
+                Assert.Equal(2U, channelId);
+                Assert.Equal("/topic", topic);
+                Assert.Equal(new byte[] { 3 }, payload);
                 legacyCalls++;
-                live = false;
+                retired = true;
             };
-            Action<uint> encoded = _ => encodedCalls++;
-            Action<uint> later = _ => laterCalls++;
+            Action<uint, uint, string, string, byte[]> encoded =
+                (clientId, channelId, topic, encoding, payload) =>
+            {
+                Assert.True(retired);
+                Assert.Equal(1U, clientId);
+                Assert.Equal(2U, channelId);
+                Assert.Equal("/topic", topic);
+                Assert.Equal("json", encoding);
+                Assert.Equal(new byte[] { 3 }, payload);
+                encodedCalls++;
+            };
 
-            // Keep the RED behavioral assertion runnable on the unmodified tree:
-            // before the guarded dispatcher exists, the existing unguarded Invoke
-            // calls deliver all three surfaces after the first callback retires.
-            var guarded = typeof(ClientEventDispatchState).GetMethod(
-                "InvokeIfLive",
-                System.Reflection.BindingFlags.Instance
-                    | System.Reflection.BindingFlags.NonPublic);
-            if (guarded == null)
-            {
-                state.Invoke(legacy, 1U, failures.Add);
-                state.Invoke(encoded, 1U, failures.Add);
-                state.Invoke(later, 2U, failures.Add);
-            }
-            else
-            {
-                var result = (bool)guarded.Invoke(
-                    state,
-                    new object[]
-                    {
-                        (Func<bool>)(() => live),
-                        (Action)(() => state.Invoke(legacy, 1U, failures.Add)),
-                        (Action)(() => state.Invoke(encoded, 1U, failures.Add)),
-                    });
-                Assert.False(result);
-                if (result)
-                    state.Invoke(later, 2U, failures.Add);
-            }
+            state.InvokeMessage(
+                legacy,
+                encoded,
+                1U,
+                2U,
+                "/topic",
+                "json",
+                new byte[] { 3 },
+                failures.Add);
 
             Assert.Equal(1, legacyCalls);
-            Assert.Equal(0, encodedCalls);
-            Assert.Equal(0, laterCalls);
+            Assert.Equal(1, encodedCalls);
             Assert.Empty(failures);
+        }
+
+        [Fact]
+        public void GenerationGateRejectsEventsFromRetiredSessions()
+        {
+            Assert.True(ClientEventGenerationGate.IsCurrent(7UL, 7UL));
+            Assert.False(ClientEventGenerationGate.IsCurrent(6UL, 7UL));
+        }
+
+        [Fact]
+        public void ManagerDrainUsesStampedEpochAndAvoidsPerEventLivenessClosures()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
+            var serverSource = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+
+            Assert.Contains(
+                "ClientEventGenerationGate.IsCurrent(evt.Generation, generation)",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Volatile.Read(ref _connectionState.ChannelSessionGeneration)",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_clientEventDispatchState.InvokeMessage(",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "WarnClientEventRetirementDrop(discardedEvents, discardedBytes, generation)",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains("drainIndex = _clientEventDrainScratch.Count", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("InvokeIfLive", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("System.Func<bool>", source, StringComparison.Ordinal);
+            Assert.Contains(
+                "session.OnClientMessageWithEncoding += _clientMessageForwarder",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_runtimeForwarderSession = session",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "session ??= _runtimeForwarderSession ?? _runtime?.CleanupSession",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "private void ClearRuntimeForwarderSessionIfDetached()",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ClearRuntimeForwarderSessionIfDetached();\n            firstFailure?.Throw();",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "_runtime.Session.OnClientMessageWithEncoding += _clientMessageForwarder",
+                serverSource,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "private void CleanupStartupAfterFailure()\n        {\n            RetireClientEventIngress();",
+                serverSource,
+                StringComparison.Ordinal);
         }
     }
 }

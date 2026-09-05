@@ -932,19 +932,24 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         private static string GlobalTypeName(string typeName)
-            => string.IsNullOrWhiteSpace(typeName) || typeName.StartsWith("global::", System.StringComparison.Ordinal)
-                ? typeName
-                : "global::" + typeName;
+        {
+            var escaped = IdentifierUtils.EscapeTypeName(typeName);
+            return string.IsNullOrWhiteSpace(escaped)
+                       || escaped.StartsWith("global::", System.StringComparison.Ordinal)
+                ? escaped
+                : "global::" + escaped;
+        }
 
         private static string CaptureTypeName(string typeName)
         {
-            if (string.IsNullOrWhiteSpace(typeName) || typeName.StartsWith("global::", System.StringComparison.Ordinal))
-                return typeName;
-            if (typeName.EndsWith("[]", System.StringComparison.Ordinal))
-                return CaptureTypeName(typeName.Substring(0, typeName.Length - 2)) + "[]";
-            if (typeName.EndsWith("?", System.StringComparison.Ordinal))
-                return CaptureTypeName(typeName.Substring(0, typeName.Length - 1)) + "?";
-            switch (typeName)
+            var escaped = IdentifierUtils.EscapeTypeName(typeName);
+            if (string.IsNullOrWhiteSpace(escaped) || escaped.StartsWith("global::", System.StringComparison.Ordinal))
+                return escaped;
+            if (escaped.EndsWith("[]", System.StringComparison.Ordinal))
+                return CaptureTypeName(escaped.Substring(0, escaped.Length - 2)) + "[]";
+            if (escaped.EndsWith("?", System.StringComparison.Ordinal))
+                return CaptureTypeName(escaped.Substring(0, escaped.Length - 1)) + "?";
+            switch (escaped)
             {
                 case "bool":
                 case "byte":
@@ -961,9 +966,13 @@ namespace Unity.FoxgloveSDK.Editor
                 case "string":
                 case "char":
                 case "object":
-                    return typeName;
+                case "void":
+                case "dynamic":
+                case "nint":
+                case "nuint":
+                    return escaped;
                 default:
-                    return "global::" + typeName;
+                    return "global::" + escaped;
             }
         }
 

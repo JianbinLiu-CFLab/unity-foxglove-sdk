@@ -36,6 +36,11 @@ namespace Unity.FoxgloveSDK.Editor
                         var methods = ScanServiceType(type);
                         if (methods.Count == 0) continue;
 
+                        if (!TryValidatePhysicalHostIdentity(
+                                type,
+                                ignoreReflectionTypeLoadExceptions))
+                            continue;
+
                         var ns = type.Namespace ?? "";
                         var key = (ns, type.Name);
                         var owner = string.IsNullOrEmpty(ns) ? type.Name : ns + "." + type.Name;

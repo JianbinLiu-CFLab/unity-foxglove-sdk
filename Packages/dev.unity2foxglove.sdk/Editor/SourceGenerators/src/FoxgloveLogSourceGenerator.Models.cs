@@ -118,12 +118,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly TopicEntry[] Topics;
         public readonly Location DiagnosticLocation;
         public readonly string DiagnosticId;
+        public readonly string DiagnosticMessage;
         public readonly IReadOnlyList<string> DeclaredMemberNames;
         public readonly bool IsStream;
 
         public static MemberData ForDiagnostic(
             Location location,
-            string diagnosticId = "FOXRUN004")
+            string diagnosticId = "FOXRUN004",
+            string diagnosticMessage = null)
             => new MemberData(
                 string.Empty,
                 string.Empty,
@@ -140,6 +142,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 Array.Empty<TopicEntry>(),
                 location,
                 diagnosticId,
+                diagnosticMessage,
                 null,
                 null,
                 false);
@@ -177,6 +180,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 topics,
                 null,
                 string.Empty,
+                null,
                 typeShape,
                 declaredMemberNames,
                 isStream)
@@ -199,6 +203,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             TopicEntry[] topics,
             Location diagnosticLocation,
             string diagnosticId,
+            string diagnosticMessage,
             FoxRunTypeShape typeShape,
             IReadOnlyList<string> declaredMemberNames,
             bool isStream)
@@ -224,6 +229,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             DiagnosticId = string.IsNullOrEmpty(diagnosticId)
                 ? "FOXRUN004"
                 : diagnosticId;
+            DiagnosticMessage = diagnosticMessage ?? string.Empty;
             DeclaredMemberNames = declaredMemberNames == null
                 ? Array.Empty<string>()
                 : new List<string>(declaredMemberNames)

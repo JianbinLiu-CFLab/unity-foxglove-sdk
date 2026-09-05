@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas;
 
@@ -50,16 +51,39 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyGeneratedAggregationPublishPath()
         {
             var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
+            var generatorMember = PhaseValidationSourceHelpers.SourceMethod(
+                generator,
+                "ExtractMember");
+            var generatorTopic = PhaseValidationSourceHelpers.SourceMethod(
+                generator,
+                "ReadTopic");
+            var roslynLowerer = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs");
+            var lower = PhaseValidationSourceHelpers.SourceMethod(
+                roslynLowerer,
+                "Lower");
+            var reflectionScanner = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
+            var scanType = PhaseValidationSourceHelpers.SourceMethod(
+                reflectionScanner,
+                "ScanType");
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
 
-            Check(generator.Contains("MessageAttrFullName", StringComparison.Ordinal)
-                  && generator.Contains("FieldAttrFullName", StringComparison.Ordinal)
-                  && generator.Contains("aggregate: true", StringComparison.Ordinal)
-                  && generator.Contains("isAggregateMember:", StringComparison.Ordinal)
-                  && generator.Contains("DeclaringTypeName(", StringComparison.Ordinal)
-                  && generator.Contains("containingType", StringComparison.Ordinal),
-                "Source generator lowers FoxRunMessage/FoxRunField members into aggregate topic entries");
+            Check(generatorMember.Contains("MessageAttrFullName", StringComparison.Ordinal)
+                  && generatorMember.Contains("FieldAttrFullName", StringComparison.Ordinal)
+                  && generatorMember.Contains("aggregate: true", StringComparison.Ordinal)
+                  && scanType.Contains("isAggregateMember: true", StringComparison.Ordinal)
+                  && Regex.IsMatch(
+                      lower,
+                      @"isAggregateMember\s*:\s*member\.IsAggregateMember",
+                      RegexOptions.CultureInvariant),
+                "Source generator and reflection scanner preserve aggregate-member semantics");
+            Check(Regex.IsMatch(
+                      generatorTopic,
+                      @"schemaName\s*=\s*DeclaringTypeName\s*\(\s*containingType\s*\)",
+                      RegexOptions.CultureInvariant),
+                "Source generator derives an aggregate schema name from its declaring type");
 
             Check(generator.Contains("FOXRUN018", StringComparison.Ordinal)
                   && generator.Contains("FOXRUN019", StringComparison.Ordinal)
@@ -134,8 +158,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyValidationRegistryEntry()
         {
-            Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase154"),
-                "Validation registry exposes the Phase154 flag");
+            Check(PhaseValidationRegistry.DefaultValidations(false)
+                      .Any(item => item.Flag == "--phase154"),
+                "Validation registry executes Phase154 in the default lane");
         }
 
         private static FoxRunSchemaManifestInfo CreateSchemaInfo(bool aggregate, string schemaName)

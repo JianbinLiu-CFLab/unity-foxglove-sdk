@@ -45,6 +45,26 @@ namespace Unity.FoxgloveSDK.Protocol
             return ServerMessageDataHeaderLength + payloadLength;
         }
 
+        internal static int GetServerServiceCallResponseFrameLength(
+            int encodingLength,
+            int payloadLength)
+        {
+            if (encodingLength < 0)
+                throw new ArgumentOutOfRangeException(nameof(encodingLength));
+            if (payloadLength < 0)
+                throw new ArgumentOutOfRangeException(nameof(payloadLength));
+
+            var frameLength = (long)ServerMessageDataHeaderLength + encodingLength + payloadLength;
+            if (frameLength > int.MaxValue)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(payloadLength),
+                    "The service response encoding and payload are too large to fit in an Int32 frame length.");
+            }
+
+            return (int)frameLength;
+        }
+
         public static void EncodeServerMessageData(byte[] destination, int offset, uint subscriptionId, ulong logTimeNs, byte[] payload)
         {
             payload ??= Array.Empty<byte>();
@@ -151,7 +171,9 @@ namespace Unity.FoxgloveSDK.Protocol
             uint serviceId, uint callId, string encoding, byte[] payload)
         {
             var encBytes = GetCachedServiceEncodingBytes(encoding);
-            var frame = new byte[1 + 4 + 4 + 4 + encBytes.Length + (payload?.Length ?? 0)];
+            var frame = new byte[GetServerServiceCallResponseFrameLength(
+                encBytes.Length,
+                payload?.Length ?? 0)];
             frame[0] = ServerOpcode.ServiceCallResponse;
             WriteU32LEUnchecked(frame, 1, serviceId);
             WriteU32LEUnchecked(frame, 5, callId);

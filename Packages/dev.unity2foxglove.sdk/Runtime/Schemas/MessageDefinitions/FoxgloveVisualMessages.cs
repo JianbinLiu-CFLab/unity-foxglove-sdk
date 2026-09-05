@@ -23,13 +23,9 @@ namespace Unity.FoxgloveSDK.Schemas
         [JsonProperty("sec")]
         public ulong Sec
         {
-            get
-            {
-                if (_rawSec > ulong.MaxValue - _nsecCarry)
-                    throw new OverflowException("Nanoseconds overflow timestamp seconds.");
-
-                return _rawSec + _nsecCarry;
-            }
+            // The setters maintain _rawSec + _nsecCarry <= ulong.MaxValue, so
+            // this getter remains non-throwing when Json.NET serializes the DTO.
+            get => _rawSec + _nsecCarry;
             set
             {
                 if (value > ulong.MaxValue - _nsecCarry)
@@ -67,18 +63,12 @@ namespace Unity.FoxgloveSDK.Schemas
         [JsonProperty("sec")]
         public long Sec
         {
-            get
-            {
-                if (_nsecCarry != 0
-                    && _rawSec > long.MaxValue - (long)_nsecCarry)
-                    throw new OverflowException("Nanoseconds overflow duration seconds.");
-
-                return _rawSec + (long)_nsecCarry;
-            }
+            // The setters maintain _rawSec + _nsecCarry <= long.MaxValue, so
+            // this getter remains non-throwing when Json.NET serializes the DTO.
+            get => _rawSec + (long)_nsecCarry;
             set
             {
-                if (_nsecCarry != 0
-                    && value > long.MaxValue - (long)_nsecCarry)
+                if (value > long.MaxValue - (long)_nsecCarry)
                     throw new ArgumentOutOfRangeException(nameof(value), "Seconds overflow duration seconds.");
 
                 _rawSec = value;
@@ -93,8 +83,7 @@ namespace Unity.FoxgloveSDK.Schemas
             set
             {
                 var carry = value / 1_000_000_000U;
-                if (carry != 0
-                    && _rawSec > long.MaxValue - (long)carry)
+                if (_rawSec > long.MaxValue - (long)carry)
                     throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow duration seconds.");
 
                 _nsecCarry = carry;

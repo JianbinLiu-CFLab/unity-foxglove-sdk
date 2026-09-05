@@ -635,8 +635,9 @@ class Program
     }
 
     /// <summary>
-    /// Runs all Phase validation classes sequentially and returns 0 on
-    /// success or 1 on the first failure.
+    /// Runs all Phase validation classes sequentially and returns 0 only when
+    /// every selected validation succeeds. Every validation is executed so a
+    /// failure cannot hide the remaining default-lane results.
     /// </summary>
     static int RunTests(bool includeLocalEvidence)
     {
@@ -644,15 +645,42 @@ class Program
             ? "=== FoxgloveSDK CI-safe + local evidence validation ===\n"
             : "=== FoxgloveSDK CI-safe validation ===\n");
 
-        foreach (var validation in PhaseValidationRegistry.DefaultValidations(includeLocalEvidence))
+        var validations = PhaseValidationRegistry.DefaultValidations(includeLocalEvidence).ToList();
+        var failures = CollectValidationFailures(
+            validations.Select(validation =>
+                (validation.Name, new Func<int>(() => RunValidation(validation)))));
+        var passed = validations.Count - failures.Count;
+        Console.WriteLine(
+            $"\nDefault validation coverage: passed={passed} failed={failures.Count} total={validations.Count}");
+        if (failures.Count == 0)
         {
-            var result = RunValidation(validation);
-            if (result != 0)
-                return result;
+            Console.WriteLine("All checks passed.");
+            return 0;
         }
 
-        Console.WriteLine("\nAll checks passed.");
-        return 0;
+        Console.Error.WriteLine("Failed default validations: " + string.Join("; ", failures));
+        return 1;
+    }
+
+    /// <summary>
+    /// Executes every supplied validation and returns the names of all entries
+    /// that report a non-zero result. Kept as a small seam so the default-runner
+    /// no-early-return contract can be verified without launching the full lane.
+    /// </summary>
+    internal static List<string> CollectValidationFailures(
+        IEnumerable<(string Name, Func<int> Run)> validations)
+    {
+        if (validations == null)
+            throw new ArgumentNullException(nameof(validations));
+
+        var failures = new List<string>();
+        foreach (var validation in validations)
+        {
+            if (validation.Run() != 0)
+                failures.Add(validation.Name);
+        }
+
+        return failures;
     }
 
     /// <summary>

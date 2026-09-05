@@ -45,7 +45,13 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine("using Unity.FoxgloveSDK.Components;");
             sb.AppendLine();
 
-            if (!string.IsNullOrEmpty(ns)) { sb.AppendLine($"namespace {ns}"); sb.AppendLine("{"); }
+            var escapedNamespace = IdentifierUtils.EscapeQualifiedName(ns);
+            var escapedClassName = IdentifierUtils.EscapeIdentifier(className);
+            if (!string.IsNullOrEmpty(escapedNamespace))
+            {
+                sb.AppendLine($"namespace {escapedNamespace}");
+                sb.AppendLine("{");
+            }
 
             sb.AppendLine($"{pad}[Preserve]");
             var interfaces = new System.Collections.Generic.List<string>();
@@ -80,7 +86,7 @@ namespace Unity.FoxgloveSDK.Editor
                 interfaces.Add("IFoxgloveTransactionalOwnedInputSource");
             if (hasProviderAccess)
                 interfaces.Add("IFoxRunGeneratedTransportSource");
-            sb.Append($"{pad}partial class {className}");
+            sb.Append($"{pad}partial class {escapedClassName}");
             if (interfaces.Count > 0)
                 sb.Append(" : " + string.Join(", ", interfaces));
             sb.Append('\n');

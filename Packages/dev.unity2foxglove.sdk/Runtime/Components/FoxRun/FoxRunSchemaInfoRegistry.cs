@@ -491,12 +491,18 @@ namespace Unity.FoxgloveSDK.Components
                     {
 #if UNITY_5_3_OR_NEWER
                         UnityEngine.Debug.LogException(observerException);
+#else
+                        Console.Error.WriteLine(
+                            "[FoxRun] Generated schema observer failed: "
+                            + observerException);
 #endif
                     }
                 }
             }
 #if UNITY_5_3_OR_NEWER
             UnityEngine.Debug.LogWarning("[FoxRun] " + message);
+#else
+            Console.Error.WriteLine("[FoxRun] " + message);
 #endif
         }
 

@@ -70,7 +70,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                             Diagnostic.Create(
                                 descriptor,
                                 item.DiagnosticLocation,
-                                "FoxRun declaring host identity cannot be represented by the R2FU partial-class contract."));
+                                string.IsNullOrEmpty(item.DiagnosticMessage)
+                                    ? "unsupported host shape"
+                                    : item.DiagnosticMessage));
                     }
                     continue;
                 }
@@ -196,7 +198,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             IReadOnlyDictionary<(string Ns, string ClassName), MemberData> firstByClass,
             ISet<string> invalidTypes)
         {
-            var owners = new Dictionary<string, FoxRunGenerationType>(StringComparer.Ordinal);
+            var owners = new Dictionary<string, FoxRunGenerationType>(StringComparer.OrdinalIgnoreCase);
             var reported = new HashSet<string>(StringComparer.Ordinal);
             foreach (var type in types ?? Array.Empty<FoxRunGenerationType>())
             {
@@ -230,7 +232,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         Diagnostic.Create(
                             FoxRunR2fuDiagnostics.HostIdentity,
                             first.MemberLocation,
-                            "FoxRun declaring host identity collides with another R2FU generated hint."));
+                            "generated source hint '"
+                            + hint
+                            + "' collides for declaring hosts '"
+                            + owner.DeclaringType
+                            + "' and '"
+                            + type.DeclaringType
+                            + "'"));
                 }
             }
         }

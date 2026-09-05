@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
@@ -57,6 +58,65 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(1.5f, value.x);
             Assert.Equal(-2f, value.y);
             Assert.Equal(3.25f, value.z);
+        }
+
+        [Fact]
+        public void JsonDecoderRejectsUnknownRootPropertiesWithoutProducingAValue()
+        {
+            var payload = Encoding.UTF8.GetBytes("{\"value\":1,\"metadata\":2}");
+
+            var ok = FoxRunInboundJson.TryRead(
+                payload,
+                "value",
+                out int value,
+                out var error);
+
+            Assert.False(ok);
+            Assert.Equal(0, value);
+            Assert.Contains("unknown field", error, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void JsonDecoderRejectsNonFiniteVectorComponents()
+        {
+            var payload = Encoding.UTF8.GetBytes(
+                "{\"position\":{\"x\":1,\"y\":2,\"z\":1e400}}");
+
+            var ok = FoxRunInboundJson.TryRead(
+                payload,
+                "position",
+                out Vector3 value,
+                out var error);
+
+            Assert.False(ok);
+            Assert.Equal(0f, value.z);
+            Assert.Contains("finite", error, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void VisualTimeAndDurationSerializeNormalizedCarryAtTheirUpperBoundary()
+        {
+            var time = new FoxgloveTime
+            {
+                Sec = ulong.MaxValue - 1,
+                Nsec = 1_000_000_000U
+            };
+            var duration = new FoxgloveDuration
+            {
+                Sec = long.MaxValue - 1,
+                Nsec = 1_000_000_000U
+            };
+
+            Assert.Equal(ulong.MaxValue, time.Sec);
+            Assert.Equal(long.MaxValue, duration.Sec);
+            var timeJson = Newtonsoft.Json.JsonConvert.SerializeObject(time);
+            var durationJson = Newtonsoft.Json.JsonConvert.SerializeObject(duration);
+            var timeObject = JObject.Parse(timeJson);
+            var durationObject = JObject.Parse(durationJson);
+            Assert.Equal(ulong.MaxValue, (ulong)timeObject["sec"]);
+            Assert.Equal(0U, (uint)timeObject["nsec"]);
+            Assert.Equal(long.MaxValue, (long)durationObject["sec"]);
+            Assert.Equal(0U, (uint)durationObject["nsec"]);
         }
 
         [Fact]
@@ -748,6 +808,25 @@ namespace Demo
         }
 
         [Fact]
+        public void RouterReportsFallbackDiagnosticWhenGeneratedInputRejectsSilently()
+        {
+            var input = new SilentRejectingInput("/phase187/silent-rejection");
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+
+            var result = router.Dispatch(
+                "/phase187/silent-rejection",
+                new byte[] { 1 },
+                "json",
+                nowSeconds: 1);
+
+            Assert.Equal(FoxRunInputDispatchStatus.DecodeRejected, result.Status);
+            Assert.Equal(0, result.StagedCount);
+            Assert.Contains("rejected the payload without a diagnostic", result.Diagnostic,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RouterRejectsWrongEncodingBeforeItConsumesTheTopicRateQuota()
         {
             var input = new RecordingInput("/phase182/encoding");
@@ -1041,6 +1120,31 @@ namespace Demo
                 ApplyCount++;
                 error = string.Empty;
                 return true;
+            }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+        }
+
+        private sealed class SilentRejectingInput : IFoxgloveInputSource
+        {
+            private readonly FoxgloveInputTopicInfo _topic;
+
+            public SilentRejectingInput(string topic)
+            {
+                _topic = new FoxgloveInputTopicInfo(topic, "json", FoxRunFlow.Subscribe);
+            }
+
+            public int FoxgloveInput_TopicCount => 1;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
+
+            public bool FoxgloveInput_TryStage(
+                int topicIndex,
+                byte[] payload,
+                string encoding,
+                out string error)
+            {
+                error = string.Empty;
+                return false;
             }
 
             public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;

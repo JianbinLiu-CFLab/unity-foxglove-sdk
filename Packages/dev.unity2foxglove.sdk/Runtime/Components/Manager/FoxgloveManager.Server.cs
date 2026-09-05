@@ -80,7 +80,11 @@ namespace Unity.FoxgloveSDK.Components
                 SetupAllowedOrigins();
                 StartCertificateDistributorIfNeeded();
                 RegisterFoxRunSubscriptionCatalogService();
-                _runtime.Start(_serverName, _host, _port);
+                _runtime.StartWithSessionSetup(
+                    _serverName,
+                    _host,
+                    _port,
+                    AttachRuntimeForwarders);
                 StartRemoteMcapFileServerIfNeeded();
                 StartReplayCursorEndpointIfNeeded();
                 if (!PublishPendingRecordingSidecar())
@@ -88,8 +92,6 @@ namespace Unity.FoxgloveSDK.Components
                     StopServer();
                     return;
                 }
-
-                AttachRuntimeForwarders();
             }
             catch
             {
@@ -106,12 +108,14 @@ namespace Unity.FoxgloveSDK.Components
             => _clientConnectedForwarder != null
                || _clientDisconnectedForwarder != null
                || _clientMessageForwarder != null
+               || _runtimeForwarderSession != null
                || _replayForwarder != null
                || _replayContextForwarder != null
                || _replayBatchForwarder != null;
 
         private void CleanupStartupAfterFailure()
         {
+            RetireClientEventIngress();
             TryCleanupStartupStep(CleanupPendingRecordingSidecar, "cleanup pending recording sidecar");
             TryCleanupStartupStep(StopRemoteMcapFileServer, "stop remote MCAP file server");
             TryCleanupStartupStep(StopReplayCursorEndpoint, "stop replay cursor endpoint");
@@ -127,6 +131,7 @@ namespace Unity.FoxgloveSDK.Components
             TryCleanupStartupStep(() => _runtime?.DisableReplay(), "disable replay after failed startup");
             TryCleanupStartupStep(() => _runtime?.DisableRecording(), "disable recording after failed startup");
             TryCleanupStartupStep(RestoreLivePublishers, "restore live publishers after failed startup");
+            TryCleanupStartupStep(FlushClientEventRetirementDrops, "flush retired client-event diagnostics after failed startup");
         }
 
         private static void TryCleanupStartupStep(System.Action cleanup, string description)
@@ -141,8 +146,12 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void AttachRuntimeForwarders()
+        private void AttachRuntimeForwarders(FoxgloveSession session)
         {
+            if (session == null)
+                throw new ArgumentNullException(nameof(session));
+
+            _runtimeForwarderSession = session;
             _replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
             _replayContextForwarder = context => OnReplayMessageContext?.Invoke(context);
             _replayBatchForwarder = context => OnReplayBatchCompleted?.Invoke(context);
@@ -151,11 +160,12 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.OnReplayBatchCompleted += _replayBatchForwarder;
 
             AdvanceChannelSessionGeneration();
-            var transport = _runtime.Session?.Transport;
+            var generation = _connectionState.ChannelSessionGeneration;
+            _clientEventAdmission.Activate(generation);
+            var transport = session.Transport;
             if (transport == null)
                 return;
 
-            var generation = _connectionState.ChannelSessionGeneration;
             _clientConnectedForwarder = id =>
                 EnqueueClientLifecycleEvent(ClientEvent.Connect(generation, id));
             _clientDisconnectedForwarder = id =>
@@ -165,7 +175,10 @@ namespace Unity.FoxgloveSDK.Components
                     generation, cid, chId, topic, encoding, payload));
             transport.OnClientConnected += _clientConnectedForwarder;
             transport.OnClientDisconnected += _clientDisconnectedForwarder;
-            _runtime.Session.OnClientMessageWithEncoding += _clientMessageForwarder;
+            // The runtime publishes Session only after this setup callback
+            // returns. Subscribe to the freshly-created session directly so
+            // the callback can run before the transport listener starts.
+            session.OnClientMessageWithEncoding += _clientMessageForwarder;
         }
 
         /// <summary>
@@ -270,6 +283,7 @@ namespace Unity.FoxgloveSDK.Components
             _startServerAfterTransportCapture = false;
             var cleanupSession = _runtime?.CleanupSession;
             ExceptionDispatchInfo firstFailure = null;
+            RetireClientEventIngress();
             if (!IsRunning)
             {
                 var earlyFailure = RunStopPreTailCleanup(
@@ -284,6 +298,7 @@ namespace Unity.FoxgloveSDK.Components
                         _runtime?.Session != null,
                         _runtime?.HasPendingSessionCleanup ?? false))
                 {
+                    FlushClientEventRetirementDrops();
                     firstFailure?.Throw();
                     return;
                 }
@@ -299,7 +314,6 @@ namespace Unity.FoxgloveSDK.Components
                 var preTailFailure = RunStopPreTailCleanup(
                     () => DetachTransportForwarders(cleanupSession),
                     () => DetachRuntimeForwarders(cleanupSession),
-                    AdvanceChannelSessionGeneration,
                     UnregisterFoxRunSubscriptionCatalogService);
                 firstFailure ??= preTailFailure;
 
@@ -318,6 +332,7 @@ namespace Unity.FoxgloveSDK.Components
                     ClearClientEvents,
                     () => _connectionState.ResetChannelIds(FirstAutoChannelId),
                     restoreLivePublishers ? RestoreLivePublishers : null);
+                FlushClientEventRetirementDrops();
             }
             catch (Exception exception)
             {
@@ -349,7 +364,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void DetachTransportForwarders(FoxgloveSession session)
         {
-            session ??= _runtime?.CleanupSession;
+            session ??= _runtimeForwarderSession ?? _runtime?.CleanupSession;
             if (session == null)
                 return;
 
@@ -369,12 +384,13 @@ namespace Unity.FoxgloveSDK.Components
                     () => _clientDisconnectedForwarder = null,
                     ref firstFailure);
             }
+            ClearRuntimeForwarderSessionIfDetached();
             firstFailure?.Throw();
         }
 
         private void DetachRuntimeForwarders(FoxgloveSession session)
         {
-            session ??= _runtime?.CleanupSession;
+            session ??= _runtimeForwarderSession ?? _runtime?.CleanupSession;
             ExceptionDispatchInfo firstFailure = null;
             if (session != null && _clientMessageForwarder != null)
             {
@@ -403,7 +419,21 @@ namespace Unity.FoxgloveSDK.Components
                         ref firstFailure);
             }
 
+            ClearRuntimeForwarderSessionIfDetached();
             firstFailure?.Throw();
+        }
+
+        private void ClearRuntimeForwarderSessionIfDetached()
+        {
+            if (_clientConnectedForwarder == null
+                && _clientDisconnectedForwarder == null
+                && _clientMessageForwarder == null
+                && _replayForwarder == null
+                && _replayContextForwarder == null
+                && _replayBatchForwarder == null)
+            {
+                _runtimeForwarderSession = null;
+            }
         }
 
         private static void TryDetach(

@@ -51,7 +51,22 @@ namespace Unity.FoxgloveSDK.Editor
             var usedNumbers = new Dictionary<int, string>();
             var usedFieldNames = new Dictionary<string, string>(StringComparer.Ordinal);
             var namedTypes = new Dictionary<string, string>(StringComparer.Ordinal);
-            var usedTypeNames = new HashSet<string>(StringComparer.Ordinal) { messageName };
+            // Enum values are package-level siblings of their enum type in
+            // Protobuf. Use one symbol table for generated types and values so
+            // invalid duplicate package symbols fail before descriptor output.
+            var usedSymbols = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [messageName] = "root message '" + messageName + "'"
+            };
+            var declaredEnumValueNames = new HashSet<string>(StringComparer.Ordinal);
+            var visitedShapes = new HashSet<FoxRunTypeShape>();
+            foreach (var field in contract.Fields)
+            {
+                CollectDeclaredEnumValueNames(
+                    field?.TypeShape,
+                    declaredEnumValueNames,
+                    visitedShapes);
+            }
 
             foreach (var field in contract.Fields.OrderBy(field => field.MemberName, StringComparer.Ordinal))
             {
@@ -93,7 +108,8 @@ namespace Unity.FoxgloveSDK.Editor
                     field.ProtobufMetadata?.TypeMetadata,
                     file,
                     namedTypes,
-                    usedTypeNames);
+                    usedSymbols,
+                    declaredEnumValueNames);
                 message.Field.Add(descriptorField);
             }
 
@@ -102,6 +118,46 @@ namespace Unity.FoxgloveSDK.Editor
             return new FoxRunProtobufContract(
                 messageFullName,
                 descriptorSet.ToByteArray());
+        }
+
+        private static void CollectDeclaredEnumValueNames(
+            FoxRunTypeShape shape,
+            ISet<string> names,
+            ISet<FoxRunTypeShape> visited)
+        {
+            shape = FoxRunProtobufTypeShapeProjection.ProjectValue(shape);
+            if (shape == null || !visited.Add(shape))
+                return;
+
+            switch (shape.Kind)
+            {
+                case FoxRunTypeShapeKind.Enum:
+                    foreach (var value in shape.EnumValues)
+                    {
+                        if (value == null)
+                            continue;
+                        names.Add(ToIdentifier(
+                            value.Name,
+                            "UNSPECIFIED",
+                            upperFirst: true));
+                    }
+                    return;
+
+                case FoxRunTypeShapeKind.Object:
+                    foreach (var field in shape.Fields)
+                    {
+                        if (field != null)
+                            CollectDeclaredEnumValueNames(field.TypeShape, names, visited);
+                    }
+                    return;
+
+                case FoxRunTypeShapeKind.Collection:
+                    CollectDeclaredEnumValueNames(shape.ElementShape, names, visited);
+                    return;
+
+                default:
+                    return;
+            }
         }
 
         /// <summary>
@@ -127,11 +183,19 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunProtobufTypeMetadata protobufMetadata,
             FileDescriptorProto file,
             IDictionary<string, string> namedTypes,
-            ISet<string> usedTypeNames)
+            IDictionary<string, string> usedSymbols,
+            ISet<string> declaredEnumValueNames)
         {
             if (typeShape != null)
             {
-                ApplyTypeShape(field, typeShape, protobufMetadata, file, namedTypes, usedTypeNames);
+                ApplyTypeShape(
+                    field,
+                    typeShape,
+                    protobufMetadata,
+                    file,
+                    namedTypes,
+                    usedSymbols,
+                    declaredEnumValueNames);
                 return;
             }
 
@@ -150,16 +214,16 @@ namespace Unity.FoxgloveSDK.Editor
                 case "int64": field.Type = FieldDescriptorProto.Types.Type.Int64; return;
                 case "string": field.Type = FieldDescriptorProto.Types.Type.String; return;
                 case "unity.vector2.float32":
-                    ApplyVectorType(field, file, namedTypes, usedTypeNames, "unity.vector2.float32", "Unity_Vector2", new[] { "x", "y" });
+                    ApplyVectorType(field, file, namedTypes, usedSymbols, declaredEnumValueNames, "unity.vector2.float32", "Unity_Vector2", new[] { "x", "y" });
                     return;
                 case "unity.vector3.float32":
-                    ApplyVectorType(field, file, namedTypes, usedTypeNames, "unity.vector3.float32", "Unity_Vector3", new[] { "x", "y", "z" });
+                    ApplyVectorType(field, file, namedTypes, usedSymbols, declaredEnumValueNames, "unity.vector3.float32", "Unity_Vector3", new[] { "x", "y", "z" });
                     return;
                 case "unity.quaternion.float32":
-                    ApplyVectorType(field, file, namedTypes, usedTypeNames, "unity.quaternion.float32", "Unity_Quaternion", new[] { "x", "y", "z", "w" });
+                    ApplyVectorType(field, file, namedTypes, usedSymbols, declaredEnumValueNames, "unity.quaternion.float32", "Unity_Quaternion", new[] { "x", "y", "z", "w" });
                     return;
                 case "unity.color.float32":
-                    ApplyVectorType(field, file, namedTypes, usedTypeNames, "unity.color.float32", "Unity_Color", new[] { "r", "g", "b", "a" });
+                    ApplyVectorType(field, file, namedTypes, usedSymbols, declaredEnumValueNames, "unity.color.float32", "Unity_Color", new[] { "r", "g", "b", "a" });
                     return;
                 default:
                     throw new InvalidOperationException(
@@ -171,13 +235,19 @@ namespace Unity.FoxgloveSDK.Editor
             FieldDescriptorProto field,
             FileDescriptorProto file,
             IDictionary<string, string> namedTypes,
-            ISet<string> usedTypeNames,
+            IDictionary<string, string> usedSymbols,
+            ISet<string> declaredEnumValueNames,
             string typeKey,
             string nestedName,
             IReadOnlyList<string> componentNames)
         {
             field.Type = FieldDescriptorProto.Types.Type.Message;
-            field.TypeName = "." + PackageName + "." + EnsureTypeName(typeKey, nestedName, namedTypes, usedTypeNames);
+            field.TypeName = "." + PackageName + "." + EnsureTypeName(
+                typeKey,
+                nestedName,
+                namedTypes,
+                usedSymbols,
+                declaredEnumValueNames);
             if (namedTypes.ContainsKey(typeKey + "#defined"))
                 return;
 
@@ -204,13 +274,14 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunProtobufTypeMetadata protobufMetadata,
             FileDescriptorProto file,
             IDictionary<string, string> namedTypes,
-            ISet<string> usedTypeNames)
+            IDictionary<string, string> usedSymbols,
+            ISet<string> declaredEnumValueNames)
         {
             shape = FoxRunProtobufTypeShapeProjection.ProjectValue(shape);
             switch (shape.Kind)
             {
                 case FoxRunTypeShapeKind.Canonical:
-                    ApplyType(field, shape.CanonicalType, null, null, file, namedTypes, usedTypeNames);
+                    ApplyType(field, shape.CanonicalType, null, null, file, namedTypes, usedSymbols, declaredEnumValueNames);
                     return;
                 case FoxRunTypeShapeKind.Object:
                     field.Type = FieldDescriptorProto.Types.Type.Message;
@@ -219,11 +290,17 @@ namespace Unity.FoxgloveSDK.Editor
                         protobufMetadata,
                         file,
                         namedTypes,
-                        usedTypeNames);
+                        usedSymbols,
+                        declaredEnumValueNames);
                     return;
                 case FoxRunTypeShapeKind.Enum:
                     field.Type = FieldDescriptorProto.Types.Type.Enum;
-                    field.TypeName = "." + PackageName + "." + EnsureEnumDescriptor(shape, file, namedTypes, usedTypeNames);
+                    field.TypeName = "." + PackageName + "." + EnsureEnumDescriptor(
+                        shape,
+                        file,
+                        namedTypes,
+                        usedSymbols,
+                        declaredEnumValueNames);
                     return;
                 case FoxRunTypeShapeKind.Collection:
                     throw new InvalidOperationException(
@@ -238,10 +315,16 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunProtobufTypeMetadata protobufMetadata,
             FileDescriptorProto file,
             IDictionary<string, string> namedTypes,
-            ISet<string> usedTypeNames)
+            IDictionary<string, string> usedSymbols,
+            ISet<string> declaredEnumValueNames)
         {
             var typeKey = "object|" + shape.TypeName;
-            var name = EnsureTypeName(typeKey, shape.TypeName, namedTypes, usedTypeNames);
+            var name = EnsureTypeName(
+                typeKey,
+                shape.TypeName,
+                namedTypes,
+                usedSymbols,
+                declaredEnumValueNames);
             var identityKey = typeKey + "#identity";
             var identity = FoxRunProtobufObjectShapeIdentity.Build(
                 shape,
@@ -303,7 +386,8 @@ namespace Unity.FoxgloveSDK.Editor
                     fieldMetadata?.TypeMetadata,
                     file,
                     namedTypes,
-                    usedTypeNames);
+                    usedSymbols,
+                    declaredEnumValueNames);
                 message.Field.Add(descriptorField);
             }
 
@@ -328,10 +412,16 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunTypeShape shape,
             FileDescriptorProto file,
             IDictionary<string, string> namedTypes,
-            ISet<string> usedTypeNames)
+            IDictionary<string, string> usedSymbols,
+            ISet<string> declaredEnumValueNames)
         {
             var typeKey = "enum|" + shape.TypeName;
-            var name = EnsureTypeName(typeKey, shape.TypeName, namedTypes, usedTypeNames);
+            var name = EnsureTypeName(
+                typeKey,
+                shape.TypeName,
+                namedTypes,
+                usedSymbols,
+                declaredEnumValueNames);
             if (namedTypes.ContainsKey(typeKey + "#defined"))
                 return name;
 
@@ -340,7 +430,6 @@ namespace Unity.FoxgloveSDK.Editor
                 throw new InvalidOperationException("FoxRun Protobuf enum '" + shape.TypeName + "' has no values.");
 
             var descriptor = new EnumDescriptorProto { Name = name };
-            var usedValueNames = new Dictionary<string, string>(StringComparer.Ordinal);
             var ordered = shape.EnumValues
                 .OrderBy(candidate => candidate.Number)
                 .ThenBy(candidate => candidate.Name, StringComparer.Ordinal)
@@ -348,22 +437,32 @@ namespace Unity.FoxgloveSDK.Editor
             var zero = ordered.FirstOrDefault(candidate => candidate.Number == 0);
             if (zero == null)
             {
+                var syntheticName = SyntheticUnspecifiedName(
+                    ordered,
+                    usedSymbols,
+                    declaredEnumValueNames);
+                ReserveIdentifier(
+                    usedSymbols,
+                    syntheticName,
+                    syntheticName,
+                    syntheticName,
+                    "value in enum '" + shape.TypeName + "'");
                 descriptor.Value.Add(new EnumValueDescriptorProto
                 {
-                    Name = SyntheticUnspecifiedName(ordered),
+                    Name = syntheticName,
                     Number = 0
                 });
             }
             else
             {
-                AppendEnumValue(descriptor, zero, usedValueNames, shape.TypeName);
+                AppendEnumValue(descriptor, zero, usedSymbols, shape.TypeName);
             }
 
             foreach (var value in ordered)
             {
                 if (ReferenceEquals(value, zero))
                     continue;
-                AppendEnumValue(descriptor, value, usedValueNames, shape.TypeName);
+                AppendEnumValue(descriptor, value, usedSymbols, shape.TypeName);
             }
 
             file.EnumType.Add(descriptor);
@@ -373,7 +472,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static void AppendEnumValue(
             EnumDescriptorProto descriptor,
             FoxRunEnumValue value,
-            IDictionary<string, string> usedValueNames,
+            IDictionary<string, string> usedSymbols,
             string enumTypeName)
         {
             var descriptorName = ToIdentifier(
@@ -381,7 +480,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "UNSPECIFIED",
                 upperFirst: true);
             ReserveIdentifier(
-                usedValueNames,
+                usedSymbols,
                 descriptorName,
                 value.Name,
                 value.Name,
@@ -415,7 +514,9 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         private static string SyntheticUnspecifiedName(
-            IReadOnlyList<FoxRunEnumValue> declaredValues)
+            IReadOnlyList<FoxRunEnumValue> declaredValues,
+            IDictionary<string, string> usedSymbols,
+            ISet<string> declaredEnumValueNames)
         {
             var declaredNames = new HashSet<string>(
                 declaredValues.Select(value =>
@@ -424,7 +525,9 @@ namespace Unity.FoxgloveSDK.Editor
             var baseName = "UNSPECIFIED";
             var candidate = baseName;
             var suffix = 2;
-            while (declaredNames.Contains(candidate))
+            while (declaredNames.Contains(candidate)
+                   || declaredEnumValueNames.Contains(candidate)
+                   || usedSymbols.ContainsKey(candidate))
                 candidate = baseName + "_" + suffix++.ToString(CultureInfo.InvariantCulture);
             return candidate;
         }
@@ -433,7 +536,8 @@ namespace Unity.FoxgloveSDK.Editor
             string typeKey,
             string requestedName,
             IDictionary<string, string> namedTypes,
-            ISet<string> usedTypeNames)
+            IDictionary<string, string> usedSymbols,
+            ISet<string> declaredEnumValueNames)
         {
             if (namedTypes.TryGetValue(typeKey, out var existing))
                 return existing;
@@ -441,8 +545,10 @@ namespace Unity.FoxgloveSDK.Editor
             var baseName = ToIdentifier((requestedName ?? string.Empty).Replace('.', '_'), "FoxRunType", upperFirst: true);
             var name = baseName;
             var suffix = 2;
-            while (!usedTypeNames.Add(name))
-                name = baseName + "_" + suffix++.ToString();
+            while (usedSymbols.ContainsKey(name)
+                   || declaredEnumValueNames.Contains(name))
+                name = baseName + "_" + suffix++.ToString(CultureInfo.InvariantCulture);
+            usedSymbols.Add(name, "type '" + (requestedName ?? string.Empty) + "'");
             namedTypes[typeKey] = name;
             return name;
         }

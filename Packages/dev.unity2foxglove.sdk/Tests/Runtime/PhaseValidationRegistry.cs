@@ -296,6 +296,9 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase163-10", "Phase 163-10: phase163-10 review regression checks for MCAP reader parsing", Phase163_10Validation.Validate, includeInDefault: false),
             Ci("--phase163-11", "Phase 163-11: validation for MCAP DataLoader, Remote File, and Replay Engine review fixes", Phase163_11Validation.Validate, includeInDefault: false),
             Ci("--phase163-12", "Phase 163-12: validation for schema catalog and identity review fixes", Phase163_12Validation.Validate, includeInDefault: false),
+            // Promoted after the stale source-shape guard was replaced with an
+            // independent descriptor-edge behavior check (the old guard had
+            // been red for 677 commits). Keep the semantic gate in the default set.
             Ci("--phase163-13", "Phase 163-13: validation for protobuf/JSON builder review fixes", Phase163_13Validation.Validate),
             Ci("--phase163-14", "Phase 163-14: validation for publisher base, cadence, and output policy review fixes", Phase163_14Validation.Validate, includeInDefault: false),
             Ci("--phase163-15", "Phase 163-15: validation for camera publisher and editor review fixes", Phase163_15Validation.Validate, includeInDefault: false),
@@ -305,7 +308,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase163-19", "Phase 163-19: validation for ROS2 CDR writer and generator review fixes", Phase163_19Validation.Validate, includeInDefault: false),
             Ci("--phase163-20", "Phase 163-20: validation for ROS2 Bridge and R2FU boundary review fixes", Phase163_20Validation.Validate, includeInDefault: false),
             Ci("--phase163-21", "Phase 163-21: validation for FoxRun runtime bus, sinks, and inbound gates", Phase163_21Validation.Validate, includeInDefault: false),
-            Ci("--phase163-22", "Phase 163-22: validation for FoxRun emitter model and descriptor contracts", Phase163_22Validation.Validate, includeInDefault: false),
+            Ci("--phase163-22", "Phase 163-22: validation for FoxRun emitter model and descriptor contracts", Phase163_22Validation.Validate),
             Ci("--phase163-23", "Phase 163-23: validation for source generator and analyzer behavior", Phase163_23Validation.Validate),
             Ci("--phase163-24", "Phase 163-24: validation for schema evidence and build tooling guards", Phase163_24Validation.Validate, includeInDefault: false),
             Ci("--phase163-25", "Phase 163-25: validation for Inspector UI lifecycle and state guards", Phase163_25Validation.Validate, includeInDefault: false),

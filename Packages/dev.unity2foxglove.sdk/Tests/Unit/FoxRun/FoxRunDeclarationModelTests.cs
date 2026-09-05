@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -1295,6 +1296,76 @@ namespace Phase187E02
         }
 
         [Fact]
+        [Trait("Phase", "187-R4-C5")]
+        public void RoslynGeneratorIgnoresLookalikeFoxRunAttributes()
+        {
+            var result = RunGenerator(@"
+using System;
+
+namespace MyCorp
+{
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class FoxRunAttribute : Attribute
+    {
+        public FoxRunAttribute(string topic) { }
+    }
+}
+
+namespace Phase187R4C5
+{
+    public partial class Host
+    {
+        [MyCorp.FoxRun(""/c5/lookalike"")]
+        private int _value;
+    }
+}");
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id.StartsWith(
+                    "FOXRUN",
+                    StringComparison.Ordinal));
+            Assert.DoesNotContain(
+                result.Results
+                    .SelectMany(run => run.GeneratedSources)
+                    .Select(source => source.SourceText.ToString()),
+                source => source.Contains("/c5/lookalike", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C5")]
+        public void RoslynGeneratorDoesNotDiagnoseOrdinaryMultiDeclaratorAttributes()
+        {
+            var result = RunGenerator(@"
+using System;
+
+namespace UnityEngine
+{
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class SerializeField : Attribute { }
+}
+
+namespace Phase187R4C5
+{
+    public partial class Host
+    {
+        [UnityEngine.SerializeField]
+        private int _first, _second;
+    }
+}");
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN004");
+            Assert.DoesNotContain(
+                result.Results
+                    .SelectMany(run => run.GeneratedSources)
+                    .Select(source => source.SourceText.ToString()),
+                source => source.Contains("_first", StringComparison.Ordinal)
+                          || source.Contains("_second", StringComparison.Ordinal));
+        }
+
+        [Fact]
         [Trait("Phase", "187-R2-E02-002")]
         public void RoslynGeneratorRejectsCollidingFoxRunHostHintsBeforeAddSource()
         {
@@ -1402,6 +1473,521 @@ namespace Service.A
         }
 
         [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void RoslynGeneratorAcceptsContextualKeywordHostIdentity()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Telemetry.on
+{
+    public partial class record
+    {
+        [FoxRun(""/phase187/r4/c4/contextual"")]
+        private int _value;
+    }
+}";
+
+            var result = RunGenerator(source);
+            AssertGeneratedSourcesParse(result, CSharpParseOptions.Default);
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN623");
+            Assert.Contains(
+                result.Results
+                    .SelectMany(run => run.GeneratedSources),
+                generated => generated.HintName.Contains(
+                    "Telemetry_on_record_FoxRun",
+                    StringComparison.Ordinal));
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void RoslynGeneratorEscapesContextualNamespaceInGeneratedDtoTypeReferences()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace @record
+{
+    public sealed class Payload
+    {
+        public int Value;
+    }
+
+    public partial class Host
+    {
+        [FoxRun(""/phase187/r4/c4/contextual-dto"", Encoding = FoxRunEncoding.Protobuf)]
+        private Payload _value;
+    }
+}");
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN623");
+            AssertGeneratedSourcesParse(result, CSharpParseOptions.Default);
+            Assert.Contains(
+                result.Results
+                    .SelectMany(run => run.GeneratedSources)
+                    .SelectMany(source => source.SourceText.ToString().Split('\n')),
+                line => line.Contains(
+                    "@record.Payload",
+                    StringComparison.Ordinal));
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void RoslynGeneratorEscapesContextualTypeNamesAcrossLanguageVersions()
+        {
+            foreach (var parseOptions in new[]
+                     {
+                         new CSharpParseOptions(LanguageVersion.CSharp9),
+                         new CSharpParseOptions(LanguageVersion.Preview)
+                     })
+            {
+                foreach (var typeName in new[] { "file", "required", "scoped" })
+                {
+                    var result = RunGenerator(parseOptions, $@"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{{
+    public partial class @{typeName}
+    {{
+        [FoxRun(""/phase187/r4/c4/contextual-{typeName}"")]
+        private int _value;
+    }}
+}}");
+                    AssertGeneratedSourcesParse(result, parseOptions);
+
+                    Assert.DoesNotContain(
+                        result.Diagnostics,
+                        diagnostic => diagnostic.Id == "FOXRUN623");
+                    Assert.Contains(
+                        result.Results
+                            .SelectMany(run => run.GeneratedSources),
+                        generated => generated.SourceText.ToString().Contains(
+                            "partial class @" + typeName,
+                            StringComparison.Ordinal));
+                }
+            }
+        }
+
+        [Theory]
+        [Trait("Phase", "187-R4-C4")]
+        [InlineData("int", "int")]
+        [InlineData("N.int", "N.@int")]
+        [InlineData("N . int", "N . @int")]
+        [InlineData("global::N.int", "global::N.@int")]
+        [InlineData("System.Collections.Generic.List<int>", "System.Collections.Generic.List<int>")]
+        [InlineData("System.Collections.Generic.List<N.int>", "System.Collections.Generic.List<N.@int>")]
+        public void IdentifierUtilsEscapesReservedAliasesOnlyInsideQualifiedTypeNames(
+            string input,
+            string expected)
+        {
+            Assert.Equal(
+                expected,
+                IdentifierUtils.EscapeTypeName(input));
+        }
+
+        [Theory]
+        [Trait("Phase", "187-R4-C4")]
+        [InlineData("dynamic", "dynamic")]
+        [InlineData("N.dynamic", "N.dynamic")]
+        [InlineData("System.Collections.Generic.List<dynamic>", "System.Collections.Generic.List<dynamic>")]
+        [InlineData("N.nint", "N.nint")]
+        public void IdentifierUtilsPreservesContextualTypeAliases(
+            string input,
+            string expected)
+        {
+            Assert.Equal(
+                expected,
+                IdentifierUtils.EscapeTypeName(input));
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void ReflectionFormatterPreservesRuntimePrimitiveAliases()
+        {
+            Assert.Equal(
+                "int",
+                FoxRunEmissionTypeNameFormatter.FromReflectionType(typeof(int)));
+            Assert.Equal(
+                "string",
+                FoxRunEmissionTypeNameFormatter.FromReflectionType(typeof(string)));
+            Assert.Equal(
+                "int[]",
+                FoxRunEmissionTypeNameFormatter.FromReflectionType(typeof(int[])));
+            Assert.Equal(
+                "int?",
+                FoxRunEmissionTypeNameFormatter.FromReflectionType(typeof(int?)));
+            Assert.Equal(
+                "System.Collections.Generic.List<int>",
+                FoxRunEmissionTypeNameFormatter.FromReflectionType(
+                    typeof(List<int>)));
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void RoslynGeneratorEscapesReservedNamespaceAndClassIdentifiers()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+namespace @namespace
+{
+    public partial class @event
+    {
+        [FoxRun(""/phase187/r4/c4/escaped-reserved"")]
+        private int _value;
+    }
+}");
+            AssertGeneratedSourcesParse(result, CSharpParseOptions.Default);
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN623");
+            var generated = result.Results
+                .SelectMany(run => run.GeneratedSources)
+                .Select(source => source.SourceText.ToString())
+                .Single(source => source.Contains(
+                    "partial class @event",
+                    StringComparison.Ordinal));
+            Assert.Contains(
+                "namespace @namespace",
+                generated,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void RoslynGeneratorRejectsEveryUnsupportedHostTypeShapeWithReason()
+        {
+            var cases = new[]
+            {
+                ("record", @"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public partial record RecordHost
+    {
+        [FoxRun(""/phase187/r4/c4/record"")]
+        private int _value;
+    }
+}"),
+                ("generic", @"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public partial class GenericHost<T>
+    {
+        [FoxRun(""/phase187/r4/c4/generic"")]
+        private int _value;
+    }
+}"),
+                ("struct", @"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public partial struct StructHost
+    {
+        [FoxRun(""/phase187/r4/c4/struct"")]
+        private int _value;
+    }
+}"),
+                ("static", @"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public static partial class StaticHost
+    {
+        [FoxRun(""/phase187/r4/c4/static"")]
+        private static int _value;
+    }
+}"),
+                ("interface", @"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public partial interface InterfaceHost
+    {
+        [FoxRun(""/phase187/r4/c4/interface"")]
+        int Value { get; set; }
+    }
+}")
+            };
+
+            foreach (var testCase in cases)
+            {
+                var result = RunGenerator(testCase.Item2);
+                var diagnostic = Assert.Single(
+                    result.Diagnostics.Where(
+                        candidate => candidate.Id == "FOXRUN623"));
+                Assert.Contains(
+                    testCase.Item1,
+                    diagnostic.GetMessage(),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            // The pinned test Roslyn (4.2) parses C# 10 by default and cannot
+            // construct a file-local type declaration. The production guard
+            // intentionally recognizes the modifier token by ValueText so a
+            // newer compiler rejects that shape; modern-parser coverage is
+            // recorded separately in the C4 review evidence.
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void RoslynGeneratorDoesNotInspectOrdinaryAttributedMembersAsFoxRunHosts()
+        {
+            var result = RunGenerator(@"
+using System;
+
+namespace Phase187R4C4
+{
+    public class Outer
+    {
+        public class Inner
+        {
+            [Obsolete]
+            public int Value;
+        }
+    }
+}");
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN623");
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void RoslynGeneratorPreservesHostIdentityReasonForFoxRunAndFoxService()
+        {
+            const string foxRunSource = @"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public partial class Outer
+    {
+        public partial class Inner
+        {
+            [FoxRun(""/phase187/r4/c4/reason-run"")]
+            private int _value;
+        }
+    }
+}";
+            var foxRun = RunGenerator(foxRunSource);
+            var foxRunDiagnostic = Assert.Single(
+                foxRun.Diagnostics.Where(
+                    diagnostic => diagnostic.Id == "FOXRUN623"));
+            Assert.Contains(
+                "nested",
+                foxRunDiagnostic.GetMessage(),
+                StringComparison.OrdinalIgnoreCase);
+
+            var foxService = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public class Outer
+    {
+        public partial class Inner
+        {
+            [FoxService(""/phase187/r4/c4/reason-service"", Type = ""Phase187R4C4.Service"", RequestSchemaName = ""Phase187R4C4.Request"", ResponseSchemaName = ""Phase187R4C4.Response"")]
+            private void Invoke() { }
+        }
+    }
+}");
+            var serviceDiagnostic = Assert.Single(
+                foxService.Diagnostics.Where(
+                    diagnostic => diagnostic.Id == "FOXSERVICE010"));
+            Assert.Contains(
+                "nested",
+                serviceDiagnostic.GetMessage(),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void RoslynGeneratorRejectsUnsupportedFoxServiceHostTypeShapesWithReason()
+        {
+            var cases = new[]
+            {
+                ("record", @"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public partial record RecordServiceHost
+    {
+        [FoxService(""/phase187/r4/c4/service-record"", Type = ""Phase187R4C4.ServiceRecord"", RequestSchemaName = ""Phase187R4C4.RequestRecord"", ResponseSchemaName = ""Phase187R4C4.ResponseRecord"")]
+        private void Invoke() { }
+    }
+}"),
+                ("struct", @"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public partial struct StructServiceHost
+    {
+        [FoxService(""/phase187/r4/c4/service-struct"", Type = ""Phase187R4C4.ServiceStruct"", RequestSchemaName = ""Phase187R4C4.RequestStruct"", ResponseSchemaName = ""Phase187R4C4.ResponseStruct"")]
+        private void Invoke() { }
+    }
+}"),
+                ("interface", @"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public partial interface InterfaceServiceHost
+    {
+        [FoxService(""/phase187/r4/c4/service-interface"", Type = ""Phase187R4C4.ServiceInterface"", RequestSchemaName = ""Phase187R4C4.RequestInterface"", ResponseSchemaName = ""Phase187R4C4.ResponseInterface"")]
+        void Invoke();
+    }
+}")
+            };
+
+            foreach (var testCase in cases)
+            {
+                var result = RunGenerator(testCase.Item2);
+                var diagnostic = Assert.Single(
+                    result.Diagnostics.Where(
+                        candidate => candidate.Id == "FOXSERVICE010"));
+                Assert.Contains(
+                    testCase.Item1,
+                    diagnostic.GetMessage(),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void RoslynGeneratorTreatsCaseOnlyFoxRunAndFoxServiceHintsAsCollisions()
+        {
+            var foxRun = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public partial class CaseHost
+    {
+        [FoxRun(""/phase187/r4/c4/case-run-one"")]
+        private int _one;
+    }
+
+    public partial class casehost
+    {
+        [FoxRun(""/phase187/r4/c4/case-run-two"")]
+        private int _two;
+    }
+}");
+            var foxRunDiagnostics = foxRun.Diagnostics
+                .Where(diagnostic => diagnostic.Id == "FOXRUN623")
+                .ToArray();
+            Assert.Equal(2, foxRunDiagnostics.Length);
+            Assert.All(
+                foxRunDiagnostics,
+                diagnostic => Assert.Contains(
+                    "CaseHost",
+                    diagnostic.GetMessage(),
+                    StringComparison.OrdinalIgnoreCase));
+
+            var foxService = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+namespace Phase187R4C4
+{
+    public partial class CaseServiceHost
+    {
+        [FoxService(""/phase187/r4/c4/case-service-one"", Type = ""Phase187R4C4.ServiceOne"", RequestSchemaName = ""Phase187R4C4.RequestOne"", ResponseSchemaName = ""Phase187R4C4.ResponseOne"")]
+        private void InvokeOne() { }
+    }
+
+    public partial class caseservicehost
+    {
+        [FoxService(""/phase187/r4/c4/case-service-two"", Type = ""Phase187R4C4.ServiceTwo"", RequestSchemaName = ""Phase187R4C4.RequestTwo"", ResponseSchemaName = ""Phase187R4C4.ResponseTwo"")]
+        private void InvokeTwo() { }
+    }
+}");
+            var foxServiceDiagnostics = foxService.Diagnostics
+                .Where(diagnostic => diagnostic.Id == "FOXSERVICE010")
+                .ToArray();
+            Assert.Equal(2, foxServiceDiagnostics.Length);
+            Assert.All(
+                foxServiceDiagnostics,
+                diagnostic => Assert.Contains(
+                    "generated service source hint",
+                    diagnostic.GetMessage(),
+                    StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(
+                foxService.Diagnostics,
+                diagnostic => diagnostic.Id == "CS8785");
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void RoslynGeneratorReportsBothOwnersAndHintInCollisionDiagnostics()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace A.B
+{
+    public partial class C
+    {
+        [FoxRun(""/phase187/r4/c4/collision-one"")]
+        private int _value;
+    }
+}
+
+namespace A
+{
+    public partial class B_C
+    {
+        [FoxRun(""/phase187/r4/c4/collision-two"")]
+        private int _value;
+    }
+}");
+
+            var diagnostics = result.Diagnostics
+                .Where(diagnostic => diagnostic.Id == "FOXRUN623")
+                .ToArray();
+            Assert.Equal(2, diagnostics.Length);
+            Assert.All(
+                diagnostics,
+                diagnostic => Assert.Contains(
+                    "generated source hint",
+                    diagnostic.GetMessage(),
+                    StringComparison.OrdinalIgnoreCase));
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R4-C4")]
+        public void ReflectionPreservesUserTypesNamedLikeCSharpAliases()
+        {
+            foreach (var alias in new[] { "int", "dynamic", "nint", "nuint", "string" })
+            {
+                var type = DefineDynamicGlobalType(alias);
+
+                Assert.False(type.IsPrimitive);
+                Assert.Equal(
+                    "@" + alias,
+                    FoxRunEmissionTypeNameFormatter.FromReflectionType(type));
+
+                var shape = FoxRunReflectionTypeShapeBuilder.Build(type);
+                Assert.Equal(FoxRunTypeShapeKind.Object, shape.Kind);
+                Assert.Equal("@" + alias, shape.TypeName);
+            }
+        }
+
+        private static Type DefineDynamicGlobalType(string name)
+        {
+            var assembly = AssemblyBuilder.DefineDynamicAssembly(
+                new AssemblyName("Phase187R4C4Alias" + Guid.NewGuid().ToString("N")),
+                AssemblyBuilderAccess.Run);
+            var module = assembly.DefineDynamicModule("Main");
+            return module.DefineType(
+                    name,
+                    TypeAttributes.Public | TypeAttributes.Class)
+                .CreateType();
+        }
+
+        [Fact]
         public void RoslynGeneratorRejectsReadonlyNestedProtobufDtoInput()
         {
             var result = RunGenerator(@"
@@ -1434,6 +2020,8 @@ namespace Demo
                 "/phase187/e01/readonly-response");
             Assert.Contains(reflection, diagnostic => diagnostic.Id == "FOXSERVICE004"
                                                        && diagnostic.Path == "Response.Handle");
+            Assert.Contains(reflection, diagnostic => diagnostic.Id == "FOXSERVICE004"
+                                                       && diagnostic.Path == "Response.ReadonlyProperty");
 
             var result = RunGenerator(@"
 using System;
@@ -1444,6 +2032,7 @@ namespace Phase187E01
     public sealed class Response
     {
         public readonly IntPtr Handle;
+        public IntPtr ReadonlyProperty { get { return IntPtr.Zero; } }
     }
 
     public partial class Host
@@ -1455,6 +2044,8 @@ namespace Phase187E01
 
             Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXSERVICE004"
                                                                && diagnostic.GetMessage().Contains("Response.Handle", StringComparison.Ordinal));
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXSERVICE004"
+                                                               && diagnostic.GetMessage().Contains("Response.ReadonlyProperty", StringComparison.Ordinal));
         }
 
         [Fact]
@@ -3675,9 +4266,58 @@ namespace Demo
         {
             var compilation = CreateCompilation(sources);
 
-            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            return RunGenerator(compilation);
+        }
+
+        private static GeneratorDriverRunResult RunGenerator(
+            CSharpParseOptions parseOptions,
+            params string[] sources)
+        {
+            var compilation = CreateCompilation(parseOptions, sources);
+
+            return RunGenerator(compilation);
+        }
+
+        private static GeneratorDriverRunResult RunGenerator(
+            CSharpCompilation compilation)
+        {
+            GeneratorDriver driver = CreateGeneratorDriver(
+                compilation.SyntaxTrees.FirstOrDefault()?.Options
+                    as CSharpParseOptions);
             driver = driver.RunGenerators(compilation);
             return driver.GetRunResult();
+        }
+
+        private static GeneratorDriver CreateGeneratorDriver(
+            CSharpParseOptions parseOptions)
+        {
+            var sourceGenerator =
+                new FoxgloveLogSourceGenerator().AsSourceGenerator();
+            return CSharpGeneratorDriver.Create(
+                new[] { sourceGenerator },
+                additionalTexts: null,
+                parseOptions: parseOptions,
+                optionsProvider: null,
+                driverOptions: default);
+        }
+
+        private static void AssertGeneratedSourcesParse(
+            GeneratorDriverRunResult result,
+            CSharpParseOptions parseOptions)
+        {
+            var generated = result.Results
+                .SelectMany(run => run.GeneratedSources)
+                .ToArray();
+            Assert.NotEmpty(generated);
+            foreach (var source in generated)
+            {
+                var tree = CSharpSyntaxTree.ParseText(
+                    source.SourceText.ToString(),
+                    parseOptions ?? CSharpParseOptions.Default);
+                Assert.DoesNotContain(
+                    tree.GetDiagnostics(),
+                    diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            }
         }
 
         private static GeneratorDriverRunResult RunGeneratorWithR2fu(
@@ -3746,8 +4386,17 @@ namespace Demo
 
         private static Compilation RunGeneratorAndUpdateCompilation(string source)
         {
-            var compilation = CreateCompilation(source);
-            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            return RunGeneratorAndUpdateCompilation(
+                CSharpParseOptions.Default,
+                source);
+        }
+
+        private static Compilation RunGeneratorAndUpdateCompilation(
+            CSharpParseOptions parseOptions,
+            string source)
+        {
+            var compilation = CreateCompilation(parseOptions, source);
+            GeneratorDriver driver = CreateGeneratorDriver(parseOptions);
             driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out _);
             return outputCompilation;
         }
@@ -3768,9 +4417,16 @@ namespace Demo
 
         private static CSharpCompilation CreateCompilation(params string[] sources)
         {
+            return CreateCompilation(CSharpParseOptions.Default, sources);
+        }
+
+        private static CSharpCompilation CreateCompilation(
+            CSharpParseOptions parseOptions,
+            params string[] sources)
+        {
             return CSharpCompilation.Create(
                 "Phase157GeneratorProbe",
-                sources.Select(source => CSharpSyntaxTree.ParseText(source)),
+                sources.Select(source => CSharpSyntaxTree.ParseText(source, parseOptions)),
                 BasicReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         }
@@ -3870,6 +4526,7 @@ namespace Demo
         private sealed class E01ReadonlyResponse
         {
             public readonly IntPtr Handle;
+            public IntPtr ReadonlyProperty { get; }
         }
 
         private sealed class Phase184ContextDiagnosticProbe

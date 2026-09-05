@@ -99,30 +99,63 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 return true;
             }
 
-            if (IsHostKeyword(containingType.Name))
+            if (containingType.IsRecord)
             {
-                reason = "keyword declaring class names are not supported";
+                reason = "record declaring types are not supported";
                 return true;
             }
 
-            var ns = containingType.ContainingNamespace;
-            while (ns != null && !ns.IsGlobalNamespace)
+            if (containingType.TypeKind != TypeKind.Class)
             {
-                if (IsHostKeyword(ns.Name))
-                {
-                    reason = "keyword namespace components are not supported";
-                    return true;
-                }
-                ns = ns.ContainingNamespace;
+                reason = containingType.TypeKind == TypeKind.Struct
+                    ? "struct declaring types are not supported"
+                    : containingType.TypeKind == TypeKind.Interface
+                        ? "interface declaring types are not supported"
+                        : "non-class declaring types are not supported";
+                return true;
             }
+
+            if (containingType.IsStatic)
+            {
+                reason = "static declaring classes are not supported";
+                return true;
+            }
+
+            // Roslyn 4.2 does not expose a file-local accessibility enum or
+            // SyntaxKind.FileKeyword. Match the modifier token text so this
+            // guard remains compatible with newer compilers without rejecting
+            // contextual identifiers used as ordinary type/namespace names.
+            if (HasFileLocalModifier(containingType))
+            {
+                reason = "file-local declaring classes are not supported";
+                return true;
+            }
+
+            // Keyword spellings are escaped by the shared source emitters;
+            // they do not make the semantic host identity lossy.
 
             return false;
         }
 
-        private static bool IsHostKeyword(string value)
-            => SyntaxFacts.GetKeywordKind(value) != SyntaxKind.None
-               || SyntaxFacts.GetContextualKeywordKind(value)
-                   != SyntaxKind.None;
+        private static bool HasFileLocalModifier(
+            INamedTypeSymbol containingType)
+        {
+            foreach (var reference in containingType.DeclaringSyntaxReferences)
+            {
+                if (!(reference.GetSyntax() is TypeDeclarationSyntax declaration))
+                    continue;
+                if (declaration.Modifiers.Any(modifier =>
+                        string.Equals(
+                            modifier.ValueText,
+                            "file",
+                            StringComparison.Ordinal)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         private static MemberData ExtractMember(
             GeneratorSyntaxContext context,
@@ -172,17 +205,33 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var location = symbol.Locations.FirstOrDefault(
                                item => item.IsInSource)
                            ?? Location.None;
+            var attributes = symbol.GetAttributes().ToArray();
+            var hasFoxRunAttribute = attributes.Any(
+                attribute =>
+                    attribute.AttributeClass?.ToDisplayString()
+                    == AttrFullName);
+            var fieldAttribute = attributes.FirstOrDefault(
+                attribute =>
+                    attribute.AttributeClass?.ToDisplayString()
+                    == FieldAttrFullName);
+            // The syntax candidate intentionally includes arbitrary attributed
+            // members so aliases can be resolved semantically. Do not validate a
+            // host identity until a canonical FoxRun/FoxRunField attribute exists.
+            if (!hasFoxRunAttribute && fieldAttribute == null)
+                return null;
+
             if (TryGetUnsupportedHostIdentity(
                     containingType,
-                    out _))
+                    out var hostReason))
             {
                 return MemberData.ForDiagnostic(
                     location,
-                    "FOXRUN623");
+                    "FOXRUN623",
+                    hostReason);
             }
 
             var topics = new List<TopicEntry>();
-            foreach (var attribute in symbol.GetAttributes())
+            foreach (var attribute in attributes)
             {
                 if (attribute.AttributeClass?.ToDisplayString()
                     != AttrFullName)
@@ -197,12 +246,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     jsonFieldName: string.Empty,
                     protobufFieldNumberOverride: null));
             }
-
-            var fieldAttribute = symbol.GetAttributes()
-                .FirstOrDefault(
-                    attribute =>
-                        attribute.AttributeClass?.ToDisplayString()
-                        == FieldAttrFullName);
             if (fieldAttribute != null)
             {
                 if (symbol.IsStatic)
@@ -777,11 +820,23 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     continue;
                 if (item.DiagnosticLocation != null)
                 {
-                    context.ReportDiagnostic(
-                        Diagnostic.Create(
-                            Diags.Member(
-                                item.DiagnosticId),
-                            item.DiagnosticLocation));
+                    var diagnosticDescriptor =
+                        Diags.Member(item.DiagnosticId);
+                    if (string.IsNullOrEmpty(item.DiagnosticMessage))
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                diagnosticDescriptor,
+                                item.DiagnosticLocation));
+                    }
+                    else
+                    {
+                        context.ReportDiagnostic(
+                            Diagnostic.Create(
+                                diagnosticDescriptor,
+                                item.DiagnosticLocation,
+                                item.DiagnosticMessage));
+                    }
                     continue;
                 }
 
@@ -927,7 +982,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             IReadOnlyDictionary<(string Ns, string ClassName), MemberData> firstByClass,
             ISet<string> invalid)
         {
-            var owners = new Dictionary<string, FoxRunGenerationType>(StringComparer.Ordinal);
+            var owners = new Dictionary<string, FoxRunGenerationType>(StringComparer.OrdinalIgnoreCase);
             var reported = new HashSet<string>(StringComparer.Ordinal);
             foreach (var type in types ?? Array.Empty<FoxRunGenerationType>())
             {
@@ -957,7 +1012,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         context.ReportDiagnostic(
                             Diagnostic.Create(
                                 Diags.UnsupportedHostIdentity,
-                                first.MemberLocation));
+                                first.MemberLocation,
+                                "generated source hint '"
+                                + hint
+                                + "' collides for declaring hosts '"
+                                + owner.DeclaringType
+                                + "' and '"
+                                + type.DeclaringType
+                                + "'"));
                     }
                 }
             }
@@ -1058,13 +1120,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 new List<ServiceDiagnostic>();
             if (TryGetUnsupportedHostIdentity(
                     containingType,
-                    out _))
+                    out var serviceHostReason))
             {
                 diagnostics.Add(
                     new ServiceDiagnostic(
                         "FOXSERVICE010",
                         location,
-                        string.Empty));
+                        serviceHostReason));
             }
 
             var isPartial =
@@ -1362,7 +1424,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var invalidServiceHosts =
                 new HashSet<(string Ns, string ClassName)>();
             var serviceHintOwners =
-                new Dictionary<string, (string Ns, string ClassName)>();
+                new Dictionary<string, (string Ns, string ClassName)>(StringComparer.OrdinalIgnoreCase);
             var reportedServiceHosts =
                 new HashSet<(string Ns, string ClassName)>();
             foreach (var group in methodsByType)
@@ -1388,7 +1450,18 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     context.ReportDiagnostic(
                         Diagnostic.Create(
                             Diags.UnsupportedServiceHostIdentity,
-                            first.Location));
+                            first.Location,
+                            "generated service source hint '"
+                            + hint
+                            + "' collides for declaring hosts '"
+                            + (string.IsNullOrEmpty(owner.Ns)
+                                ? owner.ClassName
+                                : owner.Ns + "." + owner.ClassName)
+                            + "' and '"
+                            + (string.IsNullOrEmpty(group.Key.Ns)
+                                ? group.Key.ClassName
+                                : group.Key.Ns + "." + group.Key.ClassName)
+                            + "'"));
                 }
             }
 

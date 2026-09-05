@@ -76,10 +76,12 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             var body = new StringBuilder();
             var pad = string.IsNullOrEmpty(type.Namespace) ? string.Empty : "    ";
 
-            if (!string.IsNullOrEmpty(type.Namespace))
+            var escapedNamespace =
+                IdentifierUtils.EscapeQualifiedName(type.Namespace);
+            if (!string.IsNullOrEmpty(escapedNamespace))
             {
                 body.Append("namespace ")
-                    .Append(type.Namespace)
+                    .Append(escapedNamespace)
                     .AppendLine();
                 body.AppendLine("{");
             }
@@ -128,7 +130,7 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
             }
             body.Append(pad).AppendLine("}");
 
-            if (!string.IsNullOrEmpty(type.Namespace))
+            if (!string.IsNullOrEmpty(escapedNamespace))
                 body.AppendLine("}");
 
             return body.ToString();
@@ -1733,96 +1735,16 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
         }
 
         private static string GlobalTypeName(string typeName)
-            => string.IsNullOrWhiteSpace(typeName) || typeName.StartsWith("global::", StringComparison.Ordinal)
-                ? typeName
-                : "global::" + typeName;
+        {
+            var escaped = IdentifierUtils.EscapeTypeName(typeName);
+            return string.IsNullOrWhiteSpace(escaped)
+                   || escaped.StartsWith("global::", StringComparison.Ordinal)
+                ? escaped
+                : "global::" + escaped;
+        }
 
         private static string EscapeIdentifier(string value)
-        {
-            switch (value)
-            {
-                case "abstract":
-                case "as":
-                case "base":
-                case "bool":
-                case "break":
-                case "byte":
-                case "case":
-                case "catch":
-                case "char":
-                case "checked":
-                case "class":
-                case "const":
-                case "continue":
-                case "decimal":
-                case "default":
-                case "delegate":
-                case "do":
-                case "double":
-                case "else":
-                case "enum":
-                case "event":
-                case "explicit":
-                case "extern":
-                case "false":
-                case "finally":
-                case "fixed":
-                case "float":
-                case "for":
-                case "foreach":
-                case "goto":
-                case "if":
-                case "implicit":
-                case "in":
-                case "int":
-                case "interface":
-                case "internal":
-                case "is":
-                case "lock":
-                case "long":
-                case "namespace":
-                case "new":
-                case "null":
-                case "object":
-                case "operator":
-                case "out":
-                case "override":
-                case "params":
-                case "private":
-                case "protected":
-                case "public":
-                case "readonly":
-                case "ref":
-                case "return":
-                case "sbyte":
-                case "sealed":
-                case "short":
-                case "sizeof":
-                case "stackalloc":
-                case "static":
-                case "string":
-                case "struct":
-                case "switch":
-                case "this":
-                case "throw":
-                case "true":
-                case "try":
-                case "typeof":
-                case "uint":
-                case "ulong":
-                case "unchecked":
-                case "unsafe":
-                case "ushort":
-                case "using":
-                case "virtual":
-                case "void":
-                case "volatile":
-                case "while":
-                    return "@" + value;
-                default:
-                    return value;
-            }
-        }
+            => IdentifierUtils.EscapeIdentifier(value);
 
         private static string CSharpStringLiteral(string value)
         {

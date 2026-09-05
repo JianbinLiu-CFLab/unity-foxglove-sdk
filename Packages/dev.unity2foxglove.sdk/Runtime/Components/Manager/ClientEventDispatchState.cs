@@ -14,22 +14,6 @@ namespace Unity.FoxgloveSDK.Components
             5L * 1000L * 1000L * 10L;
         private long _lastFailureWarningTicks;
 
-        internal bool InvokeIfLive(
-            Func<bool> isLive,
-            Action first,
-            Action second)
-        {
-            if (isLive == null || !isLive())
-                return false;
-
-            first?.Invoke();
-            if (!isLive())
-                return false;
-
-            second?.Invoke();
-            return isLive();
-        }
-
         internal void Invoke<T>(
             Action<T> subscribers,
             T value,
@@ -113,6 +97,38 @@ namespace Unity.FoxgloveSDK.Components
                     ReportFailure(exception, reportFailure);
                 }
             }
+        }
+
+        /// <summary>
+        /// Delivers the two public message-event shapes as one logical event.
+        /// The caller performs the session-generation check before entering
+        /// this method; once delivery starts, both shapes are kept together.
+        /// </summary>
+        internal void InvokeMessage(
+            Action<uint, uint, string, byte[]> legacySubscribers,
+            Action<uint, uint, string, string, byte[]> encodedSubscribers,
+            uint clientId,
+            uint channelId,
+            string topic,
+            string encoding,
+            byte[] payload,
+            Action<Exception> reportFailure)
+        {
+            Invoke(
+                legacySubscribers,
+                clientId,
+                channelId,
+                topic,
+                payload,
+                reportFailure);
+            Invoke(
+                encodedSubscribers,
+                clientId,
+                channelId,
+                topic,
+                encoding,
+                payload,
+                reportFailure);
         }
 
         private void ReportFailure(

@@ -421,10 +421,13 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         private static string GlobalTypeName(string typeName)
-            => string.IsNullOrWhiteSpace(typeName)
-               || typeName.StartsWith("global::", StringComparison.Ordinal)
-                ? typeName
-                : "global::" + typeName;
+        {
+            var escaped = IdentifierUtils.EscapeTypeName(typeName);
+            return string.IsNullOrWhiteSpace(escaped)
+                   || escaped.StartsWith("global::", StringComparison.Ordinal)
+                ? escaped
+                : "global::" + escaped;
+        }
 
         private sealed class Counter
         {

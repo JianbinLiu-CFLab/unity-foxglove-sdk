@@ -94,9 +94,10 @@ namespace Unity.FoxgloveSDK.Editor
                     type,
                     out var elementType);
                 ElementTypeName =
-                    elementType?.FullName
-                    ?? elementType?.Name
-                    ?? string.Empty;
+                    elementType == null
+                        ? string.Empty
+                        : FoxRunEmissionTypeNameFormatter
+                            .ReflectionIdentityName(elementType);
                 Ns = ns ?? string.Empty;
                 ClassName = className ?? string.Empty;
                 Topic = topic ?? string.Empty;

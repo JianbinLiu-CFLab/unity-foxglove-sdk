@@ -38,6 +38,11 @@ namespace Unity.FoxgloveSDK.Components
 
     public sealed class FoxRunInputRouter
     {
+        private const string RegistrationUnavailableDiagnostic =
+            "A FoxRun input registration became unavailable during dispatch.";
+        private const string SilentGeneratedRejectionDiagnostic =
+            "A generated FoxRun input rejected the payload without a diagnostic.";
+
         private readonly object _gate = new();
         private readonly Dictionary<string, List<Registration>> _registrations =
             new(StringComparer.Ordinal);
@@ -620,7 +625,11 @@ namespace Unity.FoxgloveSDK.Components
                 try
                 {
                     if (!registration.Lifetime.TryEnter())
+                    {
+                        if (string.IsNullOrEmpty(firstError))
+                            firstError = RegistrationUnavailableDiagnostic;
                         continue;
+                    }
                     try
                     {
                         string error;
@@ -648,7 +657,9 @@ namespace Unity.FoxgloveSDK.Components
                         }
                         else if (string.IsNullOrEmpty(firstError))
                         {
-                            firstError = error;
+                            firstError = string.IsNullOrWhiteSpace(error)
+                                ? SilentGeneratedRejectionDiagnostic
+                                : error;
                         }
                     }
                     finally

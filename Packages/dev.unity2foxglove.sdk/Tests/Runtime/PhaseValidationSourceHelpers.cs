@@ -549,7 +549,8 @@ namespace Unity.FoxgloveSDK.Tests
         /// useful for overloads whose tuple-heavy signatures are legitimately
         /// reformatted by different C# writers; the marker still anchors the
         /// intended implementation body and the Roslyn span keeps extraction
-        /// syntax-aware.
+        /// syntax-aware. Resolution is fail-closed: callers receive an
+        /// exception unless exactly one declaration matches.
         /// </summary>
         public static string SourceMethodContaining(
             string source,
@@ -560,7 +561,8 @@ namespace Unity.FoxgloveSDK.Tests
                 || string.IsNullOrWhiteSpace(methodName)
                 || string.IsNullOrWhiteSpace(bodyMarker))
             {
-                return string.Empty;
+                throw new ArgumentException(
+                    "Source, method name, and body marker are required.");
             }
 
             var matches = CSharpSyntaxTree.ParseText(source)
@@ -577,7 +579,18 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(method => method.Contains(bodyMarker, StringComparison.Ordinal))
                 .ToArray();
 
-            return matches.Length == 1 ? matches[0] : string.Empty;
+            if (matches.Length != 1)
+            {
+                throw new InvalidOperationException(
+                    "Could not resolve exactly one source method containing '"
+                    + bodyMarker
+                    + "' for: "
+                    + methodName
+                    + "; matches="
+                    + matches.Length);
+            }
+
+            return matches[0];
         }
 
         public static string RequiredSourceMethod(string source, string methodName)

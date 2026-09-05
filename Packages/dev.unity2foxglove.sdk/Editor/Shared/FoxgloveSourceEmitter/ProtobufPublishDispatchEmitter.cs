@@ -278,7 +278,8 @@ namespace Unity.FoxgloveSDK.Editor
             IReadOnlyList<ObjectWriterShape> objectShapes)
         {
             sb.AppendLine();
-            sb.AppendLine($"{pad}    private static void __WriteFoxRunProtobufObject_{index}(global::System.Collections.Generic.List<byte> __target, int __fieldNumber, global::{shape.TypeName} __value)");
+            var objectType = GlobalTypeName(shape.TypeName);
+            sb.AppendLine($"{pad}    private static void __WriteFoxRunProtobufObject_{index}(global::System.Collections.Generic.List<byte> __target, int __fieldNumber, {objectType} __value)");
             sb.AppendLine($"{pad}    {{");
             sb.AppendLine($"{pad}        if ((object)__value == null) return;");
             sb.AppendLine($"{pad}        var __nested = new global::System.Collections.Generic.List<byte>(32);");
@@ -433,6 +434,26 @@ namespace Unity.FoxgloveSDK.Editor
                 case "unity.quaternion.float32": return "WriteQuaternion";
                 case "unity.color.float32": return "WriteColor";
                 default: return null;
+            }
+        }
+
+        private static string GlobalTypeName(string typeName)
+        {
+            var escaped = IdentifierUtils.EscapeTypeName(typeName);
+            if (string.IsNullOrWhiteSpace(escaped)
+                || escaped.StartsWith("global::", StringComparison.Ordinal))
+                return escaped;
+            if (escaped.EndsWith("[]", StringComparison.Ordinal))
+                return GlobalTypeName(escaped.Substring(0, escaped.Length - 2)) + "[]";
+            switch (escaped)
+            {
+                case "bool": case "byte": case "sbyte": case "short": case "ushort":
+                case "int": case "uint": case "long": case "ulong": case "float":
+                case "double": case "decimal": case "string": case "char": case "object":
+                case "void": case "dynamic": case "nint": case "nuint":
+                    return escaped;
+                default:
+                    return "global::" + escaped;
             }
         }
 

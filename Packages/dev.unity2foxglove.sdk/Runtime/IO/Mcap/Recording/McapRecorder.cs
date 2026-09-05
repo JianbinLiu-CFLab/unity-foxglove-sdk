@@ -943,8 +943,10 @@ namespace Unity.FoxgloveSDK.IO
                     new AggregateException(writeError, rollbackError));
             }
 
-            _failedChunkStartPosition ??= recordStartPosition;
-            _chunkFlushFailure ??= writeError;
+            // A top-level record failure has already been rolled back to its
+            // record boundary. Keep chunk-failure recovery reserved for an
+            // actual FlushChunk failure so Close() still flushes any valid
+            // messages buffered before this unrelated record was attempted.
             Fail($"{recordName} write failed: {writeError.Message}");
         }
 

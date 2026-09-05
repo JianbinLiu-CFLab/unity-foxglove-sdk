@@ -525,12 +525,12 @@ namespace Unity.FoxgloveSDK.Components
             out string error)
         {
             if (values == null) throw new ArgumentNullException(nameof(values));
-            var stagedValues = new List<T>();
             if (field.WireType == 0)
             {
                 if (!TryDecodeVarint(field, out T value, convert, out error)) return false;
-                stagedValues.Add(value);
-                values.Add(stagedValues[0]);
+                // A single varint is already fully decoded before the destination
+                // is touched; do not allocate a packed-value staging list here.
+                values.Add(value);
                 return true;
             }
             if (field.WireType != 2 || field.Value == null)
@@ -538,6 +538,7 @@ namespace Unity.FoxgloveSDK.Components
                 error = "Protobuf wire type does not match repeated " + typeName + ".";
                 return false;
             }
+            var stagedValues = new List<T>();
             var position = 0;
             while (position < field.Value.Length)
             {

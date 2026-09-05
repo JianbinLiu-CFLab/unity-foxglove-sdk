@@ -394,8 +394,7 @@ private static void Next() { }
             var start = normalized.IndexOf(normalizedStart, StringComparison.Ordinal);
             Assert.True(start >= 0, "Could not locate source slice start: " + startText);
             var end = normalized.IndexOf(normalizedEnd, start + normalizedStart.Length, StringComparison.Ordinal);
-            if (end < 0)
-                end = normalized.Length;
+            Assert.True(end >= 0, "Could not locate source slice end: " + endText);
             return normalized.Substring(start, end - start);
         }
 

@@ -25,17 +25,19 @@ namespace Unity.FoxgloveSDK.Editor
             if (members == null || members.Count == 0)
                 return;
 
+            var escapedNamespace = IdentifierUtils.EscapeQualifiedName(ns);
+            var escapedClassName = IdentifierUtils.EscapeIdentifier(className);
             var pad = string.IsNullOrEmpty(ns) ? string.Empty : "    ";
             var declaringType = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
             sb.AppendLine();
             sb.AppendLine("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY");
-            if (!string.IsNullOrEmpty(ns))
+            if (!string.IsNullOrEmpty(escapedNamespace))
             {
-                sb.AppendLine("namespace " + ns);
+                sb.AppendLine("namespace " + escapedNamespace);
                 sb.AppendLine("{");
             }
 
-            sb.AppendLine(pad + "partial class " + className + " : " + NativeNamespace + "IFoxRunRos2SubscriptionSource");
+            sb.AppendLine(pad + "partial class " + escapedClassName + " : " + NativeNamespace + "IFoxRunRos2SubscriptionSource");
             sb.AppendLine(pad + "{");
             for (var i = 0; i < members.Count; i++)
             {
@@ -62,7 +64,7 @@ namespace Unity.FoxgloveSDK.Editor
                 EmitBindingMethods(sb, pad, members[i], i, publishTopics);
 
             sb.AppendLine(pad + "}");
-            if (!string.IsNullOrEmpty(ns))
+            if (!string.IsNullOrEmpty(escapedNamespace))
                 sb.AppendLine("}");
             sb.AppendLine("#endif");
         }
@@ -883,7 +885,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string GlobalTypeName(string typeName)
         {
-            var value = typeName ?? string.Empty;
+            var value = IdentifierUtils.EscapeTypeName(typeName ?? string.Empty);
             if (value.StartsWith("global::", StringComparison.Ordinal))
                 return value;
             switch (value)

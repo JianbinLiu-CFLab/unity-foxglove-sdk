@@ -28,17 +28,19 @@ namespace Unity.FoxgloveSDK.Editor
             if (members == null || members.Count == 0)
                 return;
 
+            var escapedNamespace = IdentifierUtils.EscapeQualifiedName(ns);
+            var escapedClassName = IdentifierUtils.EscapeIdentifier(className);
             var pad = string.IsNullOrEmpty(ns) ? string.Empty : "    ";
             var declaringType = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
             sb.AppendLine();
             sb.AppendLine("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES");
-            if (!string.IsNullOrEmpty(ns))
+            if (!string.IsNullOrEmpty(escapedNamespace))
             {
-                sb.AppendLine("namespace " + ns);
+                sb.AppendLine("namespace " + escapedNamespace);
                 sb.AppendLine("{");
             }
 
-            sb.AppendLine(pad + "partial class " + className + " : " + Ros2CustomDtoMapperEmitter.NativeNamespace + "IFoxRunRos2CustomPublisherSource");
+            sb.AppendLine(pad + "partial class " + escapedClassName + " : " + Ros2CustomDtoMapperEmitter.NativeNamespace + "IFoxRunRos2CustomPublisherSource");
             sb.AppendLine(pad + "{");
             sb.AppendLine(pad + "    int " + Ros2CustomDtoMapperEmitter.NativeNamespace + "IFoxRunRos2CustomPublisherSource.FoxRunRos2CustomPublisherCount => " + members.Count + ";");
             sb.AppendLine();
@@ -58,7 +60,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
             sb.AppendLine(pad + "    }");
             sb.AppendLine(pad + "}");
-            if (!string.IsNullOrEmpty(ns))
+            if (!string.IsNullOrEmpty(escapedNamespace))
                 sb.AppendLine("}");
             sb.AppendLine("#endif");
         }
@@ -122,11 +124,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string GlobalTypeName(string typeName)
         {
-            if (string.IsNullOrWhiteSpace(typeName))
+            var escaped = IdentifierUtils.EscapeTypeName(typeName);
+            if (string.IsNullOrWhiteSpace(escaped))
                 return "object";
-            return typeName.StartsWith("global::", StringComparison.Ordinal)
-                ? typeName
-                : "global::" + typeName;
+            return escaped.StartsWith("global::", StringComparison.Ordinal)
+                ? escaped
+                : "global::" + escaped;
         }
 
         private static string ModeLiteral(int mode)
