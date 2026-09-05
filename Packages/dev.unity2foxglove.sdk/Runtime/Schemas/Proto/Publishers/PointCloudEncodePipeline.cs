@@ -66,7 +66,8 @@ namespace Unity.FoxgloveSDK.Components
                 workerStopWaitMs,
                 encode,
                 onDropRequest: DropRequest,
-                onDropResult: DropResult);
+                onDropResult: DropResult,
+                onEncodeError: ex => LogFailure(_queueFailureMessagePrefix + ex.Message));
 
             _isSuccess = isSuccess ?? throw new ArgumentNullException(nameof(isSuccess));
             _failureMessage = failureMessage ?? throw new ArgumentNullException(nameof(failureMessage));
