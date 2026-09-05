@@ -164,6 +164,9 @@ namespace Foxglove.Schemas.Video
 
             lock (_inputLock)
             {
+                if (!IsProcessRunning(Volatile.Read(ref _process)))
+                    return false;
+
                 while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out _))
                 {
                     _inputCount--;

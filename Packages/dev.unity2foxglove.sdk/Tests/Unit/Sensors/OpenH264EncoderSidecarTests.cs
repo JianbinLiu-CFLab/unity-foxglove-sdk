@@ -241,6 +241,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void SubmissionRejectsFrameRetiredBeforeInputAdmission()
+        {
+            AssertSubmissionRejectsRetiredFrame(
+                new FfmpegH264EncoderSidecar(),
+                new FfmpegH264EncoderOptions { Width = 2, Height = 2, MaxInputQueue = 2 });
+            AssertSubmissionRejectsRetiredFrame(
+                new FfmpegH265EncoderSidecar(),
+                new FfmpegH265EncoderOptions { Width = 2, Height = 2, MaxInputQueue = 2 });
+            AssertSubmissionRejectsRetiredFrame(
+                new OpenH264EncoderSidecar(),
+                new OpenH264EncoderOptions { Width = 2, Height = 2, MaxInputQueue = 2 });
+        }
+
+        [Fact]
         public void MediaFoundationSubmissionFailureStopsTheEncoder()
         {
             using var sidecar = new MediaFoundationH264EncoderSidecar();
@@ -360,6 +374,53 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 SetField(sidecar, "_process", null);
                 sidecar.GetType().GetMethod("Stop", Type.EmptyTypes)?.Invoke(sidecar, null);
             }
+        }
+
+        private static void AssertSubmissionRejectsRetiredFrame(object sidecar, object options)
+        {
+            SetField(sidecar, "_options", options);
+            SetField(sidecar, "_maxInputQueue", 2);
+            var inputLock = GetField(sidecar, "_inputLock");
+            var submit = sidecar.GetType().GetMethod(
+                "TrySubmitFrame",
+                new[] { typeof(byte[]), typeof(ulong) });
+            Assert.NotNull(submit);
+
+            var result = false;
+            Exception failure = null;
+            using var currentProcess = Process.GetCurrentProcess();
+            SetField(sidecar, "_process", currentProcess);
+            var submitThread = new Thread(() =>
+            {
+                try
+                {
+                    result = (bool)submit.Invoke(sidecar, new object[] { new byte[12], 1UL });
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                }
+            });
+
+            Monitor.Enter(inputLock);
+            try
+            {
+                submitThread.Start();
+                Thread.Sleep(50);
+                Assert.True(submitThread.IsAlive, "Submission completed before retirement was applied.");
+                Assert.Equal(0, (int)GetField(sidecar, "_inputCount"));
+                SetField(sidecar, "_process", null);
+            }
+            finally
+            {
+                Monitor.Exit(inputLock);
+            }
+
+            Assert.True(submitThread.Join(TimeSpan.FromSeconds(5)), "Submission thread did not finish.");
+            Assert.Null(failure);
+            Assert.False(result);
+            Assert.Equal(0, (int)GetField(sidecar, "_inputCount"));
+            sidecar.GetType().GetMethod("Stop", Type.EmptyTypes)?.Invoke(sidecar, null);
         }
 
         private static object GetField(object target, string name)

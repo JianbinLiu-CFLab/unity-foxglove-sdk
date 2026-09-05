@@ -201,6 +201,12 @@ namespace Foxglove.Schemas.Video
 
             lock (_inputLock)
             {
+                if (!IsProcessRunning(Volatile.Read(ref _process)))
+                {
+                    ReturnInputFrameBuffer(new QueuedVideoFrame(copy, timestampNs));
+                    return false;
+                }
+
                 while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out var dropped))
                 {
                     _inputCount--;
