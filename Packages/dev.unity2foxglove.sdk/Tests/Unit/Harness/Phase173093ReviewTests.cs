@@ -31,7 +31,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void PointCloudSmokeSourceReusesFrameBuffersInUpdatePath()
         {
             var source = TestSources.Text("Unity2Foxglove/Assets/Scripts/PointCloud/PointCloudSmokeSource.cs");
-            var buildFrame = TestSources.Slice(source, "private PointCloudFrame BuildFrame", "    private void OnPublished");
+            var buildFrame = TestSources.Slice(source, "private PointCloudFrame BuildFrame", "    }\n}");
 
             Assert.Contains("private readonly PointCloudFrame[] _frameBuffers", source, StringComparison.Ordinal);
             Assert.Contains("frame.Points.Clear();", buildFrame, StringComparison.Ordinal);
@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void ManagerDiagnosticsCachesTransportClientLabels()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Diagnostics.cs");
-            var drawTransport = TestSources.Slice(source, "private void DrawTransportHealth", "private void DrawReplayDiagnostics");
+            var drawTransport = TestSources.Slice(source, "private void DrawTransportHealth", "private TransportClientLabelCache GetTransportClientLabel");
 
             Assert.Contains("_transportClientLabelCache", source, StringComparison.Ordinal);
             Assert.Contains("private TransportClientLabelCache GetTransportClientLabel", source, StringComparison.Ordinal);
@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void ReplayTraceResetsStaticStateOnSubsystemRegistration()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/FoxgloveReplayTrace.cs");
-            var reset = TestSources.Slice(source, "private static void ResetForSubsystemRegistration", "        /// <summary>");
+            var reset = TestSources.Slice(source, "private static void ResetForSubsystemRegistration", "        internal static void ResetBudget");
 
             Assert.Contains("RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)", source, StringComparison.Ordinal);
             Assert.Contains("#if UNITY_5_3_OR_NEWER", source, StringComparison.Ordinal);
@@ -103,7 +103,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void McapInspectSmokeScriptPrintsDotnetStdoutOnSuccess()
         {
             var source = TestSources.Text("Scripts/smoke/mcap/ros2_cdr_mcap_inspect.py");
-            var runDotnet = TestSources.Slice(source, "def run_dotnet", "def inspect_with_runtime");
+            var runDotnet = TestSources.Slice(source, "def run_dotnet", "def main");
 
             Assert.Contains("if result.stdout:", runDotnet, StringComparison.Ordinal);
             Assert.Contains("print(result.stdout, file=sys.stderr if result.returncode != EXIT_SUCCESS else sys.stdout, end=\"\")", runDotnet, StringComparison.Ordinal);

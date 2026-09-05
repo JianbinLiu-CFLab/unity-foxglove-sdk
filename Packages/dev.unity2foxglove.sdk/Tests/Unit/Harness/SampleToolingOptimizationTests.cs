@@ -19,7 +19,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var assetsSetup = TestSources.Text("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/FoxgloveDemoSetup.cs");
             var assetsMouse = TestSources.Text("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/MouseDragCube.cs");
-            var mouseUpdate = TestSources.Slice(assetsMouse, "private void Update()", "    private void HandleRotation");
+            var mouseUpdate = TestSources.Slice(assetsMouse, "private void Update()", "    private static bool TryReadMouse");
             var controller = TestSources.Text("Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138LidarVehicleController.cs");
             var autoWander = TestSources.Slice(controller, "private void ComputeAutoWander", "        /// <summary>True while");
             var smoke = TestSources.Text("Unity2Foxglove/Assets/Scripts/PointCloud/PointCloudSmokeSource.cs");
@@ -216,9 +216,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void CoreSmokeScriptsAvoidHotPathCopies()
         {
             var phase40 = TestSources.Text("Scripts/smoke/websocket/phase40_slow_camera_client.py");
-            var handshake = TestSources.Slice(phase40, "def read_handshake_response", "def build_websocket_upgrade_request");
+            var handshake = TestSources.Slice(phase40, "def read_handshake_response", "def subscribe_payload");
             var phase139 = TestSources.Text("Scripts/smoke/replay/phase139_e2e_integration_smoke.py");
-            var collectMessages = TestSources.Slice(phase139, "async def collect_messages", "def summarize_observed");
+            var collectMessages = TestSources.Slice(phase139, "async def collect_messages", "def inspect_mcap");
             var collectAdvertisements = TestSources.Slice(phase139, "async def collect_advertisements", "async def collect_messages");
             var phase68 = TestSources.Text("Scripts/smoke/mcap/phase68_indexed_reader_smoke.py");
             var topicRate = TestSources.Text("Scripts/smoke/websocket/topic_rate_probe.py");
