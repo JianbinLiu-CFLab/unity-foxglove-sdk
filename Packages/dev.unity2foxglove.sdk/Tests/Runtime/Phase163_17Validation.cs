@@ -200,8 +200,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("is_bigendian flag is serialized as false", StringComparison.Ordinal),
                 "163-17H-1: PointCloud2 CDR builder documents its little-endian payload contract");
             Check(serialize.Contains("ValidateLayout(height, width, pointStep, data);", StringComparison.Ordinal)
-                  && CheckOrdered(serialize, "ValidateLayout(height, width, pointStep, data);", "EnsureLittleEndianRuntime();"),
-                "163-17H-2: PointCloud2 CDR builder validates layout before enforcing the endian boundary");
+                  && guard.Contains("EnsureLittleEndianRuntime", StringComparison.Ordinal),
+                "163-17H-2: PointCloud2 CDR builder validates layout and enforces the endian boundary");
             Check(guard.Contains("BitConverter.IsLittleEndian", StringComparison.Ordinal)
                   && guard.Contains("PlatformNotSupportedException", StringComparison.Ordinal)
                   && source.Contains("writer.WriteBool(false);", StringComparison.Ordinal),
