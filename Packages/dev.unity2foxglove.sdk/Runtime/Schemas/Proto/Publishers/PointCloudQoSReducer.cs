@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Components
             var useVoxelGrid = samplingMode == PointCloudSamplingMode.VoxelGrid && voxelSizeMeters > 0f;
             var forceUniformFallback = samplingMode == PointCloudSamplingMode.VoxelGrid && voxelSizeMeters <= 0f;
 
-            if (!useVoxelGrid && !forceUniformFallback && frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && pointCount <= pointBudget)
+            if (!useVoxelGrid && !forceUniformFallback && frame.UnixNs == unixNs && frame.UnixNs != 0 && !string.IsNullOrEmpty(frame.FrameId) && pointCount <= pointBudget)
             {
                 _warnedPointCloudBudget = false;
                 packedLayout = sourceLayout;
@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Components
 
             var copy = new PointCloudFrame
             {
-                UnixNs = frame.UnixNs == 0 ? unixNs : frame.UnixNs,
+                UnixNs = unixNs,
                 FrameId = string.IsNullOrEmpty(frame.FrameId) ? frameId : frame.FrameId,
                 EmitAbsoluteTimeNs = frame.EmitAbsoluteTimeNs
             };
