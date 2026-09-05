@@ -293,6 +293,8 @@ namespace Unity.FoxgloveSDK.Components
 
             var prepared = PrepareFrameForQoS(frame, logTimeNs, out var packedLayout);
             if (prepared == null || prepared.GetPointCount() == 0) return;
+            if (_outputMode == PointCloudOutputMode.Draco)
+                prepared = CloneFrameForAsyncEncoding(prepared, logTimeNs);
             SetPreparedPublishDemand(publishWebSocket, publishProvider);
             try
             {
@@ -527,6 +529,19 @@ namespace Unity.FoxgloveSDK.Components
                 _voxelSizeMeters,
                 _logQosDrops,
                 out packedLayout);
+        }
+
+        private static PointCloudFrame CloneFrameForAsyncEncoding(PointCloudFrame frame, ulong unixNs)
+        {
+            var clone = new PointCloudFrame
+            {
+                UnixNs = unixNs,
+                FrameId = frame.FrameId,
+                ValidCount = frame.ValidCount,
+                EmitAbsoluteTimeNs = frame.EmitAbsoluteTimeNs
+            };
+            clone.Points.AddRange(frame.Points);
+            return clone;
         }
     }
 }
