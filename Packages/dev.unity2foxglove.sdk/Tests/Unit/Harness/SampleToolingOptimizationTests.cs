@@ -112,7 +112,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("EnsureFrameBuffers(rgbData.Length, i420Bytes);", readback, StringComparison.Ordinal);
             Assert.Contains("rgbData.CopyTo(_rgbBuffer);", readback, StringComparison.Ordinal);
             Assert.Contains("TryConvertRgb24ToI420(_rgbBuffer, width, height, _i420Buffer", readback, StringComparison.Ordinal);
-            Assert.Contains("sidecar.TrySubmitFrame(_i420Buffer)", readback, StringComparison.Ordinal);
+            Assert.Contains("sidecar.TrySubmitFrame(_i420Buffer, renderUnixNs)", readback, StringComparison.Ordinal);
             Assert.DoesNotContain(".ToArray()", readback, StringComparison.Ordinal);
             Assert.DoesNotContain("new byte[i420Bytes]", readback, StringComparison.Ordinal);
             Assert.Contains("private bool _captureCameraDirty;", source, StringComparison.Ordinal);
@@ -138,7 +138,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             Assert.Contains("var copy = new byte[i420Frame.Length];", submit, StringComparison.Ordinal);
             Assert.Contains("Buffer.BlockCopy(i420Frame, 0, copy, 0, i420Frame.Length);", submit, StringComparison.Ordinal);
-            Assert.Contains("_inputFrames.Enqueue(copy);", submit, StringComparison.Ordinal);
+            Assert.Contains("_inputFrames.Enqueue(new ProbeInputFrame(copy, timestampNs));", submit, StringComparison.Ordinal);
         }
 
         [Fact]

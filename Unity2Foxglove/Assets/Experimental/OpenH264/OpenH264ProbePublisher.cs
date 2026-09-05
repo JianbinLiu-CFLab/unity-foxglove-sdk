@@ -152,11 +152,12 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
             return;
 
         EnsureCaptureResources(width, height);
+        var renderUnixNs = CurrentLogTimeNs;
         _captureCamera.Render();
         var generation = _captureGeneration;
         _pendingRequests++;
         AsyncGPUReadback.Request(_captureTexture, 0, TextureFormat.RGB24,
-            request => OnReadbackComplete(request, generation, width, height, i420Bytes));
+            request => OnReadbackComplete(request, generation, width, height, i420Bytes, renderUnixNs));
     }
 
     private void OnReadbackComplete(
@@ -164,7 +165,8 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         int generation,
         int width,
         int height,
-        int i420Bytes)
+        int i420Bytes,
+        ulong renderUnixNs)
     {
         if (generation != _captureGeneration)
         {
@@ -202,7 +204,7 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
             return;
         }
 
-        if (!sidecar.TrySubmitFrame(_i420Buffer))
+        if (!sidecar.TrySubmitFrame(_i420Buffer, renderUnixNs))
         {
             LogUnavailable(sidecar.LastError ?? "OpenH264 helper refused the frame.");
             return;
@@ -252,9 +254,10 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         if (sidecar == null)
             return;
 
-        while (sidecar.TryDequeueAccessUnit(out var accessUnit))
+        while (sidecar.TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit timestampedAccessUnit))
         {
             _accessUnitsReceived = sidecar.AccessUnitsReceived;
+            var accessUnit = timestampedAccessUnit.Data;
             if (!H264AnnexBAccessUnitPacketizer.LooksLikeDecodableH264AccessUnit(accessUnit))
             {
                 _invalidAccessUnits++;
@@ -263,7 +266,7 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
                 continue;
             }
 
-            var unixNs = CurrentLogTimeNs;
+            var unixNs = timestampedAccessUnit.TimestampNs;
             var payload = CameraCompressedVideoBuilder.Serialize(
                 unixNs,
                 _frameId,
