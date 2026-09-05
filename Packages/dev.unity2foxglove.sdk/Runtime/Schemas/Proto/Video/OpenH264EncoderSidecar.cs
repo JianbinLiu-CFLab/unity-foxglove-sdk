@@ -443,7 +443,11 @@ namespace Foxglove.Schemas.Video
                     return;
                 }
 
-                var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
+                if (!_encodedFrameTimestamps.TryDequeue(out var timestampNs))
+                {
+                    LastDiagnosticLine = "OpenH264 access unit had no queued capture timestamp.";
+                    return;
+                }
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
                 _outputCount++;
                 Interlocked.Increment(ref _accessUnitsReceived);

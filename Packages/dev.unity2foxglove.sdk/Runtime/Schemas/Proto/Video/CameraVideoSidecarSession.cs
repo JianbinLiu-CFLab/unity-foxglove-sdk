@@ -183,7 +183,12 @@ namespace Foxglove.Schemas.Video
             if (sidecar is ITimestampedCameraVideoEncoderSidecar timestampedSidecar)
             {
                 while (timestampedSidecar.TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit))
+                {
+                    if (accessUnit.TimestampNs == 0UL)
+                        continue;
+
                     publishAccessUnit(accessUnit.Data, accessUnit.TimestampNs, videoFormat);
+                }
             }
             else
             {
