@@ -95,12 +95,26 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             Vector3? imuToSensorTranslationMeters = null, Quaternion? imuToSensorRotation = null,
             Vector3? tIlTranslationMeters = null, Quaternion? tIlRotation = null)
         {
-            if (kind == LidarScanKind.Spinning && (rings <= 0 || columns <= 0 || rateHz <= 0.0))
-                throw new ArgumentException("Spinning LiDAR requires positive rings, columns, and rateHz.");
+            LidarGeometryLimits.ValidatePatternScalars(rateHz, minRangeMeters);
+            LidarGeometryLimits.ValidateRange(minRangeMeters, maxRangeMeters);
+            LidarGeometryLimits.ValidateFov(nameof(fovTopDeg), fovTopDeg);
+            LidarGeometryLimits.ValidateFov(nameof(fovBottomDeg), fovBottomDeg);
+            LidarGeometryLimits.ValidateFov(nameof(fovHDeg), fovHDeg);
+            LidarGeometryLimits.ValidateFov(nameof(fovVDeg), fovVDeg);
+
+            if (kind == LidarScanKind.Spinning && (rings <= 0 || columns <= 0))
+                throw new ArgumentException("Spinning LiDAR requires positive rings and columns.");
             if (kind == LidarScanKind.Spinning)
                 LidarGeometryLimits.ThrowIfInvalid(rings, columns);
             if (kind == LidarScanKind.NonRepetitive && (beamsPerFrame <= 0 || beamsPerFrame > LidarGeometryLimits.MaxRayCount))
                 throw new ArgumentOutOfRangeException(nameof(beamsPerFrame), "Non-repetitive LiDAR beam count is outside the supported range.");
+            if (beamAltitudeAnglesDeg != null)
+            {
+                if (kind == LidarScanKind.Spinning && beamAltitudeAnglesDeg.Length != rings)
+                    throw new ArgumentException("LiDAR beam altitude angle count must match rings.", nameof(beamAltitudeAnglesDeg));
+                for (var i = 0; i < beamAltitudeAnglesDeg.Length; i++)
+                    LidarGeometryLimits.ValidateFov(nameof(beamAltitudeAnglesDeg), beamAltitudeAnglesDeg[i]);
+            }
 
             Vendor = vendor;
             Model = model;

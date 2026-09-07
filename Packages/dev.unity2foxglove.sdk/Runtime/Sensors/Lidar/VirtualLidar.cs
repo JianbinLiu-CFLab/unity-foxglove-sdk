@@ -235,6 +235,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Start()
         {
+            NormalizeSerializedNumericConfiguration();
             ResolveSensorUnitProfile();
 
             if (_manager == null)
@@ -611,10 +612,14 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnValidate()
         {
+            NormalizeSerializedNumericConfiguration();
+        }
+
+        private void NormalizeSerializedNumericConfiguration()
+        {
             _columnStep = Math.Max(1, _columnStep);
-            _maxRangeMeters = Math.Max(0f, _maxRangeMeters);
-            if (!IsFinite(_scanRateHzOverride) || _scanRateHzOverride < 0f)
-                _scanRateHzOverride = 0f;
+            _maxRangeMeters = Sensors.Lidar.LidarGeometryLimits.NormalizeFiniteNonNegative(_maxRangeMeters);
+            _scanRateHzOverride = Sensors.Lidar.LidarGeometryLimits.NormalizeFiniteNonNegative(_scanRateHzOverride);
             if (_maxRaycastCommandsPerFixedUpdate < 256)
                 _maxRaycastCommandsPerFixedUpdate = 256;
         }

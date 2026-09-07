@@ -47,6 +47,30 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 throw new ArgumentOutOfRangeException(nameof(minRangeMeters), "LiDAR minimum range must be finite and non-negative.");
         }
 
+        internal static void ValidateRange(double minRangeMeters, double maxRangeMeters)
+        {
+            if (!IsFinite(maxRangeMeters) || maxRangeMeters < 0d)
+                throw new ArgumentOutOfRangeException(nameof(maxRangeMeters), "LiDAR maximum range must be finite and non-negative.");
+
+            if (maxRangeMeters < minRangeMeters)
+                throw new ArgumentOutOfRangeException(nameof(maxRangeMeters), "LiDAR maximum range must not be below the minimum range.");
+        }
+
+        internal static void ValidateFov(string parameterName, double fovDegrees)
+        {
+            if (!IsFinite(fovDegrees))
+                throw new ArgumentOutOfRangeException(parameterName, "LiDAR field of view must be finite.");
+        }
+
+        /// <summary>
+        /// Normalizes Unity float inspector values at the component boundary. Unity
+        /// serialization can retain NaN/Infinity even when an inspector attribute
+        /// is present, so invalid non-negative values are converted to a finite
+        /// disabled/default value before they reach scheduling or physics APIs.
+        /// </summary>
+        internal static float NormalizeFiniteNonNegative(float value, float fallback = 0f)
+            => IsFinite(value) && value >= 0f ? value : fallback;
+
         internal static void ValidateAngles(double[] altitudeRad, double[] azimuthRad)
         {
             if (altitudeRad == null)
@@ -71,5 +95,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
 
         private static bool IsFinite(double value)
             => !double.IsNaN(value) && !double.IsInfinity(value);
+
+        private static bool IsFinite(float value)
+            => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }
