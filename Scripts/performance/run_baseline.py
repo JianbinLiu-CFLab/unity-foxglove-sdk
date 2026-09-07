@@ -245,7 +245,11 @@ def main() -> int:
         print(f"[perf-baseline] malformed result JSON: {result_path}: {exc}")
         return EXIT_FAILURE
 
-    scenarios = data.get("scenarios", [])
+    scenarios = data.get("scenarios") if isinstance(data, dict) else None
+    if not isinstance(scenarios, list) or not scenarios:
+        print("[perf-baseline] No scenarios produced in result JSON.")
+        return EXIT_FAILURE
+
     all_passed = True
     for s in scenarios:
         status = "PASS" if s.get("passed") else "FAIL"
