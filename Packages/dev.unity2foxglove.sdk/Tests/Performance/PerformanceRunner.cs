@@ -62,6 +62,7 @@ namespace Unity.FoxgloveSDK.Performance
         // override makes metric transfer tests deterministic without replacing
         // the scenario body or treating a naturally observed zero as evidence.
         internal static Func<int, AllocationMetricSample> AllocationMetricsOverrideForTests { get; set; }
+        internal static Func<long, long> ElapsedMillisecondsOverrideForTests { get; set; }
 
         private static string RepoRoot
         {
@@ -375,6 +376,14 @@ namespace Unity.FoxgloveSDK.Performance
                 gen1,
                 gen2,
                 notes);
+        }
+
+        private static long ResolveElapsedMilliseconds(long actualElapsedMilliseconds)
+        {
+            var overrideElapsed = ElapsedMillisecondsOverrideForTests;
+            return overrideElapsed == null
+                ? actualElapsedMilliseconds
+                : overrideElapsed(actualElapsedMilliseconds);
         }
 
         private static PerformanceScenarioResult TimedScenario(string name, int warmupCount, int msgCount,
@@ -1267,6 +1276,9 @@ namespace Unity.FoxgloveSDK.Performance
         {
             try
             {
+                PrepareAllocMeasurement(out var gcBeforeTotal, out var gcBeforeThread,
+                    out var gen0Before, out var gen1Before, out var gen2Before);
+                var sw = Stopwatch.StartNew();
                 using var ms = new MemoryStream();
                 using (var recorder = new McapRecorder(ms))
                 {
@@ -1301,12 +1313,30 @@ namespace Unity.FoxgloveSDK.Performance
                 if (footerCrc == 0)
                     throw new Exception("Footer summary_crc is zero");
 
+                sw.Stop();
+                var elapsedMs = ResolveElapsedMilliseconds(sw.ElapsedMilliseconds);
+                var metrics = CollectAllocMetricSample(
+                    gcBeforeTotal,
+                    gcBeforeThread,
+                    gen0Before,
+                    gen1Before,
+                    gen2Before,
+                    1);
+                var elapsedSeconds = elapsedMs / 1000.0;
                 var result = new PerformanceScenarioResult
                 {
                     name = "McapRecordAttachmentSummary",
                     warmupMessageCount = 0,
                     messageCount = 1,
-                    elapsedMs = 0,
+                    elapsedMs = elapsedMs,
+                    messagesPerSecond = elapsedSeconds > 0 ? 1 / elapsedSeconds : 0,
+                    allocatedBytesTotal = metrics.AllocatedBytesTotal,
+                    allocatedBytesCurrentThread = metrics.AllocatedBytesCurrentThread,
+                    allocatedBytesPerMessage = metrics.AllocatedBytesPerMessage,
+                    gen0Collections = metrics.Gen0Collections,
+                    gen1Collections = metrics.Gen1Collections,
+                    gen2Collections = metrics.Gen2Collections,
+                    allocationNotes = metrics.AllocationNotes,
                     passed = true,
                     outputBytes = ms.Length,
                     notes = "Phase 34 regression guard: attachment index, CRC, summary_crc verified"

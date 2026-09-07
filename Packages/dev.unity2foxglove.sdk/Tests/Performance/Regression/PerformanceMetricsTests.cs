@@ -145,6 +145,80 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             }
         }
 
+        [Fact]
+        public void McapAttachmentSummaryTransfersElapsedAndAllocationMetrics()
+        {
+            var metricInvocations = new List<int>();
+            var elapsedInvocations = new List<long>();
+            try
+            {
+                PerformanceRunner.AllocationMetricsOverrideForTests = count =>
+                {
+                    metricInvocations.Add(count);
+                    return new PerformanceRunner.AllocationMetricSample(
+                        metricInvocations.Count == 1 ? 1024 : 67_108_865,
+                        metricInvocations.Count == 1 ? 512 : 4096,
+                        metricInvocations.Count == 1 ? 0.125 : 67_108_865d,
+                        metricInvocations.Count == 1 ? 0 : 2,
+                        metricInvocations.Count == 1 ? 0 : 1,
+                        metricInvocations.Count == 1 ? 0 : 1,
+                        "deterministic MCAP attachment metric sentinel");
+                };
+                PerformanceRunner.ElapsedMillisecondsOverrideForTests = actual =>
+                {
+                    elapsedInvocations.Add(actual);
+                    return elapsedInvocations.Count == 1 ? 10 : 10_001;
+                };
+
+                var thresholds = Thresholds(
+                    "McapRecordAttachmentSummary",
+                    new PerformanceScenarioThreshold
+                    {
+                        maxElapsedMs = 10_000,
+                        maxAllocatedBytesTotal = 67_108_864,
+                        maxAllocatedBytesPerMessage = 67_108_864,
+                        maxGen2Collections = 0
+                    });
+
+                var control = InvokeScenario("RunMcapRecordAttachmentSummary", thresholds);
+                var target = InvokeScenario("RunMcapRecordAttachmentSummary", thresholds);
+                var targetJson = JsonConvert.SerializeObject(target);
+
+                Assert.True(control.passed);
+                Assert.Equal(2, metricInvocations.Count);
+                Assert.Equal(1, metricInvocations[0]);
+                Assert.Equal(1, metricInvocations[1]);
+                Assert.Equal(2, elapsedInvocations.Count);
+                Assert.Equal(10, control.elapsedMs);
+                Assert.Equal(10_001, target.elapsedMs);
+                Assert.True(control.messagesPerSecond > 0);
+                Assert.True(target.messagesPerSecond > 0);
+                Assert.Equal(67_108_865, target.allocatedBytesTotal);
+                Assert.Equal(4096, target.allocatedBytesCurrentThread);
+                Assert.Equal(67_108_865d, target.allocatedBytesPerMessage);
+                Assert.Equal(2, target.gen0Collections);
+                Assert.Equal(1, target.gen1Collections);
+                Assert.Equal(1, target.gen2Collections);
+                Assert.True(target.outputBytes > 0);
+                Assert.Contains("attachment index", target.notes);
+                Assert.Contains("\"elapsedMs\":10001", targetJson);
+                Assert.Contains("\"allocatedBytesTotal\":67108865", targetJson);
+                Assert.Contains("\"gen0Collections\":2", targetJson);
+                Assert.Contains("\"gen1Collections\":1", targetJson);
+                Assert.Contains("\"gen2Collections\":1", targetJson);
+                Assert.False(target.passed);
+                Assert.Contains("elapsedMs 10001", target.thresholdNotes);
+                Assert.Contains("allocatedBytesTotal 67108865", target.thresholdNotes);
+                Assert.Contains("allocatedBytesPerMessage", target.thresholdNotes);
+                Assert.Contains("gen2Collections 1", target.thresholdNotes);
+            }
+            finally
+            {
+                PerformanceRunner.AllocationMetricsOverrideForTests = null;
+                PerformanceRunner.ElapsedMillisecondsOverrideForTests = null;
+            }
+        }
+
         private static PerformanceThresholdConfig Thresholds(
             string scenarioName,
             PerformanceScenarioThreshold threshold)
