@@ -321,7 +321,7 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual void Update()
         {
             if (_manager == null) return;
-            if (_manager.Runtime?.ReplayEnabled == true) return;
+            if (_manager.SuppressLivePublishersForReplay) return;
             EnsureEncodePipelines();
             _dracoEncodePipeline.Drain(
                 _logQosDrops,

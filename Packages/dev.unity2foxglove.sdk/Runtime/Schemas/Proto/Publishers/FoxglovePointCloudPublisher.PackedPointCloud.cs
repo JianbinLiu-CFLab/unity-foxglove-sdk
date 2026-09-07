@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Components
                 MarkSourceDrivenPointCloud();
 
             ResolveManager();
-            if (_manager == null || _manager.Runtime?.ReplayEnabled == true)
+            if (_manager == null || _manager.SuppressLivePublishersForReplay)
             {
                 VirtualLidarPointSnapshotPool.Return(points);
                 return true;
