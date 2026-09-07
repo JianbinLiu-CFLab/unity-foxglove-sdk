@@ -216,6 +216,33 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
+        [Fact]
+        public async Task EncodeErrorDiagnosticsRemainBounded()
+        {
+            var pipeline = new BackgroundEncodePipeline<TestRequest, int>(
+                "phase187-g04-error-bound",
+                completedCapacity: 2,
+                stopWaitMs: 5000,
+                encode: _ => throw new InvalidOperationException("encode boom"));
+            try
+            {
+                for (var i = 0; i < 8; i++)
+                {
+                    pipeline.Enqueue(new TestRequest(i), out _, out _);
+                    var expected = Math.Min(i + 1, 2);
+                    Assert.True(
+                        SpinWait.SpinUntil(() => GetEncodeErrorCount(pipeline) >= expected, TimeSpan.FromSeconds(3)),
+                        "The throwing worker must process each diagnostic request.");
+                }
+
+                Assert.InRange(GetEncodeErrorCount(pipeline), 0, 2);
+            }
+            finally
+            {
+                pipeline.Dispose();
+            }
+        }
+
         private static async Task<T> AwaitTask<T>(Task<T> task)
         {
             var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5)));
@@ -244,6 +271,11 @@ namespace Unity.FoxgloveSDK.UnitTests
             => (int)typeof(BackgroundEncodePipeline<TestRequest, int>)
                 .GetField("_activeWorkerCount", BindingFlags.Instance | BindingFlags.NonPublic)
                 .GetValue(pipeline);
+
+        private static int GetEncodeErrorCount(BackgroundEncodePipeline<TestRequest, int> pipeline)
+            => ((System.Collections.Generic.Queue<string>)typeof(BackgroundEncodePipeline<TestRequest, int>)
+                .GetField("_encodeErrors", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(pipeline)).Count;
 
         private static bool IsDisposed(WaitHandle handle)
             => Record.Exception(() => handle.WaitOne(0)) is ObjectDisposedException;

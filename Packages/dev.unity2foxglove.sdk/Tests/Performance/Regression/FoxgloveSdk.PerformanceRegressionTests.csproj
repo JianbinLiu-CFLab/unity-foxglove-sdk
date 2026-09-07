@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
+    <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <BaseOutputPath>$(MSBuildProjectDirectory)/../../../../../build/phase187-round4/performance-regression-tests/</BaseOutputPath>

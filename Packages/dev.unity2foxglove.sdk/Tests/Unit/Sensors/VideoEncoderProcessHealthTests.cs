@@ -119,6 +119,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.False(fixture.Submit(100));
         }
 
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void LateReaderCannotPublishIntoANewSession(int codec)
+        {
+            var sidecar = codec == 0 ? (object)new FfmpegH264EncoderSidecar()
+                : codec == 1 ? new FfmpegH265EncoderSidecar()
+                : new OpenH264EncoderSidecar();
+            var process = Process.GetCurrentProcess();
+            var type = sidecar.GetType();
+            var gate = type.GetMethod("IsCurrentSessionForTests", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(gate);
+            Set(sidecar, "_process", process);
+            Set(sidecar, "_sessionId", 11L);
+
+            Assert.True((bool)gate.Invoke(sidecar, new object[] { process, 11L }));
+            Assert.False((bool)gate.Invoke(sidecar, new object[] { process, 10L }));
+            Set(sidecar, "_sessionId", 12L);
+            Assert.False((bool)gate.Invoke(sidecar, new object[] { process, 11L }));
+            Set(sidecar, "_process", null);
+            Assert.False((bool)gate.Invoke(sidecar, new object[] { process, 12L }));
+        }
+
         private sealed class WorkerFixture : IDisposable
         {
             public readonly ICameraVideoEncoderSidecar Sidecar;
@@ -212,6 +236,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 Directory.Delete(directory, recursive: true);
             }
         }
+
+        private static void Set(object target, string name, object value)
+            => target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(target, value);
 
         private static readonly Lazy<byte[]> HelperAssembly = new Lazy<byte[]>(() =>
         {

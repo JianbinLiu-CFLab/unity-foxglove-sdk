@@ -37,6 +37,7 @@ namespace Foxglove.Schemas.Video
         private Task _stdinTask;
         private Task _stdoutTask;
         private Task _stderrTask;
+        private long _sessionId;
         private FfmpegH265EncoderOptions _options;
         private H265AnnexBAccessUnitPacketizer _packetizer;
         private int _maxInputQueue = 2;
@@ -134,9 +135,10 @@ namespace Foxglove.Schemas.Video
                 var stop = new CancellationTokenSource();
                 Volatile.Write(ref _stop, stop);
                 var token = stop.Token;
+                var sessionId = Interlocked.Increment(ref _sessionId);
                 var frameBytes = _options.FrameByteCount;
                 _stdinTask = Task.Run(() => RunStdinWriter(process, token, frameBytes));
-                _stdoutTask = Task.Run(() => RunStdoutReader(process, token));
+                _stdoutTask = Task.Run(() => RunStdoutReaderForSession(process, token, sessionId));
                 _stderrTask = Task.Run(() => RunStderrReader(process, token));
                 return true;
             }
@@ -279,6 +281,7 @@ namespace Foxglove.Schemas.Video
 
         private void StopNoLock(bool clearOutputQueue)
         {
+            Interlocked.Increment(ref _sessionId);
             var stop = Interlocked.Exchange(ref _stop, null);
             if (stop != null && !stop.IsCancellationRequested)
                 stop.Cancel();
@@ -369,7 +372,10 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private async Task RunStdoutReader(Process process, CancellationToken token)
+        private Task RunStdoutReader(Process process, CancellationToken token)
+            => RunStdoutReaderForSession(process, token, Volatile.Read(ref _sessionId));
+
+        private async Task RunStdoutReaderForSession(Process process, CancellationToken token, long sessionId)
         {
             var buffer = new byte[16 * 1024];
             try
@@ -384,12 +390,19 @@ namespace Foxglove.Schemas.Video
                         break;
                     }
 
-                    _packetizer.Append(buffer, 0, read);
-                    DrainPacketizer();
+                    lock (_outputLock)
+                    {
+                        if (!IsCurrentSessionForTests(process, sessionId))
+                            return;
+                        _packetizer.Append(buffer, 0, read);
+                        DrainPacketizer();
+                    }
                 }
 
-                if (_packetizer != null)
+                lock (_outputLock)
                 {
+                    if (!IsCurrentSessionForTests(process, sessionId))
+                        return;
                     _packetizer.FlushPendingEvents();
                     DrainPacketizer();
                 }
@@ -540,6 +553,11 @@ namespace Foxglove.Schemas.Video
         {
             _encodedFrameTimestamps.Enqueue(timestampNs);
         }
+
+        private bool IsCurrentSessionForTests(Process process, long sessionId)
+            => process != null
+                && ReferenceEquals(process, Volatile.Read(ref _process))
+                && Volatile.Read(ref _sessionId) == sessionId;
 
         private void DrainInputQueue()
         {

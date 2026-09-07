@@ -372,6 +372,8 @@ namespace Unity.FoxgloveSDK.Util
                             if (!_worker.ShouldStopLocked(workerGeneration)
                                 && request.Generation == workerGeneration)
                             {
+                                while (_encodeErrors.Count >= _completedCapacity)
+                                    _encodeErrors.Dequeue();
                                 _encodeErrors.Enqueue(ex?.Message ?? string.Empty);
                             }
                         }

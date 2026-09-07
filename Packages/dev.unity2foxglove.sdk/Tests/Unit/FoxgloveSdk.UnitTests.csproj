@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
+    <IsTestProject>true</IsTestProject>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <IsPackable>false</IsPackable>
     <IncludeRos2ForUnityNative Condition="'$(IncludeRos2ForUnityNative)' == ''">false</IncludeRos2ForUnityNative>

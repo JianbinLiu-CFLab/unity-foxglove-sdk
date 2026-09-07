@@ -35,6 +35,7 @@ namespace Foxglove.Schemas.Video
         private Task _stdinTask;
         private Task _stdoutTask;
         private Task _stderrTask;
+        private long _sessionId;
         private OpenH264EncoderOptions _options;
         private int _maxInputQueue = 2;
         private int _maxOutputQueue = 4;
@@ -118,8 +119,9 @@ namespace Foxglove.Schemas.Video
                     _stop = new CancellationTokenSource();
                     var process = _process;
                     var token = _stop.Token;
+                    var sessionId = Interlocked.Increment(ref _sessionId);
                     _stdinTask = Task.Run(() => RunStdinWriter(process, token));
-                    _stdoutTask = Task.Run(() => RunStdoutReader(process, token));
+                    _stdoutTask = Task.Run(() => RunStdoutReaderForSession(process, token, sessionId));
                     _stderrTask = Task.Run(() => RunStderrReader(process, token));
                     return true;
                 }
@@ -228,6 +230,7 @@ namespace Foxglove.Schemas.Video
 
         private void StopNoLock(bool clearOutputQueue)
         {
+            Interlocked.Increment(ref _sessionId);
             var stop = _stop;
             if (stop != null && !stop.IsCancellationRequested)
                 stop.Cancel();
@@ -312,7 +315,10 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private async Task RunStdoutReader(Process process, CancellationToken token)
+        private Task RunStdoutReader(Process process, CancellationToken token)
+            => RunStdoutReaderForSession(process, token, Volatile.Read(ref _sessionId));
+
+        private async Task RunStdoutReaderForSession(Process process, CancellationToken token, long sessionId)
         {
             var header = new byte[4];
             try
@@ -328,17 +334,23 @@ namespace Foxglove.Schemas.Video
                     }
 
                     var length = readLength.Length;
-                    if (length == 0)
+                    lock (_outputLock)
                     {
-                        AcceptHelperSkippedAccessUnit();
-                        continue;
-                    }
+                        if (!IsCurrentSessionForTests(process, sessionId))
+                            return;
 
-                    if (length < 0 || length > MaxAccessUnitBytes)
-                    {
-                        LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
-                        RetireFailedProcess(process, token, LastError);
-                        return;
+                        if (length == 0)
+                        {
+                            AcceptHelperSkippedAccessUnit();
+                            continue;
+                        }
+
+                        if (length < 0 || length > MaxAccessUnitBytes)
+                        {
+                            LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
+                            RetireFailedProcess(process, token, LastError);
+                            return;
+                        }
                     }
 
                     var payload = new byte[length];
@@ -349,7 +361,12 @@ namespace Foxglove.Schemas.Video
                         return;
                     }
 
-                    AcceptHelperAccessUnit(payload);
+                    lock (_outputLock)
+                    {
+                        if (!IsCurrentSessionForTests(process, sessionId))
+                            return;
+                        AcceptHelperAccessUnit(payload);
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -476,6 +493,11 @@ namespace Foxglove.Schemas.Video
         {
             _encodedFrameTimestamps.Enqueue(timestampNs);
         }
+
+        private bool IsCurrentSessionForTests(Process process, long sessionId)
+            => process != null
+                && ReferenceEquals(process, Volatile.Read(ref _process))
+                && Volatile.Read(ref _sessionId) == sessionId;
 
         private static async Task<LengthReadResult> ReadLittleEndianLength(Stream stream, byte[] header, CancellationToken token)
         {
