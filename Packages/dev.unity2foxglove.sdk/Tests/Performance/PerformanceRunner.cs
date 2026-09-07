@@ -29,6 +29,40 @@ namespace Unity.FoxgloveSDK.Performance
     {
         public const string DefaultTransportScope = "FakePerformanceTransport serialization/dispatch path only; excludes ManagedWsBackend sockets and TLS";
 
+        internal readonly struct AllocationMetricSample
+        {
+            public readonly long AllocatedBytesTotal;
+            public readonly long AllocatedBytesCurrentThread;
+            public readonly double AllocatedBytesPerMessage;
+            public readonly int Gen0Collections;
+            public readonly int Gen1Collections;
+            public readonly int Gen2Collections;
+            public readonly string AllocationNotes;
+
+            public AllocationMetricSample(
+                long allocatedBytesTotal,
+                long allocatedBytesCurrentThread,
+                double allocatedBytesPerMessage,
+                int gen0Collections,
+                int gen1Collections,
+                int gen2Collections,
+                string allocationNotes)
+            {
+                AllocatedBytesTotal = allocatedBytesTotal;
+                AllocatedBytesCurrentThread = allocatedBytesCurrentThread;
+                AllocatedBytesPerMessage = allocatedBytesPerMessage;
+                Gen0Collections = gen0Collections;
+                Gen1Collections = gen1Collections;
+                Gen2Collections = gen2Collections;
+                AllocationNotes = allocationNotes;
+            }
+        }
+
+        // The production path always uses the runtime collector. The internal
+        // override makes metric transfer tests deterministic without replacing
+        // the scenario body or treating a naturally observed zero as evidence.
+        internal static Func<int, AllocationMetricSample> AllocationMetricsOverrideForTests { get; set; }
+
         private static string RepoRoot
         {
             get
@@ -305,6 +339,42 @@ namespace Unity.FoxgloveSDK.Performance
             gen1 = GC.CollectionCount(1) - gen1Before;
             gen2 = GC.CollectionCount(2) - gen2Before;
             notes = null;
+        }
+
+        private static AllocationMetricSample CollectAllocMetricSample(
+            long gcBeforeTotal,
+            long gcBeforeThread,
+            int gen0Before,
+            int gen1Before,
+            int gen2Before,
+            int messageCount)
+        {
+            var overrideCollector = AllocationMetricsOverrideForTests;
+            if (overrideCollector != null)
+                return overrideCollector(messageCount);
+
+            CollectAllocMetrics(
+                gcBeforeTotal,
+                gcBeforeThread,
+                gen0Before,
+                gen1Before,
+                gen2Before,
+                messageCount,
+                out var allocTotal,
+                out var allocThread,
+                out var allocPerMsg,
+                out var gen0,
+                out var gen1,
+                out var gen2,
+                out var notes);
+            return new AllocationMetricSample(
+                allocTotal,
+                allocThread,
+                allocPerMsg,
+                gen0,
+                gen1,
+                gen2,
+                notes);
         }
 
         private static PerformanceScenarioResult TimedScenario(string name, int warmupCount, int msgCount,
@@ -1298,9 +1368,13 @@ namespace Unity.FoxgloveSDK.Performance
             }
 
             sw.Stop();
-            CollectAllocMetrics(gcBeforeTotal, gcBeforeThread, gen0Before, gen1Before, gen2Before,
-                iterations, out var allocTotal, out var allocThread, out var allocPerMsg,
-                out var gen0, out var gen1, out var gen2, out var allocNotes);
+            var metrics = CollectAllocMetricSample(
+                gcBeforeTotal,
+                gcBeforeThread,
+                gen0Before,
+                gen1Before,
+                gen2Before,
+                iterations);
 
             var passed = !invalidState
                 && pressureCount > 0
@@ -1315,9 +1389,13 @@ namespace Unity.FoxgloveSDK.Performance
                 messageCount = iterations,
                 elapsedMs = sw.ElapsedMilliseconds,
                 messagesPerSecond = sw.Elapsed.TotalSeconds > 0 ? iterations / sw.Elapsed.TotalSeconds : 0,
-                allocatedBytesTotal = allocTotal,
-                allocatedBytesCurrentThread = allocThread,
-                allocatedBytesPerMessage = allocPerMsg,
+                allocatedBytesTotal = metrics.AllocatedBytesTotal,
+                allocatedBytesCurrentThread = metrics.AllocatedBytesCurrentThread,
+                allocatedBytesPerMessage = metrics.AllocatedBytesPerMessage,
+                gen0Collections = metrics.Gen0Collections,
+                gen1Collections = metrics.Gen1Collections,
+                gen2Collections = metrics.Gen2Collections,
+                allocationNotes = metrics.AllocationNotes,
                 notes = "policy evaluation loop; 100K iterations; no Unity/GPU; "
                     + $"pressure={pressureCount}, blocked={blockedCount}, allowed={allowedCount}",
                 passed = passed
