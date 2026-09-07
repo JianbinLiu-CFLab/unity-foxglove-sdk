@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Util
         private readonly BackgroundWorkerLifecycle _worker = new BackgroundWorkerLifecycle();
         private readonly AutoResetEvent _workerSignal = new AutoResetEvent(false);
         private readonly Queue<TResult> _completed = new Queue<TResult>();
+        private readonly Queue<string> _encodeErrors = new Queue<string>();
         private readonly Func<TRequest, TResult> _encode;
         private readonly Action<Exception> _onEncodeError;
         private readonly Action<TRequest> _onDropRequest;
@@ -36,7 +37,6 @@ namespace Unity.FoxgloveSDK.Util
         private readonly int _stopWaitMs;
         private TRequest _pending;
         private int _droppedCompletedCount;
-        private int _encodeErrorCount;
         private int _activeWorkerCount;
         private bool _disposeHandlesWhenWorkersExit;
         private bool _handleDisposalClaimed;
@@ -152,9 +152,39 @@ namespace Unity.FoxgloveSDK.Util
             {
                 results.Clear();
                 droppedCompletedResults = _droppedCompletedCount;
-                encodeErrors = _encodeErrorCount;
+                encodeErrors = _encodeErrors.Count;
                 _droppedCompletedCount = 0;
-                _encodeErrorCount = 0;
+                _encodeErrors.Clear();
+                if (_completed.Count == 0)
+                    return;
+
+                results.AddRange(_completed);
+                _completed.Clear();
+            }
+        }
+
+        public void Drain(
+            List<TResult> results,
+            List<string> encodeErrorMessages,
+            out int droppedCompletedResults)
+        {
+            if (results == null)
+                throw new ArgumentNullException(nameof(results));
+            if (encodeErrorMessages == null)
+                throw new ArgumentNullException(nameof(encodeErrorMessages));
+
+            lock (_worker.Gate)
+            {
+                results.Clear();
+                encodeErrorMessages.Clear();
+                droppedCompletedResults = _droppedCompletedCount;
+                _droppedCompletedCount = 0;
+                if (_encodeErrors.Count > 0)
+                {
+                    encodeErrorMessages.AddRange(_encodeErrors);
+                    _encodeErrors.Clear();
+                }
+
                 if (_completed.Count == 0)
                     return;
 
@@ -190,7 +220,7 @@ namespace Unity.FoxgloveSDK.Util
 
                     _completed.Clear();
                     _droppedCompletedCount = 0;
-                    _encodeErrorCount = 0;
+                    _encodeErrors.Clear();
                 }
             }
 
@@ -283,7 +313,9 @@ namespace Unity.FoxgloveSDK.Util
                         {
                             if (!_worker.ShouldStopLocked(workerGeneration)
                                 && request.Generation == workerGeneration)
-                                _encodeErrorCount++;
+                            {
+                                _encodeErrors.Enqueue(ex?.Message ?? string.Empty);
+                            }
                         }
 
                         try

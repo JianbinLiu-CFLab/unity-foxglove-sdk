@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Components
     {
         private readonly BackgroundEncodePipeline<TRequest, TResult> _pipeline;
         private readonly List<TResult> _drainedResults = new List<TResult>();
+        private readonly List<string> _drainedEncodeErrors = new List<string>();
         private readonly Func<TResult, bool> _isSuccess;
         private readonly Func<TResult, string> _failureMessage;
         private readonly Func<string, string> _formatFailureWarning;
@@ -66,8 +67,7 @@ namespace Unity.FoxgloveSDK.Components
                 workerStopWaitMs,
                 encode,
                 onDropRequest: DropRequest,
-                onDropResult: DropResult,
-                onEncodeError: ex => LogFailure(_queueFailureMessagePrefix + ex.Message));
+                onDropResult: DropResult);
 
             _isSuccess = isSuccess ?? throw new ArgumentNullException(nameof(isSuccess));
             _failureMessage = failureMessage ?? throw new ArgumentNullException(nameof(failureMessage));
@@ -104,12 +104,19 @@ namespace Unity.FoxgloveSDK.Components
 
         public void Drain(bool logQosDrops, Action<int> onDroppedCompleted, Action onResultsProcessed)
         {
-            _pipeline.Drain(_drainedResults, out var droppedCompletedResults);
+            _pipeline.Drain(_drainedResults, _drainedEncodeErrors, out var droppedCompletedResults);
             if (droppedCompletedResults > 0 && logQosDrops)
                 _logDropDiagnostic(_droppedCompletedWarning(droppedCompletedResults));
 
             if (droppedCompletedResults > 0)
                 onDroppedCompleted?.Invoke(droppedCompletedResults);
+
+            foreach (var encodeError in _drainedEncodeErrors)
+            {
+                LogFailure(
+                    _queueFailureMessagePrefix
+                    + (string.IsNullOrWhiteSpace(encodeError) ? "unknown error" : encodeError));
+            }
 
             if (_drainedResults.Count == 0)
                 return;
