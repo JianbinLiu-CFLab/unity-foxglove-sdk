@@ -28,7 +28,7 @@ namespace Foxglove.Schemas.Video
 
         private readonly List<byte> _buffer = new List<byte>();
         private readonly List<byte> _currentAccessUnit = new List<byte>();
-        private readonly Queue<byte[]> _completedAccessUnits = new Queue<byte[]>();
+        private readonly Queue<PacketizerEvent> _events = new Queue<PacketizerEvent>();
         private readonly int _maxPendingAccessUnitBytes;
         private int _bufferStart;
         private bool _currentHasVcl;
@@ -88,13 +88,29 @@ namespace Foxglove.Schemas.Video
         /// </summary>
         public bool TryDequeueAccessUnit(out byte[] accessUnit)
         {
-            if (_completedAccessUnits.Count == 0)
+            while (TryDequeueEvent(out accessUnit, out var dropped))
+            {
+                if (!dropped)
+                    return true;
+            }
+
+            accessUnit = null;
+            return false;
+        }
+
+        /// <summary>Dequeues the next completed-unit or parser-drop event in source order.</summary>
+        internal bool TryDequeueEvent(out byte[] accessUnit, out bool dropped)
+        {
+            if (_events.Count == 0)
             {
                 accessUnit = null;
+                dropped = false;
                 return false;
             }
 
-            accessUnit = _completedAccessUnits.Dequeue();
+            var next = _events.Dequeue();
+            accessUnit = next.AccessUnit;
+            dropped = next.Dropped;
             return true;
         }
 
@@ -108,6 +124,14 @@ namespace Foxglove.Schemas.Video
         /// </remarks>
         public bool Flush(out byte[] accessUnit)
         {
+            FlushPendingEvents();
+
+            return TryDequeueAccessUnit(out accessUnit);
+        }
+
+        /// <summary>Flushes parser state without consuming the ordered event queue.</summary>
+        internal void FlushPendingEvents()
+        {
             ParseBufferedBytes(flush: true);
             if (_currentHasVcl)
                 EnqueueCurrentAccessUnit();
@@ -116,8 +140,6 @@ namespace Foxglove.Schemas.Video
             _currentHasVcl = false;
             _buffer.Clear();
             _bufferStart = 0;
-
-            return TryDequeueAccessUnit(out accessUnit);
         }
 
         /// <summary>Returns true when the byte sequence contains an Annex B start code.</summary>
@@ -238,13 +260,14 @@ namespace Foxglove.Schemas.Video
             if (_currentAccessUnit.Count == 0)
                 return;
 
-            _completedAccessUnits.Enqueue(_currentAccessUnit.ToArray());
+            _events.Enqueue(new PacketizerEvent(_currentAccessUnit.ToArray(), dropped: false));
         }
 
         private void DropPendingAccessUnit(string error)
         {
             LastError = error;
             DroppedAccessUnits++;
+            _events.Enqueue(new PacketizerEvent(accessUnit: null, dropped: true));
             _currentAccessUnit.Clear();
             _currentHasVcl = false;
             _buffer.Clear();
@@ -381,6 +404,18 @@ namespace Foxglove.Schemas.Video
             }
 
             return false;
+        }
+
+        private readonly struct PacketizerEvent
+        {
+            public PacketizerEvent(byte[] accessUnit, bool dropped)
+            {
+                AccessUnit = accessUnit;
+                Dropped = dropped;
+            }
+
+            public byte[] AccessUnit { get; }
+            public bool Dropped { get; }
         }
     }
 }

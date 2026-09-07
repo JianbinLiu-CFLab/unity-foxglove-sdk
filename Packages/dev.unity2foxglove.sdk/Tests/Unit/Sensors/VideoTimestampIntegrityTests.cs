@@ -44,6 +44,42 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Theory]
         [InlineData(0)]
         [InlineData(1)]
+        public void CompletedOutputBeforePacketizerDropKeepsItsEarlierTimestamp(int codec)
+        {
+            var sidecar = codec == 0
+                ? (object)new FfmpegH264EncoderSidecar()
+                : new FfmpegH265EncoderSidecar();
+            var packetizer = codec == 0
+                ? (object)new H264AnnexBAccessUnitPacketizer(24)
+                : new H265AnnexBAccessUnitPacketizer(24);
+            Set(sidecar, "_packetizer", packetizer);
+            EnqueueTimestamp(sidecar, 100UL);
+            EnqueueTimestamp(sidecar, 200UL);
+            EnqueueTimestamp(sidecar, 300UL);
+
+            Append(packetizer, codec == 0
+                ? Concat(H264Nal(9, 1), H264Nal(1, 0xA), H264Nal(9, 1))
+                : Concat(H265Nal(35, 1), H265Nal(0, 0xA), H265Nal(35, 1)));
+            Append(packetizer, new byte[25]);
+            Append(packetizer, codec == 0
+                ? Concat(H264Nal(9, 1), H264Nal(1, 0xC), H264Nal(9, 1))
+                : Concat(H265Nal(35, 1), H265Nal(0, 0xC), H265Nal(35, 1)));
+
+            Drain(sidecar);
+
+            var first = Dequeue(sidecar);
+            var second = Dequeue(sidecar);
+            Assert.NotNull(first);
+            Assert.NotNull(second);
+            Assert.Equal(100UL, first.Value.TimestampNs);
+            Assert.Equal(300UL, second.Value.TimestampNs);
+            Assert.Null(Dequeue(sidecar));
+            Assert.Equal(0, PendingTimestampCount(sidecar));
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
         [InlineData(2)]
         public void TimestampUnderflowRejectsUnpairedAccessUnit(int codec)
         {
@@ -73,6 +109,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
         private static void Append(object packetizer, byte[] data)
             => packetizer.GetType().GetMethod("Append", new[] { typeof(byte[]) }).Invoke(packetizer, new object[] { data });
+
+        private static byte[] H264Nal(byte type, byte payload)
+            => new[] { (byte)0, (byte)0, (byte)0, (byte)1, type, payload };
+
+        private static byte[] H265Nal(byte type, byte payload)
+            => new[] { (byte)0, (byte)0, (byte)0, (byte)1, (byte)(type << 1), (byte)1, payload };
+
+        private static byte[] Concat(params byte[][] parts)
+        {
+            var length = 0;
+            foreach (var part in parts)
+                length += part.Length;
+
+            var result = new byte[length];
+            var offset = 0;
+            foreach (var part in parts)
+            {
+                Buffer.BlockCopy(part, 0, result, offset, part.Length);
+                offset += part.Length;
+            }
+
+            return result;
+        }
 
         private static void Drain(object sidecar)
             => sidecar.GetType().GetMethod("DrainPacketizer", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(sidecar, null);

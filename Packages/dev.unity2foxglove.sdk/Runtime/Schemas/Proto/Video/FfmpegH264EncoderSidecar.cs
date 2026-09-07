@@ -47,7 +47,6 @@ namespace Foxglove.Schemas.Video
         private long _accessUnitsProduced;
         private long _accessUnitsDropped;
         private long _timestampQueueUnderflows;
-        private long _packetizerDropsObserved;
         private string _lastStderrLine;
         private string _lastError;
 
@@ -389,9 +388,9 @@ namespace Foxglove.Schemas.Video
                     DrainPacketizer();
                 }
 
-                if (_packetizer != null && _packetizer.Flush(out var finalUnit))
+                if (_packetizer != null)
                 {
-                    EnqueueAccessUnit(finalUnit);
+                    _packetizer.FlushPendingEvents();
                     DrainPacketizer();
                 }
             }
@@ -476,12 +475,16 @@ namespace Foxglove.Schemas.Video
 
         private void DrainPacketizer()
         {
-            var dropped = _packetizer.DroppedAccessUnits;
-            var newlyDropped = dropped - _packetizerDropsObserved;
-            while (newlyDropped-- > 0 && _encodedFrameTimestamps.TryDequeue(out _)) { }
-            _packetizerDropsObserved = dropped;
-            while (_packetizer.TryDequeueAccessUnit(out var accessUnit))
+            while (_packetizer.TryDequeueEvent(out var accessUnit, out var dropped))
+            {
+                if (dropped)
+                {
+                    _encodedFrameTimestamps.TryDequeue(out _);
+                    continue;
+                }
+
                 EnqueueAccessUnit(accessUnit);
+            }
         }
 
         private void EnqueueAccessUnit(byte[] accessUnit)
