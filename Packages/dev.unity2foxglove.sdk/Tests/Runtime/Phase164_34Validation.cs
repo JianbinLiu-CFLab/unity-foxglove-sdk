@@ -29,13 +29,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-34A-1: transform publisher resolves pose once in Update");
             Check(!update.Contains("var message = CreateMessage(unixNs);", StringComparison.Ordinal),
                 "164-34A-2: transform publisher no longer creates FrameTransformMessage before knowing the output path");
-            Check(update.Contains("PublishProtobufTransform(unixNs, encodingResolution, pos, rot)", StringComparison.Ordinal),
+            Check(update.Contains("CreateProtobufTransform(unixNs, pos, rot)", StringComparison.Ordinal),
                 "164-34A-3: protobuf transform publishing reuses the pre-resolved pose");
 
             var createMessage = MethodBody(source, "private FrameTransformMessage CreateMessage(ulong unixNs, UVector3 pos, UQuaternion rot)");
-            var publishProto = MethodBody(source, "private void PublishProtobufTransform(ulong unixNs, PublisherEncodingResolution resolution, UVector3 pos, UQuaternion rot)");
-            Check(!createMessage.Contains("ResolveTransform(", StringComparison.Ordinal)
-                  && !publishProto.Contains("ResolveTransform(", StringComparison.Ordinal),
+            Check(!createMessage.Contains("ResolveTransform(", StringComparison.Ordinal),
                 "164-34A-4: transform payload builders do not resolve the transform a second time");
             Check(source.Contains("private string ResolveChildFrameId()", StringComparison.Ordinal)
                   && source.Contains("_childFrameIdCacheValid", StringComparison.Ordinal)

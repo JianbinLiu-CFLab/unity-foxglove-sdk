@@ -235,14 +235,18 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!_enableReplay)
             {
+                _runtime.SetReplayLiveSuppression(false);
                 return true;
             }
 
             if (string.IsNullOrEmpty(_replayFilePath))
             {
+                _runtime.SetReplayLiveSuppression(false);
                 RestoreLivePublishers();
                 return true;
             }
+
+            _runtime.SetReplayLiveSuppression(_disableLivePublishers);
 
             if (_disableLivePublishers && !_replayState.LivePublishersDisabled)
             {
@@ -259,6 +263,7 @@ namespace Unity.FoxgloveSDK.Components
                 inputCoordinateMode);
             if (!_runtime.ReplayEnabled)
             {
+                _runtime.SetReplayLiveSuppression(false);
                 if (_runtime.ReplayStartBlockedBySchemaMismatch)
                 {
                     Debug.LogError("[Foxglove] Replay startup aborted because FoxRun schema mismatch blocked replay. Startup cleanup will restore live publishers.");
@@ -380,6 +385,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void RestoreLivePublishers()
         {
+            _runtime?.SetReplayLiveSuppression(false);
             if (!_replayState.LivePublishersDisabled)
             {
                 return;

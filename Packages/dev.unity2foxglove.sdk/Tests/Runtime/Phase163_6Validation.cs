@@ -167,11 +167,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void RuntimeReplaySuppressionIsDiagnosed()
         {
             var runtime = PhaseValidationSourceHelpers.ReadFoxgloveRuntimeSources();
-            Check(runtime.Contains("private readonly HashSet<ReplaySuppressionWarningKey> _replaySuppressionWarnings", StringComparison.Ordinal)
-                  && runtime.Contains("WarnReplaySuppressed(nameof(RegisterChannel)", StringComparison.Ordinal)
-                  && runtime.Contains("WarnReplaySuppressed(nameof(PublishJson)", StringComparison.Ordinal)
-                  && runtime.Contains("Replay is enabled; ignoring live", StringComparison.Ordinal),
-                "163-6G: replay-mode live channel/register suppression emits bounded diagnostics");
+            Check(runtime.Contains("ReplaySuppressesLivePublishing", StringComparison.Ordinal)
+                  && runtime.Contains("SetReplayLiveSuppression", StringComparison.Ordinal)
+                  && runtime.Contains("Replay itself may coexist with live output", StringComparison.Ordinal),
+                "163-6G: replay-only live suppression is an explicit policy rather than an unconditional replay gate");
         }
 
         private static void OptionalProtobufSchemaShapeFailuresAreDiagnosed()
