@@ -1407,8 +1407,11 @@ namespace Unity.FoxgloveSDK.Performance
         private static PerformanceScenarioResult RunTransportQueueMicro(PerformanceThresholdConfig thresholds)
         {
             bool accepted, staysConnected, dataDropped;
-            var sw = Stopwatch.StartNew();
             const int queueOperationCount = 15;
+
+            PrepareAllocMeasurement(out var gcBeforeTotal, out var gcBeforeThread,
+                out var gen0Before, out var gen1Before, out var gen2Before);
+            var sw = Stopwatch.StartNew();
 
             // Data overflow drops oldest
             var q = new WsSendQueue(maxFrames: 4, maxQueuedBytes: 1024 * 1024);
@@ -1442,6 +1445,13 @@ namespace Unity.FoxgloveSDK.Performance
 
             bool passed = accepted && dataDropped && staysConnected && controlFirst && ctrlDisc && completed && drained;
             sw.Stop();
+            var metrics = CollectAllocMetricSample(
+                gcBeforeTotal,
+                gcBeforeThread,
+                gen0Before,
+                gen1Before,
+                gen2Before,
+                queueOperationCount);
 
             var result = new PerformanceScenarioResult
             {
@@ -1450,6 +1460,13 @@ namespace Unity.FoxgloveSDK.Performance
                 messageCount = queueOperationCount,
                 elapsedMs = sw.ElapsedMilliseconds,
                 messagesPerSecond = sw.Elapsed.TotalSeconds > 0 ? queueOperationCount / sw.Elapsed.TotalSeconds : queueOperationCount,
+                allocatedBytesTotal = metrics.AllocatedBytesTotal,
+                allocatedBytesCurrentThread = metrics.AllocatedBytesCurrentThread,
+                allocatedBytesPerMessage = metrics.AllocatedBytesPerMessage,
+                gen0Collections = metrics.Gen0Collections,
+                gen1Collections = metrics.Gen1Collections,
+                gen2Collections = metrics.Gen2Collections,
+                allocationNotes = metrics.AllocationNotes,
                 passed = passed,
                 notes = passed ? "Queue enqueue/drop/control/complete paths exercised" : "Queue scenario failed"
             };

@@ -82,6 +82,69 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             Assert.True(result.gen2Collections >= 0);
         }
 
+        [Fact]
+        public void TransportQueueTransfersAllMeasuredAllocationMetrics()
+        {
+            var invocations = new List<int>();
+            try
+            {
+                PerformanceRunner.AllocationMetricsOverrideForTests = count =>
+                {
+                    invocations.Add(count);
+                    return new PerformanceRunner.AllocationMetricSample(
+                        invocations.Count == 1 ? 1024 : 4096,
+                        invocations.Count == 1 ? 512 : 2048,
+                        invocations.Count == 1 ? 0.125 : 4.0,
+                        invocations.Count == 1 ? 0 : 2,
+                        invocations.Count == 1 ? 0 : 1,
+                        invocations.Count == 1 ? 0 : 1,
+                        "deterministic transport metric sentinel");
+                };
+
+                var thresholds = Thresholds(
+                    "TransportQueueMicro",
+                    new PerformanceScenarioThreshold
+                    {
+                        maxAllocatedBytesTotal = 2048,
+                        maxAllocatedBytesPerMessage = 1,
+                        maxGen0Collections = 1,
+                        maxGen1Collections = 0,
+                        maxGen2Collections = 0
+                    });
+
+                var control = InvokeScenario("RunTransportQueueMicro", thresholds);
+                var target = InvokeScenario("RunTransportQueueMicro", thresholds);
+                var targetJson = JsonConvert.SerializeObject(target);
+
+                Assert.True(control.passed);
+                Assert.Equal(2, invocations.Count);
+                Assert.Equal(15, invocations[0]);
+                Assert.Equal(15, invocations[1]);
+                Assert.Equal(4096, target.allocatedBytesTotal);
+                Assert.Equal(2048, target.allocatedBytesCurrentThread);
+                Assert.Equal(4.0, target.allocatedBytesPerMessage);
+                Assert.Equal(2, target.gen0Collections);
+                Assert.Equal(1, target.gen1Collections);
+                Assert.Equal(1, target.gen2Collections);
+                Assert.Contains("\"allocatedBytesTotal\":4096", targetJson);
+                Assert.Contains("\"allocatedBytesCurrentThread\":2048", targetJson);
+                Assert.Contains("\"allocatedBytesPerMessage\":4.0", targetJson);
+                Assert.Contains("\"gen0Collections\":2", targetJson);
+                Assert.Contains("\"gen1Collections\":1", targetJson);
+                Assert.Contains("\"gen2Collections\":1", targetJson);
+                Assert.False(target.passed);
+                Assert.Contains("allocatedBytesTotal 4096", target.thresholdNotes);
+                Assert.Contains("allocatedBytesPerMessage", target.thresholdNotes);
+                Assert.Contains("gen0Collections 2", target.thresholdNotes);
+                Assert.Contains("gen1Collections 1", target.thresholdNotes);
+                Assert.Contains("gen2Collections 1", target.thresholdNotes);
+            }
+            finally
+            {
+                PerformanceRunner.AllocationMetricsOverrideForTests = null;
+            }
+        }
+
         private static PerformanceThresholdConfig Thresholds(
             string scenarioName,
             PerformanceScenarioThreshold threshold)
