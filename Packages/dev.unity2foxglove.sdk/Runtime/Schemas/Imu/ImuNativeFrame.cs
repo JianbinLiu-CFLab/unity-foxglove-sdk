@@ -4,6 +4,7 @@
 // Module: Runtime/Schemas/Imu
 // Purpose: Schema-neutral IMU handoff payload for optional transport Providers.
 
+using System;
 using System.Numerics;
 
 namespace Unity.FoxgloveSDK.Schemas.Imu
@@ -25,6 +26,9 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
             Quaternion orientation,
             bool hasOrientation)
         {
+            ValidateFinite(linearAcceleration, nameof(linearAcceleration));
+            ValidateFinite(angularVelocity, nameof(angularVelocity));
+            ValidateFinite(orientation, nameof(orientation));
             UnixNs = unixNs;
             FrameId = frameId ?? string.Empty;
             LinearAcceleration = linearAcceleration;
@@ -32,6 +36,21 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
             Orientation = orientation;
             HasOrientation = hasOrientation;
         }
+
+        private static void ValidateFinite(Vector3 value, string parameterName)
+        {
+            if (!IsFinite(value.X) || !IsFinite(value.Y) || !IsFinite(value.Z))
+                throw new ArgumentException("IMU vector values must be finite.", parameterName);
+        }
+
+        private static void ValidateFinite(Quaternion value, string parameterName)
+        {
+            if (!IsFinite(value.X) || !IsFinite(value.Y) || !IsFinite(value.Z) || !IsFinite(value.W))
+                throw new ArgumentException("IMU orientation values must be finite.", parameterName);
+        }
+
+        private static bool IsFinite(float value)
+            => !float.IsNaN(value) && !float.IsInfinity(value);
 
         /// <summary>Sample timestamp, in Unix nanoseconds.</summary>
         public ulong UnixNs { get; }

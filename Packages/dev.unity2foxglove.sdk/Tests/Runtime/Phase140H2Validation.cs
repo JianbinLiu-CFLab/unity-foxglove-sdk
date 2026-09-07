@@ -69,14 +69,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var virtualImu = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var update = ExtractMethod(virtualImu, "private void Update()");
-            var nativeInvoke = update.IndexOf("nativeFrameHandler.Invoke(nativeFrame);", StringComparison.Ordinal);
+            var nativeInvoke = update.IndexOf("_nativeFrameDispatch.Invoke(", StringComparison.Ordinal);
             var publish = update.IndexOf("PublishWebSocketSample(sample);", StringComparison.Ordinal);
             Check(nativeInvoke > publish && publish >= 0,
                 "140H2-2A: native handoff remains in the drain loop after WebSocket selection");
-            Check(update.Contains("while (_queue.TryDequeue(out var sample))", StringComparison.Ordinal)
+            Check(update.Contains("_queue.TryDequeue(out var sample)", StringComparison.Ordinal)
                   && update.Contains("var nativeFrameHandler = ImuNativeFrameReady;", StringComparison.Ordinal),
                 "140H2-2B: VirtualImu drains every queued sample through the non-throwing dequeue path");
-            Check(!IsNestedInside(update, "nativeFrameHandler.Invoke(nativeFrame);", "else if (webSocketPublished < webSocketBudget)"),
+            Check(!IsNestedInside(update, "_nativeFrameDispatch.Invoke(", "else if (webSocketPublished < webSocketBudget)"),
                 "140H2-2C: native handoff is not gated by the WebSocket publish budget");
         }
 

@@ -54,6 +54,7 @@ namespace Unity.FoxgloveSDK.Tests
             OrientationDisabledIgnoresDiscardedCovariance();
             LegacySerializeOverloadPreservesDefaultCovarianceBehavior();
             InvalidCovarianceLengthsThrowClearErrors();
+            InvalidNumericValuesThrowClearErrors();
             SerializerUsesExactByteBuffer();
             VirtualImuQueueIsExtractedWithValidMeta();
 
@@ -169,6 +170,35 @@ namespace Unity.FoxgloveSDK.Tests
                     AngularVelocityCovariance,
                     new[] { 1d, 2d, 3d }),
                 "140G-4C: WebSocket IMU serializer rejects invalid linear-acceleration covariance length");
+        }
+
+        private static void InvalidNumericValuesThrowClearErrors()
+        {
+            CheckThrowsArgumentException(
+                () => ImuMessageBuilder.Serialize(
+                    1UL, "imu", new Vector3 { x = float.NaN }, new Vector3(),
+                    new Quaternion { w = 1f }, true, OrientationCovariance,
+                    AngularVelocityCovariance, LinearAccelerationCovariance),
+                "140G-4D: WebSocket IMU serializer rejects nonfinite linear acceleration");
+            CheckThrowsArgumentException(
+                () => ImuMessageBuilder.Serialize(
+                    1UL, "imu", new Vector3(), new Vector3 { y = float.PositiveInfinity },
+                    new Quaternion { w = 1f }, true, OrientationCovariance,
+                    AngularVelocityCovariance, LinearAccelerationCovariance),
+                "140G-4E: WebSocket IMU serializer rejects nonfinite angular velocity");
+            CheckThrowsArgumentException(
+                () => ImuMessageBuilder.Serialize(
+                    1UL, "imu", new Vector3(), new Vector3(),
+                    new Quaternion { z = float.NegativeInfinity, w = 1f }, true,
+                    OrientationCovariance, AngularVelocityCovariance,
+                    LinearAccelerationCovariance),
+                "140G-4F: WebSocket IMU serializer rejects nonfinite orientation");
+            CheckThrowsArgumentException(
+                () => ImuMessageBuilder.Serialize(
+                    1UL, "imu", new Vector3(), new Vector3(), new Quaternion { w = 1f }, true,
+                    new[] { double.NaN, 0d, 0d, 0d, 1d, 0d, 0d, 0d, 1d },
+                    AngularVelocityCovariance, LinearAccelerationCovariance),
+                "140G-4G: WebSocket IMU serializer rejects nonfinite covariance");
         }
 
         private static void SerializerUsesExactByteBuffer()
