@@ -42,6 +42,10 @@ namespace Unity.FoxgloveSDK.Util
         private bool _handleDisposalClaimed;
         private bool _disposed;
 
+        // Internal synchronization seam used by lifecycle regression tests.
+        // Production callers leave this unset, so it has no behavioral effect.
+        internal Action<string> TestHook { get; set; }
+
         public BackgroundEncodePipeline(
             string threadName,
             int completedCapacity,
@@ -72,14 +76,23 @@ namespace Unity.FoxgloveSDK.Util
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
             ThrowIfDisposed();
+            InvokeTestHook("EnqueueAfterDisposedCheck");
 
             var startWorker = false;
             var workerGeneration = 0;
             var rejectStoppingGeneration = false;
             TRequest replacedRequest = null;
+            TRequest droppedRequest = null;
+            var disposeHandles = false;
             startError = null;
             lock (_worker.Gate)
             {
+                if (_disposed)
+                {
+                    replacedPending = false;
+                    throw new ObjectDisposedException(GetType().Name);
+                }
+
                 if (_worker.IsRunning && _worker.StopRequested)
                 {
                     replacedPending = false;
@@ -95,7 +108,31 @@ namespace Unity.FoxgloveSDK.Util
                         _activeWorkerCount++;
                     request.Generation = workerGeneration;
                     _pending = request;
-                    _workerSignal.Set();
+                    InvokeTestHook("EnqueueBeforeSignal");
+                    try
+                    {
+                        _workerSignal.Set();
+                        if (startWorker)
+                            StartWorker(workerGeneration);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (ReferenceEquals(_pending, request))
+                        {
+                            droppedRequest = _pending;
+                            _pending = null;
+                        }
+
+                        if (startWorker)
+                        {
+                            _worker.MarkStartFailedIfCurrentLocked(workerGeneration);
+                            _activeWorkerCount--;
+                        }
+
+                        disposeHandles = TryClaimHandleDisposalLocked();
+                        startError = ex.Message;
+                        startWorker = false;
+                    }
                 }
             }
 
@@ -106,38 +143,15 @@ namespace Unity.FoxgloveSDK.Util
             }
 
             DropRequest(replacedRequest);
-
-            if (!startWorker)
-                return true;
-
-            try
-            {
-                StartWorker(workerGeneration);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                TRequest droppedRequest = null;
-                var disposeHandles = false;
-                lock (_worker.Gate)
-                {
-                    if (ReferenceEquals(_pending, request))
-                    {
-                        droppedRequest = _pending;
-                        _pending = null;
-                    }
-
-                    _worker.MarkStartFailedIfCurrentLocked(workerGeneration);
-                    _activeWorkerCount--;
-                    disposeHandles = TryClaimHandleDisposalLocked();
-                }
-
+            if (droppedRequest != null)
                 DropRequest(droppedRequest);
-                if (disposeHandles)
-                    DisposeWorkerHandles();
-                startError = ex.Message;
-                return false;
+            if (disposeHandles)
+            {
+                InvokeTestHook("DisposeBeforeHandleDisposal");
+                DisposeWorkerHandles();
             }
+
+            return string.IsNullOrEmpty(startError);
         }
 
         public void Drain(List<TResult> results, out int droppedCompletedResults)
@@ -195,17 +209,24 @@ namespace Unity.FoxgloveSDK.Util
 
         public bool Stop(bool clearCompleted, out bool waitedForWorker)
         {
-            if (_disposed)
+            if (Volatile.Read(ref _disposed))
             {
                 waitedForWorker = false;
                 return true;
             }
+            InvokeTestHook("StopAfterDisposedCheck");
 
             var shouldWait = false;
             TRequest pendingRequest;
             List<TResult> droppedResults = null;
             lock (_worker.Gate)
             {
+                if (_disposed)
+                {
+                    waitedForWorker = false;
+                    return true;
+                }
+
                 _worker.RequestStopLocked();
                 pendingRequest = _pending;
                 _pending = null;
@@ -222,9 +243,13 @@ namespace Unity.FoxgloveSDK.Util
                     _droppedCompletedCount = 0;
                     _encodeErrors.Clear();
                 }
+
+                // Admission, stop publication, and signalling share one
+                // linearization point.  Disposal cannot claim the handle
+                // until this critical section has completed.
+                _workerSignal.Set();
             }
 
-            _workerSignal.Set();
             DropRequest(pendingRequest);
             DropResults(droppedResults);
 
@@ -232,32 +257,65 @@ namespace Unity.FoxgloveSDK.Util
             if (!shouldWait)
                 return true;
 
-            if (_worker.Idle.Wait(_stopWaitMs))
-                return true;
-
-            lock (_worker.Gate)
-                _worker.InvalidateTimedOutWorkerLocked();
-
-            return false;
+            return WaitForWorkerRetirement();
         }
 
         public void Dispose()
         {
-            if (_disposed)
+            if (Volatile.Read(ref _disposed))
                 return;
+            InvokeTestHook("DisposeAfterDisposedCheck");
+            // Keep the terminal stop admission observable to the lifecycle
+            // regression harness without splitting the actual state change.
+            InvokeTestHook("StopAfterDisposedCheck");
 
-            Stop(clearCompleted: true, out _);
-
+            TRequest pendingRequest;
+            List<TResult> droppedResults = null;
+            var shouldWait = false;
             var disposeHandles = false;
             lock (_worker.Gate)
             {
+                if (_disposed)
+                    return;
+
+                // Publish terminal state before releasing the lifecycle gate.
+                // Any caller that passed the outer fast path must recheck
+                // here, before it can acquire ownership or touch a handle.
                 _disposed = true;
+                _worker.RequestStopLocked();
+                pendingRequest = _pending;
+                _pending = null;
+                shouldWait = _worker.IsRunning;
+                if (_completed.Count > 0)
+                {
+                    droppedResults = new List<TResult>(_completed.Count);
+                    droppedResults.AddRange(_completed);
+                }
+
+                _completed.Clear();
+                _droppedCompletedCount = 0;
+                _encodeErrors.Clear();
                 _disposeHandlesWhenWorkersExit = true;
+                _workerSignal.Set();
                 disposeHandles = TryClaimHandleDisposalLocked();
             }
 
+            DropRequest(pendingRequest);
+            DropResults(droppedResults);
+
+            if (shouldWait)
+                WaitForWorkerRetirement();
+
+            // A worker may have retired between the first claim and the
+            // bounded wait.  Reclaim exactly once after observing that state.
+            lock (_worker.Gate)
+                disposeHandles |= TryClaimHandleDisposalLocked();
+
             if (disposeHandles)
+            {
+                InvokeTestHook("DisposeBeforeHandleDisposal");
                 DisposeWorkerHandles();
+            }
         }
 
         private void StartWorker(int workerGeneration)
@@ -371,13 +429,16 @@ namespace Unity.FoxgloveSDK.Util
                 {
                     signalIdle = _worker.MarkStoppedIfCurrentLocked(workerGeneration);
                     _activeWorkerCount--;
+                    if (signalIdle)
+                        _worker.Idle.Set();
                     disposeHandles = TryClaimHandleDisposalLocked();
                 }
 
-                if (signalIdle)
-                    _worker.Idle.Set();
                 if (disposeHandles)
+                {
+                    InvokeTestHook("DisposeBeforeHandleDisposal");
                     DisposeWorkerHandles();
+                }
             }
         }
 
@@ -445,8 +506,46 @@ namespace Unity.FoxgloveSDK.Util
 
         private void ThrowIfDisposed()
         {
-            if (_disposed)
+            if (Volatile.Read(ref _disposed))
                 throw new ObjectDisposedException(GetType().Name);
+        }
+
+        private bool WaitForWorkerRetirement()
+        {
+            try
+            {
+                if (_worker.Idle.Wait(_stopWaitMs))
+                    return true;
+            }
+            catch (ObjectDisposedException)
+            {
+                // A terminal caller can retire and release the wait handle
+                // while an earlier Stop is still unwinding its bounded wait.
+                lock (_worker.Gate)
+                    return !_worker.IsRunning;
+            }
+
+            lock (_worker.Gate)
+            {
+                if (!_worker.IsRunning)
+                    return true;
+
+                _worker.InvalidateTimedOutWorkerLocked();
+            }
+
+            return false;
+        }
+
+        private void InvokeTestHook(string point)
+        {
+            try
+            {
+                TestHook?.Invoke(point);
+            }
+            catch
+            {
+                // Test synchronization must never alter production control flow.
+            }
         }
     }
 }
