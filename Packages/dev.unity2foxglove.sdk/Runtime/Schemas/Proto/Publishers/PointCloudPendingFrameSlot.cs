@@ -21,10 +21,16 @@ namespace Unity.FoxgloveSDK.Components
 
         public bool SetFrame(PointCloudFrame frame, bool logDrops, out string warning)
         {
+            // SetFrame is the public producer boundary. The next Update may hand the
+            // stored frame to a background encoder, so retain an owned snapshot rather
+            // than allowing a caller to mutate the worker's input after this method
+            // returns. The native VirtualLidar paths already transfer their own pooled
+            // snapshots and do not use this managed-frame slot.
+            var ownedFrame = Snapshot(frame);
             lock (_gate)
             {
-                var droppedPendingFrame = _frame != null && frame != null;
-                _frame = frame;
+                var droppedPendingFrame = _frame != null && ownedFrame != null;
+                _frame = ownedFrame;
 
                 warning = null;
                 if (droppedPendingFrame && logDrops && !_warnedReplacementDrop)
@@ -35,6 +41,23 @@ namespace Unity.FoxgloveSDK.Components
 
                 return droppedPendingFrame;
             }
+        }
+
+        private static PointCloudFrame Snapshot(PointCloudFrame frame)
+        {
+            if (frame == null)
+                return null;
+
+            var snapshot = new PointCloudFrame
+            {
+                UnixNs = frame.UnixNs,
+                FrameId = frame.FrameId,
+                ValidCount = frame.ValidCount,
+                EmitAbsoluteTimeNs = frame.EmitAbsoluteTimeNs
+            };
+            snapshot.Points.Capacity = frame.Points.Count;
+            snapshot.Points.AddRange(frame.Points);
+            return snapshot;
         }
 
         public PointCloudFrame Take()
