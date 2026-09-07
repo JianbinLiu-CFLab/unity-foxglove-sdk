@@ -211,6 +211,7 @@ namespace Unity.FoxgloveSDK.Components
         private double _scanColumnProgress;
         private double _activeScanStartPhysSeconds;
         private int _scanColumnCursor;
+        private int _scanColumnRayCursor;
         private PointCloudFrame _activeScanFrame;
         private VirtualLidarPointData[] _activeScanPointSnapshot;
         private int _activeScanPointSnapshotCount;
@@ -280,10 +281,11 @@ namespace Unity.FoxgloveSDK.Components
             }
             _pointCloudPublisher?.MarkSourceDrivenPointCloud();
 
-            var rateHz = _scanRateSource == ScanRateSource.Override && _scanRateHzOverride > 0f
+            var rateHz = _scanRateSource == ScanRateSource.Override
+                && IsFinite(_scanRateHzOverride) && _scanRateHzOverride > 0f
                 ? _scanRateHzOverride
                 : _scanPattern.ScanRateHz;
-            _scanPeriod = rateHz > 0f ? (1f / (float)rateHz) : 0.1f;
+            _scanPeriod = IsFinite(rateHz) && rateHz > 0d ? (1f / (float)rateHz) : 0.1f;
 
             AllocateScanBuffers();
             _scanClock.Reset();
@@ -435,10 +437,12 @@ namespace Unity.FoxgloveSDK.Components
                 var scheduleStart = BeginLidarFixedUpdateTiming();
                 ScanScheduler.SchedulePendingScan(
                     columnsToEmit,
+                    _maxRaycastCommandsPerFixedUpdate,
                     _logPerformanceDiagnostics,
                     Time.fixedDeltaTime,
                     _frameCounter,
                     ref _scanColumnCursor,
+                    ref _scanColumnRayCursor,
                     transform.position,
                     transform.rotation,
                     _layerMask,
@@ -600,6 +604,7 @@ namespace Unity.FoxgloveSDK.Components
             EnsureScanClock(physNow);
             _hasPrevPose = false;
             _scanColumnCursor = 0;
+            _scanColumnRayCursor = 0;
             _scanColumnProgress = 0d;
             StartNewScan(physNow);
         }
@@ -608,9 +613,17 @@ namespace Unity.FoxgloveSDK.Components
         {
             _columnStep = Math.Max(1, _columnStep);
             _maxRangeMeters = Math.Max(0f, _maxRangeMeters);
+            if (!IsFinite(_scanRateHzOverride) || _scanRateHzOverride < 0f)
+                _scanRateHzOverride = 0f;
             if (_maxRaycastCommandsPerFixedUpdate < 256)
                 _maxRaycastCommandsPerFixedUpdate = 256;
         }
+
+        private static bool IsFinite(float value)
+            => !float.IsNaN(value) && !float.IsInfinity(value);
+
+        private static bool IsFinite(double value)
+            => !double.IsNaN(value) && !double.IsInfinity(value);
 
         private void WarnIfOwnLayerIncludedInRaycastMask()
         {

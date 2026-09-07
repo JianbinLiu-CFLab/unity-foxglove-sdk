@@ -30,8 +30,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             double scanRateHz, double fovTopDeg, double fovBottomDeg, double minRangeMeters)
         {
             const double degToRad = Math.PI / 180.0;
-            pixelsPerColumn = Math.Max(1, pixelsPerColumn);
-            columnsPerFrame = Math.Max(16, columnsPerFrame);
+            if (!LidarGeometryLimits.TryValidate(pixelsPerColumn, columnsPerFrame, out var geometryError))
+                throw new ArgumentOutOfRangeException(nameof(columnsPerFrame), geometryError);
             var normalizedScanRateHz = IsFinite(scanRateHz) && scanRateHz > 0
                 ? scanRateHz
                 : 10.0;
@@ -77,6 +77,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out columns)
                 && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out rateHz)
                 && columns > 0
+                && columns <= LidarGeometryLimits.MaxColumns
                 && rateHz > 0
                 && !double.IsNaN(rateHz)
                 && !double.IsInfinity(rateHz);

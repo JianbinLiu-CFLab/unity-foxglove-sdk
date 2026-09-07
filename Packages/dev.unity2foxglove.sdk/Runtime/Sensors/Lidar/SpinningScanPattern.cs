@@ -47,13 +47,18 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         public SpinningScanPattern(string productLine, double scanRateHz, double minRangeMeters,
             int columns, int columnStep, double[] altitudeRad, double[] azimuthRad)
         {
+            LidarGeometryLimits.ValidatePatternScalars(scanRateHz, minRangeMeters);
+            if (columnStep <= 0)
+                throw new ArgumentOutOfRangeException(nameof(columnStep), "LiDAR column step must be positive.");
+            LidarGeometryLimits.ValidateAngles(altitudeRad, azimuthRad);
+            LidarGeometryLimits.ThrowIfInvalid(altitudeRad.Length, columns);
             ProductLine = productLine;
             ScanRateHz = scanRateHz;
             MinRangeMeters = minRangeMeters;
-            _columns = Math.Max(1, columns);
-            _columnStep = Math.Max(1, columnStep);
-            _altRad = altitudeRad ?? throw new ArgumentNullException(nameof(altitudeRad));
-            _azmRad = azimuthRad ?? throw new ArgumentNullException(nameof(azimuthRad));
+            _columns = columns;
+            _columnStep = columnStep;
+            _altRad = altitudeRad;
+            _azmRad = azimuthRad;
             _effectiveColumns = EffectiveColumnCount(_columns, _columnStep);
             _sinAlt = new double[_altRad.Length];
             _cosAlt = new double[_altRad.Length];
@@ -78,7 +83,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 _cosColumnAzm[i] = Math.Cos(columnAzm);
             }
 
-            RayCount = _altRad.Length * _effectiveColumns;
+            RayCount = checked(_altRad.Length * _effectiveColumns);
         }
 
         /// <summary>
@@ -128,7 +133,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         }
 
         private static int EffectiveColumnCount(int columns, int columnStep)
-            => Math.Max(1, (columns + columnStep - 1) / columnStep);
+            => columns / columnStep + (columns % columnStep == 0 ? 0 : 1);
 
         private static double[] UniformAngles(int count, double topDeg, double bottomDeg)
         {

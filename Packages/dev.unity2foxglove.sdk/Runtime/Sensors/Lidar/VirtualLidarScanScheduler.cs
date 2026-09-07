@@ -61,10 +61,12 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public void SchedulePendingScan(
             int columnsToEmit,
+            int maxRaycastCommandsPerFixedUpdate,
             bool logPerformanceDiagnostics,
             float fixedDeltaTimeSeconds,
             int frameCounter,
             ref int scanColumnCursor,
+            ref int scanColumnRayCursor,
             Vector3 worldPos,
             Quaternion worldRot,
             LayerMask layerMask,
@@ -108,15 +110,14 @@ namespace Unity.FoxgloveSDK.Components
                 var results = scanBuffers.Results;
                 var rayTimeOffsets = scanBuffers.RayTimeOffsets;
                 var rayRings = scanBuffers.RayRings;
-                for (var c = 0; c < columnsToEmit && batchCount < scanBuffers.EffectiveRayCount; c++)
+                var commandBudget = Math.Max(1, maxRaycastCommandsPerFixedUpdate);
+                for (var c = 0; c < columnsToEmit && batchCount < commandBudget; c++)
                 {
                     var rays = scanBuffers.ColumnRays[scanColumnCursor];
-                    if (batchCount > 0 && batchCount + rays.Length > scanBuffers.EffectiveRayCount)
-                        break;
-
-                    for (var r = 0; r < rays.Length && batchCount < scanBuffers.EffectiveRayCount; r++)
+                    var rayIndex = scanColumnRayCursor;
+                    for (; rayIndex < rays.Length && batchCount < commandBudget; rayIndex++)
                     {
-                        var k = rays[r];
+                        var k = rays[rayIndex];
                         var index = k * scanBuffers.RayStride;
                         if (index >= scanBuffers.RawRayCount)
                             index = scanBuffers.RawRayCount - 1;
@@ -140,6 +141,11 @@ namespace Unity.FoxgloveSDK.Components
                         batchCount++;
                     }
 
+                    scanColumnRayCursor = rayIndex;
+                    if (scanColumnRayCursor < rays.Length)
+                        break;
+
+                    scanColumnRayCursor = 0;
                     scanColumnCursor++;
                     if (scanColumnCursor >= scanBuffers.ScanColumnCount)
                     {

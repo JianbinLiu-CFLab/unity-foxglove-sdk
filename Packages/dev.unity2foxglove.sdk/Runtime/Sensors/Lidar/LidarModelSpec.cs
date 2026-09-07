@@ -97,6 +97,10 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         {
             if (kind == LidarScanKind.Spinning && (rings <= 0 || columns <= 0 || rateHz <= 0.0))
                 throw new ArgumentException("Spinning LiDAR requires positive rings, columns, and rateHz.");
+            if (kind == LidarScanKind.Spinning)
+                LidarGeometryLimits.ThrowIfInvalid(rings, columns);
+            if (kind == LidarScanKind.NonRepetitive && (beamsPerFrame <= 0 || beamsPerFrame > LidarGeometryLimits.MaxRayCount))
+                throw new ArgumentOutOfRangeException(nameof(beamsPerFrame), "Non-repetitive LiDAR beam count is outside the supported range.");
 
             Vendor = vendor;
             Model = model;
