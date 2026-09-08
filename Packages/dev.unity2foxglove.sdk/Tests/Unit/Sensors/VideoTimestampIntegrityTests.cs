@@ -159,11 +159,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
         private static string Read(string relativePath)
         {
-            var isolatedPath = System.IO.Path.Combine(AppContext.BaseDirectory, "../../../../../../", relativePath);
-            var path = System.IO.File.Exists(isolatedPath)
-                ? isolatedPath
-                : System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), relativePath);
-            return System.IO.File.ReadAllText(path);
+            for (var directory = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+                 directory != null;
+                 directory = directory.Parent)
+            {
+                var path = System.IO.Path.Combine(directory.FullName, relativePath);
+                if (System.IO.File.Exists(path))
+                    return System.IO.File.ReadAllText(path);
+            }
+
+            throw new System.IO.DirectoryNotFoundException("Could not locate repository file " + relativePath);
         }
     }
 }

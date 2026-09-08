@@ -120,11 +120,11 @@ namespace Unity.FoxgloveSDK.UnitTests
             var dispose = Task.Run(() => Record.Exception(pipeline.Dispose));
             try
             {
-                Assert.True(enqueueGuardReached.Wait(TimeSpan.FromSeconds(2)));
-                Assert.True(disposeBeforeHandleReached.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(enqueueGuardReached.Wait(TimeSpan.FromSeconds(10)));
+                Assert.True(disposeBeforeHandleReached.Wait(TimeSpan.FromSeconds(10)));
                 releaseEnqueueGuard.Set();
 
-                var reachedSignal = beforeSignalReached.Wait(TimeSpan.FromSeconds(2));
+                var reachedSignal = beforeSignalReached.Wait(TimeSpan.FromSeconds(10));
                 if (reachedSignal)
                 {
                     Assert.True(

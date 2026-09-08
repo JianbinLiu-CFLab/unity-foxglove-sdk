@@ -27,11 +27,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
         private static string Read(string relativePath)
         {
-            var isolatedPath = Path.Combine(AppContext.BaseDirectory, "../../../../../../", relativePath);
-            var path = File.Exists(isolatedPath)
-                ? isolatedPath
-                : Path.Combine(Directory.GetCurrentDirectory(), relativePath);
-            return File.ReadAllText(path);
+            for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
+                 directory != null;
+                 directory = directory.Parent)
+            {
+                var path = Path.Combine(directory.FullName, relativePath);
+                if (File.Exists(path))
+                    return File.ReadAllText(path);
+            }
+
+            throw new DirectoryNotFoundException("Could not locate repository file " + relativePath);
         }
     }
 }

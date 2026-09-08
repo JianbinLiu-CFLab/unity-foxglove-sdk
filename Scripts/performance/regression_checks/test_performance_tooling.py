@@ -146,6 +146,7 @@ class PerformanceToolingTests(unittest.TestCase):
                     argv = ["run_baseline.py", "--quick", "--output", str(output), "--timeout-minutes", "0"]
 
                     def fake_run(cmd, **kwargs):
+                        """Write the controlled malformed result for this case."""
                         result_path.write_text(
                             json.dumps({"scenarios": [scenario]}, allow_nan=True),
                             encoding="utf-8",
