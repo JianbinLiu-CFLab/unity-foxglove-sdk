@@ -168,9 +168,8 @@ namespace Unity.FoxgloveSDK.IO
 
                 if (McapWriter.IsPrivateOpcode(opcode))
                 {
-                    if (_sawDataEnd)
-                        throw new InvalidDataException(
-                            $"Private opcode 0x{opcode:X2} is not allowed in the MCAP summary section.");
+                    if (_sawDataEnd && _firstSummaryRecordOffset < 0)
+                        _firstSummaryRecordOffset = recordStart;
                     CompletePendingMessageIndexes();
                     _messageIndexMayFollow = false;
                     return;

@@ -358,12 +358,12 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void StrictValidatorRejectsPrivateRecordInSummarySection()
+        public void StrictValidatorAcceptsPrivateRecordInSummarySection()
         {
             using var stream = CreateMcapWithSummary(writer =>
                 WriteUncheckedRecord(writer, 0x80, Array.Empty<byte>()));
 
-            Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(stream));
+            McapStrictValidator.Validate(stream);
         }
 
         [Fact]
