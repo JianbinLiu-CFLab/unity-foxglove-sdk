@@ -23,6 +23,7 @@ namespace Foxglove.Schemas.Video
     {
         private const int MaxAccessUnitBytes = 16 * 1024 * 1024;
         private const int ShutdownTimeoutMs = 500;
+        private const int StdinWriteTimeoutMs = 1000;
 
         private readonly ConcurrentQueue<QueuedVideoFrame> _inputFrames = new ConcurrentQueue<QueuedVideoFrame>();
         private readonly ConcurrentQueue<ulong> _encodedFrameTimestamps = new ConcurrentQueue<ulong>();
@@ -297,8 +298,8 @@ namespace Foxglove.Schemas.Video
                 {
                     if (TryDequeueInputFrame(process, token, out var frame))
                     {
-                        await stream.WriteAsync(frame.Data, 0, frame.Data.Length, token).ConfigureAwait(false);
-                        await stream.FlushAsync(token).ConfigureAwait(false);
+                        await AwaitStdinOperation(stream.WriteAsync(frame.Data, 0, frame.Data.Length, token)).ConfigureAwait(false);
+                        await AwaitStdinOperation(stream.FlushAsync(token)).ConfigureAwait(false);
                     }
                     else
                     {
@@ -492,6 +493,14 @@ namespace Foxglove.Schemas.Video
         internal void EnqueueTimestampForTests(ulong timestampNs)
         {
             _encodedFrameTimestamps.Enqueue(timestampNs);
+        }
+
+        private static async Task AwaitStdinOperation(Task operation)
+        {
+            var completed = await Task.WhenAny(operation, Task.Delay(StdinWriteTimeoutMs)).ConfigureAwait(false);
+            if (completed != operation)
+                throw new TimeoutException("OpenH264 encoder stdin operation timed out.");
+            await operation.ConfigureAwait(false);
         }
 
         private bool IsCurrentSessionForTests(Process process, long sessionId)
