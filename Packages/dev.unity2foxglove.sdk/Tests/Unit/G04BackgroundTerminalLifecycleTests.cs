@@ -117,10 +117,11 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             var enqueue = RunOnDedicatedThread(() => Record.Exception(() =>
                 pipeline.Enqueue(new TestRequest(1), out _, out _)));
-            var dispose = RunOnDedicatedThread(() => Record.Exception(pipeline.Dispose));
+            Task<Exception> dispose = null;
             try
             {
                 Assert.True(enqueueGuardReached.Wait(TimeSpan.FromSeconds(10)));
+                dispose = RunOnDedicatedThread(() => Record.Exception(pipeline.Dispose));
                 Assert.True(disposeBeforeHandleReached.Wait(TimeSpan.FromSeconds(10)));
                 releaseEnqueueGuard.Set();
 
@@ -150,7 +151,9 @@ namespace Unity.FoxgloveSDK.UnitTests
                 releaseDisposeBeforeHandle.Set();
                 await Task.WhenAll(
                     Task.WhenAny(enqueue, Task.Delay(TimeSpan.FromSeconds(5))),
-                    Task.WhenAny(dispose, Task.Delay(TimeSpan.FromSeconds(5))));
+                    dispose == null
+                        ? Task.CompletedTask
+                        : Task.WhenAny(dispose, Task.Delay(TimeSpan.FromSeconds(5))));
                 ForceRetireForTest(pipeline);
                 pipeline.Dispose();
             }
