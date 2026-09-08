@@ -56,6 +56,12 @@ jobs:
         with:
           dotnet-version: "10.0"
 
+      - name: Restore xUnit unit test project
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj
+
+      - name: Run xUnit unit tests
+        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -66,12 +72,6 @@ jobs:
           npm ci
           npm run typecheck
           npm test
-
-      - name: Restore xUnit unit test project
-        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj
-
-      - name: Run xUnit unit tests
-        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
 
       - name: Enable Corepack for the pinned official MCAP harness
         run: corepack enable
