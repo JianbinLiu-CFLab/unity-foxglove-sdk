@@ -152,14 +152,37 @@ namespace Unity.FoxgloveSDK.IO
             if (options.Order == McapReadOrder.FileOrder && result.Count >= options.MaxMessages)
                 return false;
 
+            if (options.Order == McapReadOrder.LogTimeAscending ||
+                options.Order == McapReadOrder.LogTimeDescending)
+            {
+                var descending = options.Order == McapReadOrder.LogTimeDescending;
+                var low = 0;
+                var high = result.Count;
+                while (low < high)
+                {
+                    var middle = low + ((high - low) / 2);
+                    var comparison = CompareMessages(result[middle], message);
+                    if ((!descending && comparison <= 0) || (descending && comparison >= 0))
+                        low = middle + 1;
+                    else
+                        high = middle;
+                }
+
+                result.Insert(low, message);
+                if (result.Count > options.MaxMessages)
+                {
+                    evicted = result[0];
+                    result.RemoveAt(0);
+                }
+                return true;
+            }
+
             result.Add(message);
             if (result.Count <= options.MaxMessages)
                 return true;
 
-            result.Sort(CompareMessages);
-            var removeIndex = options.Order == McapReadOrder.FileOrder ? options.MaxMessages : 0;
-            evicted = result[removeIndex];
-            result.RemoveAt(removeIndex);
+            evicted = result[options.MaxMessages];
+            result.RemoveAt(options.MaxMessages);
             return true;
         }
 
