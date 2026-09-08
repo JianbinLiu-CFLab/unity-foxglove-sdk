@@ -51,12 +51,13 @@ namespace Unity.FoxgloveSDK.UnitTests
                 releaseEnqueueGuard.Wait(TimeSpan.FromSeconds(5));
             };
 
-            var race = RunOnDedicatedThread(() => Record.Exception(() =>
-                pipeline.Enqueue(new TestRequest(2), out _, out _)));
+            Task<Exception> race = null;
             try
             {
                 Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
                 Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
+                race = RunOnDedicatedThread(() => Record.Exception(() =>
+                    pipeline.Enqueue(new TestRequest(2), out _, out _)));
                 Assert.True(enqueueGuardReached.Wait(TimeSpan.FromSeconds(2)));
 
                 pipeline.Dispose();
@@ -76,7 +77,8 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
                 releaseEnqueueGuard.Set();
                 releaseEncode.Set();
-                await Task.WhenAny(race, Task.Delay(TimeSpan.FromSeconds(5)));
+                if (race != null)
+                    await Task.WhenAny(race, Task.Delay(TimeSpan.FromSeconds(5)));
                 ForceRetireForTest(pipeline);
                 pipeline.Dispose();
             }
