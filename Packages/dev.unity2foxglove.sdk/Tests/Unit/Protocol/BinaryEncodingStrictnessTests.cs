@@ -151,7 +151,13 @@ namespace Unity.FoxgloveSDK.UnitTests
             var directory = new DirectoryInfo(AppContext.BaseDirectory);
             while (directory != null)
             {
-                if (File.Exists(Path.Combine(directory.FullName, "AGENTS.md")))
+                if (File.Exists(Path.Combine(
+                        directory.FullName,
+                        "Packages",
+                        "dev.unity2foxglove.sdk",
+                        "Runtime",
+                        "Protocol",
+                        "BinaryEncoding.cs")))
                     return directory.FullName;
                 directory = directory.Parent;
             }
