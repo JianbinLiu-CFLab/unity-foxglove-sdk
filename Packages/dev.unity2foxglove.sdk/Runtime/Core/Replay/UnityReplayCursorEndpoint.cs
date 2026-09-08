@@ -234,13 +234,6 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lifecycleGate)
             {
                 ReapRetiredGenerationsNoLock();
-                if (options.Enabled
-                    && _generation != null
-                    && _retiringGenerations.Count >= MaxRetiringGenerations)
-                {
-                    throw new InvalidOperationException(RetirementCapacityExceededMessage);
-                }
-
                 StopNoLock();
                 if (!options.Enabled)
                 {
@@ -354,6 +347,11 @@ namespace Unity.FoxgloveSDK.Core
             else if (!workerRetired)
             {
                 _logger?.LogWarning(RetirementCapacityExceededMessage);
+                // The listener and generation lease are already revoked. Do
+                // not keep the stopped generation as the active publication:
+                // doing so permanently wedges every later Start while the
+                // bounded retirement slot is occupied by an older worker.
+                _generation = null;
             }
 
             if (workerRetired || movedToRetiring)

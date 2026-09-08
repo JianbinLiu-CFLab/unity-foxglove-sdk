@@ -201,22 +201,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     secondQueueEntered.Wait(TimeSpan.FromSeconds(5)),
                     "Second worker never entered its queue callback.");
 
-                var error = Record.Exception(() => endpoint.Start(
+                endpoint.Start(
                     Options(thirdPort, "/retire-third", "retire-third-token"),
-                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.")));
+                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
 
-                var capacityError = Assert.IsType<InvalidOperationException>(error);
-                Assert.Equal(
-                    "Replay cursor endpoint retirement capacity is exhausted; the current generation remains active.",
-                    capacityError.Message);
                 Assert.Equal(1, endpoint.RetiringGenerationCount);
 
                 releaseSecondQueue.Set();
                 await ObserveRetiredRequestAsync(secondRequest);
-                Assert.True(endpoint.IsRunning);
                 Assert.Equal(
                     HttpStatusCode.Accepted,
-                    await PostCursorAsync(secondPort, "/retire-second", "retire-second-token"));
+                    await PostCursorAsync(thirdPort, "/retire-third", "retire-third-token"));
 
                 releaseFirstQueue.Set();
                 await ObserveRetiredRequestAsync(firstRequest);
@@ -225,12 +220,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     await Task.Delay(TimeSpan.FromMilliseconds(25));
                 }
                 Assert.Equal(0, endpoint.RetiringGenerationCount);
-                endpoint.Start(
-                    Options(thirdPort, "/retire-third", "retire-third-token"),
-                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
-                Assert.Equal(
-                    HttpStatusCode.Accepted,
-                    await PostCursorAsync(thirdPort, "/retire-third", "retire-third-token"));
             }
             finally
             {
