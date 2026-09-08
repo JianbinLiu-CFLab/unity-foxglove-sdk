@@ -47,7 +47,9 @@ namespace Unity.FoxgloveSDK.IO
         private readonly List<DeferredReplayRetry> _deferredRetries = new();
         private readonly Dictionary<ulong, DeferredReplayRetry> _deferredRetryByKey = new();
         private readonly Dictionary<int, byte[]> _deferredRetryOwners = new();
+        private readonly Dictionary<int, int> _deferredRetryOwnerReferences = new();
         private bool _deferredRetriesSorted;
+        private bool _deferredPendingSorted = true;
         private readonly Dictionary<byte[], int> _deferredOwnerReferences = new();
         private long _deferredOwnerBytes;
         private readonly List<McapMessage> _defaultTickBuffer = new();
@@ -784,8 +786,11 @@ namespace Unity.FoxgloveSDK.IO
             // contract; deferred views are sorted alongside it below.
             _pending.Sort(CompareMessages);
             CompactDeferredPending();
-            if (DeferredPendingCount > 1)
+            if (!_deferredPendingSorted && DeferredPendingCount > 1)
+            {
                 _deferredPending.Sort(CompareDeferredMessages);
+                _deferredPendingSorted = true;
+            }
         }
 
         private bool TryAddDeferred(McapReplayChunkRecord record, byte[] owner)
@@ -820,6 +825,7 @@ namespace Unity.FoxgloveSDK.IO
                 DataOffset = record.DataOffset,
                 DataLength = record.DataLength
             });
+            _deferredPendingSorted = false;
             return true;
         }
 
@@ -849,13 +855,28 @@ namespace Unity.FoxgloveSDK.IO
             };
             _deferredRetryByKey.Add(key, retry);
             _deferredRetries.Add(retry);
+            if (_deferredRetryOwnerReferences.TryGetValue(chunkIndex, out var ownerReferences))
+                _deferredRetryOwnerReferences[chunkIndex] = ownerReferences + 1;
+            else
+                _deferredRetryOwnerReferences[chunkIndex] = 1;
             _deferredRetriesSorted = false;
             return true;
         }
 
         private void RemoveDeferredRetry(int chunkIndex, int recordOffset)
         {
-            _deferredRetryByKey.Remove(MakeDeferredRetryKey(chunkIndex, recordOffset));
+            if (!_deferredRetryByKey.Remove(MakeDeferredRetryKey(chunkIndex, recordOffset)))
+                return;
+
+            if (!_deferredRetryOwnerReferences.TryGetValue(chunkIndex, out var ownerReferences))
+                return;
+            if (ownerReferences <= 1)
+            {
+                _deferredRetryOwnerReferences.Remove(chunkIndex);
+                _deferredRetryOwners.Remove(chunkIndex);
+            }
+            else
+                _deferredRetryOwnerReferences[chunkIndex] = ownerReferences - 1;
         }
 
         private int DeferredRetryCount => _deferredRetryByKey.Count;
@@ -902,8 +923,8 @@ namespace Unity.FoxgloveSDK.IO
                     continue;
                 }
 
-                _deferredRetryByKey.Remove(key);
                 var message = ReadDeferredRetry(retry);
+                RemoveDeferredRetry(retry.ChunkIndex, retry.RecordOffset);
                 if (message != null)
                     AddTickResult(result, message);
             }
@@ -984,7 +1005,9 @@ namespace Unity.FoxgloveSDK.IO
             _deferredRetries.Clear();
             _deferredRetryByKey.Clear();
             _deferredRetryOwners.Clear();
+            _deferredRetryOwnerReferences.Clear();
             _deferredRetriesSorted = false;
+            _deferredPendingSorted = true;
             _deferredOwnerReferences.Clear();
             _deferredOwnerBytes = 0;
         }
