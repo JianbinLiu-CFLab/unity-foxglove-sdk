@@ -621,6 +621,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public void FailedCursorApplyIsRetainedForRetry()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var request = ReplayCursorRequest.CreateForTests(
+                7_000_000_009UL,
+                "phase187",
+                sequence: 1,
+                didSeek: true);
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(
+                    request,
+                    replayEnabled: true,
+                    startNs: 0,
+                    endNs: 10_000_000_000UL,
+                    out _));
+
+            Assert.Throws<InvalidOperationException>(() =>
+                controller.TryDrainLatest(_ => throw new InvalidOperationException("simulated apply failure")));
+
+            Assert.True(controller.TryDrainLatest(out var retry));
+            Assert.Equal(1, retry.Sequence);
+            Assert.Equal(request.TimeNs, retry.TimeNs);
+        }
+
+        [Fact]
         public async Task AbortedResponseDoesNotRetireTheListenerWorker()
         {
             using var endpoint = new UnityReplayCursorEndpoint();

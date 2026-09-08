@@ -248,9 +248,23 @@ namespace Unity.FoxgloveSDK.Core
             _pending = default;
             _hasPending = false;
             Volatile.Write(ref _hasPendingFast, 0);
-            // Keep the gate/lease held through the state mutation. A concurrent
-            // disable or generation revoke must wait until the callback returns.
-            apply(request);
+            // Keep the existing lifecycle fencing while applying, but make the
+            // dequeue transactional. A runtime exception must not silently
+            // discard the cursor request before the next owner tick can retry it.
+            try
+            {
+                apply(request);
+            }
+            catch
+            {
+                if (!_hasPending)
+                {
+                    _pending = request;
+                    _hasPending = true;
+                    Volatile.Write(ref _hasPendingFast, 1);
+                }
+                throw;
+            }
             return true;
         }
 
