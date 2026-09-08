@@ -142,6 +142,22 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StrictValidatorRejectsFilesBeyondConfiguredChunkStateBudget()
+        {
+            using var stream = new MemoryStream(CreateTwoChunkIndexedMcap(), writable: false);
+
+            var error = Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(
+                stream,
+                new McapStrictValidationOptions
+                {
+                    ValidateCrcs = false,
+                    MaxValidatedChunks = 1
+                }));
+
+            Assert.Contains("validated chunk state budget", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void StrictValidatorRejectsChunkIndexMessageOffsetWithoutMessageIndexRecord()
         {
             var bytes = CreateTwoChunkIndexedMcap();
