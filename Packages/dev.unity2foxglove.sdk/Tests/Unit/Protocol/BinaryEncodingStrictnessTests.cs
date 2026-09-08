@@ -108,7 +108,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void ServerServiceCallResponseFrameLengthRejectsIntegerOverflow()
         {
-            var maximumPayload = int.MaxValue - BinaryEncoding.ServerMessageDataHeaderLength;
+            var maximumPayload = int.MaxValue - BinaryEncoding.ServerServiceCallResponseHeaderLength;
 
             Assert.Equal(
                 int.MaxValue,
