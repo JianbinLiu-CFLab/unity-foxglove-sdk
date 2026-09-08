@@ -64,6 +64,14 @@ namespace Unity.FoxgloveSDK.Editor
             var check = arguments.Any(argument => string.Equals(argument, "--check", StringComparison.Ordinal));
             var generate = arguments.Any(argument => string.Equals(argument, "--generate", StringComparison.Ordinal));
             var nextRevision = ReadOption(arguments, "--next-revision");
+            if (arguments.Any(argument => string.Equals(argument, "--next-revision", StringComparison.Ordinal))
+                && string.IsNullOrEmpty(nextRevision))
+            {
+                var exitCode = ReportArgumentError("--next-revision requires a value.");
+                if (Application.isBatchMode)
+                    EditorApplication.Exit(exitCode);
+                return;
+            }
             var exitCode = check == generate
                 ? ReportArgumentError("Specify exactly one of --check or --generate.")
                 : Run(generate, check, nextRevision, exitWhenBatch: true);
