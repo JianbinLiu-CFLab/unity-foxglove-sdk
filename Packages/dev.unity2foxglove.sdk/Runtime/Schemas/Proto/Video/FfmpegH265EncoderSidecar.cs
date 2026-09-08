@@ -24,7 +24,6 @@ namespace Foxglove.Schemas.Video
     public sealed class FfmpegH265EncoderSidecar : IFfmpegVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
     {
         private const int ShutdownTimeoutMs = 500;
-        private const int StdinWriteTimeoutMs = 1000;
 
         private readonly ConcurrentQueue<QueuedVideoFrame> _inputFrames = new ConcurrentQueue<QueuedVideoFrame>();
         private readonly ConcurrentQueue<ulong> _encodedFrameTimestamps = new ConcurrentQueue<ulong>();
@@ -354,8 +353,8 @@ namespace Foxglove.Schemas.Video
                     {
                         try
                         {
-                            await AwaitStdinOperation(stream.WriteAsync(frame.Data, 0, frameBytes, token)).ConfigureAwait(false);
-                            await AwaitStdinOperation(stream.FlushAsync(token)).ConfigureAwait(false);
+                            await stream.WriteAsync(frame.Data, 0, frameBytes, token).ConfigureAwait(false);
+                            await stream.FlushAsync(token).ConfigureAwait(false);
                         }
                         finally
                         {
@@ -499,14 +498,6 @@ namespace Foxglove.Schemas.Video
 
                 EnqueueAccessUnit(accessUnit);
             }
-        }
-
-        private static async Task AwaitStdinOperation(Task operation)
-        {
-            var completed = await Task.WhenAny(operation, Task.Delay(StdinWriteTimeoutMs)).ConfigureAwait(false);
-            if (completed != operation)
-                throw new TimeoutException("FFmpeg encoder stdin operation timed out.");
-            await operation.ConfigureAwait(false);
         }
 
         private void EnqueueAccessUnit(byte[] accessUnit)
