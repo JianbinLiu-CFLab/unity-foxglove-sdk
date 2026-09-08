@@ -158,6 +158,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             => target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(target, value);
 
         private static string Read(string relativePath)
-            => System.IO.File.ReadAllText(System.IO.Path.Combine(AppContext.BaseDirectory, "../../../../../../", relativePath));
+        {
+            var isolatedPath = System.IO.Path.Combine(AppContext.BaseDirectory, "../../../../../../", relativePath);
+            var path = System.IO.File.Exists(isolatedPath)
+                ? isolatedPath
+                : System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), relativePath);
+            return System.IO.File.ReadAllText(path);
+        }
     }
 }

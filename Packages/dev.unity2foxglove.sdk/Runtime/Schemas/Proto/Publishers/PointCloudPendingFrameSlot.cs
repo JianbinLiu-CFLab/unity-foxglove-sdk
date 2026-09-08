@@ -26,11 +26,11 @@ namespace Unity.FoxgloveSDK.Components
             // than allowing a caller to mutate the worker's input after this method
             // returns. The native VirtualLidar paths already transfer their own pooled
             // snapshots and do not use this managed-frame slot.
-            var ownedFrame = Snapshot(frame);
+            frame = Snapshot(frame);
             lock (_gate)
             {
-                var droppedPendingFrame = _frame != null && ownedFrame != null;
-                _frame = ownedFrame;
+                var droppedPendingFrame = _frame != null && frame != null;
+                _frame = frame;
 
                 warning = null;
                 if (droppedPendingFrame && logDrops && !_warnedReplacementDrop)

@@ -83,7 +83,8 @@ namespace Unity.FoxgloveSDK.Tests
             if (string.IsNullOrEmpty(stopMethod))
                 stopMethod = PhaseValidationSourceHelpers.SourceMethod(source, "private void Stop(");
             var capturesProcess = source.Contains("var process = _process;") ||
-                                  source.Contains("var process = Interlocked.Exchange(ref _process, null);");
+                                  source.Contains("var process = Interlocked.Exchange(ref _process, null);") ||
+                                  source.Contains("process = Interlocked.Exchange(ref _process, null);");
             var waitsTasks = (stopMethod.Contains("WaitForTask(_stdinTask") &&
                               stopMethod.Contains("WaitForTask(_stdoutTask") &&
                               stopMethod.Contains("WaitForTask(_stderrTask") &&
@@ -97,7 +98,8 @@ namespace Unity.FoxgloveSDK.Tests
                               Ordered(stopMethod, "WaitForTask(stderrTask", "process.Dispose()"));
             Check(capturesProcess
                   && source.Contains("RunStdinWriter(process, token")
-                  && source.Contains("RunStdoutReader(process, token)")
+                  && (source.Contains("RunStdoutReader(process, token)") ||
+                      source.Contains("RunStdoutReaderForSession(process, token, sessionId)"))
                   && source.Contains("RunStderrReader(process, token)")
                   && waitsTasks,
                 checkName);

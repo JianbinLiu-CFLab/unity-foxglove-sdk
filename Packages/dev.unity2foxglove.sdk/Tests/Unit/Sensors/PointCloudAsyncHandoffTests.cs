@@ -18,6 +18,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         private static string Read(string relativePath)
-            => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../../", relativePath));
+        {
+            var isolatedPath = Path.Combine(AppContext.BaseDirectory, "../../../../../../", relativePath);
+            var path = File.Exists(isolatedPath)
+                ? isolatedPath
+                : Path.Combine(Directory.GetCurrentDirectory(), relativePath);
+            return File.ReadAllText(path);
+        }
     }
 }

@@ -746,14 +746,21 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
 
 def run_analyzer_composition_tests(msbuild_props: list[str]) -> bool:
     """Execute the four analyzer sets plus physical/Roslyn parity fixture."""
+    project = REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj"
+    restore_command = ["dotnet", "restore", str(project), *msbuild_props]
+    try:
+        subprocess.run(restore_command, cwd=REPO_ROOT, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        print(
+            "[FAIL] Analyzer composition/parity test restore failed: "
+            f"{exc}",
+            file=sys.stderr,
+        )
+        return False
     command = [
         "dotnet",
         "test",
-        str(
-            REPO_ROOT
-            / "Packages/dev.unity2foxglove.sdk/Tests/Unit/"
-              "FoxgloveSdk.UnitTests.csproj"
-        ),
+        str(project),
         "--no-restore",
         "-p:IncludeRos2ForUnityNative=true",
         "-p:IncludeRos2Bridge=true",
