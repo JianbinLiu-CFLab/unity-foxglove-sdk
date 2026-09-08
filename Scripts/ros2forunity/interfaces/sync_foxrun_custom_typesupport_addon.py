@@ -254,11 +254,20 @@ def sync_addon(
     _validate_candidate_files(staging, allowed)
 
     target.mkdir(parents=True, exist_ok=True)
-    for relative in allowed:
-        source = staging / relative
-        destination = target / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+    backup = _candidate_root(request) / "sync" / "target-backup"
+    if backup.exists():
+        shutil.rmtree(backup)
+    shutil.copytree(target, backup, dirs_exist_ok=True)
+    try:
+        for relative in allowed:
+            source = staging / relative
+            destination = target / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+    except Exception:
+        shutil.rmtree(target)
+        shutil.copytree(backup, target, dirs_exist_ok=True)
+        raise
     return target
 
 
