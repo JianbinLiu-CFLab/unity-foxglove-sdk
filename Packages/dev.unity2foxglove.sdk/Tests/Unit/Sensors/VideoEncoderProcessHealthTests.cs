@@ -265,6 +265,16 @@ class Child {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) CloseHandle(GetStdHandle(fd == 0 ? -10 : -11));
         else close(fd);
     }
+    static void CloseInputDescriptors() {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) { Close(0); return; }
+        var target = File.ResolveLinkTarget(""/proc/self/fd/0"", false)?.ToString();
+        foreach (var entry in Directory.GetFiles(""/proc/self/fd"")) {
+            try {
+                if (File.ResolveLinkTarget(entry, false)?.ToString() == target
+                    && int.TryParse(Path.GetFileName(entry), out var fd)) close(fd);
+            } catch { }
+        }
+    }
     static void Main(string[] args) {
         Console.WriteLine(""READY""); Console.Out.Flush();
         if (args[0] == ""close-stdout"") {
@@ -275,7 +285,7 @@ class Child {
             int n = 0; while(n < frame.Length) { int r = stream.Read(frame, n, frame.Length-n); if(r == 0) return; n += r; }
             Console.WriteLine(""FRAME_READ_""+i); Console.Out.Flush();
             if(args[0] == ""close-stdin"") {
-                stream.Dispose(); Close(0); Console.WriteLine(""STDIN_CLOSED""); Console.Out.Flush(); Thread.Sleep(Timeout.Infinite); return;
+                stream.Dispose(); CloseInputDescriptors(); Console.WriteLine(""STDIN_CLOSED""); Console.Out.Flush(); Thread.Sleep(Timeout.Infinite); return;
             }
         }
     }
