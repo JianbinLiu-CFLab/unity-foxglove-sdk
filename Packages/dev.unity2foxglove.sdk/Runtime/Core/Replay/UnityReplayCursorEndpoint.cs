@@ -510,7 +510,7 @@ namespace Unity.FoxgloveSDK.Core
                 TryWrite(context, 202, AcceptedCursorResponseBytes, cors);
                 return;
             }
-            if (!result.Success && string.Equals(result.Message, "Duplicate cursor ignored.", StringComparison.Ordinal))
+            if (result.Success && string.Equals(result.Message, "Duplicate cursor ignored.", StringComparison.Ordinal))
             {
                 TryWrite(context, 409, DuplicateCursorResponseBytes, cors);
                 return;

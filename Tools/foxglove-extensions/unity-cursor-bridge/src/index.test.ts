@@ -161,6 +161,10 @@ describe("Unity Replay Sync panel helpers", () => {
     expect(shouldSendCursor(true, { sec: 1, nsec: 3 }, 1, 2, 100, 120, 16)).toBe(true);
   });
 
+  test("shouldSendCursor always sends an explicit seek within the rate window", () => {
+    expect(shouldSendCursor(true, { sec: 1, nsec: 2 }, 1, 2, 100, 101, 16, true)).toBe(true);
+  });
+
   test("isBeforeTime compares epoch-scale times without nanosecond multiplication", () => {
     expect(isBeforeTime({ sec: 1_800_000_000, nsec: 999_999_999 }, { sec: 1_800_000_001, nsec: 0 })).toBe(true);
     expect(isBeforeTime({ sec: 1_800_000_001, nsec: 0 }, { sec: 1_800_000_000, nsec: 999_999_999 })).toBe(false);

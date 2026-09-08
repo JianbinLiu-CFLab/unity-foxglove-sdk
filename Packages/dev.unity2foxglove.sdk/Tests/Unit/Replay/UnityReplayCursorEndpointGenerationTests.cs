@@ -30,6 +30,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         };
 
         [Fact]
+        public async Task DuplicateCursorResultUsesConflictStatus()
+        {
+            using var endpoint = new UnityReplayCursorEndpoint();
+            var port = ReserveFreeLoopbackPort();
+            endpoint.Start(
+                Options(port, "/duplicate", "duplicate-token"),
+                _ => new UnityReplayCursorEndpointQueueResult(true, "Duplicate cursor ignored."));
+
+            Assert.Equal(
+                HttpStatusCode.Conflict,
+                await PostCursorAsync(port, "/duplicate", "duplicate-token"));
+        }
+
+        [Fact]
         public async Task RestartDoesNotPublishTheNextListenerBeforeTheOldWorkerRetires()
         {
             using var endpoint = new UnityReplayCursorEndpoint();
