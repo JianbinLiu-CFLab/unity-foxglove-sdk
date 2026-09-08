@@ -275,7 +275,7 @@ class Child {
             int n = 0; while(n < frame.Length) { int r = stream.Read(frame, n, frame.Length-n); if(r == 0) return; n += r; }
             Console.WriteLine(""FRAME_READ_""+i); Console.Out.Flush();
             if(args[0] == ""close-stdin"") {
-                Close(0); Console.WriteLine(""STDIN_CLOSED""); Console.Out.Flush(); Thread.Sleep(Timeout.Infinite); return;
+                stream.Dispose(); Close(0); Console.WriteLine(""STDIN_CLOSED""); Console.Out.Flush(); Thread.Sleep(Timeout.Infinite); return;
             }
         }
     }
