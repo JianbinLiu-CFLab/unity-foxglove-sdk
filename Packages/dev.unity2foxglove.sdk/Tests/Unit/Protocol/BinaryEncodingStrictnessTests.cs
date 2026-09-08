@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.Protocol;
@@ -108,7 +109,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void ServerServiceCallResponseFrameLengthRejectsIntegerOverflow()
         {
-            var maximumPayload = int.MaxValue - BinaryEncoding.ServerMessageDataHeaderLength;
+            var maximumPayload = int.MaxValue - BinaryEncoding.ServerServiceCallResponseHeaderLength;
 
             Assert.Equal(
                 int.MaxValue,
@@ -119,6 +120,49 @@ namespace Unity.FoxgloveSDK.UnitTests
                 BinaryEncoding.GetServerServiceCallResponseFrameLength(-1, 0));
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 BinaryEncoding.GetServerServiceCallResponseFrameLength(0, -1));
+        }
+
+        [Fact]
+        public void ServiceResponseLengthHelperUsesItsOwnHeaderContract()
+        {
+            var repositoryRoot = FindRepositoryRoot();
+            var sourcePath = Path.Combine(
+                repositoryRoot,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Protocol",
+                "BinaryEncoding.cs");
+            var source = File.ReadAllText(sourcePath);
+            const string helperMarker = "GetServerServiceCallResponseFrameLength";
+            var helperStart = source.IndexOf(helperMarker, StringComparison.Ordinal);
+            Assert.True(helperStart >= 0);
+
+            var helperEnd = source.IndexOf("\n        public static", helperStart, StringComparison.Ordinal);
+            Assert.True(helperEnd > helperStart);
+            var helper = source.Substring(helperStart, helperEnd - helperStart);
+
+            Assert.Contains(nameof(BinaryEncoding.ServerServiceCallResponseHeaderLength), helper);
+            Assert.DoesNotContain(nameof(BinaryEncoding.ServerMessageDataHeaderLength), helper);
+        }
+
+        private static string FindRepositoryRoot()
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(
+                        directory.FullName,
+                        "Packages",
+                        "dev.unity2foxglove.sdk",
+                        "Runtime",
+                        "Protocol",
+                        "BinaryEncoding.cs")))
+                    return directory.FullName;
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Repository root was not found from the test base directory.");
         }
 
         private static void AssertServiceEncodingRejected(byte[] encoding)

@@ -13,6 +13,7 @@ namespace Unity.FoxgloveSDK.Protocol
     public static class BinaryEncoding
     {
         public const int ServerMessageDataHeaderLength = 13;
+        public const int ServerServiceCallResponseHeaderLength = 13;
         public const int TimeFrameLength = 9;
 
         private static readonly byte[] EmptyEncodingBytes = Array.Empty<byte>();
@@ -54,7 +55,7 @@ namespace Unity.FoxgloveSDK.Protocol
             if (payloadLength < 0)
                 throw new ArgumentOutOfRangeException(nameof(payloadLength));
 
-            var frameLength = (long)ServerMessageDataHeaderLength + encodingLength + payloadLength;
+            var frameLength = (long)ServerServiceCallResponseHeaderLength + encodingLength + payloadLength;
             if (frameLength > int.MaxValue)
             {
                 throw new ArgumentOutOfRangeException(
@@ -178,9 +179,14 @@ namespace Unity.FoxgloveSDK.Protocol
             WriteU32LEUnchecked(frame, 1, serviceId);
             WriteU32LEUnchecked(frame, 5, callId);
             WriteU32LEUnchecked(frame, 9, (uint)encBytes.Length);
-            Buffer.BlockCopy(encBytes, 0, frame, 13, encBytes.Length);
+            Buffer.BlockCopy(encBytes, 0, frame, ServerServiceCallResponseHeaderLength, encBytes.Length);
             if (payload != null && payload.Length > 0)
-                Buffer.BlockCopy(payload, 0, frame, 13 + encBytes.Length, payload.Length);
+                Buffer.BlockCopy(
+                    payload,
+                    0,
+                    frame,
+                    ServerServiceCallResponseHeaderLength + encBytes.Length,
+                    payload.Length);
             return frame;
         }
 

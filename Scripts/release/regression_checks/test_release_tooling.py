@@ -617,6 +617,20 @@ class RunCiTests(unittest.TestCase):
         self.assertLess(pinned_ref, checkout_path)
         self.assertLess(checkout_path, validation)
 
+    def test_dotnet_workflow_runs_xunit_before_runtime_gate(self) -> None:
+        """The unit-test gate must not be hidden behind an earlier runtime failure."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        xunit = active_workflow_line_index(workflow, "- name: Run xUnit unit tests")
+        runtime = active_workflow_line_index(workflow, "- name: Run validation suite")
+        self.assertLess(xunit, runtime)
+
+    def test_dotnet_workflow_runs_xunit_before_panel_lane(self) -> None:
+        """The unit-test gate must run even when the panel lane fails first."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        xunit = active_workflow_line_index(workflow, "- name: Run xUnit unit tests")
+        panel = active_workflow_line_index(workflow, "- name: Run FoxRun publish panel behavior tests")
+        self.assertLess(xunit, panel)
+
     def test_workflow_line_lookup_rejects_commented_steps(self) -> None:
         """A commented workflow step must not satisfy an active CI contract."""
         workflow = (

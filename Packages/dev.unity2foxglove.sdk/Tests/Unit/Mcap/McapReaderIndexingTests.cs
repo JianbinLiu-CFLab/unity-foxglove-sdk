@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -188,6 +189,36 @@ namespace Unity.FoxgloveSDK.UnitTests
                 result, Message(1, 2, 2), options, out _));
             Assert.Single(result);
             Assert.Equal(1UL, result[0].LogTime);
+        }
+
+        [Fact]
+        public void LogTimeBoundedHelperMaintainsOrderWithoutResortingTheWindow()
+        {
+            var ascending = new List<McapMessage>();
+            var ascendingOptions = new McapReadOptions
+            {
+                Order = McapReadOrder.LogTimeAscending,
+                MaxMessages = 2
+            };
+
+            McapIndexedReaderHelpers.TryAddBoundedMessage(ascending, Message(1, 1, 5), ascendingOptions, out _);
+            McapIndexedReaderHelpers.TryAddBoundedMessage(ascending, Message(1, 2, 1), ascendingOptions, out _);
+            McapIndexedReaderHelpers.TryAddBoundedMessage(ascending, Message(1, 3, 3), ascendingOptions, out _);
+
+            Assert.Equal(new[] { 3UL, 5UL }, ascending.Select(message => message.LogTime));
+
+            var descending = new List<McapMessage>();
+            var descendingOptions = new McapReadOptions
+            {
+                Order = McapReadOrder.LogTimeDescending,
+                MaxMessages = 2
+            };
+
+            McapIndexedReaderHelpers.TryAddBoundedMessage(descending, Message(1, 1, 5), descendingOptions, out _);
+            McapIndexedReaderHelpers.TryAddBoundedMessage(descending, Message(1, 2, 1), descendingOptions, out _);
+            McapIndexedReaderHelpers.TryAddBoundedMessage(descending, Message(1, 3, 3), descendingOptions, out _);
+
+            Assert.Equal(new[] { 3UL, 1UL }, descending.Select(message => message.LogTime));
         }
 
         [Fact]

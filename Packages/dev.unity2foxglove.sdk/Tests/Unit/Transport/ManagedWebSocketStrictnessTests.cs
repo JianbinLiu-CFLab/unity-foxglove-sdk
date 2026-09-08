@@ -155,6 +155,39 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         }
 
         [Fact]
+        public void StopWaitsForCapacityResponseWorkersToFinish()
+        {
+            var options = new ManagedWebSocketOptions { MaxClients = 1 };
+            using var backend = new BlockingRejectBackend(options);
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+            using var first = ConnectAndWriteHandshake(port);
+            using var second = ConnectAndWriteHandshake(port);
+
+            try
+            {
+                Assert.StartsWith("HTTP/1.1 101", ReadHttpHeaders(first.GetStream()));
+                Assert.True(
+                    backend.RejectionEntered.Wait(TimeSpan.FromSeconds(2)),
+                    "The capacity response worker did not start.");
+
+                var stopTask = Task.Run(() => backend.Stop());
+                Assert.False(
+                    stopTask.Wait(TimeSpan.FromMilliseconds(100)),
+                    "Stop returned while a capacity response worker was still running.");
+
+                backend.ReleaseRejection.Set();
+                Assert.True(stopTask.Wait(TimeSpan.FromSeconds(2)));
+            }
+            finally
+            {
+                backend.ReleaseRejection.Set();
+                if (backend.IsRunning)
+                    backend.Stop();
+            }
+        }
+
+        [Fact]
         public void SecureBackendDoesNotWritePlaintextBeforeTlsHandshake()
         {
             using var backend = new ProbeWssBackend();

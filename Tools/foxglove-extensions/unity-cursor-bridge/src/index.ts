@@ -361,7 +361,11 @@ export function shouldSendCursor(
     return false;
   }
 
-  return (forceSeek || currentTime.sec !== lastSec || currentTime.nsec !== lastNsec)
+  if (forceSeek) {
+    return true;
+  }
+
+  return (currentTime.sec !== lastSec || currentTime.nsec !== lastNsec)
     && nowMs - lastSentAtMs >= minIntervalMs;
 }
 

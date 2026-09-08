@@ -29,6 +29,9 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>Maximum accepted uncompressed Chunk records payload size.</summary>
         public ulong ChunkUncompressedSizeLimit = McapReader.DefaultChunkUncompressedSizeLimit;
+
+        /// <summary>Maximum number of Chunk validation states retained during one validation.</summary>
+        public int MaxValidatedChunks = 100000;
     }
 
     /// <summary>
@@ -58,6 +61,8 @@ namespace Unity.FoxgloveSDK.IO
                 throw new ArgumentOutOfRangeException(nameof(options), "RecordSizeLimit must be greater than zero.");
             if (options.ChunkUncompressedSizeLimit == 0)
                 throw new ArgumentOutOfRangeException(nameof(options), "ChunkUncompressedSizeLimit must be greater than zero.");
+            if (options.MaxValidatedChunks <= 0)
+                throw new ArgumentOutOfRangeException(nameof(options), "MaxValidatedChunks must be greater than zero.");
 
             var originalPosition = stream.Position;
             try
@@ -168,9 +173,8 @@ namespace Unity.FoxgloveSDK.IO
 
                 if (McapWriter.IsPrivateOpcode(opcode))
                 {
-                    if (_sawDataEnd)
-                        throw new InvalidDataException(
-                            $"Private opcode 0x{opcode:X2} is not allowed in the MCAP summary section.");
+                    if (_sawDataEnd && _firstSummaryRecordOffset < 0)
+                        _firstSummaryRecordOffset = recordStart;
                     CompletePendingMessageIndexes();
                     _messageIndexMayFollow = false;
                     return;
@@ -512,6 +516,8 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_pendingChunkRecordLength == 0)
                     return;
+                if (_validatedChunks.Count >= _options.MaxValidatedChunks)
+                    throw new InvalidDataException("Strict validation exceeded the validated chunk state budget.");
 
                 _validatedChunks[_pendingChunkRecordStart] = new ValidatedChunkState
                 {

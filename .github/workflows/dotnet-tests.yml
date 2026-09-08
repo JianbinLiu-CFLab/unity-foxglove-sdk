@@ -56,6 +56,12 @@ jobs:
         with:
           dotnet-version: "10.0"
 
+      - name: Restore xUnit unit test project
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj
+
+      - name: Run xUnit unit tests
+        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -111,12 +117,6 @@ jobs:
 
       - name: Run official MCAP differential conformance
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json
-
-      - name: Restore xUnit unit test project
-        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj
-
-      - name: Run xUnit unit tests
-        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
 
       - name: Validate local entrypoints
         run: python3 Scripts/package/validate_local_entrypoints.py

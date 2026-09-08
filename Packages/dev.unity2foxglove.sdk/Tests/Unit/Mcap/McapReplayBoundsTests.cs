@@ -199,6 +199,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
 
                 var future = Assert.Single(engine.Tick(100));
                 Assert.Equal(100UL, future.LogTime);
+                Assert.Equal(0, DeferredRetryOwnerCount(engine));
             }
             finally
             {
@@ -248,7 +249,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
         [Fact]
         public void DeferredRetryAdmissionRemainsResponsiveAtMetadataBound()
         {
-            const int futureMessageCount = 50_000;
+            const int futureMessageCount = 100_001;
             var path = CreateMcap(pathName: "r4-f04-deferred-retry-scale", chunkSizeBytes: 4 * 1024 * 1024,
                 writeMessages: recorder =>
                 {
@@ -278,7 +279,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
                 Assert.NotNull(retriesField);
                 var retries = (System.Collections.ICollection)retriesField.GetValue(engine);
-                Assert.Equal(futureMessageCount, retries.Count);
+                Assert.Equal(futureMessageCount - 1, retries.Count);
             }
             finally
             {
@@ -344,6 +345,15 @@ namespace FoxgloveSdk.UnitTests.Mcap
             var entries = (System.Collections.ICollection)deferredField.GetValue(engine);
             var head = (int)headField.GetValue(engine);
             return ((long)ownerBytesField.GetValue(engine), entries.Count - head);
+        }
+
+        private static int DeferredRetryOwnerCount(McapReplayEngine engine)
+        {
+            var ownersField = typeof(McapReplayEngine).GetField(
+                "_deferredRetryOwners",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(ownersField);
+            return ((System.Collections.IDictionary)ownersField.GetValue(engine)).Count;
         }
 
         private static void TryDelete(string path)

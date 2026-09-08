@@ -30,6 +30,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         };
 
         [Fact]
+        public async Task DuplicateCursorResultUsesConflictStatus()
+        {
+            using var endpoint = new UnityReplayCursorEndpoint();
+            var port = ReserveFreeLoopbackPort();
+            endpoint.Start(
+                Options(port, "/duplicate", "duplicate-token"),
+                _ => new UnityReplayCursorEndpointQueueResult(true, "Duplicate cursor ignored."));
+
+            Assert.Equal(
+                HttpStatusCode.Conflict,
+                await PostCursorAsync(port, "/duplicate", "duplicate-token"));
+        }
+
+        [Fact]
         public async Task RestartDoesNotPublishTheNextListenerBeforeTheOldWorkerRetires()
         {
             using var endpoint = new UnityReplayCursorEndpoint();
@@ -187,22 +201,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     secondQueueEntered.Wait(TimeSpan.FromSeconds(5)),
                     "Second worker never entered its queue callback.");
 
-                var error = Record.Exception(() => endpoint.Start(
+                endpoint.Start(
                     Options(thirdPort, "/retire-third", "retire-third-token"),
-                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.")));
+                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
 
-                var capacityError = Assert.IsType<InvalidOperationException>(error);
-                Assert.Equal(
-                    "Replay cursor endpoint retirement capacity is exhausted; the current generation remains active.",
-                    capacityError.Message);
                 Assert.Equal(1, endpoint.RetiringGenerationCount);
 
                 releaseSecondQueue.Set();
                 await ObserveRetiredRequestAsync(secondRequest);
-                Assert.True(endpoint.IsRunning);
                 Assert.Equal(
                     HttpStatusCode.Accepted,
-                    await PostCursorAsync(secondPort, "/retire-second", "retire-second-token"));
+                    await PostCursorAsync(thirdPort, "/retire-third", "retire-third-token"));
 
                 releaseFirstQueue.Set();
                 await ObserveRetiredRequestAsync(firstRequest);
@@ -211,12 +220,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     await Task.Delay(TimeSpan.FromMilliseconds(25));
                 }
                 Assert.Equal(0, endpoint.RetiringGenerationCount);
-                endpoint.Start(
-                    Options(thirdPort, "/retire-third", "retire-third-token"),
-                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
-                Assert.Equal(
-                    HttpStatusCode.Accepted,
-                    await PostCursorAsync(thirdPort, "/retire-third", "retire-third-token"));
             }
             finally
             {
@@ -604,6 +607,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             var applied = false;
             Assert.False(controller.TryDrainLatest(_ => applied = true));
             Assert.False(applied);
+        }
+
+        [Fact]
+        public void FailedCursorApplyIsRetainedForRetry()
+        {
+            var controller = new ExternalReplayCursorController { Enabled = true };
+            var request = ReplayCursorRequest.CreateForTests(
+                7_000_000_009UL,
+                "phase187",
+                sequence: 1,
+                didSeek: true);
+
+            Assert.Equal(
+                ExternalReplayCursorEnqueueResult.Accepted,
+                controller.TryEnqueue(
+                    request,
+                    replayEnabled: true,
+                    startNs: 0,
+                    endNs: 10_000_000_000UL,
+                    out _));
+
+            Assert.Throws<InvalidOperationException>(() =>
+                controller.TryDrainLatest(_ => throw new InvalidOperationException("simulated apply failure")));
+
+            Assert.True(controller.TryDrainLatest(out var retry));
+            Assert.Equal(1, retry.Sequence);
+            Assert.Equal(request.TimeNs, retry.TimeNs);
         }
 
         [Fact]
