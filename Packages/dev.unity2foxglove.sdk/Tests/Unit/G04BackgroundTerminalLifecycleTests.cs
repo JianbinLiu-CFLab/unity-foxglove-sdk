@@ -51,7 +51,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 releaseEnqueueGuard.Wait(TimeSpan.FromSeconds(5));
             };
 
-            var race = Task.Run(() => Record.Exception(() =>
+            var race = RunOnDedicatedThread(() => Record.Exception(() =>
                 pipeline.Enqueue(new TestRequest(2), out _, out _)));
             try
             {
@@ -115,9 +115,9 @@ namespace Unity.FoxgloveSDK.UnitTests
                 }
             };
 
-            var enqueue = Task.Run(() => Record.Exception(() =>
+            var enqueue = RunOnDedicatedThread(() => Record.Exception(() =>
                 pipeline.Enqueue(new TestRequest(1), out _, out _)));
-            var dispose = Task.Run(() => Record.Exception(pipeline.Dispose));
+            var dispose = RunOnDedicatedThread(() => Record.Exception(pipeline.Dispose));
             try
             {
                 Assert.True(enqueueGuardReached.Wait(TimeSpan.FromSeconds(10)));
@@ -187,12 +187,12 @@ namespace Unity.FoxgloveSDK.UnitTests
                 }
             };
 
-            var first = Task.Run(() => Record.Exception(pipeline.Dispose));
+            var first = RunOnDedicatedThread(() => Record.Exception(pipeline.Dispose));
             Task<Exception> second = null;
             try
             {
                 Assert.True(firstStopGuardReached.Wait(TimeSpan.FromSeconds(2)));
-                second = Task.Run(() => Record.Exception(pipeline.Dispose));
+                second = RunOnDedicatedThread(() => Record.Exception(pipeline.Dispose));
                 Assert.True(secondStopGuardReached.Wait(TimeSpan.FromSeconds(2)));
                 releaseFirstStopGuard.Set();
                 Assert.True(
@@ -249,6 +249,13 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Same(task, completed);
             return await task;
         }
+
+        private static Task<Exception> RunOnDedicatedThread(Func<Exception> action)
+            => Task.Factory.StartNew(
+                action,
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
 
         private static BackgroundWorkerLifecycle GetWorker(
             BackgroundEncodePipeline<TestRequest, int> pipeline)
