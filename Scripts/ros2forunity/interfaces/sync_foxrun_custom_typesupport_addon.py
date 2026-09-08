@@ -238,6 +238,11 @@ def sync_addon(
     allowed = verify_sync_ready(request, validator=validator)
     candidate = Path(request.candidate_package)
     target = Path(request.target_package)
+    backup = _candidate_root(request) / "sync" / "target-backup"
+    if backup.exists():
+        shutil.rmtree(backup)
+    if target.exists():
+        shutil.copytree(target, backup, dirs_exist_ok=True)
     _remove_legacy_platform_managed_assembly(target, allowed)
     if not _target_has_only_expected_payload(target, allowed):
         raise AddonSyncError("remove-stale-addon-payload-before-sync")
@@ -254,10 +259,6 @@ def sync_addon(
     _validate_candidate_files(staging, allowed)
 
     target.mkdir(parents=True, exist_ok=True)
-    backup = _candidate_root(request) / "sync" / "target-backup"
-    if backup.exists():
-        shutil.rmtree(backup)
-    shutil.copytree(target, backup, dirs_exist_ok=True)
     try:
         for relative in allowed:
             source = staging / relative
@@ -266,7 +267,8 @@ def sync_addon(
             shutil.copy2(source, destination)
     except Exception:
         shutil.rmtree(target)
-        shutil.copytree(backup, target, dirs_exist_ok=True)
+        if backup.exists():
+            shutil.copytree(backup, target, dirs_exist_ok=True)
         raise
     return target
 
