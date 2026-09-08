@@ -341,7 +341,11 @@ namespace Unity.FoxgloveSDK.Components
             if (!hasValidPoints)
                 return true;
 
-            referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
+            referenceUnixNs = ResolveReferenceUnixNs(
+                scanStartUnixNs,
+                firstUnixNs,
+                lastUnixNs,
+                request.ReferenceTime);
             return true;
         }
 
@@ -416,6 +420,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private static ulong ResolveReferenceUnixNs(
+            ulong scanStartUnixNs,
             ulong firstUnixNs,
             ulong lastUnixNs,
             PointCloudMotionCompensationReferenceTime referenceTime)
@@ -423,7 +428,7 @@ namespace Unity.FoxgloveSDK.Components
             switch (referenceTime)
             {
                 case PointCloudMotionCompensationReferenceTime.ScanStart:
-                    return firstUnixNs;
+                    return scanStartUnixNs;
                 case PointCloudMotionCompensationReferenceTime.ScanEnd:
                     return lastUnixNs;
                 case PointCloudMotionCompensationReferenceTime.ScanMidpoint:

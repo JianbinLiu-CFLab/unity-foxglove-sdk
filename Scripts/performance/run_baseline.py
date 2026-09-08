@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import signal
 import shutil
@@ -245,9 +246,26 @@ def main() -> int:
         print(f"[perf-baseline] malformed result JSON: {result_path}: {exc}")
         return EXIT_FAILURE
 
-    scenarios = data.get("scenarios", [])
+    scenarios = data.get("scenarios") if isinstance(data, dict) else None
+    if not isinstance(scenarios, list) or not scenarios:
+        print("[perf-baseline] No scenarios produced in result JSON.")
+        return EXIT_FAILURE
+
     all_passed = True
-    for s in scenarios:
+    for index, s in enumerate(scenarios):
+        if not isinstance(s, dict):
+            print(f"[perf-baseline] invalid scenario at index {index}: expected an object")
+            return EXIT_FAILURE
+        if "passed" in s and type(s["passed"]) is not bool:
+            print(f"[perf-baseline] invalid scenario at index {index}: passed must be boolean")
+            return EXIT_FAILURE
+        for metric in ("messageCount", "elapsedMs", "messagesPerSecond", "allocatedBytesPerMessage"):
+            if metric not in s:
+                continue
+            value = s[metric]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                print(f"[perf-baseline] invalid scenario at index {index}: {metric} must be finite numeric")
+                return EXIT_FAILURE
         status = "PASS" if s.get("passed") else "FAIL"
         name = s.get("name", "?")
         msg = s.get("messageCount", MISSING_METRIC_DEFAULT)

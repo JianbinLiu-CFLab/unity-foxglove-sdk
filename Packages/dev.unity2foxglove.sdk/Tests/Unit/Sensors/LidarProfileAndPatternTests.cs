@@ -222,13 +222,10 @@ namespace Unity.FoxgloveSDK.UnitTests
         [InlineData(double.NegativeInfinity)]
         [InlineData(0.0)]
         [InlineData(-1.0)]
-        public void CreateUniform_NormalizesInvalidScanRates(double scanRateHz)
+        public void CreateUniform_RejectsInvalidScanRates(double scanRateHz)
         {
-            var profile = LidarProfileLoader.CreateUniform(
-                "Custom", 1, 16, scanRateHz, 0.0, 0.0, 0.1);
-
-            Assert.Equal(10.0, profile.ScanRateHz);
-            Assert.Equal("16x10", profile.LidarMode);
+            Assert.Throws<ArgumentOutOfRangeException>(() => LidarProfileLoader.CreateUniform(
+                "Custom", 1, 16, scanRateHz, 0.0, 0.0, 0.1));
         }
 
         [Theory]
@@ -236,12 +233,10 @@ namespace Unity.FoxgloveSDK.UnitTests
         [InlineData(double.PositiveInfinity)]
         [InlineData(double.NegativeInfinity)]
         [InlineData(-1.0)]
-        public void CreateUniform_NormalizesInvalidMinimumRanges(double minRangeMeters)
+        public void CreateUniform_RejectsInvalidMinimumRanges(double minRangeMeters)
         {
-            var profile = LidarProfileLoader.CreateUniform(
-                "Custom", 1, 16, 10.0, 0.0, 0.0, minRangeMeters);
-
-            Assert.Equal(0.0, profile.MinRangeMeters);
+            Assert.Throws<ArgumentOutOfRangeException>(() => LidarProfileLoader.CreateUniform(
+                "Custom", 1, 16, 10.0, 0.0, 0.0, minRangeMeters));
         }
 
         [Theory]

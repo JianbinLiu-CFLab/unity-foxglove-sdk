@@ -67,10 +67,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool FlushBlockDrainsTail(string source)
         {
-            var flushIndex = source.IndexOf("_packetizer.Flush(out var finalUnit)", StringComparison.Ordinal);
+            var flushIndex = source.IndexOf("_packetizer.FlushPendingEvents()", StringComparison.Ordinal);
+            if (flushIndex < 0)
+                flushIndex = source.IndexOf("_packetizer.Flush(out var finalUnit)", StringComparison.Ordinal);
+
             if (flushIndex < 0)
                 return false;
-
             var drainIndex = source.IndexOf("DrainPacketizer()", flushIndex, StringComparison.Ordinal);
             return drainIndex > flushIndex;
         }

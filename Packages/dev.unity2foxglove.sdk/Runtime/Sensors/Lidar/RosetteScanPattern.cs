@@ -35,12 +35,17 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         public RosetteScanPattern(string productLine, double scanRateHz, double minRangeMeters,
             double fovHDeg, double fovVDeg, int beamsPerFrame)
         {
+            LidarGeometryLimits.ValidatePatternScalars(scanRateHz, minRangeMeters);
+            if (!IsFinite(fovHDeg) || !IsFinite(fovVDeg))
+                throw new ArgumentOutOfRangeException(nameof(fovHDeg), "LiDAR field of view must be finite.");
+            if (beamsPerFrame <= 0)
+                throw new ArgumentOutOfRangeException(nameof(beamsPerFrame), "LiDAR beams per frame must be positive.");
             ProductLine = productLine;
             ScanRateHz = scanRateHz;
             MinRangeMeters = minRangeMeters;
             _fovHDeg = fovHDeg;
             _fovVDeg = fovVDeg;
-            _beamsPerFrame = Math.Max(1, beamsPerFrame);
+            _beamsPerFrame = beamsPerFrame;
         }
 
         public bool TryGetRay(int index, int frameIndex,
@@ -70,5 +75,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             timeOffset = (float)index / _beamsPerFrame;
             return true;
         }
+
+        private static bool IsFinite(double value)
+            => !double.IsNaN(value) && !double.IsInfinity(value);
     }
 }

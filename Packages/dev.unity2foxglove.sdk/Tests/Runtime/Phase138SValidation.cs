@@ -134,7 +134,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var update = ExtractMethod(source, "private void Update()");
-            Check(update.Contains("while (_queue.TryDequeue(out var sample))", StringComparison.Ordinal),
+            Check(update.Contains("_queue.TryDequeue(out var sample)", StringComparison.Ordinal)
+                  && update.Contains("updateGeneration == _lifecycleGeneration", StringComparison.Ordinal),
                 "138S-3A: VirtualImu drains the IMU queue on Update through TryDequeue");
             Check(!update.Contains("_queue.Dequeue()", StringComparison.Ordinal),
                 "138S-3B: VirtualImu uses the queue's non-throwing drain contract");
@@ -142,12 +143,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && update.Contains("ImuNativeFrame nativeFrame = null;", StringComparison.Ordinal)
                   && update.Contains("if (nativeFrameHandler != null)", StringComparison.Ordinal)
                   && update.Contains("CreateNativeFrame(", StringComparison.Ordinal)
-                  && update.Contains("nativeFrameHandler.Invoke(nativeFrame);", StringComparison.Ordinal),
+                  && update.Contains("_nativeFrameDispatch.Invoke(", StringComparison.Ordinal),
                 "138S-3C: VirtualImu creates and emits native frame from dequeued sample");
             Check(!update.Contains("_publishImuNative", StringComparison.Ordinal),
                 "138S-3C2: VirtualImu native frame emission is subscriber-driven, not gated by a second Inspector toggle");
             Check(update.IndexOf("ImuNativeFrame nativeFrame", StringComparison.Ordinal)
-                      < update.IndexOf("nativeFrameHandler.Invoke(nativeFrame);", StringComparison.Ordinal),
+                      < update.IndexOf("_nativeFrameDispatch.Invoke(", StringComparison.Ordinal),
                 "138S-3D: IMU native frame is created before publish invocation");
             Check(!update.Contains("return; //", StringComparison.Ordinal),
                 "138S-3E: VirtualImu update path contains no accidental early native-frame bypass");

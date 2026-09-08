@@ -162,7 +162,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var reducer = ReadRepoText(PointCloudQoSReducerRelativePath);
             var passThroughPattern =
-                @"if \(!useVoxelGrid && !forceUniformFallback && frame\.UnixNs != 0 && !string\.IsNullOrEmpty\(frame\.FrameId\) && pointCount <= pointBudget\)\s*\{[^}]*return frame;";
+                @"if \(!useVoxelGrid && !forceUniformFallback && frame\.UnixNs == unixNs && frame\.UnixNs != 0 && !string\.IsNullOrEmpty\(frame\.FrameId\) && pointCount <= pointBudget\)\s*\{[^}]*return frame;";
             Check(Regex.IsMatch(reducer, passThroughPattern, RegexOptions.Singleline),
                 "138I-10: PointCloud QoS returns the original frame when full fidelity is within budget");
             Check(reducer.Contains("Math.Max(0, maxPackedBytes)", StringComparison.Ordinal),
@@ -224,9 +224,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && !combined.Contains("native encode is synchronous", StringComparison.OrdinalIgnoreCase),
                 "138I-19: UI/docs no longer claim Draco native encode is synchronous on the main thread");
             Check(combined.Contains("worker thread", StringComparison.OrdinalIgnoreCase)
-                  && combined.Contains("PointCloud2 Native", StringComparison.Ordinal)
-                  && combined.Contains("ROS2 Native (R2FU)", StringComparison.Ordinal),
-                "138I-20: UI/docs distinguish background Draco visualization from full-stride PointCloud2 Native ROS2 validation");
+                  && combined.Contains("Packed Provider Frame", StringComparison.Ordinal)
+                  && combined.Contains("Optional ROS2", StringComparison.Ordinal),
+                "138I-20: UI/docs distinguish background Draco visualization from provider-neutral packed output and optional ROS2 validation");
         }
 
         private static void VerifyValidationWiring()
@@ -331,7 +331,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisher.Contains("QueueVirtualLidarDracoEncode", StringComparison.Ordinal)
                   && publisher.Contains("VirtualLidarPointData[]", StringComparison.Ordinal)
                   && publisher.Contains("_diagnostics.RecordPrepared(_logPerformanceDiagnostics, pointCount)", StringComparison.Ordinal)
-                  && workerEncoder.Contains("CompressedPointCloudMessageBuilder.SerializeProtobuf", StringComparison.Ordinal)
+                  && workerEncoder.Contains("CompressedPointCloudMessageBuilder.CreateProtobuf", StringComparison.Ordinal)
                   && encoder.Contains("TryEncodeVirtualLidarPoints", StringComparison.Ordinal)
                   && encoder.Contains("VirtualLidarPointData[]", StringComparison.Ordinal),
                 "138I-26: VirtualLidar Draco path bypasses managed per-point append and encodes from an off-thread snapshot");

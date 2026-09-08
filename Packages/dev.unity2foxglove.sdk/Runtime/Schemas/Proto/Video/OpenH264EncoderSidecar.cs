@@ -35,6 +35,7 @@ namespace Foxglove.Schemas.Video
         private Task _stdinTask;
         private Task _stdoutTask;
         private Task _stderrTask;
+        private long _sessionId;
         private OpenH264EncoderOptions _options;
         private int _maxInputQueue = 2;
         private int _maxOutputQueue = 4;
@@ -118,8 +119,9 @@ namespace Foxglove.Schemas.Video
                     _stop = new CancellationTokenSource();
                     var process = _process;
                     var token = _stop.Token;
+                    var sessionId = Interlocked.Increment(ref _sessionId);
                     _stdinTask = Task.Run(() => RunStdinWriter(process, token));
-                    _stdoutTask = Task.Run(() => RunStdoutReader(process, token));
+                    _stdoutTask = Task.Run(() => RunStdoutReaderForSession(process, token, sessionId));
                     _stderrTask = Task.Run(() => RunStderrReader(process, token));
                     return true;
                 }
@@ -143,7 +145,8 @@ namespace Foxglove.Schemas.Video
 
         public bool TrySubmitFrame(byte[] frame, ulong timestampNs)
         {
-            if (frame == null || frame.Length == 0 || !IsRunning)
+            var submittingProcess = Volatile.Read(ref _process);
+            if (frame == null || frame.Length == 0 || !IsProcessRunning(submittingProcess))
                 return false;
 
             var expectedBytes = _options != null ? _options.FrameByteCount : 0;
@@ -164,10 +167,20 @@ namespace Foxglove.Schemas.Video
 
             lock (_inputLock)
             {
+                if (!ReferenceEquals(submittingProcess, Volatile.Read(ref _process))
+                    || !IsProcessRunning(submittingProcess))
+                    return false;
+
                 while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out _))
                 {
                     _inputCount--;
                     Interlocked.Increment(ref _droppedInputFrames);
+                }
+
+                // Pending raw frames and written-but-unpaired frames share one finite budget.
+                if ((long)_inputCount + _encodedFrameTimestamps.Count >= (long)_maxInputQueue + _maxOutputQueue)
+                {
+                    return false;
                 }
 
                 _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
@@ -217,11 +230,14 @@ namespace Foxglove.Schemas.Video
 
         private void StopNoLock(bool clearOutputQueue)
         {
+            Interlocked.Increment(ref _sessionId);
             var stop = _stop;
             if (stop != null && !stop.IsCancellationRequested)
                 stop.Cancel();
 
-            var process = _process;
+            Process process;
+            lock (_inputLock)
+                process = Interlocked.Exchange(ref _process, null);
             if (process != null)
             {
                 try
@@ -257,7 +273,6 @@ namespace Foxglove.Schemas.Video
                 process.Dispose();
             }
 
-            _process = null;
             _stdinTask = null;
             _stdoutTask = null;
             _stderrTask = null;
@@ -280,9 +295,8 @@ namespace Foxglove.Schemas.Video
                 var stream = process.StandardInput.BaseStream;
                 while (!token.IsCancellationRequested && IsProcessRunning(process))
                 {
-                    if (TryDequeueInputFrame(out var frame))
+                    if (TryDequeueInputFrame(process, token, out var frame))
                     {
-                        _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
                         await stream.WriteAsync(frame.Data, 0, frame.Data.Length, token).ConfigureAwait(false);
                         await stream.FlushAsync(token).ConfigureAwait(false);
                     }
@@ -297,11 +311,14 @@ namespace Foxglove.Schemas.Video
             }
             catch (Exception ex)
             {
-                LastError = ex.Message;
+                RetireFailedProcess(process, token, ex.Message);
             }
         }
 
-        private async Task RunStdoutReader(Process process, CancellationToken token)
+        private Task RunStdoutReader(Process process, CancellationToken token)
+            => RunStdoutReaderForSession(process, token, Volatile.Read(ref _sessionId));
+
+        private async Task RunStdoutReaderForSession(Process process, CancellationToken token, long sessionId)
         {
             var header = new byte[4];
             try
@@ -311,31 +328,45 @@ namespace Foxglove.Schemas.Video
                 {
                     var readLength = await ReadLittleEndianLength(stream, header, token).ConfigureAwait(false);
                     if (!readLength.Success)
-                        break;
-
-                    var length = readLength.Length;
-                    if (length == 0)
                     {
-                        AcceptHelperSkippedAccessUnit();
-                        continue;
+                        RetireFailedProcess(process, token, "Encoder stdout ended unexpectedly.");
+                        break;
                     }
 
-                    if (length < 0 || length > MaxAccessUnitBytes)
+                    var length = readLength.Length;
+                    lock (_outputLock)
                     {
-                        LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
-                        TryKillProcess(process);
-                        return;
+                        if (!IsCurrentSessionForTests(process, sessionId))
+                            return;
+
+                        if (length == 0)
+                        {
+                            AcceptHelperSkippedAccessUnit();
+                            continue;
+                        }
+
+                        if (length < 0 || length > MaxAccessUnitBytes)
+                        {
+                            LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
+                            RetireFailedProcess(process, token, LastError);
+                            return;
+                        }
                     }
 
                     var payload = new byte[length];
                     if (!await ReadExact(stream, payload, token).ConfigureAwait(false))
                     {
                         LastError = "OpenH264 helper stdout ended mid access unit.";
-                        TryKillProcess(process);
+                        RetireFailedProcess(process, token, LastError);
                         return;
                     }
 
-                    AcceptHelperAccessUnit(payload);
+                    lock (_outputLock)
+                    {
+                        if (!IsCurrentSessionForTests(process, sessionId))
+                            return;
+                        AcceptHelperAccessUnit(payload);
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -343,7 +374,7 @@ namespace Foxglove.Schemas.Video
             }
             catch (Exception ex)
             {
-                LastError = ex.Message;
+                RetireFailedProcess(process, token, ex.Message);
             }
         }
 
@@ -361,7 +392,7 @@ namespace Foxglove.Schemas.Video
             catch (Exception ex)
             {
                 if (!(ex is ObjectDisposedException))
-                    LastError = ex.Message;
+                    RetireFailedProcess(process, token, ex.Message);
             }
         }
 
@@ -429,7 +460,11 @@ namespace Foxglove.Schemas.Video
                     return;
                 }
 
-                var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
+                if (!_encodedFrameTimestamps.TryDequeue(out var timestampNs))
+                {
+                    LastDiagnosticLine = "OpenH264 access unit had no queued capture timestamp.";
+                    return;
+                }
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
                 _outputCount++;
                 Interlocked.Increment(ref _accessUnitsReceived);
@@ -458,6 +493,11 @@ namespace Foxglove.Schemas.Video
         {
             _encodedFrameTimestamps.Enqueue(timestampNs);
         }
+
+        private bool IsCurrentSessionForTests(Process process, long sessionId)
+            => process != null
+                && ReferenceEquals(process, Volatile.Read(ref _process))
+                && Volatile.Read(ref _sessionId) == sessionId;
 
         private static async Task<LengthReadResult> ReadLittleEndianLength(Stream stream, byte[] header, CancellationToken token)
         {
@@ -497,15 +537,19 @@ namespace Foxglove.Schemas.Video
             while (_encodedFrameTimestamps.TryDequeue(out _)) { }
         }
 
-        private bool TryDequeueInputFrame(out QueuedVideoFrame frame)
+        private bool TryDequeueInputFrame(Process process, CancellationToken token, out QueuedVideoFrame frame)
         {
             lock (_inputLock)
             {
+                frame = default;
+                if (token.IsCancellationRequested || !ReferenceEquals(process, Volatile.Read(ref _process)))
+                    return false;
                 if (!_inputFrames.TryDequeue(out frame))
                     return false;
 
                 if (_inputCount > 0)
                     _inputCount--;
+                _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
                 return true;
             }
         }
@@ -561,6 +605,24 @@ namespace Foxglove.Schemas.Video
             {
                 // Best-effort failure shutdown.
             }
+        }
+
+        private void RetireFailedProcess(Process process, CancellationToken token, string error)
+        {
+            if (token.IsCancellationRequested || !ReferenceEquals(process, Volatile.Read(ref _process)))
+                return;
+
+            LastError = error;
+            // Kill only the failed session's process; never wait on the calling worker itself.
+            TryKillProcess(process);
+            Task.Run(() =>
+            {
+                lock (_startStopLock)
+                {
+                    if (ReferenceEquals(process, Volatile.Read(ref _process)))
+                        StopNoLock(clearOutputQueue: false);
+                }
+            });
         }
 
         private void WaitForTask(Task task, string taskName, DateTime deadlineUtc)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import json
 import subprocess
 import sys
 import tempfile
@@ -39,6 +40,53 @@ def load_module(name: str, relative: str):
 
 class PerformanceToolingTests(unittest.TestCase):
     """Regression coverage for performance helper tooling."""
+
+    def test_performance_runner_rejects_empty_or_missing_scenarios(self) -> None:
+        """A successful process with no scenarios must fail closed."""
+        for case, payload in (
+            ("empty", {"scenarios": []}),
+            ("missing", {}),
+        ):
+            with self.subTest(case=case):
+                module = load_module(
+                    f"performance_runner_no_scenarios_{case}",
+                    "Scripts/performance/run_baseline.py",
+                )
+                with tempfile.TemporaryDirectory() as temp:
+                    output = Path(temp)
+                    result_path = output / "phase35_performance_current.json"
+                    argv = [
+                        "run_baseline.py",
+                        "--quick",
+                        "--output",
+                        str(output),
+                        "--timeout-minutes",
+                        "0",
+                    ]
+
+                    def fake_run(cmd, **kwargs):
+                        """Emit the selected structurally incomplete result."""
+                        result_path.write_text(json.dumps(payload), encoding="utf-8")
+                        return subprocess.CompletedProcess(cmd, 0)
+
+                    stdout = io.StringIO()
+                    with mock.patch.object(module.sys, "argv", argv), mock.patch.object(
+                        module,
+                        "_free_disk_bytes",
+                        return_value=10 * module.BYTES_PER_GIB,
+                    ), mock.patch.object(
+                        module,
+                        "_setup_nuget_cache",
+                        return_value={},
+                    ), mock.patch.object(
+                        module,
+                        "_run_owned",
+                        side_effect=fake_run,
+                    ), contextlib.redirect_stdout(stdout):
+                        result = module.main()
+
+                self.assertEqual(module.EXIT_FAILURE, result)
+                self.assertIn("No scenarios", stdout.getvalue())
 
     def test_performance_runner_reports_malformed_result_json_cleanly(self) -> None:
         """Malformed performance output should return failure without traceback noise."""
@@ -81,6 +129,40 @@ class PerformanceToolingTests(unittest.TestCase):
         self.assertEqual(module.REPO_ROOT, kwargs["cwd"])
         self.assertEqual({}, kwargs["env"])
         self.assertIsNone(kwargs["timeout"])
+
+    def test_performance_runner_rejects_malformed_scenario_values(self) -> None:
+        """Scenario entries must retain typed status and finite numeric metrics."""
+        cases = (
+            ("string-status", {"name": "bad", "passed": "false"}),
+            ("null-entry", None),
+            ("non-finite", {"name": "bad", "passed": True, "messagesPerSecond": float("nan")}),
+        )
+        for case, scenario in cases:
+            with self.subTest(case=case):
+                module = load_module(f"performance_runner_malformed_{case}", "Scripts/performance/run_baseline.py")
+                with tempfile.TemporaryDirectory() as temp:
+                    output = Path(temp)
+                    result_path = output / "phase35_performance_current.json"
+                    argv = ["run_baseline.py", "--quick", "--output", str(output), "--timeout-minutes", "0"]
+
+                    def fake_run(cmd, **kwargs):
+                        """Write the controlled malformed result for this case."""
+                        result_path.write_text(
+                            json.dumps({"scenarios": [scenario]}, allow_nan=True),
+                            encoding="utf-8",
+                        )
+                        return subprocess.CompletedProcess(cmd, 0)
+
+                    stdout = io.StringIO()
+                    with mock.patch.object(module.sys, "argv", argv), mock.patch.object(
+                        module, "_free_disk_bytes", return_value=10 * module.BYTES_PER_GIB
+                    ), mock.patch.object(module, "_setup_nuget_cache", return_value={}), mock.patch.object(
+                        module, "_run_owned", side_effect=fake_run
+                    ), contextlib.redirect_stdout(stdout):
+                        result = module.main()
+
+                self.assertEqual(module.EXIT_FAILURE, result)
+                self.assertIn("invalid scenario", stdout.getvalue())
 
     def test_performance_runner_ignores_stale_lexicographically_later_json(self) -> None:
         """Summary selection must use output from the current invocation only."""

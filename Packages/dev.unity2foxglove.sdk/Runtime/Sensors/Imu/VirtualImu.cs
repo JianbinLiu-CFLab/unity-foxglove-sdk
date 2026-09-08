@@ -84,6 +84,7 @@ namespace Unity.FoxgloveSDK.Components
         private ulong _epochUnixNs;
         private double _epochPhysSeconds;
         private long _nextSampleIndex;
+        private ulong _lifecycleGeneration;
         private long _lastReportedDroppedSamples;
         private double _nextDroppedSamplesLogTime;
         private ISchemaRegistry _schemaRegisteredRegistry;
@@ -169,6 +170,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnEnable()
         {
+            RetireQueuedSamplesForLifecycleTransition();
             _hasLastVelocity = false;
             _hasEpoch = false;
             _nextSampleIndex = 0;
@@ -180,6 +182,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnDisable()
         {
+            RetireQueuedSamplesForLifecycleTransition();
             RestoreFixedDeltaTime();
         }
 
@@ -190,7 +193,8 @@ namespace Unity.FoxgloveSDK.Components
 
         private void FixedUpdate()
         {
-            if (!PublishEnabled)
+            if (!PublishEnabled
+                || (_manager != null && ShouldSuppressLiveOutputForReplay(_manager.SuppressLivePublishersForReplay)))
                 return;
             if (_rigidbody == null || Time.fixedDeltaTime <= 0f)
                 return;
@@ -278,7 +282,14 @@ namespace Unity.FoxgloveSDK.Components
         {
             using (PublishMarker.Auto())
             {
-                if (!PublishEnabled || _manager == null || _queue.Count == 0)
+                if (!PublishEnabled || _manager == null)
+                    return;
+                if (ShouldSuppressLiveOutputForReplay(_manager.SuppressLivePublishersForReplay))
+                {
+                    RetireQueuedSamplesForLifecycleTransition();
+                    return;
+                }
+                if (_queue.Count == 0)
                     return;
                 if (_manager.Runtime == null)
                     return;
@@ -292,8 +303,10 @@ namespace Unity.FoxgloveSDK.Components
                 var webSocketSkipCount = queuedAtFrameStart - webSocketBudget;
                 var webSocketPublished = 0;
                 var nativeFrameHandler = ImuNativeFrameReady;
+                var updateGeneration = _lifecycleGeneration;
 
-                while (_queue.TryDequeue(out var sample))
+                while (updateGeneration == _lifecycleGeneration
+                       && _queue.TryDequeue(out var sample))
                 {
                     ImuNativeFrame nativeFrame = null;
                     if (nativeFrameHandler != null)
@@ -339,6 +352,17 @@ namespace Unity.FoxgloveSDK.Components
         {
             NormalizeSerializedConfiguration();
         }
+
+        private void RetireQueuedSamplesForLifecycleTransition()
+        {
+            _lifecycleGeneration++;
+            while (_queue.TryDequeue(out _))
+            {
+            }
+        }
+
+        private static bool ShouldSuppressLiveOutputForReplay(bool suppressLivePublishersForReplay)
+            => suppressLivePublishersForReplay;
 
         private void NormalizeSerializedConfiguration()
         {

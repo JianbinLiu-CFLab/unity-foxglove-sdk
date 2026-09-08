@@ -21,11 +21,12 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 {
     private const int MaxAccessUnitBytes = 16 * 1024 * 1024;
 
-    private readonly ConcurrentQueue<byte[]> _inputFrames = new ConcurrentQueue<byte[]>();
-    private readonly ConcurrentQueue<byte[]> _outputAccessUnits = new ConcurrentQueue<byte[]>();
+    private readonly ConcurrentQueue<ProbeInputFrame> _inputFrames = new ConcurrentQueue<ProbeInputFrame>();
+    private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
     private readonly object _lifecycleLock = new object();
     private bool _stopping;
     private readonly object _outputLock = new object();
+    private readonly object _inputLock = new object();
     private Process _process;
     private CancellationTokenSource _stop;
     private Task _stdinTask;
@@ -33,6 +34,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
     private Task _stderrTask;
     private OpenH264ProbeSidecarOptions _options;
     private int _outputCount;
+    private int _outstandingFrameCount;
     private int _framesSubmitted;
     private int _accessUnitsReceived;
     private int _droppedInputFrames;
@@ -118,6 +120,9 @@ public sealed class OpenH264ProbeSidecar : IDisposable
     }
 
     public bool TrySubmitFrame(byte[] i420Frame)
+        => TrySubmitFrame(i420Frame, 0UL);
+
+    public bool TrySubmitFrame(byte[] i420Frame, ulong timestampNs)
     {
         if (i420Frame == null || i420Frame.Length == 0 || !IsRunning)
             return false;
@@ -130,19 +135,40 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         }
 
         var capacity = Math.Max(1, _options?.MaxInputQueue ?? 2);
-        while (_inputFrames.Count >= capacity && _inputFrames.TryDequeue(out _))
+        lock (_inputLock)
         {
-            Interlocked.Increment(ref _droppedInputFrames);
-        }
+            while (_inputFrames.Count >= capacity && _inputFrames.TryDequeue(out _))
+            {
+                Interlocked.Decrement(ref _outstandingFrameCount);
+                Interlocked.Increment(ref _droppedInputFrames);
+            }
 
-        var copy = new byte[i420Frame.Length];
-        Buffer.BlockCopy(i420Frame, 0, copy, 0, i420Frame.Length);
-        _inputFrames.Enqueue(copy);
-        Interlocked.Increment(ref _framesSubmitted);
+            var budget = capacity + Math.Max(1, _options?.MaxOutputQueue ?? 4);
+            if (Volatile.Read(ref _outstandingFrameCount) >= budget)
+                return false;
+
+            var copy = new byte[i420Frame.Length];
+            Buffer.BlockCopy(i420Frame, 0, copy, 0, i420Frame.Length);
+            _inputFrames.Enqueue(new ProbeInputFrame(copy, timestampNs));
+            Interlocked.Increment(ref _outstandingFrameCount);
+            Interlocked.Increment(ref _framesSubmitted);
+        }
         return true;
     }
 
     public bool TryDequeueAccessUnit(out byte[] accessUnit)
+    {
+        if (TryDequeueEncodedAccessUnit(out var timestamped))
+        {
+            accessUnit = timestamped.Data;
+            return true;
+        }
+
+        accessUnit = null;
+        return false;
+    }
+
+    public bool TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit)
     {
         lock (_outputLock)
         {
@@ -150,6 +176,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
                 return false;
 
             Interlocked.Decrement(ref _outputCount);
+            Interlocked.Decrement(ref _outstandingFrameCount);
             return true;
         }
     }
@@ -270,8 +297,9 @@ public sealed class OpenH264ProbeSidecar : IDisposable
             {
                 if (_inputFrames.TryDequeue(out var frame))
                 {
-                    await stream.WriteAsync(frame, 0, frame.Length, token).ConfigureAwait(false);
+                    await stream.WriteAsync(frame.Data, 0, frame.Data.Length, token).ConfigureAwait(false);
                     await stream.FlushAsync(token).ConfigureAwait(false);
+                    _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
                 }
                 else
                 {
@@ -422,9 +450,19 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         lock (_outputLock)
         {
             while (Volatile.Read(ref _outputCount) >= capacity && _outputAccessUnits.TryDequeue(out _))
+            {
                 Interlocked.Decrement(ref _outputCount);
+                Interlocked.Decrement(ref _outstandingFrameCount);
+            }
 
-            _outputAccessUnits.Enqueue(accessUnit);
+            if (!_encodedFrameTimestamps.TryDequeue(out var timestampNs) || timestampNs == 0UL)
+            {
+                SetLastError("OpenH264 helper output had no matching capture timestamp.");
+                Interlocked.Decrement(ref _outstandingFrameCount);
+                return;
+            }
+
+            _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
             Interlocked.Increment(ref _outputCount);
             Interlocked.Increment(ref _accessUnitsReceived);
         }
@@ -485,7 +523,9 @@ public sealed class OpenH264ProbeSidecar : IDisposable
     {
         while (_inputFrames.TryDequeue(out _)) { }
         while (_outputAccessUnits.TryDequeue(out _)) { }
+        while (_encodedFrameTimestamps.TryDequeue(out _)) { }
         Interlocked.Exchange(ref _outputCount, 0);
+        Interlocked.Exchange(ref _outstandingFrameCount, 0);
     }
 
     private void SetLastError(string value)
@@ -508,6 +548,18 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
         public bool Success { get; }
         public int Length { get; }
+    }
+
+    private readonly struct ProbeInputFrame
+    {
+        public ProbeInputFrame(byte[] data, ulong timestampNs)
+        {
+            Data = data;
+            TimestampNs = timestampNs;
+        }
+
+        public byte[] Data { get; }
+        public ulong TimestampNs { get; }
     }
 }
 

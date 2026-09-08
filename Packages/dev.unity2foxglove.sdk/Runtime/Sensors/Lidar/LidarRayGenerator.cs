@@ -23,11 +23,18 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         public LidarRayGenerator(LidarProfile profile, int columnStep = 1)
         {
             _profile = profile ?? throw new ArgumentNullException(nameof(profile));
-            _columnStep = Math.Max(1, columnStep);
+            if (!_profile.Validate(out var error))
+                throw new ArgumentException("Invalid LiDAR profile: " + error, nameof(profile));
+            if (columnStep <= 0)
+                throw new ArgumentOutOfRangeException(nameof(columnStep), "LiDAR column step must be positive.");
+            _columnStep = columnStep;
         }
 
         /// <summary>Total number of rays for the configured profile and column step.</summary>
-        public int RayCount => _profile.PixelsPerColumn * (_profile.ColumnsPerFrame / _columnStep);
+        public int RayCount
+            => checked(_profile.PixelsPerColumn * (
+                _profile.ColumnsPerFrame / _columnStep
+                + (_profile.ColumnsPerFrame % _columnStep == 0 ? 0 : 1)));
 
         /// <summary>
         /// Get a unit-length ray direction in sensor-local space and normalized time offset.

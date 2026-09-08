@@ -58,6 +58,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 return false;
             }
 
+            if (!LidarGeometryLimits.TryValidate(PixelsPerColumn, ColumnsPerFrame, out error))
+                return false;
+
             if (!IsFinite(ScanRateHz) || ScanRateHz <= 0)
             {
                 error = "LiDAR profile ScanRateHz must be finite and positive.";

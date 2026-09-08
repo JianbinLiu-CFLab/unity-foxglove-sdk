@@ -191,20 +191,20 @@ namespace Unity.FoxgloveSDK.Tests
                   && mode.Contains("PackedPointCloudSchema", StringComparison.Ordinal),
                 "138L-2T: PackedPointCloud is an explicit output profile, not an overload of Raw");
             var workerEncoders = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
-            Check(mode.Contains("Ros2PublisherSchemaNames.SensorPointCloud2", StringComparison.Ordinal)
+            Check(mode.Contains("PackedPointCloudSchema", StringComparison.Ordinal)
                   && publisher.Contains("PointCloudWorkerEncoders.EncodePackedPointCloudRequest", StringComparison.Ordinal)
                   && publisher.Contains("PublishCompletedPackedPointCloudPayload", StringComparison.Ordinal)
-                  && workerEncoders.Contains("BuildPackedPointCloudPayload", StringComparison.Ordinal)
-                  && workerEncoders.Contains("Ros2CdrSensorPointCloud2Builder.Serialize", StringComparison.Ordinal),
-                "138L-2U: PackedPointCloud publishes standard sensor_msgs/msg/PointCloud2 CDR through the worker encoder");
+                  && workerEncoders.Contains("BuildPackedPointCloudFrame", StringComparison.Ordinal)
+                  && workerEncoders.Contains("BuildVirtualLidarFullStridePooled", StringComparison.Ordinal),
+                "138L-2U: PackedPointCloud prepares provider-neutral packed frames through the worker encoder");
             Check(publisher.Contains("CanQueueVirtualLidarPackedPointCloudFrame", StringComparison.Ordinal)
                   && nativePublisher.Contains("TryQueueVirtualLidarPackedPointCloudFrame", StringComparison.Ordinal),
                 "138L-2V: PackedPointCloud exposes a native VirtualLidar queue entry point");
             Check(lidar.Contains("UseNativePointCloudSnapshotPath", StringComparison.Ordinal)
-                  && lidarFramePublisher.Contains("TryPublishNativePointCloud2Scan", StringComparison.Ordinal),
+                  && lidarFramePublisher.Contains("TryPublishNativePackedPointCloudScan", StringComparison.Ordinal),
                 "138L-2W: VirtualLidar can bypass managed Points.Add for PackedPointCloud");
-            Check(editor.Contains("PointCloud2 Native", StringComparison.Ordinal),
-                "138L-2X: Inspector labels the SLAM PointCloud2 mode explicitly");
+            Check(editor.Contains("Packed Provider Frame", StringComparison.Ordinal),
+                "138L-2X: Inspector labels the provider-neutral packed mode explicitly");
             Check(publisher.Contains("event Action<PackedPointCloudFrame> PackedPointCloudFrameReady", StringComparison.Ordinal)
                   && publisher.Contains("PackedPointCloudFrameReady != null", StringComparison.Ordinal),
                 "138L-2Y: PackedPointCloud can prepare frames for optional DDS subscribers without websocket demand");
@@ -266,7 +266,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && asmdef.Contains("\"UNITY2FOXGLOVE_ROS2_FOR_UNITY\"", StringComparison.Ordinal),
                 "138L-5B: native R2FU bridge compiles only when the ROS2 runtime symbol is active");
             Check(bridge.Contains("RuntimeInitializeOnLoadMethod", StringComparison.Ordinal)
-                  && bridge.Contains("FindObjectsByType<FoxglovePointCloudPublisher>", StringComparison.Ordinal)
+                  && bridge.Contains("FindFirstObjectByType<Ros2ForUnityPackedPointCloudBridge>", StringComparison.Ordinal)
+                  && bridge.Contains("GetComponentsInChildren(includeInactive: false, _scanPublishers)", StringComparison.Ordinal)
                   && bridge.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal),
                 "138L-5C: R2FU PointCloud2 bridge is an automatic product path gated by the Manager toggle");
             Check(bridge.Contains("_source.PackedPointCloudFrameReady += OnPackedPointCloudFrameReady", StringComparison.Ordinal)
@@ -285,12 +286,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "138L-5Da: R2FU bridge publishes a dynamic product TF anchor while the core SDK stays ROS-free");
             Check(builder.Contains("Build(PackedPointCloudFrame frame", StringComparison.Ordinal)
                   && builder.Contains("Data = frame.Data", StringComparison.Ordinal)
-                  && !builder.Contains("PointCloudFrame", StringComparison.Ordinal),
+                  && !builder.Contains("Build(PointCloudFrame frame", StringComparison.Ordinal),
                 "138L-5E: product message builder maps PackedPointCloudFrame data without per-point packing");
             Check(publisher.Contains("private bool _publishPackedPointCloudTfAnchor;", StringComparison.Ordinal)
                   && !publisher.Contains("EnsurePackedPointCloudTfAnchorInitialized", StringComparison.Ordinal)
                   && editor.Contains("Optional TF Anchor", StringComparison.Ordinal)
-                  && editor.Contains("Publish PointCloud2 TF Anchor", StringComparison.Ordinal)
+                  && editor.Contains("Publish PackedPointCloud TF Anchor", StringComparison.Ordinal)
                   && editor.Contains("TF Parent Frame", StringComparison.Ordinal)
                   && editor.Contains("TF Child Frame", StringComparison.Ordinal),
                 "138L-5Ea: PointCloud2 Native Inspector exposes an opt-in TF anchor without stealing existing TF trees by default");

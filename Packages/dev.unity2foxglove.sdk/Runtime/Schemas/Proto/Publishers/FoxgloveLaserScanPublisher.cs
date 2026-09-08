@@ -44,6 +44,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _queuedOffMainThreadPublishFrameCount;
         private int _droppedQueuedPublishFrameCount;
         private int _unityThreadId;
+        private long _publishGeneration;
         private double _cachedStartAngleDegrees = double.NaN;
         private double _cachedEndAngleDegrees = double.NaN;
         private double _cachedStartAngleRadians;
@@ -63,6 +64,10 @@ namespace Unity.FoxgloveSDK.Components
         {
             base.OnEnable();
             _unityThreadId = Thread.CurrentThread.ManagedThreadId;
+            lock (_queuedPublishFramesGate)
+            {
+                _publishGeneration++;
+            }
         }
 
         protected override void OnDisable()
@@ -104,6 +109,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             ResolveManager();
             if (_manager == null) return;
+            if (_manager.SuppressLivePublishersForReplay) return;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishProvider =
                 ShouldPrepareOrdinaryTransportPayload();
@@ -122,9 +128,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Update()
         {
-            DrainQueuedPublishFrames(_manager != null && _manager.Runtime?.ReplayEnabled != true);
+            DrainQueuedPublishFrames(_manager == null || !_manager.SuppressLivePublishersForReplay);
             if (_manager == null) return;
-            if (_manager.Runtime?.ReplayEnabled == true) return;
+            if (_manager.SuppressLivePublishersForReplay) return;
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
@@ -160,13 +166,13 @@ namespace Unity.FoxgloveSDK.Components
 
         private void RefreshCachedAngles()
         {
-            if (!_startAngleDegrees.Equals(_cachedStartAngleDegrees))
+            if (_startAngleDegrees != _cachedStartAngleDegrees)
             {
                 _cachedStartAngleDegrees = _startAngleDegrees;
                 _cachedStartAngleRadians = _startAngleDegrees * Math.PI / 180.0;
             }
 
-            if (!_endAngleDegrees.Equals(_cachedEndAngleDegrees))
+            if (_endAngleDegrees != _cachedEndAngleDegrees)
             {
                 _cachedEndAngleDegrees = _endAngleDegrees;
                 _cachedEndAngleRadians = _endAngleDegrees * Math.PI / 180.0;
@@ -262,8 +268,7 @@ namespace Unity.FoxgloveSDK.Components
             IEnumerable<double> ranges,
             IEnumerable<double> intensities)
         {
-            var rangeCopy = CopyRequiredValues(ranges, nameof(ranges));
-            var intensityCopy = CopyOptionalValues(intensities);
+            long generation;
             lock (_queuedPublishFramesGate)
             {
                 var queuedCount = Interlocked.Increment(ref _queuedPublishFrameCount);
@@ -273,6 +278,31 @@ namespace Unity.FoxgloveSDK.Components
                     Interlocked.Increment(ref _droppedQueuedPublishFrameCount);
                     return;
                 }
+
+                generation = _publishGeneration;
+            }
+
+            double[] rangeCopy;
+            double[] intensityCopy;
+            try
+            {
+                rangeCopy = CopyRequiredValues(ranges, nameof(ranges));
+                intensityCopy = CopyOptionalValues(intensities);
+            }
+            catch
+            {
+                lock (_queuedPublishFramesGate)
+                {
+                    if (generation == _publishGeneration)
+                        Interlocked.Decrement(ref _queuedPublishFrameCount);
+                }
+                throw;
+            }
+
+            lock (_queuedPublishFramesGate)
+            {
+                if (generation != _publishGeneration)
+                    return;
 
                 _queuedPublishFrames.Enqueue(new QueuedLaserScanFrame(
                     logTimeNs,
@@ -289,6 +319,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             lock (_queuedPublishFramesGate)
             {
+                _publishGeneration++;
                 Interlocked.Exchange(ref _queuedPublishFrameCount, 0);
                 while (_queuedPublishFrames.TryDequeue(out _))
                 {

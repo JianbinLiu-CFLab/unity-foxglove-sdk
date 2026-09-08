@@ -947,8 +947,10 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 rt.EnableReplay(tmp);
+                rt.SetReplayLiveSuppression(true);
                 rt.Start("replay-live-gate", "127.0.0.1", GetFreeLoopbackPort());
                 transport.SimulateConnect(7);
+                rt.ReplayPause();
 
                 rt.RegisterChannel(new AdvertiseChannel
                 {
@@ -989,7 +991,9 @@ namespace Unity.FoxgloveSDK.Tests
             try
             {
                 rt.EnableReplay(tmp);
+                rt.SetReplayLiveSuppression(true);
                 rt.Start("replay-live-advertise-gate", "127.0.0.1", GetFreeLoopbackPort());
+                rt.ReplayPause();
 
                 var textCountBefore = transport.SentText.Count;
                 rt.RegisterChannel(new AdvertiseChannel

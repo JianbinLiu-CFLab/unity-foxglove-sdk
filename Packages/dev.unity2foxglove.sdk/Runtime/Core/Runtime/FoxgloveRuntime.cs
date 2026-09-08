@@ -85,6 +85,9 @@ namespace Unity.FoxgloveSDK.Core
         private int _disposeRequested;
         private int _disposing;
         private bool _stopCleanupComplete = true;
+        // Replay itself may coexist with live output. The manager explicitly
+        // enables this gate only for its "Disable Live Publishers" policy.
+        private bool _suppressLivePublishersForReplay;
         private bool _parametersCleared;
         private bool _servicesCleared;
         private bool _recordingDisposed;
@@ -509,7 +512,7 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterChannel(AdvertiseChannel channel)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled)
+            if (ReplaySuppressesLivePublishing)
             {
                 WarnReplaySuppressed(nameof(RegisterChannel), channel?.Id);
                 return;
@@ -522,7 +525,7 @@ namespace Unity.FoxgloveSDK.Core
         internal void RegisterRecordingOnlyChannel(AdvertiseChannel channel)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled)
+            if (ReplaySuppressesLivePublishing)
             {
                 WarnReplaySuppressed(nameof(RegisterRecordingOnlyChannel), channel?.Id);
                 return;
@@ -533,7 +536,7 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Whether an MCAP recorder currently accepts this hidden channel.</summary>
         public bool HasRecordingDemand(uint channelId)
-            => !ReplayEnabled
+            => !ReplaySuppressesLivePublishing
                && _session != null
                && _session.HasRecordingDemand(channelId);
 
@@ -548,7 +551,7 @@ namespace Unity.FoxgloveSDK.Core
         public void Publish(uint channelId, byte[] payload)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled)
+            if (ReplaySuppressesLivePublishing)
             {
                 WarnReplaySuppressed(nameof(Publish), channelId);
                 return;
@@ -561,7 +564,7 @@ namespace Unity.FoxgloveSDK.Core
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled)
+            if (ReplaySuppressesLivePublishing)
             {
                 WarnReplaySuppressed(nameof(Publish), channelId);
                 return;
@@ -573,7 +576,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Publish raw bytes only to a previously hidden MCAP channel.</summary>
         public bool PublishRecordingOnly(uint channelId, byte[] payload, ulong logTimeNs)
         {
-            if (_session == null || ReplayEnabled || !_session.HasRecordingDemand(channelId))
+            if (_session == null || ReplaySuppressesLivePublishing || !_session.HasRecordingDemand(channelId))
                 return false;
             _session.Publish(channelId, payload, logTimeNs);
             return true;
@@ -588,7 +591,7 @@ namespace Unity.FoxgloveSDK.Core
             string schemaEncoding = null)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled)
+            if (ReplaySuppressesLivePublishing)
             {
                 WarnReplaySuppressed(nameof(RegisterSchemaChannel), channelId);
                 return;
@@ -601,7 +604,7 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishJson(uint channelId, object message)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled)
+            if (ReplaySuppressesLivePublishing)
             {
                 WarnReplaySuppressed(nameof(PublishJson), channelId);
                 return;
@@ -614,7 +617,7 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishJson(uint channelId, object message, ulong logTimeNs)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled)
+            if (ReplaySuppressesLivePublishing)
             {
                 WarnReplaySuppressed(nameof(PublishJson), channelId);
                 return;
@@ -774,6 +777,13 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Whether replay is enabled.</summary>
         public bool ReplayEnabled => _replay.IsEnabled;
+        internal bool ReplaySuppressesLivePublishing =>
+            _suppressLivePublishersForReplay && ReplayEnabled;
+
+        internal void SetReplayLiveSuppression(bool suppress)
+        {
+            _suppressLivePublishersForReplay = suppress;
+        }
         /// <summary>Whether the last replay enable attempt observed a confirmed FoxRun schema mismatch.</summary>
         public bool ReplayStartHadSchemaMismatch => _replay.LastEnableHadSchemaMismatch;
         /// <summary>Whether the last replay enable attempt was blocked by a confirmed FoxRun schema mismatch.</summary>

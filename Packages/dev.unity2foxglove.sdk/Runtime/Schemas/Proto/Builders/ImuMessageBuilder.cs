@@ -87,6 +87,10 @@ namespace Foxglove.Schemas
             if (frameId == null)
                 frameId = string.Empty;
 
+            ValidateFiniteVector(linearAcceleration, nameof(linearAcceleration));
+            ValidateFiniteVector(angularVelocity, nameof(angularVelocity));
+            if (includeOrientation)
+                ValidateFiniteQuaternion(orientation, nameof(orientation));
             if (includeOrientation)
                 ValidateCovariance(orientationCovariance, nameof(orientationCovariance));
             ValidateCovariance(angularVelocityCovariance, nameof(angularVelocityCovariance));
@@ -229,6 +233,28 @@ namespace Foxglove.Schemas
                 throw new ArgumentNullException(parameterName);
             if (values.Count != CovarianceCount)
                 throw new ArgumentException($"Expected {CovarianceCount} covariance values.", parameterName);
+            for (var i = 0; i < values.Count; i++)
+            {
+                if (double.IsNaN(values[i]) || double.IsInfinity(values[i]))
+                    throw new ArgumentException("Covariance values must be finite.", parameterName);
+            }
+        }
+
+        private static void ValidateFiniteVector(UnityEngine.Vector3 value, string parameterName)
+        {
+            if (float.IsNaN(value.x) || float.IsInfinity(value.x)
+                || float.IsNaN(value.y) || float.IsInfinity(value.y)
+                || float.IsNaN(value.z) || float.IsInfinity(value.z))
+                throw new ArgumentException("IMU vector values must be finite.", parameterName);
+        }
+
+        private static void ValidateFiniteQuaternion(UnityEngine.Quaternion value, string parameterName)
+        {
+            if (float.IsNaN(value.x) || float.IsInfinity(value.x)
+                || float.IsNaN(value.y) || float.IsInfinity(value.y)
+                || float.IsNaN(value.z) || float.IsInfinity(value.z)
+                || float.IsNaN(value.w) || float.IsInfinity(value.w))
+                throw new ArgumentException("IMU orientation values must be finite.", parameterName);
         }
     }
 }

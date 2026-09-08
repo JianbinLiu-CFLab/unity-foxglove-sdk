@@ -29,6 +29,41 @@ namespace Unity.FoxgloveSDK.Performance
     {
         public const string DefaultTransportScope = "FakePerformanceTransport serialization/dispatch path only; excludes ManagedWsBackend sockets and TLS";
 
+        internal readonly struct AllocationMetricSample
+        {
+            public readonly long AllocatedBytesTotal;
+            public readonly long AllocatedBytesCurrentThread;
+            public readonly double AllocatedBytesPerMessage;
+            public readonly int Gen0Collections;
+            public readonly int Gen1Collections;
+            public readonly int Gen2Collections;
+            public readonly string AllocationNotes;
+
+            public AllocationMetricSample(
+                long allocatedBytesTotal,
+                long allocatedBytesCurrentThread,
+                double allocatedBytesPerMessage,
+                int gen0Collections,
+                int gen1Collections,
+                int gen2Collections,
+                string allocationNotes)
+            {
+                AllocatedBytesTotal = allocatedBytesTotal;
+                AllocatedBytesCurrentThread = allocatedBytesCurrentThread;
+                AllocatedBytesPerMessage = allocatedBytesPerMessage;
+                Gen0Collections = gen0Collections;
+                Gen1Collections = gen1Collections;
+                Gen2Collections = gen2Collections;
+                AllocationNotes = allocationNotes;
+            }
+        }
+
+        // The production path always uses the runtime collector. The internal
+        // override makes metric transfer tests deterministic without replacing
+        // the scenario body or treating a naturally observed zero as evidence.
+        internal static Func<int, AllocationMetricSample> AllocationMetricsOverrideForTests { get; set; }
+        internal static Func<long, long> ElapsedMillisecondsOverrideForTests { get; set; }
+
         private static string RepoRoot
         {
             get
@@ -305,6 +340,50 @@ namespace Unity.FoxgloveSDK.Performance
             gen1 = GC.CollectionCount(1) - gen1Before;
             gen2 = GC.CollectionCount(2) - gen2Before;
             notes = null;
+        }
+
+        private static AllocationMetricSample CollectAllocMetricSample(
+            long gcBeforeTotal,
+            long gcBeforeThread,
+            int gen0Before,
+            int gen1Before,
+            int gen2Before,
+            int messageCount)
+        {
+            var overrideCollector = AllocationMetricsOverrideForTests;
+            if (overrideCollector != null)
+                return overrideCollector(messageCount);
+
+            CollectAllocMetrics(
+                gcBeforeTotal,
+                gcBeforeThread,
+                gen0Before,
+                gen1Before,
+                gen2Before,
+                messageCount,
+                out var allocTotal,
+                out var allocThread,
+                out var allocPerMsg,
+                out var gen0,
+                out var gen1,
+                out var gen2,
+                out var notes);
+            return new AllocationMetricSample(
+                allocTotal,
+                allocThread,
+                allocPerMsg,
+                gen0,
+                gen1,
+                gen2,
+                notes);
+        }
+
+        private static long ResolveElapsedMilliseconds(long actualElapsedMilliseconds)
+        {
+            var overrideElapsed = ElapsedMillisecondsOverrideForTests;
+            return overrideElapsed == null
+                ? actualElapsedMilliseconds
+                : overrideElapsed(actualElapsedMilliseconds);
         }
 
         private static PerformanceScenarioResult TimedScenario(string name, int warmupCount, int msgCount,
@@ -1197,6 +1276,9 @@ namespace Unity.FoxgloveSDK.Performance
         {
             try
             {
+                PrepareAllocMeasurement(out var gcBeforeTotal, out var gcBeforeThread,
+                    out var gen0Before, out var gen1Before, out var gen2Before);
+                var sw = Stopwatch.StartNew();
                 using var ms = new MemoryStream();
                 using (var recorder = new McapRecorder(ms))
                 {
@@ -1231,12 +1313,30 @@ namespace Unity.FoxgloveSDK.Performance
                 if (footerCrc == 0)
                     throw new Exception("Footer summary_crc is zero");
 
+                sw.Stop();
+                var elapsedMs = ResolveElapsedMilliseconds(sw.ElapsedMilliseconds);
+                var metrics = CollectAllocMetricSample(
+                    gcBeforeTotal,
+                    gcBeforeThread,
+                    gen0Before,
+                    gen1Before,
+                    gen2Before,
+                    1);
+                var elapsedSeconds = elapsedMs / 1000.0;
                 var result = new PerformanceScenarioResult
                 {
                     name = "McapRecordAttachmentSummary",
                     warmupMessageCount = 0,
                     messageCount = 1,
-                    elapsedMs = 0,
+                    elapsedMs = elapsedMs,
+                    messagesPerSecond = elapsedSeconds > 0 ? 1 / elapsedSeconds : 0,
+                    allocatedBytesTotal = metrics.AllocatedBytesTotal,
+                    allocatedBytesCurrentThread = metrics.AllocatedBytesCurrentThread,
+                    allocatedBytesPerMessage = metrics.AllocatedBytesPerMessage,
+                    gen0Collections = metrics.Gen0Collections,
+                    gen1Collections = metrics.Gen1Collections,
+                    gen2Collections = metrics.Gen2Collections,
+                    allocationNotes = metrics.AllocationNotes,
                     passed = true,
                     outputBytes = ms.Length,
                     notes = "Phase 34 regression guard: attachment index, CRC, summary_crc verified"
@@ -1298,9 +1398,13 @@ namespace Unity.FoxgloveSDK.Performance
             }
 
             sw.Stop();
-            CollectAllocMetrics(gcBeforeTotal, gcBeforeThread, gen0Before, gen1Before, gen2Before,
-                iterations, out var allocTotal, out var allocThread, out var allocPerMsg,
-                out var gen0, out var gen1, out var gen2, out var allocNotes);
+            var metrics = CollectAllocMetricSample(
+                gcBeforeTotal,
+                gcBeforeThread,
+                gen0Before,
+                gen1Before,
+                gen2Before,
+                iterations);
 
             var passed = !invalidState
                 && pressureCount > 0
@@ -1315,9 +1419,13 @@ namespace Unity.FoxgloveSDK.Performance
                 messageCount = iterations,
                 elapsedMs = sw.ElapsedMilliseconds,
                 messagesPerSecond = sw.Elapsed.TotalSeconds > 0 ? iterations / sw.Elapsed.TotalSeconds : 0,
-                allocatedBytesTotal = allocTotal,
-                allocatedBytesCurrentThread = allocThread,
-                allocatedBytesPerMessage = allocPerMsg,
+                allocatedBytesTotal = metrics.AllocatedBytesTotal,
+                allocatedBytesCurrentThread = metrics.AllocatedBytesCurrentThread,
+                allocatedBytesPerMessage = metrics.AllocatedBytesPerMessage,
+                gen0Collections = metrics.Gen0Collections,
+                gen1Collections = metrics.Gen1Collections,
+                gen2Collections = metrics.Gen2Collections,
+                allocationNotes = metrics.AllocationNotes,
                 notes = "policy evaluation loop; 100K iterations; no Unity/GPU; "
                     + $"pressure={pressureCount}, blocked={blockedCount}, allowed={allowedCount}",
                 passed = passed
@@ -1329,8 +1437,11 @@ namespace Unity.FoxgloveSDK.Performance
         private static PerformanceScenarioResult RunTransportQueueMicro(PerformanceThresholdConfig thresholds)
         {
             bool accepted, staysConnected, dataDropped;
-            var sw = Stopwatch.StartNew();
             const int queueOperationCount = 15;
+
+            PrepareAllocMeasurement(out var gcBeforeTotal, out var gcBeforeThread,
+                out var gen0Before, out var gen1Before, out var gen2Before);
+            var sw = Stopwatch.StartNew();
 
             // Data overflow drops oldest
             var q = new WsSendQueue(maxFrames: 4, maxQueuedBytes: 1024 * 1024);
@@ -1364,6 +1475,13 @@ namespace Unity.FoxgloveSDK.Performance
 
             bool passed = accepted && dataDropped && staysConnected && controlFirst && ctrlDisc && completed && drained;
             sw.Stop();
+            var metrics = CollectAllocMetricSample(
+                gcBeforeTotal,
+                gcBeforeThread,
+                gen0Before,
+                gen1Before,
+                gen2Before,
+                queueOperationCount);
 
             var result = new PerformanceScenarioResult
             {
@@ -1372,6 +1490,13 @@ namespace Unity.FoxgloveSDK.Performance
                 messageCount = queueOperationCount,
                 elapsedMs = sw.ElapsedMilliseconds,
                 messagesPerSecond = sw.Elapsed.TotalSeconds > 0 ? queueOperationCount / sw.Elapsed.TotalSeconds : queueOperationCount,
+                allocatedBytesTotal = metrics.AllocatedBytesTotal,
+                allocatedBytesCurrentThread = metrics.AllocatedBytesCurrentThread,
+                allocatedBytesPerMessage = metrics.AllocatedBytesPerMessage,
+                gen0Collections = metrics.Gen0Collections,
+                gen1Collections = metrics.Gen1Collections,
+                gen2Collections = metrics.Gen2Collections,
+                allocationNotes = metrics.AllocationNotes,
                 passed = passed,
                 notes = passed ? "Queue enqueue/drop/control/complete paths exercised" : "Queue scenario failed"
             };

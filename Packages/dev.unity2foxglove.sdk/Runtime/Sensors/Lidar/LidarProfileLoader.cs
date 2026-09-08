@@ -30,14 +30,11 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             double scanRateHz, double fovTopDeg, double fovBottomDeg, double minRangeMeters)
         {
             const double degToRad = Math.PI / 180.0;
-            pixelsPerColumn = Math.Max(1, pixelsPerColumn);
-            columnsPerFrame = Math.Max(16, columnsPerFrame);
-            var normalizedScanRateHz = IsFinite(scanRateHz) && scanRateHz > 0
-                ? scanRateHz
-                : 10.0;
-            var normalizedMinRangeMeters = IsFinite(minRangeMeters) && minRangeMeters >= 0
-                ? minRangeMeters
-                : 0.0;
+            if (!LidarGeometryLimits.TryValidate(pixelsPerColumn, columnsPerFrame, out var geometryError))
+                throw new ArgumentOutOfRangeException(nameof(columnsPerFrame), geometryError);
+            LidarGeometryLimits.ValidatePatternScalars(scanRateHz, minRangeMeters);
+            LidarGeometryLimits.ValidateFov(nameof(fovTopDeg), fovTopDeg);
+            LidarGeometryLimits.ValidateFov(nameof(fovBottomDeg), fovBottomDeg);
 
             var altitude = new double[pixelsPerColumn];
             var azimuth = new double[pixelsPerColumn];
@@ -51,20 +48,17 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             return new LidarProfile
             {
                 ProductLine = string.IsNullOrEmpty(productLine) ? "Custom" : productLine,
-                LidarMode = $"{columnsPerFrame}x{(int)Math.Round(normalizedScanRateHz)}",
+                LidarMode = $"{columnsPerFrame}x{(int)Math.Round(scanRateHz)}",
                 PixelsPerColumn = pixelsPerColumn,
                 ColumnsPerFrame = columnsPerFrame,
                 ColumnsPerPacket = 16,
-                ScanRateHz = normalizedScanRateHz,
-                MinRangeMeters = normalizedMinRangeMeters,
+                ScanRateHz = scanRateHz,
+                MinRangeMeters = minRangeMeters,
                 LidarOriginToBeamOriginMeters = 0.03618,
                 BeamAltitudeAngles = altitude,
                 BeamAzimuthAngles = azimuth
             };
         }
-
-        private static bool IsFinite(double value)
-            => !double.IsNaN(value) && !double.IsInfinity(value);
 
         /// <summary>Parse a lidar mode string "&lt;columns&gt;x&lt;rateHz&gt;" (e.g. "1024x10").</summary>
         public static bool TryParseMode(string mode, out int columns, out double rateHz)
@@ -77,6 +71,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out columns)
                 && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out rateHz)
                 && columns > 0
+                && columns <= LidarGeometryLimits.MaxColumns
                 && rateHz > 0
                 && !double.IsNaN(rateHz)
                 && !double.IsInfinity(rateHz);
