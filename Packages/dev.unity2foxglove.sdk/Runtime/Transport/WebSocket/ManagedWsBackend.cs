@@ -75,6 +75,8 @@ namespace Unity.FoxgloveSDK.Transport
         private readonly Dictionary<uint, ClientPublication> _clientPublications =
             new Dictionary<uint, ClientPublication>();
         private int _queuedCapacityResponses;
+        private readonly ConcurrentDictionary<Task, TcpClient> _capacityResponseWorkers =
+            new ConcurrentDictionary<Task, TcpClient>();
 
         private sealed class ClientPublication
         {
@@ -293,6 +295,8 @@ namespace Unity.FoxgloveSDK.Transport
                         _logger.LogError($"Pending WebSocket handshake stop error: {FormatExceptionChain(ex)}");
                     }
                 }
+
+                DrainCapacityResponseWorkers();
             }
             finally
             {
@@ -753,7 +757,14 @@ namespace Unity.FoxgloveSDK.Transport
                 // Capacity responses perform network I/O. Run them away from
                 // the accept loop so a slow peer cannot stop admission for
                 // subsequent connections.
-                _ = Task.Run(() => ProcessRejectedClient(tcpClient));
+                Task worker = null;
+                worker = Task.Run(() => ProcessRejectedClient(tcpClient));
+                _capacityResponseWorkers[worker] = tcpClient;
+                _ = worker.ContinueWith(
+                    completed => _capacityResponseWorkers.TryRemove(completed, out _),
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
             }
             catch (Exception ex)
             {
@@ -780,13 +791,40 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
+        private void DrainCapacityResponseWorkers()
+        {
+            var workers = _capacityResponseWorkers.ToArray();
+            foreach (var pair in workers)
+            {
+                try { pair.Value?.Close(); } catch { }
+                try { pair.Value?.Dispose(); } catch { }
+            }
+
+            if (workers.Length == 0)
+                return;
+
+            try
+            {
+                if (!Task.WaitAll(workers.Select(pair => pair.Key).ToArray(), StopPendingHandshakeWaitMs))
+                    _logger.LogWarning(
+                        $"Capacity response workers did not finish within {StopPendingHandshakeWaitMs}ms during stop.");
+            }
+            catch (AggregateException ex)
+            {
+                _logger.LogError($"Capacity response stop error: {FormatExceptionChain(ex)}");
+            }
+        }
+
         private void ReleasePendingClient(TcpClient tcpClient)
         {
             if (tcpClient == null)
                 return;
 
-            if (_pendingClients.TryRemove(tcpClient, out var completion))
-                completion.TrySetResult(true);
+            lock (_clientAdmissionLock)
+            {
+                if (_pendingClients.TryRemove(tcpClient, out var completion))
+                    completion.TrySetResult(true);
+            }
         }
 
         private bool TryRegisterClient(WsConnection conn, out uint clientId, out bool stopped)
