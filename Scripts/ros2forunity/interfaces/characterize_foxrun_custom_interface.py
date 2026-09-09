@@ -214,10 +214,14 @@ def _temporary_short_workspace_root(request: CharacterizationRequest) -> Iterato
         raise CharacterizationError("provide-short-windows-build-root")
 
     mapped_workspace = Path(mapped_drive + ":\\")
+    primary_error: BaseException | None = None
     try:
         yield physical_workspace, mapped_workspace
+    except BaseException as exc:
+        primary_error = exc
+        raise
     finally:
-        subprocess.run(
+        cleanup = subprocess.run(
             (str(subst), mapped_drive + ":", "/D"),
             shell=False,
             capture_output=True,
@@ -225,6 +229,10 @@ def _temporary_short_workspace_root(request: CharacterizationRequest) -> Iterato
             errors="replace",
             check=False,
         )
+        if primary_error is None and (
+            cleanup.returncode != 0 or Path(mapped_drive + ":\\").exists()
+        ):
+            raise CharacterizationError("cleanup-short-windows-build-root")
 
 
 def build_colcon_command(
