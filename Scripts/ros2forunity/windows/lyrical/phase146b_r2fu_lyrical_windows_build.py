@@ -113,6 +113,35 @@ def default_ros2_root(distro: str) -> pathlib.Path:
     return find_repo_root(pathlib.Path.cwd()) / "ros2-windows" / f"ros2_{distro}"
 
 
+
+def resolve_tool(tool: str, env: dict[str, str]) -> str:
+    """Resolve a trusted system tool without accepting inherited PATH shims."""
+    candidates = []
+    if tool == "git":
+        candidates.extend([
+            pathlib.Path(os.environ.get("ProgramFiles", r"C:\\Program Files")) / "Git" / "cmd" / "git.exe",
+            pathlib.Path(os.environ.get("ProgramFiles", r"C:\\Program Files")) / "Git" / "bin" / "git.exe",
+        ])
+    elif tool == "powershell":
+        candidates.append(pathlib.Path(os.environ.get("SystemRoot", r"C:\\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe")
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate.resolve())
+    resolved = shutil.which(tool, path=env.get("Path") or env.get("PATH"))
+    if resolved and pathlib.Path(resolved).is_file():
+        return str(pathlib.Path(resolved).resolve())
+    raise Phase160Error("BLOCKED_UNKNOWN_TOOLCHAIN", f"Trusted {tool} executable was not found")
+
+
+def record_checkout_identity(checkout: pathlib.Path, env: dict[str, str], log_file: pathlib.Path) -> None:
+    """Attest the exact resolved source commit and tree in the build log."""
+    for label, revision in (("R2FU_COMMIT", "HEAD"), ("R2FU_TREE", "HEAD^{tree}")):
+        result = run_command(
+            [resolve_tool("git", env), "rev-parse", revision],
+            cwd=checkout, env=env, log_file=log_file, check=True)
+        with log_file.open("a", encoding="utf-8") as log:
+            log.write(f"{label}={result.output.strip()}\n")
+
 def is_relative_to(path: pathlib.Path, parent: pathlib.Path) -> bool:
     """Return whether path is inside parent."""
 
@@ -489,7 +518,7 @@ def capture_ros2_environment(ros2_root: pathlib.Path, env: dict[str, str], log_f
         raise Phase146BError("BLOCKED_PYTHON_SELECTION", f"ROS2 local_setup.ps1 was not found: {setup}")
     command = f"& '{setup}'; Get-ChildItem Env: | ForEach-Object {{ \"$($_.Name)=$($_.Value)\" }}"
     result = run_command(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        [resolve_tool("powershell", env), "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
         cwd=ros2_root,
         env=env,
         log_file=log_file,
@@ -597,10 +626,10 @@ def ensure_r2fu_checkout(work_root: pathlib.Path, env: dict[str, str], log_file:
     if clean and checkout.exists():
         remove_known_subdir(checkout, work_root)
     if not checkout.exists():
-        run_command(["git", "clone", R2FU_REPO_URL, str(checkout)], cwd=work_root, env=env, log_file=log_file, check=True)
-    run_command(["git", "fetch", "origin"], cwd=checkout, env=env, log_file=log_file, check=True)
+        run_command([resolve_tool("git", env), "clone", R2FU_REPO_URL, str(checkout)], cwd=work_root, env=env, log_file=log_file, check=True)
+    run_command([resolve_tool("git", env), "fetch", "origin"], cwd=checkout, env=env, log_file=log_file, check=True)
     run_command(
-        ["git", "switch", "-C", R2FU_BRANCH, f"origin/{R2FU_BRANCH}"],
+        [resolve_tool("git", env), "switch", "-C", R2FU_BRANCH, f"origin/{R2FU_BRANCH}"],
         cwd=checkout,
         env=env,
         log_file=log_file,
@@ -610,15 +639,16 @@ def ensure_r2fu_checkout(work_root: pathlib.Path, env: dict[str, str], log_file:
     ros2cs = checkout / "src" / "ros2cs"
     if not ros2cs.exists():
         ensure_dir(checkout / "src")
-        run_command(["git", "clone", ROS2CS_REPO_URL, str(ros2cs)], cwd=checkout / "src", env=env, log_file=log_file, check=True)
-    run_command(["git", "fetch", "origin"], cwd=ros2cs, env=env, log_file=log_file, check=True)
+        run_command([resolve_tool("git", env), "clone", ROS2CS_REPO_URL, str(ros2cs)], cwd=checkout / "src", env=env, log_file=log_file, check=True)
+    run_command([resolve_tool("git", env), "fetch", "origin"], cwd=ros2cs, env=env, log_file=log_file, check=True)
     run_command(
-        ["git", "switch", "-C", ROS2CS_BRANCH, f"origin/{ROS2CS_BRANCH}"],
+        [resolve_tool("git", env), "switch", "-C", ROS2CS_BRANCH, f"origin/{ROS2CS_BRANCH}"],
         cwd=ros2cs,
         env=env,
         log_file=log_file,
         check=True,
     )
+    record_checkout_identity(checkout, env, log_file)
     return checkout
 
 
@@ -681,7 +711,7 @@ def run_lyrical_dependency_import(checkout: pathlib.Path, env: dict[str, str], l
     if not get_repos.exists():
         raise Phase146BError("BLOCKED_ROS2CS_BUILD", f"Missing upstream get_repos.ps1: {get_repos}")
     result = run_command(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(get_repos)],
+        [resolve_tool("powershell", env), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(get_repos)],
         cwd=ros2cs,
         env=env,
         log_file=log_file,
@@ -757,7 +787,7 @@ def deploy_asset_from_successful_colcon(
     deploy = checkout / "deploy_unity_plugins.ps1"
     plugin_path = asset / "Plugins"
     result = run_command(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(deploy), str(plugin_path)],
+        [resolve_tool("powershell", env), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(deploy), str(plugin_path)],
         cwd=checkout,
         env=env,
         log_file=log_file,
@@ -835,7 +865,7 @@ def run_upstream_build(
     if not build_script.exists():
         raise Phase146BError("BLOCKED_R2FU_BUILD_SCRIPT", f"Missing upstream build.ps1: {build_script}")
     result = run_command(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(build_script), "-standalone", "-clean_install"],
+        [resolve_tool("powershell", env), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(build_script), "-standalone", "-clean_install"],
         cwd=checkout,
         env=env,
         log_file=log_file,
