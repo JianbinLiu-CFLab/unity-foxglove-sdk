@@ -191,6 +191,7 @@ class CustomTypesupportSyncTests(unittest.TestCase):
             original_copy2 = sync_module.shutil.copy2
 
             def fail_staging_copy(source, destination, *args, **kwargs):
+                """Inject one staging-copy failure while preserving other copies."""
                 if "sync" + str(Path("/")) + "package" in str(destination):
                     raise OSError("INJECTED_STAGING_FAILURE")
                 return original_copy2(source, destination, *args, **kwargs)
