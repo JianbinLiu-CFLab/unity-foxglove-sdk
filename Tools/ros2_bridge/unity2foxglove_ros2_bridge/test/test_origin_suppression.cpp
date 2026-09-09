@@ -77,7 +77,12 @@ Arguments parse_arguments(int argc, char ** argv)
     } else if (option == "--payload-hex") {
       result.payload = parse_hex(next());
     } else if (option == "--timeout-ms") {
-      const auto parsed = std::stoll(next());
+      const auto token = next();
+      std::size_t consumed = 0U;
+      const auto parsed = std::stoll(token, &consumed);
+      if (consumed != token.size()) {
+        throw std::invalid_argument("--timeout-ms must be a whole number of milliseconds");
+      }
       if (parsed <= 0 || parsed > 120000) {
         throw std::invalid_argument("--timeout-ms must be in [1, 120000]");
       }
@@ -116,6 +121,15 @@ rclcpp::SerializedMessage serialized(const std::vector<std::uint8_t> & payload)
 bool same_gid(const rmw_gid_t & left, const rmw_gid_t & right)
 {
   return std::memcmp(left.data, right.data, RMW_GID_STORAGE_SIZE) == 0;
+}
+
+bool payload_matches(
+  const rclcpp::SerializedMessage & message,
+  const std::vector<std::uint8_t> & expected)
+{
+  const auto & raw = message.get_rcl_serialized_message();
+  return raw.buffer_length == expected.size() &&
+         (expected.empty() || std::memcmp(raw.buffer, expected.data(), expected.size()) == 0);
 }
 
 template<typename Predicate>
@@ -240,7 +254,7 @@ int run_subscriber(const Arguments & arguments)
       const bool matches_local = same_gid(
         local_publisher->get_gid(),
         info.get_rmw_message_info().publisher_gid);
-      if (!matches_local) {
+      if (!matches_local && payload_matches(taken, arguments.payload)) {
         external_seen = true;
         external_gid_matched = false;
       }
@@ -250,7 +264,8 @@ int run_subscriber(const Arguments & arguments)
     if (external_only_subscription->take_serialized(external_only, external_info)) {
       if (!same_gid(
           local_publisher->get_gid(),
-          external_info.get_rmw_message_info().publisher_gid))
+          external_info.get_rmw_message_info().publisher_gid) &&
+          payload_matches(external_only, arguments.payload))
       {
         ignore_local_saw_external = true;
       }
