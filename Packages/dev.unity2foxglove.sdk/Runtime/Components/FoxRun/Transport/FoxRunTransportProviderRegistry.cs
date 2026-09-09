@@ -341,31 +341,45 @@ namespace Unity.FoxgloveSDK.Components
 
             IFoxRunTransportProvider[] publishProviders;
             IFoxRunTransportProvider subscribeProvider = null;
-            lock (_gate)
+            try
             {
-                publishProviders = new IFoxRunTransportProvider[
-                    selection.PublishTransportIds.Count];
-                for (var i = 0; i < publishProviders.Length; i++)
+                lock (_gate)
                 {
-                    var id = selection.PublishTransportIds[i];
-                    var resolution = ResolveLocked(id, FoxRunTransportCapabilities.Publish);
-                    if (!TryMapResolution(resolution, id, out publishProviders[i], out failure))
+                    publishProviders = new IFoxRunTransportProvider[
+                        selection.PublishTransportIds.Count];
+                    for (var i = 0; i < publishProviders.Length; i++)
                     {
-                        snapshot = null;
-                        return false;
+                        var id = selection.PublishTransportIds[i];
+                        var resolution = ResolveLocked(id, FoxRunTransportCapabilities.Publish);
+                        if (!TryMapResolution(resolution, id, out publishProviders[i], out failure))
+                        {
+                            snapshot = null;
+                            return false;
+                        }
                     }
-                }
 
-                if (selection.SubscriptionsEnabled)
-                {
-                    var id = selection.SubscribeTransportId.Value;
-                    var resolution = ResolveLocked(id, FoxRunTransportCapabilities.Subscribe);
-                    if (!TryMapResolution(resolution, id, out subscribeProvider, out failure))
+                    if (selection.SubscriptionsEnabled)
                     {
-                        snapshot = null;
-                        return false;
+                        var id = selection.SubscribeTransportId.Value;
+                        var resolution = ResolveLocked(id, FoxRunTransportCapabilities.Subscribe);
+                        if (!TryMapResolution(resolution, id, out subscribeProvider, out failure))
+                        {
+                            snapshot = null;
+                            return false;
+                        }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                // Provider metadata is external code; contain failures before
+                // entering the session-acquisition phase.
+                failure = new FoxRunTransportSessionCaptureError(
+                    FoxRunTransportSessionCaptureFailure.ProviderFailed,
+                    default,
+                    ex.Message);
+                snapshot = null;
+                return false;
             }
 
             var uniqueProviders = new List<IFoxRunTransportProvider>();
