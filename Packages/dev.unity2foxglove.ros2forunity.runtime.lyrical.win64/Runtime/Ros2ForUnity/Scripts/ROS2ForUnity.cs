@@ -611,7 +611,16 @@ internal class ROS2ForUnity : IDisposable
 
             // Initialize
             ConnectLoggers();
-            Ros2cs.Init();
+            Ros2ForUnityNativePluginBootstrap.SealNativeLibraryRegistration();
+            try
+            {
+                Ros2cs.Init();
+            }
+            catch
+            {
+                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
+                throw;
+            }
             try
             {
                 RegisterCtrlCHandler();
@@ -753,6 +762,7 @@ internal class ROS2ForUnity : IDisposable
                 referenceCount = 0;
                 shutdownInProgress = false;
                 UnregisterCtrlCHandlerStatic();
+                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
             }
         }
     }

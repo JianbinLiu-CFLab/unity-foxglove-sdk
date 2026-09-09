@@ -627,12 +627,14 @@ internal class ROS2ForUnity
                 try
                 {
                     ConnectLoggers();
+                    Ros2ForUnityNativePluginBootstrap.SealNativeLibraryRegistration();
                     Ros2cs.Init();
                     isInitialized = true;
                     initializedThisInstance = true;
                 }
                 catch
                 {
+                    Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
                     ownerCount = Math.Max(0, ownerCount - 1);
                     ownsLifecycle = false;
                     throw;
@@ -710,6 +712,7 @@ internal class ROS2ForUnity
             ROS2UnityComponent.StopAllExecutorsForRosShutdown();
             SuppressRos2csFinalizer();
             Ros2cs.Shutdown();
+            Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
         }
     }
 
