@@ -485,6 +485,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void CompleteStopSynchronously()
         {
+            // An admitted external copy/apply owns its value until its
+            // callback returns.  Leave the stop request pending so the last
+            // callback's finally block can become the drain owner instead of
+            // spinning the caller indefinitely behind user code.
+            if (Volatile.Read(ref _activePublishers) != 0
+                || Volatile.Read(ref _activeAppliers) != 0)
+                return;
+
             var spinner = new SpinWait();
             while (true)
             {
