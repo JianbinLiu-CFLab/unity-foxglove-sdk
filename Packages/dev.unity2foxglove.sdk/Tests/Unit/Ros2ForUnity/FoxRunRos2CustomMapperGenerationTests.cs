@@ -569,7 +569,7 @@ namespace UnityEngine.Scripting
 }
 namespace Phase181
 {
-    public enum StateKind { Zero = 0, One = 1, Two = 2 }
+    public enum StateKind : ushort { Zero = 0, One = 1, Two = 2 }
     public sealed class NestedState
     {
         public bool Enabled { get; set; }
@@ -591,7 +591,7 @@ namespace Phase181
 }
 namespace Phase184
 {
-    public enum OptionalKind { Zero = 0, One = 1, Two = 2 }
+    public enum OptionalKind : ushort { Zero = 0, One = 1, Two = 2 }
     public sealed class OtherState
     {
         public global::Phase181.NestedState[] Children { get; set; }
