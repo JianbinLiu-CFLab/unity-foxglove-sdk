@@ -379,7 +379,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 foreach (var provider in uniqueProviders)
                 {
-                    IFoxRunTransportSession session;
+                    IFoxRunTransportSession session = null;
                     string reason;
                     try
                     {
@@ -392,6 +392,8 @@ namespace Unity.FoxgloveSDK.Components
                                 string.IsNullOrWhiteSpace(reason)
                                     ? "Provider rejected session capture."
                                     : reason);
+                            if (session != null)
+                                DisposeCaptured(new[] { session });
                             DisposeCaptured(captured.Values);
                             snapshot = null;
                             return false;
@@ -399,6 +401,8 @@ namespace Unity.FoxgloveSDK.Components
                     }
                     catch (Exception ex)
                     {
+                        if (session != null)
+                            DisposeCaptured(new[] { session });
                         failure = new FoxRunTransportSessionCaptureError(
                             FoxRunTransportSessionCaptureFailure.ProviderFailed,
                             provider.Id,
@@ -408,11 +412,23 @@ namespace Unity.FoxgloveSDK.Components
                         return false;
                     }
 
-                    if (session.Id != provider.Id
-                        || session.Generation != generation
-                        || (session.Capabilities & provider.Capabilities) != provider.Capabilities)
+                    bool mismatched;
+                    try
                     {
-                        session.Dispose();
+                        mismatched = session.Id != provider.Id
+                            || session.Generation != generation
+                            || (session.Capabilities & provider.Capabilities) != provider.Capabilities;
+                    }
+                    catch
+                    {
+                        // Ownership begins as soon as a provider returns a
+                        // non-null session; contain hostile metadata getters.
+                        DisposeCaptured(new[] { session });
+                        throw;
+                    }
+                    if (mismatched)
+                    {
+                        DisposeCaptured(new[] { session });
                         failure = new FoxRunTransportSessionCaptureError(
                             FoxRunTransportSessionCaptureFailure.ProviderFailed,
                             provider.Id,
