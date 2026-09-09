@@ -613,9 +613,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 _dispose(owned);
             }
-            catch
+            catch (Exception exception)
             {
-                // Preserve the apply exception that initiated candidate cleanup.
+                // Fatal runtime failures must remain supervisory signals;
+                // only recoverable cleanup faults stay best-effort.
+                if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                    ExceptionDispatchInfo.Capture(exception).Throw();
             }
         }
 
@@ -625,11 +628,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 clearIfOwned(owned);
             }
-            catch
+            catch (Exception exception)
             {
-                // Clearing is best effort; ownership still has to terminate.
+                // Fatal runtime failures must escape instead of being erased
+                // by a best-effort ownership clear.
+                if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                    ExceptionDispatchInfo.Capture(exception).Throw();
             }
         }
     }
 }
 #endif
+
