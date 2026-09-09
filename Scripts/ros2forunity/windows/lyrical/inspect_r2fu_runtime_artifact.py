@@ -243,7 +243,11 @@ def main(argv: list[str]) -> int:
     except Exception as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return EXIT_FAILURE
-    print(f"[PASS] wrote {paths.output.relative_to(ROOT)}")
+    try:
+        display_output = paths.output.relative_to(ROOT)
+    except ValueError:
+        display_output = paths.output
+    print(f"[PASS] wrote {display_output}")
     print(f"[PASS] files={inventory['fileCount']} sha256={inventory['sha256']}")
     return EXIT_SUCCESS
 
