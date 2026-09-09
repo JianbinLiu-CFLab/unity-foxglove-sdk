@@ -64,12 +64,15 @@ namespace Unity.FoxgloveSDK.Editor
             var check = arguments.Any(argument => string.Equals(argument, "--check", StringComparison.Ordinal));
             var generate = arguments.Any(argument => string.Equals(argument, "--generate", StringComparison.Ordinal));
             var nextRevision = ReadOption(arguments, "--next-revision");
-            if (arguments.Any(argument => string.Equals(argument, "--next-revision", StringComparison.Ordinal))
-                && string.IsNullOrEmpty(nextRevision))
+            var nextRevisionOptionCount = arguments.Count(argument =>
+                string.Equals(argument, "--next-revision", StringComparison.Ordinal));
+            if (nextRevisionOptionCount > 1
+                || (nextRevisionOptionCount == 1
+                    && string.IsNullOrEmpty(nextRevision)))
             {
-                var exitCode = ReportArgumentError("--next-revision requires a value.");
+                var argumentErrorCode = ReportArgumentError("--next-revision requires a value.");
                 if (Application.isBatchMode)
-                    EditorApplication.Exit(exitCode);
+                    EditorApplication.Exit(argumentErrorCode);
                 return;
             }
             var exitCode = check == generate

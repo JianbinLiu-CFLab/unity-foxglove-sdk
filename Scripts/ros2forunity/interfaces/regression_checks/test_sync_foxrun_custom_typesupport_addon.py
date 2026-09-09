@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from Scripts.test_support.phase181_scratch import temporary_directory
@@ -23,6 +24,7 @@ from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
 from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon import (
     MANAGED_ASSEMBLY_FILE,
 )
+import Scripts.ros2forunity.interfaces.sync_foxrun_custom_typesupport_addon as sync_module
 
 
 class CustomTypesupportSyncTests(unittest.TestCase):
@@ -152,6 +154,54 @@ class CustomTypesupportSyncTests(unittest.TestCase):
                 ).is_file()
             )
             self.assertTrue(generated_meta.is_file())
+
+    def test_sync_restores_legacy_payload_when_preflight_rejects_target(self) -> None:
+        """A target validation failure must not leave legacy payload deleted."""
+        with self._fixture(validated=True) as fixture:
+            legacy = (
+                fixture.target
+                / "Runtime/Ros2ForUnity/Plugins/Windows/x86_64"
+                / MANAGED_ASSEMBLY_FILE
+            )
+            legacy.parent.mkdir(parents=True)
+            legacy.write_bytes(b"legacy")
+            legacy.with_name(legacy.name + ".meta").write_text("legacy meta\n", encoding="utf-8")
+            unexpected = fixture.target / "unexpected.bin"
+            unexpected.write_bytes(b"unexpected")
+
+            with self.assertRaisesRegex(AddonSyncError, "remove-stale-addon-payload-before-sync"):
+                sync_addon(fixture.request, validator=lambda _request: None)
+
+            self.assertEqual(b"legacy", legacy.read_bytes())
+            self.assertEqual("legacy meta\n", legacy.with_name(legacy.name + ".meta").read_text(encoding="utf-8"))
+            self.assertEqual(b"unexpected", unexpected.read_bytes())
+
+    def test_sync_restores_legacy_payload_when_staging_copy_fails(self) -> None:
+        """A staging copy failure must restore the target snapshot as well."""
+        with self._fixture(validated=True) as fixture:
+            legacy = (
+                fixture.target
+                / "Runtime/Ros2ForUnity/Plugins/Windows/x86_64"
+                / MANAGED_ASSEMBLY_FILE
+            )
+            legacy.parent.mkdir(parents=True)
+            legacy.write_bytes(b"legacy")
+            legacy.with_name(legacy.name + ".meta").write_text("legacy meta\n", encoding="utf-8")
+
+            original_copy2 = sync_module.shutil.copy2
+
+            def fail_staging_copy(source, destination, *args, **kwargs):
+                """Inject one staging-copy failure while preserving other copies."""
+                if "sync" + str(Path("/")) + "package" in str(destination):
+                    raise OSError("INJECTED_STAGING_FAILURE")
+                return original_copy2(source, destination, *args, **kwargs)
+
+            with mock.patch.object(sync_module.shutil, "copy2", side_effect=fail_staging_copy):
+                with self.assertRaisesRegex(OSError, "INJECTED_STAGING_FAILURE"):
+                    sync_addon(fixture.request, validator=lambda _request: None)
+
+            self.assertEqual(b"legacy", legacy.read_bytes())
+            self.assertEqual("legacy meta\n", legacy.with_name(legacy.name + ".meta").read_text(encoding="utf-8"))
 
     def _fixture(self, *, validated: bool = False) -> "_Fixture":
         """Implement the internal fixture step."""

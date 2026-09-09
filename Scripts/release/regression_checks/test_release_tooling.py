@@ -1389,6 +1389,48 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual(2, context.exception.code)
         self.assertIn("--skip-analyzer cannot be combined with --only analyzer", stderr.getvalue())
 
+    def test_foxrun_command_rejects_duplicate_next_revision_options(self) -> None:
+        """The FoxRun command must reject every duplicate --next-revision occurrence."""
+        source = (
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Editor"
+            / "Native"
+            / "FoxRun"
+            / "FoxRunRos2InterfacePackageCommand.cs"
+        ).read_text(encoding="utf-8")
+        self.assertIn("nextRevisionOptionCount", source)
+        self.assertIn("nextRevisionOptionCount > 1", source)
+
+    def test_foxrun_command_has_no_exit_code_local_shadowing(self) -> None:
+        """The batch argument error path must compile without local-name shadowing."""
+        source = (
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Editor"
+            / "Native"
+            / "FoxRun"
+            / "FoxRunRos2InterfacePackageCommand.cs"
+        ).read_text(encoding="utf-8")
+        self.assertIn("var argumentErrorCode = ReportArgumentError", source)
+        self.assertNotIn("var exitCode = ReportArgumentError", source)
+
+    def test_all_ros2forunity_inspectors_handle_external_output_paths(self) -> None:
+        """Every maintained distro inspector must report external outputs without raising."""
+        for distro in ("humble", "jazzy", "lyrical"):
+            source = (
+                ROOT
+                / "Scripts"
+                / "ros2forunity"
+                / "windows"
+                / distro
+                / "inspect_r2fu_runtime_artifact.py"
+            ).read_text(encoding="utf-8")
+            self.assertIn("display_output", source)
+            self.assertIn("except ValueError", source)
+
     def test_empty_ci_result_summary_is_non_pass(self) -> None:
         """An aggregate with no executed lanes must fail instead of vacuously passing."""
         with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
