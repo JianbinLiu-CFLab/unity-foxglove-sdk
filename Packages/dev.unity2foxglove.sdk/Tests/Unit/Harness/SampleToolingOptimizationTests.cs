@@ -311,7 +311,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var writeAccessUnit = TestSources.Slice(openh264, "bool WriteAccessUnit", "int main");
             var openh264Main = TestSources.Slice(openh264, "int main(int argc, char** argv)", "    if (exitCode == 0)");
             var draco = TestSources.Text("Scripts/native/draco_probe/draco_probe_encoder.cpp");
-            var processOneFrame = TestSources.Slice(draco, "bool ProcessOneFrame", "}  // namespace");
+            var processOneFrame = TestSources.Slice(draco, "ReadStatus ProcessOneFrame", "}  // namespace");
             var dracoMain = TestSources.Slice(draco, "int main()", "  return 0;");
             var coupling = TestSources.Text("Scripts/architecture/analyze_coupling.py");
             var cycles = TestSources.Slice(coupling, "def find_asmdef_cycles", "def find_default_test_private_references");
@@ -334,7 +334,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("std::vector<uint8_t> accessUnit;", writeAccessUnit, StringComparison.Ordinal);
             Assert.Contains("std::vector<uint8_t> accessUnit;", openh264Main, StringComparison.Ordinal);
             Assert.Contains("if (!WriteAccessUnit(info, accessUnit))", openh264Main, StringComparison.Ordinal);
-            Assert.Contains("bool ProcessOneFrame(std::vector<float>* xyz)", draco, StringComparison.Ordinal);
+            Assert.Contains("ReadStatus ProcessOneFrame(std::vector<float>* xyz)", draco, StringComparison.Ordinal);
             Assert.Contains("xyz->resize(float_count);", processOneFrame, StringComparison.Ordinal);
             Assert.Contains("ReadExact(reinterpret_cast<char*>(xyz->data())", processOneFrame, StringComparison.Ordinal);
             Assert.Contains("EncodePointCloud(*xyz, point_count, &buffer)", processOneFrame, StringComparison.Ordinal);
@@ -443,3 +443,4 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
     }
 }
+
