@@ -148,8 +148,12 @@ namespace Unity.FoxgloveSDK.Components
                     out var selectionReason))
             {
                 var configuredId = default(FoxRunTransportId);
+                var configuredText = _enableFoxRunInbound
+                    ? _foxRunSubscribeTransportId
+                    : (_foxRunPublishTransportIds ?? Array.Empty<string>())
+                        .FirstOrDefault();
                 FoxRunTransportId.TryCreate(
-                    _foxRunSubscribeTransportId,
+                    configuredText,
                     out configuredId);
                 return ReportFoxRunTransportSessionCaptureFailure(
                     new FoxRunTransportSessionCaptureError(
