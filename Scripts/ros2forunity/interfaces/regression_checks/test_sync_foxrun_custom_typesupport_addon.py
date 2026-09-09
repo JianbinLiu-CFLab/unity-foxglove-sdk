@@ -153,6 +153,27 @@ class CustomTypesupportSyncTests(unittest.TestCase):
             )
             self.assertTrue(generated_meta.is_file())
 
+    def test_sync_restores_legacy_payload_when_preflight_rejects_target(self) -> None:
+        """A target validation failure must not leave legacy payload deleted."""
+        with self._fixture(validated=True) as fixture:
+            legacy = (
+                fixture.target
+                / "Runtime/Ros2ForUnity/Plugins/Windows/x86_64"
+                / MANAGED_ASSEMBLY_FILE
+            )
+            legacy.parent.mkdir(parents=True)
+            legacy.write_bytes(b"legacy")
+            legacy.with_name(legacy.name + ".meta").write_text("legacy meta\n", encoding="utf-8")
+            unexpected = fixture.target / "unexpected.bin"
+            unexpected.write_bytes(b"unexpected")
+
+            with self.assertRaisesRegex(AddonSyncError, "remove-stale-addon-payload-before-sync"):
+                sync_addon(fixture.request, validator=lambda _request: None)
+
+            self.assertEqual(b"legacy", legacy.read_bytes())
+            self.assertEqual("legacy meta\n", legacy.with_name(legacy.name + ".meta").read_text(encoding="utf-8"))
+            self.assertEqual(b"unexpected", unexpected.read_bytes())
+
     def _fixture(self, *, validated: bool = False) -> "_Fixture":
         """Implement the internal fixture step."""
         return _Fixture(validated=validated)

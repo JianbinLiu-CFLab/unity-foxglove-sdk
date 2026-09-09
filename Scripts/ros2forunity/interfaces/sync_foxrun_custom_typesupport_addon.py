@@ -228,6 +228,14 @@ def _remove_legacy_platform_managed_assembly(target: Path, allowed: Sequence[str
         legacy_meta.unlink()
 
 
+def _restore_target_backup(target: Path, backup: Path) -> None:
+    """Restore the target snapshot after any destructive sync-stage failure."""
+    if target.exists():
+        shutil.rmtree(target)
+    if backup.exists():
+        shutil.copytree(backup, target, dirs_exist_ok=True)
+
+
 def sync_addon(
     request: AddonSyncRequest,
     *,
@@ -243,9 +251,13 @@ def sync_addon(
         shutil.rmtree(backup)
     if target.exists():
         shutil.copytree(target, backup, dirs_exist_ok=True)
-    _remove_legacy_platform_managed_assembly(target, allowed)
-    if not _target_has_only_expected_payload(target, allowed):
-        raise AddonSyncError("remove-stale-addon-payload-before-sync")
+    try:
+        _remove_legacy_platform_managed_assembly(target, allowed)
+        if not _target_has_only_expected_payload(target, allowed):
+            raise AddonSyncError("remove-stale-addon-payload-before-sync")
+    except Exception:
+        _restore_target_backup(target, backup)
+        raise
 
     staging = _candidate_root(request) / "sync" / "package"
     if staging.exists():
@@ -266,9 +278,7 @@ def sync_addon(
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
     except Exception:
-        shutil.rmtree(target)
-        if backup.exists():
-            shutil.copytree(backup, target, dirs_exist_ok=True)
+        _restore_target_backup(target, backup)
         raise
     return target
 
