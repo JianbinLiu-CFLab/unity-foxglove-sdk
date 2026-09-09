@@ -144,6 +144,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     AddUnsupported(path, "Custom ROS2 DTO sequences cannot contain nullable elements.", diagnostics);
                     return;
                 }
+                if (sequenceElement.IsReferenceType)
+                {
+                    AddUnsupported(path, "Custom ROS2 DTO sequences cannot contain reference elements without per-element presence.", diagnostics);
+                    return;
+                }
 
                 var sequenceRosType = RosType(sequenceElement, path, stack, diagnostics, out var nestedShape);
                 if (string.IsNullOrEmpty(sequenceRosType))
