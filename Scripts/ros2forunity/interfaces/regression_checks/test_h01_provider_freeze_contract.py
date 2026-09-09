@@ -1,0 +1,8 @@
+from pathlib import Path
+import unittest
+ROOT=Path(__file__).resolve().parents[4]
+SRC=ROOT/'Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Transport/FoxRunTransportProviderRegistry.cs'
+class H01ProviderFreezeTests(unittest.TestCase):
+ def test_registration_freezes_id_and_capabilities(self):
+  t=SRC.read_text(encoding='utf-8'); self.assertIn('RegisteredProvider',t); self.assertIn('private readonly Dictionary<IFoxRunTransportProvider, RegisteredProvider>',t); self.assertIn('public FoxRunTransportId Id { get; }',t)
+if __name__=='__main__': unittest.main()

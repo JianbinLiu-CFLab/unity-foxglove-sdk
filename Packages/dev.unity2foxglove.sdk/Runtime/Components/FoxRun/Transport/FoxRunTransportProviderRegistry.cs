@@ -270,26 +270,30 @@ namespace Unity.FoxgloveSDK.Components
         private readonly object _gate = new object();
         private readonly Dictionary<FoxRunTransportId, List<IFoxRunTransportProvider>>
             _providers = new Dictionary<FoxRunTransportId, List<IFoxRunTransportProvider>>();
+        private readonly Dictionary<IFoxRunTransportProvider, RegisteredProvider>
+            _registeredProviders = new Dictionary<IFoxRunTransportProvider, RegisteredProvider>(
+                ReferenceIdentityComparer<IFoxRunTransportProvider>.Instance);
 
         public FoxRunTransportRegistrationResult Register(IFoxRunTransportProvider provider)
         {
             if (provider == null)
                 throw new ArgumentNullException(nameof(provider));
-            _ = new FoxRunTransportId(provider.Id.Value);
-            ValidateCapabilities(provider.Capabilities);
+            var id = new FoxRunTransportId(provider.Id.Value);
+            var capabilities = provider.Capabilities;
+            ValidateCapabilities(capabilities);
+            var registered = new RegisteredProvider(provider, id, capabilities);
 
             lock (_gate)
             {
-                if (!_providers.TryGetValue(provider.Id, out var instances))
+                if (_registeredProviders.ContainsKey(provider))
+                    return FoxRunTransportRegistrationResult.AlreadyRegistered;
+                if (!_providers.TryGetValue(id, out var instances))
                 {
                     instances = new List<IFoxRunTransportProvider>(1);
-                    _providers.Add(provider.Id, instances);
+                    _providers.Add(id, instances);
                 }
-
-                if (instances.Any(candidate => ReferenceEquals(candidate, provider)))
-                    return FoxRunTransportRegistrationResult.AlreadyRegistered;
-
-                instances.Add(provider);
+                _registeredProviders.Add(provider, registered);
+                instances.Add(registered);
                 return instances.Count == 1
                     ? FoxRunTransportRegistrationResult.Added
                     : FoxRunTransportRegistrationResult.Conflict;
@@ -303,20 +307,27 @@ namespace Unity.FoxgloveSDK.Components
 
             lock (_gate)
             {
-                if (!_providers.TryGetValue(provider.Id, out var instances))
+                if (!_registeredProviders.TryGetValue(provider, out var registered))
                     return false;
+                var id = registered.Id;
+                if (!_providers.TryGetValue(id, out var instances))
+                {
+                    _registeredProviders.Remove(provider);
+                    return false;
+                }
 
                 var removed = false;
                 for (var i = instances.Count - 1; i >= 0; i--)
                 {
-                    if (!ReferenceEquals(instances[i], provider))
+                    if (!ReferenceEquals(instances[i], registered))
                         continue;
                     instances.RemoveAt(i);
                     removed = true;
                 }
 
                 if (instances.Count == 0)
-                    _providers.Remove(provider.Id);
+                    _providers.Remove(id);
+                _registeredProviders.Remove(provider);
                 return removed;
             }
         }
@@ -586,6 +597,35 @@ namespace Unity.FoxgloveSDK.Components
             if (capability != FoxRunTransportCapabilities.Publish
                 && capability != FoxRunTransportCapabilities.Subscribe)
                 throw new ArgumentOutOfRangeException(nameof(capability));
+        }
+
+        private sealed class RegisteredProvider : IFoxRunTransportProvider
+        {
+            private readonly IFoxRunTransportProvider _inner;
+
+            internal RegisteredProvider(
+                IFoxRunTransportProvider inner,
+                FoxRunTransportId id,
+                FoxRunTransportCapabilities capabilities)
+            {
+                _inner = inner;
+                Id = id;
+                Capabilities = capabilities;
+            }
+
+            public FoxRunTransportId Id { get; }
+            public FoxRunTransportCapabilities Capabilities { get; }
+            public FoxRunTransportLifecycleState LifecycleState
+                => _inner.LifecycleState;
+
+            public bool TryCaptureSession(
+                ulong generation,
+                out IFoxRunTransportSession session,
+                out string reason)
+                => _inner.TryCaptureSession(
+                    generation,
+                    out session,
+                    out reason);
         }
 
         private sealed class ReferenceIdentityComparer<T> : IEqualityComparer<T>
