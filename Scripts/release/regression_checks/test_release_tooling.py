@@ -1403,6 +1403,20 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("nextRevisionOptionCount", source)
         self.assertIn("nextRevisionOptionCount > 1", source)
 
+    def test_foxrun_command_has_no_exit_code_local_shadowing(self) -> None:
+        """The batch argument error path must compile without local-name shadowing."""
+        source = (
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Editor"
+            / "Native"
+            / "FoxRun"
+            / "FoxRunRos2InterfacePackageCommand.cs"
+        ).read_text(encoding="utf-8")
+        self.assertIn("var argumentErrorCode = ReportArgumentError", source)
+        self.assertNotIn("var exitCode = ReportArgumentError", source)
+
     def test_all_ros2forunity_inspectors_handle_external_output_paths(self) -> None:
         """Every maintained distro inspector must report external outputs without raising."""
         for distro in ("humble", "jazzy", "lyrical"):

@@ -70,9 +70,9 @@ namespace Unity.FoxgloveSDK.Editor
                 || (nextRevisionOptionCount == 1
                     && string.IsNullOrEmpty(nextRevision)))
             {
-                var exitCode = ReportArgumentError("--next-revision requires a value.");
+                var argumentErrorCode = ReportArgumentError("--next-revision requires a value.");
                 if (Application.isBatchMode)
-                    EditorApplication.Exit(exitCode);
+                    EditorApplication.Exit(argumentErrorCode);
                 return;
             }
             var exitCode = check == generate
