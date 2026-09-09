@@ -204,21 +204,25 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         private static IEnumerable<ISymbol> PublicInstanceMembers(INamedTypeSymbol type)
         {
-            foreach (var member in type.GetMembers())
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var current = type; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+            foreach (var member in current.GetMembers())
             {
                 if (member is IFieldSymbol field
                     && !field.IsStatic
                     && !field.IsConst
                     && field.DeclaredAccessibility == Accessibility.Public)
                 {
-                    yield return field;
+                    if (seen.Add(field.Name))
+                        yield return field;
                 }
                 else if (member is IPropertySymbol property
                          && !property.IsStatic
                          && !property.IsIndexer
                          && property.DeclaredAccessibility == Accessibility.Public)
                 {
-                    yield return property;
+                    if (seen.Add(property.Name))
+                        yield return property;
                 }
             }
         }

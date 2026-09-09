@@ -182,16 +182,23 @@ namespace Unity.FoxgloveSDK.Editor
         private static IEnumerable<ReflectedMember> PublicInstanceMembers(Type type)
         {
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly;
-            foreach (var field in type.GetFields(flags).Where(field => !field.IsStatic && !field.IsLiteral))
-                yield return new ReflectedMember(field.Name, field.FieldType, true, !field.IsInitOnly);
-            foreach (var property in type.GetProperties(flags)
-                         .Where(property => property.GetIndexParameters().Length == 0 && property.GetMethod?.IsStatic != true))
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var current = type; current != null && current != typeof(object); current = current.BaseType)
             {
-                yield return new ReflectedMember(
-                    property.Name,
-                    property.PropertyType,
-                    property.GetMethod?.IsPublic == true,
-                    property.SetMethod?.IsPublic == true && !IsInitOnly(property.SetMethod));
+                foreach (var field in current.GetFields(flags).Where(field => !field.IsStatic && !field.IsLiteral))
+                    if (seen.Add(field.Name))
+                        yield return new ReflectedMember(field.Name, field.FieldType, true, !field.IsInitOnly);
+                foreach (var property in current.GetProperties(flags)
+                             .Where(property => property.GetIndexParameters().Length == 0 && property.GetMethod?.IsStatic != true))
+                {
+                    if (!seen.Add(property.Name))
+                        continue;
+                    yield return new ReflectedMember(
+                        property.Name,
+                        property.PropertyType,
+                        property.GetMethod?.IsPublic == true,
+                        property.SetMethod?.IsPublic == true && !IsInitOnly(property.SetMethod));
+                }
             }
         }
 
