@@ -255,23 +255,19 @@ def sync_addon(
         _remove_legacy_platform_managed_assembly(target, allowed)
         if not _target_has_only_expected_payload(target, allowed):
             raise AddonSyncError("remove-stale-addon-payload-before-sync")
-    except Exception:
-        _restore_target_backup(target, backup)
-        raise
 
-    staging = _candidate_root(request) / "sync" / "package"
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True, exist_ok=True)
-    for relative in allowed:
-        source = candidate / relative
-        destination = staging / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
-    _validate_candidate_files(staging, allowed)
+        staging = _candidate_root(request) / "sync" / "package"
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir(parents=True, exist_ok=True)
+        for relative in allowed:
+            source = candidate / relative
+            destination = staging / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+        _validate_candidate_files(staging, allowed)
 
-    target.mkdir(parents=True, exist_ok=True)
-    try:
+        target.mkdir(parents=True, exist_ok=True)
         for relative in allowed:
             source = staging / relative
             destination = target / relative
