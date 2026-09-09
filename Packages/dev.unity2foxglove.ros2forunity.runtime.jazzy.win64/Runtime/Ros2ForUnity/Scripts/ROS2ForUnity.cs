@@ -640,20 +640,30 @@ internal class ROS2ForUnity
             }
         }
 
-        RegisterCtrlCHandler();
+        try
+        {
+            RegisterCtrlCHandler();
 
-        string rmwImpl = initializedThisInstance || Ros2cs.Ok()
-            ? Ros2cs.GetRMWImplementation()
-            : "unknown";
-        ValidateRmwImplementation(rmwImpl);
+            string rmwImpl = initializedThisInstance || Ros2cs.Ok()
+                ? Ros2cs.GetRMWImplementation()
+                : "unknown";
+            ValidateRmwImplementation(rmwImpl);
 
-        LogRuntimeInfoWithoutStackTrace("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
+            LogRuntimeInfoWithoutStackTrace("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
 
 #if UNITY_EDITOR
-        EditorApplication.playModeStateChanged += this.EditorPlayStateChanged;
-        EditorApplication.quitting += this.DestroyROS2ForUnity;
-        editorCallbacksRegistered = true;
+            EditorApplication.playModeStateChanged += this.EditorPlayStateChanged;
+            EditorApplication.quitting += this.DestroyROS2ForUnity;
+            editorCallbacksRegistered = true;
 #endif
+        }
+        catch
+        {
+            // Constructor failure after Ros2cs.Init must relinquish the
+            // lifecycle owner it acquired before propagating the exception.
+            try { DestroyROS2ForUnity(); } catch { }
+            throw;
+        }
     }
 
     private static void ThrowIfUninitialized(string callContext)

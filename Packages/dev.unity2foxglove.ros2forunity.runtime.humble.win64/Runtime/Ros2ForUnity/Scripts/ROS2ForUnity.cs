@@ -671,16 +671,28 @@ internal class ROS2ForUnity : IDisposable
                 Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
                 throw;
             }
-            RegisterCtrlCHandler();
+            try
+            {
+                RegisterCtrlCHandler();
 
-            string rmwImpl = Ros2cs.GetRMWImplementation();
-            ValidateRmwImplementation(rmwImpl);
+                string rmwImpl = Ros2cs.GetRMWImplementation();
+                ValidateRmwImplementation(rmwImpl);
 
-            Debug.Log("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
+                Debug.Log("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
 
 #if UNITY_EDITOR
-            RegisterEditorHandlers();
+                RegisterEditorHandlers();
 #endif
+            }
+            catch
+            {
+                // A post-init validation failure must release the native
+                // context and callbacks before the constructor propagates.
+                try { UnregisterCtrlCHandlerStatic(); } catch { }
+                try { Ros2cs.Shutdown(); } catch { }
+                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
+                throw;
+            }
             isInitialized = true;
             referenceCount = 1;
             ownsReference = true;
