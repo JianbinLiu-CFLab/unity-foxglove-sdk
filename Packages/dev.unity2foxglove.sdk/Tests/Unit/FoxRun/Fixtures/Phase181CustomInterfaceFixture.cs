@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
         public double Velocity { get; set; }
     }
 
-    public sealed class Phase184NestedSequenceItem
+    public struct Phase184NestedSequenceItem
     {
         public string Label { get; set; }
     }
@@ -66,3 +66,4 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
         public List<Phase184NestedSequenceItem> Children { get; set; }
     }
 }
+
