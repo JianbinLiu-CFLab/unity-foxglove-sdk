@@ -1206,7 +1206,9 @@ void write_all_accounted(
     if (sent > 0) {
       (void)enforce_accounted_write_timeout(limits, clock);
       offset += static_cast<size_t>(sent);
-      clock.stalled_since = std::chrono::steady_clock::now();
+      // Keep the frame-start clock monotonic across partial sends. Resetting
+      // it here would let a peer extend one finite frame indefinitely by
+      // accepting a byte just before each stall timeout.
       continue;
     }
 
