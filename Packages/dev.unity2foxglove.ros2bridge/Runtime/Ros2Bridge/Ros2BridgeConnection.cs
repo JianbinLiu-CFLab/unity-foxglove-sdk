@@ -222,18 +222,33 @@ namespace Unity2Foxglove.Ros2Bridge
                 _workersRemaining = 2;
                 Volatile.Write(ref _readerManagedThreadId, 0);
                 Volatile.Write(ref _writerManagedThreadId, 0);
-                _reader = new Thread(ReaderEntry)
+                var readerStarted = false;
+                var writerStarted = false;
+                try
                 {
-                    IsBackground = true,
-                    Name = "Unity2Foxglove ROS2 Bridge reader",
-                };
-                _writer = new Thread(WriterEntry)
+                    _reader = new Thread(ReaderEntry)
+                    {
+                        IsBackground = true,
+                        Name = "Unity2Foxglove ROS2 Bridge reader",
+                    };
+                    _writer = new Thread(WriterEntry)
+                    {
+                        IsBackground = true,
+                        Name = "Unity2Foxglove ROS2 Bridge writer",
+                    };
+                    _reader.Start();
+                    readerStarted = true;
+                    _writer.Start();
+                    writerStarted = true;
+                }
+                catch
                 {
-                    IsBackground = true,
-                    Name = "Unity2Foxglove ROS2 Bridge writer",
-                };
-                _reader.Start();
-                _writer.Start();
+                    // A Thread constructor/Start failure must not leave a
+                    // phantom precharged worker blocking reconnect.
+                    _workersRemaining = (readerStarted ? 1 : 0)
+                        + (writerStarted ? 1 : 0);
+                    throw;
+                }
                 hello = Ros2BridgeV2SessionCodec.CreateHello(
                     _requestIds.Next(),
                     _requiresSubscription,
