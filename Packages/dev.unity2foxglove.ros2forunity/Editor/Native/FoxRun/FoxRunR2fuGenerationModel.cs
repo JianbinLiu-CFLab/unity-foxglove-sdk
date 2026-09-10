@@ -186,11 +186,10 @@ namespace Unity.FoxgloveSDK.Editor
                 if (string.IsNullOrEmpty(normalized))
                     continue;
 
-                var direct = Type.GetType(
-                    normalized,
-                    throwOnError: false);
+                var assemblyMatches = new List<Type>();
+                var direct = Type.GetType(normalized, throwOnError: false);
                 if (direct != null)
-                    return direct;
+                    assemblyMatches.Add(direct);
 
                 foreach (var assembly in
                          AppDomain.CurrentDomain.GetAssemblies())
@@ -207,9 +206,17 @@ namespace Unity.FoxgloveSDK.Editor
                         resolved = null;
                     }
 
-                    if (resolved != null)
-                        return resolved;
+                    if (resolved != null
+                        && !assemblyMatches.Any(
+                            candidate => candidate.AssemblyQualifiedName
+                                == resolved.AssemblyQualifiedName))
+                        assemblyMatches.Add(resolved);
                 }
+
+                if (assemblyMatches.Count == 1)
+                    return assemblyMatches[0];
+                if (assemblyMatches.Count > 1)
+                    return null;
             }
 
             return null;
