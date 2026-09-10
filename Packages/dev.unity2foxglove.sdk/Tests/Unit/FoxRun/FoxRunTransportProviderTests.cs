@@ -258,6 +258,27 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void ResolveRevalidatesProviderAfterReentrantMetadataMutation()
+        {
+            var registry = new FoxRunTransportProviderRegistry();
+            ReentrantMutationProvider provider = null;
+            provider = new ReentrantMutationProvider(
+                new FoxRunTransportId("phase187.h01.009"),
+                () => registry.Unregister(provider));
+            Assert.Equal(
+                FoxRunTransportRegistrationResult.Added,
+                registry.Register(provider));
+
+            var resolution = registry.Resolve(
+                provider.Id,
+                FoxRunTransportCapabilities.Publish);
+
+            Assert.Equal(
+                FoxRunTransportProviderResolutionState.Conflicted,
+                resolution.State);
+        }
+
+        [Fact]
         public void ZeroPublishRoutesAndIndependentSubscriptionAreSupported()
         {
             var registry = new FoxRunTransportProviderRegistry();
@@ -1286,6 +1307,47 @@ namespace Unity.FoxgloveSDK.Tests
                 session = LastCapturedSession;
                 reason = string.Empty;
                 return true;
+            }
+        }
+
+        private sealed class ReentrantMutationProvider : IFoxRunTransportProvider
+        {
+            private readonly Action _mutate;
+            private bool _mutated;
+
+            internal ReentrantMutationProvider(FoxRunTransportId id, Action mutate)
+            {
+                Id = id;
+                _mutate = mutate;
+            }
+
+            public FoxRunTransportId Id { get; }
+
+            public FoxRunTransportCapabilities Capabilities
+                => FoxRunTransportCapabilities.Publish;
+
+            public FoxRunTransportLifecycleState LifecycleState
+            {
+                get
+                {
+                    if (!_mutated)
+                    {
+                        _mutated = true;
+                        _mutate();
+                    }
+
+                    return FoxRunTransportLifecycleState.Available;
+                }
+            }
+
+            public bool TryCaptureSession(
+                ulong generation,
+                out IFoxRunTransportSession session,
+                out string reason)
+            {
+                session = null;
+                reason = "not used";
+                return false;
             }
         }
 

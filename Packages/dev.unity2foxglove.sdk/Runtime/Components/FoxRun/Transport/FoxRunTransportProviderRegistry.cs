@@ -509,6 +509,16 @@ namespace Unity.FoxgloveSDK.Components
                 return new FoxRunTransportProviderResolution(
                     FoxRunTransportProviderResolutionState.Unavailable,
                     provider);
+
+            if (!_providers.TryGetValue(id, out var currentInstances)
+                || currentInstances.Count != 1
+                || !ReferenceEquals(currentInstances[0], provider))
+            {
+                return new FoxRunTransportProviderResolution(
+                    FoxRunTransportProviderResolutionState.Conflicted,
+                    null);
+            }
+
             return new FoxRunTransportProviderResolution(
                 FoxRunTransportProviderResolutionState.Sole,
                 provider);
