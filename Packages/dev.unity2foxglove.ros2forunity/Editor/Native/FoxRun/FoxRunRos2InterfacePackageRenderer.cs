@@ -93,6 +93,20 @@ namespace Unity.FoxgloveSDK.Editor
                     "The selected ROS package name must use the explicit unity2foxglove_foxrun_interfaces_vN revision grammar.");
             }
 
+            // All generated R2FU consumers currently bind the maintained v1
+            // package/namespace/type-support catalog.  Do not commit a
+            // custom stem or a later revision that would render successfully
+            // while generated mapper/publisher/tooling still points at v1.
+            if (!string.Equals(
+                    rosPackageName,
+                    FoxRunRos2InterfaceIdentity.DefaultRosPackageName,
+                    StringComparison.Ordinal)
+                || revision != 1)
+            {
+                throw new FoxRunRos2InterfaceRenderException(
+                    "The selected ROS package identity is not supported by the generated R2FU consumers; use the maintained v1 package.");
+            }
+
             var contracts = SelectContracts(model).ToArray();
             if (contracts.Length == 0)
             {

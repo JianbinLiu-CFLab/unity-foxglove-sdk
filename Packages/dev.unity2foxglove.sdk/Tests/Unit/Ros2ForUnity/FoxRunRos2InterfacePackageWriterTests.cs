@@ -43,6 +43,19 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        public void RendererRejectsIdentityThatGeneratedConsumersCannotBind()
+        {
+            Assert.Throws<FoxRunRos2InterfaceRenderException>(() =>
+                FoxRunRos2InterfacePackageRenderer.Render(
+                    BuildModel(typeof(Phase181State)),
+                    "project_interfaces_v1"));
+            Assert.Throws<FoxRunRos2InterfaceRenderException>(() =>
+                FoxRunRos2InterfacePackageRenderer.Render(
+                    BuildModel(typeof(Phase181State)),
+                    "unity2foxglove_foxrun_interfaces_v2"));
+        }
+
+        [Fact]
         public void RendererSharesOneEnvelopeFileAcrossContractsUsingTheSameDto()
         {
             var rendered = FoxRunRos2InterfacePackageRenderer.Render(BuildModelWithSharedDtoContracts(typeof(Phase181State)));
@@ -138,13 +151,13 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                     FoxRunRos2InterfacePackageWriter.Generate(repoRoot, packageRoot, BuildModel(typeof(Phase181StateV2))));
                 Assert.Equal(before, Snapshot(packageRoot));
 
-                var result = FoxRunRos2InterfacePackageWriter.Generate(
-                    repoRoot,
-                    packageRoot,
-                    BuildModel(typeof(Phase181StateV2)),
-                    nextRevision: "unity2foxglove_foxrun_interfaces_v2");
-                Assert.True(result.Changed);
-                Assert.Equal(2, result.Lock.InterfaceRevision);
+                Assert.Throws<FoxRunRos2InterfaceRenderException>(() =>
+                    FoxRunRos2InterfacePackageWriter.Generate(
+                        repoRoot,
+                        packageRoot,
+                        BuildModel(typeof(Phase181StateV2)),
+                        nextRevision: "unity2foxglove_foxrun_interfaces_v2"));
+                Assert.Equal(before, Snapshot(packageRoot));
             });
         }
 
@@ -153,12 +166,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         {
             WithTempPackage((repoRoot, packageRoot) =>
             {
-                var first = FoxRunRos2InterfacePackageWriter.Generate(
-                    repoRoot,
-                    packageRoot,
-                    BuildModel(typeof(Phase181State)),
-                    nextRevision: "project_interfaces_v1");
-                Assert.Equal("project_interfaces_v1", first.Lock.RosPackageName);
+                Assert.Throws<FoxRunRos2InterfaceRenderException>(() =>
+                    FoxRunRos2InterfacePackageWriter.Generate(
+                        repoRoot,
+                        packageRoot,
+                        BuildModel(typeof(Phase181State)),
+                        nextRevision: "project_interfaces_v1"));
 
                 Assert.Throws<FoxRunRos2InterfaceRevisionRequiredException>(() =>
                     FoxRunRos2InterfacePackageWriter.Generate(
@@ -167,12 +180,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                         BuildModel(typeof(Phase181StateV2)),
                         nextRevision: "other_interfaces_v2"));
 
-                var second = FoxRunRos2InterfacePackageWriter.Generate(
-                    repoRoot,
-                    packageRoot,
-                    BuildModel(typeof(Phase181StateV2)),
-                    nextRevision: "project_interfaces_v2");
-                Assert.Equal("project_interfaces_v2", second.Lock.RosPackageName);
+                Assert.Throws<FoxRunRos2InterfaceRevisionRequiredException>(() =>
+                    FoxRunRos2InterfacePackageWriter.Generate(
+                        repoRoot,
+                        packageRoot,
+                        BuildModel(typeof(Phase181StateV2)),
+                        nextRevision: "project_interfaces_v2"));
             });
         }
 
@@ -217,7 +230,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                     isCancellationRequested: () => true));
                 Assert.Equal(before, Snapshot(packageRoot));
 
-                Assert.Throws<IOException>(() => FoxRunRos2InterfacePackageWriter.Generate(
+                Assert.Throws<FoxRunRos2InterfaceRenderException>(() => FoxRunRos2InterfacePackageWriter.Generate(
                     repoRoot,
                     packageRoot,
                     BuildModel(typeof(Phase181StateV2)),
