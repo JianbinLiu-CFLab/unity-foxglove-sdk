@@ -66,6 +66,39 @@ namespace Unity.FoxgloveSDK.Editor
         public static bool IsReservedUserField(string rosFieldName)
             => (rosFieldName ?? string.Empty).StartsWith(FrameworkPrefix, StringComparison.Ordinal);
 
+        public static bool IsValidRosFieldName(string rosFieldName)
+        {
+            if (string.IsNullOrEmpty(rosFieldName)
+                || rosFieldName[0] < 'a'
+                || rosFieldName[0] > 'z')
+            {
+                return false;
+            }
+
+            var previousUnderscore = false;
+            for (var index = 1; index < rosFieldName.Length; index++)
+            {
+                var current = rosFieldName[index];
+                if ((current >= 'a' && current <= 'z')
+                    || (current >= '0' && current <= '9'))
+                {
+                    previousUnderscore = false;
+                    continue;
+                }
+
+                if (current != '_'
+                    || previousUnderscore
+                    || index == rosFieldName.Length - 1)
+                {
+                    return false;
+                }
+
+                previousUnderscore = true;
+            }
+
+            return true;
+        }
+
         public static string PresenceFieldName(string rosFieldName)
             => FrameworkPrefix + "has_" + (rosFieldName ?? string.Empty);
     }

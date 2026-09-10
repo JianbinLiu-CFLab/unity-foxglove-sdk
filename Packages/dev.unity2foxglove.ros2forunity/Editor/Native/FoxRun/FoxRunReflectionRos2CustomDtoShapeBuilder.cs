@@ -79,6 +79,12 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
+            if (!FoxRunRos2CustomNamingPolicy.IsValidRosFieldName(rosName))
+            {
+                AddUnsupported(path, "Custom ROS2 DTO member name is not a valid ASCII ROS 2 field identifier: '" + rosName + "'.", diagnostics);
+                return;
+            }
+
             if (FoxRunRos2CustomNamingPolicy.IsReservedUserField(rosName))
             {
                 AddUnsupported(path, "Custom ROS2 DTO member '" + rosName + "' uses the reserved foxrun_ prefix.", diagnostics);

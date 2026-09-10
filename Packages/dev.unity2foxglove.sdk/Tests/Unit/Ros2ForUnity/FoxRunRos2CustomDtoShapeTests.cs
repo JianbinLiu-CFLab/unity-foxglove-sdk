@@ -79,6 +79,18 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Contains(diagnostics, value => value.IndexOf("Decimal", StringComparison.Ordinal) >= 0);
         }
 
+        [Fact]
+        public void ReflectionBuilderRejectsLeadingDigitAndNonAsciiRosFieldNames()
+        {
+            var shape = BuildReflectionShape(typeof(InvalidRosFieldNameDto));
+
+            Assert.False(Read<bool>(shape, "IsSupported"));
+            var diagnostics = Read<IEnumerable<string>>(shape, "Diagnostics").ToArray();
+            Assert.Contains(diagnostics, value => value.StartsWith("FOXR2F009|", StringComparison.Ordinal));
+            Assert.Contains(diagnostics, value => value.Contains("1_value", StringComparison.Ordinal));
+            Assert.Contains(diagnostics, value => value.Contains("éclair", StringComparison.OrdinalIgnoreCase));
+        }
+
         [Theory]
         [MemberData(nameof(UnsupportedDtoTypes))]
         public void ReflectionBuilderRejectsUnsupportedDtoShapes(Type dtoType, string expectedDiagnostic)
@@ -189,6 +201,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         {
             public decimal Amount;
             public int foxrun_reserved;
+        }
+
+        public sealed class InvalidRosFieldNameDto
+        {
+            public int _1Value { get; set; }
+            public int Éclair { get; set; }
         }
 
         public sealed class AllSupportedValuesDto
