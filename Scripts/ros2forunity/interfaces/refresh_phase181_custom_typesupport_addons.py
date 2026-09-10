@@ -197,10 +197,17 @@ def _candidate_is_validated(root: Path, distro: str) -> bool:
         evidence = _read_object(evidence_path, "repair-candidate-validation")
     except AddonRefreshError:
         return False
+    candidate_root = root / "build" / "phase181" / distro / "candidate" / "package"
+    inventory_path = candidate_root / "RuntimeSupport" / "typesupport-inventory.json"
+    try:
+        inventory = _read_object(inventory_path, "repair-typesupport-inventory")
+    except AddonRefreshError:
+        return False
     return (
         evidence.get("schemaVersion") == 1
         and evidence.get("distro") == distro
         and evidence.get("validated") is True
+        and evidence.get("candidatePackageSha256") == normalized_json_sha256(inventory)
     )
 
 

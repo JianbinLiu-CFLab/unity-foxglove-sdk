@@ -19,6 +19,7 @@ try:
         SUPPORTED_DISTROS,
         addon_package_id,
         base_runtime_package_id,
+        normalized_json_sha256,
         validate_addon,
     )
 except ModuleNotFoundError:  # pragma: no cover - direct script invocation
@@ -28,6 +29,7 @@ except ModuleNotFoundError:  # pragma: no cover - direct script invocation
         SUPPORTED_DISTROS,
         addon_package_id,
         base_runtime_package_id,
+        normalized_json_sha256,
         validate_addon,
     )
 
@@ -103,6 +105,21 @@ def _candidate_evidence_path(request: AddonSyncRequest) -> Path:
     return _candidate_root(request) / "e" / "candidate-validation.json"
 
 
+def _candidate_inventory_digest(request: AddonSyncRequest) -> str:
+    """Return the normalized inventory identity consumed by validation evidence."""
+    try:
+        inventory = json.loads(
+            (Path(request.candidate_package) / "RuntimeSupport" / "typesupport-inventory.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AddonSyncError("repair-typesupport-inventory") from exc
+    if not isinstance(inventory, dict):
+        raise AddonSyncError("repair-typesupport-inventory")
+    return normalized_json_sha256(inventory)
+
+
 def _validate_candidate_evidence(request: AddonSyncRequest) -> None:
     """Implement the internal validate candidate evidence step."""
     try:
@@ -114,6 +131,7 @@ def _validate_candidate_evidence(request: AddonSyncRequest) -> None:
         or evidence.get("schemaVersion") != 1
         or evidence.get("distro") != request.distro
         or evidence.get("validated") is not True
+        or evidence.get("candidatePackageSha256") != _candidate_inventory_digest(request)
     ):
         raise AddonSyncError("build-and-validate-candidate-before-sync")
 
