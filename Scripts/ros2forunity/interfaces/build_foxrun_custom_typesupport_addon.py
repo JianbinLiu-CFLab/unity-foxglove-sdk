@@ -377,16 +377,13 @@ def _catalog_source(
     distro: str,
     interface_digest: str,
     type_map: Sequence[Mapping[str, str]],
+    supported_rmws: Sequence[str],
 ) -> str:
-    """Render the deterministic compile-time catalog for one distro add-on."""
+    """Render the catalog from the validated runtime capability set."""
     base_runtime = base_runtime_package_id(distro)
-    supported_rmws = ", ".join(
-        '"' + item + '"'
-        for item in ("rmw_fastrtps_cpp", "rmw_zenoh_cpp")
-        if distro == "lyrical"
-    )
-    if not supported_rmws:
-        supported_rmws = '"rmw_fastrtps_cpp"'
+    supported_rmws_source = ", ".join('"' + item + '"' for item in supported_rmws)
+    if not supported_rmws_source:
+        raise CandidateBuildError("repair-empty-rmw-capability")
     type_entries = ",\n                ".join(
         "new FoxRunRos2CustomTypesupportTypeMapEntry(\""
         + item["canonicalRosType"]
@@ -442,7 +439,7 @@ namespace Unity2Foxglove.FoxRun.CustomRos2Typesupport
 {
 """ + metadata_constants + """    internal sealed class FoxRunCustomTypesupportCatalog : IFoxRunRos2CustomTypesupportCatalog
     {
-        private static readonly string[] s_rmws = { """ + supported_rmws + """ };
+        private static readonly string[] s_rmws = { """ + supported_rmws_source + """ };
         private static readonly FoxRunRos2CustomTypesupportTypeMapEntry[] s_typeMap =
         {
                 """ + type_entries + """
@@ -571,7 +568,12 @@ def _write_candidate_manifest(
     generated.mkdir(parents=True, exist_ok=True)
     _write_utf8_lf(
         generated / GENERATED_CATALOG_FILE,
-        _catalog_source(distro=request.distro, interface_digest=interface_digest, type_map=type_map),
+        _catalog_source(
+            distro=request.distro,
+            interface_digest=interface_digest,
+            type_map=type_map,
+            supported_rmws=_runtime_rmws(runtime_manifest, request.distro),
+        ),
     )
     _write_utf8_lf(
         generated / GENERATED_CATALOG_ASMDEF,
@@ -667,6 +669,14 @@ def _repair_tracked_addon_catalog(request: CandidateBuildRequest) -> Path:
     ):
         raise CandidateBuildError("repair-typesupport-catalog-source")
 
+    supported_rmws = manifest.get("supportedRmwImplementations")
+    if (
+        not isinstance(supported_rmws, list)
+        or not supported_rmws
+        or not all(isinstance(item, str) and item for item in supported_rmws)
+    ):
+        raise CandidateBuildError("repair-typesupport-catalog-rmw-capability")
+
     type_map: list[dict[str, str]] = []
     managed_prefix = ROS_PACKAGE_NAME + ".msg."
     for item in managed["typeMap"]:
@@ -700,6 +710,7 @@ def _repair_tracked_addon_catalog(request: CandidateBuildRequest) -> Path:
             distro=request.distro,
             interface_digest=interface_digest,
             type_map=tuple(type_map),
+            supported_rmws=tuple(supported_rmws),
         ),
     )
     _write_canonical_license(repository_root / "LICENSE", package_root / "LICENSE")
