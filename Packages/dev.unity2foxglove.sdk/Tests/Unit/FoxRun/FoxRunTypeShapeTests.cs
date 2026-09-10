@@ -812,6 +812,23 @@ namespace Demo
         }
 
         [Fact]
+        public void RoslynAndReflectionCustomBuildersRejectStreamDerivedDtos()
+        {
+            var root = FindRepositoryRoot();
+            var source = File.ReadAllText(Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Editor",
+                "SourceGenerators",
+                "src",
+                "FoxRunRoslynRos2CustomDtoShapeBuilder.cs"));
+
+            Assert.Contains("IsDerivedFrom(type, \"System.IO.Stream\")", source, StringComparison.Ordinal);
+            Assert.Contains("IsDerivedFrom(type, \"System.Threading.Tasks.Task\")", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ReusedNullableObjectShapeKeepsCallSiteNullabilityAcrossBothHostsAndMemberOrders()
         {
             const string source = @"
@@ -1881,6 +1898,29 @@ namespace Demo
             return locations.Select(location => MetadataReference.CreateFromFile(location));
         }
 
+        private static string FindRepositoryRoot()
+        {
+            var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(
+                        directory.FullName,
+                        "Packages",
+                        "dev.unity2foxglove.ros2forunity",
+                        "Editor",
+                        "SourceGenerators",
+                        "src",
+                        "FoxRunRoslynRos2CustomDtoShapeBuilder.cs")))
+                {
+                    return directory.FullName;
+                }
+
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Repository root was not found from the test base directory.");
+        }
+
         private static CSharpCompilation CreateDepthReuseCompilation(
             int deepestIndex,
             bool shallowFirst)
@@ -1977,6 +2017,7 @@ namespace Demo
         {
             public int Value { get; init; }
         }
+
 
         private struct NullableReuseSample
         {

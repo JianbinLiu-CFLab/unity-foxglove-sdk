@@ -321,6 +321,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 || type.TypeKind == TypeKind.Pointer
                 || type.TypeKind == TypeKind.Delegate
                 || type.TypeKind == TypeKind.Interface
+                || IsDerivedFrom(type, "System.IO.Stream")
+                || IsDerivedFrom(type, "System.Threading.Tasks.Task")
                 || type.IsAbstract)
                 return true;
             if (IsUnityObject(type as INamedTypeSymbol))
@@ -341,6 +343,19 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 if (string.Equals(MetadataDefinitionName(candidate), "UnityEngine.Object", StringComparison.Ordinal))
                     return true;
             }
+            return false;
+        }
+
+        private static bool IsDerivedFrom(ITypeSymbol type, string metadataName)
+        {
+            for (var candidate = type as INamedTypeSymbol;
+                 candidate != null;
+                 candidate = candidate.BaseType)
+            {
+                if (string.Equals(MetadataDefinitionName(candidate), metadataName, StringComparison.Ordinal))
+                    return true;
+            }
+
             return false;
         }
 
