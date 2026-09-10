@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -485,14 +486,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void CompleteStopSynchronously()
         {
-            // An admitted external copy/apply owns its value until its
-            // callback returns.  Leave the stop request pending so the last
-            // callback's finally block can become the drain owner instead of
-            // spinning the caller indefinitely behind user code.
-            if (Volatile.Read(ref _activePublishers) != 0
-                || Volatile.Read(ref _activeAppliers) != 0)
-                return;
-
             var spinner = new SpinWait();
             while (true)
             {
@@ -544,9 +537,22 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             Exception firstFailure = null;
             var spinner = new SpinWait();
+            var deadline = Stopwatch.GetTimestamp()
+                           + (long)(Stopwatch.Frequency * 1.0);
             while (Volatile.Read(ref _activePublishers) != 0
                    || Volatile.Read(ref _activeAppliers) != 0)
+            {
+                if (Stopwatch.GetTimestamp() >= deadline)
+                {
+                    Volatile.Write(ref _drainOwnerThreadId, 0);
+                    Interlocked.CompareExchange(
+                        ref _stopState,
+                        StopStateRequested,
+                        StopStateDraining);
+                    return;
+                }
                 spinner.SpinOnce();
+            }
 
             try
             {
