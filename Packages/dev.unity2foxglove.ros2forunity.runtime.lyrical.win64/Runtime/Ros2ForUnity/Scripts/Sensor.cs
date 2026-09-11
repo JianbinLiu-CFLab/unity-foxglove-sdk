@@ -170,7 +170,17 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         ros2Node = node;
         string nsName = (agentName ?? String.Empty).Replace(" ", "_");
         publisher = node.CreateSensorPublisher<T>(nsName + "/" + topicName);
-        ros2UnityComponent.RegisterExecutable(ExecutorThreadSensorPublishAction);
+        try
+        {
+            ros2UnityComponent.RegisterExecutable(ExecutorThreadSensorPublishAction);
+        }
+        catch
+        {
+            var acquiredPublisher = publisher;
+            publisher = null;
+            try { node.RemovePublisher(acquiredPublisher); } catch (Exception cleanup) { Debug.LogException(cleanup); }
+            throw;
+        }
         // Preserve the inspector-configured publishing gate; callers opt in explicitly.
     }
 
@@ -299,9 +309,13 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
     private void UnregisterExecutable()
     {
         ROS2UnityComponent componentToUnregister = null;
+        ROS2Node nodeToRemove = null;
+        Publisher<T> publisherToRemove = null;
         lock (readingsMutex)
         {
             componentToUnregister = ros2UnityComponent;
+            nodeToRemove = ros2Node;
+            publisherToRemove = publisher;
             ros2UnityComponent = null;
             ros2Node = null;
             publisher = null;
@@ -312,6 +326,11 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         if (componentToUnregister != null)
         {
             componentToUnregister.UnregisterExecutable(ExecutorThreadSensorPublishAction);
+        }
+        if (nodeToRemove != null && publisherToRemove != null)
+        {
+            try { nodeToRemove.RemovePublisher(publisherToRemove); }
+            catch (Exception cleanup) { Debug.LogException(cleanup); }
         }
 
         publishing = false;
