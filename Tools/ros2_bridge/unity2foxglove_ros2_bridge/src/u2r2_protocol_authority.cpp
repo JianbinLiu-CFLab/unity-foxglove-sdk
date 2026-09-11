@@ -1860,12 +1860,18 @@ ReplayAdmission::ReplayAdmission(
   uint64_t request_id,
   ReplayDecision decision,
   std::vector<uint8_t> cached_response,
-  std::shared_ptr<void> rollback)
+  std::shared_ptr<void> rollback,
+  std::shared_ptr<void> scheduler_identity,
+  std::optional<ContractIdentity> bound_identity,
+  std::optional<Operation> bound_operation)
 : owner_(std::move(owner)),
   request_id_(request_id),
   decision_(decision),
   cached_response_(std::move(cached_response)),
-  rollback_(std::move(rollback))
+  rollback_(std::move(rollback)),
+  scheduler_identity_(std::move(scheduler_identity)),
+  bound_identity_(std::move(bound_identity)),
+  bound_operation_(std::move(bound_operation))
 {
 }
 
@@ -2020,7 +2026,11 @@ ReplayAdmission RequestReplayAuthority::admit_impl(
       state,
       request_id,
       ReplayDecision::replay_cached,
-      retained->second.response);
+      retained->second.response,
+      {},
+      retained->second.scheduler_identity,
+      retained->second.bound_identity,
+      retained->second.bound_operation);
     result.settled_ = true;
     return result;
   }
@@ -2393,6 +2403,13 @@ bool RequestReplayAuthority::is_cached_for(
     !admission.settled_)
   {
     return false;
+  }
+  if (admission.bound_identity_.has_value()) {
+    return
+      admission.scheduler_identity_.get() == scheduler.impl_.get() &&
+      bound_identity && bound_operation.has_value() &&
+      admission.bound_identity_ == *bound_identity &&
+      admission.bound_operation_ == bound_operation;
   }
   const auto found = state->entries.find(admission.request_id_);
   return

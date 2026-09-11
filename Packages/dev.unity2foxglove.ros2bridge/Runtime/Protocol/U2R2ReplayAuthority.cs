@@ -25,7 +25,10 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             ulong requestId,
             U2R2ReplayDecision decision,
             byte[] cachedResponse,
-            U2R2ControlReservation responseReservation)
+            U2R2ControlReservation responseReservation,
+            U2R2BoundedOutboundScheduler boundScheduler = null,
+            U2R2Operation? boundOperation = null,
+            U2R2ContractIdentity boundIdentity = null)
         {
             Owner = owner;
             RequestId = requestId;
@@ -34,6 +37,9 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 ? Array.Empty<byte>()
                 : (byte[])cachedResponse.Clone();
             ResponseReservation = responseReservation;
+            BoundScheduler = boundScheduler;
+            BoundOperation = boundOperation;
+            BoundIdentity = boundIdentity;
         }
 
         public U2R2ReplayDecision Decision { get; }
@@ -41,6 +47,9 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         public ReadOnlyMemory<byte> CachedResponse => new(_cachedResponse);
         internal U2R2RequestReplayAuthority Owner { get; }
         internal U2R2ControlReservation ResponseReservation { get; }
+        internal U2R2BoundedOutboundScheduler BoundScheduler { get; }
+        internal U2R2Operation? BoundOperation { get; }
+        internal U2R2ContractIdentity BoundIdentity { get; }
         internal bool IsSettled { get; set; }
 
         public void Dispose()
@@ -242,7 +251,10 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                         requestId,
                         U2R2ReplayDecision.ReplayCached,
                         retained.Response,
-                        responseReservation: null)
+                        responseReservation: null,
+                        boundScheduler: scheduler,
+                        boundOperation: retained.BoundOperation,
+                        boundIdentity: retained.BoundIdentity)
                     {
                         IsSettled = true,
                     };
@@ -440,6 +452,13 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                     || admission.Decision != U2R2ReplayDecision.ReplayCached
                     || !admission.IsSettled)
                     return false;
+                if (admission.BoundIdentity != null)
+                {
+                    return ReferenceEquals(admission.BoundScheduler, scheduler)
+                           && admission.BoundOperation == operation
+                           && identity != null
+                           && admission.BoundIdentity.Equals(identity);
+                }
                 return _entries.TryGetValue(
                            admission.RequestId,
                            out var entry)

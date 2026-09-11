@@ -399,13 +399,19 @@ private:
     uint64_t request_id,
     ReplayDecision decision,
     std::vector<uint8_t> cached_response,
-    std::shared_ptr<void> rollback = {});
+    std::shared_ptr<void> rollback = {},
+    std::shared_ptr<void> scheduler_identity = {},
+    std::optional<ContractIdentity> bound_identity = std::nullopt,
+    std::optional<Operation> bound_operation = std::nullopt);
 
   std::shared_ptr<void> owner_;
   uint64_t request_id_{0};
   ReplayDecision decision_{ReplayDecision::begin_mutation};
   std::vector<uint8_t> cached_response_;
   std::shared_ptr<void> rollback_;
+  std::shared_ptr<void> scheduler_identity_;
+  std::optional<ContractIdentity> bound_identity_;
+  std::optional<Operation> bound_operation_;
   bool settled_{false};
 };
 

@@ -144,6 +144,70 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
         }
 
         [Fact]
+        public void CachedContractReplaySurvivesLegalEviction()
+        {
+            var limits = U2R2ProtocolLimits.Default.With(
+                ("maxOutstandingRequests", 2UL),
+                ("maxReplayEntries", 2UL),
+                ("maxReplayBytes", 4096UL),
+                ("reservedControlQueueDepth", 8UL),
+                ("reservedControlQueueBytes", 4096UL));
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            var replay = new U2R2RequestReplayAuthority(limits);
+            var contracts = new U2R2ContractAuthority(
+                limits,
+                DefaultSemanticErrorFrame);
+            var identity = Identity(new U2R2ContractKey(51, 1));
+
+            var first = replay.AdmitContract(
+                1,
+                RequestBytes("register_subscription", identity),
+                1,
+                scheduler,
+                U2R2Operation.RegisterSubscription,
+                identity);
+            replay.Complete(first, new byte[] { 0x11 });
+            DrainOne(scheduler);
+
+            var cached = replay.AdmitContract(
+                1,
+                RequestBytes("register_subscription", identity),
+                1,
+                scheduler,
+                U2R2Operation.RegisterSubscription,
+                identity);
+            Assert.Equal(U2R2ReplayDecision.ReplayCached, cached.Decision);
+            DrainOne(scheduler);
+
+            for (ulong requestId = 2; requestId <= 3; requestId++)
+            {
+                var nextIdentity = Identity(new U2R2ContractKey(50 + requestId, 1));
+                var next = replay.AdmitContract(
+                    requestId,
+                    RequestBytes("register_subscription", nextIdentity),
+                    1,
+                    scheduler,
+                    U2R2Operation.RegisterSubscription,
+                    nextIdentity);
+                replay.Complete(next, new byte[] { (byte)(0x10 + requestId) });
+                DrainOne(scheduler);
+            }
+
+            var replayedRegistration = contracts.BeginRegistration(
+                identity,
+                scheduler,
+                replay,
+                cached);
+            Assert.True(replayedRegistration.Replayed);
+            contracts.CommitReady(
+                replayedRegistration,
+                replay,
+                cached,
+                U2R2OutboundFrame.Control("subscription_ready:1", new byte[] { 0x11 }));
+            cached.Dispose();
+        }
+
+        [Fact]
         public void DroppedAdmissionsRollbackEveryOwnedBoundedResource()
         {
             var limits = U2R2ProtocolLimits.Default;
