@@ -47,6 +47,7 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
   private bool timeScaleChanged = false;
   private bool timeScaleChangeLogged = false;
   private int rosUnavailableWarningLogged = 0;
+  private int disposed;
 
   public ROS2ScalableTimeSource()
   {
@@ -61,6 +62,12 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
   public bool GetTime(out int seconds, out uint nanoseconds)
   {
     // U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.
+    if (Volatile.Read(ref disposed) != 0)
+    {
+      seconds = 0;
+      nanoseconds = 0;
+      return false;
+    }
     if (!ROS2.Ros2cs.Ok())
     {
       seconds = 0;
@@ -93,7 +100,14 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     if (!scaleChangedAtRead)
     {
       // Until Unity timeScale changes, preserve the default ROS/system clock behavior.
-      TimeUtils.TimeFromTotalSeconds(GetRosNowSeconds(), out seconds, out nanoseconds);
+      double rosNowSecs;
+      if (!TryGetRosNowSeconds(out rosNowSecs))
+      {
+        seconds = 0;
+        nanoseconds = 0;
+        return false;
+      }
+      TimeUtils.TimeFromTotalSeconds(rosNowSecs, out seconds, out nanoseconds);
     }
     else
     {
@@ -107,7 +121,13 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
       }
       if (needsOffset)
       {
-        var rosNowSecs = GetRosNowSeconds();
+        double rosNowSecs;
+        if (!TryGetRosNowSeconds(out rosNowSecs))
+        {
+          seconds = 0;
+          nanoseconds = 0;
+          return false;
+        }
         lock (mutex)
         {
           readingSecs = lastReadingSecs;
@@ -124,15 +144,21 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     return true;
   }
 
-  private double GetRosNowSeconds()
+  private bool TryGetRosNowSeconds(out double seconds)
   {
     lock (clockMutex)
     {
+      if (Volatile.Read(ref disposed) != 0)
+      {
+        seconds = 0;
+        return false;
+      }
       if (clock == null)
       { // Create clock which uses system time by default (unless use_sim_time is set in ros2)
         clock = new ROS2.Clock();
       }
-      return clock.Now.Seconds;
+      seconds = clock.Now.Seconds;
+      return true;
     }
   }
 
@@ -163,6 +189,10 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
 
   public void Dispose()
   {
+    if (Interlocked.Exchange(ref disposed, 1) != 0)
+    {
+      return;
+    }
     lock (clockMutex)
     {
       if (clock != null)
