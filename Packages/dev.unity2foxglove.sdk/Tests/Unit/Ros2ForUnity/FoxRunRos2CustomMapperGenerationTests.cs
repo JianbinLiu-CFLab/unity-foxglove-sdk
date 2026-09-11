@@ -126,6 +126,28 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void CustomDtoCleanupAttemptsEveryOwnedObjectAndPreservesPrimaryMappingFailure()
+        {
+            var source = EmitR2fuClass(
+                "Phase187",
+                "CleanupContract",
+                new[] { CreateCustomMember() });
+
+            Assert.Contains(
+                "global::System.Exception __foxRunRos2CustomDisposeFailure = null;",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "if (__foxRunRos2CustomDisposeFailure == null) __foxRunRos2CustomDisposeFailure = exception;",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "catch (global::System.Exception)",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CustomNullableNestedDtoMapsToASerializableDefaultRosValueWhenAbsent()
         {
             var source = EmitR2fuClass(
