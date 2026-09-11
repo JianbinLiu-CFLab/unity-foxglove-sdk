@@ -301,9 +301,9 @@ internal class ROS2ForUnity : IDisposable
     {
         // U2F-LOCAL-PATCH: standalone runtime owns its RMW selection while allowing Lyrical Zenoh.
         string requestedRmwImplementation = Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION");
-        string selectedRmwImplementation = IsSupportedRmwImplementation(requestedRmwImplementation)
-            ? requestedRmwImplementation
-            : defaultRmwImplementation;
+        string selectedRmwImplementation = string.IsNullOrEmpty(requestedRmwImplementation)
+            ? defaultRmwImplementation
+            : requestedRmwImplementation;
         SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", selectedRmwImplementation);
     }
 
