@@ -621,10 +621,14 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 EnsureAuthorityPairCompatible(scheduler, replay);
                 if (response.Decision == U2R2ReplayDecision.ReplayCached)
                 {
-                    if (!replay.IsCachedFor(response, scheduler))
+                    if (!replay.IsCachedFor(
+                            response,
+                            scheduler,
+                            U2R2Operation.RegisterSubscription,
+                            identity))
                     {
                         throw new InvalidOperationException(
-                            "The replayed registration response belongs elsewhere.");
+                            "The replayed registration response is not bound to this contract.");
                     }
                     BindAuthorityPair(scheduler, replay);
                     return new U2R2RegistrationAdmission(
@@ -638,10 +642,14 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                         IsSettled = true,
                     };
                 }
-                if (!replay.TryClaimForContract(response, scheduler))
+                if (!replay.TryClaimForContract(
+                        response,
+                        scheduler,
+                        U2R2Operation.RegisterSubscription,
+                        identity))
                 {
                     throw new InvalidOperationException(
-                        "Registration requires the pending command response transaction.");
+                        "Registration requires the pending command response transaction bound to this contract.");
                 }
                 BindAuthorityPair(scheduler, replay);
 
@@ -914,10 +922,14 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 EnsureAuthorityPairCompatible(scheduler, replay);
                 if (response.Decision == U2R2ReplayDecision.ReplayCached)
                 {
-                    if (!replay.IsCachedFor(response, scheduler))
+                    if (!replay.IsCachedFor(
+                            response,
+                            scheduler,
+                            U2R2Operation.UnregisterSubscription,
+                            identity))
                     {
                         throw new InvalidOperationException(
-                            "The replayed unregister response belongs elsewhere.");
+                            "The replayed unregister response is not bound to this contract.");
                     }
                     BindAuthorityPair(scheduler, replay);
                     return new U2R2RemovalAdmission(
@@ -931,10 +943,14 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                         IsSettled = true,
                     };
                 }
-                if (!replay.TryClaimForContract(response, scheduler))
+                if (!replay.TryClaimForContract(
+                        response,
+                        scheduler,
+                        U2R2Operation.UnregisterSubscription,
+                        identity))
                 {
                     throw new InvalidOperationException(
-                        "Unregister requires the pending command response transaction.");
+                        "Unregister requires the pending command response transaction bound to this contract.");
                 }
                 BindAuthorityPair(scheduler, replay);
 

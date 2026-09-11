@@ -581,11 +581,13 @@ BridgeSubscriptionCommand BridgeSessionProtocol::register_subscription(
     *parsed.qos);
   const auto canonical =
     u2r2::encode_frame(frame.header, frame.payload, impl_->limits);
-  auto response = impl_->replay.admit(
+  auto response = impl_->replay.admit_contract(
     parsed.request_id,
     canonical,
     maximum_response_bytes,
-    impl_->writer.scheduler());
+    impl_->writer.scheduler(),
+    identity,
+    u2r2::Operation::RegisterSubscription);
   if (response.decision() == u2r2::ReplayDecision::replay_cached) {
     impl_->writer.notify();
     return BridgeSubscriptionCommand::replayed;
@@ -701,16 +703,6 @@ BridgeSubscriptionCommand BridgeSessionProtocol::unregister_subscription(
   }
   const auto canonical =
     u2r2::encode_frame(frame.header, frame.payload, impl_->limits);
-  auto response = impl_->replay.admit(
-    parsed.request_id,
-    canonical,
-    maximum_response_bytes,
-    impl_->writer.scheduler());
-  if (response.decision() == u2r2::ReplayDecision::replay_cached) {
-    impl_->writer.notify();
-    return BridgeSubscriptionCommand::replayed;
-  }
-
   std::optional<Impl::SubscriptionRecord> record;
   {
     std::lock_guard<std::mutex> lock(impl_->subscriptions_mutex);
@@ -719,6 +711,25 @@ BridgeSubscriptionCommand BridgeSessionProtocol::unregister_subscription(
       record = found->second;
     }
   }
+
+  auto response = record
+    ? impl_->replay.admit_contract(
+      parsed.request_id,
+      canonical,
+      maximum_response_bytes,
+      impl_->writer.scheduler(),
+      record->identity,
+      u2r2::Operation::UnregisterSubscription)
+    : impl_->replay.admit(
+      parsed.request_id,
+      canonical,
+      maximum_response_bytes,
+      impl_->writer.scheduler());
+  if (response.decision() == u2r2::ReplayDecision::replay_cached) {
+    impl_->writer.notify();
+    return BridgeSubscriptionCommand::replayed;
+  }
+
   if (!record) {
     const u2r2::ProtocolError error(
       "unknown_contract",

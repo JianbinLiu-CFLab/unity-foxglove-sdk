@@ -113,6 +113,37 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
         }
 
         [Fact]
+        public void BoundReplayAdmissionRejectsContractIdentityMutation()
+        {
+            var limits = U2R2ProtocolLimits.Default;
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            var replay = new U2R2RequestReplayAuthority(limits);
+            var contracts = new U2R2ContractAuthority(
+                limits,
+                DefaultSemanticErrorFrame);
+            var requested = Identity(new U2R2ContractKey(41, 7));
+            var mutated = Identity(new U2R2ContractKey(42, 7));
+            var response = replay.AdmitContract(
+                1,
+                RequestBytes("register_subscription", requested),
+                1,
+                scheduler,
+                U2R2Operation.RegisterSubscription,
+                requested);
+
+            Assert.Throws<InvalidOperationException>(
+                () => contracts.BeginRegistration(
+                    mutated,
+                    scheduler,
+                    replay,
+                    response));
+            Assert.Equal(0UL, contracts.ContractCount);
+            Assert.Equal(1UL, replay.OutstandingRequests);
+            response.Dispose();
+            Assert.Equal(0UL, replay.OutstandingRequests);
+        }
+
+        [Fact]
         public void DroppedAdmissionsRollbackEveryOwnedBoundedResource()
         {
             var limits = U2R2ProtocolLimits.Default;

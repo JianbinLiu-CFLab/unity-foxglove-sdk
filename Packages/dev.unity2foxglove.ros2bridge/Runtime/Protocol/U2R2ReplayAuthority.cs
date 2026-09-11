@@ -56,13 +56,17 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 byte[] request,
                 ulong reservedResponseBytes,
                 U2R2BoundedOutboundScheduler scheduler,
-                U2R2ControlReservation reservation)
+                U2R2ControlReservation reservation,
+                U2R2Operation? boundOperation,
+                U2R2ContractIdentity boundIdentity)
             {
                 RequestId = requestId;
                 Request = (byte[])request.Clone();
                 ReservedResponseBytes = reservedResponseBytes;
                 Scheduler = scheduler;
                 Reservation = reservation;
+                BoundOperation = boundOperation;
+                BoundIdentity = boundIdentity;
             }
 
             public ulong RequestId { get; }
@@ -70,6 +74,8 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             public ulong ReservedResponseBytes { get; }
             public U2R2BoundedOutboundScheduler Scheduler { get; }
             public U2R2ControlReservation Reservation { get; }
+            public U2R2Operation? BoundOperation { get; }
+            public U2R2ContractIdentity BoundIdentity { get; }
             public byte[] Response { get; set; }
             public bool IsCompleted { get; set; }
             public bool IsClaimed { get; set; }
@@ -139,6 +145,40 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
             byte[] canonicalRequest,
             ulong maximumResponseBytes,
             U2R2BoundedOutboundScheduler scheduler)
+            => AdmitCore(
+                requestId,
+                canonicalRequest,
+                maximumResponseBytes,
+                scheduler,
+                boundOperation: null,
+                boundIdentity: null);
+
+        internal U2R2ReplayAdmission AdmitContract(
+            ulong requestId,
+            byte[] canonicalRequest,
+            ulong maximumResponseBytes,
+            U2R2BoundedOutboundScheduler scheduler,
+            U2R2Operation? operation,
+            U2R2ContractIdentity identity)
+        {
+            if (identity == null)
+                throw new ArgumentNullException(nameof(identity));
+            return AdmitCore(
+                requestId,
+                canonicalRequest,
+                maximumResponseBytes,
+                scheduler,
+                operation,
+                identity);
+        }
+
+        private U2R2ReplayAdmission AdmitCore(
+            ulong requestId,
+            byte[] canonicalRequest,
+            ulong maximumResponseBytes,
+            U2R2BoundedOutboundScheduler scheduler,
+            U2R2Operation? boundOperation,
+            U2R2ContractIdentity boundIdentity)
         {
             if (requestId == 0)
             {
@@ -252,7 +292,9 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                     canonicalRequest,
                     maximumResponseBytes,
                     scheduler,
-                    responseReservation);
+                    responseReservation,
+                    boundOperation,
+                    boundIdentity);
                 _entries.Add(requestId, entry);
                 _replayBytes += requestedReplayBytes;
                 _outstandingRequests++;
@@ -311,6 +353,17 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         internal bool TryClaimForContract(
             U2R2ReplayAdmission admission,
             U2R2BoundedOutboundScheduler scheduler)
+            => TryClaimForContract(
+                admission,
+                scheduler,
+                operation: null,
+                identity: null);
+
+        internal bool TryClaimForContract(
+            U2R2ReplayAdmission admission,
+            U2R2BoundedOutboundScheduler scheduler,
+            U2R2Operation? operation,
+            U2R2ContractIdentity identity)
         {
             if (admission == null || scheduler == null)
                 return false;
@@ -324,7 +377,11 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                         out var entry)
                     || entry.IsCompleted
                     || entry.IsClaimed
-                    || !ReferenceEquals(entry.Scheduler, scheduler))
+                    || !ReferenceEquals(entry.Scheduler, scheduler)
+                    || (entry.BoundOperation.HasValue
+                        && (operation != entry.BoundOperation.Value
+                            || identity == null
+                            || !entry.BoundIdentity.Equals(identity))))
                 {
                     return false;
                 }
@@ -363,19 +420,35 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
         internal bool IsCachedFor(
             U2R2ReplayAdmission admission,
             U2R2BoundedOutboundScheduler scheduler)
+            => IsCachedFor(
+                admission,
+                scheduler,
+                operation: null,
+                identity: null);
+
+        internal bool IsCachedFor(
+            U2R2ReplayAdmission admission,
+            U2R2BoundedOutboundScheduler scheduler,
+            U2R2Operation? operation,
+            U2R2ContractIdentity identity)
         {
             if (admission == null || scheduler == null)
                 return false;
             lock (_gate)
             {
-                return ReferenceEquals(admission.Owner, this)
-                       && admission.Decision == U2R2ReplayDecision.ReplayCached
-                       && admission.IsSettled
-                       && _entries.TryGetValue(
+                if (!ReferenceEquals(admission.Owner, this)
+                    || admission.Decision != U2R2ReplayDecision.ReplayCached
+                    || !admission.IsSettled)
+                    return false;
+                return _entries.TryGetValue(
                            admission.RequestId,
                            out var entry)
                        && entry.IsCompleted
-                       && ReferenceEquals(entry.Scheduler, scheduler);
+                       && ReferenceEquals(entry.Scheduler, scheduler)
+                       && (!entry.BoundOperation.HasValue
+                           || (operation == entry.BoundOperation.Value
+                               && identity != null
+                               && entry.BoundIdentity.Equals(identity)));
             }
         }
 
@@ -570,3 +643,4 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                 terminal: false);
     }
 }
+
