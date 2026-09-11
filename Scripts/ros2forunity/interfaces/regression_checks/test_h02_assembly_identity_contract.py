@@ -10,6 +10,7 @@ class H02AssemblyIdentityContractTests(unittest.TestCase):
     """R4.1 source-level ambiguity guard for same-FQN managed payloads."""
 
     def test_payload_resolution_fails_closed_on_ambiguous_assembly_matches(self):
+        """Reject an ambiguous same-FQN payload instead of guessing an assembly."""
         text = MODEL.read_text(encoding="utf-8")
         self.assertIn("assemblyMatches", text)
         self.assertIn("assemblyMatches.Count > 1", text)

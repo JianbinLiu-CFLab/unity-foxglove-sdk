@@ -10,6 +10,7 @@ class H02WriterRollbackContractTests(unittest.TestCase):
     """R4.1 deterministic source-level contract for rollback exception authority."""
 
     def test_restore_failure_is_aggregated_without_replacing_primary(self):
+        """Keep the primary writer failure while reporting restore failures."""
         text = WRITER.read_text(encoding="utf-8")
         self.assertIn("catch (Exception primaryException)", text)
         self.assertIn("new AggregateException", text)

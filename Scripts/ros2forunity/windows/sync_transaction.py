@@ -7,6 +7,7 @@ from pathlib import Path
 class DurableSnapshot:
     """All-or-nothing before-image for files and directories touched by sync."""
     def __init__(self, paths: list[Path], backup_root: Path):
+        """Capture existing files and directories before a sync mutation."""
         self.paths = [p.resolve() for p in paths]
         requested_root = backup_root.resolve()
         self.backup_root = requested_root
@@ -24,6 +25,7 @@ class DurableSnapshot:
                 else: backup.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(path, backup)
             self.records.append((path, backup, existed))
     def restore(self) -> None:
+        """Restore every captured path to its pre-sync state."""
         for path, backup, existed in reversed(self.records):
             if path.exists():
                 if path.is_dir(): shutil.rmtree(path)
@@ -33,4 +35,5 @@ class DurableSnapshot:
                 if backup.is_dir(): shutil.copytree(backup, path)
                 else: shutil.copy2(backup, path)
     def commit(self) -> None:
+        """Discard the before-image after a successful sync."""
         shutil.rmtree(self.backup_root, ignore_errors=True)

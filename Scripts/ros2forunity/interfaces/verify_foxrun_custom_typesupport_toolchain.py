@@ -437,6 +437,7 @@ def _toolchain_input_identity(request: ToolchainPreflightRequest, tools: Mapping
 
 
 def _file_sha256(path: Path) -> str:
+    """Return the SHA-256 digest of one toolchain file."""
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -445,6 +446,7 @@ def _file_sha256(path: Path) -> str:
 
 
 def _tree_sha256(root: Path) -> str:
+    """Return a deterministic SHA-256 digest for a directory tree."""
     digest = hashlib.sha256()
     root = Path(root)
     for path in sorted((item for item in root.rglob("*") if item.is_file()), key=lambda item: item.relative_to(root).as_posix()):
