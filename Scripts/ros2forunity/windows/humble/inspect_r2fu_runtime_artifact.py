@@ -170,7 +170,7 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
         raise ValueError(f"sha256 sidecar mismatch: {sidecar_hash} != {artifact_hash}")
 
     cached_inventory = (
-        read_cached_inventory(paths.output, artifact_hash, inspector_hash)
+        read_cached_inventory(paths.output, paths.artifact, artifact_hash, inspector_hash)
         if not paths.force
         else None
     )
@@ -236,6 +236,7 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
 
 def read_cached_inventory(
     path: Path,
+    artifact: Path,
     artifact_hash: str,
     inspector_hash: str,
 ) -> dict[str, object] | None:
@@ -246,13 +247,29 @@ def read_cached_inventory(
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, ValueError, KeyError):
         return None
-    return (
-        data
-        if isinstance(data, dict)
-        and data.get("sha256") == artifact_hash
-        and data.get("inspectorSha256") == inspector_hash
-        else None
-    )
+    if not (isinstance(data, dict)
+            and data.get("sha256") == artifact_hash
+            and data.get("inspectorSha256") == inspector_hash):
+        return None
+    entries = data.get("files")
+    if not isinstance(entries, list):
+        return None
+    try:
+        with zipfile.ZipFile(artifact) as archive:
+            actual = {info.filename: sha256_zip_entry(archive, info)
+                      for info in archive.infolist() if not info.is_dir()}
+    except (OSError, zipfile.BadZipFile):
+        return None
+    if len(entries) != len(actual):
+        return None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            return None
+        name = entry.get("path")
+        digest = entry.get("sha256")
+        if not isinstance(name, str) or actual.get(name) != digest:
+            return None
+    return data
 
 
 def write_inventory(paths: ArtifactPaths, inventory: dict[str, object]) -> None:
