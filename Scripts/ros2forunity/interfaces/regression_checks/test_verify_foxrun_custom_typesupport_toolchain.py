@@ -12,6 +12,8 @@ from Scripts.ros2forunity.interfaces.verify_foxrun_custom_typesupport_toolchain 
     ProcessResult,
     ToolchainPreflightError,
     ToolchainPreflightRequest,
+    ToolchainPreflightResult,
+    _write_provenance,
     preflight_toolchain,
 )
 
@@ -130,6 +132,33 @@ class ToolchainPreflightTests(unittest.TestCase):
 
             self.assertEqual("FOXRUN_TOOLCHAIN001", raised.exception.code)
             self.assertEqual("repair-pinned-openssl", raised.exception.remediation)
+
+    def test_provenance_binds_content_identity_for_roots_and_tools(self) -> None:
+        """Provenance must identify the exact inputs used by the controlled build."""
+        with temporary_directory("toolchain-") as temporary_root:
+            root = Path(temporary_root)
+            request, _ = self._make_request(root)
+            result = ToolchainPreflightResult(
+                ready=True,
+                distro="humble",
+                generator="Visual Studio 17 2022",
+                requirements=(),
+                input_identity={
+                    "roots": {"ros2Root": "ros", "ros2csSource": "ros2cs", "r2fuSource": "r2fu"},
+                    "executables": {"cmake": "cmake", "dotnet": "dotnet"},
+                },
+            )
+
+            _write_provenance(request, result)
+
+            payload = json.loads(
+                (root / "build" / "phase181" / "humble" / "provenance" / "toolchain.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(2, payload["schemaVersion"])
+            self.assertEqual("ros", payload["inputIdentity"]["roots"]["ros2Root"])
+            self.assertEqual("dotnet", payload["inputIdentity"]["executables"]["dotnet"])
 
     def test_missing_explicit_source_input_is_bounded_and_does_not_write_provenance(self) -> None:
         """Verify missing explicit source input is bounded and does not write provenance."""
