@@ -747,7 +747,7 @@ BridgeSubscriptionCommand BridgeSessionProtocol::unregister_subscription(
     return BridgeSubscriptionCommand::rejected;
   }
 
-  impl_->outbound->revoke(record->gate);
+  impl_->outbound->deactivate(record->gate);
   u2r2::RemovalAdmission removal;
   try {
     removal = impl_->contracts.begin_unregister(
@@ -756,14 +756,10 @@ BridgeSubscriptionCommand BridgeSessionProtocol::unregister_subscription(
       impl_->replay,
       response);
   } catch (const u2r2::ProtocolError &) {
+    impl_->outbound->activate(record->gate);
     impl_->writer.notify();
     return BridgeSubscriptionCommand::rejected;
   }
-  {
-    std::lock_guard<std::mutex> lock(impl_->subscriptions_mutex);
-    impl_->subscriptions.erase(parsed.contract_id);
-  }
-  record->entity.reset();
 
   auto removed = u2r2::OutboundFrame::control(
     "subscription_removed:" + std::to_string(parsed.request_id),
@@ -795,11 +791,18 @@ BridgeSubscriptionCommand BridgeSessionProtocol::unregister_subscription(
         impl_->replay,
         response,
         error);
+      impl_->outbound->activate(record->gate);
       impl_->writer.notify();
       return BridgeSubscriptionCommand::rejected;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
+  impl_->outbound->revoke(record->gate);
+  {
+    std::lock_guard<std::mutex> lock(impl_->subscriptions_mutex);
+    impl_->subscriptions.erase(parsed.contract_id);
+  }
+  record->entity.reset();
   impl_->writer.notify();
   return BridgeSubscriptionCommand::applied;
 }

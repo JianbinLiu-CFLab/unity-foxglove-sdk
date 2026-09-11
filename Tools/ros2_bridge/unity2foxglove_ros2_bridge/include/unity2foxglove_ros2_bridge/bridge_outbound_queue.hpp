@@ -76,6 +76,7 @@ public:
   std::shared_ptr<BridgeSubscriptionGate> create_gate(
     const u2r2::ContractIdentity & identity);
   void activate(const std::shared_ptr<BridgeSubscriptionGate> & gate);
+  void deactivate(const std::shared_ptr<BridgeSubscriptionGate> & gate);
   void revoke(const std::shared_ptr<BridgeSubscriptionGate> & gate);
   BridgeSerializedCallback callback(
     const std::shared_ptr<BridgeSubscriptionGate> & gate);

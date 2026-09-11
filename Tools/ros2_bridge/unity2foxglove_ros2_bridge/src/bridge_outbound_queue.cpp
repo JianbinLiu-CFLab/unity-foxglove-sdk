@@ -197,6 +197,19 @@ void BridgeOutboundQueue::revoke(
   gate_state->revoked = true;
 }
 
+void BridgeOutboundQueue::deactivate(
+  const std::shared_ptr<BridgeSubscriptionGate> & gate)
+{
+  const auto gate_state =
+    std::static_pointer_cast<GateState>(GateStateOf(gate));
+  if (!gate_state || gate_state->owner.lock().get() != state_.get()) {
+    throw std::invalid_argument(
+            "the Bridge subscription gate belongs to another queue");
+  }
+  std::lock_guard<std::mutex> lock(gate_state->mutex);
+  gate_state->active = false;
+}
+
 BridgeSerializedCallback BridgeOutboundQueue::callback(
   const std::shared_ptr<BridgeSubscriptionGate> & gate)
 {

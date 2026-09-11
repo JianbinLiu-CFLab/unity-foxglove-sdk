@@ -2941,8 +2941,8 @@ void ContractAuthority::abort_registration(
             "the semantic error factory must return a control frame");
   }
   replay.finish(response, std::move(frame), false, true);
-  state->contracts.erase(found);
-  scheduler.retire_contract(admission.identity_->key);
+  found->second.state = Impl::State::ready;
+  scheduler.activate_contract(admission.identity_->key);
   admission.settled_ = true;
   DisarmRollback(admission.rollback_);
 }
@@ -3257,8 +3257,8 @@ void ContractAuthority::abort_removal(
             "the semantic error factory must return a control frame");
   }
   replay.finish(response, std::move(frame), false, true);
-  state->contracts.erase(found);
-  scheduler.retire_contract(admission.identity_->key);
+  found->second.state = Impl::State::ready;
+  scheduler.activate_contract(admission.identity_->key);
   admission.settled_ = true;
   DisarmRollback(admission.rollback_);
 }
