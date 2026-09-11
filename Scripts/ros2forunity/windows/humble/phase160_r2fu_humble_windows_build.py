@@ -984,7 +984,6 @@ def main(argv: list[str]) -> int:
     ros2_root = pathlib.Path(args.ros2_root).resolve()
     log_dir = repo_root / "build" / "tmp"
     ensure_dir(log_dir)
-    ensure_dir(temp_root)
     log_file = log_dir / f"{args.log_prefix}_{timestamp()}.log"
     evidence_path = (
         (repo_root / args.evidence_path).resolve()
@@ -999,6 +998,7 @@ def main(argv: list[str]) -> int:
     try:
         assert_safe_root("WorkRoot", work_root, repo_root)
         assert_safe_root("TempRoot", temp_root, repo_root)
+        ensure_dir(temp_root)
         if args.clean:
             ensure_dir(work_root)
             ensure_dir(temp_root)
