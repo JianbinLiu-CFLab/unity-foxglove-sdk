@@ -181,6 +181,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     "The FoxRun ROS2 node lease is stopped.");
             }
 
+            SubscriptionToken token = null;
             try
             {
                 if (!_canUseNativeRuntime())
@@ -196,7 +197,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     contract.Topic,
                     callback,
                     qosProfile.NativeProfile);
-                var token = new SubscriptionToken(_driver, subscription);
+                token = new SubscriptionToken(_driver, subscription);
                 if (!token.IsUsable)
                 {
                     token.TryRemove();
@@ -209,15 +210,33 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             catch (NotSupportedException exception)
             {
+                RollbackAfterRegistrationFailure(token);
                 return FoxRunRos2NativeBackendRegistration.Failure(
                     FoxRunRos2RegistrationError.UnsupportedMessageType,
                     Describe(exception));
             }
             catch (Exception exception)
             {
+                RollbackAfterRegistrationFailure(token);
                 return FoxRunRos2NativeBackendRegistration.Failure(
                     FoxRunRos2RegistrationError.BackendFailure,
                     Describe(exception));
+            }
+        }
+
+        private static void RollbackAfterRegistrationFailure(SubscriptionToken token)
+        {
+            if (token == null)
+                return;
+            try
+            {
+                token.TryRemove();
+            }
+            catch (Exception cleanupException) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(cleanupException))
+            {
+                // Preserve the registration failure as the primary result while
+                // still attempting the exact token rollback.
             }
         }
 

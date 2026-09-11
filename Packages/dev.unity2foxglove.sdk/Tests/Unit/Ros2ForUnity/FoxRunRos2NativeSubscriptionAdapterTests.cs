@@ -61,6 +61,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void InboundInspectionFailureRollsBackTheCreatedSubscription()
+        {
+            var driver = new InspectionFailureNodeDriver();
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
+            var backend = owner.AcquireBackend();
+
+            var result = backend.Register<FakeMessage>(
+                Contract(),
+                new ManagedQosProfile(),
+                _ => { });
+
+            Assert.False(result.Succeeded);
+            Assert.Equal(FoxRunRos2RegistrationError.BackendFailure, result.Error);
+            Assert.Equal(1, driver.CreateSubscriptionCount);
+            Assert.Equal(1, driver.RemoveSubscriptionCount);
+
+            backend.ReleaseNodeOwnership();
+            owner.ReleaseHostOwnership();
+            Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
         public void DiagnosticSnapshotReportsLivePendingAndExactOwnershipCounters()
         {
             var backend = new FakeBackend();
@@ -1932,6 +1954,52 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public void InvokeAttempt(int attemptIndex, FakeMessage value) => _callbacks[attemptIndex](value);
             public void EnqueueRegistration(FoxRunRos2NativeBackendRegistration registration)
                 => _registrations.Enqueue(registration);
+        }
+
+        private sealed class InspectionFailureNodeDriver : IFoxRunRos2R2fuNodeDriver
+        {
+            private readonly object _subscription = new object();
+
+            public int CreateSubscriptionCount { get; private set; }
+            public int RemoveSubscriptionCount { get; private set; }
+            public int ReleaseNodeCount { get; private set; }
+
+            public object CreateSubscription<T>(
+                string topic,
+                Action<T> callback,
+                ROS2.QualityOfServiceProfile qos)
+                where T : ROS2.Message, new()
+            {
+                CreateSubscriptionCount++;
+                return _subscription;
+            }
+
+            public bool IsSubscriptionUsable(object subscription)
+                => throw new InvalidOperationException("inspection failed before acknowledgement");
+
+            public bool RemoveSubscription(object subscription)
+            {
+                RemoveSubscriptionCount++;
+                return ReferenceEquals(subscription, _subscription);
+            }
+
+            public object CreatePublisher<T>(string topic, ROS2.QualityOfServiceProfile qos)
+                where T : ROS2.Message, new()
+                => throw new NotSupportedException();
+
+            public bool IsPublisherUsable<T>(object publisher)
+                where T : ROS2.Message, new()
+                => false;
+
+            public bool Publish<T>(object publisher, T message)
+                where T : ROS2.Message, new()
+                => false;
+
+            public bool RemovePublisher<T>(object publisher)
+                where T : ROS2.Message, new()
+                => false;
+
+            public void ReleaseNode() => ReleaseNodeCount++;
         }
 
         private sealed class FakeToken : IFoxRunRos2NativeSubscriptionToken
