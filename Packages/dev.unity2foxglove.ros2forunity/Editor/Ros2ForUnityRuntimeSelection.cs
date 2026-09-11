@@ -904,6 +904,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!capabilities.IsValid || capabilities.CommunicationModes.Count == 0)
                 return null;
 
+            var pluginsRoot = Path.Combine(packageDirectory, "Runtime", "Ros2ForUnity", "Plugins");
+            var scriptsRoot = Path.Combine(packageDirectory, "Runtime", "Ros2ForUnity", "Scripts");
+            if (!Directory.Exists(pluginsRoot) || !Directory.Exists(scriptsRoot))
+                return null;
+
             // A runtime package is authoritative only when its manifest identity
             // agrees with the package suffix and every advertised Fast DDS mode
             // has its native RMW payload present.  Do not select a package whose
