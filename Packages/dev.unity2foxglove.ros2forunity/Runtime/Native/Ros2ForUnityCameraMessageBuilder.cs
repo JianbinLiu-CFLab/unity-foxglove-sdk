@@ -21,8 +21,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 Header = CreateHeader(
                     frame.FrameId,
-                    (int)(frame.UnixNs / 1_000_000_000UL),
-                    (uint)(frame.UnixNs % 1_000_000_000UL)),
+                    frame.UnixNs),
                 Format = frame.Format,
                 Data = frame.Data
             };
@@ -37,8 +36,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 Header = CreateHeader(
                     frame.FrameId,
-                    (int)(frame.UnixNs / 1_000_000_000UL),
-                    (uint)(frame.UnixNs % 1_000_000_000UL)),
+                    frame.UnixNs),
                 Height = frame.Height,
                 Width = frame.Width,
                 Distortion_model = frame.DistortionModel,
@@ -70,8 +68,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 Header = CreateHeader(
                     frame.FrameId,
-                    (int)(frame.UnixNs / 1_000_000_000UL),
-                    (uint)(frame.UnixNs % 1_000_000_000UL)),
+                    frame.UnixNs),
                 Height = checked((uint)frame.Height),
                 Width = checked((uint)frame.Width),
                 Encoding = frame.Encoding,
@@ -82,15 +79,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return message;
         }
 
-        private static std_msgs.msg.Header CreateHeader(string frameId, int sec, uint nanosec)
+        private static std_msgs.msg.Header CreateHeader(string frameId, ulong unixNanoseconds)
         {
             return new std_msgs.msg.Header
             {
-                Stamp = new builtin_interfaces.msg.Time
-                {
-                    Sec = sec,
-                    Nanosec = nanosec
-                },
+                Stamp = Ros2ForUnityRosTime.ToBuiltinTime(unixNanoseconds),
                 Frame_id = frameId
             };
         }

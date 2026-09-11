@@ -706,8 +706,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 var unixNs = frame == null ? 0UL : frame.UnixNs;
                 ResolveDynamicTfAnchor(out var translation, out var rotation);
 
-                _tfAnchorTransform.Header.Stamp.Sec = (int)(unixNs / 1_000_000_000UL);
-                _tfAnchorTransform.Header.Stamp.Nanosec = (uint)(unixNs % 1_000_000_000UL);
+                var rosTime = Ros2ForUnityRosTime.ToBuiltinTime(unixNs);
+                _tfAnchorTransform.Header.Stamp.Sec = rosTime.Sec;
+                _tfAnchorTransform.Header.Stamp.Nanosec = rosTime.Nanosec;
                 _tfAnchorTransform.Header.Frame_id = parentFrame;
                 _tfAnchorTransform.Child_frame_id = childFrame;
                 _tfAnchorTransform.Transform.Translation.X = translation.x;
