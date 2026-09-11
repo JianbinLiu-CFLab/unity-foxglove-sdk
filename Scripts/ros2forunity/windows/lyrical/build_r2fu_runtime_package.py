@@ -536,7 +536,7 @@ def collect_local_patch_overlays(package: Path) -> dict[str, str]:
     for path in scripts.rglob("*.cs"):
         text = path.read_text(encoding="utf-8", errors="replace")
         relative = path.relative_to(package).as_posix()
-        if LOCAL_PATCH_MARKER in text or relative in LOCAL_PATCH_OVERLAY_FILES:
+        if (LOCAL_PATCH_MARKER in text or relative in LOCAL_PATCH_OVERLAY_FILES) and relative != "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs":
             overlays[relative] = text
     return overlays
 
