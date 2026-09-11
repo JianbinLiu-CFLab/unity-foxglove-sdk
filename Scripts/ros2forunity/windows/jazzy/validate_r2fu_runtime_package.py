@@ -874,7 +874,10 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "ROS2ScalableTimeSource locks lazy ROS clock creation",
         "private readonly object clockMutex = new object();" in scalable_time
         and "lock (clockMutex)" in scalable_time
-        and "private double GetRosNowSeconds()" in scalable_time,
+        and (
+            "private double GetRosNowSeconds()" in scalable_time
+            or "private bool TryGetRosNowSeconds(" in scalable_time
+        ),
         "Time/ROS2ScalableTimeSource.cs",
     )
     add(
