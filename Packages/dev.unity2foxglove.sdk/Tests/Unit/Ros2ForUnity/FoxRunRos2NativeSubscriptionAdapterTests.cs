@@ -125,6 +125,53 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        [Trait("Phase", "187-R2-H03-003")]
+        public void RecoverableBackendFailureRetriesOnTheNextRegistrationAttempt()
+        {
+            var backend = new FakeBackend();
+            backend.EnqueueRegistration(FoxRunRos2NativeBackendRegistration.Failure(
+                FoxRunRos2RegistrationError.BackendFailure,
+                "temporary backend failure"));
+            backend.EnqueueRegistration(FoxRunRos2NativeBackendRegistration.Success(new FakeToken()));
+            var binding = CreateBinding(backend, 303, () => 303, _ => { }, _ => false);
+
+            var first = binding.TryRegister();
+            Assert.False(first.Succeeded);
+            Assert.Equal(FoxRunRos2RegistrationError.BackendFailure, first.Error);
+            Assert.Equal(FoxRunRos2SubscriptionBindingState.Failed, binding.State);
+
+            var second = binding.TryRegister();
+            Assert.True(second.Succeeded);
+            Assert.Equal(FoxRunRos2SubscriptionBindingState.Ready, binding.State);
+            Assert.Equal(2, backend.RegisterCount);
+            binding.Stop();
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R2-H03-003")]
+        public void RecoverableRegistrationRetryStopsAtTheFiniteAttemptBound()
+        {
+            var backend = new FakeBackend();
+            for (var i = 0; i < 5; i++)
+                backend.EnqueueRegistration(FoxRunRos2NativeBackendRegistration.Failure(
+                    FoxRunRos2RegistrationError.BackendFailure,
+                    "persistent backend failure"));
+            var binding = CreateBinding(backend, 304, () => 304, _ => { }, _ => false);
+
+            for (var i = 0; i < 4; i++)
+            {
+                var result = binding.TryRegister();
+                Assert.False(result.Succeeded);
+                Assert.Equal(FoxRunRos2RegistrationError.BackendFailure, result.Error);
+            }
+            var terminal = binding.TryRegister();
+            Assert.False(terminal.Succeeded);
+            Assert.Equal(4, backend.RegisterCount);
+            Assert.False(binding.CanRetryRegistration);
+            binding.Stop();
+        }
+
+        [Fact]
         public void AcceptanceArmRejectsOldPendingOwnership()
         {
             var backend = new FakeBackend();
@@ -3053,6 +3100,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public string ContractId => Contract.Id;
             public long SessionGeneration => 1;
             public FoxRunRos2SubscriptionBindingState State { get; private set; }
+            public bool CanRetryRegistration => false;
             public FoxRunRos2RegistrationResult TryRegister() => _result;
             public bool TryApplyLatest(long activeSessionGeneration) => _apply();
             public void RecordApplyFailure(Exception exception)
