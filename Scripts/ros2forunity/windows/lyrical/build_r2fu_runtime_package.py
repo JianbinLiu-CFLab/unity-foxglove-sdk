@@ -585,6 +585,8 @@ def meta_importer_for(path: Path) -> str:
         return "PackageManifestImporter"
     if path.suffix == ".asmdef":
         return "AssemblyDefinitionImporter"
+    if path.suffix.lower() == ".dll":
+        return "PluginImporter"
     return "TextScriptImporter"
 
 
