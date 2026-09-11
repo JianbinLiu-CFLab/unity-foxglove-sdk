@@ -279,6 +279,16 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void ManagerRejectsSuccessfulSchemaResolutionWithInvalidContribution()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs");
+            Assert.Contains("try", source, StringComparison.Ordinal);
+            Assert.Contains("string.IsNullOrWhiteSpace(contribution.StableSchemaId)", source, StringComparison.Ordinal);
+            Assert.Contains("catch (Exception", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ZeroPublishRoutesAndIndependentSubscriptionAreSupported()
         {
             var registry = new FoxRunTransportProviderRegistry();
@@ -1350,7 +1360,6 @@ namespace Unity.FoxgloveSDK.Tests
                 return false;
             }
         }
-
         private sealed class FakeEmitterContribution :
             IFoxRunTransportEmitterContribution
         {
