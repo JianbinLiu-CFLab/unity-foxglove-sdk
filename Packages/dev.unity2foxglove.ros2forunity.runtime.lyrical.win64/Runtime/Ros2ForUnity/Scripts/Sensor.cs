@@ -171,7 +171,7 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         string nsName = (agentName ?? String.Empty).Replace(" ", "_");
         publisher = node.CreateSensorPublisher<T>(nsName + "/" + topicName);
         ros2UnityComponent.RegisterExecutable(ExecutorThreadSensorPublishAction);
-        publishing = true;
+        // Preserve the inspector-configured publishing gate; callers opt in explicitly.
     }
 
     /// <summary>
