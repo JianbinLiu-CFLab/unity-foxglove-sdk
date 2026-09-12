@@ -782,10 +782,11 @@ class OwnedProcessTree:
             self._windows_job.close()
             self._windows_job = None
         elif self._posix_process_group_id is not None:
-            try:
-                os.killpg(self._posix_process_group_id, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            if self.process.poll() is None:
+                try:
+                    os.killpg(self._posix_process_group_id, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             self._posix_process_group_id = None
 
 
