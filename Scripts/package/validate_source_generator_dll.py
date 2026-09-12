@@ -376,6 +376,11 @@ def _normalize_compile_include(include: str) -> str:
     return include.replace("\\", "/")
 
 
+def _compile_include_has_wildcard(include: str) -> bool:
+    """Return whether a Compile Include uses any glob wildcard."""
+    return "*" in include or "?" in include
+
+
 def _project_sources(project: Path) -> list[Path]:
     """Resolve every explicit Compile item in one controlled analyzer project."""
     root = ET.parse(project).getroot()
@@ -385,7 +390,7 @@ def _project_sources(project: Path) -> list[Path]:
             include = include.strip()
             if include:
                 normalized = _normalize_compile_include(include)
-                if "*" in normalized or "?" in normalized:
+                if _compile_include_has_wildcard(normalized):
                     matches = [
                         path.resolve()
                         for path in project.parent.glob(
@@ -721,7 +726,7 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
                     if not include:
                         continue
                     normalized = _normalize_compile_include(include)
-                    if "*" in normalized:
+                    if _compile_include_has_wildcard(normalized):
                         failures.append(
                             f"{name}: wildcard Compile item is forbidden: "
                             f"{include}"
