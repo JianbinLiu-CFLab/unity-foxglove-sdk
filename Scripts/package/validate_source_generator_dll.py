@@ -75,6 +75,35 @@ TARGETS = {
     ),
 }
 
+META_GUID_PATTERN = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
+
+
+def _validate_analyzer_meta(meta: Path, owner: str, seen_guids: dict[str, str]) -> list[str]:
+    """Validate Unity analyzer meta identity, importer kind, and GUID uniqueness."""
+    failures: list[str] = []
+    if not meta.is_file():
+        return [f"{owner}: analyzer .meta missing: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}"]
+    try:
+        text = meta.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"{owner}: analyzer .meta unreadable: {exc}"]
+    match = META_GUID_PATTERN.search(text)
+    if match is None:
+        failures.append(f"{owner}: analyzer .meta GUID is missing or malformed: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}")
+    else:
+        guid = match.group(1).lower()
+        prior = seen_guids.get(guid)
+        if prior is not None:
+            failures.append(f"{owner}: analyzer .meta GUID duplicates {prior}: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}")
+        else:
+            seen_guids[guid] = owner
+    if "PluginImporter:" not in text:
+        failures.append(f"{owner}: analyzer .meta lacks PluginImporter: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}")
+    if not re.search(r"(?m)^-\s+RoslynAnalyzer\s*$", text):
+        failures.append(f"{owner}: analyzer .meta lacks RoslynAnalyzer label: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}")
+    return failures
+
+
 PROVIDER_DEPENDENCIES = {
     "Microsoft.CodeAnalysis.Analyzers",
     "Microsoft.CodeAnalysis.CSharp",
@@ -547,6 +576,7 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
     assembly_names: dict[str, str] = {}
     ledger_owners: dict[str, str] = {}
     hint_tokens: dict[str, str] = {}
+    analyzer_meta_guids: dict[str, str] = {}
 
     for name in target_names:
         if name not in TARGETS:
@@ -575,10 +605,16 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
             if artifact.suffix.lower() != ".dll":
                 continue
             meta = Path(str(artifact) + ".meta")
-            if not meta.exists():
-                failures.append(
-                    f"{name}: analyzer .meta missing: "
-                    f"{meta.relative_to(REPO_ROOT)}"
+            if artifact.name == "Google.Protobuf.dll":
+                if not meta.is_file():
+                    failures.append(f"{name}: dependency .meta missing: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}")
+            else:
+                failures.extend(
+                    _validate_analyzer_meta(
+                        meta,
+                        f"{name}:{artifact.name}",
+                        analyzer_meta_guids,
+                    )
                 )
 
         try:
