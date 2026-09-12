@@ -808,8 +808,21 @@ def start_owned_process(cmd: List[str], root: Path) -> OwnedProcessTree:
             job.close()
             raise
 
-    process = subprocess.Popen(cmd, cwd=root, start_new_session=True)
-    return OwnedProcessTree(process, posix_process_group_id=process.pid)
+    process = None
+    try:
+        process = subprocess.Popen(cmd, cwd=root, start_new_session=True)
+        return OwnedProcessTree(process, posix_process_group_id=process.pid)
+    except BaseException:
+        if process is not None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                pass
+            try:
+                process.wait(timeout=UNITY_TERMINATION_WAIT_SECONDS)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        raise
 
 
 def await_tree_quiescence(process_tree: OwnedProcessTree, deadline_seconds: float) -> List[int]:
@@ -1039,17 +1052,32 @@ def main() -> int:
 
     print("[build_unity_il2cpp] Starting Unity batchmode build...")
 
+    previous_sigint = signal.getsignal(signal.SIGINT)
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+
+    def interrupt_build(_signum: int, _frame: object) -> None:
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, interrupt_build)
+    signal.signal(signal.SIGTERM, interrupt_build)
     try:
-        returncode = run_with_progress(
-            cmd,
-            root,
-            log_path,
-            max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval),
-            args.timeout_minutes,
-        )
+        try:
+            returncode = run_with_progress(
+                cmd,
+                root,
+                log_path,
+                max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval),
+                args.timeout_minutes,
+            )
+        except KeyboardInterrupt:
+            print("[build_unity_il2cpp] Build interrupted; owned process tree cleanup requested.", file=sys.stderr)
+            return EXIT_PREFLIGHT_FAILURE
     except OSError as exc:
         print(f"[build_unity_il2cpp] Unity could not be started: {exc}", file=sys.stderr)
         return EXIT_PREFLIGHT_FAILURE
+    finally:
+        signal.signal(signal.SIGINT, previous_sigint)
+        signal.signal(signal.SIGTERM, previous_sigterm)
     if returncode == EXIT_SUCCESS:
         output_after = output_fingerprint(output_path)
         if output_after is None:
