@@ -42,7 +42,8 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             var rootPath = GetString("_rootCaFilePath", "");
-            var fingerprint = GetCachedRootCaFingerprint(ResolveProjectPath(rootPath));
+            var resolvedRootPath = ResolveProjectPath(rootPath);
+            var fingerprint = GetCachedRootCaFingerprint(resolvedRootPath);
             if (!string.IsNullOrEmpty(fingerprint))
             {
                 using (new EditorGUI.DisabledScope(true))
@@ -54,11 +55,24 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (GetBool("_rootCaDistributorEnabled"))
             {
-                using (new EditorGUI.DisabledScope(true))
+                var ownsDistributorEndpoint = _editorRootCaDistributor != null
+                    && string.Equals(_lastRootCaDistributorPath, resolvedRootPath, System.StringComparison.Ordinal)
+                    && string.Equals(_lastRootCaDistributorHost, distributorHost, System.StringComparison.Ordinal)
+                    && _lastRootCaDistributorPort == GetInt("_rootCaDistributorPort", 8766);
+                if (ownsDistributorEndpoint)
                 {
-                    EditorGUILayout.TextField(
-                        "Root CA URL",
-                        $"http://{distributorHost}:{GetInt("_rootCaDistributorPort", 8766)}/rootCA.crt");
+                    using (new EditorGUI.DisabledScope(true))
+                    {
+                        EditorGUILayout.TextField(
+                            "Root CA URL",
+                            $"http://{distributorHost}:{GetInt("_rootCaDistributorPort", 8766)}/rootCA.crt");
+                    }
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox(
+                        "Root CA URL is unavailable because another Manager owns the process-global distributor or it is not running.",
+                        MessageType.Warning);
                 }
             }
 
