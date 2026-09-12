@@ -444,6 +444,9 @@ def run_captured(cmd: list[str], label: str) -> CapturedCommandResult:
 
 def run_parallel(commands: list[tuple[str, list[str]]]) -> dict[str, bool]:
     """Run independent commands concurrently and replay their output in declaration order."""
+    labels = [label for label, _ in commands]
+    if len(labels) != len(set(labels)):
+        raise ValueError("parallel CI command labels must be unique")
     print(f"\n{cyan('--- package validators (parallel) ---')}")
     results_by_label: dict[str, CapturedCommandResult] = {}
     with ThreadPoolExecutor(max_workers=len(commands)) as executor:
@@ -606,6 +609,9 @@ def run_ci_jobs(jobs: list[CiJob], max_workers: int) -> dict[str, bool]:
     """Run top-level CI suites in parallel through captured self-subcommands."""
     if not jobs:
         return {}
+    names = [job.name for job in jobs]
+    if len(names) != len(set(names)):
+        raise ValueError("CI job names must be unique")
 
     worker_count = max(1, min(max_workers, len(jobs)))
     log_dir = CI_ROOT / "logs"
