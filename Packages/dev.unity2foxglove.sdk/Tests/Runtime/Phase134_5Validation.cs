@@ -93,22 +93,23 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-5A-3: replay adapter normalizes mapping arrays during Inspector validation");
 
             var start = Slice(source, "private void Start()", "/// <summary>Subscribes");
-            Check(start.Contains("EnsureMappingArrays();", StringComparison.Ordinal)
-                  && start.IndexOf("EnsureMappingArrays();", StringComparison.Ordinal)
-                  < start.IndexOf("foreach (var fm in _frameOverrides)", StringComparison.Ordinal)
-                  && start.IndexOf("EnsureMappingArrays();", StringComparison.Ordinal)
-                  < start.IndexOf("foreach (var em in _entityOverrides)", StringComparison.Ordinal),
+            var ensureIndex = start.IndexOf("EnsureMappingArrays();", StringComparison.Ordinal);
+            var frameIndex = start.IndexOf("foreach (var fm in _frameOverrides)", StringComparison.Ordinal);
+            var entityIndex = start.IndexOf("foreach (var em in _entityOverrides)", StringComparison.Ordinal);
+            Check(ensureIndex >= 0 && frameIndex >= 0 && entityIndex >= 0
+                  && ensureIndex < frameIndex
+                  && ensureIndex < entityIndex,
                 "134-5A-4: replay adapter repairs mapping arrays before Startup iteration");
         }
 
         private static void VerifyReplayAdapterRuntimeGuards()
         {
             var source = ReadRepoText(ReplayAdapterPath);
+            var payloadGuardIndex = source.IndexOf("payload.Length > MaxReplayJsonPayloadBytes", StringComparison.Ordinal);
+            var utf8Index = source.IndexOf("Encoding.UTF8.GetString(payload)", StringComparison.Ordinal);
             Check(source.Contains("MaxReplayJsonPayloadBytes = 4 * 1024 * 1024", StringComparison.Ordinal)
-                  && source.Contains("payload.Length > MaxReplayJsonPayloadBytes", StringComparison.Ordinal)
-                  && source.Contains("Encoding.UTF8.GetString(payload)", StringComparison.Ordinal)
-                  && source.IndexOf("payload.Length > MaxReplayJsonPayloadBytes", StringComparison.Ordinal)
-                  < source.IndexOf("Encoding.UTF8.GetString(payload)", StringComparison.Ordinal),
+                  && payloadGuardIndex >= 0 && utf8Index >= 0
+                  && payloadGuardIndex < utf8Index,
                 "134-5A-5: replay adapter bounds JSON payloads before UTF-8 string allocation");
             Check(source.Contains("catch (Exception ex) when (IsRecoverableReplayException(ex))", StringComparison.Ordinal)
                   && source.Contains("!(ex is OutOfMemoryException)", StringComparison.Ordinal)
@@ -185,8 +186,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             var overlay = ReadRepoText(DebugOverlayPath);
             var publish = Slice(overlay, "public static bool Publish(", "public static bool PublishValue(");
-            Check(publish.IndexOf("manager.SuppressLivePublishersForReplay", StringComparison.Ordinal)
-                  < publish.IndexOf("FoxgloveDebugOverlayEnvelope.TryCreate", StringComparison.Ordinal),
+            var suppressIndex = publish.IndexOf("manager.SuppressLivePublishersForReplay", StringComparison.Ordinal);
+            var envelopeIndex = publish.IndexOf("FoxgloveDebugOverlayEnvelope.TryCreate", StringComparison.Ordinal);
+            Check(suppressIndex >= 0 && envelopeIndex >= 0 && suppressIndex < envelopeIndex,
                 "134-5B-10: debug overlay checks manager state before building envelopes");
             Check(overlay.Contains("catch (Exception ex) when (IsRecoverablePublishException(ex))", StringComparison.Ordinal)
                   && overlay.Contains("!(ex is OutOfMemoryException)", StringComparison.Ordinal),
@@ -205,9 +207,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!RuntimeOrEditorCodeCallsClearForTests(),
                 "134-5C-3: no runtime/editor code depends on the internal schema registry test clear hook");
             var getOrBuild = Slice(registry, "private static string GetOrBuildGeneratedSchema", "        private static bool IsGeneratedAggregateContract");
+            var buildIndex = getOrBuild.IndexOf("var built = FoxRunJsonSchemaBuilder.Build(contract);", StringComparison.Ordinal);
+            var lockIndex = getOrBuild.IndexOf("lock (Sync)", StringComparison.Ordinal);
             Check(getOrBuild.Contains("var built = FoxRunJsonSchemaBuilder.Build(contract);", StringComparison.Ordinal)
-                  && getOrBuild.IndexOf("var built = FoxRunJsonSchemaBuilder.Build(contract);", StringComparison.Ordinal)
-                  > getOrBuild.IndexOf("lock (Sync)", StringComparison.Ordinal)
+                  && buildIndex >= 0 && lockIndex >= 0 && buildIndex > lockIndex
                   && getOrBuild.Contains("GeneratedSchemaCache[key] = built", StringComparison.Ordinal),
                 "134-5C-3B: generated schema JSON is built outside the registry lock");
 

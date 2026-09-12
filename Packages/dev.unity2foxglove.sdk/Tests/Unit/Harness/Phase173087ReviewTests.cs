@@ -101,9 +101,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "standaloneBuild\n                ? GetMetadataValue(ros2csMetadata, \"/ros2cs/ros2\")\n                : GetROSVersion();",
                 constructor.Replace("\r\n", "\n", StringComparison.Ordinal),
                 StringComparison.Ordinal);
-            Assert.True(
-                constructor.IndexOf("GetMetadataValue(ros2csMetadata, \"/ros2cs/ros2\")", StringComparison.Ordinal)
-                < constructor.IndexOf("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal));
+            var metadataIndex = constructor.IndexOf("GetMetadataValue(ros2csMetadata, \"/ros2cs/ros2\")", StringComparison.Ordinal);
+            var warningIndex = constructor.IndexOf("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal);
+            Assert.True(metadataIndex >= 0 && warningIndex >= 0 && metadataIndex < warningIndex);
         }
 
         [Fact]
