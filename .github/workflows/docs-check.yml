@@ -81,7 +81,7 @@ jobs:
             "Unity2Foxglove/Docs"
             "Scripts"
           )
-          if rg -n "D:/|D:\\\\|BaiduSyncdisk|00 Inbox|!\\[\\[|TODO|FIXME|TBD|Pasted image|Scripts[\\/]build[_]unity[_]il2cpp\\.py" "${files[@]}" \
+          if rg -n '(^|[^A-Za-z0-9])([A-Za-z]:[\\/]|\\\\[^\\/]+[\\/]|/(home|Users)/)|BaiduSyncdisk|00 Inbox|!\[\[|TODO|FIXME|TBD|Pasted image|Scripts[\/]build[_]unity[_]il2cpp\.py' "${files[@]}" \
             -g "*.md" -g "*.json" -g "*.py" -g "*.ps1" -g "*.cff" \
             -g "!Scripts/package/validate_unity_package.py" \
             -g "!Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py" \
