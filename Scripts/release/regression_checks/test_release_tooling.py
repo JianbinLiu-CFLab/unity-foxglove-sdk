@@ -2323,7 +2323,10 @@ class UnityIl2CppBuildTests(unittest.TestCase):
     def _run_log_scenario(self, root: Path, at_start, polls=None):
         """Run the real controller against real files and a deterministic child seam."""
         tree = mock.Mock()
-        tree.process.poll.side_effect = polls or [0]
+        # The controller observes descendants before its completion poll, so a
+        # normal completed child produces one active observation followed by
+        # the terminal zero return.
+        tree.process.poll.side_effect = polls or [None, 0]
         tree.active_pids.return_value = []
         tree.close.return_value = None
         output, errors = io.StringIO(), io.StringIO()
