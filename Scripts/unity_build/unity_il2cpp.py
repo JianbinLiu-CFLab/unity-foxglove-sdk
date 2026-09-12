@@ -31,7 +31,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 # Build targets supported by the Unity-side FoxgloveBuild method.
@@ -85,6 +85,7 @@ UNITY_EDITOR_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:[a-z]\d+)?")
 
 # Initial offsets and command indexes used for log tailing and diagnostics.
 INITIAL_LOG_OFFSET = 0
+_LOG_FILE_STATE: Dict[Path, Tuple[int, int, int]] = {}
 UNITY_EXECUTABLE_COMMAND_INDEX = 0
 
 # Generated artifacts required before Unity can compile the package in IL2CPP.
@@ -458,6 +459,12 @@ def read_new_important_lines(log_path: Path, offset: int) -> Tuple[int, List[str
         return offset, []
 
     try:
+        stat = log_path.stat()
+        identity = (stat.st_dev, stat.st_ino, stat.st_size)
+        previous = _LOG_FILE_STATE.get(log_path)
+        if previous is not None and (identity[:2] != previous[:2] or identity[2] < previous[2]):
+            offset = 0
+        _LOG_FILE_STATE[log_path] = identity
         with log_path.open("r", encoding="utf-8", errors="replace") as handle:
             handle.seek(offset)
             lines = handle.readlines()
@@ -848,7 +855,10 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
     started = time.monotonic()
     next_heartbeat = started + interval
     timeout_seconds = timeout_minutes * SECONDS_PER_MINUTE if timeout_minutes > 0 else None
-    offset = INITIAL_LOG_OFFSET
+    try:
+        offset = log_path.stat().st_size if log_path.is_file() else INITIAL_LOG_OFFSET
+    except OSError:
+        offset = INITIAL_LOG_OFFSET
 
     process_tree = start_owned_process(cmd, root)
     process = process_tree.process
