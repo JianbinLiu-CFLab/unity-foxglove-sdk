@@ -738,16 +738,45 @@ def restore_with_ignoring_failed_sources(
     return run(cmd, label, fatal=fatal)
 
 
+_RESTORE_STATE_MARKERS = (
+    "project.assets.json",
+    "NETSDK1004",
+    "NETSDK1005",
+    "NETSDK1047",
+    "MSB4019",
+)
+
+
+def _is_restore_state_failure(result: CapturedCommandResult) -> bool:
+    """Return true only for failures that indicate missing/stale restore state."""
+    output = f"{result.stdout}\n{result.stderr}"
+    return any(marker in output for marker in _RESTORE_STATE_MARKERS)
+
+
 def run_with_restore_fallback(
     project_cmd: list[str],
     fallback_cmd: list[str],
     label: str,
 ) -> bool:
-    """Run command with --no-restore first, then retry with restore."""
-    if run(project_cmd, label, fatal=False):
+    """Retry a no-restore command only when its failure is restore-state specific."""
+    first = run_captured(project_cmd, label)
+    if first.ok:
+        print(green(f"{PASS} {label} ({first.elapsed_seconds:.1f}s)"))
         return True
 
-    return run(fallback_cmd, f"{label} (retry with restore)")
+    if first.stdout:
+        print(first.stdout, end="" if first.stdout.endswith("\n") else "\n")
+    if first.stderr:
+        print(first.stderr, end="" if first.stderr.endswith("\n") else "\n", file=sys.stderr)
+    if first.timeout_seconds is not None:
+        print(red(f"{FAIL} {label} timed out after {first.timeout_seconds}s ({first.elapsed_seconds:.1f}s)"))
+        return False
+    print(red(f"{FAIL} {label} (exit {first.returncode}) ({first.elapsed_seconds:.1f}s)"))
+    if not _is_restore_state_failure(first):
+        print(red(f"{FAIL} {label}: refusing restore retry for non-restore failure"))
+        return False
+
+    return run(fallback_cmd, f"{label} (retry with restore)", fatal=False)
 
 
 def _check_boundary() -> bool:

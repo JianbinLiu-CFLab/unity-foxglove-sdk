@@ -921,6 +921,24 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual("partial stdout\n", result.stdout)
         self.assertEqual("partial stderr\n", result.stderr)
 
+    def test_restore_fallback_retries_only_restore_state_failures(self) -> None:
+        restore_failure = self.run_ci.CapturedCommandResult(
+            "build", False, 1, 0.1, "error NETSDK1004: project.assets.json not found", ""
+        )
+        with mock.patch.object(self.run_ci, "run_captured", return_value=restore_failure):
+            with mock.patch.object(self.run_ci, "run", return_value=True) as fallback:
+                self.assertTrue(self.run_ci.run_with_restore_fallback(["first"], ["restore"], "build"))
+        fallback.assert_called_once_with(["restore"], "build (retry with restore)", fatal=False)
+
+    def test_restore_fallback_does_not_hide_non_restore_failure(self) -> None:
+        compiler_failure = self.run_ci.CapturedCommandResult(
+            "build", False, 1, 0.1, "error CS1002: ; expected", ""
+        )
+        with mock.patch.object(self.run_ci, "run_captured", return_value=compiler_failure):
+            with mock.patch.object(self.run_ci, "run") as fallback:
+                self.assertFalse(self.run_ci.run_with_restore_fallback(["first"], ["restore"], "build"))
+        fallback.assert_not_called()
+
     def test_run_parallel_replays_ordered_command_elapsed_time(self) -> None:
         """Parallel validator replay should retain labels, output order, return codes, and elapsed time."""
         captured_results = {
