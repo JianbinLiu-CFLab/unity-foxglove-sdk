@@ -269,6 +269,18 @@ def default_parallel_jobs() -> int:
         return DEFAULT_PARALLEL_JOBS
 
 
+def validate_control_plane(args: argparse.Namespace) -> None:
+    """Fail before launching children when CI controls are malformed or non-positive."""
+    for name in ("UNITY2FOXGLOVE_CI_TIMEOUT", "UNITY2FOXGLOVE_CI_JOB_TIMEOUT", "UNITY2FOXGLOVE_CI_JOBS"):
+        raw = os.environ.get(name, "").strip()
+        if raw:
+            try:
+                if int(raw) < 1:
+                    raise ValueError
+            except ValueError as error:
+                raise SystemExit(f"invalid {name}={raw!r}; expected a positive integer") from error
+    if getattr(args, "jobs", None) is not None and args.jobs < 1:
+        raise SystemExit("--jobs must be a positive integer")
 def _msbuild_dir(path: Path) -> str:
     """Return an absolute MSBuild directory property value with a trailing slash."""
     normalized = str(path.resolve()).replace("\\", "/")
@@ -770,6 +782,7 @@ def main() -> int:
         help="Top-level parallel job count for default CI runs.",
     )
     args = parser.parse_args()
+    validate_control_plane(args)
 
     if args.only == "analyzer" and args.skip_analyzer:
         parser.error("--skip-analyzer cannot be combined with --only analyzer")
