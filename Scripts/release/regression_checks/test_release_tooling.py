@@ -2631,7 +2631,10 @@ class UnityIl2CppBuildTests(unittest.TestCase):
             unity.parent.mkdir(parents=True)
             unity.write_text("NOT_A_UNITY_EXECUTABLE\n", encoding="utf-8")
 
-            with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+            # DrvFs may grant X_OK to every regular file. Express the negative
+            # permission boundary explicitly instead of assuming ext4 defaults.
+            with mock.patch.object(self.unity_il2cpp.os, "access", return_value=False), \
+                    mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
                 with mock.patch.dict(self.unity_il2cpp.os.environ,
                                      {"PROGRAMFILES": str(root / "ProgramFiles"),
                                       "PROGRAMFILES(X86)": str(root / "missing")}, clear=False):
@@ -2755,7 +2758,8 @@ class UnityIl2CppBuildTests(unittest.TestCase):
             unity.parent.mkdir(parents=True)
             unity.write_text("NOT_A_UNITY_EXECUTABLE\n", encoding="utf-8")
 
-            with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+            with mock.patch.object(self.unity_il2cpp.os, "access", return_value=False), \
+                    mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
                 with mock.patch.dict(self.unity_il2cpp.os.environ,
                                      {"PROGRAMFILES": str(root / "ProgramFiles"),
                                       "PROGRAMFILES(X86)": str(root / "missing")}, clear=False):
