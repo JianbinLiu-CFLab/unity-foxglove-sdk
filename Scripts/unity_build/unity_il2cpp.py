@@ -1148,6 +1148,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _interrupt_build(_signum: int, _frame: object) -> None:
+    """Convert termination signals into the controlled cleanup path."""
+    raise KeyboardInterrupt
+
+
 def main() -> int:
     """Main entry: parse args, build command, run Unity, report result."""
     args = parse_args()
@@ -1196,11 +1201,8 @@ def main() -> int:
     previous_sigint = signal.getsignal(signal.SIGINT)
     previous_sigterm = signal.getsignal(signal.SIGTERM)
 
-    def interrupt_build(_signum: int, _frame: object) -> None:
-        raise KeyboardInterrupt
-
-    signal.signal(signal.SIGINT, interrupt_build)
-    signal.signal(signal.SIGTERM, interrupt_build)
+    signal.signal(signal.SIGINT, _interrupt_build)
+    signal.signal(signal.SIGTERM, _interrupt_build)
     try:
         try:
             returncode = run_with_progress(

@@ -2332,6 +2332,7 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         output, errors = io.StringIO(), io.StringIO()
 
         def launch(*_args):
+            """Start the mocked owned process and capture its initial state."""
             at_start()
             return tree
 
@@ -2389,6 +2390,7 @@ class UnityIl2CppBuildTests(unittest.TestCase):
             log.write_bytes(b"error CS0000: stale\n")
 
             def replace():
+                """Replace the log atomically with fresh compiler output."""
                 replacement = root / "replacement.log"
                 replacement.write_bytes(b"error CS1111: fresh replacement starts here\n")
                 replacement.replace(log)
@@ -2405,6 +2407,7 @@ class UnityIl2CppBuildTests(unittest.TestCase):
             payload = "error CS2222: 编译失败\n".encode("utf-8")
 
             def append():
+                """Append the remaining UTF-8 payload to the tailed log."""
                 with log.open("ab") as stream:
                     stream.write(payload[16:])
                 return None
@@ -2433,6 +2436,7 @@ class UnityIl2CppBuildTests(unittest.TestCase):
             log = root / "unity.log"
 
             def truncate():
+                """Replace a partial log record with a fresh complete line."""
                 log.write_bytes(b"error CS5555: fresh\n")
                 return None
 
@@ -2477,6 +2481,7 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         descriptors = []
 
         def fail(fd):
+            """Inject a descriptor-stat failure while recording the handle."""
             descriptors.append(fd)
             raise OSError("controlled descriptor failure")
 
@@ -2523,6 +2528,7 @@ class UnityIl2CppBuildTests(unittest.TestCase):
             log = root / "unity.log"
 
             def race(path, flags, *args, **kwargs):
+                """Swap the log path during open to exercise replacement handling."""
                 nonlocal replaced
                 if Path(path) == log and not replaced:
                     replaced = True
