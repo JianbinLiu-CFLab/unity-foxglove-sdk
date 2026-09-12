@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import shutil
 import subprocess
@@ -405,6 +406,37 @@ def _project_sources(project: Path) -> list[Path]:
     return sources
 
 
+def _evaluated_msbuild_items(project: Path) -> dict[str, list[dict[str, str]]]:
+    """Read effective MSBuild items, including imported props/targets."""
+    command = [
+        "dotnet",
+        "msbuild",
+        str(project),
+        "-getItem:Compile;PackageReference;ProjectReference;Reference",
+        "-nologo",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"MSBuild evaluation failed for {project}: {exc}") from exc
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"MSBuild evaluation failed for {project}: exit {result.returncode}: {result.stderr.strip()}"
+        )
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"MSBuild evaluation returned non-JSON for {project}: {exc}") from exc
+    return payload.get("Items", {})
+
+
 def _strip_csharp_comments_and_literals(source: str) -> str:
     """Replace comments and literals while preserving executable structure."""
     output: list[str] = []
@@ -619,12 +651,43 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
 
         try:
             sources = _project_sources(target.project)
-        except (OSError, ET.ParseError, ValueError) as exc:
-            failures.append(f"{name}: cannot resolve compiled sources: {exc}")
+            evaluated = _evaluated_msbuild_items(target.project)
+            evaluated_sources = {
+                Path(item.get("FullPath", item.get("Identity", ""))).resolve()
+                for item in evaluated.get("Compile", [])
+                if item.get("FullPath", item.get("Identity", ""))
+            }
+            explicit_sources = set(sources)
+            if evaluated_sources != explicit_sources:
+                failures.append(
+                    f"{name}: evaluated MSBuild Compile items differ from explicit project ownership "
+                    f"(evaluated={len(evaluated_sources)}, explicit={len(explicit_sources)})"
+                )
+            if name != "core":
+                evaluated_packages = {
+                    item.get("Identity", item.get("Include", ""))
+                    for item in evaluated.get("PackageReference", [])
+                }
+                unexpected_packages = evaluated_packages - PROVIDER_DEPENDENCIES - {"NETStandard.Library"}
+                missing_packages = PROVIDER_DEPENDENCIES - evaluated_packages
+                if unexpected_packages or missing_packages:
+                    failures.append(
+                        f"{name}: evaluated PackageReference set is not Roslyn-only: "
+                        f"unexpected={sorted(unexpected_packages)}, missing={sorted(missing_packages)}"
+                    )
+                if evaluated.get("ProjectReference"):
+                    failures.append(f"{name}: evaluated ProjectReference is forbidden")
+                imported_references = [
+                    item for item in evaluated.get("Reference", [])
+                    if item.get("DefiningProjectFullPath", "").lower().startswith(str(REPO_ROOT).lower())
+                    and Path(item.get("DefiningProjectFullPath", "")).resolve() != target.project.resolve()
+                ]
+                if imported_references:
+                    failures.append(f"{name}: imported assembly Reference is forbidden")
+        except (OSError, ET.ParseError, ValueError, RuntimeError) as exc:
+            failures.append(f"{name}: cannot resolve evaluated MSBuild ownership: {exc}")
             sources = []
-        missing_sources = [
-            source for source in sources if not source.exists()
-        ]
+        missing_sources = [source for source in sources if not source.exists()]
         for source in missing_sources:
             failures.append(
                 f"{name}: compiled source missing: {source}"
