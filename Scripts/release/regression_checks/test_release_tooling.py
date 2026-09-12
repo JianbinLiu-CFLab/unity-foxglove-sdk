@@ -3241,6 +3241,22 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         process.wait.assert_called_once()
         job.close.assert_called_once_with()
 
+    def test_giant_progress_interval_has_bounded_prelaunch_behavior(self) -> None:
+        """Arbitrary-precision CLI intervals must not escape as float overflow."""
+        calls: list[str] = []
+        tree = self._controlled_tree(0, [[]], calls)
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(self.unity_il2cpp, "start_owned_process", return_value=tree):
+                with mock.patch.object(self.unity_il2cpp, "LOG_POLL_SLEEP_SECONDS", 0):
+                    result = self.unity_il2cpp.run_with_progress(
+                        ["controlled"],
+                        Path(temp),
+                        Path(temp) / "unity.log",
+                        10**10000,
+                        timeout_minutes=0,
+                    )
+        self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, result)
+
     @staticmethod
     def _read_pid_if_present(path: Path) -> int | None:
         """Read a test-owned PID file when startup reached that boundary."""

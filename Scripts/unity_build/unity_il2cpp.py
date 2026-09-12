@@ -55,6 +55,8 @@ LOG_POLL_SLEEP_SECONDS = 1
 # Keep progress heartbeats useful while avoiding console spam.
 DEFAULT_PROGRESS_INTERVAL_SECONDS = 15
 MIN_PROGRESS_INTERVAL_SECONDS = 1
+# Prevent arbitrary-precision CLI values from overflowing monotonic-float math.
+MAX_PROGRESS_INTERVAL_SECONDS = 24 * 60 * 60
 DEFAULT_BUILD_TIMEOUT_MINUTES = 120
 UNITY_TERMINATION_WAIT_SECONDS = 30
 PROCESS_DIAGNOSTIC_TIMEOUT_SECONDS = 5
@@ -957,7 +959,8 @@ def terminate_process(process_tree: OwnedProcessTree) -> List[int]:
 def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int, timeout_minutes: int) -> int:
     """Run the Unity process, tailing important log lines at the given interval."""
     started = time.monotonic()
-    next_heartbeat = started + interval
+    bounded_interval = min(max(interval, MIN_PROGRESS_INTERVAL_SECONDS), MAX_PROGRESS_INTERVAL_SECONDS)
+    next_heartbeat = started + float(bounded_interval)
     timeout_seconds = timeout_minutes * SECONDS_PER_MINUTE if timeout_minutes > 0 else None
     log_state = _LogTailState()
     offset = log_state.seed(log_path)
@@ -999,7 +1002,7 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
                     f"Log: {relative_to_root(log_path, root)}",
                     flush=True,
                 )
-                next_heartbeat = now + interval
+                next_heartbeat = now + float(bounded_interval)
 
             time.sleep(LOG_POLL_SLEEP_SECONDS)
 
