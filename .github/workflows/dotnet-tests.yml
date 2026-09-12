@@ -224,6 +224,10 @@ jobs:
         shell: pwsh
         run: python -B Scripts/release/run_ci.py --only foxrun-publish-panel
 
+      - name: Run Windows Phase184 acceptance tooling
+        shell: pwsh
+        run: python -B Scripts/release/run_ci.py --only phase184-acceptance-tooling
+
       - name: Run Windows package validation
         shell: pwsh
         run: python -B Scripts/package/validate_unity_package.py
