@@ -189,6 +189,45 @@ jobs:
           path: build/TestResults/OptionalRos2Native
           if-no-files-found: error
 
+  windows-parity:
+    name: Windows runtime, xUnit, panel, and package parity
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Tools/foxglove-extensions/foxrun-publish-panel/package-lock.json
+
+      - name: Run Windows runtime validation
+        shell: pwsh
+        run: python -B Scripts/release/run_ci.py --only dotnet-runtime
+
+      - name: Run Windows core xUnit tests
+        shell: pwsh
+        run: python -B Scripts/release/run_ci.py --only xunit
+
+      - name: Run Windows FoxRun panel tests
+        shell: pwsh
+        run: python -B Scripts/release/run_ci.py --only foxrun-publish-panel
+
+      - name: Run Windows package validation
+        shell: pwsh
+        run: python -B Scripts/package/validate_unity_package.py
+
   analyzer-freshness:
     runs-on: windows-latest
     steps:
