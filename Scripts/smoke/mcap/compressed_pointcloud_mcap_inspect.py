@@ -179,13 +179,15 @@ def read_records(data: bytes) -> tuple[list[tuple[int, bytes]], int]:
     unsupported_chunks = 0
     offset = 0
 
-    while offset + 9 <= len(data):
+    while offset < len(data):
+        if len(data) - offset < 9:
+            raise ValueError("truncated MCAP record header")
         opcode = data[offset]
         offset += 1
         length = read_u64(data, offset)
         offset += 8
         if offset + length > len(data):
-            break
+            raise ValueError("truncated MCAP record payload")
 
         content = data[offset : offset + length]
         offset += length
@@ -210,6 +212,8 @@ def decode_chunk_records(content: bytes) -> tuple[list[tuple[int, bytes]], int]:
     compression, offset = read_string(content, offset)
     compressed_size = read_u64(content, offset)
     offset += 8
+    if offset + compressed_size > len(content):
+        raise ValueError("truncated MCAP chunk payload")
     records = content[offset : offset + compressed_size]
 
     if compression:
