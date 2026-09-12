@@ -54,7 +54,16 @@ def sanitize_run_id(value: str | None) -> str:
     return candidate
 
 
-RUN_ID = sanitize_run_id(os.environ.get("UNITY2FOXGLOVE_CI_RUN_ID"))
+def unique_run_id(value: str | None) -> str:
+    """Avoid reusing an existing CI output directory across invocations."""
+    candidate = sanitize_run_id(value)
+    run_root = REPO_ROOT / "build" / "ci" / candidate
+    if run_root.exists():
+        candidate = f"{candidate}-{uuid.uuid4().hex[:8]}"
+    return candidate
+
+
+RUN_ID = unique_run_id(os.environ.get("UNITY2FOXGLOVE_CI_RUN_ID"))
 CI_ROOT = REPO_ROOT / "build/ci" / RUN_ID
 ISOLATED_DOTNET_ROOT = CI_ROOT / "dotnet"
 
