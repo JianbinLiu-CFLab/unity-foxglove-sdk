@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -34,6 +37,8 @@ SDK_DEPENDENT_PACKAGE_MANIFESTS = (
 
 # Process exit code for a successful synchronization or dry run.
 EXIT_SUCCESS = 0
+LOCK_WAIT_SECONDS = 30.0
+LOCK_POLL_SECONDS = 0.05
 
 # Number of parent directories between this file and the repository root.
 REPO_ROOT_PARENT_DEPTH = 2
@@ -404,8 +409,38 @@ class VersionBump:
         )
         self.write_if_changed(path, content, f"create release notes for {self.version}")
 
+    @contextmanager
+    def _transaction_lock(self):
+        """Serialize version bumps targeting one repository."""
+        lock = self.root / "build" / ".bump_version.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        deadline = time.monotonic() + LOCK_WAIT_SECONDS
+        acquired = False
+        try:
+            while not acquired:
+                try:
+                    with lock.open("x", encoding="utf-8") as handle:
+                        handle.write(f"pid={os.getpid()}\n")
+                    acquired = True
+                except FileExistsError:
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError(f"Timed out waiting for version bump lock: {self.rel(lock)}")
+                    time.sleep(LOCK_POLL_SECONDS)
+            yield
+        finally:
+            if acquired:
+                try:
+                    lock.unlink()
+                except FileNotFoundError:
+                    pass
+
     def run(self) -> int:
-        """Apply or report every version-bump edit."""
+        """Apply or report every version-bump edit under one repository lock."""
+        with self._transaction_lock():
+            return self._run_unlocked()
+
+    def _run_unlocked(self) -> int:
+        """Apply or report every version-bump edit without acquiring a lock."""
         package_json = self.package_json_path()
         package_json_text = self.read(package_json)
         old_version = self.package_version(package_json_text, package_json)
