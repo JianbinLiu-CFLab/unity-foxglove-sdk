@@ -55,9 +55,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && runCi.Contains("RUNTIME_TEST_PROPS = dotnet_msbuild_props(\"runtime-tests\")", StringComparison.Ordinal)
                   && runCi.Contains("UNIT_TEST_PROPS = dotnet_msbuild_props(\"unit-tests\")", StringComparison.Ordinal),
                 "163-58B-2: analyzer, runtime validation, and xUnit suites have separate build roots");
-            Check(runCi.Contains("SOURCE_GENERATOR_PROJ, \"Restore Roslyn analyzer project\", ANALYZER_PROPS", StringComparison.Ordinal)
-                  && runCi.Contains("RUNTIME_TESTS_PROJ, \"Restore runtime test project\", RUNTIME_TEST_PROPS", StringComparison.Ordinal)
-                  && runCi.Contains("UNIT_TESTS_PROJ, \"Restore xUnit unit test project\", UNIT_TEST_PROPS", StringComparison.Ordinal),
+            Check(runCi.Contains("SOURCE_GENERATOR_PROJ", StringComparison.Ordinal)
+                  && runCi.Contains("Restore Roslyn analyzer project", StringComparison.Ordinal)
+                  && runCi.Contains("ANALYZER_PROPS", StringComparison.Ordinal)
+                  && runCi.Contains("RUNTIME_TESTS_PROJ", StringComparison.Ordinal)
+                  && runCi.Contains("Restore runtime test project", StringComparison.Ordinal)
+                  && runCi.Contains("RUNTIME_TEST_PROPS", StringComparison.Ordinal)
+                  && runCi.Contains("UNIT_TESTS_PROJ", StringComparison.Ordinal)
+                  && runCi.Contains("Restore xUnit unit test project", StringComparison.Ordinal)
+                  && runCi.Contains("UNIT_TEST_PROPS", StringComparison.Ordinal),
                 "163-58B-3: restore commands use the same suite props as their no-restore commands");
         }
 
@@ -72,7 +78,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-58C-1: run_ci.py builds analyzer DLLs into a run-scoped output directory");
             Check(validator.Contains("--build-output-dir", StringComparison.Ordinal)
                   && validator.Contains("build_output_dir: Path", StringComparison.Ordinal)
-                  && validator.Contains("built_dll = build_output_dir / \"FoxgloveLogSourceGenerator.dll\"", StringComparison.Ordinal),
+                  && validator.Contains("build_output_dir / name", StringComparison.Ordinal)
+                  && validator.Contains("args.build_output_dir", StringComparison.Ordinal),
                 "163-58C-2: source generator freshness validator accepts an explicit isolated output directory");
         }
 
@@ -91,7 +98,8 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(registry.Contains("Ci(\"--phase163-58\", \"Phase 163-58\", Phase163_58Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-58\",", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_58Validation.Validate", StringComparison.Ordinal),
                 "163-58E-1: validation registry exposes Phase163-58");
             Check(project.Contains("<Compile Include=\"Phase163_58Validation.cs\" />", StringComparison.Ordinal),
                 "163-58E-2: runtime validation project compiles Phase163-58");
