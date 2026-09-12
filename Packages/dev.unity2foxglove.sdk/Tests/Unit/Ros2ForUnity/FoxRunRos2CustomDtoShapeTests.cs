@@ -56,11 +56,11 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Equal("uint16", members[nameof(AllSupportedValuesDto.State)].RosType);
             Assert.Equal("uint8[]", members[nameof(AllSupportedValuesDto.Bytes)].RosType);
             Assert.Equal("int32[]", members[nameof(AllSupportedValuesDto.Integers)].RosType);
-            Assert.Equal("string[]", members[nameof(AllSupportedValuesDto.Labels)].RosType);
+            Assert.Equal("int64[]", members[nameof(AllSupportedValuesDto.Longs)].RosType);
             Assert.Equal(FoxRunRos2CustomDtoSequenceRepresentation.Array,
                 members[nameof(AllSupportedValuesDto.Integers)].SequenceRepresentation);
             Assert.Equal(FoxRunRos2CustomDtoSequenceRepresentation.List,
-                members[nameof(AllSupportedValuesDto.Labels)].SequenceRepresentation);
+                members[nameof(AllSupportedValuesDto.Longs)].SequenceRepresentation);
             Assert.True(members[nameof(AllSupportedValuesDto.Text)].HasPresence);
             Assert.True(members[nameof(AllSupportedValuesDto.Bytes)].HasPresence);
             Assert.True(members[nameof(AllSupportedValuesDto.OptionalInteger)].HasPresence);
@@ -77,6 +77,18 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Contains(diagnostics, value => value.StartsWith("FOXR2F009|", StringComparison.Ordinal));
             Assert.Contains(diagnostics, value => value.IndexOf("foxrun_", StringComparison.Ordinal) >= 0);
             Assert.Contains(diagnostics, value => value.IndexOf("Decimal", StringComparison.Ordinal) >= 0);
+        }
+
+        [Fact]
+        public void ReflectionBuilderRejectsLeadingDigitAndNonAsciiRosFieldNames()
+        {
+            var shape = BuildReflectionShape(typeof(InvalidRosFieldNameDto));
+
+            Assert.False(Read<bool>(shape, "IsSupported"));
+            var diagnostics = Read<IEnumerable<string>>(shape, "Diagnostics").ToArray();
+            Assert.Contains(diagnostics, value => value.StartsWith("FOXR2F009|", StringComparison.Ordinal));
+            Assert.Contains(diagnostics, value => value.Contains("1_value", StringComparison.Ordinal));
+            Assert.Contains(diagnostics, value => value.Contains("éclair", StringComparison.OrdinalIgnoreCase));
         }
 
         [Theory]
@@ -98,6 +110,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             yield return new object[] { typeof(UnsupportedCollectionDto), "FOXR2F009" };
             yield return new object[] { typeof(UnsupportedReferenceDto), "FOXR2F009" };
             yield return new object[] { typeof(UnsupportedArrayDto), "FOXR2F009" };
+            yield return new object[] { typeof(UnsupportedSequenceReferenceDto), "FOXR2F009" };
         }
 
         [Fact]
@@ -190,6 +203,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             public int foxrun_reserved;
         }
 
+        public sealed class InvalidRosFieldNameDto
+        {
+            public int _1Value { get; set; }
+            public int Éclair { get; set; }
+        }
+
         public sealed class AllSupportedValuesDto
         {
             public bool Boolean;
@@ -207,7 +226,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             public TestState State;
             public byte[] Bytes { get; set; }
             public int[] Integers { get; set; }
-            public List<string> Labels { get; set; }
+            public List<long> Longs { get; set; }
             public int? OptionalInteger { get; set; }
         }
 
@@ -256,6 +275,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             public int[][] Jagged { get; set; }
             public int[,] Matrix { get; set; }
             public int?[] NullableElements { get; set; }
+        }
+
+        public sealed class UnsupportedSequenceReferenceDto
+        {
+            public List<string> Labels { get; set; }
+            public List<NestedDto> Children { get; set; }
         }
 
         public sealed class SharedReferenceDto

@@ -691,7 +691,7 @@ def check_runtime_inventory(results: list[CheckResult]) -> None:
         isinstance(files, list)
         and isinstance(file_count, int)
         and len(files) == file_count
-        and all(isinstance(item, dict) and "path" in item and "sha256" in item for item in files[:20]),
+        and all(isinstance(item, dict) and "path" in item and "sha256" in item for item in files),
         f"files={len(files) if isinstance(files, list) else type(files).__name__}",
     )
 

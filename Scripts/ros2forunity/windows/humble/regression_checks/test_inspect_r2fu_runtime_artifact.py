@@ -7,10 +7,12 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 
@@ -36,16 +38,31 @@ class InspectR2fuRuntimeArtifactTests(unittest.TestCase):
         inspector = load_inspector_module()
         with tempfile.TemporaryDirectory() as temp:
             cache = Path(temp) / "inventory.json"
+            artifact = Path(temp) / "artifact.zip"
+            payload = b"runtime-payload"
+            with zipfile.ZipFile(artifact, "w") as archive:
+                archive.writestr("bin/example.dll", payload)
             cache.write_text(
-                json.dumps({"sha256": "artifact-hash", "inspectorSha256": "old-inspector"}),
+                json.dumps(
+                    {
+                        "sha256": "artifact-hash",
+                        "inspectorSha256": "old-inspector",
+                        "files": [
+                            {
+                                "path": "bin/example.dll",
+                                "sha256": hashlib.sha256(payload).hexdigest(),
+                            }
+                        ],
+                    }
+                ),
                 encoding="utf-8",
             )
 
             self.assertIsNone(
-                inspector.read_cached_inventory(cache, "artifact-hash", "new-inspector")
+                inspector.read_cached_inventory(cache, artifact, "artifact-hash", "new-inspector")
             )
             self.assertIsNotNone(
-                inspector.read_cached_inventory(cache, "artifact-hash", "old-inspector")
+                inspector.read_cached_inventory(cache, artifact, "artifact-hash", "old-inspector")
             )
 
 

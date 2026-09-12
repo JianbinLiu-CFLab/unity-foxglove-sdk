@@ -24,6 +24,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private const int CleanupNotStarted = 0;
         private const int CleanupInProgress = 1;
         private const int CleanupFinished = 2;
+        private const long MaximumRecoverableRegistrationAttempts = 4;
         private readonly object _lifecycleLock = new object();
         private readonly Func<long> _activeGeneration;
         private readonly long _maximumCopyBytes;
@@ -99,6 +100,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public long SessionGeneration { get; }
         public FoxRunRos2SubscriptionBindingState State
             => (FoxRunRos2SubscriptionBindingState)Volatile.Read(ref _state);
+        public bool CanRetryRegistration
+        {
+            get
+            {
+                lock (_lifecycleLock)
+                    return Volatile.Read(ref _stopping) == 0
+                           && !_registrationInFlight
+                           && Volatile.Read(ref _failedRegistrationCleanupPending) == 0
+                           && State == FoxRunRos2SubscriptionBindingState.Failed
+                           && (_lastRegistration.Error == FoxRunRos2RegistrationError.BackendFailure
+                               || _lastRegistration.Error == FoxRunRos2RegistrationError.InvalidSubscriptionToken)
+                           && _registrationAttemptSequence < MaximumRecoverableRegistrationAttempts;
+            }
+        }
 
         public void WaitForRuntime()
         {

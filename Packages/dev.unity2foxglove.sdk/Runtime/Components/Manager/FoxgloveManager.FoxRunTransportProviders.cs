@@ -148,8 +148,12 @@ namespace Unity.FoxgloveSDK.Components
                     out var selectionReason))
             {
                 var configuredId = default(FoxRunTransportId);
+                var configuredText = _enableFoxRunInbound
+                    ? _foxRunSubscribeTransportId
+                    : (_foxRunPublishTransportIds ?? Array.Empty<string>())
+                        .FirstOrDefault();
                 FoxRunTransportId.TryCreate(
-                    _foxRunSubscribeTransportId,
+                    configuredText,
                     out configuredId);
                 return ReportFoxRunTransportSessionCaptureFailure(
                     new FoxRunTransportSessionCaptureError(
@@ -392,10 +396,31 @@ namespace Unity.FoxgloveSDK.Components
                 reason = "The selected Provider does not contribute schemas.";
                 return false;
             }
-            return contributor.TryResolveSchema(
-                in request,
-                out contribution,
-                out reason);
+            try
+            {
+                if (!contributor.TryResolveSchema(
+                        in request,
+                        out contribution,
+                        out reason))
+                {
+                    contribution = default;
+                    return false;
+                }
+                if (string.IsNullOrWhiteSpace(contribution.StableSchemaId))
+                {
+                    contribution = default;
+                    reason =
+                        "Provider returned an invalid schema contribution without a stable schema ID.";
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception exception)
+            {
+                contribution = default;
+                reason = exception.Message;
+                return false;
+            }
         }
 
         /// <summary>

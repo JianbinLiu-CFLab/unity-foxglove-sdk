@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.IO;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
@@ -17,6 +18,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
     public sealed class FoxRunRos2CustomContractTests
     {
         private const string Digest = "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd";
+
+        [Fact]
+        public void LegacyCameraTimestampClampsFirstUnrepresentableSecond()
+        {
+            var unixNs = ((ulong)int.MaxValue + 1UL) * 1_000_000_000UL;
+            var time = Ros2ForUnityRosTime.SplitUnixNanoseconds(unixNs);
+
+            Assert.Equal(int.MaxValue, time.Seconds);
+            Assert.Equal(0U, time.Nanoseconds);
+            var builder = File.ReadAllText(Path.Combine(
+                FindRepositoryRoot(),
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraMessageBuilder.cs"));
+            Assert.Contains("Ros2ForUnityRosTime.ToBuiltinTime", builder, StringComparison.Ordinal);
+        }
 
         [Fact]
         public void CustomPublisherContractCarriesTheLockedIdentityAndDirectionalMode()
@@ -279,6 +294,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 endpoint,
                 "remote-peer",
                 generatedSourceOrigin));
+        }
+
+        private static string FindRepositoryRoot()
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(
+                        directory.FullName,
+                        "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraMessageBuilder.cs")))
+                    return directory.FullName;
+                directory = directory.Parent;
+            }
+            throw new DirectoryNotFoundException("Repository root was not found.");
         }
 
         private static FoxTopicContract TopicContract(

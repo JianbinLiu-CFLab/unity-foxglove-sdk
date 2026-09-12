@@ -32,11 +32,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 Header = new std_msgs.msg.Header
                 {
-                    Stamp = new builtin_interfaces.msg.Time
-                    {
-                        Sec = (int)(frame.UnixNs / 1_000_000_000UL),
-                        Nanosec = (uint)(frame.UnixNs % 1_000_000_000UL)
-                    },
+                    Stamp = Ros2ForUnityRosTime.ToBuiltinTime(frame.UnixNs),
                     Frame_id = frame.FrameId
                 },
                 Orientation = BuildOrientation(frame),

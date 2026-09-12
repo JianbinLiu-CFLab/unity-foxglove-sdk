@@ -252,9 +252,19 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 return true;
             }
-            catch
+            catch (Exception primaryException)
             {
-                RestoreBackup(packageRoot, touched, backup);
+                try
+                {
+                    RestoreBackup(packageRoot, touched, backup);
+                }
+                catch (Exception rollbackException)
+                {
+                    throw new AggregateException(
+                        "FoxRun ROS2 interface rollback failed after the primary commit error.",
+                        primaryException,
+                        rollbackException);
+                }
                 throw;
             }
         }

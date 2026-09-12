@@ -1860,12 +1860,18 @@ ReplayAdmission::ReplayAdmission(
   uint64_t request_id,
   ReplayDecision decision,
   std::vector<uint8_t> cached_response,
-  std::shared_ptr<void> rollback)
+  std::shared_ptr<void> rollback,
+  std::shared_ptr<void> scheduler_identity,
+  std::optional<ContractIdentity> bound_identity,
+  std::optional<Operation> bound_operation)
 : owner_(std::move(owner)),
   request_id_(request_id),
   decision_(decision),
   cached_response_(std::move(cached_response)),
-  rollback_(std::move(rollback))
+  rollback_(std::move(rollback)),
+  scheduler_identity_(std::move(scheduler_identity)),
+  bound_identity_(std::move(bound_identity)),
+  bound_operation_(std::move(bound_operation))
 {
 }
 
@@ -1897,6 +1903,8 @@ struct RequestReplayAuthority::Impl final
     bool claimed{false};
     std::shared_ptr<void> scheduler_identity;
     std::shared_ptr<ControlReservation> reservation;
+    std::optional<ContractIdentity> bound_identity;
+    std::optional<Operation> bound_operation;
   };
 
   explicit Impl(const ProtocolLimits & value)
@@ -1944,6 +1952,30 @@ ReplayAdmission RequestReplayAuthority::admit(
   const std::vector<uint8_t> & canonical_request,
   uint64_t maximum_response_bytes,
   BoundedOutboundScheduler & scheduler)
+{
+  return admit_impl(
+    request_id, canonical_request, maximum_response_bytes, scheduler, nullptr, std::nullopt);
+}
+
+ReplayAdmission RequestReplayAuthority::admit_contract(
+  uint64_t request_id,
+  const std::vector<uint8_t> & canonical_request,
+  uint64_t maximum_response_bytes,
+  BoundedOutboundScheduler & scheduler,
+  const ContractIdentity & identity,
+  Operation operation)
+{
+  return admit_impl(
+    request_id, canonical_request, maximum_response_bytes, scheduler, &identity, operation);
+}
+
+ReplayAdmission RequestReplayAuthority::admit_impl(
+  uint64_t request_id,
+  const std::vector<uint8_t> & canonical_request,
+  uint64_t maximum_response_bytes,
+  BoundedOutboundScheduler & scheduler,
+  const ContractIdentity * bound_identity,
+  std::optional<Operation> bound_operation)
 {
   if (request_id == 0) {
     throw ProtocolError(
@@ -1994,7 +2026,11 @@ ReplayAdmission RequestReplayAuthority::admit(
       state,
       request_id,
       ReplayDecision::replay_cached,
-      retained->second.response);
+      retained->second.response,
+      {},
+      retained->second.scheduler_identity,
+      retained->second.bound_identity,
+      retained->second.bound_operation);
     result.settled_ = true;
     return result;
   }
@@ -2071,7 +2107,9 @@ ReplayAdmission RequestReplayAuthority::admit(
     false,
     false,
     scheduler.impl_,
-    std::move(reservation)};
+    std::move(reservation),
+    bound_identity ? std::optional<ContractIdentity>(*bound_identity) : std::nullopt,
+    bound_operation};
   state->entries.emplace(request_id, std::move(entry));
   state->replay_bytes += requested_replay_bytes;
   ++state->outstanding_requests;
@@ -2282,6 +2320,15 @@ bool RequestReplayAuthority::try_claim_for_contract(
   ReplayAdmission & admission,
   const BoundedOutboundScheduler & scheduler)
 {
+  return try_claim_for_contract(admission, scheduler, nullptr, std::nullopt);
+}
+
+bool RequestReplayAuthority::try_claim_for_contract(
+  ReplayAdmission & admission,
+  const BoundedOutboundScheduler & scheduler,
+  const ContractIdentity * bound_identity,
+  std::optional<Operation> bound_operation)
+{
   auto state = impl_;
   std::lock_guard<std::mutex> lock(state->mutex);
   if (
@@ -2296,7 +2343,11 @@ bool RequestReplayAuthority::try_claim_for_contract(
     found == state->entries.end() ||
     found->second.completed ||
     found->second.claimed ||
-    found->second.scheduler_identity.get() != scheduler.impl_.get())
+    found->second.scheduler_identity.get() != scheduler.impl_.get() ||
+    (found->second.bound_identity.has_value() &&
+     (!bound_identity || !bound_operation.has_value() ||
+      *found->second.bound_identity != *bound_identity ||
+      found->second.bound_operation != bound_operation)))
   {
     return false;
   }
@@ -2335,6 +2386,15 @@ bool RequestReplayAuthority::is_cached_for(
   const ReplayAdmission & admission,
   const BoundedOutboundScheduler & scheduler) const
 {
+  return is_cached_for(admission, scheduler, nullptr, std::nullopt);
+}
+
+bool RequestReplayAuthority::is_cached_for(
+  const ReplayAdmission & admission,
+  const BoundedOutboundScheduler & scheduler,
+  const ContractIdentity * bound_identity,
+  std::optional<Operation> bound_operation) const
+{
   auto state = impl_;
   std::lock_guard<std::mutex> lock(state->mutex);
   if (
@@ -2344,11 +2404,22 @@ bool RequestReplayAuthority::is_cached_for(
   {
     return false;
   }
+  if (admission.bound_identity_.has_value()) {
+    return
+      admission.scheduler_identity_.get() == scheduler.impl_.get() &&
+      bound_identity && bound_operation.has_value() &&
+      admission.bound_identity_ == *bound_identity &&
+      admission.bound_operation_ == bound_operation;
+  }
   const auto found = state->entries.find(admission.request_id_);
   return
     found != state->entries.end() &&
     found->second.completed &&
-    found->second.scheduler_identity.get() == scheduler.impl_.get();
+    found->second.scheduler_identity.get() == scheduler.impl_.get() &&
+    (!found->second.bound_identity.has_value() ||
+     (bound_identity && bound_operation.has_value() &&
+      *found->second.bound_identity == *bound_identity &&
+      found->second.bound_operation == bound_operation));
 }
 
 uint64_t RequestReplayAuthority::high_water_mark() const
@@ -2601,9 +2672,10 @@ RegistrationAdmission ContractAuthority::begin_registration(
   state->ensure_open();
   state->ensure_authority_pair(scheduler.impl_, replay.impl_);
   if (response.decision() == ReplayDecision::replay_cached) {
-    if (!replay.is_cached_for(response, scheduler)) {
+    if (!replay.is_cached_for(
+      response, scheduler, &identity, Operation::RegisterSubscription)) {
       throw std::logic_error(
-              "the replayed registration response belongs elsewhere");
+              "the replayed registration response is not bound to this contract");
     }
     state->bind_authority_pair(scheduler.impl_, replay.impl_);
     RegistrationAdmission result(
@@ -2616,9 +2688,10 @@ RegistrationAdmission ContractAuthority::begin_registration(
     result.settled_ = true;
     return result;
   }
-  if (!replay.try_claim_for_contract(response, scheduler)) {
+  if (!replay.try_claim_for_contract(
+    response, scheduler, &identity, Operation::RegisterSubscription)) {
     throw std::logic_error(
-            "registration requires the pending command response transaction");
+            "registration requires the pending command response transaction bound to this contract");
   }
   state->bind_authority_pair(scheduler.impl_, replay.impl_);
   bool inserted = false;
@@ -2868,8 +2941,8 @@ void ContractAuthority::abort_registration(
             "the semantic error factory must return a control frame");
   }
   replay.finish(response, std::move(frame), false, true);
-  state->contracts.erase(found);
-  scheduler.retire_contract(admission.identity_->key);
+  found->second.state = Impl::State::ready;
+  scheduler.activate_contract(admission.identity_->key);
   admission.settled_ = true;
   DisarmRollback(admission.rollback_);
 }
@@ -2928,9 +3001,10 @@ RemovalAdmission ContractAuthority::begin_unregister(
   state->ensure_open();
   state->ensure_authority_pair(scheduler.impl_, replay.impl_);
   if (response.decision() == ReplayDecision::replay_cached) {
-    if (!replay.is_cached_for(response, scheduler)) {
+    if (!replay.is_cached_for(
+      response, scheduler, &identity, Operation::UnregisterSubscription)) {
       throw std::logic_error(
-              "the replayed unregister response belongs elsewhere");
+              "the replayed unregister response is not bound to this contract");
     }
     state->bind_authority_pair(scheduler.impl_, replay.impl_);
     RemovalAdmission result(
@@ -2943,9 +3017,10 @@ RemovalAdmission ContractAuthority::begin_unregister(
     result.settled_ = true;
     return result;
   }
-  if (!replay.try_claim_for_contract(response, scheduler)) {
+  if (!replay.try_claim_for_contract(
+    response, scheduler, &identity, Operation::UnregisterSubscription)) {
     throw std::logic_error(
-            "unregister requires the pending command response transaction");
+            "unregister requires the pending command response transaction bound to this contract");
   }
   state->bind_authority_pair(scheduler.impl_, replay.impl_);
   bool removing = false;
@@ -3182,8 +3257,8 @@ void ContractAuthority::abort_removal(
             "the semantic error factory must return a control frame");
   }
   replay.finish(response, std::move(frame), false, true);
-  state->contracts.erase(found);
-  scheduler.retire_contract(admission.identity_->key);
+  found->second.state = Impl::State::ready;
+  scheduler.activate_contract(admission.identity_->key);
   admission.settled_ = true;
   DisarmRollback(admission.rollback_);
 }

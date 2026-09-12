@@ -20,6 +20,7 @@ from Scripts.ros2forunity.interfaces.sync_foxrun_custom_typesupport_addon import
 from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
     AddonValidationRequest,
     compute_static_interface_digest,
+    normalized_json_sha256,
 )
 from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon import (
     MANAGED_ASSEMBLY_FILE,
@@ -50,6 +51,16 @@ class CustomTypesupportSyncTests(unittest.TestCase):
                 ),
                 paths,
             )
+
+    def test_sync_rejects_validation_evidence_for_different_inventory(self) -> None:
+        """Validation proof must bind the exact candidate inventory bytes."""
+        with self._fixture(validated=True) as fixture:
+            evidence_path = fixture.root / "build/phase181/humble/candidate/e/candidate-validation.json"
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            evidence["candidatePackageSha256"] = "0" * 64
+            evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+            with self.assertRaisesRegex(AddonSyncError, "build-and-validate-candidate-before-sync"):
+                verify_sync_ready(fixture.request, validator=lambda _request: None)
 
     def test_sync_rejects_unexpected_candidate_payload(self) -> None:
         """Verify sync rejects unexpected candidate payload."""
@@ -253,8 +264,18 @@ class _Fixture:
         if validated:
             evidence = self.root / "build/phase181/humble/candidate/e"
             evidence.mkdir(parents=True)
+            inventory = json.loads(
+                (self.candidate / "RuntimeSupport/typesupport-inventory.json").read_text(encoding="utf-8")
+            )
             (evidence / "candidate-validation.json").write_text(
-                json.dumps({"schemaVersion": 1, "distro": "humble", "validated": True}),
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "distro": "humble",
+                        "candidatePackageSha256": normalized_json_sha256(inventory),
+                        "validated": True,
+                    }
+                ),
                 encoding="utf-8",
             )
         self.request = AddonSyncRequest(

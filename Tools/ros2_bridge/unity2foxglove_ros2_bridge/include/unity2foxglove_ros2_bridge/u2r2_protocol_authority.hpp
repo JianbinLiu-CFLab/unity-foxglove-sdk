@@ -399,13 +399,19 @@ private:
     uint64_t request_id,
     ReplayDecision decision,
     std::vector<uint8_t> cached_response,
-    std::shared_ptr<void> rollback = {});
+    std::shared_ptr<void> rollback = {},
+    std::shared_ptr<void> scheduler_identity = {},
+    std::optional<ContractIdentity> bound_identity = std::nullopt,
+    std::optional<Operation> bound_operation = std::nullopt);
 
   std::shared_ptr<void> owner_;
   uint64_t request_id_{0};
   ReplayDecision decision_{ReplayDecision::begin_mutation};
   std::vector<uint8_t> cached_response_;
   std::shared_ptr<void> rollback_;
+  std::shared_ptr<void> scheduler_identity_;
+  std::optional<ContractIdentity> bound_identity_;
+  std::optional<Operation> bound_operation_;
   bool settled_{false};
 };
 
@@ -422,6 +428,13 @@ public:
     const std::vector<uint8_t> & canonical_request,
     uint64_t maximum_response_bytes,
     BoundedOutboundScheduler & scheduler);
+  ReplayAdmission admit_contract(
+    uint64_t request_id,
+    const std::vector<uint8_t> & canonical_request,
+    uint64_t maximum_response_bytes,
+    BoundedOutboundScheduler & scheduler,
+    const ContractIdentity & identity,
+    Operation operation);
   void complete(
     ReplayAdmission & admission,
     const std::vector<uint8_t> & exact_response);
@@ -451,12 +464,22 @@ private:
   bool try_claim_for_contract(
     ReplayAdmission & admission,
     const BoundedOutboundScheduler & scheduler);
+  bool try_claim_for_contract(
+    ReplayAdmission & admission,
+    const BoundedOutboundScheduler & scheduler,
+    const ContractIdentity * identity,
+    std::optional<Operation> operation);
   void release_contract_claim(
     ReplayAdmission & admission,
     const BoundedOutboundScheduler & scheduler);
   bool is_cached_for(
     const ReplayAdmission & admission,
     const BoundedOutboundScheduler & scheduler) const;
+  bool is_cached_for(
+    const ReplayAdmission & admission,
+    const BoundedOutboundScheduler & scheduler,
+    const ContractIdentity * identity,
+    std::optional<Operation> operation) const;
   bool try_abandon(
     ReplayAdmission & admission,
     bool require_claimed) noexcept;
@@ -464,6 +487,13 @@ private:
     const std::shared_ptr<Impl> & state,
     uint64_t request_id,
     bool require_claimed) noexcept;
+  ReplayAdmission admit_impl(
+    uint64_t request_id,
+    const std::vector<uint8_t> & canonical_request,
+    uint64_t maximum_response_bytes,
+    BoundedOutboundScheduler & scheduler,
+    const ContractIdentity * identity,
+    std::optional<Operation> operation);
   void close();
   std::shared_ptr<Impl> impl_;
 };

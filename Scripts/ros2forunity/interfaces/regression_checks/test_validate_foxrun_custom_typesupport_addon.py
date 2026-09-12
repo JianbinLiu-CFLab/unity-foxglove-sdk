@@ -325,9 +325,16 @@ class _Fixture:
             "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/custom.dll.meta",
             _plugin_importer_meta(),
         )
+        managed_fixture = bytearray(256)
+        managed_fixture[:2] = b"MZ"
+        managed_fixture[0x3C:0x40] = (0x80).to_bytes(4, "little")
+        managed_fixture[0x80:0x84] = b"PE\0\0"
+        managed_fixture[0x84:0x86] = b"d\x86"
+        managed_fixture[0xC0:0xC4] = b"BSJB"
+        managed_fixture[0xD0:0xD0 + len(b"Phase181State48D288ED82F1Envelope")] = b"Phase181State48D288ED82F1Envelope"
         self.write(
             "Runtime/Ros2ForUnity/Plugins/unity2foxglove_foxrun_interfaces_v1_assembly.dll",
-            b"custom-managed",
+            bytes(managed_fixture),
         )
         self.write(
             "Runtime/Ros2ForUnity/Plugins/unity2foxglove_foxrun_interfaces_v1_assembly.dll.meta",

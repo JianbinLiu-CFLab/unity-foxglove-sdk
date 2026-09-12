@@ -258,6 +258,37 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void ResolveRevalidatesProviderAfterReentrantMetadataMutation()
+        {
+            var registry = new FoxRunTransportProviderRegistry();
+            ReentrantMutationProvider provider = null;
+            provider = new ReentrantMutationProvider(
+                new FoxRunTransportId("phase187.h01.009"),
+                () => registry.Unregister(provider));
+            Assert.Equal(
+                FoxRunTransportRegistrationResult.Added,
+                registry.Register(provider));
+
+            var resolution = registry.Resolve(
+                provider.Id,
+                FoxRunTransportCapabilities.Publish);
+
+            Assert.Equal(
+                FoxRunTransportProviderResolutionState.Conflicted,
+                resolution.State);
+        }
+
+        [Fact]
+        public void ManagerRejectsSuccessfulSchemaResolutionWithInvalidContribution()
+        {
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs");
+            Assert.Contains("try", source, StringComparison.Ordinal);
+            Assert.Contains("string.IsNullOrWhiteSpace(contribution.StableSchemaId)", source, StringComparison.Ordinal);
+            Assert.Contains("catch (Exception", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ZeroPublishRoutesAndIndependentSubscriptionAreSupported()
         {
             var registry = new FoxRunTransportProviderRegistry();
@@ -1289,6 +1320,46 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        private sealed class ReentrantMutationProvider : IFoxRunTransportProvider
+        {
+            private readonly Action _mutate;
+            private bool _mutated;
+
+            internal ReentrantMutationProvider(FoxRunTransportId id, Action mutate)
+            {
+                Id = id;
+                _mutate = mutate;
+            }
+
+            public FoxRunTransportId Id { get; }
+
+            public FoxRunTransportCapabilities Capabilities
+                => FoxRunTransportCapabilities.Publish;
+
+            public FoxRunTransportLifecycleState LifecycleState
+            {
+                get
+                {
+                    if (!_mutated)
+                    {
+                        _mutated = true;
+                        _mutate();
+                    }
+
+                    return FoxRunTransportLifecycleState.Available;
+                }
+            }
+
+            public bool TryCaptureSession(
+                ulong generation,
+                out IFoxRunTransportSession session,
+                out string reason)
+            {
+                session = null;
+                reason = "not used";
+                return false;
+            }
+        }
         private sealed class FakeEmitterContribution :
             IFoxRunTransportEmitterContribution
         {

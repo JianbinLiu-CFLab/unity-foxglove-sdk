@@ -627,7 +627,6 @@ namespace Unity2Foxglove.Ros2Bridge
                     projectedBytes - removedBytes);
                 finalQueuedBytes = checked(
                     _queuedBytes
-                    + _inFlightBytes
                     - removedBytes
                     + frame.PayloadLength);
             }
@@ -638,7 +637,8 @@ namespace Unity2Foxglove.Ros2Bridge
 
             if (finalDepth > _limits.MaxPerContractDepth
                 || finalUsageBytes > _limits.MaxPerContractBytes
-                || finalQueuedBytes > _limits.MaxTotalBytes)
+                || checked(finalQueuedBytes + _inFlightBytes)
+                    > _limits.MaxTotalBytes)
             {
                 return RejectForCapacityLocked(out displaced);
             }

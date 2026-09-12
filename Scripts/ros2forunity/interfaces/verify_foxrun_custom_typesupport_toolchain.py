@@ -9,6 +9,7 @@ results are recorded as redacted provenance below ``build/phase181``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -47,6 +48,7 @@ class ToolchainPreflightRequest:
     ros2cs_source: Path
     r2fu_source: Path
     build_root: Path
+    ros2cs_install: Path | None = None
     generator: str = DEFAULT_GENERATOR
     vswhere: Path | None = None
     dotnet: Path | None = None
@@ -59,6 +61,7 @@ class ToolchainPreflightResult:
     distro: str
     generator: str
     requirements: tuple[dict[str, str], ...]
+    input_identity: dict[str, object]
 
 
 class ToolchainPreflightError(RuntimeError):
@@ -106,11 +109,25 @@ def preflight_toolchain(
     _probe_dotnet(dotnet, runner, environment, requirement_rows)
     _probe_rosidl_modules(python, runner, environment, requirement_rows)
 
+    input_identity = _toolchain_input_identity(
+        request,
+        {
+            "python": python,
+            "colcon": colcon,
+            "cmake": cmake,
+            "dotnet": dotnet,
+            "vswhere": vswhere,
+            "compiler": compiler,
+            "msbuild": msbuild,
+            "visualStudio": visual_studio_root,
+        },
+    )
     result = ToolchainPreflightResult(
         ready=True,
         distro=request.distro,
         generator=request.generator,
         requirements=tuple(requirement_rows),
+        input_identity=input_identity,
     )
     _write_provenance(request, result)
     return result
@@ -176,6 +193,7 @@ def _normalize_request(request: ToolchainPreflightRequest) -> ToolchainPreflight
         ros2cs_source=Path(request.ros2cs_source),
         r2fu_source=Path(request.r2fu_source),
         build_root=Path(request.build_root),
+        ros2cs_install=Path(request.ros2cs_install) if request.ros2cs_install else None,
         generator=request.generator.strip(),
         vswhere=Path(request.vswhere) if request.vswhere else None,
         dotnet=Path(request.dotnet) if request.dotnet else Path(os.environ.get("ProgramFiles", r"C:\\Program Files")) / "dotnet" / "dotnet.exe",
@@ -389,14 +407,55 @@ def _write_provenance(request: ToolchainPreflightRequest, result: ToolchainPrefl
     target = request.build_root / "phase181" / request.distro / "provenance" / "toolchain.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "distro": result.distro,
         "generator": result.generator,
         "requirements": list(result.requirements),
+        "inputIdentity": result.input_identity,
     }
     temporary = target.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     os.replace(temporary, target)
+
+
+def _toolchain_input_identity(request: ToolchainPreflightRequest, tools: Mapping[str, Path]) -> dict[str, object]:
+    """Return content identities for every build-affecting root and executable."""
+    roots = {
+        "ros2Root": _tree_sha256(request.ros2_root),
+        "ros2csSource": _tree_sha256(request.ros2cs_source),
+        "r2fuSource": _tree_sha256(request.r2fu_source),
+    }
+    if request.ros2cs_install:
+        roots["ros2csInstall"] = _tree_sha256(request.ros2cs_install)
+    executables = {
+        label: _file_sha256(path)
+        for label, path in sorted(tools.items())
+        if label not in {"visualStudio"}
+    }
+    executables["visualStudio"] = _tree_sha256(tools["visualStudio"])
+    return {"roots": roots, "executables": executables}
+
+
+def _file_sha256(path: Path) -> str:
+    """Return the SHA-256 digest of one toolchain file."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _tree_sha256(root: Path) -> str:
+    """Return a deterministic SHA-256 digest for a directory tree."""
+    digest = hashlib.sha256()
+    root = Path(root)
+    for path in sorted((item for item in root.rglob("*") if item.is_file()), key=lambda item: item.relative_to(root).as_posix()):
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _ready(label: str, detail: str) -> dict[str, str]:
@@ -440,6 +499,7 @@ def parse_args(argv: Sequence[str] | None = None) -> ToolchainPreflightRequest:
     parser.add_argument("--distro", choices=SUPPORTED_DISTROS, required=True)
     parser.add_argument("--ros2-root", type=Path)
     parser.add_argument("--ros2cs-source", type=Path, required=True)
+    parser.add_argument("--ros2cs-install", type=Path)
     parser.add_argument("--r2fu-source", type=Path, required=True)
     parser.add_argument("--build-root", type=Path, default=root / "build")
     parser.add_argument("--generator", default=DEFAULT_GENERATOR)
@@ -451,6 +511,7 @@ def parse_args(argv: Sequence[str] | None = None) -> ToolchainPreflightRequest:
         distro=args.distro,
         ros2_root=ros2_root,
         ros2cs_source=args.ros2cs_source,
+        ros2cs_install=args.ros2cs_install,
         r2fu_source=args.r2fu_source,
         build_root=args.build_root,
         generator=args.generator,

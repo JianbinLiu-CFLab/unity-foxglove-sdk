@@ -24,6 +24,7 @@ if str(WINDOWS_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(WINDOWS_SCRIPT_DIR))
 
 from runtime_adoption_manifest import sync_runtime_adoption_manifest
+from sync_transaction import DurableSnapshot
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -302,7 +303,6 @@ def main(argv: list[str] | None = None) -> int:
     inspect_script = project_root / "Scripts" / "ros2forunity" / "windows" / "humble" / "inspect_r2fu_runtime_artifact.py"
     build_script = project_root / "Scripts" / "ros2forunity" / "windows" / "humble" / "build_r2fu_runtime_package.py"
     validate_script = project_root / "Scripts" / "ros2forunity" / "windows" / "humble" / "validate_r2fu_runtime_package.py"
-
     if args.dry_run:
         project_shape = ensure_project_uses_runtime_package(
             project_root,
@@ -317,41 +317,59 @@ def main(argv: list[str] | None = None) -> int:
         print("[DRY-RUN] lock has runtime package:", project_shape["lockHasRuntimePackage"])
         return 0
 
-    run([sys.executable, str(inspect_script), "--zip", str(artifact), "--out", str(inventory_path)], cwd=project_root)
-    run(
+    adoption_path = project_root / "Packages" / "dev.unity2foxglove.ros2forunity" / "Compliance" / "ros2-for-unity-adoption-manifest.json"
+    transaction = DurableSnapshot(
         [
-            sys.executable,
-            str(build_script),
-            "--zip",
-            str(artifact),
-            "--inventory",
-            str(inventory_path),
-            "--package",
-            str(package_path),
+            package_path,
+            inventory_path,
+            adoption_path,
+            project_root / "Unity2Foxglove" / "Packages" / "manifest.json",
+            project_root / "Unity2Foxglove" / "Packages" / "packages-lock.json",
         ],
-        cwd=project_root,
-    )
-    adapter_compliance = sync_runtime_adoption_manifest(
-        project_root,
-        package_path,
-        PACKAGE_NAME,
-    )
-    project_shape = ensure_project_uses_runtime_package(
-        project_root,
-        update=args.update_project_manifest,
-        require_runtime_dependency=not args.skip_project_manifest_check,
+        project_root / "build" / "phase187-round4" / "scratch" / "r41-h04-009-sync-humble-before-image",
     )
 
-    validation_log = evidence_dir / f"sync-r2fu-runtime-validate-{timestamp}.log"
-    if not args.skip_validate:
-        run([sys.executable, str(validate_script)], cwd=project_root, log=validation_log)
+    try:
+        run([sys.executable, str(inspect_script), "--zip", str(artifact), "--out", str(inventory_path)], cwd=project_root)
+        run(
+            [
+                sys.executable,
+                str(build_script),
+                "--zip",
+                str(artifact),
+                "--inventory",
+                str(inventory_path),
+                "--package",
+                str(package_path),
+            ],
+            cwd=project_root,
+        )
+        adapter_compliance = sync_runtime_adoption_manifest(
+            project_root,
+            package_path,
+            PACKAGE_NAME,
+        )
+        project_shape = ensure_project_uses_runtime_package(
+            project_root,
+            update=args.update_project_manifest,
+            require_runtime_dependency=not args.skip_project_manifest_check,
+        )
 
-    unity_log = None
-    if args.run_unity_import:
-        unity_log = evidence_dir / f"sync-r2fu-runtime-unity-import-{timestamp}.log"
-        run_unity_import(args.unity_editor, project_root / "Unity2Foxglove", unity_log)
+        validation_log = evidence_dir / f"sync-r2fu-runtime-validate-{timestamp}.log"
+        if not args.skip_validate:
+            run([sys.executable, str(validate_script)], cwd=project_root, log=validation_log)
 
-    package_manifest = read_json(package_path / "RuntimeSupport" / "runtime-manifest.json")
+        unity_log = None
+        if args.run_unity_import:
+            unity_log = evidence_dir / f"sync-r2fu-runtime-unity-import-{timestamp}.log"
+            run_unity_import(args.unity_editor, project_root / "Unity2Foxglove", unity_log)
+
+        package_manifest = read_json(package_path / "RuntimeSupport" / "runtime-manifest.json")
+    except Exception:
+        transaction.restore()
+        raise
+    else:
+        transaction.commit()
     summary = {
         "schemaVersion": 1,
         "generatedAtLocal": dt.datetime.now().astimezone().isoformat(),

@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("rosUnavailableWarningLogged", source, StringComparison.Ordinal);
             Assert.Contains("Interlocked.Exchange(ref rosUnavailableWarningLogged, 1)", getTime, StringComparison.Ordinal);
             Assert.DoesNotContain("rosUnityTimeOffset = GetRosNowSeconds() - readingSecs;", getTime, StringComparison.Ordinal);
-            Assert.Contains("var rosNowSecs = GetRosNowSeconds();", getTime, StringComparison.Ordinal);
+            Assert.Contains("double rosNowSecs;", getTime, StringComparison.Ordinal);
             Assert.Contains("rosUnityTimeOffset = rosNowSecs - readingSecs;", getTime, StringComparison.Ordinal);
             Assert.Contains("rosUnavailableWarningLogged", generator, StringComparison.Ordinal);
             Assert.Contains("rosNowSecs = GetRosNowSeconds()", generator, StringComparison.Ordinal);

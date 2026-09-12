@@ -139,15 +139,22 @@ def verify_package(package_root: Union[str, Path]) -> str:
             if message_path.is_file():
                 relative_paths.add(message_path.relative_to(root).as_posix())
 
-    inputs = []
-    for relative_path in sorted(relative_paths):
-        path = root / Path(relative_path)
-        try:
-            inputs.append(DigestInput(relative_path, path.read_bytes()))
-        except OSError as error:
-            raise ValueError("missing generated source file: " + relative_path) from error
+    # Use the shared source-package authority for the final byte universe.
+    # The historical verifier only enumerated fixed files and ``.msg`` files,
+    # allowing a lock to omit ``.srv``/``.idl`` (or other generated sources)
+    # and disagreeing on line-ending canonicalization with the validator.
+    try:
+        from .foxrun_custom_typesupport_common import compute_static_interface_digest
+    except ImportError:  # pragma: no cover - direct script entry point
+        from foxrun_custom_typesupport_common import compute_static_interface_digest
 
-    actual_digest = compute(schema_version, inputs)
+    for relative_path in sorted(relative_paths):
+        if not (root / Path(relative_path)).is_file():
+            raise ValueError("missing generated source file: " + relative_path)
+    try:
+        actual_digest = compute_static_interface_digest(root)
+    except ValueError as error:
+        raise ValueError("static interface source bytes do not match the lock digest") from error
     if actual_digest != expected_digest:
         raise ValueError("static interface source bytes do not match the lock digest")
     return actual_digest

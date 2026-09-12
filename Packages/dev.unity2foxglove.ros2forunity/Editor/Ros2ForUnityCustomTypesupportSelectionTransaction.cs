@@ -739,6 +739,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return false;
             }
 
+            if (nativeLibraries.Any(token => token is not JObject))
+            {
+                return false;
+            }
+
             var nativePaths = new HashSet<string>(StringComparer.Ordinal);
             foreach (var entry in nativeLibraries.OfType<JObject>())
             {

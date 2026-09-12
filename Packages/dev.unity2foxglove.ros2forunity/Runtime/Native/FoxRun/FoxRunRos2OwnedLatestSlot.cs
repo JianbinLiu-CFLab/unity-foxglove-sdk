@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
@@ -536,9 +537,22 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             Exception firstFailure = null;
             var spinner = new SpinWait();
+            var deadline = Stopwatch.GetTimestamp()
+                           + (long)(Stopwatch.Frequency * 1.0);
             while (Volatile.Read(ref _activePublishers) != 0
                    || Volatile.Read(ref _activeAppliers) != 0)
+            {
+                if (Stopwatch.GetTimestamp() >= deadline)
+                {
+                    Volatile.Write(ref _drainOwnerThreadId, 0);
+                    Interlocked.CompareExchange(
+                        ref _stopState,
+                        StopStateRequested,
+                        StopStateDraining);
+                    return;
+                }
                 spinner.SpinOnce();
+            }
 
             try
             {
@@ -605,9 +619,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 _dispose(owned);
             }
-            catch
+            catch (Exception exception)
             {
-                // Preserve the apply exception that initiated candidate cleanup.
+                // Fatal runtime failures must remain supervisory signals;
+                // only recoverable cleanup faults stay best-effort.
+                if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                    ExceptionDispatchInfo.Capture(exception).Throw();
             }
         }
 
@@ -617,11 +634,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 clearIfOwned(owned);
             }
-            catch
+            catch (Exception exception)
             {
-                // Clearing is best effort; ownership still has to terminate.
+                // Fatal runtime failures must escape instead of being erased
+                // by a best-effort ownership clear.
+                if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                    ExceptionDispatchInfo.Capture(exception).Throw();
             }
         }
     }
 }
 #endif
+

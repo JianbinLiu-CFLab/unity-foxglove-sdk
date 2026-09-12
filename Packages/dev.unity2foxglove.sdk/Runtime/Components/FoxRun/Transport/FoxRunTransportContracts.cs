@@ -363,6 +363,12 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunDeliveryHistory history,
             int depth)
         {
+            if (!Enum.IsDefined(typeof(FoxRunDeliveryReliability), reliability))
+                throw new ArgumentOutOfRangeException(nameof(reliability));
+            if (!Enum.IsDefined(typeof(FoxRunDeliveryDurability), durability))
+                throw new ArgumentOutOfRangeException(nameof(durability));
+            if (!Enum.IsDefined(typeof(FoxRunDeliveryHistory), history))
+                throw new ArgumentOutOfRangeException(nameof(history));
             if (depth < 0)
                 throw new ArgumentOutOfRangeException(nameof(depth));
             if (history != FoxRunDeliveryHistory.KeepLast && depth != 0)

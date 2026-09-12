@@ -221,6 +221,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private const long AcceptanceArming = -1;
         private const long AcceptanceCompleting = -2;
         private const long AcceptanceCompleted = -3;
+        private const long MaximumRecoverableRegistrationAttempts = 4;
         private readonly object _lifecycleLock = new object();
         private readonly Func<long> _activeGeneration;
         private readonly long _maximumCopyBytes;
@@ -331,6 +332,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public long SessionGeneration { get; }
         public FoxRunRos2SubscriptionBindingState State
             => (FoxRunRos2SubscriptionBindingState)Volatile.Read(ref _state);
+        public bool CanRetryRegistration
+        {
+            get
+            {
+                lock (_lifecycleLock)
+                    return CanRetryRegistrationUnderLock();
+            }
+        }
         public long ReceivedCount => _slot.ReceivedCount;
         public long ReplacedCount => _slot.ReplacedCount;
         public long AppliedCount => _slot.AppliedCount;
@@ -364,7 +373,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     || state == FoxRunRos2SubscriptionBindingState.Receiving)
                     return _lastRegistration;
                 if (state == FoxRunRos2SubscriptionBindingState.Unsupported
-                    || state == FoxRunRos2SubscriptionBindingState.Failed)
+                    || (state == FoxRunRos2SubscriptionBindingState.Failed
+                        && !CanRetryRegistrationUnderLock()))
                     return _lastRegistration;
                 if (_registrationInFlight)
                     return FoxRunRos2RegistrationResult.Failure(
@@ -1098,6 +1108,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Volatile.Write(ref _state, (int)target);
             return _lastRegistration;
         }
+
+        private bool CanRetryRegistrationUnderLock()
+            => Volatile.Read(ref _stopping) == 0
+               && !_registrationInFlight
+               && State == FoxRunRos2SubscriptionBindingState.Failed
+               && (_lastRegistration.Error == FoxRunRos2RegistrationError.BackendFailure
+                   || _lastRegistration.Error == FoxRunRos2RegistrationError.InvalidSubscriptionToken)
+               && _registrationAttemptSequence < MaximumRecoverableRegistrationAttempts;
 
         private bool IsActiveGeneration(long callerGeneration)
         {

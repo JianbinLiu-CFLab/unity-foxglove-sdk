@@ -325,7 +325,14 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "        catch");
             sb.AppendLine(pad + "        {");
-            sb.AppendLine(pad + "            __FoxRunRos2CustomDisposeEnvelope_" + index + "(target);");
+            sb.AppendLine(pad + "            try");
+            sb.AppendLine(pad + "            {");
+            sb.AppendLine(pad + "                __FoxRunRos2CustomDisposeEnvelope_" + index + "(target);");
+            sb.AppendLine(pad + "            }");
+            sb.AppendLine(pad + "            catch (global::System.Exception)");
+            sb.AppendLine(pad + "            {");
+            sb.AppendLine(pad + "                // Preserve the mapping failure as the primary exception.");
+            sb.AppendLine(pad + "            }");
             sb.AppendLine(pad + "            throw;");
             sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "    }");
@@ -366,7 +373,14 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "        catch");
             sb.AppendLine(pad + "        {");
-            sb.AppendLine(pad + "            __FoxRunRos2CustomDisposeEnvelope_" + index + "(target);");
+            sb.AppendLine(pad + "            try");
+            sb.AppendLine(pad + "            {");
+            sb.AppendLine(pad + "                __FoxRunRos2CustomDisposeEnvelope_" + index + "(target);");
+            sb.AppendLine(pad + "            }");
+            sb.AppendLine(pad + "            catch (global::System.Exception)");
+            sb.AppendLine(pad + "            {");
+            sb.AppendLine(pad + "                // Preserve the copy failure as the primary exception.");
+            sb.AppendLine(pad + "            }");
             sb.AppendLine(pad + "            throw;");
             sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "    }");
@@ -374,13 +388,36 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "    private static void __FoxRunRos2CustomDisposeEnvelope_" + index + "(" + envelope + " value)");
             sb.AppendLine(pad + "    {");
             sb.AppendLine(pad + "        if (value == null) return;");
+            sb.AppendLine(pad + "        global::System.Exception __foxRunRos2CustomDisposeFailure = null;");
             sb.AppendLine(pad + "        var payload = value.Payload;");
             sb.AppendLine(pad + "        value.Payload = null;");
-            sb.AppendLine(pad + "        " + root.DisposeRosMethod + "(payload);");
+            sb.AppendLine(pad + "        try");
+            sb.AppendLine(pad + "        {");
+            sb.AppendLine(pad + "            " + root.DisposeRosMethod + "(payload);");
+            sb.AppendLine(pad + "        }");
+            sb.AppendLine(pad + "        catch (global::System.Exception exception)");
+            sb.AppendLine(pad + "        {");
+            sb.AppendLine(pad + "            __foxRunRos2CustomDisposeFailure = exception;");
+            sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "        var stamp = value.Foxrun_stamp;");
             sb.AppendLine(pad + "        value.Foxrun_stamp = null;");
-            sb.AppendLine(pad + "        if (stamp != null) stamp.Dispose();");
-            sb.AppendLine(pad + "        value.Dispose();");
+            sb.AppendLine(pad + "        try");
+            sb.AppendLine(pad + "        {");
+            sb.AppendLine(pad + "            if (stamp != null) stamp.Dispose();");
+            sb.AppendLine(pad + "        }");
+            sb.AppendLine(pad + "        catch (global::System.Exception exception)");
+            sb.AppendLine(pad + "        {");
+            sb.AppendLine(pad + "            if (__foxRunRos2CustomDisposeFailure == null) __foxRunRos2CustomDisposeFailure = exception;");
+            sb.AppendLine(pad + "        }");
+            sb.AppendLine(pad + "        try");
+            sb.AppendLine(pad + "        {");
+            sb.AppendLine(pad + "            value.Dispose();");
+            sb.AppendLine(pad + "        }");
+            sb.AppendLine(pad + "        catch (global::System.Exception exception)");
+            sb.AppendLine(pad + "        {");
+            sb.AppendLine(pad + "            if (__foxRunRos2CustomDisposeFailure == null) __foxRunRos2CustomDisposeFailure = exception;");
+            sb.AppendLine(pad + "        }");
+            sb.AppendLine(pad + "        if (__foxRunRos2CustomDisposeFailure != null) throw __foxRunRos2CustomDisposeFailure;");
             sb.AppendLine(pad + "    }");
         }
 
@@ -477,7 +514,14 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "        catch");
             sb.AppendLine(pad + "        {");
-            sb.AppendLine(pad + "            " + entry.DisposeRosMethod + "(target);");
+            sb.AppendLine(pad + "            try");
+            sb.AppendLine(pad + "            {");
+            sb.AppendLine(pad + "                " + entry.DisposeRosMethod + "(target);");
+            sb.AppendLine(pad + "            }");
+            sb.AppendLine(pad + "            catch (global::System.Exception)");
+            sb.AppendLine(pad + "            {");
+            sb.AppendLine(pad + "                // Preserve the mapping failure as the primary exception.");
+            sb.AppendLine(pad + "            }");
             sb.AppendLine(pad + "            throw;");
             sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "    }");
@@ -613,7 +657,14 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "        catch");
             sb.AppendLine(pad + "        {");
-            sb.AppendLine(pad + "            " + entry.DisposeRosMethod + "(target);");
+            sb.AppendLine(pad + "            try");
+            sb.AppendLine(pad + "            {");
+            sb.AppendLine(pad + "                " + entry.DisposeRosMethod + "(target);");
+            sb.AppendLine(pad + "            }");
+            sb.AppendLine(pad + "            catch (global::System.Exception)");
+            sb.AppendLine(pad + "            {");
+            sb.AppendLine(pad + "                // Preserve the copy failure as the primary exception.");
+            sb.AppendLine(pad + "            }");
             sb.AppendLine(pad + "            throw;");
             sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "    }");
@@ -830,13 +881,21 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "    private static void " + entry.DisposeRosMethod + "(" + entry.RosType + " value)");
             sb.AppendLine(pad + "    {");
             sb.AppendLine(pad + "        if (value == null) return;");
+            sb.AppendLine(pad + "        global::System.Exception __foxRunRos2CustomDisposeFailure = null;");
             foreach (var member in entry.Shape.Members.Where(candidate => candidate.Kind == FoxRunRos2CustomDtoMemberKind.NestedDto))
             {
                 var nested = entry.Registry.Get(member.NestedShape);
                 var property = "value." + RosProperty(member.RosFieldName);
                 sb.AppendLine(pad + "        var nested_" + member.Name + " = " + property + ";");
                 sb.AppendLine(pad + "        " + property + " = null;");
-                sb.AppendLine(pad + "        " + nested.DisposeRosMethod + "(nested_" + member.Name + ");");
+                sb.AppendLine(pad + "        try");
+                sb.AppendLine(pad + "        {");
+                sb.AppendLine(pad + "            " + nested.DisposeRosMethod + "(nested_" + member.Name + ");");
+                sb.AppendLine(pad + "        }");
+                sb.AppendLine(pad + "        catch (global::System.Exception exception)");
+                sb.AppendLine(pad + "        {");
+                sb.AppendLine(pad + "            if (__foxRunRos2CustomDisposeFailure == null) __foxRunRos2CustomDisposeFailure = exception;");
+                sb.AppendLine(pad + "        }");
             }
             foreach (var member in entry.Shape.Members.Where(
                          candidate => candidate.Kind == FoxRunRos2CustomDtoMemberKind.Sequence
@@ -849,10 +908,25 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(pad + "        if (nestedSequence_" + member.Name + " != null)");
                 sb.AppendLine(pad + "        {");
                 sb.AppendLine(pad + "            for (var __i = 0; __i < nestedSequence_" + member.Name + ".Length; __i++)");
-                sb.AppendLine(pad + "                " + nested.DisposeRosMethod + "(nestedSequence_" + member.Name + "[__i]);");
+                sb.AppendLine(pad + "                try");
+                sb.AppendLine(pad + "                {");
+                sb.AppendLine(pad + "                    " + nested.DisposeRosMethod + "(nestedSequence_" + member.Name + "[__i]);");
+                sb.AppendLine(pad + "                }");
+                sb.AppendLine(pad + "                catch (global::System.Exception exception)");
+                sb.AppendLine(pad + "                {");
+                sb.AppendLine(pad + "                    if (__foxRunRos2CustomDisposeFailure == null) __foxRunRos2CustomDisposeFailure = exception;");
+                sb.AppendLine(pad + "                }");
                 sb.AppendLine(pad + "        }");
             }
-            sb.AppendLine(pad + "        value.Dispose();");
+            sb.AppendLine(pad + "        try");
+            sb.AppendLine(pad + "        {");
+            sb.AppendLine(pad + "            value.Dispose();");
+            sb.AppendLine(pad + "        }");
+            sb.AppendLine(pad + "        catch (global::System.Exception exception)");
+            sb.AppendLine(pad + "        {");
+            sb.AppendLine(pad + "            if (__foxRunRos2CustomDisposeFailure == null) __foxRunRos2CustomDisposeFailure = exception;");
+            sb.AppendLine(pad + "        }");
+            sb.AppendLine(pad + "        if (__foxRunRos2CustomDisposeFailure != null) throw __foxRunRos2CustomDisposeFailure;");
             sb.AppendLine(pad + "    }");
         }
 

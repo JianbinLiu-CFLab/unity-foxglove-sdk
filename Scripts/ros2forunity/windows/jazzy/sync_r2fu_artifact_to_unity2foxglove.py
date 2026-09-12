@@ -24,6 +24,7 @@ if str(WINDOWS_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(WINDOWS_SCRIPT_DIR))
 
 from runtime_adoption_manifest import sync_runtime_adoption_manifest
+from sync_transaction import DurableSnapshot
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -338,7 +339,6 @@ def main(argv: list[str] | None = None) -> int:
     inspect_script = project_root / "Scripts" / "ros2forunity" / "windows" / "jazzy" / "inspect_r2fu_runtime_artifact.py"
     build_script = project_root / "Scripts" / "ros2forunity" / "windows" / "jazzy" / "build_r2fu_runtime_package.py"
     validate_script = project_root / "Scripts" / "ros2forunity" / "windows" / "jazzy" / "validate_r2fu_runtime_package.py"
-
     if args.dry_run:
         project_shape = ensure_project_uses_runtime_package(
             project_root,
@@ -354,39 +354,53 @@ def main(argv: list[str] | None = None) -> int:
         print("[DRY-RUN] lock has runtime package:", project_shape["lockHasRuntimePackage"])
         return 0
 
-    run([sys.executable, str(inspect_script), "--zip", str(artifact), "--out", str(inventory_path)], cwd=project_root)
-    run(
-        build_runtime_command(build_script, artifact, inventory_path, package_path, ros2_bin),
-        cwd=project_root,
-    )
-    adapter_compliance = sync_runtime_adoption_manifest(
-        project_root,
-        package_path,
-        PACKAGE_NAME,
-        update_current_recommended=True,
-        notices_relative_path="r2fu-jazzy-win64-runtime-notices.md",
-    )
-    project_shape = ensure_project_uses_runtime_package(
-        project_root,
-        update=args.update_project_manifest,
-        require_runtime_dependency=not args.skip_project_manifest_check,
+    adoption_path = project_root / "Packages" / "dev.unity2foxglove.ros2forunity" / "Compliance" / "ros2-for-unity-adoption-manifest.json"
+    transaction = DurableSnapshot(
+        [package_path, inventory_path, adoption_path,
+         project_root / "Unity2Foxglove" / "Packages" / "manifest.json",
+         project_root / "Unity2Foxglove" / "Packages" / "packages-lock.json"],
+        project_root / "build" / "phase187-round4" / "scratch" / "r41-h04-009-sync-jazzy-before-image",
     )
 
-    validation_log = evidence_dir / f"sync-r2fu-runtime-validate-{timestamp}.log"
-    if not args.skip_validate:
-        run([sys.executable, str(validate_script)], cwd=project_root, log=validation_log)
-
-    unity_log = None
-    if args.run_unity_import:
-        unity_log = evidence_dir / f"sync-r2fu-runtime-unity-import-{timestamp}.log"
-        run_unity_import(args.unity_editor, project_root / "Unity2Foxglove", unity_log)
-
-    runtime_manifest_path = package_path / "RuntimeSupport" / "runtime-manifest.json"
-    if not runtime_manifest_path.exists():
-        raise FileNotFoundError(
-            f"Expected runtime manifest was not produced by {build_script}: {runtime_manifest_path}"
+    try:
+        run([sys.executable, str(inspect_script), "--zip", str(artifact), "--out", str(inventory_path)], cwd=project_root)
+        run(
+            build_runtime_command(build_script, artifact, inventory_path, package_path, ros2_bin),
+            cwd=project_root,
         )
-    package_manifest = read_json(runtime_manifest_path)
+        adapter_compliance = sync_runtime_adoption_manifest(
+            project_root,
+            package_path,
+            PACKAGE_NAME,
+            update_current_recommended=True,
+            notices_relative_path="r2fu-jazzy-win64-runtime-notices.md",
+        )
+        project_shape = ensure_project_uses_runtime_package(
+            project_root,
+            update=args.update_project_manifest,
+            require_runtime_dependency=not args.skip_project_manifest_check,
+        )
+
+        validation_log = evidence_dir / f"sync-r2fu-runtime-validate-{timestamp}.log"
+        if not args.skip_validate:
+            run([sys.executable, str(validate_script)], cwd=project_root, log=validation_log)
+
+        unity_log = None
+        if args.run_unity_import:
+            unity_log = evidence_dir / f"sync-r2fu-runtime-unity-import-{timestamp}.log"
+            run_unity_import(args.unity_editor, project_root / "Unity2Foxglove", unity_log)
+
+        runtime_manifest_path = package_path / "RuntimeSupport" / "runtime-manifest.json"
+        if not runtime_manifest_path.exists():
+            raise FileNotFoundError(
+                f"Expected runtime manifest was not produced by {build_script}: {runtime_manifest_path}"
+            )
+        package_manifest = read_json(runtime_manifest_path)
+    except Exception:
+        transaction.restore()
+        raise
+    else:
+        transaction.commit()
     summary = {
         "schemaVersion": 1,
         "generatedAtLocal": dt.datetime.now().astimezone().isoformat(),

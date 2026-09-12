@@ -126,6 +126,28 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void CustomDtoCleanupAttemptsEveryOwnedObjectAndPreservesPrimaryMappingFailure()
+        {
+            var source = EmitR2fuClass(
+                "Phase187",
+                "CleanupContract",
+                new[] { CreateCustomMember() });
+
+            Assert.Contains(
+                "global::System.Exception __foxRunRos2CustomDisposeFailure = null;",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "if (__foxRunRos2CustomDisposeFailure == null) __foxRunRos2CustomDisposeFailure = exception;",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "catch (global::System.Exception)",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CustomNullableNestedDtoMapsToASerializableDefaultRosValueWhenAbsent()
         {
             var source = EmitR2fuClass(
@@ -380,6 +402,91 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        [Trait("Phase", "187-R2-H02-023")]
+        public void GeneratedCustomMapperAttemptsEveryCleanupAndPreservesFirstCleanupFailure()
+        {
+            var nestedShape = CreateCustomMember().Ros2CustomDtoShape.Members
+                .Single(x => x.Name == "Nested").NestedShape;
+            var member = CreateCustomMember(
+                "CleanupProbe",
+                "Phase184.OtherState",
+                "/phase184/cleanup-probe",
+                (int)FoxRunFlow.Publish,
+                FoxRunR2fuGenerationConstants.Inherit,
+                new FoxRunRos2CustomDtoShape(
+                    "Phase184.OtherState",
+                    "phase184/OtherState",
+                    "Phase184OtherStateA184D001",
+                    hasPublicParameterlessConstructor: true,
+                    isSupported: true,
+                    members: new[]
+                    {
+                        new FoxRunRos2CustomDtoMemberShape(
+                            "Children", "children", FoxRunRos2CustomDtoMemberKind.Sequence,
+                            "Phase181.NestedState[]", "Phase181NestedState3281D0E21244[]",
+                            "Phase181.NestedState", nestedShape.CanonicalIdentity, true, true, true,
+                            FoxRunRos2CustomDtoSequenceRepresentation.Array,
+                            nestedShape),
+                    },
+                    diagnostics: Array.Empty<string>()));
+            var generated = EmitR2fuClass("Phase184", "GeneratedCleanupProbe", new[] { member });
+            var parseOptions = new CSharpParseOptions(
+                LanguageVersion.CSharp9,
+                preprocessorSymbols: new[]
+                {
+                    "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                    "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES",
+                });
+            var compilation = CSharpCompilation.Create(
+                "phase184_custom_cleanup_" + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(generated, parseOptions),
+                    CSharpSyntaxTree.ParseText(CustomMapperDynamicSupport, parseOptions),
+                },
+                DynamicReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            using var image = new MemoryStream();
+            var emit = compilation.Emit(image);
+            Assert.True(emit.Success, string.Join(Environment.NewLine, emit.Diagnostics.Where(x => x.Severity == DiagnosticSeverity.Error)));
+            image.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(image);
+            var hostType = assembly.GetType("Phase184.GeneratedCleanupProbe", throwOnError: true);
+            var envelopeType = assembly.GetType("unity2foxglove_foxrun_interfaces_v1.msg.Phase184OtherStateA184D001Envelope", throwOnError: true);
+            var payloadType = assembly.GetType("unity2foxglove_foxrun_interfaces_v1.msg.Phase184OtherStateA184D001", throwOnError: true);
+            var nestedType = assembly.GetType("unity2foxglove_foxrun_interfaces_v1.msg.Phase181NestedState3281D0E21244", throwOnError: true);
+            var timeType = assembly.GetType("builtin_interfaces.msg.Time", throwOnError: true);
+            var envelope = Activator.CreateInstance(envelopeType);
+            var payload = Activator.CreateInstance(payloadType);
+            var children = Array.CreateInstance(nestedType, 2);
+            var first = Activator.CreateInstance(nestedType);
+            var second = Activator.CreateInstance(nestedType);
+            nestedType.GetProperty("ThrowOnDispose").SetValue(first, true);
+            nestedType.GetProperty("DisposeFailureMessage").SetValue(first, "first-child-cleanup");
+            nestedType.GetProperty("ThrowOnDispose").SetValue(second, true);
+            children.SetValue(first, 0);
+            children.SetValue(second, 1);
+            payloadType.GetProperty("Children").SetValue(payload, children);
+            var stamp = Activator.CreateInstance(timeType);
+            timeType.GetProperty("ThrowOnDispose").SetValue(stamp, true);
+            envelopeType.GetProperty("Payload").SetValue(envelope, payload);
+            envelopeType.GetProperty("Foxrun_stamp").SetValue(envelope, stamp);
+            envelopeType.GetProperty("ThrowOnDispose").SetValue(envelope, true);
+
+            var dispose = hostType.GetMethod("__FoxRunRos2CustomDisposeEnvelope_0", BindingFlags.NonPublic | BindingFlags.Static);
+            var thrown = Assert.Throws<TargetInvocationException>(() => dispose.Invoke(null, new[] { envelope }));
+            Assert.Equal("first-child-cleanup", thrown.InnerException.Message);
+            Assert.Equal(1, nestedType.GetProperty("DisposeCalls").GetValue(first));
+            Assert.Equal(1, nestedType.GetProperty("DisposeCalls").GetValue(second));
+            Assert.Equal(1, payloadType.GetProperty("DisposeCalls").GetValue(payload));
+            Assert.Equal(1, timeType.GetProperty("DisposeCalls").GetValue(stamp));
+            Assert.Equal(1, envelopeType.GetProperty("DisposeCalls").GetValue(envelope));
+            Assert.Null(payloadType.GetProperty("Children").GetValue(payload));
+            Assert.Null(envelopeType.GetProperty("Payload").GetValue(envelope));
+            Assert.Null(envelopeType.GetProperty("Foxrun_stamp").GetValue(envelope));
+        }
+
+        [Fact]
         [Trait("Phase", "184-E")]
         public void GeneratedCustomStreamDefersUserConstructionAndSettersUntilConsumerDrain()
         {
@@ -569,7 +676,7 @@ namespace UnityEngine.Scripting
 }
 namespace Phase181
 {
-    public enum StateKind { Zero = 0, One = 1, Two = 2 }
+    public enum StateKind : ushort { Zero = 0, One = 1, Two = 2 }
     public sealed class NestedState
     {
         public bool Enabled { get; set; }
@@ -591,7 +698,7 @@ namespace Phase181
 }
 namespace Phase184
 {
-    public enum OptionalKind { Zero = 0, One = 1, Two = 2 }
+    public enum OptionalKind : ushort { Zero = 0, One = 1, Two = 2 }
     public sealed class OtherState
     {
         public global::Phase181.NestedState[] Children { get; set; }
@@ -614,8 +721,10 @@ namespace builtin_interfaces.msg
     {
         public int Sec { get; set; }
         public uint Nanosec { get; set; }
+        public int DisposeCalls { get; private set; }
+        public bool ThrowOnDispose { get; set; }
         public bool IsDisposed { get; private set; }
-        public void Dispose() { IsDisposed = true; }
+        public void Dispose() { DisposeCalls++; IsDisposed = true; if (ThrowOnDispose) throw new global::System.InvalidOperationException(""time-cleanup""); }
     }
 }
 namespace Unity2Foxglove.FoxRun.CustomRos2Typesupport
@@ -632,8 +741,10 @@ namespace unity2foxglove_foxrun_interfaces_v1.msg
     public abstract class DisposableMessage : global::ROS2.Message, global::System.IDisposable
     {
         public int DisposeCalls { get; private set; }
+        public bool ThrowOnDispose { get; set; }
+        public string DisposeFailureMessage { get; set; }
         public bool IsDisposed { get; private set; }
-        public virtual void Dispose() { DisposeCalls++; IsDisposed = true; }
+        public virtual void Dispose() { DisposeCalls++; IsDisposed = true; if (ThrowOnDispose) throw new global::System.InvalidOperationException(DisposeFailureMessage ?? ""cleanup""); }
     }
     public sealed class Phase181NestedState3281D0E21244 : DisposableMessage
     {

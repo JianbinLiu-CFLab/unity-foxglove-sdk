@@ -480,6 +480,10 @@ def _validate_managed_payload(
     )
     if assembly_path != expected_assembly_path:
         raise AddonValidationError("repair-managed-typesupport-payload")
+    if not _is_clr_pe_payload(assembly_path):
+        raise AddonValidationError("repair-managed-typesupport-payload")
+    if not _contains_expected_managed_type(assembly_path, "Phase181State48D288ED82F1Envelope"):
+        raise AddonValidationError("repair-managed-type-map")
     type_map = managed.get("typeMap")
     if not isinstance(type_map, list) or not type_map:
         raise AddonValidationError("repair-managed-type-map")
@@ -512,6 +516,33 @@ def _validate_managed_payload(
     text = meta.read_text(encoding="utf-8", errors="replace")
     if not _has_restricted_windows_plugin_importer(text):
         raise AddonValidationError("repair-managed-plugin-importer")
+
+
+def _is_clr_pe_payload(path: Path) -> bool:
+    """Require the managed add-on payload to identify as a Windows CLR PE."""
+    try:
+        data = path.read_bytes()
+        if len(data) < 0x40 or data[:2] != b"MZ":
+            return False
+        pe_offset = int.from_bytes(data[0x3C:0x40], "little")
+        if pe_offset < 0x40 or pe_offset + 8 > len(data) or data[pe_offset:pe_offset + 4] != b"PE\0\0":
+            return False
+        # Managed Unity plug-ins may be AnyCPU (I386) or AMD64; reject other
+        # machine types before trusting the declared CLR identity.
+        if data[pe_offset + 4:pe_offset + 6] not in {b"L\x01", b"d\x86"}:
+            return False
+        return b"BSJB" in data
+    except OSError:
+        return False
+
+
+def _contains_expected_managed_type(path: Path, type_name: str) -> bool:
+    """Require the declared envelope type name to be present in CLR metadata."""
+    try:
+        data = path.read_bytes()
+        return type_name.encode("ascii") in data or type_name.encode("utf-16le") in data
+    except (OSError, UnicodeEncodeError):
+        return False
 
 
 def _has_restricted_windows_plugin_importer(text: str) -> bool:
@@ -872,3 +903,4 @@ def _reject_absolute_values(value: object) -> None:
     if isinstance(value, Iterable) and not isinstance(value, (bytes, bytearray)):
         for item in value:
             _reject_absolute_values(item)
+

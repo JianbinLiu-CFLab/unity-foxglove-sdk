@@ -190,7 +190,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             // Generated ros2cs payload properties are declared on the concrete
             // message. Members that actually implement ros2cs lifecycle/type-
             // support interfaces are not wire data and must never enter a copy.
-            foreach (var member in type.GetMembers())
+            for (var current = type; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+            foreach (var member in current.GetMembers())
             {
                 if (infrastructureImplementations.Contains(member))
                     continue;

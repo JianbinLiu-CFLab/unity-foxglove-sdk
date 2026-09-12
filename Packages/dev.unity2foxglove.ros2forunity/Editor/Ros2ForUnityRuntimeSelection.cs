@@ -904,6 +904,37 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!capabilities.IsValid || capabilities.CommunicationModes.Count == 0)
                 return null;
 
+            var pluginsRoot = Path.Combine(packageDirectory, "Runtime", "Ros2ForUnity", "Plugins");
+            var scriptsRoot = Path.Combine(packageDirectory, "Runtime", "Ros2ForUnity", "Scripts");
+            if (!Directory.Exists(pluginsRoot) || !Directory.Exists(scriptsRoot))
+                return null;
+
+            // A runtime package is authoritative only when its manifest identity
+            // agrees with the package suffix and every advertised Fast DDS mode
+            // has its native RMW payload present.  Do not select a package whose
+            // bytes claim another distro or an incomplete native closure.
+            if ((!string.IsNullOrWhiteSpace(capabilities.RosDistro)
+                 && !string.Equals(
+                     capabilities.RosDistro,
+                     packageRosDistro,
+                     StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(capabilities.Platform)
+                    && !string.Equals(
+                        capabilities.Platform,
+                        packagePlatform,
+                        StringComparison.OrdinalIgnoreCase)))
+                return null;
+
+            if (capabilities.CommunicationModes.Any(mode =>
+                    string.Equals(
+                        mode.RmwImplementation,
+                        Ros2ForUnityRuntimeCapabilityParser.FastDdsRmwImplementation,
+                        StringComparison.Ordinal))
+                && !HasNativeLibrary(
+                    Path.Combine(packageDirectory, WindowsNativePluginRelativeDirectory),
+                    "rmw_fastrtps_cpp"))
+                return null;
+
             var rosDistro = string.IsNullOrWhiteSpace(capabilities.RosDistro)
                 ? packageRosDistro
                 : capabilities.RosDistro;

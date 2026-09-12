@@ -61,6 +61,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void InboundInspectionFailureRollsBackTheCreatedSubscription()
+        {
+            var driver = new InspectionFailureNodeDriver();
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
+            var backend = owner.AcquireBackend();
+
+            var result = backend.Register<FakeMessage>(
+                Contract(),
+                new ManagedQosProfile(),
+                _ => { });
+
+            Assert.False(result.Succeeded);
+            Assert.Equal(FoxRunRos2RegistrationError.BackendFailure, result.Error);
+            Assert.Equal(1, driver.CreateSubscriptionCount);
+            Assert.Equal(1, driver.RemoveSubscriptionCount);
+
+            backend.ReleaseNodeOwnership();
+            owner.ReleaseHostOwnership();
+            Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
         public void DiagnosticSnapshotReportsLivePendingAndExactOwnershipCounters()
         {
             var backend = new FakeBackend();
@@ -121,6 +143,53 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(0, drained.Pending);
             Assert.True(drained.LastReceiveStopwatchTimestamp > 0);
             Assert.True(drained.LastApplyStopwatchTimestamp > 0);
+            binding.Stop();
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R2-H03-003")]
+        public void RecoverableBackendFailureRetriesOnTheNextRegistrationAttempt()
+        {
+            var backend = new FakeBackend();
+            backend.EnqueueRegistration(FoxRunRos2NativeBackendRegistration.Failure(
+                FoxRunRos2RegistrationError.BackendFailure,
+                "temporary backend failure"));
+            backend.EnqueueRegistration(FoxRunRos2NativeBackendRegistration.Success(new FakeToken()));
+            var binding = CreateBinding(backend, 303, () => 303, _ => { }, _ => false);
+
+            var first = binding.TryRegister();
+            Assert.False(first.Succeeded);
+            Assert.Equal(FoxRunRos2RegistrationError.BackendFailure, first.Error);
+            Assert.Equal(FoxRunRos2SubscriptionBindingState.Failed, binding.State);
+
+            var second = binding.TryRegister();
+            Assert.True(second.Succeeded);
+            Assert.Equal(FoxRunRos2SubscriptionBindingState.Ready, binding.State);
+            Assert.Equal(2, backend.RegisterCount);
+            binding.Stop();
+        }
+
+        [Fact]
+        [Trait("Phase", "187-R2-H03-003")]
+        public void RecoverableRegistrationRetryStopsAtTheFiniteAttemptBound()
+        {
+            var backend = new FakeBackend();
+            for (var i = 0; i < 5; i++)
+                backend.EnqueueRegistration(FoxRunRos2NativeBackendRegistration.Failure(
+                    FoxRunRos2RegistrationError.BackendFailure,
+                    "persistent backend failure"));
+            var binding = CreateBinding(backend, 304, () => 304, _ => { }, _ => false);
+
+            for (var i = 0; i < 4; i++)
+            {
+                var result = binding.TryRegister();
+                Assert.False(result.Succeeded);
+                Assert.Equal(FoxRunRos2RegistrationError.BackendFailure, result.Error);
+            }
+            var terminal = binding.TryRegister();
+            Assert.False(terminal.Succeeded);
+            Assert.Equal(4, backend.RegisterCount);
+            Assert.False(binding.CanRetryRegistration);
             binding.Stop();
         }
 
@@ -1887,6 +1956,52 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 => _registrations.Enqueue(registration);
         }
 
+        private sealed class InspectionFailureNodeDriver : IFoxRunRos2R2fuNodeDriver
+        {
+            private readonly object _subscription = new object();
+
+            public int CreateSubscriptionCount { get; private set; }
+            public int RemoveSubscriptionCount { get; private set; }
+            public int ReleaseNodeCount { get; private set; }
+
+            public object CreateSubscription<T>(
+                string topic,
+                Action<T> callback,
+                ROS2.QualityOfServiceProfile qos)
+                where T : ROS2.Message, new()
+            {
+                CreateSubscriptionCount++;
+                return _subscription;
+            }
+
+            public bool IsSubscriptionUsable(object subscription)
+                => throw new InvalidOperationException("inspection failed before acknowledgement");
+
+            public bool RemoveSubscription(object subscription)
+            {
+                RemoveSubscriptionCount++;
+                return ReferenceEquals(subscription, _subscription);
+            }
+
+            public object CreatePublisher<T>(string topic, ROS2.QualityOfServiceProfile qos)
+                where T : ROS2.Message, new()
+                => throw new NotSupportedException();
+
+            public bool IsPublisherUsable<T>(object publisher)
+                where T : ROS2.Message, new()
+                => false;
+
+            public bool Publish<T>(object publisher, T message)
+                where T : ROS2.Message, new()
+                => false;
+
+            public bool RemovePublisher<T>(object publisher)
+                where T : ROS2.Message, new()
+                => false;
+
+            public void ReleaseNode() => ReleaseNodeCount++;
+        }
+
         private sealed class FakeToken : IFoxRunRos2NativeSubscriptionToken
         {
             public FakeToken(bool isUsable = true)
@@ -3053,6 +3168,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public string ContractId => Contract.Id;
             public long SessionGeneration => 1;
             public FoxRunRos2SubscriptionBindingState State { get; private set; }
+            public bool CanRetryRegistration => false;
             public FoxRunRos2RegistrationResult TryRegister() => _result;
             public bool TryApplyLatest(long activeSessionGeneration) => _apply();
             public void RecordApplyFailure(Exception exception)

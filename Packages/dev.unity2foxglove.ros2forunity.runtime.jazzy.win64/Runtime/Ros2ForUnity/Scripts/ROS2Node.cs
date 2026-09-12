@@ -67,18 +67,15 @@ public class ROS2Node : IDisposable
         }
     }
 
-    // Captures a live node under mutex, then executes ros2cs work outside the lock.
-    // This keeps Dispose from being blocked by long native create/remove calls.
+    // Hold the mutex through the native action so Dispose cannot retire the
+    // captured node until the caller has finished using it.
     private TResult WithLiveNode<TResult>(string callContext, Func<INode, TResult> action)
     {
-        INode liveNode;
         lock (mutex)
         {
             ThrowIfUninitializedLocked(callContext);
-            liveNode = node;
+            return action(node);
         }
-
-        return action(liveNode);
     }
 
     /// <summary>

@@ -315,12 +315,18 @@ def require_inputs(paths: BuildPaths) -> tuple[dict[str, object], RuntimeArtifac
     return inventory, artifact
 
 
+def validate_package_target(package: Path) -> Path:
+    """Authorize the exact repository package target without mutating it."""
+    expected_parent = (ROOT / "Packages").resolve()
+    resolved = package.resolve()
+    if resolved.name != PACKAGE_NAME or resolved.parent != expected_parent:
+        raise ValueError(f"Refusing unauthorized package target: {resolved}")
+    return resolved
+
+
 def reset_package_dir(package: Path) -> None:
     """Delete and recreate only the expected generated runtime package directory."""
-    expected_parent = (ROOT / "Packages").resolve()
-    package = package.resolve()
-    if package.name != PACKAGE_NAME or package.parent != expected_parent:
-        raise ValueError(f"Refusing to reset unexpected package path: {package}")
+    package = validate_package_target(package)
     if package.exists():
         last_error: Exception | None = None
         for _ in range(5):
@@ -536,7 +542,7 @@ def collect_local_patch_overlays(package: Path) -> dict[str, str]:
     for path in scripts.rglob("*.cs"):
         text = path.read_text(encoding="utf-8", errors="replace")
         relative = path.relative_to(package).as_posix()
-        if LOCAL_PATCH_MARKER in text or relative in LOCAL_PATCH_OVERLAY_FILES:
+        if (LOCAL_PATCH_MARKER in text or relative in LOCAL_PATCH_OVERLAY_FILES) and relative != "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs":
             overlays[relative] = text
     return overlays
 
@@ -585,6 +591,8 @@ def meta_importer_for(path: Path) -> str:
         return "PackageManifestImporter"
     if path.suffix == ".asmdef":
         return "AssemblyDefinitionImporter"
+    if path.suffix.lower() == ".dll":
+        return "PluginImporter"
     return "TextScriptImporter"
 
 
@@ -1625,6 +1633,7 @@ def validate_ros2cs_metadata_descriptions(package: Path) -> None:
 def build_package(paths: BuildPaths) -> None:
     """Build the runtime package from the runtime artifact."""
     inventory, artifact = require_inputs(paths)
+    validate_package_target(paths.package)
     snapshot = snapshot_package_dir(paths.package)
     overlays = collect_local_patch_overlays(paths.package)
     meta_overlays = collect_meta_overlays(paths.package)

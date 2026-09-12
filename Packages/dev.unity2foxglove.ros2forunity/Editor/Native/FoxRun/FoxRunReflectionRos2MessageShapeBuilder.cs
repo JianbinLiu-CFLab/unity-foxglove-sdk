@@ -191,17 +191,24 @@ namespace Unity.FoxgloveSDK.Editor
             // message. Members that actually implement ros2cs lifecycle/type-
             // support interfaces are not wire data and must never enter a copy.
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly;
-            foreach (var field in type.GetFields(flags))
-                yield return new ReflectedMember(field.Name, field.FieldType, true, !field.IsInitOnly);
-            foreach (var property in type.GetProperties(flags))
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var current = type; current != null && current != typeof(object); current = current.BaseType)
             {
-                if (property.GetIndexParameters().Length == 0
-                    && !PropertyImplementsInfrastructureContract(property, infrastructureMethods))
+                foreach (var field in current.GetFields(flags))
+                    if (seen.Add(field.Name))
+                        yield return new ReflectedMember(field.Name, field.FieldType, true, !field.IsInitOnly);
+                foreach (var property in current.GetProperties(flags))
+                {
+                    if (!seen.Add(property.Name)
+                        || property.GetIndexParameters().Length != 0
+                        || PropertyImplementsInfrastructureContract(property, infrastructureMethods))
+                        continue;
                     yield return new ReflectedMember(
                         property.Name,
                         property.PropertyType,
                         property.GetMethod?.IsPublic == true,
                         IsWritableSetter(property.SetMethod));
+                }
             }
         }
 

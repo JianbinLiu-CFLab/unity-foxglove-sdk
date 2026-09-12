@@ -670,7 +670,7 @@ def check_runtime_inventory(results: list[CheckResult]) -> None:
         "runtime inventory file entries",
         isinstance(files, list)
         and len(files) == data.get("fileCount")
-        and all(isinstance(item, dict) and "path" in item and "sha256" in item for item in files[:20]),
+        and all(isinstance(item, dict) and "path" in item and "sha256" in item for item in files),
         f"files={len(files) if isinstance(files, list) else type(files).__name__}",
     )
 

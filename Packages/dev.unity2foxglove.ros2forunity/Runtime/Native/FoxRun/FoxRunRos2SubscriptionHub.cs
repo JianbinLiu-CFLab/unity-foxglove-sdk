@@ -617,6 +617,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         string ContractId { get; }
         long SessionGeneration { get; }
         FoxRunRos2SubscriptionBindingState State { get; }
+        bool CanRetryRegistration { get; }
         FoxRunRos2RegistrationResult TryRegister();
         bool TryApplyLatest(long activeSessionGeneration);
         void RecordApplyFailure(Exception exception);
@@ -1124,7 +1125,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 var binding = _bindings[i];
                 if (!binding.IsCurrent(_policy.SessionGeneration, _seenSources, _seenEndpoints))
                     _stale.Add(binding);
-                else if (binding.Binding.State == FoxRunRos2SubscriptionBindingState.WaitingForRuntime
+                else if ((binding.Binding.State == FoxRunRos2SubscriptionBindingState.WaitingForRuntime
+                          || binding.Binding.CanRetryRegistration)
                          && Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
                              gameObject.scene))
                     binding.Binding.TryRegister();

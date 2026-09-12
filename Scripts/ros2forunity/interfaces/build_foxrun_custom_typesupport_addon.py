@@ -377,16 +377,13 @@ def _catalog_source(
     distro: str,
     interface_digest: str,
     type_map: Sequence[Mapping[str, str]],
+    supported_rmws: Sequence[str],
 ) -> str:
-    """Render the deterministic compile-time catalog for one distro add-on."""
+    """Render the catalog from the validated runtime capability set."""
     base_runtime = base_runtime_package_id(distro)
-    supported_rmws = ", ".join(
-        '"' + item + '"'
-        for item in ("rmw_fastrtps_cpp", "rmw_zenoh_cpp")
-        if distro == "lyrical"
-    )
-    if not supported_rmws:
-        supported_rmws = '"rmw_fastrtps_cpp"'
+    supported_rmws_source = ", ".join('"' + item + '"' for item in supported_rmws)
+    if not supported_rmws_source:
+        raise CandidateBuildError("repair-empty-rmw-capability")
     type_entries = ",\n                ".join(
         "new FoxRunRos2CustomTypesupportTypeMapEntry(\""
         + item["canonicalRosType"]
@@ -442,7 +439,7 @@ namespace Unity2Foxglove.FoxRun.CustomRos2Typesupport
 {
 """ + metadata_constants + """    internal sealed class FoxRunCustomTypesupportCatalog : IFoxRunRos2CustomTypesupportCatalog
     {
-        private static readonly string[] s_rmws = { """ + supported_rmws + """ };
+        private static readonly string[] s_rmws = { """ + supported_rmws_source + """ };
         private static readonly FoxRunRos2CustomTypesupportTypeMapEntry[] s_typeMap =
         {
                 """ + type_entries + """
@@ -506,6 +503,7 @@ def _write_candidate_manifest(
     except ModuleNotFoundError:  # pragma: no cover - direct script invocation
         from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import _base_ros2_message_identity
     ros2_message_identity = _base_ros2_message_identity(Path(request.base_runtime_package), None)
+    toolchain_provenance = _load_toolchain_provenance(request)
     plugin_meta = managed_path.with_name(managed_path.name + ".meta")
     if not plugin_meta.is_file():
         raise CandidateBuildError("generate-unity-plugin-importer-metadata")
@@ -559,6 +557,10 @@ def _write_candidate_manifest(
             "managedEvidenceSha256": file_sha256(
                 _phase181_distro_root(request) / "candidate" / "e" / "managed.json"
             ),
+            "toolchainProvenanceSha256": file_sha256(toolchain_provenance),
+            "toolchainInputIdentity": json.loads(
+                toolchain_provenance.read_text(encoding="utf-8")
+            )["inputIdentity"],
         },
     }
     support = package_root / "RuntimeSupport"
@@ -571,7 +573,12 @@ def _write_candidate_manifest(
     generated.mkdir(parents=True, exist_ok=True)
     _write_utf8_lf(
         generated / GENERATED_CATALOG_FILE,
-        _catalog_source(distro=request.distro, interface_digest=interface_digest, type_map=type_map),
+        _catalog_source(
+            distro=request.distro,
+            interface_digest=interface_digest,
+            type_map=type_map,
+            supported_rmws=_runtime_rmws(runtime_manifest, request.distro),
+        ),
     )
     _write_utf8_lf(
         generated / GENERATED_CATALOG_ASMDEF,
@@ -667,6 +674,14 @@ def _repair_tracked_addon_catalog(request: CandidateBuildRequest) -> Path:
     ):
         raise CandidateBuildError("repair-typesupport-catalog-source")
 
+    supported_rmws = manifest.get("supportedRmwImplementations")
+    if (
+        not isinstance(supported_rmws, list)
+        or not supported_rmws
+        or not all(isinstance(item, str) and item for item in supported_rmws)
+    ):
+        raise CandidateBuildError("repair-typesupport-catalog-rmw-capability")
+
     type_map: list[dict[str, str]] = []
     managed_prefix = ROS_PACKAGE_NAME + ".msg."
     for item in managed["typeMap"]:
@@ -700,6 +715,7 @@ def _repair_tracked_addon_catalog(request: CandidateBuildRequest) -> Path:
             distro=request.distro,
             interface_digest=interface_digest,
             type_map=tuple(type_map),
+            supported_rmws=tuple(supported_rmws),
         ),
     )
     _write_canonical_license(repository_root / "LICENSE", package_root / "LICENSE")
@@ -950,6 +966,30 @@ def _require_explicit_toolchain_sources(request: CandidateBuildRequest) -> tuple
         raise CandidateBuildError("provide-r2fu-source")
     ros2cs_install = request.ros2cs_install or request.ros2cs_source / ("install-" + request.distro)
     return request.ros2cs_source, ros2cs_install, request.r2fu_source
+
+
+def _load_toolchain_provenance(request: CandidateBuildRequest) -> Path:
+    """Require the preflight attestation that binds this candidate to its inputs."""
+    path = _phase181_distro_root(request) / "provenance" / "toolchain.json"
+    if not path.is_file():
+        raise CandidateBuildError("run-toolchain-preflight")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CandidateBuildError("repair-toolchain-provenance") from exc
+    identity = payload.get("inputIdentity")
+    roots = identity.get("roots") if isinstance(identity, dict) else None
+    required_roots = {"ros2Root", "ros2csSource", "r2fuSource"}
+    if request.ros2cs_install is not None:
+        required_roots.add("ros2csInstall")
+    if (
+        payload.get("schemaVersion") != 2
+        or not isinstance(identity, dict)
+        or not isinstance(roots, dict)
+        or not required_roots.issubset(roots)
+    ):
+        raise CandidateBuildError("repair-toolchain-provenance")
+    return path
 
 
 def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest, bool, bool, bool]:

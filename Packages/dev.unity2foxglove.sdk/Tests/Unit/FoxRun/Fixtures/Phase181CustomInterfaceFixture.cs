@@ -66,3 +66,4 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
         public List<Phase184NestedSequenceItem> Children { get; set; }
     }
 }
+

@@ -56,6 +56,7 @@ namespace Unity2Foxglove.Ros2Bridge
     /// <summary>Process-based command runner used by the Inspector health check.</summary>
     public sealed class ProcessRos2BridgeCommandRunner : IRos2BridgeCommandRunner
     {
+        private const int MaxOutputChars = 1_000_000;
         public Ros2BridgeCommandResult Run(string executable, string arguments, int timeoutMs)
             => Run(executable, arguments, timeoutMs, CancellationToken.None);
 
@@ -103,12 +104,12 @@ namespace Unity2Foxglove.Ros2Bridge
             process.OutputDataReceived += (_, e) =>
             {
                 if (e.Data != null)
-                    stdout.AppendLine(e.Data);
+                    AppendBounded(stdout, e.Data);
             };
             process.ErrorDataReceived += (_, e) =>
             {
                 if (e.Data != null)
-                    stderr.AppendLine(e.Data);
+                    AppendBounded(stderr, e.Data);
             };
 
             try
@@ -141,7 +142,9 @@ namespace Unity2Foxglove.Ros2Bridge
                         durationMs: stopwatch.ElapsedMilliseconds);
                 }
 
-                process.WaitForExit();
+                // A descendant may retain redirected pipe handles after the
+                // root exits; keep output draining within the command budget.
+                process.WaitForExit(Math.Max(1, timeoutMs));
                 stopwatch.Stop();
                 return new Ros2BridgeCommandResult(
                     process.ExitCode,
@@ -161,6 +164,23 @@ namespace Unity2Foxglove.Ros2Bridge
                     timedOut: false,
                     error: ex.Message,
                     durationMs: stopwatch.ElapsedMilliseconds);
+            }
+        }
+
+        private static void AppendBounded(StringBuilder builder, string line)
+        {
+            lock (builder)
+            {
+                if (builder.Length >= MaxOutputChars)
+                    return;
+                var remaining = MaxOutputChars - builder.Length;
+                if (line.Length + Environment.NewLine.Length <= remaining)
+                {
+                    builder.AppendLine(line);
+                    return;
+                }
+                builder.Append(line, 0, Math.Max(0, remaining - Environment.NewLine.Length));
+                builder.AppendLine();
             }
         }
 

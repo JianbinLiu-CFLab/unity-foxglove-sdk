@@ -102,6 +102,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 return;
             }
 
+            if (!FoxRunRos2CustomNamingPolicy.IsValidRosFieldName(rosName))
+            {
+                AddUnsupported(path, "Custom ROS2 DTO member name is not a valid ASCII ROS 2 field identifier: '" + rosName + "'.", diagnostics);
+                return;
+            }
+
             if (FoxRunRos2CustomNamingPolicy.IsReservedUserField(rosName))
             {
                 AddUnsupported(path, "Custom ROS2 DTO member '" + rosName + "' uses the reserved foxrun_ prefix.", diagnostics);
@@ -142,6 +148,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 if (TryNullable(sequenceElement, out _))
                 {
                     AddUnsupported(path, "Custom ROS2 DTO sequences cannot contain nullable elements.", diagnostics);
+                    return;
+                }
+                if (sequenceElement.IsReferenceType)
+                {
+                    AddUnsupported(path, "Custom ROS2 DTO sequences cannot contain reference elements without per-element presence.", diagnostics);
                     return;
                 }
 
@@ -204,21 +215,25 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         private static IEnumerable<ISymbol> PublicInstanceMembers(INamedTypeSymbol type)
         {
-            foreach (var member in type.GetMembers())
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var current = type; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
+            foreach (var member in current.GetMembers())
             {
                 if (member is IFieldSymbol field
                     && !field.IsStatic
                     && !field.IsConst
                     && field.DeclaredAccessibility == Accessibility.Public)
                 {
-                    yield return field;
+                    if (seen.Add(field.Name))
+                        yield return field;
                 }
                 else if (member is IPropertySymbol property
                          && !property.IsStatic
                          && !property.IsIndexer
                          && property.DeclaredAccessibility == Accessibility.Public)
                 {
-                    yield return property;
+                    if (seen.Add(property.Name))
+                        yield return property;
                 }
             }
         }
@@ -306,6 +321,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 || type.TypeKind == TypeKind.Pointer
                 || type.TypeKind == TypeKind.Delegate
                 || type.TypeKind == TypeKind.Interface
+                || IsDerivedFrom(type, "System.IO.Stream")
+                || IsDerivedFrom(type, "System.Threading.Tasks.Task")
                 || type.IsAbstract)
                 return true;
             if (IsUnityObject(type as INamedTypeSymbol))
@@ -326,6 +343,19 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 if (string.Equals(MetadataDefinitionName(candidate), "UnityEngine.Object", StringComparison.Ordinal))
                     return true;
             }
+            return false;
+        }
+
+        private static bool IsDerivedFrom(ITypeSymbol type, string metadataName)
+        {
+            for (var candidate = type as INamedTypeSymbol;
+                 candidate != null;
+                 candidate = candidate.BaseType)
+            {
+                if (string.Equals(MetadataDefinitionName(candidate), metadataName, StringComparison.Ordinal))
+                    return true;
+            }
+
             return false;
         }
 

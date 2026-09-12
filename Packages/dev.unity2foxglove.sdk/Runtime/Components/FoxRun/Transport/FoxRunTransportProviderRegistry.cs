@@ -270,26 +270,30 @@ namespace Unity.FoxgloveSDK.Components
         private readonly object _gate = new object();
         private readonly Dictionary<FoxRunTransportId, List<IFoxRunTransportProvider>>
             _providers = new Dictionary<FoxRunTransportId, List<IFoxRunTransportProvider>>();
+        private readonly Dictionary<IFoxRunTransportProvider, RegisteredProvider>
+            _registeredProviders = new Dictionary<IFoxRunTransportProvider, RegisteredProvider>(
+                ReferenceIdentityComparer<IFoxRunTransportProvider>.Instance);
 
         public FoxRunTransportRegistrationResult Register(IFoxRunTransportProvider provider)
         {
             if (provider == null)
                 throw new ArgumentNullException(nameof(provider));
-            _ = new FoxRunTransportId(provider.Id.Value);
-            ValidateCapabilities(provider.Capabilities);
+            var id = new FoxRunTransportId(provider.Id.Value);
+            var capabilities = provider.Capabilities;
+            ValidateCapabilities(capabilities);
+            var registered = new RegisteredProvider(provider, id, capabilities);
 
             lock (_gate)
             {
-                if (!_providers.TryGetValue(provider.Id, out var instances))
+                if (_registeredProviders.ContainsKey(provider))
+                    return FoxRunTransportRegistrationResult.AlreadyRegistered;
+                if (!_providers.TryGetValue(id, out var instances))
                 {
                     instances = new List<IFoxRunTransportProvider>(1);
-                    _providers.Add(provider.Id, instances);
+                    _providers.Add(id, instances);
                 }
-
-                if (instances.Any(candidate => ReferenceEquals(candidate, provider)))
-                    return FoxRunTransportRegistrationResult.AlreadyRegistered;
-
-                instances.Add(provider);
+                _registeredProviders.Add(provider, registered);
+                instances.Add(registered);
                 return instances.Count == 1
                     ? FoxRunTransportRegistrationResult.Added
                     : FoxRunTransportRegistrationResult.Conflict;
@@ -303,20 +307,27 @@ namespace Unity.FoxgloveSDK.Components
 
             lock (_gate)
             {
-                if (!_providers.TryGetValue(provider.Id, out var instances))
+                if (!_registeredProviders.TryGetValue(provider, out var registered))
                     return false;
+                var id = registered.Id;
+                if (!_providers.TryGetValue(id, out var instances))
+                {
+                    _registeredProviders.Remove(provider);
+                    return false;
+                }
 
                 var removed = false;
                 for (var i = instances.Count - 1; i >= 0; i--)
                 {
-                    if (!ReferenceEquals(instances[i], provider))
+                    if (!ReferenceEquals(instances[i], registered))
                         continue;
                     instances.RemoveAt(i);
                     removed = true;
                 }
 
                 if (instances.Count == 0)
-                    _providers.Remove(provider.Id);
+                    _providers.Remove(id);
+                _registeredProviders.Remove(provider);
                 return removed;
             }
         }
@@ -341,31 +352,45 @@ namespace Unity.FoxgloveSDK.Components
 
             IFoxRunTransportProvider[] publishProviders;
             IFoxRunTransportProvider subscribeProvider = null;
-            lock (_gate)
+            try
             {
-                publishProviders = new IFoxRunTransportProvider[
-                    selection.PublishTransportIds.Count];
-                for (var i = 0; i < publishProviders.Length; i++)
+                lock (_gate)
                 {
-                    var id = selection.PublishTransportIds[i];
-                    var resolution = ResolveLocked(id, FoxRunTransportCapabilities.Publish);
-                    if (!TryMapResolution(resolution, id, out publishProviders[i], out failure))
+                    publishProviders = new IFoxRunTransportProvider[
+                        selection.PublishTransportIds.Count];
+                    for (var i = 0; i < publishProviders.Length; i++)
                     {
-                        snapshot = null;
-                        return false;
+                        var id = selection.PublishTransportIds[i];
+                        var resolution = ResolveLocked(id, FoxRunTransportCapabilities.Publish);
+                        if (!TryMapResolution(resolution, id, out publishProviders[i], out failure))
+                        {
+                            snapshot = null;
+                            return false;
+                        }
                     }
-                }
 
-                if (selection.SubscriptionsEnabled)
-                {
-                    var id = selection.SubscribeTransportId.Value;
-                    var resolution = ResolveLocked(id, FoxRunTransportCapabilities.Subscribe);
-                    if (!TryMapResolution(resolution, id, out subscribeProvider, out failure))
+                    if (selection.SubscriptionsEnabled)
                     {
-                        snapshot = null;
-                        return false;
+                        var id = selection.SubscribeTransportId.Value;
+                        var resolution = ResolveLocked(id, FoxRunTransportCapabilities.Subscribe);
+                        if (!TryMapResolution(resolution, id, out subscribeProvider, out failure))
+                        {
+                            snapshot = null;
+                            return false;
+                        }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                // Provider metadata is external code; contain failures before
+                // entering the session-acquisition phase.
+                failure = new FoxRunTransportSessionCaptureError(
+                    FoxRunTransportSessionCaptureFailure.ProviderFailed,
+                    default,
+                    ex.Message);
+                snapshot = null;
+                return false;
             }
 
             var uniqueProviders = new List<IFoxRunTransportProvider>();
@@ -379,7 +404,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 foreach (var provider in uniqueProviders)
                 {
-                    IFoxRunTransportSession session;
+                    IFoxRunTransportSession session = null;
                     string reason;
                     try
                     {
@@ -392,6 +417,8 @@ namespace Unity.FoxgloveSDK.Components
                                 string.IsNullOrWhiteSpace(reason)
                                     ? "Provider rejected session capture."
                                     : reason);
+                            if (session != null)
+                                DisposeCaptured(new[] { session });
                             DisposeCaptured(captured.Values);
                             snapshot = null;
                             return false;
@@ -399,6 +426,8 @@ namespace Unity.FoxgloveSDK.Components
                     }
                     catch (Exception ex)
                     {
+                        if (session != null)
+                            DisposeCaptured(new[] { session });
                         failure = new FoxRunTransportSessionCaptureError(
                             FoxRunTransportSessionCaptureFailure.ProviderFailed,
                             provider.Id,
@@ -408,11 +437,23 @@ namespace Unity.FoxgloveSDK.Components
                         return false;
                     }
 
-                    if (session.Id != provider.Id
-                        || session.Generation != generation
-                        || (session.Capabilities & provider.Capabilities) != provider.Capabilities)
+                    bool mismatched;
+                    try
                     {
-                        session.Dispose();
+                        mismatched = session.Id != provider.Id
+                            || session.Generation != generation
+                            || (session.Capabilities & provider.Capabilities) != provider.Capabilities;
+                    }
+                    catch
+                    {
+                        // Ownership begins as soon as a provider returns a
+                        // non-null session; contain hostile metadata getters.
+                        DisposeCaptured(new[] { session });
+                        throw;
+                    }
+                    if (mismatched)
+                    {
+                        DisposeCaptured(new[] { session });
                         failure = new FoxRunTransportSessionCaptureError(
                             FoxRunTransportSessionCaptureFailure.ProviderFailed,
                             provider.Id,
@@ -468,6 +509,16 @@ namespace Unity.FoxgloveSDK.Components
                 return new FoxRunTransportProviderResolution(
                     FoxRunTransportProviderResolutionState.Unavailable,
                     provider);
+
+            if (!_providers.TryGetValue(id, out var currentInstances)
+                || currentInstances.Count != 1
+                || !ReferenceEquals(currentInstances[0], provider))
+            {
+                return new FoxRunTransportProviderResolution(
+                    FoxRunTransportProviderResolutionState.Conflicted,
+                    null);
+            }
+
             return new FoxRunTransportProviderResolution(
                 FoxRunTransportProviderResolutionState.Sole,
                 provider);
@@ -556,6 +607,35 @@ namespace Unity.FoxgloveSDK.Components
             if (capability != FoxRunTransportCapabilities.Publish
                 && capability != FoxRunTransportCapabilities.Subscribe)
                 throw new ArgumentOutOfRangeException(nameof(capability));
+        }
+
+        private sealed class RegisteredProvider : IFoxRunTransportProvider
+        {
+            private readonly IFoxRunTransportProvider _inner;
+
+            internal RegisteredProvider(
+                IFoxRunTransportProvider inner,
+                FoxRunTransportId id,
+                FoxRunTransportCapabilities capabilities)
+            {
+                _inner = inner;
+                Id = id;
+                Capabilities = capabilities;
+            }
+
+            public FoxRunTransportId Id { get; }
+            public FoxRunTransportCapabilities Capabilities { get; }
+            public FoxRunTransportLifecycleState LifecycleState
+                => _inner.LifecycleState;
+
+            public bool TryCaptureSession(
+                ulong generation,
+                out IFoxRunTransportSession session,
+                out string reason)
+                => _inner.TryCaptureSession(
+                    generation,
+                    out session,
+                    out reason);
         }
 
         private sealed class ReferenceIdentityComparer<T> : IEqualityComparer<T>

@@ -385,6 +385,11 @@ namespace Unity2Foxglove.Ros2Bridge
                         continue;
                     }
 
+                    // Manual routes may retain the payload after this apply
+                    // lease returns its pooled frame. Copy before dispatch so
+                    // callbacks never observe storage that can be reused by
+                    // a later inbound message.
+                    var ownedPayload = apply.Frame.Payload.ToArray();
                     Exception first = null;
                     for (var index = 0;
                          index < subscribers.Length;
@@ -401,7 +406,7 @@ namespace Unity2Foxglove.Ros2Bridge
                         try
                         {
                             subscribers[index].Route.OnPayload(
-                                apply.Frame.Payload,
+                                ownedPayload,
                                 apply.Frame.ReceiveTimeNs,
                                 apply.Frame.Sequence);
                         }

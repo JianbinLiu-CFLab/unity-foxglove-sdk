@@ -21,6 +21,7 @@ from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon impor
     _unity_plugin_importer_arguments,
     _write_candidate_texts,
     _write_inventory,
+    _load_toolchain_provenance,
     build_candidate,
     candidate_package_root,
     parse_args,
@@ -61,6 +62,18 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
 
             with self.assertRaisesRegex(CandidateBuildError, "provide-ros2cs-source"):
                 build_candidate(request)
+
+    def test_candidate_build_requires_input_bound_toolchain_provenance(self) -> None:
+        """A controlled candidate must consume the matching preflight attestation."""
+        with self._fixture() as fixture:
+            provenance = fixture.root / "build" / "phase181" / "humble" / "provenance" / "toolchain.json"
+            provenance.parent.mkdir(parents=True, exist_ok=True)
+            provenance.write_text(
+                json.dumps({"schemaVersion": 1, "distro": "humble"}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(CandidateBuildError, "repair-toolchain-provenance"):
+                _load_toolchain_provenance(fixture.request)
 
     def test_candidate_package_is_constrained_to_its_distro_build_root(self) -> None:
         """Verify candidate package is constrained to its distro build root."""
@@ -217,6 +230,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
                     "managedType": ROS_PACKAGE_NAME + ".msg.State",
                 },
             ),
+            supported_rmws=("rmw_fastrtps_cpp", "rmw_zenoh_cpp"),
         )
 
         self.assertIn('return "' + STATIC_INTERFACE_PACKAGE_ID + '";', catalog)
@@ -236,6 +250,18 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
             catalog.index("FoxRunRos2CustomTypesupportCatalogRegistry.Register("),
         )
         self.assertNotIn("ROS2.GlobalVariables", catalog)
+
+    def test_generated_catalog_uses_resolved_runtime_rmw_capability(self) -> None:
+        """Catalog capability must follow the validated runtime manifest, not distro defaults."""
+        catalog = _catalog_source(
+            distro="jazzy",
+            interface_digest="b" * 64,
+            type_map=({"canonicalRosType": ROS_PACKAGE_NAME + "/msg/State", "managedType": ROS_PACKAGE_NAME + ".msg.State"},),
+            supported_rmws=("rmw_zenoh_cpp",),
+        )
+
+        self.assertIn('private static readonly string[] s_rmws = { "rmw_zenoh_cpp" };', catalog)
+        self.assertNotIn('"rmw_fastrtps_cpp"', catalog)
 
     def test_unity_plugin_importer_uses_one_native_directory_pass(self) -> None:
         """Keep the managed and native importer boundaries explicit and bounded."""
@@ -288,6 +314,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
                         "baseRuntime": {
                             "packageId": "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
                         },
+                        "supportedRmwImplementations": ["rmw_fastrtps_cpp"],
                         "managed": {
                             "typeMap": [
                                 {

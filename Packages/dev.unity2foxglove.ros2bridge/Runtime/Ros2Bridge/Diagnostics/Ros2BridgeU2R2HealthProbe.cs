@@ -48,7 +48,10 @@ namespace Unity2Foxglove.Ros2Bridge
                 stream.Write(request, 0, request.Length);
                 stream.Flush();
 
-                var responseHeader = ReadU2R2Header(stream, cancellationToken);
+                var responseHeader = ReadU2R2Header(
+                    stream,
+                    Math.Max(1, timeoutMs),
+                    cancellationToken);
                 var pong = Ros2BridgeU2R2HealthCodec.ParseHealthPongHeader(responseHeader, requestId);
                 stopwatch.Stop();
 
@@ -81,9 +84,12 @@ namespace Unity2Foxglove.Ros2Bridge
             return task.Wait(timeoutMs, cancellationToken) || task.IsCompleted;
         }
 
-        private static byte[] ReadU2R2Header(Stream stream, CancellationToken cancellationToken)
+        private static byte[] ReadU2R2Header(
+            Stream stream,
+            int timeoutMs,
+            CancellationToken cancellationToken)
         {
-            var fixedHeader = ReadExact(stream, 16, cancellationToken);
+            var fixedHeader = ReadExact(stream, 16, timeoutMs, cancellationToken);
             if (fixedHeader[0] != 'U' || fixedHeader[1] != '2' || fixedHeader[2] != 'R' || fixedHeader[3] != '2')
                 throw new FormatException("U2R2 response magic is invalid.");
             if (ReadUInt16LE(fixedHeader, 4) != 1)
@@ -98,20 +104,33 @@ namespace Unity2Foxglove.Ros2Bridge
             if (payloadLength > Ros2BridgeFrameWriter.MaxPayloadBytes)
                 throw new FormatException("U2R2 response payload length exceeds maximum.");
 
-            var header = ReadExact(stream, checked((int)headerLength), cancellationToken);
+            var header = ReadExact(
+                stream,
+                checked((int)headerLength),
+                timeoutMs,
+                cancellationToken);
             if (payloadLength != 0)
                 throw new FormatException("Health pong payload must be empty.");
 
             return header;
         }
 
-        private static byte[] ReadExact(Stream stream, int count, CancellationToken cancellationToken)
+        private static byte[] ReadExact(
+            Stream stream,
+            int count,
+            int timeoutMs,
+            CancellationToken cancellationToken)
         {
             var bytes = new byte[count];
             var offset = 0;
+            var deadline = Stopwatch.StartNew();
             while (offset < count)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var remaining = timeoutMs - deadline.ElapsedMilliseconds;
+                if (remaining <= 0)
+                    throw new TimeoutException("Timed out reading ROS2 Bridge health response.");
+                stream.ReadTimeout = (int)Math.Min(int.MaxValue, remaining);
                 var read = stream.Read(bytes, offset, count - offset);
                 if (read <= 0)
                     throw new IOException("ROS2 Bridge sidecar closed the connection.");

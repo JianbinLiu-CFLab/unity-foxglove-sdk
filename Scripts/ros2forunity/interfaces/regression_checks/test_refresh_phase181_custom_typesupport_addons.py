@@ -176,6 +176,30 @@ class Phase181CustomTypesupportRefreshTests(unittest.TestCase):
             self.assertEqual(3, len(commands))
             self.assertIn("build_foxrun_custom_typesupport_addon.py", commands[0][1])
 
+    def test_apply_rebuilds_when_candidate_validation_hash_is_stale(self) -> None:
+        """A proof record for different candidate bytes cannot authorize reuse."""
+        with self._fixture() as fixture:
+            fixture.write_addon(runtime_manifest_sha="0" * 64)
+            fixture.write_candidate(runtime_manifest_sha=fixture.runtime_manifest_sha)
+            evidence = fixture.root / "build/phase181/humble/candidate/e/candidate-validation.json"
+            payload = json.loads(evidence.read_text(encoding="utf-8"))
+            payload["candidatePackageSha256"] = "0" * 64
+            evidence.write_text(json.dumps(payload), encoding="utf-8")
+            commands: list[tuple[str, ...]] = []
+            request = AddonRefreshRequest(
+                root=fixture.root,
+                distros=("humble",),
+                apply=True,
+                ros2cs_source=fixture.ros2cs_source,
+                r2fu_source=fixture.r2fu_source,
+                unity=fixture.unity,
+            )
+
+            run_refresh(request, runner=self._recording_runner(commands))
+
+            self.assertEqual(3, len(commands))
+            self.assertIn("build_foxrun_custom_typesupport_addon.py", commands[0][1])
+
     def test_apply_refuses_an_incomplete_ros2cs_install_before_any_child_command(self) -> None:
         """A concurrent ros2cs rebuild must not race an add-on candidate build."""
         with self._fixture() as fixture:
@@ -452,7 +476,16 @@ class _Fixture:
         evidence = candidate / "e"
         evidence.mkdir(parents=True)
         (evidence / "candidate-validation.json").write_text(
-            json.dumps({"schemaVersion": 1, "distro": "humble", "validated": True}),
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "distro": "humble",
+                    "candidatePackageSha256": refresh.normalized_json_sha256(
+                        json.loads((support / "typesupport-inventory.json").read_text(encoding="utf-8"))
+                    ),
+                    "validated": True,
+                }
+            ),
             encoding="utf-8",
         )
 

@@ -301,9 +301,9 @@ internal class ROS2ForUnity : IDisposable
     {
         // U2F-LOCAL-PATCH: standalone runtime owns its RMW selection while allowing Lyrical Zenoh.
         string requestedRmwImplementation = Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION");
-        string selectedRmwImplementation = IsSupportedRmwImplementation(requestedRmwImplementation)
-            ? requestedRmwImplementation
-            : defaultRmwImplementation;
+        string selectedRmwImplementation = string.IsNullOrEmpty(requestedRmwImplementation)
+            ? defaultRmwImplementation
+            : requestedRmwImplementation;
         SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", selectedRmwImplementation);
     }
 
@@ -611,17 +611,38 @@ internal class ROS2ForUnity : IDisposable
 
             // Initialize
             ConnectLoggers();
-            Ros2cs.Init();
-            RegisterCtrlCHandler();
+            Ros2ForUnityNativePluginBootstrap.SealNativeLibraryRegistration();
+            try
+            {
+                Ros2cs.Init();
+            }
+            catch
+            {
+                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
+                throw;
+            }
+            try
+            {
+                RegisterCtrlCHandler();
 
-            string rmwImpl = Ros2cs.GetRMWImplementation();
-            ValidateRmwImplementation(rmwImpl);
+                string rmwImpl = Ros2cs.GetRMWImplementation();
+                ValidateRmwImplementation(rmwImpl);
 
-            LogRuntimeInfoWithoutStackTrace("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
+                LogRuntimeInfoWithoutStackTrace("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
 
 #if UNITY_EDITOR
-            RegisterEditorHandlers();
+                RegisterEditorHandlers();
 #endif
+            }
+            catch
+            {
+                // A post-init validation failure must release the native
+                // context and callbacks before the constructor propagates.
+                try { UnregisterCtrlCHandlerStatic(); } catch { }
+                try { Ros2cs.Shutdown(); } catch { }
+                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
+                throw;
+            }
             isInitialized = true;
             referenceCount = 1;
             ownsReference = true;
@@ -741,6 +762,7 @@ internal class ROS2ForUnity : IDisposable
                 referenceCount = 0;
                 shutdownInProgress = false;
                 UnregisterCtrlCHandlerStatic();
+                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
             }
         }
     }
