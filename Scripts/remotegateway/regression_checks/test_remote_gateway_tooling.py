@@ -148,6 +148,23 @@ class RemoteGatewayToolingTests(unittest.TestCase):
 
         self.assertEqual("/MT", payload["cxxflags"])
 
+    def test_manifest_rejects_missing_selected_artifact(self) -> None:
+        """Selected import libraries and symbols cannot disappear silently."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            release = root / "target/release"
+            release.mkdir(parents=True)
+            (release / "foxglove.dll").write_bytes(b"dll")
+            environment = {
+                "RUSTFLAGS": "-C target-feature=+crt-static",
+                "CFLAGS_x86_64_pc_windows_msvc": "/MT",
+                "CXXFLAGS_x86_64_pc_windows_msvc": "/MT",
+                "AWS_LC_SYS_PREBUILT_NASM": "1",
+                "CARGO_TARGET_DIR": str(root / "target"),
+            }
+            with self.assertRaisesRegex(FileNotFoundError, "Missing selected artifact"):
+                self.build.write_manifest(root / "target", environment, self.build.APPROVED_ARTIFACTS)
+
     def test_build_pins_x64_target_and_manifest_provenance(self) -> None:
         """Native output must identify the explicit Cargo target and inputs."""
         args = SimpleNamespace(libclang_path=None, target_dir="phase187-target")

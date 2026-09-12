@@ -125,7 +125,7 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
     for name in artifact_names:
         artifact = target_dir / "release" / name
         if not artifact.is_file():
-            continue
+            raise FileNotFoundError(f"Missing selected artifact: {artifact}")
         artifacts[name] = {
             "sha256": sha256(artifact),
             "sizeBytes": artifact.stat().st_size,
