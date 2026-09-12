@@ -16,6 +16,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_c
 from dataclasses import dataclass
 import hashlib
 import os
+import re
 import subprocess
 import sys
 import time
@@ -40,7 +41,20 @@ CI_ONLY_CHOICES = (
     "packages",
     "boundary",
 )
-RUN_ID = os.environ.get("UNITY2FOXGLOVE_CI_RUN_ID") or f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+
+
+def sanitize_run_id(value: str | None) -> str:
+    """Accept only a single safe path component for CI output isolation."""
+    candidate = (value or "").strip()
+    if not candidate:
+        return f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    if not RUN_ID_RE.fullmatch(candidate):
+        raise SystemExit("UNITY2FOXGLOVE_CI_RUN_ID must be one safe path component")
+    return candidate
+
+
+RUN_ID = sanitize_run_id(os.environ.get("UNITY2FOXGLOVE_CI_RUN_ID"))
 CI_ROOT = REPO_ROOT / "build/ci" / RUN_ID
 ISOLATED_DOTNET_ROOT = CI_ROOT / "dotnet"
 
