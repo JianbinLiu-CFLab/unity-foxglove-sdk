@@ -84,7 +84,7 @@ PROJECT_VERSION_MAX_BYTES = 64 * 1024
 # A Unity editor version component, e.g. 2022.3.10f1 or 6000.3.14. Project metadata is
 # untrusted input joined into a filesystem path, so the value must match this whole and
 # cannot carry a separator, a drive letter, or a parent segment.
-UNITY_EDITOR_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:[a-z]\d+)?")
+UNITY_EDITOR_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:[abfp]\d+)?")
 
 # Initial offsets and command indexes used for log tailing and diagnostics.
 INITIAL_LOG_OFFSET = 0
@@ -148,7 +148,7 @@ def default_target() -> str:
 def unity_version_key(path: Path) -> Tuple[int, ...]:
     """Extract a comparable Unity version tuple from a Hub editor path."""
     for part in reversed(path.parts):
-        match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:[a-z](\d+))?", part)
+        match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[abfp](\d+))?", part)
         if match:
             return tuple(int(number) for number in match.groups(default="0"))
     return ()
@@ -207,7 +207,17 @@ def contained_unity_candidate(candidate: Path, version_root: Path) -> Optional[P
 
 def newest_existing(paths: List[Path]) -> Optional[Path]:
     """Return the newest Unity version among the accepted executable candidates."""
-    existing = [accepted for accepted in map(accepted_unity_candidate, paths) if accepted]
+    existing = []
+    for candidate in paths:
+        accepted = accepted_unity_candidate(candidate)
+        if accepted is None:
+            continue
+        # Hub candidates are nested as <version>/Editor/Unity; reject any
+        # trailing-junk or unknown-channel directory before ranking it.
+        version_component = accepted.parent.parent.name
+        if not is_unity_editor_version(version_component):
+            continue
+        existing.append(accepted)
     if not existing:
         return None
     return max(existing, key=lambda p: (unity_version_key(p), p.stat().st_mtime))

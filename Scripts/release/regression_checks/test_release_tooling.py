@@ -2750,6 +2750,23 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         self.assertIsNotNone(resolved)
         self.assertEqual(unity.resolve(), Path(resolved))
 
+    def test_hub_discovery_ignores_malformed_version_directories(self) -> None:
+        """Hub fallback must not select trailing-junk or unknown-channel versions."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            good = root / "ProgramFiles" / "Unity" / "Hub" / "Editor" / "6000.3.14f1" / "Editor" / "Unity.exe"
+            malformed = root / "ProgramFiles" / "Unity" / "Hub" / "Editor" / "6000.3.99z999" / "Editor" / "Unity.exe"
+            backup = root / "ProgramFiles" / "Unity" / "Hub" / "Editor" / "6000.3.14f1-backup" / "Editor" / "Unity.exe"
+            self._write_unity_stand_in(good)
+            self._write_unity_stand_in(malformed)
+            self._write_unity_stand_in(backup)
+            with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+                with mock.patch.dict(self.unity_il2cpp.os.environ,
+                                     {"PROGRAMFILES": str(root / "ProgramFiles"),
+                                      "PROGRAMFILES(X86)": str(root / "missing")}, clear=False):
+                    resolved = self.unity_il2cpp.find_unity_from_hub()
+        self.assertEqual(good.resolve(), Path(resolved))
+
     def test_hub_discovery_rejects_a_non_executable_candidate(self) -> None:
         """The generic Hub fallback must apply the same executable gate."""
         with tempfile.TemporaryDirectory() as temp:
