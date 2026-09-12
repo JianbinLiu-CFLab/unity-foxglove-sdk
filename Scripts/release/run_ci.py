@@ -242,6 +242,18 @@ def current_git_head() -> str:
     return head
 
 
+def ensure_clean_source(relative_path: str) -> None:
+    """Require executable certification inputs to match the checked-out tree."""
+    completed = subprocess.run(
+        ["git", "diff", "--quiet", "--", relative_path],
+        cwd=REPO_ROOT,
+        timeout=command_timeout_seconds(),
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"Certification source is modified: {relative_path}")
+
+
 def command_timeout_seconds() -> int:
     """Return the per-command CI timeout in seconds."""
     raw = os.environ.get("UNITY2FOXGLOVE_CI_TIMEOUT", "").strip()
@@ -1120,6 +1132,7 @@ def main() -> int:
     # --- specifically provisioned Windows Unity + ROS/RMW live certification ---
     if args.only == "phase186-bridge-windows-live":
         head = current_git_head()
+        ensure_clean_source(PHASE186_CERTIFICATION_MODULE.replace(".", "/") + ".py")
         certification_run_id = phase186_certification_run_id(head)
         results["phase186-bridge-windows-live"] = run(
             [
