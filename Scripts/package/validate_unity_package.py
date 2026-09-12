@@ -45,6 +45,14 @@ ROS2_RUNTIME_PACKAGES = (
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
 )
+CONSUMER_LOCAL_DEPENDENCIES = (
+    "dev.unity2foxglove.sdk",
+    "dev.unity2foxglove.ros2bridge",
+    "dev.unity2foxglove.ros2forunity",
+    "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64",
+    "dev.unity2foxglove.foxrun.ros2.interfaces",
+    "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+)
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
@@ -296,6 +304,47 @@ def check_package_matrix(results: list[CheckResult]) -> None:
             actual_dependencies == expected_dependencies,
             f"expected {expected_dependencies!r}, got {actual_dependencies!r}",
         )
+
+
+def check_consumer_local_bindings(results: list[CheckResult]) -> None:
+    """Authenticate every local UPM binding in the real Unity consumer manifest."""
+    manifest = ROOT / "Unity2Foxglove" / "Packages" / "manifest.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except Exception as exc:
+        add(results, "consumer local package bindings", False, f"{rel(manifest)}: {exc}")
+        return
+    dependencies = data.get("dependencies") if isinstance(data, dict) else None
+    if not isinstance(dependencies, dict):
+        add(results, "consumer local package bindings", False, "dependencies is not an object")
+        return
+    consumer_packages = manifest.parent
+    package_root = ROOT / "Packages"
+    failures: list[str] = []
+    for package_name in CONSUMER_LOCAL_DEPENDENCIES:
+        value = dependencies.get(package_name)
+        if not isinstance(value, str) or not value.startswith("file:"):
+            failures.append(f"{package_name}: missing file: binding")
+            continue
+        target = (consumer_packages / value[5:]).resolve()
+        canonical = (package_root / package_name).resolve()
+        if target != canonical:
+            failures.append(f"{package_name}: target {target} is not canonical {canonical}")
+            continue
+        package_manifest = target / "package.json"
+        try:
+            package_data = json.loads(package_manifest.read_text(encoding="utf-8"))
+        except Exception as exc:
+            failures.append(f"{package_name}: package.json unreadable: {exc}")
+            continue
+        if not isinstance(package_data, dict) or package_data.get("name") != package_name:
+            failures.append(f"{package_name}: package identity mismatch")
+    add(
+        results,
+        "consumer local package bindings",
+        not failures,
+        "; ".join(failures) if failures else f"{len(CONSUMER_LOCAL_DEPENDENCIES)} canonical file bindings authenticated",
+    )
 
 
 def check_ros2_bridge_package(results: list[CheckResult]) -> None:
@@ -841,6 +890,7 @@ def main() -> int:
     samples_files = [path for path in samples_entries if path.is_file()]
     docs_files = [path for path in package_files if path_is_relative_to(path, DOCS)]
     check_package_matrix(results)
+    check_consumer_local_bindings(results)
     data = load_package_json(results)
     if data:
         check_package_identity(results, data)
