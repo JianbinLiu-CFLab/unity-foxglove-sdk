@@ -76,6 +76,7 @@ WINDOWS_EXECUTABLE_MAGIC = b"MZ"
 # Split only the ProjectVersion key/value separator.
 PROJECT_VERSION_SPLIT_MAX = 1
 PROJECT_VERSION_VALUE_INDEX = 1
+PROJECT_VERSION_MAX_BYTES = 64 * 1024
 
 # A Unity editor version component, e.g. 2022.3.10f1 or 6000.3.14. Project metadata is
 # untrusted input joined into a filesystem path, so the value must match this whole and
@@ -238,11 +239,16 @@ def find_unity_from_env() -> Optional[Path]:
 def find_unity_from_project_version(project_path: Path) -> Optional[Path]:
     """Resolve Unity from ProjectSettings/ProjectVersion.txt when available."""
     version_file = project_path / "ProjectSettings" / "ProjectVersion.txt"
-    if not version_file.exists():
+    if not version_file.exists() or not version_file.is_file():
         return None
 
     editor_version = None
-    for line in version_file.read_text(encoding="utf-8", errors="replace").splitlines():
+    try:
+        with version_file.open("rb") as handle:
+            contents = handle.read(PROJECT_VERSION_MAX_BYTES)
+    except OSError:
+        return None
+    for line in contents.decode("utf-8", errors="replace").splitlines():
         if line.startswith("m_EditorVersion:"):
             editor_version = line.split(":", PROJECT_VERSION_SPLIT_MAX)[PROJECT_VERSION_VALUE_INDEX].strip()
             break
