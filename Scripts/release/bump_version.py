@@ -94,6 +94,7 @@ class VersionBump:
         self.release_date = release_date
         self.dry_run = dry_run
         self.changes: list[PlannedChange] = []
+        self._original_files: dict[Path, bytes | None] = {}
 
     def rel(self, path: Path) -> str:
         """Format a path relative to the repository root for console output."""
@@ -111,8 +112,22 @@ class VersionBump:
 
         self.changes.append(PlannedChange(path, action))
         if not self.dry_run:
+            self._original_files.setdefault(path, path.read_bytes() if path.is_file() else None)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8", newline="\n")
+
+    def _restore_on_failure(self) -> None:
+        """Restore every file touched by a failed non-dry bump."""
+        if self.dry_run:
+            return
+        for path, original in reversed(tuple(self._original_files.items())):
+            if original is None:
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+            else:
+                path.write_bytes(original)
 
     def sub_exactly_once(self, path: Path, text: str, pattern: str, replacement: str, label: str) -> str:
         """Apply one regex replacement and fail loudly when the target is ambiguous."""
@@ -441,18 +456,22 @@ class VersionBump:
 
     def _run_unlocked(self) -> int:
         """Apply or report every version-bump edit without acquiring a lock."""
-        package_json = self.package_json_path()
-        package_json_text = self.read(package_json)
-        old_version = self.package_version(package_json_text, package_json)
-        self.replace_version_property(old_version, package_json_text, package_json)
-        self.update_adapter_dependency()
-        self.update_phase16_assertions()
-        self.update_core_sdk_dependency_assertions()
-        self.update_readme(old_version)
-        self.update_package_readme(old_version)
-        self.update_citation()
-        self.update_changelog()
-        self.create_release_notes()
+        try:
+            package_json = self.package_json_path()
+            package_json_text = self.read(package_json)
+            old_version = self.package_version(package_json_text, package_json)
+            self.replace_version_property(old_version, package_json_text, package_json)
+            self.update_adapter_dependency()
+            self.update_phase16_assertions()
+            self.update_core_sdk_dependency_assertions()
+            self.update_readme(old_version)
+            self.update_package_readme(old_version)
+            self.update_citation()
+            self.update_changelog()
+            self.create_release_notes()
+        except Exception:
+            self._restore_on_failure()
+            raise
 
         prefix = "[DRY-RUN]" if self.dry_run else "[bump_version]"
         if not self.changes:
