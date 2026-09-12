@@ -405,6 +405,12 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def _canonical_source_bytes(value: bytes) -> bytes:
+    """Normalize checkout line endings before hashing tracked text sources."""
+
+    return value.replace(b"\r\n", b"\n")
+
+
 def _strict_json_equal(actual: object, expected: object) -> bool:
     """Compare JSON authority values without bool/int/float coercion."""
 
@@ -1875,7 +1881,7 @@ def validate_repository_provenance(
                 label="implementation file",
             )
             raw = path.read_bytes()
-            implementation_source_bytes[relative] = raw
+            implementation_source_bytes[relative] = _canonical_source_bytes(raw)
             implementation_sources[relative] = raw.decode("utf-8", errors="strict")
         except (OSError, UnicodeDecodeError, ValueError) as exc:
             errors.append(f"could not read implementation file {relative}: {exc}")

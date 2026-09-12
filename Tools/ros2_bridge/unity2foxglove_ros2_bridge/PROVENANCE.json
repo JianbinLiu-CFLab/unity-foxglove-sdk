@@ -62,7 +62,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ContractAuthority.cs",
-      "sha256": "deaab0779c3c4a9cdf217375f2dc6d24b1e955e7ec70037f563365c051a10ac0",
+      "sha256": "3a1086a86fb3affb746569b1fdd0ca71f57615a5694c726c77e57ad2d6f1747e",
       "classification": "original",
       "influence": "Original C# contract identity and ordering authority.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -97,14 +97,14 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ReplayAuthority.cs",
-      "sha256": "1d2410c7b0bc2488afc55f8f97b8f73d89423e1d81881845f176685af5269c2b",
+      "sha256": "d46bc54e7f092f75f459d3e7d699d1c76a0fa046574cfce38817071c251f227f",
       "classification": "original",
       "influence": "Original C# request replay and correlation authority.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
-      "sha256": "a9eefa876c9908aafdbfb667973a303807a86429e33d7afeb3d88a3f847d05ba",
+      "sha256": "56aef189211b72eb89d636a509fc535fb8e4fa7b468f57b4886b97d2124d797c",
       "classification": "original",
       "influence": "Original C# behavioral coverage for replay, ordering, queues, limits, and contracts.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -124,7 +124,7 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance.py",
-      "sha256": "edeb862b919ba4147de58c3699aa308177205628501437810ba284d4fe56f36a",
+      "sha256": "d9f7414f225426bc580e208c320146ffce461fcce5d6b5a0fbbe81dddaf843f0",
       "classification": "original",
       "influence": "Original fail-closed Git-object, provenance, overlap, path, and inventory validator."
     },
@@ -149,7 +149,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/include/unity2foxglove_ros2_bridge/u2r2_protocol_authority.hpp",
-      "sha256": "b0751ac7906e42da5f1ab5633e376e1b0d4418be14e6b8e147fc693ca5d97fc2",
+      "sha256": "1008c2171fb6a866008846ac21d9c7136a28c901ff5ccbe79e6e65a065fba46a",
       "classification": "original",
       "influence": "Original C++ replay, ordering, queue, limit, and contract authority declarations.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -163,7 +163,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority.cpp",
-      "sha256": "ce49041440face5ace3a3323b08e4a5ef997f1939b01a25a7893124988af5689",
+      "sha256": "e8d82d92f3d5ab1ad1a0a0daedc090f8dc87524d16ca6fe7e9dc215ebe2f8f07",
       "classification": "original",
       "influence": "Original C++ replay, ordering, queue, limit, and contract authority implementation.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
