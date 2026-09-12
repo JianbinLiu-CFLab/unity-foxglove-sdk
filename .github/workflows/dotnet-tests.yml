@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository with provenance history
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Checkout pinned official Foxglove schema reference
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: foxglove/foxglove-sdk
           ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
@@ -35,7 +35,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout pinned official ROS-TCP-Connector reference
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: Unity-Technologies/ROS-TCP-Connector
           ref: c27f00c6cf750d2d0564349b3039d19aa3925e7c
@@ -45,14 +45,14 @@ jobs:
       - name: Normalize the provenance reference origin
         run: git -C third-party/ROS-TCP-Connector remote set-url origin https://github.com/Unity-Technologies/ROS-TCP-Connector.git
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
       - name: Install pinned Phase186 Python runtime dependency
         run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "10.0"
 
@@ -62,7 +62,7 @@ jobs:
       - name: Run xUnit unit tests
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 
@@ -123,7 +123,7 @@ jobs:
 
       - name: Upload xUnit test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unit-test-results
           path: build/TestResults/Unit
@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload MCAP differential report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mcap-differential-report
           path: build/mcap-conformance/phase121-conformance-report.json
@@ -141,11 +141,11 @@ jobs:
     name: optional ROS2 adapter gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "10.0"
 
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload optional ROS2 adapter test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optional-ros2-adapter-test-results
           path: build/TestResults/OptionalRos2Adapter
@@ -167,11 +167,11 @@ jobs:
     name: optional ROS2 Native gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "10.0"
 
@@ -183,7 +183,7 @@ jobs:
 
       - name: Upload optional ROS2 Native test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optional-ros2-native-test-results
           path: build/TestResults/OptionalRos2Native
@@ -200,7 +200,7 @@ jobs:
           $env:GIT_CONFIG_GLOBAL = $globalConfig
           git config --global core.longpaths true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
@@ -211,7 +211,7 @@ jobs:
           python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_fastrtps_cpp
           python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_zenoh_cpp
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "10.0"
 
