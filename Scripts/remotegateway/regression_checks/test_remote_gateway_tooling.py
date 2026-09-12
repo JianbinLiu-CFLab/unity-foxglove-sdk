@@ -173,6 +173,13 @@ class RemoteGatewayToolingTests(unittest.TestCase):
         environment = self.build.build_environment(args)
         self.assertEqual(str(resolved), environment["CARGO_TARGET_DIR"])
 
+    def test_target_dir_rejects_public_source_trees(self) -> None:
+        """Cargo cannot write build products into package or source roots."""
+        with self.assertRaisesRegex(ValueError, "inside a source tree"):
+            self.build.validate_target_dir(self.build.ROOT / "Packages" / "bad-target")
+        with self.assertRaisesRegex(ValueError, "inside a source tree"):
+            self.build.validate_target_dir(self.build.ROOT / "third-party" / "bad-target")
+
     def test_build_pins_x64_target_and_manifest_provenance(self) -> None:
         """Native output must identify the explicit Cargo target and inputs."""
         args = SimpleNamespace(libclang_path=None, target_dir="phase187-target")

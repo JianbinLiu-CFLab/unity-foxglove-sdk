@@ -101,7 +101,7 @@ def build_environment(args: argparse.Namespace) -> dict[str, str]:
 
     cargo_home = Path.home() / ".cargo" / "bin"
     env["PATH"] = str(cargo_home) + os.pathsep + env.get("PATH", "")
-    env["CARGO_TARGET_DIR"] = str(resolve_target_dir(args.target_dir))
+    env["CARGO_TARGET_DIR"] = str(validate_target_dir(resolve_target_dir(args.target_dir)))
     # Pin the target instead of relying on an inherited Cargo configuration.
     env["CARGO_BUILD_TARGET"] = TARGET_TRIPLE
     env["AWS_LC_SYS_PREBUILT_NASM"] = "1"
@@ -115,6 +115,18 @@ def resolve_target_dir(value: str | os.PathLike[str]) -> Path:
     """Resolve target paths once so Cargo and manifest publication share a base."""
     candidate = Path(value).expanduser()
     return candidate if candidate.is_absolute() else ROOT / candidate
+
+
+def validate_target_dir(target_dir: Path) -> Path:
+    """Reject target outputs inside repository source or package trees."""
+    resolved = target_dir.resolve()
+    forbidden = tuple(
+        (ROOT / name).resolve()
+        for name in ("Packages", "third-party", "Scripts", "Unity2Foxglove")
+    )
+    if any(resolved == path or path in resolved.parents for path in forbidden):
+        raise ValueError(f"Cargo target directory must not be inside a source tree: {resolved}")
+    return resolved
 
 
 def selected_artifacts(include_pdb: bool) -> tuple[str, ...]:
@@ -200,7 +212,7 @@ def main() -> int:
     args = parse_args()
     if args.update_package_manifest and not args.copy_to_package:
         raise SystemExit("--update-package-manifest requires --copy-to-package")
-    target_dir = resolve_target_dir(args.target_dir)
+    target_dir = validate_target_dir(resolve_target_dir(args.target_dir))
     env = build_environment(args)
     artifact_names = selected_artifacts(args.include_pdb)
 
