@@ -33,6 +33,7 @@ DEVICE_TOKEN_ENVIRONMENT_VARIABLE = "FOXGLOVE_DEVICE_TOKEN"
 APPROVED_ARTIFACTS = ("foxglove.dll", "foxglove.dll.lib")
 PDB_ARTIFACT = "foxglove.pdb"
 ALLOWED_ARTIFACTS = frozenset((*APPROVED_ARTIFACTS, PDB_ARTIFACT))
+TARGET_TRIPLE = "x86_64-pc-windows-msvc"
 
 
 def parse_args() -> argparse.Namespace:
@@ -101,6 +102,8 @@ def build_environment(args: argparse.Namespace) -> dict[str, str]:
     cargo_home = Path.home() / ".cargo" / "bin"
     env["PATH"] = str(cargo_home) + os.pathsep + env.get("PATH", "")
     env["CARGO_TARGET_DIR"] = str(Path(args.target_dir))
+    # Pin the target instead of relying on an inherited Cargo configuration.
+    env["CARGO_BUILD_TARGET"] = TARGET_TRIPLE
     env["AWS_LC_SYS_PREBUILT_NASM"] = "1"
     env["RUSTFLAGS"] = "-C target-feature=+crt-static"
     env["CXXFLAGS_x86_64_pc_windows_msvc"] = "/MT"
@@ -131,6 +134,7 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
     manifest = {
         "artifact": "foxglove.dll",
         "platform": "windows-x64",
+        "target": env.get("CARGO_BUILD_TARGET", TARGET_TRIPLE),
         "source": "third-party/foxglove-sdk/c",
         "features": "remote-access",
         "rustflags": env["RUSTFLAGS"],
@@ -139,6 +143,8 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
         "environment": {
             "AWS_LC_SYS_PREBUILT_NASM": env["AWS_LC_SYS_PREBUILT_NASM"],
             "CARGO_TARGET_DIR": Path(env["CARGO_TARGET_DIR"]).name or "target",
+            "RUSTUP_TOOLCHAIN": env.get("RUSTUP_TOOLCHAIN", "default"),
+            "cargoLock": "present" if (CRATE / "Cargo.lock").is_file() else "absent",
         },
         "sha256": sha256(dll),
         "sizeBytes": dll.stat().st_size,

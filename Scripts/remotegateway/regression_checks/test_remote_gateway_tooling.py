@@ -148,6 +148,35 @@ class RemoteGatewayToolingTests(unittest.TestCase):
 
         self.assertEqual("/MT", payload["cxxflags"])
 
+    def test_build_pins_x64_target_and_manifest_provenance(self) -> None:
+        """Native output must identify the explicit Cargo target and inputs."""
+        args = SimpleNamespace(libclang_path=None, target_dir="phase187-target")
+        with mock.patch.dict(os.environ, {"RUSTUP_TOOLCHAIN": "stable-msvc"}, clear=False):
+            environment = self.build.build_environment(args)
+        self.assertEqual("x86_64-pc-windows-msvc", environment["CARGO_BUILD_TARGET"])
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            release = root / "target/release"
+            release.mkdir(parents=True)
+            (release / "foxglove.dll").write_bytes(b"dll")
+            staging = root / "staging"
+            manifest_environment = {
+                "RUSTFLAGS": "-C target-feature=+crt-static",
+                "CFLAGS_x86_64_pc_windows_msvc": "/MT",
+                "CXXFLAGS_x86_64_pc_windows_msvc": "/MT",
+                "AWS_LC_SYS_PREBUILT_NASM": "1",
+                "CARGO_TARGET_DIR": str(root / "target"),
+                "CARGO_BUILD_TARGET": "x86_64-pc-windows-msvc",
+                "RUSTUP_TOOLCHAIN": "stable-msvc",
+            }
+            with mock.patch.object(self.build, "STAGING", staging):
+                path = self.build.write_manifest(root / "target", manifest_environment, ("foxglove.dll",))
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual("x86_64-pc-windows-msvc", payload["target"])
+        self.assertEqual("stable-msvc", payload["environment"]["RUSTUP_TOOLCHAIN"])
+        self.assertEqual("absent", payload["environment"]["cargoLock"])
+
     def test_token_is_trimmed_before_it_is_inherited(self) -> None:
         """Whitespace used for validation cannot survive into Unity's token."""
         with mock.patch.dict(
