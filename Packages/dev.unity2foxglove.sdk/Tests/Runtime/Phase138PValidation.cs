@@ -741,7 +741,7 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
-            return source.Substring(start);
+            return string.Empty;
         }
 
         private static string Read(string path)
