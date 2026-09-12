@@ -26,13 +26,40 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 .ToArray();
 
             Assert.Equal(ExpectedGeneratedProtoScriptMetaCount, metas.Length);
+            var scripts = Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories)
+                .Select(path => Path.GetFileName(path))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            var metaScripts = metas
+                .Select(path => Path.GetFileName(path[..^5]))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(scripts, metaScripts);
+            var generatedGuidSet = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var metaPath in metas)
             {
                 var meta = Text(Relative(metaPath));
                 Assert.True(HasValidUnityGuid(meta), Relative(metaPath) + " should have a valid Unity GUID.");
                 Assert.Contains("MonoImporter:", meta, StringComparison.Ordinal);
                 Assert.True(meta.EndsWith("\n", StringComparison.Ordinal), Relative(metaPath) + " should end with a newline for Unity YAML import.");
+                Assert.True(generatedGuidSet.Add(GuidFromMeta(meta)), Relative(metaPath) + " should have a unique GUID.");
             }
+            var assetRoots = new[]
+            {
+                Path.Combine(RepoRoot, "Packages"),
+                Path.Combine(RepoRoot, "Unity2Foxglove", "Assets")
+            };
+            var allAssetMetaPaths = assetRoots
+                .Where(Directory.Exists)
+                .SelectMany(rootPath => Directory.EnumerateFiles(rootPath, "*.meta", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint }))
+                .ToArray();
+            var allAssetGuids = allAssetMetaPaths
+                .Select(path => GuidFromMeta(File.ReadAllText(path)))
+                .Where(guid => guid.Length > 0)
+                .GroupBy(guid => guid, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+            Assert.All(generatedGuidSet, guid =>
+                Assert.Equal(1, allAssetGuids[guid]));
         }
 
         [Fact]
@@ -138,6 +165,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
         private static string Relative(string absolutePath)
             => Path.GetRelativePath(RepoRoot, absolutePath).Replace(Path.DirectorySeparatorChar, '/');
+
+        private static string GuidFromMeta(string meta)
+        {
+            const string prefix = "guid:";
+            foreach (var rawLine in meta.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var line = rawLine.Trim();
+                if (line.StartsWith(prefix, StringComparison.Ordinal))
+                    return line.Substring(prefix.Length).Trim();
+            }
+            return string.Empty;
+        }
 
         private static bool HasValidUnityGuid(string meta)
         {
