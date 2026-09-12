@@ -329,7 +329,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (start < 0)
                 return string.Empty;
             var end = source.IndexOf(endToken, start + startToken.Length, StringComparison.Ordinal);
-            return end < 0 ? source.Substring(start) : source.Substring(start, end - start);
+            return end < 0 ? string.Empty : source.Substring(start, end - start);
         }
 
         private static string ReadRepoText(string relativePath)
