@@ -503,13 +503,11 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
             CiJob(
                 "phase186-bridge-tooling",
                 [sys.executable, script, "--only", "phase186-bridge-tooling"],
-                disable_timeout=True,
                 exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
             ),
             CiJob(
                 "mcap-conformance",
                 [sys.executable, script, "--only", "mcap-conformance"],
-                disable_timeout=True,
                 exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
             ),
             CiJob(
@@ -1053,17 +1051,17 @@ def main() -> int:
             results["phase186-" + module.rsplit(".", 1)[-1]] = run(
                 [sys.executable, "-m", "unittest", module],
                 "Phase186 " + label + " regressions",
-                disable_timeout=slow_provenance,
+                timeout_seconds=job_timeout_seconds() if slow_provenance else None,
             )
         results["phase186-package-matrix"] = run(
             [sys.executable, PHASE186_PACKAGE_MATRIX_VALIDATOR],
             "Phase186 package-composition compile and boundary matrix",
-            disable_timeout=True,
+            timeout_seconds=job_timeout_seconds(),
         )
         results["phase186-provenance"] = run(
             [sys.executable, "-m", PHASE186_PROVENANCE_MODULE],
             "Phase186 protocol and source provenance",
-            disable_timeout=True,
+            timeout_seconds=job_timeout_seconds(),
         )
 
     # --- specifically provisioned Windows Unity + ROS/RMW live certification ---
@@ -1083,7 +1081,7 @@ def main() -> int:
                 certification_run_id,
             ],
             "Phase186 provisioned Windows Unity and ROS/RMW live certification",
-            disable_timeout=True,
+            timeout_seconds=job_timeout_seconds(),
         )
 
     # --- pure Phase181 custom-interface helper and source-package regressions ---
@@ -1137,7 +1135,7 @@ def main() -> int:
                 "build/mcap-conformance/phase121-conformance-report.json",
             ],
             "Official MCAP differential conformance",
-            disable_timeout=True,
+            timeout_seconds=job_timeout_seconds(),
         )
 
     # --- package validators ---

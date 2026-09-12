@@ -1085,9 +1085,7 @@ class RunCiTests(unittest.TestCase):
         )
         self.assertEqual(
             {
-                "mcap-conformance",
                 "phase184-acceptance-tooling",
-                "phase186-bridge-tooling",
             },
             {job.name for job in jobs if job.disable_timeout},
         )
@@ -1231,7 +1229,7 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("phase186-bridge-tooling", names)
         self.assertNotIn("phase186-bridge-windows-live", names)
         tooling = next(job for job in jobs if job.name == "phase186-bridge-tooling")
-        self.assertTrue(tooling.disable_timeout)
+        self.assertFalse(tooling.disable_timeout)
 
     def test_phase186_bridge_tooling_selector_runs_exact_static_suites_and_matrix(self) -> None:
         """The tooling selector must never launch Unity, a sidecar, or a ROS peer."""
@@ -1272,7 +1270,7 @@ class RunCiTests(unittest.TestCase):
             for call in run.call_args_list
             if call.args[0][-1] == "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance"
         )
-        self.assertIs(True, provenance_call.kwargs["disable_timeout"])
+        self.assertEqual(self.run_ci.job_timeout_seconds(), provenance_call.kwargs["timeout_seconds"])
         for call in run.call_args_list:
             command = call.args[0]
             if command[-1] not in self.PHASE186_BRIDGE_TOOLING_SUITES or command[-1] == "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance":
@@ -1308,7 +1306,7 @@ class RunCiTests(unittest.TestCase):
             ],
             command,
         )
-        self.assertTrue(run.call_args.kwargs["disable_timeout"])
+        self.assertEqual(self.run_ci.job_timeout_seconds(), run.call_args.kwargs["timeout_seconds"])
 
     def test_phase186_bridge_windows_live_not_run_is_not_promoted_to_pass(self) -> None:
         """Any nonzero certification result, including NOT RUN, fails the selector."""
@@ -1922,7 +1920,7 @@ class RunCiTests(unittest.TestCase):
             """Capture the dedicated conformance command without executing it."""
             observed["cmd"] = cmd
             observed["label"] = label
-            observed["disable_timeout"] = kwargs.get("disable_timeout")
+            observed["timeout_seconds"] = kwargs.get("timeout_seconds")
             return True
 
         with mock.patch.object(self.run_ci, "run", side_effect=fake_run):
@@ -1931,7 +1929,7 @@ class RunCiTests(unittest.TestCase):
 
         self.assertIn("run_phase121_conformance.py", " ".join(observed["cmd"]))
         self.assertEqual("Official MCAP differential conformance", observed["label"])
-        self.assertIs(True, observed["disable_timeout"])
+        self.assertEqual(self.run_ci.job_timeout_seconds(), observed["timeout_seconds"])
 
     def test_parallel_mcap_job_disables_wall_clock_timeout(self) -> None:
         """The parent CI process must not reintroduce a deadline around the MCAP child."""
