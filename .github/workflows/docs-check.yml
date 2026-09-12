@@ -9,10 +9,13 @@ on:
       - "CHANGELOG.md"
       - "CITATION.cff"
       - "PAPER.md"
+      - "AI_NOTICE.md"
+      - "CONTRIBUTING.md"
       - "docs/research-*.md"
       - "docs/releases/**"
       - "THIRD_PARTY_NOTICES.md"
       - "Packages/dev.unity2foxglove.sdk/README.md"
+      - "Packages/dev.unity2foxglove.ros2forunity/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/zh/**"
@@ -20,6 +23,7 @@ on:
       - "Packages/dev.unity2foxglove.sdk/Samples~/**/README.md"
       - "Unity2Foxglove/README.md"
       - "Unity2Foxglove/Docs/**"
+      - "Tools/foxglove-extensions/foxrun-publish-panel/README.md"
       - "Scripts/**"
       - ".github/workflows/docs-check.yml"
   pull_request:
@@ -30,10 +34,13 @@ on:
       - "CHANGELOG.md"
       - "CITATION.cff"
       - "PAPER.md"
+      - "AI_NOTICE.md"
+      - "CONTRIBUTING.md"
       - "docs/research-*.md"
       - "docs/releases/**"
       - "THIRD_PARTY_NOTICES.md"
       - "Packages/dev.unity2foxglove.sdk/README.md"
+      - "Packages/dev.unity2foxglove.ros2forunity/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/zh/**"
@@ -41,6 +48,7 @@ on:
       - "Packages/dev.unity2foxglove.sdk/Samples~/**/README.md"
       - "Unity2Foxglove/README.md"
       - "Unity2Foxglove/Docs/**"
+      - "Tools/foxglove-extensions/foxrun-publish-panel/README.md"
       - "Scripts/**"
       - ".github/workflows/docs-check.yml"
 
@@ -112,9 +120,12 @@ jobs:
               Path("CHANGELOG.md"),
               Path("CITATION.cff"),
               Path("PAPER.md"),
+              Path("AI_NOTICE.md"),
+              Path("CONTRIBUTING.md"),
               Path("docs"),
               Path("THIRD_PARTY_NOTICES.md"),
               Path("Packages/dev.unity2foxglove.sdk/README.md"),
+              Path("Packages/dev.unity2foxglove.ros2forunity/README.md"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/README.md"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/en"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/zh"),
@@ -123,6 +134,7 @@ jobs:
               Path("Unity2Foxglove/README.md"),
               Path("Unity2Foxglove/Docs"),
               Path("Scripts"),
+              Path("Tools/foxglove-extensions/foxrun-publish-panel/README.md"),
           ]
 
           files = []
