@@ -28,6 +28,8 @@ PACKAGE_PLUGIN_RELATIVE = (
 PACKAGE_PLUGIN_DIR = (
     ROOT / PACKAGE_PLUGIN_RELATIVE
 )
+CANONICAL_STAGING = STAGING
+CANONICAL_PACKAGE_PLUGIN_DIR = PACKAGE_PLUGIN_DIR
 PACKAGE_MANIFEST_NAME = "foxglove-gateway-native-artifact.json"
 DEVICE_TOKEN_ENVIRONMENT_VARIABLE = "FOXGLOVE_DEVICE_TOKEN"
 APPROVED_ARTIFACTS = ("foxglove.dll", "foxglove.dll.lib")
@@ -129,6 +131,17 @@ def validate_target_dir(target_dir: Path) -> Path:
     return resolved
 
 
+def validate_repo_destination(path: Path, label: str) -> None:
+    """Reject symlink/junction destinations that escape the repository boundary."""
+    lexical = Path(path)
+    if lexical == CANONICAL_STAGING or lexical == CANONICAL_PACKAGE_PLUGIN_DIR or ROOT in lexical.parents:
+        resolved = lexical.resolve()
+        try:
+            resolved.relative_to(ROOT.resolve())
+        except ValueError as error:
+            raise ValueError(f"{label} escapes repository boundary: {resolved}") from error
+
+
 def selected_artifacts(include_pdb: bool) -> tuple[str, ...]:
     """Return the reviewed artifact list for this invocation."""
     return APPROVED_ARTIFACTS + ((PDB_ARTIFACT,) if include_pdb else ())
@@ -169,6 +182,7 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
         "artifacts": artifacts,
     }
 
+    validate_repo_destination(STAGING, "staging")
     STAGING.mkdir(parents=True, exist_ok=True)
     manifest_path = STAGING / "foxglove-gateway-native-artifact.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -188,6 +202,7 @@ def copy_approved_artifacts(
         raise ValueError(f"unapproved artifact name(s): {', '.join(unapproved)}")
     if len(set(artifact_names)) != len(artifact_names):
         raise ValueError("artifact selection contains duplicate names")
+    validate_repo_destination(PACKAGE_PLUGIN_DIR, "package plugin destination")
     PACKAGE_PLUGIN_DIR.mkdir(parents=True, exist_ok=True)
     for stale_name in sorted(ALLOWED_ARTIFACTS - set(artifact_names)):
         stale = PACKAGE_PLUGIN_DIR / stale_name
