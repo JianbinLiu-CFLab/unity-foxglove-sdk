@@ -598,10 +598,15 @@ def _provider_descriptor_ids(sources: list[Path], prefix: str) -> set[str]:
     """Return Provider-owned diagnostic IDs referenced by compiled sources."""
     ids: set[str] = set()
     pattern = re.compile(r"\b((?:FOXRUN|FOXR2F|FOXBRG)\d{3})\b")
+    constructed_pattern = re.compile(
+        r"[\"']((?:FOXRUN|FOXR2F|FOXBRG))[\"']\s*\+\s*[\"'](\d{3})[\"']"
+    )
     for source in sources:
         if not source.exists():
             continue
-        ids.update(pattern.findall(source.read_text(encoding="utf-8")))
+        text = source.read_text(encoding="utf-8")
+        ids.update(pattern.findall(text))
+        ids.update(prefix + number for prefix, number in constructed_pattern.findall(text))
     return ids
 
 
