@@ -225,7 +225,9 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
     validate_repo_destination(STAGING, "staging")
     STAGING.mkdir(parents=True, exist_ok=True)
     manifest_path = STAGING / "foxglove-gateway-native-artifact.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    temporary_manifest = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
+    temporary_manifest.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary_manifest, manifest_path)
     return manifest_path
 
 
@@ -266,7 +268,10 @@ def copy_approved_artifacts(
     for name in artifact_names:
         source = target_dir / "release" / name
         if source.is_file():
-            shutil.copy2(source, PACKAGE_PLUGIN_DIR / name)
+            destination = PACKAGE_PLUGIN_DIR / name
+            temporary_destination = destination.with_suffix(destination.suffix + ".tmp")
+            shutil.copy2(source, temporary_destination)
+            os.replace(temporary_destination, destination)
             expected = expected_hashes.get(name)
             if expected and sha256(source) != expected:
                 raise RuntimeError(f"Source artifact changed after manifest hashing: {source}")
@@ -279,7 +284,10 @@ def copy_approved_artifacts(
             )
         if not manifest_path.is_file():
             raise FileNotFoundError(manifest_path)
-        shutil.copy2(manifest_path, PACKAGE_PLUGIN_DIR / PACKAGE_MANIFEST_NAME)
+        destination = PACKAGE_PLUGIN_DIR / PACKAGE_MANIFEST_NAME
+        temporary_destination = destination.with_suffix(destination.suffix + ".tmp")
+        shutil.copy2(manifest_path, temporary_destination)
+        os.replace(temporary_destination, destination)
 
 
 def main() -> int:
