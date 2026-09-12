@@ -39,8 +39,24 @@ namespace Unity.FoxgloveSDK.Editor
             if (property == null)
                 return;
 
-            var current = ClampIndex(property.enumValueIndex, PublisherOverrideLabels.Length);
-            property.enumValueIndex = EditorGUILayout.Popup(label, current, PublisherOverrideLabels);
+            var current = property.enumValueIndex;
+            var supported = current >= 0 && current < PublisherOverrideLabels.Length;
+            if (!supported)
+            {
+                EditorGUILayout.HelpBox(
+                    $"Stored publisher encoding value {property.intValue} is unsupported. Choose an explicit replacement.",
+                    MessageType.Warning);
+                current = -1;
+            }
+
+            var mixed = property.hasMultipleDifferentValues;
+            var previousMixed = EditorGUI.showMixedValue;
+            EditorGUI.showMixedValue = mixed || previousMixed;
+            EditorGUI.BeginChangeCheck();
+            var selected = EditorGUILayout.Popup(label, current, PublisherOverrideLabels);
+            if (EditorGUI.EndChangeCheck() && selected >= 0 && selected < PublisherOverrideLabels.Length)
+                property.enumValueIndex = selected;
+            EditorGUI.showMixedValue = previousMixed;
             DrawMsgPackConsumerNotice((PublisherEncodingOverride)property.intValue);
         }
 
