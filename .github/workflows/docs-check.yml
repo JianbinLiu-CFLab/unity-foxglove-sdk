@@ -133,25 +133,61 @@ jobs:
                   files.extend(root.rglob("*.md"))
                   files.extend(root.rglob("*.cff"))
 
-          link_pattern = re.compile(r"!?\[[^\]]*\]\(((?:\\.|[^()\\]|\\([^()]*\\))*)\)")
+          repo_root = Path.cwd().resolve()
+          link_pattern = re.compile(r"!?\[[^\]]*\]\(((?:\\.|[^()\\]|\([^()]*\))*)\)")
+          reference_pattern = re.compile(r"(?m)^\s{0,3}\[([^\]]+)\]:\s*(\S+)")
+          reference_use_pattern = re.compile(r"!?\[([^\]]*)\]\[([^\]]*)\]")
+
+          def anchor_ids(markdown):
+              anchors = set(re.findall(r"<a\s+[^>]*id=[\"']([^\"']+)", markdown, re.I))
+              counts = {}
+              for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*#*\s*$", markdown):
+                  slug = re.sub(r"[^a-z0-9 -]", "", heading.lower()).strip().replace(" ", "-")
+                  if not slug:
+                      continue
+                  n = counts.get(slug, 0)
+                  anchors.add(slug if n == 0 else f"{slug}-{n}")
+                  counts[slug] = n + 1
+              return anchors
+
+          def check_link(file, raw, missing):
+              raw = raw.strip()
+              if not raw:
+                  return
+              if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", raw):
+                  return
+              target, fragment = (raw.split("#", 1) + [""])[:2] if "#" in raw else (raw, "")
+              target_path = (file.parent / unquote(target)).resolve() if target else file.resolve()
+              try:
+                  target_path.relative_to(repo_root)
+              except ValueError:
+                  missing.append(f"{file}: outside repository -> {raw}")
+                  return
+              if not target_path.exists():
+                  missing.append(f"{file} -> {raw}")
+                  return
+              if fragment:
+                  try:
+                      target_text = target_path.read_text(encoding="utf-8", errors="replace")
+                  except OSError:
+                      missing.append(f"{file} -> {raw}")
+                      return
+                  if unquote(fragment).lower() not in anchor_ids(target_text):
+                      missing.append(f"{file}: missing fragment -> {raw}")
+
           missing = []
           mojibake = []
           for file in files:
               text = file.read_text(encoding="utf-8", errors="replace")
               if "\ufffd" in text:
                   mojibake.append(str(file))
+              references = {key.strip().lower(): value for key, value in reference_pattern.findall(text)}
               for match in link_pattern.finditer(text):
-                  raw = match.group(1).strip()
-                  if not raw or raw.startswith("#"):
-                      continue
-                  if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", raw):
-                      continue
-                  target = raw.split("#", 1)[0]
-                  if not target:
-                      continue
-                  path = (file.parent / unquote(target)).resolve()
-                  if not path.exists():
-                      missing.append(f"{file}:{match.start(1)} -> {raw}")
+                  check_link(file, match.group(1), missing)
+              for match in reference_use_pattern.finditer(text):
+                  key = (match.group(2) or match.group(1)).strip().lower()
+                  if key in references:
+                      check_link(file, references[key], missing)
 
           if missing:
               print("Missing local markdown links or images:")
