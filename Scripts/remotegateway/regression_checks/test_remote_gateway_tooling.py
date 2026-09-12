@@ -63,8 +63,7 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                         manifest,
                         ("unreviewed.dll",),
                     )
-
-        self.assertFalse((package / "unreviewed.dll").exists())
+                self.assertFalse((package / "unreviewed.dll").exists())
 
     def test_copy_removes_a_stale_unselected_pdb(self) -> None:
         """A later non-debug copy must not retain an older symbol artifact."""
