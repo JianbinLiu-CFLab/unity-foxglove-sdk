@@ -60,6 +60,7 @@ jobs:
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj
 
       - name: Run xUnit unit tests
+        if: always()
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -67,6 +68,7 @@ jobs:
           node-version: "22"
 
       - name: Run FoxRun publish panel behavior tests
+        if: always()
         working-directory: Tools/foxglove-extensions/foxrun-publish-panel
         run: |
           npm ci
@@ -74,24 +76,31 @@ jobs:
           npm test
 
       - name: Enable Corepack for the pinned official MCAP harness
+        if: always()
         run: corepack enable
 
       - name: Restore Roslyn analyzer project
+        if: always()
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj
 
       - name: Validate source generator DLL freshness script
+        if: always()
         run: python3 Scripts/package/validate_source_generator_dll.py
 
       - name: Validate generated ROS2 schema output freshness
+        if: always()
         run: python3 Scripts/schema/validate_schema_generated_outputs.py
 
       - name: Restore runtime test project
+        if: always()
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
       - name: Run validation suite
+        if: always()
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
       - name: Run Phase179 ROS2 acceptance helper regressions
+        if: always()
         run: |
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_inbound_acceptance
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host
@@ -99,6 +108,7 @@ jobs:
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_zenoh_topology
 
       - name: Run Phase181 custom ROS2 acceptance helper regressions
+        if: always()
         run: |
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer_protocol
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer
@@ -113,12 +123,15 @@ jobs:
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain
 
       - name: Run Phase186 Bridge tooling and package-composition gate
+        if: always()
         run: python3 Scripts/release/run_ci.py --only phase186-bridge-tooling
 
       - name: Run official MCAP differential conformance
+        if: always()
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/${{ github.run_id }}-${{ github.run_attempt }}/phase121-conformance-report.json
 
       - name: Validate local entrypoints
+        if: always()
         run: python3 Scripts/package/validate_local_entrypoints.py
 
       - name: Upload xUnit test results

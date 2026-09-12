@@ -571,6 +571,18 @@ class RunCiTests(unittest.TestCase):
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
         self.assertNotIn("--ignore-failed-sources", workflow)
 
+    def test_local_restore_matches_remote_strict_source_semantics(self) -> None:
+        """Local restore must not turn an unavailable feed into a cache-only green run."""
+        with mock.patch.object(self.run_ci, "run", return_value=True) as run_command:
+            self.assertTrue(
+                self.run_ci.restore_with_ignoring_failed_sources(
+                    "sample.csproj", "strict restore", fatal=False
+                )
+            )
+        command = run_command.call_args.args[0]
+        self.assertEqual(["dotnet", "restore", "sample.csproj"], command)
+        self.assertNotIn("--ignore-failed-sources", command)
+
     def test_heavy_pull_request_workflows_cancel_superseded_runs(self) -> None:
         """Superseded dotnet and package runs should release hosted CI capacity."""
 
@@ -623,6 +635,28 @@ class RunCiTests(unittest.TestCase):
         xunit = active_workflow_line_index(workflow, "- name: Run xUnit unit tests")
         runtime = active_workflow_line_index(workflow, "- name: Run validation suite")
         self.assertLess(xunit, runtime)
+
+    def test_dotnet_workflow_collects_independent_gate_results_after_early_failure(self) -> None:
+        """Independent remote gates must execute after an earlier step fails."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        for step in (
+            "- name: Run xUnit unit tests",
+            "- name: Run FoxRun publish panel behavior tests",
+            "- name: Validate source generator DLL freshness script",
+            "- name: Validate generated ROS2 schema output freshness",
+            "- name: Run validation suite",
+            "- name: Run Phase179 ROS2 acceptance helper regressions",
+            "- name: Run Phase181 custom ROS2 acceptance helper regressions",
+            "- name: Run Phase186 Bridge tooling and package-composition gate",
+            "- name: Run official MCAP differential conformance",
+            "- name: Validate local entrypoints",
+        ):
+            start = active_workflow_line_index(workflow, step)
+            lines = workflow.splitlines()
+            self.assertTrue(
+                any(line.strip() == "if: always()" for line in lines[start + 1 : start + 4]),
+                step,
+            )
 
     def test_dotnet_workflow_runs_xunit_before_panel_lane(self) -> None:
         """The unit-test gate must run even when the panel lane fails first."""

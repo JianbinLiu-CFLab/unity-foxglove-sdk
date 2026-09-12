@@ -78,7 +78,11 @@ def phase186_certification_run_id(head: str) -> str:
 PASS = "[PASS]"
 FAIL = "[FAIL]"
 SKIP = "[SKIP]"
-IGNORE_FAILED_SOURCES_OPTION = ["--ignore-failed-sources"]
+# Keep local restore semantics aligned with the authoritative remote workflow:
+# an unavailable configured feed is a restore failure, even when a stale cache
+# might otherwise make the project buildable.  This prevents a green local
+# aggregate from claiming current dependency-source availability.
+IGNORE_FAILED_SOURCES_OPTION: list[str] = []
 RUNTIME_TESTS_PROJ = "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj"
 UNIT_TESTS_PROJ = "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj"
 SOURCE_GENERATOR_PROJ = (
@@ -742,7 +746,12 @@ def restore_with_ignoring_failed_sources(
     *,
     fatal: bool = True,
 ) -> bool:
-    """Restore a project while allowing ignored failed sources."""
+    """Restore a project with strict source-availability semantics.
+
+    The historical helper name is retained for call-site compatibility, but
+    no tolerance flag is appended.  Local and remote restore commands now
+    report the same outage result; cache hits cannot hide an unavailable feed.
+    """
     msbuild_props = msbuild_props or []
     cmd = ["dotnet", "restore", project, *msbuild_props, *IGNORE_FAILED_SOURCES_OPTION]
     return run(cmd, label, fatal=fatal)
