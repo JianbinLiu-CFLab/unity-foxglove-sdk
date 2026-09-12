@@ -75,6 +75,25 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public async Task RegisteredValidationRejectsUnknownTokenBeforeDelegate()
+        {
+            var result = await RunHarnessAsync(new[] { "--phase163-57", "--phase-typo" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("Unexpected validation argument", result.StandardError, StringComparison.Ordinal);
+            Assert.DoesNotContain("checks passed", result.StandardOutput, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task RegisteredValidationRejectsDuplicateSelector()
+        {
+            var result = await RunHarnessAsync(new[] { "--phase163-57", "--phase163-57" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("exactly once", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public async Task TimedOutHarnessReportsOutputAfterDrainingKilledProcess()
         {
             var environment = new Dictionary<string, string>

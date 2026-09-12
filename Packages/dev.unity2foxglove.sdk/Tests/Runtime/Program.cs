@@ -321,6 +321,30 @@ class Program
             return true;
         }
 
+        // A registered selector authenticates the complete argv. Reject
+        // unknown/positional tokens and duplicate aliases before invoking any
+        // validation delegate; otherwise FindAll could silently drop intent.
+        var acceptedFlags = new HashSet<string>(selected[0].AllFlags(), StringComparer.Ordinal)
+        {
+            "--local-evidence"
+        };
+        var suppliedFlags = argList.Where(argument => argument.StartsWith("--", StringComparison.Ordinal)).ToList();
+        var invalidToken = argList.FirstOrDefault(argument => !acceptedFlags.Contains(argument));
+        if (invalidToken != null)
+        {
+            Console.Error.WriteLine("Unexpected validation argument: " + invalidToken);
+            exitCode = 1;
+            return true;
+        }
+
+        var selectorOccurrences = suppliedFlags.Count(argument => acceptedFlags.Contains(argument) && argument != "--local-evidence");
+        if (selectorOccurrences != 1)
+        {
+            Console.Error.WriteLine("Validation selector must be supplied exactly once.");
+            exitCode = 1;
+            return true;
+        }
+
         exitCode = RunValidation(selected[0]);
         return true;
     }
