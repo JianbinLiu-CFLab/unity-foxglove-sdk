@@ -26,12 +26,14 @@ import os
 import platform
 import re
 import signal
+import stat
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 # Build targets supported by the Unity-side FoxgloveBuild method.
@@ -54,6 +56,8 @@ LOG_POLL_SLEEP_SECONDS = 1
 # Keep progress heartbeats useful while avoiding console spam.
 DEFAULT_PROGRESS_INTERVAL_SECONDS = 15
 MIN_PROGRESS_INTERVAL_SECONDS = 1
+# Prevent arbitrary-precision CLI values from overflowing monotonic-float math.
+MAX_PROGRESS_INTERVAL_SECONDS = 24 * 60 * 60
 DEFAULT_BUILD_TIMEOUT_MINUTES = 120
 UNITY_TERMINATION_WAIT_SECONDS = 30
 PROCESS_DIAGNOSTIC_TIMEOUT_SECONDS = 5
@@ -76,14 +80,17 @@ WINDOWS_EXECUTABLE_MAGIC = b"MZ"
 # Split only the ProjectVersion key/value separator.
 PROJECT_VERSION_SPLIT_MAX = 1
 PROJECT_VERSION_VALUE_INDEX = 1
+PROJECT_VERSION_MAX_BYTES = 64 * 1024
 
 # A Unity editor version component, e.g. 2022.3.10f1 or 6000.3.14. Project metadata is
 # untrusted input joined into a filesystem path, so the value must match this whole and
 # cannot carry a separator, a drive letter, or a parent segment.
-UNITY_EDITOR_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:[a-z]\d+)?")
+UNITY_EDITOR_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:[abfp]\d+)?")
 
 # Initial offsets and command indexes used for log tailing and diagnostics.
 INITIAL_LOG_OFFSET = 0
+MAX_LOG_READ_BYTES = 256 * 1024
+MAX_FINAL_LOG_CHUNKS = 16
 UNITY_EXECUTABLE_COMMAND_INDEX = 0
 
 # Generated artifacts required before Unity can compile the package in IL2CPP.
@@ -142,7 +149,7 @@ def default_target() -> str:
 def unity_version_key(path: Path) -> Tuple[int, ...]:
     """Extract a comparable Unity version tuple from a Hub editor path."""
     for part in reversed(path.parts):
-        match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:[a-z](\d+))?", part)
+        match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[abfp](\d+))?", part)
         if match:
             return tuple(int(number) for number in match.groups(default="0"))
     return ()
@@ -201,7 +208,17 @@ def contained_unity_candidate(candidate: Path, version_root: Path) -> Optional[P
 
 def newest_existing(paths: List[Path]) -> Optional[Path]:
     """Return the newest Unity version among the accepted executable candidates."""
-    existing = [accepted for accepted in map(accepted_unity_candidate, paths) if accepted]
+    existing = []
+    for candidate in paths:
+        accepted = accepted_unity_candidate(candidate)
+        if accepted is None:
+            continue
+        # Hub candidates are nested as <version>/Editor/Unity; reject any
+        # trailing-junk or unknown-channel directory before ranking it.
+        version_component = accepted.parent.parent.name
+        if not is_unity_editor_version(version_component):
+            continue
+        existing.append(accepted)
     if not existing:
         return None
     return max(existing, key=lambda p: (unity_version_key(p), p.stat().st_mtime))
@@ -238,11 +255,16 @@ def find_unity_from_env() -> Optional[Path]:
 def find_unity_from_project_version(project_path: Path) -> Optional[Path]:
     """Resolve Unity from ProjectSettings/ProjectVersion.txt when available."""
     version_file = project_path / "ProjectSettings" / "ProjectVersion.txt"
-    if not version_file.exists():
+    if not version_file.exists() or not version_file.is_file():
         return None
 
     editor_version = None
-    for line in version_file.read_text(encoding="utf-8", errors="replace").splitlines():
+    try:
+        with version_file.open("rb") as handle:
+            contents = handle.read(PROJECT_VERSION_MAX_BYTES)
+    except OSError:
+        return None
+    for line in contents.decode("utf-8", errors="replace").splitlines():
         if line.startswith("m_EditorVersion:"):
             editor_version = line.split(":", PROJECT_VERSION_SPLIT_MAX)[PROJECT_VERSION_VALUE_INDEX].strip()
             break
@@ -339,6 +361,16 @@ def relative_to_root(path: Path, root: Path) -> str:
         return str(path)
 
 
+def require_workspace_path(path: Path, root: Path, label: str) -> Path:
+    """Require a resolved CLI path to remain inside the workspace root."""
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ValueError(f"{label} must remain inside the workspace root: {resolved}") from exc
+    return resolved
+
+
 def validate_generated_artifacts(root: Path) -> List[str]:
     """Return missing, non-regular, or empty generated artifacts needed for Unity compilation."""
     failures: List[str] = []
@@ -383,10 +415,10 @@ def output_fingerprint(path: Path) -> Optional[Tuple[int, int]]:
 def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path]:
     """Build the full Unity batchmode command line from parsed arguments."""
     root = repo_root()
-    project_path = (root / args.project).resolve()
-    build_dir = (root / args.build_dir).resolve() if args.build_dir else default_build_dir(root, args.target)
-    log_path = (root / args.log).resolve() if args.log else build_dir / "build.log"
-    output_path = (root / args.output).resolve() if args.output else default_output_path(build_dir, args.target)
+    project_path = require_workspace_path(root / args.project, root, "project")
+    build_dir = require_workspace_path(root / args.build_dir, root, "build directory") if args.build_dir else default_build_dir(root, args.target)
+    log_path = require_workspace_path(root / args.log, root, "log path") if args.log else build_dir / "build.log"
+    output_path = require_workspace_path(root / args.output, root, "output path") if args.output else default_output_path(build_dir, args.target)
     unity = resolve_unity_for_command(args, project_path)
 
     if not project_path.exists():
@@ -414,7 +446,8 @@ def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path
 def default_build_dir(root: Path, target: str) -> Path:
     """Default build output directory with platform and timestamp."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
-    return root / "build" / "Unity" / f"{target}-il2cpp-{stamp}"
+    reservation = uuid.uuid4().hex[:8]
+    return root / "build" / "Unity" / f"{target}-il2cpp-{stamp}-{reservation}"
 
 
 def default_output_path(build_dir: Path, target: str) -> Path:
@@ -446,21 +479,113 @@ def is_important_log_line(line: str) -> bool:
     return any(marker in stripped for marker in IMPORTANT_LOG_MARKERS)
 
 
-def read_new_important_lines(log_path: Path, offset: int) -> Tuple[int, List[str]]:
-    """Read new important log lines since the given byte offset."""
-    if not log_path.exists():
-        return offset, []
+class _LogTailState:
+    """Bounded partial-record and file identity state for one build invocation."""
 
+    def __init__(self) -> None:
+        """Start without a file or a partially consumed record."""
+        self.identity: Optional[Tuple[int, int]] = None
+        self.size = 0
+        self.pending = b""
+        self.discarding = False
+        self.warning: Optional[str] = None
+
+    def report(self, message: str) -> None:
+        """Report an unusable/truncated log without flooding each polling pass."""
+        if self.warning != message:
+            print(f"[build_unity_il2cpp] {message}", file=sys.stderr, flush=True)
+            self.warning = message
+
+    def seed(self, log_path: Path) -> int:
+        """Remember prelaunch identity and skip bytes from previous invocations."""
+        try:
+            info = log_path.stat()
+        except OSError:
+            return INITIAL_LOG_OFFSET
+        if not stat.S_ISREG(info.st_mode):
+            self.report(f"Log is not a regular file: {log_path}")
+            return INITIAL_LOG_OFFSET
+        self.identity = (info.st_dev, info.st_ino)
+        self.size = info.st_size
+        return self.size
+
+
+def read_new_important_lines(
+    log_path: Path, offset: int, *, state: Optional[_LogTailState] = None, final: bool = False
+) -> Tuple[int, List[str]]:
+    """Consume at most one chunk; explicit state preserves identity and split records."""
+    persistent = state is not None
+    state = state if state is not None else _LogTailState()
     try:
-        with log_path.open("r", encoding="utf-8", errors="replace") as handle:
+        if not stat.S_ISREG(log_path.stat().st_mode):
+            state.report(f"Log is not a regular file: {log_path}")
+            return offset, []
+        # Nonblocking open prevents a POSIX file-to-FIFO race from waiting for a
+        # writer. Validate the opened object as well as the pre-open path.
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
+        descriptor = os.open(log_path, flags)
+        with os.fdopen(descriptor, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                state.report(f"Log is not a regular file: {log_path}")
+                return offset, []
+            identity = (info.st_dev, info.st_ino)
+            if (state.identity is not None and
+                    (identity != state.identity or info.st_size < state.size)) or offset > info.st_size:
+                offset, state.pending, state.discarding = 0, b"", False
+            state.identity, state.size = identity, info.st_size
             handle.seek(offset)
-            lines = handle.readlines()
+            contents = handle.read(MAX_LOG_READ_BYTES)
             new_offset = handle.tell()
-    except OSError:
+    except FileNotFoundError:
+        return offset, []  # Unity may not have created its log yet.
+    except OSError as exc:
+        state.report(f"Log read failed for {log_path}: {exc}")
         return offset, []
 
-    important = [line.strip() for line in lines if is_important_log_line(line)]
+    important = []
+    for chunk in contents.splitlines(keepends=True):
+        complete = chunk.endswith((b"\n", b"\r"))
+        if state.discarding:
+            if complete:
+                state.discarding = False
+            continue
+        record = state.pending + chunk
+        state.pending = b""
+        if len(record) > MAX_LOG_READ_BYTES or (not complete and len(record) == MAX_LOG_READ_BYTES):
+            state.report(f"Log record exceeded {MAX_LOG_READ_BYTES} bytes; progress record truncated. Full log: {log_path}")
+            record = record[:MAX_LOG_READ_BYTES]
+            line = record.decode("utf-8", errors="replace").strip()
+            if is_important_log_line(line):
+                important.append(line + " [truncated]")
+            state.discarding = not complete
+        elif complete:
+            line = record.decode("utf-8", errors="replace").strip()
+            if is_important_log_line(line):
+                important.append(line)
+        else:
+            state.pending = record
+    if final and new_offset >= state.size:
+        line = state.pending.decode("utf-8", errors="replace").strip()
+        if is_important_log_line(line):
+            important.append(line)
+        state.pending = b""
+    elif not persistent:
+        # The two-argument convenience form carries partial records by offset.
+        new_offset -= len(state.pending)
     return new_offset, important
+
+
+def finish_log_tail(log_path: Path, offset: int, state: _LogTailState) -> None:
+    """Drain a bounded final diagnostic backlog only after process cleanup."""
+    for _ in range(MAX_FINAL_LOG_CHUNKS):
+        previous = offset
+        offset, lines = read_new_important_lines(log_path, offset, state=state, final=True)
+        for line in lines:
+            print(f"[unity-log] {line}", flush=True)
+        if offset == previous or offset >= state.size:
+            return
+    state.report(f"Final progress log budget exhausted; remaining diagnostics are in {log_path}")
 
 
 class _WindowsKillOnCloseJob:
@@ -707,6 +832,17 @@ def _posix_process_group_pids(process_group_id: int) -> List[int]:
     return pids
 
 
+def _posix_pid_exists(process_id: int) -> bool:
+    """Return whether one previously observed POSIX PID still exists."""
+    try:
+        os.kill(process_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 class OwnedProcessTree:
     """Platform-owned process tree used for one Unity build invocation."""
 
@@ -720,13 +856,23 @@ class OwnedProcessTree:
         self.process = process
         self._windows_job = windows_job
         self._posix_process_group_id = posix_process_group_id
+        self._observed_posix_pids = {process.pid} if posix_process_group_id is not None else set()
 
     def active_pids(self) -> List[int]:
         """Return the process IDs still owned by this invocation."""
         if self._windows_job is not None:
             return self._windows_job.active_pids()
         if self._posix_process_group_id is not None:
-            return _posix_process_group_pids(self._posix_process_group_id)
+            # Discover descendants while the root is alive. Once it exits,
+            # never trust a recycled numeric PGID; use only authenticated PIDs
+            # observed during this invocation.
+            if self.process.poll() is None:
+                self._observed_posix_pids.update(
+                    _posix_process_group_pids(self._posix_process_group_id)
+                )
+            return sorted(
+                pid for pid in self._observed_posix_pids if _posix_pid_exists(pid)
+            )
         return []
 
     def terminate(self) -> List[int]:
@@ -764,10 +910,23 @@ class OwnedProcessTree:
             self._windows_job.close()
             self._windows_job = None
         elif self._posix_process_group_id is not None:
-            try:
-                os.killpg(self._posix_process_group_id, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            if self.process.poll() is None:
+                try:
+                    os.killpg(self._posix_process_group_id, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                # The group number may have been reused after root exit. Kill
+                # authenticated PIDs observed while this invocation owned the
+                # root, plus any descendants still present in that group.
+                owned_pids = set(self._observed_posix_pids)
+                if _posix_process_group_exists(self._posix_process_group_id):
+                    owned_pids.update(_posix_process_group_pids(self._posix_process_group_id))
+                for process_id in owned_pids:
+                    try:
+                        os.kill(process_id, signal.SIGKILL)
+                    except (OSError, ProcessLookupError):
+                        pass
             self._posix_process_group_id = None
 
 
@@ -785,7 +944,7 @@ def start_owned_process(cmd: List[str], root: Path) -> OwnedProcessTree:
             job.assign(process.pid)
             _resume_suspended_windows_process(process.pid)
             return OwnedProcessTree(process, windows_job=job)
-        except Exception:
+        except BaseException:
             if process is not None:
                 try:
                     process.kill()
@@ -795,8 +954,21 @@ def start_owned_process(cmd: List[str], root: Path) -> OwnedProcessTree:
             job.close()
             raise
 
-    process = subprocess.Popen(cmd, cwd=root, start_new_session=True)
-    return OwnedProcessTree(process, posix_process_group_id=process.pid)
+    process = None
+    try:
+        process = subprocess.Popen(cmd, cwd=root, start_new_session=True)
+        return OwnedProcessTree(process, posix_process_group_id=process.pid)
+    except BaseException:
+        if process is not None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                pass
+            try:
+                process.wait(timeout=UNITY_TERMINATION_WAIT_SECONDS)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        raise
 
 
 def await_tree_quiescence(process_tree: OwnedProcessTree, deadline_seconds: float) -> List[int]:
@@ -840,27 +1012,30 @@ def terminate_process(process_tree: OwnedProcessTree) -> List[int]:
 def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int, timeout_minutes: int) -> int:
     """Run the Unity process, tailing important log lines at the given interval."""
     started = time.monotonic()
-    next_heartbeat = started + interval
+    bounded_interval = min(max(interval, MIN_PROGRESS_INTERVAL_SECONDS), MAX_PROGRESS_INTERVAL_SECONDS)
+    next_heartbeat = started + float(bounded_interval)
     timeout_seconds = timeout_minutes * SECONDS_PER_MINUTE if timeout_minutes > 0 else None
-    offset = INITIAL_LOG_OFFSET
+    log_state = _LogTailState()
+    offset = log_state.seed(log_path)
 
     process_tree = start_owned_process(cmd, root)
     process = process_tree.process
     try:
         while True:
-            offset, lines = read_new_important_lines(log_path, offset)
+            offset, lines = read_new_important_lines(log_path, offset, state=log_state)
             for line in lines:
                 print(f"[unity-log] {line}", flush=True)
 
+            # Observe descendants before polling root completion so an escaped
+            # child remains authenticated for post-exit cleanup.
+            if process.poll() is None:
+                process_tree.active_pids()
             returncode = process.poll()
             now = time.monotonic()
             if returncode is not None:
                 break
 
             if timeout_seconds is not None and now - started >= timeout_seconds:
-                offset, lines = read_new_important_lines(log_path, offset)
-                for line in lines:
-                    print(f"[unity-log] {line}", flush=True)
                 print(
                     f"[build_unity_il2cpp] Unity timed out after {format_elapsed(now - started)}; "
                     f"terminating owned process tree. Log: {relative_to_root(log_path, root)}",
@@ -884,17 +1059,16 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
                     f"Log: {relative_to_root(log_path, root)}",
                     flush=True,
                 )
-                next_heartbeat = now + interval
+                next_heartbeat = now + float(bounded_interval)
 
             time.sleep(LOG_POLL_SLEEP_SECONDS)
 
         residual_pids = await_tree_quiescence(process_tree, UNITY_TERMINATION_WAIT_SECONDS)
     finally:
-        process_tree.close()
-
-    offset, lines = read_new_important_lines(log_path, offset)
-    for line in lines:
-        print(f"[unity-log] {line}", flush=True)
+        try:
+            process_tree.close()
+        finally:
+            finish_log_tail(log_path, offset, log_state)
 
     elapsed = format_elapsed(time.monotonic() - started)
     print(f"[build_unity_il2cpp] Unity exited after {elapsed}.", flush=True)
@@ -978,6 +1152,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _interrupt_build(_signum: int, _frame: object) -> None:
+    """Convert termination signals into the controlled cleanup path."""
+    raise KeyboardInterrupt
+
+
 def main() -> int:
     """Main entry: parse args, build command, run Unity, report result."""
     args = parse_args()
@@ -1023,17 +1202,29 @@ def main() -> int:
 
     print("[build_unity_il2cpp] Starting Unity batchmode build...")
 
+    previous_sigint = signal.getsignal(signal.SIGINT)
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+
+    signal.signal(signal.SIGINT, _interrupt_build)
+    signal.signal(signal.SIGTERM, _interrupt_build)
     try:
-        returncode = run_with_progress(
-            cmd,
-            root,
-            log_path,
-            max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval),
-            args.timeout_minutes,
-        )
+        try:
+            returncode = run_with_progress(
+                cmd,
+                root,
+                log_path,
+                max(MIN_PROGRESS_INTERVAL_SECONDS, args.progress_interval),
+                args.timeout_minutes,
+            )
+        except KeyboardInterrupt:
+            print("[build_unity_il2cpp] Build interrupted; owned process tree cleanup requested.", file=sys.stderr)
+            return EXIT_PREFLIGHT_FAILURE
     except OSError as exc:
         print(f"[build_unity_il2cpp] Unity could not be started: {exc}", file=sys.stderr)
         return EXIT_PREFLIGHT_FAILURE
+    finally:
+        signal.signal(signal.SIGINT, previous_sigint)
+        signal.signal(signal.SIGTERM, previous_sigterm)
     if returncode == EXIT_SUCCESS:
         output_after = output_fingerprint(output_path)
         if output_after is None:

@@ -201,6 +201,8 @@ namespace Unity.FoxgloveSDK.Editor
                 serializedObject.ApplyModifiedProperties();
             else
                 serializedObject.Update();
+
+            SyncEditorRootCaDistributor();
         }
 
         private void DrawScriptProperty()
@@ -534,6 +536,9 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 else
                 {
+                    SetBool("_rootCaDistributorEnabled", false);
+                    serializedObject.ApplyModifiedProperties();
+                    EditorUtility.SetDirty(target);
                     Debug.LogWarning(
                         $"[Foxglove] Generated the local development certificate, but could not start "
                         + $"the Root CA page at {LocalRootCaPageUrl}: {pageError}");
@@ -633,11 +638,10 @@ namespace Unity.FoxgloveSDK.Editor
 
         private string GetCachedRootCaFingerprint(string resolvedPath)
         {
-            if (string.Equals(_cachedRootCaFingerprintPath, resolvedPath, System.StringComparison.Ordinal))
-                return _cachedRootCaFingerprint;
-
             _cachedRootCaFingerprintPath = resolvedPath;
-            _cachedRootCaFingerprint = FoxgloveCertificateDistributor.ComputeSha256Fingerprint(resolvedPath);
+            _cachedRootCaFingerprint = string.IsNullOrEmpty(resolvedPath) || !File.Exists(resolvedPath)
+                ? string.Empty
+                : FoxgloveCertificateDistributor.ComputeSha256Fingerprint(resolvedPath);
             return _cachedRootCaFingerprint;
         }
 
@@ -659,6 +663,33 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 Debug.LogWarning("[Foxglove] Could not restart the local Root CA page after Play Mode: " + error);
             }
+        }
+
+        private void SyncEditorRootCaDistributor()
+        {
+            var enabled = GetBool("_rootCaDistributorEnabled");
+            var path = ResolveProjectPath(GetString("_rootCaFilePath", ""));
+            var host = GetString("_rootCaDistributorHost", "127.0.0.1");
+            var port = GetInt("_rootCaDistributorPort", LocalRootCaDistributorPort);
+            if (!enabled || string.IsNullOrEmpty(path) || !File.Exists(path) || string.IsNullOrEmpty(host) || port <= 0)
+            {
+                StopEditorRootCaDistributor();
+                _lastRootCaDistributorPath = null;
+                _lastRootCaDistributorHost = null;
+                _lastRootCaDistributorPort = 0;
+                return;
+            }
+
+            if (_editorRootCaDistributor != null
+                && string.Equals(_lastRootCaDistributorPath, path, System.StringComparison.Ordinal)
+                && string.Equals(_lastRootCaDistributorHost, host, System.StringComparison.Ordinal)
+                && _lastRootCaDistributorPort == port)
+            {
+                return;
+            }
+
+            if (!StartEditorRootCaDistributor(path, host, port, out var error))
+                Debug.LogWarning("[Foxglove] Could not synchronize the local Root CA page: " + error);
         }
 
     }
