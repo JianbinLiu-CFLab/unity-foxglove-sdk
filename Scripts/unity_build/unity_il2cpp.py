@@ -889,7 +889,7 @@ def start_owned_process(cmd: List[str], root: Path) -> OwnedProcessTree:
             job.assign(process.pid)
             _resume_suspended_windows_process(process.pid)
             return OwnedProcessTree(process, windows_job=job)
-        except Exception:
+        except BaseException:
             if process is not None:
                 try:
                     process.kill()

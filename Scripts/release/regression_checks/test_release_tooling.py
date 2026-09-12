@@ -3225,6 +3225,22 @@ class UnityIl2CppBuildTests(unittest.TestCase):
             else:
                 self.fail(f"late descendant remained alive: pid={child_pid}")
 
+    def test_windows_partial_acquisition_cleans_up_on_keyboard_interrupt(self) -> None:
+        """An interrupt during suspended-process acquisition must release Job ownership."""
+        process = mock.Mock(pid=4242)
+        job = mock.Mock()
+        with mock.patch.object(self.unity_il2cpp.os, "name", "nt"):
+            with mock.patch.object(self.unity_il2cpp, "_WindowsKillOnCloseJob", return_value=job):
+                with mock.patch.object(self.unity_il2cpp.subprocess, "Popen", return_value=process):
+                    with mock.patch.object(
+                        self.unity_il2cpp, "_resume_suspended_windows_process", side_effect=KeyboardInterrupt
+                    ):
+                        with self.assertRaises(KeyboardInterrupt):
+                            self.unity_il2cpp.start_owned_process(["controlled"], Path("."))
+        process.kill.assert_called_once_with()
+        process.wait.assert_called_once()
+        job.close.assert_called_once_with()
+
     @staticmethod
     def _read_pid_if_present(path: Path) -> int | None:
         """Read a test-owned PID file when startup reached that boundary."""
