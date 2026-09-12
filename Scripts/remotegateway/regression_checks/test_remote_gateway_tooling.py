@@ -165,6 +165,14 @@ class RemoteGatewayToolingTests(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, "Missing selected artifact"):
                 self.build.write_manifest(root / "target", environment, self.build.APPROVED_ARTIFACTS)
 
+    def test_relative_target_dir_uses_repository_base(self) -> None:
+        """Cargo and manifest paths must resolve relative targets identically."""
+        resolved = self.build.resolve_target_dir("build/native-target")
+        self.assertEqual(self.build.ROOT / "build/native-target", resolved)
+        args = SimpleNamespace(libclang_path=None, target_dir="build/native-target")
+        environment = self.build.build_environment(args)
+        self.assertEqual(str(resolved), environment["CARGO_TARGET_DIR"])
+
     def test_build_pins_x64_target_and_manifest_provenance(self) -> None:
         """Native output must identify the explicit Cargo target and inputs."""
         args = SimpleNamespace(libclang_path=None, target_dir="phase187-target")
