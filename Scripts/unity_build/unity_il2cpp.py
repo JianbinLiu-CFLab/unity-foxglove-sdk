@@ -917,8 +917,12 @@ class OwnedProcessTree:
                     pass
             else:
                 # The group number may have been reused after root exit. Kill
-                # only PIDs observed while this invocation owned the root.
-                for process_id in self._observed_posix_pids:
+                # authenticated PIDs observed while this invocation owned the
+                # root, plus any descendants still present in that group.
+                owned_pids = set(self._observed_posix_pids)
+                if _posix_process_group_exists(self._posix_process_group_id):
+                    owned_pids.update(_posix_process_group_pids(self._posix_process_group_id))
+                for process_id in owned_pids:
                     try:
                         os.kill(process_id, signal.SIGKILL)
                     except (OSError, ProcessLookupError):
