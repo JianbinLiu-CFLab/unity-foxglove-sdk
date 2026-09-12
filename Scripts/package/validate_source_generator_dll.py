@@ -597,7 +597,7 @@ def _ledger_ids(project: Path) -> set[str]:
 def _provider_descriptor_ids(sources: list[Path], prefix: str) -> set[str]:
     """Return Provider-owned diagnostic IDs referenced by compiled sources."""
     ids: set[str] = set()
-    pattern = re.compile(rf'\b({re.escape(prefix)}\d{{3}})\b')
+    pattern = re.compile(r"\b((?:FOXRUN|FOXR2F|FOXBRG)\d{3})\b")
     for source in sources:
         if not source.exists():
             continue
@@ -614,6 +614,7 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
     ledger_owners: dict[str, str] = {}
     hint_tokens: dict[str, str] = {}
     analyzer_meta_guids: dict[str, str] = {}
+    core_diagnostic_ids = _ledger_ids(TARGETS["core"].project)
 
     for name in target_names:
         if name not in TARGETS:
@@ -773,7 +774,22 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
                 sources,
                 prefix,
             )
-            undeclared = source_ids - ledgers
+            wrong_namespace = {
+                diagnostic_id
+                for diagnostic_id in source_ids
+                if not diagnostic_id.startswith(prefix)
+                and diagnostic_id not in core_diagnostic_ids
+            }
+            if wrong_namespace:
+                failures.append(
+                    f"{name}: diagnostic IDs use another provider namespace: "
+                    f"{sorted(wrong_namespace)}"
+                )
+            undeclared = {
+                diagnostic_id
+                for diagnostic_id in source_ids
+                if diagnostic_id.startswith(prefix)
+            } - ledgers
             if undeclared:
                 failures.append(
                     f"{name}: diagnostic IDs missing from release "
