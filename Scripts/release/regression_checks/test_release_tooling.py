@@ -921,6 +921,15 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual("partial stdout\n", result.stdout)
         self.assertEqual("partial stderr\n", result.stderr)
 
+    def test_run_captured_bounds_large_output_with_marker(self) -> None:
+        huge = "x" * (self.run_ci.MAX_CAPTURED_OUTPUT_CHARS + 4096)
+        completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout=huge, stderr=huge)
+        with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed):
+            result = self.run_ci.run_captured(["tool"], "large output")
+        self.assertLessEqual(len(result.stdout), self.run_ci.MAX_CAPTURED_OUTPUT_CHARS)
+        self.assertIn("output truncated at", result.stdout)
+        self.assertLessEqual(len(result.stderr), self.run_ci.MAX_CAPTURED_OUTPUT_CHARS)
+
     def test_restore_fallback_retries_only_restore_state_failures(self) -> None:
         restore_failure = self.run_ci.CapturedCommandResult(
             "build", False, 1, 0.1, "error NETSDK1004: project.assets.json not found", ""

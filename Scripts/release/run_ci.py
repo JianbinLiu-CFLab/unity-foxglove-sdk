@@ -42,6 +42,7 @@ CI_ONLY_CHOICES = (
     "boundary",
 )
 RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
+MAX_CAPTURED_OUTPUT_CHARS = 262144
 
 
 def sanitize_run_id(value: str | None) -> str:
@@ -418,6 +419,14 @@ def run(
     return ok
 
 
+def _bound_captured_output(value: str, limit: int = MAX_CAPTURED_OUTPUT_CHARS) -> str:
+    """Bound retained validator output while preserving an explicit truncation marker."""
+    if len(value) <= limit:
+        return value
+    marker = f"\n... <output truncated at {limit} characters> ...\n"
+    return value[: max(0, limit - len(marker))] + marker
+
+
 def run_captured(cmd: list[str], label: str) -> CapturedCommandResult:
     """Run a subprocess and capture output for later ordered replay."""
     effective_timeout = command_timeout_seconds()
@@ -441,8 +450,8 @@ def run_captured(cmd: list[str], label: str) -> CapturedCommandResult:
             False,
             124,
             elapsed,
-            stdout,
-            stderr,
+            _bound_captured_output(stdout),
+            _bound_captured_output(stderr),
             timeout_seconds=effective_timeout,
         )
     except OSError as ex:
@@ -454,8 +463,8 @@ def run_captured(cmd: list[str], label: str) -> CapturedCommandResult:
         result.returncode == 0,
         result.returncode,
         elapsed,
-        result.stdout,
-        result.stderr,
+        _bound_captured_output(result.stdout or ""),
+        _bound_captured_output(result.stderr or ""),
     )
 
 
@@ -607,7 +616,7 @@ def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
             timeout=effective_timeout,
         )
         elapsed = time.monotonic() - start
-        log_path.write_text(result.stdout or "", encoding="utf-8")
+        log_path.write_text(_bound_captured_output(result.stdout or ""), encoding="utf-8")
         return CiJobResult(job.name, result.returncode == 0, result.returncode, elapsed, log_path)
     except subprocess.TimeoutExpired as ex:
         elapsed = time.monotonic() - start
@@ -618,7 +627,7 @@ def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
             else f"after {effective_timeout}s"
         )
         timeout_message = f"\n{FAIL} {job.name} timed out {timeout_description} ({elapsed:.1f}s elapsed)\n"
-        log_path.write_text(stdout + timeout_message, encoding="utf-8")
+        log_path.write_text(_bound_captured_output(stdout) + timeout_message, encoding="utf-8")
         return CiJobResult(job.name, False, 124, elapsed, log_path)
     except OSError as ex:
         elapsed = time.monotonic() - start
