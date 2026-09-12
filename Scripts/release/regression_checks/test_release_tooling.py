@@ -3189,6 +3189,42 @@ class UnityIl2CppBuildTests(unittest.TestCase):
 
         self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, result)
 
+    @unittest.skipIf(os.name == "nt", "POSIX process-group ownership seam")
+    def test_root_exit_still_terminates_late_posix_descendant(self) -> None:
+        """Closing ownership after root exit must kill descendants that remain in its group."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            child_pid_path = root / "child.pid"
+            parent_code = (
+                "import pathlib, subprocess, sys; "
+                f"child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+                f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid), encoding='utf-8')"
+            )
+            with mock.patch.object(self.unity_il2cpp, "UNITY_TERMINATION_WAIT_SECONDS", 0.1):
+                with mock.patch.object(self.unity_il2cpp, "PROCESS_TREE_POLL_SECONDS", 0.01):
+                    result = self.unity_il2cpp.run_with_progress(
+                        [sys.executable, "-c", parent_code],
+                        root,
+                        root / "unity.log",
+                        interval=1,
+                        timeout_minutes=0,
+                    )
+            self.assertNotEqual(self.unity_il2cpp.EXIT_SUCCESS, result)
+            child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                if not self._pid_is_running(child_pid):
+                    break
+                # A killed orphan can remain as a zombie until WSL reaps it;
+                # it is no longer executing and therefore does not violate the
+                # owned-tree retirement contract.
+                proc_stat = Path(f"/proc/{child_pid}/stat")
+                if proc_stat.is_file() and proc_stat.read_text(encoding="utf-8").split()[2] == "Z":
+                    break
+                time.sleep(0.02)
+            else:
+                self.fail(f"late descendant remained alive: pid={child_pid}")
+
     @staticmethod
     def _read_pid_if_present(path: Path) -> int | None:
         """Read a test-owned PID file when startup reached that boundary."""

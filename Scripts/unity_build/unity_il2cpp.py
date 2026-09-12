@@ -865,11 +865,13 @@ class OwnedProcessTree:
             self._windows_job.close()
             self._windows_job = None
         elif self._posix_process_group_id is not None:
-            if self.process.poll() is None:
-                try:
-                    os.killpg(self._posix_process_group_id, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+            # The root may have exited while descendants remain in the group.
+            # Always terminate the owned group before releasing its identity;
+            # checking only the root would leak late compiler/helper children.
+            try:
+                os.killpg(self._posix_process_group_id, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             self._posix_process_group_id = None
 
 
