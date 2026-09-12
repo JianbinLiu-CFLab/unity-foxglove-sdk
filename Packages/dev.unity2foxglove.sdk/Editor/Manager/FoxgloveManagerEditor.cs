@@ -536,6 +536,9 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 else
                 {
+                    SetBool("_rootCaDistributorEnabled", false);
+                    serializedObject.ApplyModifiedProperties();
+                    EditorUtility.SetDirty(target);
                     Debug.LogWarning(
                         $"[Foxglove] Generated the local development certificate, but could not start "
                         + $"the Root CA page at {LocalRootCaPageUrl}: {pageError}");
