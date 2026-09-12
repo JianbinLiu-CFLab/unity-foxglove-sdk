@@ -194,7 +194,11 @@ jobs:
     steps:
       - name: Enable Git long-path support
         shell: pwsh
-        run: git config --global core.longpaths true
+        run: |
+          $globalConfig = Join-Path $env:RUNNER_TEMP ("git-global-{0}.config" -f $env:GITHUB_RUN_ID)
+          "GIT_CONFIG_GLOBAL=$globalConfig" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:GIT_CONFIG_GLOBAL = $globalConfig
+          git config --global core.longpaths true
 
       - uses: actions/checkout@v4
         with:
