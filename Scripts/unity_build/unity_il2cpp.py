@@ -820,6 +820,17 @@ def _posix_process_group_pids(process_group_id: int) -> List[int]:
     return pids
 
 
+def _posix_pid_exists(process_id: int) -> bool:
+    """Return whether one previously observed POSIX PID still exists."""
+    try:
+        os.kill(process_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 class OwnedProcessTree:
     """Platform-owned process tree used for one Unity build invocation."""
 
@@ -833,13 +844,23 @@ class OwnedProcessTree:
         self.process = process
         self._windows_job = windows_job
         self._posix_process_group_id = posix_process_group_id
+        self._observed_posix_pids = {process.pid} if posix_process_group_id is not None else set()
 
     def active_pids(self) -> List[int]:
         """Return the process IDs still owned by this invocation."""
         if self._windows_job is not None:
             return self._windows_job.active_pids()
         if self._posix_process_group_id is not None:
-            return _posix_process_group_pids(self._posix_process_group_id)
+            # Discover descendants while the root is alive. Once it exits,
+            # never trust a recycled numeric PGID; use only authenticated PIDs
+            # observed during this invocation.
+            if self.process.poll() is None:
+                self._observed_posix_pids.update(
+                    _posix_process_group_pids(self._posix_process_group_id)
+                )
+            return sorted(
+                pid for pid in self._observed_posix_pids if _posix_pid_exists(pid)
+            )
         return []
 
     def terminate(self) -> List[int]:
@@ -877,13 +898,19 @@ class OwnedProcessTree:
             self._windows_job.close()
             self._windows_job = None
         elif self._posix_process_group_id is not None:
-            # The root may have exited while descendants remain in the group.
-            # Always terminate the owned group before releasing its identity;
-            # checking only the root would leak late compiler/helper children.
-            try:
-                os.killpg(self._posix_process_group_id, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            if self.process.poll() is None:
+                try:
+                    os.killpg(self._posix_process_group_id, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                # The group number may have been reused after root exit. Kill
+                # only PIDs observed while this invocation owned the root.
+                for process_id in self._observed_posix_pids:
+                    try:
+                        os.kill(process_id, signal.SIGKILL)
+                    except (OSError, ProcessLookupError):
+                        pass
             self._posix_process_group_id = None
 
 
@@ -983,6 +1010,10 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
             for line in lines:
                 print(f"[unity-log] {line}", flush=True)
 
+            # Observe descendants before polling root completion so an escaped
+            # child remains authenticated for post-exit cleanup.
+            if process.poll() is None:
+                process_tree.active_pids()
             returncode = process.poll()
             now = time.monotonic()
             if returncode is not None:

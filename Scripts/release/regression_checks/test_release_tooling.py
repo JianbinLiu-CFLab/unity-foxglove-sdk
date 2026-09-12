@@ -3274,6 +3274,31 @@ class UnityIl2CppBuildTests(unittest.TestCase):
                     )
         self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, result)
 
+    @unittest.skipIf(os.name == "nt", "POSIX process-group escape seam")
+    def test_posix_escaped_descendant_is_retired_after_root_exit(self) -> None:
+        """A descendant that calls setsid must remain owned until cleanup."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            child_pid_path = root / "child.pid"
+            parent_code = (
+                "import pathlib, subprocess, sys, time; "
+                f"child=subprocess.Popen([sys.executable,'-c','import os,time; os.setsid(); time.sleep(60)']); "
+                f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid), encoding='utf-8'); "
+                "time.sleep(0.3)"
+            )
+            with mock.patch.object(self.unity_il2cpp, "LOG_POLL_SLEEP_SECONDS", 0.02):
+                with mock.patch.object(self.unity_il2cpp, "UNITY_TERMINATION_WAIT_SECONDS", 0.2):
+                    with mock.patch.object(self.unity_il2cpp, "PROCESS_TREE_POLL_SECONDS", 0.01):
+                        result = self.unity_il2cpp.run_with_progress(
+                            [sys.executable, "-c", parent_code],
+                            root,
+                            root / "unity.log",
+                            interval=1,
+                            timeout_minutes=0,
+                        )
+            child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+            self.assertTrue(self._wait_for_pid_exit(child_pid), f"escaped descendant remained alive: pid={child_pid}")
+
     @staticmethod
     def _read_pid_if_present(path: Path) -> int | None:
         """Read a test-owned PID file when startup reached that boundary."""
