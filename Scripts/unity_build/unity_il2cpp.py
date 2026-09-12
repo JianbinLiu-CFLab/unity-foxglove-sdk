@@ -361,6 +361,16 @@ def relative_to_root(path: Path, root: Path) -> str:
         return str(path)
 
 
+def require_workspace_path(path: Path, root: Path, label: str) -> Path:
+    """Require a resolved CLI path to remain inside the workspace root."""
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ValueError(f"{label} must remain inside the workspace root: {resolved}") from exc
+    return resolved
+
+
 def validate_generated_artifacts(root: Path) -> List[str]:
     """Return missing, non-regular, or empty generated artifacts needed for Unity compilation."""
     failures: List[str] = []
@@ -405,10 +415,10 @@ def output_fingerprint(path: Path) -> Optional[Tuple[int, int]]:
 def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path]:
     """Build the full Unity batchmode command line from parsed arguments."""
     root = repo_root()
-    project_path = (root / args.project).resolve()
-    build_dir = (root / args.build_dir).resolve() if args.build_dir else default_build_dir(root, args.target)
-    log_path = (root / args.log).resolve() if args.log else build_dir / "build.log"
-    output_path = (root / args.output).resolve() if args.output else default_output_path(build_dir, args.target)
+    project_path = require_workspace_path(root / args.project, root, "project")
+    build_dir = require_workspace_path(root / args.build_dir, root, "build directory") if args.build_dir else default_build_dir(root, args.target)
+    log_path = require_workspace_path(root / args.log, root, "log path") if args.log else build_dir / "build.log"
+    output_path = require_workspace_path(root / args.output, root, "output path") if args.output else default_output_path(build_dir, args.target)
     unity = resolve_unity_for_command(args, project_path)
 
     if not project_path.exists():

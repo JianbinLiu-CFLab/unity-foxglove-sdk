@@ -2612,6 +2612,56 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         second = self.unity_il2cpp.default_build_dir(Path("repo"), "win64")
         self.assertNotEqual(first, second)
 
+    def test_build_command_rejects_project_and_artifact_paths_outside_workspace(self) -> None:
+        """CLI paths must not escape the repository authority boundary."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "repo"
+            root.mkdir()
+            (root / "Unity2Foxglove").mkdir()
+            outside = Path(temp) / "outside"
+            outside.mkdir()
+            args = types.SimpleNamespace(
+                project="../outside",
+                build_dir="../outside/build",
+                log="../outside/log.txt",
+                output="../outside/player.exe",
+                target="win64",
+                unity=None,
+                dry_run=False,
+                allow_missing_unity=False,
+            )
+            with mock.patch.object(self.unity_il2cpp, "repo_root", return_value=root):
+                with mock.patch.object(
+                    self.unity_il2cpp, "resolve_unity_for_command", return_value=str(root / "Unity.exe")
+                ):
+                    with self.assertRaisesRegex(ValueError, "must remain inside"):
+                        self.unity_il2cpp.build_command(args)
+
+    def test_build_command_accepts_workspace_relative_paths(self) -> None:
+        """Normal project and output paths remain accepted after boundary validation."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "repo"
+            root.mkdir()
+            (root / "Unity2Foxglove").mkdir()
+            args = types.SimpleNamespace(
+                project="Unity2Foxglove",
+                build_dir="build/run",
+                log="build/run/build.log",
+                output="build/run/player.exe",
+                target="win64",
+                unity=None,
+                dry_run=False,
+                allow_missing_unity=False,
+            )
+            with mock.patch.object(self.unity_il2cpp, "repo_root", return_value=root):
+                with mock.patch.object(
+                    self.unity_il2cpp, "resolve_unity_for_command", return_value=str(root / "Unity.exe")
+                ):
+                    _, project, log, output = self.unity_il2cpp.build_command(args)
+            self.assertEqual(root / "Unity2Foxglove", project)
+            self.assertEqual(root / "build/run/build.log", log)
+            self.assertEqual(root / "build/run/player.exe", output)
+
     def _write_unity_stand_in(self, path: Path, executable: bool = True) -> Path:
         """Create a candidate that a host would accept as an executable Unity."""
         path.parent.mkdir(parents=True, exist_ok=True)
