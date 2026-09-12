@@ -190,6 +190,22 @@ class RemoteGatewayToolingTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Stale selected artifact"):
                 self.build.ensure_fresh_artifacts(Path(temp), ("foxglove.dll",), artifact.stat().st_mtime + 1)
 
+    def test_copy_rejects_artifact_bytes_diverging_from_manifest(self) -> None:
+        """Promotion verifies source and destination bytes against the manifest."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            release = root / "target/release"
+            package = root / "package"
+            release.mkdir(parents=True)
+            package.mkdir()
+            (release / "foxglove.dll").write_bytes(b"changed")
+            (release / "foxglove.dll.lib").write_bytes(b"lib")
+            manifest = root / "manifest.json"
+            manifest.write_text(json.dumps({"sha256": hashlib.sha256(b"original").hexdigest(), "artifacts": {"foxglove.dll": {"sha256": hashlib.sha256(b"original").hexdigest()}}}), encoding="utf-8")
+            with mock.patch.object(self.build, "PACKAGE_PLUGIN_DIR", package):
+                with self.assertRaisesRegex(RuntimeError, "changed after manifest hashing"):
+                    self.build.copy_approved_artifacts(root / "target", manifest, self.build.APPROVED_ARTIFACTS)
+
     def test_build_pins_x64_target_and_manifest_provenance(self) -> None:
         """Native output must identify the explicit Cargo target and inputs."""
         args = SimpleNamespace(libclang_path=None, target_dir="phase187-target")

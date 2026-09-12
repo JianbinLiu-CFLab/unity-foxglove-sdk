@@ -214,6 +214,14 @@ def copy_approved_artifacts(
         raise ValueError(f"unapproved artifact name(s): {', '.join(unapproved)}")
     if len(set(artifact_names)) != len(artifact_names):
         raise ValueError("artifact selection contains duplicate names")
+    manifest_data = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
+    expected_hashes = {
+        name: str(meta.get("sha256", ""))
+        for name, meta in manifest_data.get("artifacts", {}).items()
+        if isinstance(meta, dict)
+    }
+    if "artifacts" in manifest_data and "foxglove.dll" in artifact_names and manifest_data.get("sha256"):
+        expected_hashes.setdefault("foxglove.dll", str(manifest_data["sha256"]))
     validate_repo_destination(PACKAGE_PLUGIN_DIR, "package plugin destination")
     PACKAGE_PLUGIN_DIR.mkdir(parents=True, exist_ok=True)
     for stale_name in sorted(ALLOWED_ARTIFACTS - set(artifact_names)):
@@ -224,6 +232,11 @@ def copy_approved_artifacts(
         source = target_dir / "release" / name
         if source.is_file():
             shutil.copy2(source, PACKAGE_PLUGIN_DIR / name)
+            expected = expected_hashes.get(name)
+            if expected and sha256(source) != expected:
+                raise RuntimeError(f"Source artifact changed after manifest hashing: {source}")
+            if expected and sha256(PACKAGE_PLUGIN_DIR / name) != expected:
+                raise RuntimeError(f"Copied artifact hash mismatch: {name}")
     if copy_manifest:
         if manifest_path.name != PACKAGE_MANIFEST_NAME:
             raise ValueError(
