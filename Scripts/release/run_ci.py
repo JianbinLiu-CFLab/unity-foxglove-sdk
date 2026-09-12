@@ -225,6 +225,7 @@ def current_git_head() -> str:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
+        timeout=command_timeout_seconds(),
     )
     head = completed.stdout.strip().lower()
     if completed.returncode != 0 or len(head) != 40:
@@ -732,10 +733,15 @@ def run_with_restore_fallback(
 
 def _check_boundary() -> bool:
     """Verify no tracked Plan/ or Developer/ files (matches repository-boundary-check)."""
-    root_private = subprocess.run(
+    try:
+        root_private = subprocess.run(
         ["git", "ls-files", "--", "Plan/**", "Developer/**"],
         capture_output=True, text=True, cwd=REPO_ROOT,
-    )
+            timeout=command_timeout_seconds(),
+        )
+    except subprocess.TimeoutExpired:
+        print(f"\n{red('FAIL')} git ls-files timed out while checking Plan/Developer/")
+        return False
     if root_private.returncode != 0:
         print(f"\n{red('FAIL')} git ls-files failed while checking Plan/Developer/:")
         print(root_private.stderr.strip())
@@ -745,10 +751,15 @@ def _check_boundary() -> bool:
         print(root_private.stdout)
         return False
 
-    all_tracked = subprocess.run(
+    try:
+        all_tracked = subprocess.run(
         ["git", "ls-files"],
         capture_output=True, text=True, cwd=REPO_ROOT,
-    )
+            timeout=command_timeout_seconds(),
+        )
+    except subprocess.TimeoutExpired:
+        print(f"\n{red('FAIL')} git ls-files timed out while checking tracked files")
+        return False
     if all_tracked.returncode != 0:
         print(f"\n{red('FAIL')} git ls-files failed while checking nested Developer/ files:")
         print(all_tracked.stderr.strip())
