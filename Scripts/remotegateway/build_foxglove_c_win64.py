@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 
@@ -147,6 +148,17 @@ def selected_artifacts(include_pdb: bool) -> tuple[str, ...]:
     return APPROVED_ARTIFACTS + ((PDB_ARTIFACT,) if include_pdb else ())
 
 
+def ensure_fresh_artifacts(target_dir: Path, artifact_names: tuple[str, ...], started_at: float) -> None:
+    """Reject successful Cargo exits that leave stale artifacts in place."""
+    release = target_dir / "release"
+    for name in artifact_names:
+        artifact = release / name
+        if not artifact.is_file():
+            raise FileNotFoundError(f"Missing selected artifact: {artifact}")
+        if artifact.stat().st_mtime < started_at:
+            raise RuntimeError(f"Stale selected artifact: {artifact}")
+
+
 def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[str, ...]) -> Path:
     """Write reviewed native artifact metadata into the staging directory."""
     dll = target_dir / "release" / "foxglove.dll"
@@ -231,7 +243,9 @@ def main() -> int:
     env = build_environment(args)
     artifact_names = selected_artifacts(args.include_pdb)
 
+    build_started = time.time()
     run(["cargo", "build", "--release", "--features", "remote-access"], cwd=CRATE, env=env)
+    ensure_fresh_artifacts(target_dir, artifact_names, build_started)
     manifest_path = write_manifest(target_dir, env, artifact_names)
     print(f"Wrote {manifest_path.relative_to(ROOT)}")
 

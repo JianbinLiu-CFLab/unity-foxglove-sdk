@@ -180,6 +180,16 @@ class RemoteGatewayToolingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "inside a source tree"):
             self.build.validate_target_dir(self.build.ROOT / "third-party" / "bad-target")
 
+    def test_stale_selected_artifact_is_rejected(self) -> None:
+        """A successful no-op Cargo build cannot publish an older DLL."""
+        with tempfile.TemporaryDirectory() as temp:
+            release = Path(temp) / "release"
+            release.mkdir(parents=True)
+            artifact = release / "foxglove.dll"
+            artifact.write_bytes(b"stale")
+            with self.assertRaisesRegex(RuntimeError, "Stale selected artifact"):
+                self.build.ensure_fresh_artifacts(Path(temp), ("foxglove.dll",), artifact.stat().st_mtime + 1)
+
     def test_build_pins_x64_target_and_manifest_provenance(self) -> None:
         """Native output must identify the explicit Cargo target and inputs."""
         args = SimpleNamespace(libclang_path=None, target_dir="phase187-target")
