@@ -1,0 +1,15 @@
+finding_id: 187-R2-I05-022
+source_anchor: Scripts/release/run_ci.py::restore_with_ignoring_failed_sources
+original_sha256: 5086bc733ef8b56eade15707356fee2fb91272515442c25f39aaad9d3ac123eb
+modified_sha256: 1012a7ded2ac296d678127af7797e11a78594a966fd1c3ae9f9e368b5040de12
+RED command: python I05-022-transaction/red_probe.py
+RED literal output: RED_RESULT=True; RED_COMMAND=dotnet restore sample.csproj --ignore-failed-sources
+RED exit status: 0
+GREEN command: python I05-022-transaction/green_probe.py
+GREEN literal output: GREEN_RESULT=True; GREEN_COMMAND=dotnet restore sample.csproj
+GREEN exit status: 0
+focused controls: RunCiTests strict local restore, remote workflow no ignore flag; 4 tests passed.
+ROLLBACK command: python I05-022-transaction/ROLLBACK.sh
+ROLLBACK literal output: seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true; ROLLBACK_OK; ROLLBACK_NOOP
+ROLLBACK exit status: 0
+restored_behavior: local restore now fails on unavailable configured feeds like remote; cache-only green is not reported.

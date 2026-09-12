@@ -1,0 +1,2 @@
+RED_RESULT=True
+RED_COMMAND=dotnet restore sample.csproj --ignore-failed-sources
