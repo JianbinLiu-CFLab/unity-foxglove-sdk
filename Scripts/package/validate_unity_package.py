@@ -721,9 +721,19 @@ def check_validation_naming(results: list[CheckResult], package_files: list[Path
 def check_google_protobuf_collision(results: list[CheckResult]) -> None:
     """Ensure Google.Protobuf plugin asmdefs do not collide with DLL names."""
     plugin_dir = PACKAGE / "Plugins" / "Google.Protobuf"
-    dll_stems = {p.stem for p in plugin_dir.glob("*.dll")}
-    asmdef_files = list(plugin_dir.glob("*.asmdef"))
-    filename_collisions = [rel(p) for p in asmdef_files if p.stem in dll_stems]
+    dll_stems = {
+        p.stem.casefold()
+        for p in plugin_dir.iterdir()
+        if p.is_file() and p.suffix.casefold() == ".dll"
+    }
+    asmdef_files = [
+        p
+        for p in plugin_dir.iterdir()
+        if p.is_file() and p.suffix.casefold() == ".asmdef"
+    ]
+    filename_collisions = [
+        rel(p) for p in asmdef_files if p.stem.casefold() in dll_stems
+    ]
 
     name_collisions: list[str] = []
     for asmdef in asmdef_files:
@@ -731,7 +741,7 @@ def check_google_protobuf_collision(results: list[CheckResult]) -> None:
             name = json.loads(asmdef.read_text(encoding="utf-8")).get("name")
         except Exception:
             continue
-        if name in dll_stems:
+        if isinstance(name, str) and name.casefold() in dll_stems:
             name_collisions.append(f"{rel(asmdef)} name={name}")
 
     offenders = filename_collisions + name_collisions
