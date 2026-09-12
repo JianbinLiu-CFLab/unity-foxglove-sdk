@@ -201,6 +201,8 @@ namespace Unity.FoxgloveSDK.Editor
                 serializedObject.ApplyModifiedProperties();
             else
                 serializedObject.Update();
+
+            SyncEditorRootCaDistributor();
         }
 
         private void DrawScriptProperty()
@@ -658,6 +660,33 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 Debug.LogWarning("[Foxglove] Could not restart the local Root CA page after Play Mode: " + error);
             }
+        }
+
+        private void SyncEditorRootCaDistributor()
+        {
+            var enabled = GetBool("_rootCaDistributorEnabled");
+            var path = ResolveProjectPath(GetString("_rootCaFilePath", ""));
+            var host = GetString("_rootCaDistributorHost", "127.0.0.1");
+            var port = GetInt("_rootCaDistributorPort", LocalRootCaDistributorPort);
+            if (!enabled || string.IsNullOrEmpty(path) || !File.Exists(path) || string.IsNullOrEmpty(host) || port <= 0)
+            {
+                StopEditorRootCaDistributor();
+                _lastRootCaDistributorPath = null;
+                _lastRootCaDistributorHost = null;
+                _lastRootCaDistributorPort = 0;
+                return;
+            }
+
+            if (_editorRootCaDistributor != null
+                && string.Equals(_lastRootCaDistributorPath, path, System.StringComparison.Ordinal)
+                && string.Equals(_lastRootCaDistributorHost, host, System.StringComparison.Ordinal)
+                && _lastRootCaDistributorPort == port)
+            {
+                return;
+            }
+
+            if (!StartEditorRootCaDistributor(path, host, port, out var error))
+                Debug.LogWarning("[Foxglove] Could not synchronize the local Root CA page: " + error);
         }
 
     }
