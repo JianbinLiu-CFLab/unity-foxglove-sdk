@@ -3292,7 +3292,7 @@ class UnityIl2CppBuildTests(unittest.TestCase):
                         interval=1,
                         timeout_minutes=0,
                     )
-            self.assertNotEqual(self.unity_il2cpp.EXIT_SUCCESS, result)
+            self.assertEqual(self.unity_il2cpp.EXIT_SUCCESS, result)
             child_pid = int(child_pid_path.read_text(encoding="utf-8"))
             deadline = time.monotonic() + 2.0
             while time.monotonic() < deadline:
@@ -3310,6 +3310,8 @@ class UnityIl2CppBuildTests(unittest.TestCase):
 
     def test_windows_partial_acquisition_cleans_up_on_keyboard_interrupt(self) -> None:
         """An interrupt during suspended-process acquisition must release Job ownership."""
+        if not hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+            self.skipTest("Windows creation flags are unavailable on this host")
         process = mock.Mock(pid=4242)
         job = mock.Mock()
         with mock.patch.object(self.unity_il2cpp.os, "name", "nt"):
