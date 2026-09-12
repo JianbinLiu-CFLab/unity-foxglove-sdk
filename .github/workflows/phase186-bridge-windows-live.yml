@@ -38,4 +38,4 @@ jobs:
         with:
           name: phase186-bridge-windows-live-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/phase186/windows-live
-          if-no-files-found: warn
+          if-no-files-found: error

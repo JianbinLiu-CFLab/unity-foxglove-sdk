@@ -127,7 +127,7 @@ jobs:
         with:
           name: unit-test-results
           path: build/TestResults/Unit
-          if-no-files-found: ignore
+          if-no-files-found: error
 
       - name: Upload MCAP differential report
         if: always()
@@ -135,7 +135,7 @@ jobs:
         with:
           name: mcap-differential-report
           path: build/mcap-conformance/phase121-conformance-report.json
-          if-no-files-found: warn
+          if-no-files-found: error
 
   optional-ros2-adapter:
     name: optional ROS2 adapter gate
@@ -161,7 +161,7 @@ jobs:
         with:
           name: optional-ros2-adapter-test-results
           path: build/TestResults/OptionalRos2Adapter
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   optional-ros2-native:
     name: optional ROS2 Native gate
@@ -187,7 +187,7 @@ jobs:
         with:
           name: optional-ros2-native-test-results
           path: build/TestResults/OptionalRos2Native
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   analyzer-freshness:
     runs-on: windows-latest
