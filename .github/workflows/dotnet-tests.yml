@@ -116,7 +116,7 @@ jobs:
         run: python3 Scripts/release/run_ci.py --only phase186-bridge-tooling
 
       - name: Run official MCAP differential conformance
-        run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json
+        run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/${{ github.run_id }}-${{ github.run_attempt }}/phase121-conformance-report.json
 
       - name: Validate local entrypoints
         run: python3 Scripts/package/validate_local_entrypoints.py
@@ -134,7 +134,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mcap-differential-report
-          path: build/mcap-conformance/phase121-conformance-report.json
+          path: build/mcap-conformance/${{ github.run_id }}-${{ github.run_attempt }}/phase121-conformance-report.json
           if-no-files-found: error
 
   optional-ros2-adapter:

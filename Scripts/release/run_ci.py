@@ -66,6 +66,7 @@ def unique_run_id(value: str | None) -> str:
 RUN_ID = unique_run_id(os.environ.get("UNITY2FOXGLOVE_CI_RUN_ID"))
 CI_ROOT = REPO_ROOT / "build/ci" / RUN_ID
 ISOLATED_DOTNET_ROOT = CI_ROOT / "dotnet"
+MCAP_REPORT_PATH = CI_ROOT / "mcap-conformance" / "phase121-conformance-report.json"
 
 
 def phase186_certification_run_id(head: str) -> str:
@@ -1234,7 +1235,7 @@ def main() -> int:
                 "Scripts/mcap/conformance/run_phase121_conformance.py",
                 "--release-blocking",
                 "--report-path",
-                "build/mcap-conformance/phase121-conformance-report.json",
+                str(MCAP_REPORT_PATH),
             ],
             "Official MCAP differential conformance",
             timeout_seconds=job_timeout_seconds(),
