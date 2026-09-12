@@ -444,6 +444,9 @@ def run_captured(cmd: list[str], label: str) -> CapturedCommandResult:
             stderr,
             timeout_seconds=effective_timeout,
         )
+    except OSError as ex:
+        elapsed = time.monotonic() - start
+        return CapturedCommandResult(label, False, 125, elapsed, "", str(ex))
     elapsed = time.monotonic() - start
     return CapturedCommandResult(
         label,
@@ -616,6 +619,10 @@ def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
         timeout_message = f"\n{FAIL} {job.name} timed out {timeout_description} ({elapsed:.1f}s elapsed)\n"
         log_path.write_text(stdout + timeout_message, encoding="utf-8")
         return CiJobResult(job.name, False, 124, elapsed, log_path)
+    except OSError as ex:
+        elapsed = time.monotonic() - start
+        log_path.write_text(f"{FAIL} {job.name} could not start: {ex}\n", encoding="utf-8")
+        return CiJobResult(job.name, False, 125, elapsed, log_path)
 
 
 def run_ci_jobs(jobs: list[CiJob], max_workers: int) -> dict[str, bool]:
