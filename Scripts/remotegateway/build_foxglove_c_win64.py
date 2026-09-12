@@ -224,6 +224,13 @@ def copy_approved_artifacts(
         expected_hashes.setdefault("foxglove.dll", str(manifest_data["sha256"]))
     validate_repo_destination(PACKAGE_PLUGIN_DIR, "package plugin destination")
     PACKAGE_PLUGIN_DIR.mkdir(parents=True, exist_ok=True)
+    unexpected = sorted(
+        path.name
+        for path in PACKAGE_PLUGIN_DIR.iterdir()
+        if path.is_file() and path.name not in ALLOWED_ARTIFACTS | {PACKAGE_MANIFEST_NAME}
+    )
+    if unexpected:
+        raise ValueError(f"package plugin contains unapproved files: {', '.join(unexpected)}")
     for stale_name in sorted(ALLOWED_ARTIFACTS - set(artifact_names)):
         stale = PACKAGE_PLUGIN_DIR / stale_name
         if stale.is_file():
