@@ -26,6 +26,7 @@ import os
 import platform
 import re
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -85,8 +86,8 @@ UNITY_EDITOR_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:[a-z]\d+)?")
 
 # Initial offsets and command indexes used for log tailing and diagnostics.
 INITIAL_LOG_OFFSET = 0
-_LOG_FILE_STATE: Dict[Path, Tuple[int, int, int]] = {}
 MAX_LOG_READ_BYTES = 256 * 1024
+MAX_FINAL_LOG_CHUNKS = 16
 UNITY_EXECUTABLE_COMMAND_INDEX = 0
 
 # Generated artifacts required before Unity can compile the package in IL2CPP.
@@ -454,31 +455,113 @@ def is_important_log_line(line: str) -> bool:
     return any(marker in stripped for marker in IMPORTANT_LOG_MARKERS)
 
 
-def read_new_important_lines(log_path: Path, offset: int) -> Tuple[int, List[str]]:
-    """Read new important log lines since the given byte offset."""
-    if not log_path.exists() or not log_path.is_file():
-        return offset, []
+class _LogTailState:
+    """Bounded partial-record and file identity state for one build invocation."""
 
+    def __init__(self) -> None:
+        """Start without a file or a partially consumed record."""
+        self.identity: Optional[Tuple[int, int]] = None
+        self.size = 0
+        self.pending = b""
+        self.discarding = False
+        self.warning: Optional[str] = None
+
+    def report(self, message: str) -> None:
+        """Report an unusable/truncated log without flooding each polling pass."""
+        if self.warning != message:
+            print(f"[build_unity_il2cpp] {message}", file=sys.stderr, flush=True)
+            self.warning = message
+
+    def seed(self, log_path: Path) -> int:
+        """Remember prelaunch identity and skip bytes from previous invocations."""
+        try:
+            info = log_path.stat()
+        except OSError:
+            return INITIAL_LOG_OFFSET
+        if not stat.S_ISREG(info.st_mode):
+            self.report(f"Log is not a regular file: {log_path}")
+            return INITIAL_LOG_OFFSET
+        self.identity = (info.st_dev, info.st_ino)
+        self.size = info.st_size
+        return self.size
+
+
+def read_new_important_lines(
+    log_path: Path, offset: int, *, state: Optional[_LogTailState] = None, final: bool = False
+) -> Tuple[int, List[str]]:
+    """Consume at most one chunk; explicit state preserves identity and split records."""
+    persistent = state is not None
+    state = state if state is not None else _LogTailState()
     try:
-        stat = log_path.stat()
-        identity = (stat.st_dev, stat.st_ino, stat.st_size)
-        previous = _LOG_FILE_STATE.get(log_path)
-        if previous is not None and (identity[:2] != previous[:2] or identity[2] < previous[2]):
-            offset = 0
-        _LOG_FILE_STATE[log_path] = identity
-        with log_path.open("rb") as handle:
+        if not stat.S_ISREG(log_path.stat().st_mode):
+            state.report(f"Log is not a regular file: {log_path}")
+            return offset, []
+        # Nonblocking open prevents a POSIX file-to-FIFO race from waiting for a
+        # writer. Validate the opened object as well as the pre-open path.
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NONBLOCK", 0)
+        descriptor = os.open(log_path, flags)
+        with os.fdopen(descriptor, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                state.report(f"Log is not a regular file: {log_path}")
+                return offset, []
+            identity = (info.st_dev, info.st_ino)
+            if (state.identity is not None and
+                    (identity != state.identity or info.st_size < state.size)) or offset > info.st_size:
+                offset, state.pending, state.discarding = 0, b"", False
+            state.identity, state.size = identity, info.st_size
             handle.seek(offset)
             contents = handle.read(MAX_LOG_READ_BYTES)
             new_offset = handle.tell()
-    except OSError:
+    except FileNotFoundError:
+        return offset, []  # Unity may not have created its log yet.
+    except OSError as exc:
+        state.report(f"Log read failed for {log_path}: {exc}")
         return offset, []
 
-    chunks = contents.splitlines(keepends=True)
-    if chunks and not chunks[-1].endswith((b"\n", b"\r")):
-        new_offset -= len(chunks.pop())
-    lines = [chunk.decode("utf-8", errors="replace") for chunk in chunks]
-    important = [line.strip() for line in lines if is_important_log_line(line)]
+    important = []
+    for chunk in contents.splitlines(keepends=True):
+        complete = chunk.endswith((b"\n", b"\r"))
+        if state.discarding:
+            if complete:
+                state.discarding = False
+            continue
+        record = state.pending + chunk
+        state.pending = b""
+        if len(record) > MAX_LOG_READ_BYTES or (not complete and len(record) == MAX_LOG_READ_BYTES):
+            state.report(f"Log record exceeded {MAX_LOG_READ_BYTES} bytes; progress record truncated. Full log: {log_path}")
+            record = record[:MAX_LOG_READ_BYTES]
+            line = record.decode("utf-8", errors="replace").strip()
+            if is_important_log_line(line):
+                important.append(line + " [truncated]")
+            state.discarding = not complete
+        elif complete:
+            line = record.decode("utf-8", errors="replace").strip()
+            if is_important_log_line(line):
+                important.append(line)
+        else:
+            state.pending = record
+    if final and new_offset >= state.size:
+        line = state.pending.decode("utf-8", errors="replace").strip()
+        if is_important_log_line(line):
+            important.append(line)
+        state.pending = b""
+    elif not persistent:
+        # The two-argument convenience form carries partial records by offset.
+        new_offset -= len(state.pending)
     return new_offset, important
+
+
+def finish_log_tail(log_path: Path, offset: int, state: _LogTailState) -> None:
+    """Drain a bounded final diagnostic backlog only after process cleanup."""
+    for _ in range(MAX_FINAL_LOG_CHUNKS):
+        previous = offset
+        offset, lines = read_new_important_lines(log_path, offset, state=state, final=True)
+        for line in lines:
+            print(f"[unity-log] {line}", flush=True)
+        if offset == previous or offset >= state.size:
+            return
+    state.report(f"Final progress log budget exhausted; remaining diagnostics are in {log_path}")
 
 
 class _WindowsKillOnCloseJob:
@@ -874,16 +957,14 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
     started = time.monotonic()
     next_heartbeat = started + interval
     timeout_seconds = timeout_minutes * SECONDS_PER_MINUTE if timeout_minutes > 0 else None
-    try:
-        offset = log_path.stat().st_size if log_path.is_file() else INITIAL_LOG_OFFSET
-    except OSError:
-        offset = INITIAL_LOG_OFFSET
+    log_state = _LogTailState()
+    offset = log_state.seed(log_path)
 
     process_tree = start_owned_process(cmd, root)
     process = process_tree.process
     try:
         while True:
-            offset, lines = read_new_important_lines(log_path, offset)
+            offset, lines = read_new_important_lines(log_path, offset, state=log_state)
             for line in lines:
                 print(f"[unity-log] {line}", flush=True)
 
@@ -893,9 +974,6 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
                 break
 
             if timeout_seconds is not None and now - started >= timeout_seconds:
-                offset, lines = read_new_important_lines(log_path, offset)
-                for line in lines:
-                    print(f"[unity-log] {line}", flush=True)
                 print(
                     f"[build_unity_il2cpp] Unity timed out after {format_elapsed(now - started)}; "
                     f"terminating owned process tree. Log: {relative_to_root(log_path, root)}",
@@ -925,11 +1003,10 @@ def run_with_progress(cmd: List[str], root: Path, log_path: Path, interval: int,
 
         residual_pids = await_tree_quiescence(process_tree, UNITY_TERMINATION_WAIT_SECONDS)
     finally:
-        process_tree.close()
-
-    offset, lines = read_new_important_lines(log_path, offset)
-    for line in lines:
-        print(f"[unity-log] {line}", flush=True)
+        try:
+            process_tree.close()
+        finally:
+            finish_log_tail(log_path, offset, log_state)
 
     elapsed = format_elapsed(time.monotonic() - started)
     print(f"[build_unity_il2cpp] Unity exited after {elapsed}.", flush=True)

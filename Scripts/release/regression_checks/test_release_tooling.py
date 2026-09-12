@@ -2320,6 +2320,220 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         self.assertTrue(failures)
         self.assertTrue(any("missing generated artifact" in failure for failure in failures))
 
+    def _run_log_scenario(self, root: Path, at_start, polls=None):
+        """Run the real controller against real files and a deterministic child seam."""
+        tree = mock.Mock()
+        tree.process.poll.side_effect = polls or [0]
+        tree.active_pids.return_value = []
+        tree.close.return_value = None
+        output, errors = io.StringIO(), io.StringIO()
+
+        def launch(*_args):
+            at_start()
+            return tree
+
+        with mock.patch.object(self.unity_il2cpp, "start_owned_process", side_effect=launch):
+            with mock.patch.object(self.unity_il2cpp, "LOG_POLL_SLEEP_SECONDS", 0):
+                with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                    result = self.unity_il2cpp.run_with_progress(
+                        ["controlled-child"], root, root / "unity.log", 1, 0
+                    )
+        self.assertEqual(0, result)
+        tree.close.assert_called_once()
+        return output.getvalue(), errors.getvalue()
+
+    def test_log_reader_oversized_record_makes_bounded_progress(self) -> None:
+        """A record larger than the read cap must not pin the reader's offset."""
+        cap = self.unity_il2cpp.MAX_LOG_READ_BYTES
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp) / "unity.log"
+            payload = b"x" * (cap * 3) + b"\nerror CS1234: after oversized record\n"
+            log.write_bytes(payload)
+            offset, lines = 0, []
+            for _ in range(5):
+                previous = offset
+                offset, chunk = self.unity_il2cpp.read_new_important_lines(log, offset)
+                self.assertLessEqual(offset - previous, cap)
+                if previous < len(payload):
+                    self.assertGreater(offset, previous, "reader stalled on an incomplete oversized line")
+                lines.extend(chunk)
+            self.assertEqual(len(payload), offset)
+            self.assertIn("error CS1234: after oversized record", lines)
+
+    def test_log_controller_flushes_final_unterminated_error(self) -> None:
+        """Root exit must not discard its final error just because LF is absent."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output, _ = self._run_log_scenario(
+                root, lambda: (root / "unity.log").write_bytes(b"error CS7777: final")
+            )
+        self.assertEqual(1, output.count("[unity-log] error CS7777: final"))
+
+    def test_log_controller_drains_multiple_chunks_after_exit(self) -> None:
+        """Post-exit diagnostics must advance beyond the first two read chunks."""
+        cap = self.unity_il2cpp.MAX_LOG_READ_BYTES
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            payload = b"ordinary\n" * (cap // 9 * 4) + b"error CS7778: late failure\n"
+            output, _ = self._run_log_scenario(root, lambda: (root / "unity.log").write_bytes(payload))
+        self.assertEqual(1, output.count("[unity-log] error CS7778: late failure"))
+
+    def test_log_controller_rebinds_replacement_before_first_poll(self) -> None:
+        """The prelaunch snapshot must identify a replacement, not just its old size."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            log = root / "unity.log"
+            log.write_bytes(b"error CS0000: stale\n")
+
+            def replace():
+                replacement = root / "replacement.log"
+                replacement.write_bytes(b"error CS1111: fresh replacement starts here\n")
+                replacement.replace(log)
+
+            output, _ = self._run_log_scenario(root, replace)
+        self.assertIn("[unity-log] error CS1111: fresh replacement starts here", output)
+        self.assertNotIn("CS0000", output)
+
+    def test_log_controller_preserves_split_utf8_append(self) -> None:
+        """A partial multibyte diagnostic is buffered, decoded once, and not duplicated."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            log = root / "unity.log"
+            payload = "error CS2222: 编译失败\n".encode("utf-8")
+
+            def append():
+                with log.open("ab") as stream:
+                    stream.write(payload[16:])
+                return None
+
+            steps = iter([append, lambda: 0])
+            output, _ = self._run_log_scenario(
+                root, lambda: log.write_bytes(payload[:16]), polls=lambda: next(steps)()
+            )
+        self.assertEqual(1, output.count("[unity-log] error CS2222: 编译失败"))
+        self.assertNotIn("\ufffd", output)
+
+    def test_log_controller_state_does_not_leak_between_invocations(self) -> None:
+        """An earlier large log must not cause a later invocation to emit stale content."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            log = root / "unity.log"
+            self._run_log_scenario(root, lambda: log.write_bytes(b"error CS3333: " + b"x" * 100 + b"\n"))
+            log.write_bytes(b"error CS4444: stale second run\n")
+            output, _ = self._run_log_scenario(root, lambda: None)
+        self.assertNotIn("CS4444", output)
+
+    def test_log_controller_discards_partial_record_on_truncation(self) -> None:
+        """Truncation resets the pending bytes as well as the physical offset."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            log = root / "unity.log"
+
+            def truncate():
+                log.write_bytes(b"error CS5555: fresh\n")
+                return None
+
+            steps = iter([truncate, lambda: 0])
+            output, _ = self._run_log_scenario(
+                root, lambda: log.write_bytes(b"error CS5550: old partial " + b"x" * 100),
+                polls=lambda: next(steps)()
+            )
+        self.assertEqual(1, output.count("[unity-log] error CS5555: fresh"))
+        self.assertNotIn("CS5550", output)
+
+    def test_log_controller_drain_budget_is_explicit(self) -> None:
+        """Final catch-up is finite and reports omitted diagnostics rather than hiding them."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with mock.patch.object(self.unity_il2cpp, "MAX_LOG_READ_BYTES", 64):
+                with mock.patch.object(self.unity_il2cpp, "MAX_FINAL_LOG_CHUNKS", 2):
+                    output, errors = self._run_log_scenario(
+                        root, lambda: (root / "unity.log").write_bytes(b"normal\n" * 100 + b"error CS9999\n")
+                    )
+        self.assertNotIn("CS9999", output)
+        self.assertIn("Final progress log budget exhausted", errors)
+
+    def test_log_controller_reports_oversized_record_and_keeps_next_record(self) -> None:
+        """Discard only the overlong record, then resume complete diagnostics."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with mock.patch.object(self.unity_il2cpp, "MAX_LOG_READ_BYTES", 64):
+                output, errors = self._run_log_scenario(
+                    root, lambda: (root / "unity.log").write_bytes(
+                        b"error CS6660: " + b"x" * 150 + b"\nerror CS6661: next\n"
+                    )
+                )
+        self.assertEqual(1, output.count("[unity-log] error CS6660:"))
+        self.assertIn("[truncated]", output)
+        self.assertEqual(1, output.count("[unity-log] error CS6661: next"))
+        self.assertIn("Log record exceeded 64 bytes", errors)
+
+    def test_log_controller_reports_read_failure_and_closes_descriptor(self) -> None:
+        """I/O errors remain diagnostic and cannot leak the opened log descriptor."""
+        real_fstat = os.fstat
+        descriptors = []
+
+        def fail(fd):
+            descriptors.append(fd)
+            raise OSError("controlled descriptor failure")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with mock.patch.object(self.unity_il2cpp.os, "fstat", side_effect=fail):
+                _, errors = self._run_log_scenario(root, lambda: (root / "unity.log").write_bytes(b"normal\n"))
+            self.assertTrue(descriptors)
+            for fd in descriptors:
+                with self.assertRaises(OSError):
+                    real_fstat(fd)
+        self.assertIn("Log read failed", errors)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX FIFO boundary")
+    def test_log_controller_rejects_fifo_without_waiting_for_writer(self) -> None:
+        """An unusable log is reported rather than silently disabling diagnostics."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self._make_log_fifo(root / "unity.log")
+            _, errors = self._run_log_scenario(root, lambda: None)
+        self.assertIn("not a regular file", errors)
+
+    def _make_log_fifo(self, path: Path) -> None:
+        """Create a kernel FIFO even when a WSL-mounted Windows volume lacks mkfifo."""
+        try:
+            os.mkfifo(path)
+        except OSError as exc:
+            import errno
+            if exc.errno != errno.EOPNOTSUPP or not Path("/proc/self/fd").is_dir():
+                raise
+            reader, writer = os.pipe()
+            self.addCleanup(os.close, reader)
+            os.close(writer)
+            path.symlink_to(f"/proc/self/fd/{reader}")
+            print("FIFO_FIXTURE=kernel_pipe_via_procfs; named_fifo_volume=EOPNOTSUPP")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX file replacement boundary")
+    def test_log_controller_revalidates_opened_file_after_fifo_race(self) -> None:
+        """A path replaced after stat must not block open or pass descriptor validation."""
+        real_open = os.open
+        replaced = False
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            log = root / "unity.log"
+
+            def race(path, flags, *args, **kwargs):
+                nonlocal replaced
+                if Path(path) == log and not replaced:
+                    replaced = True
+                    log.unlink()
+                    self._make_log_fifo(log)
+                    # A regression must fail before trying a blocking FIFO open.
+                    self.assertTrue(flags & os.O_NONBLOCK)
+                return real_open(path, flags, *args, **kwargs)
+
+            with mock.patch.object(self.unity_il2cpp.os, "open", side_effect=race):
+                _, errors = self._run_log_scenario(root, lambda: log.write_bytes(b"normal\n"))
+            self.assertTrue(replaced)
+        self.assertIn("not a regular file", errors)
+
     def _populate_generated_artifacts(self, root: Path) -> None:
         """Write one nonempty regular file for every required generated artifact."""
         for relative in self.unity_il2cpp.REQUIRED_GENERATED_ARTIFACTS:
