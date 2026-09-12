@@ -86,6 +86,7 @@ UNITY_EDITOR_VERSION_PATTERN = re.compile(r"\d+\.\d+\.\d+(?:[a-z]\d+)?")
 # Initial offsets and command indexes used for log tailing and diagnostics.
 INITIAL_LOG_OFFSET = 0
 _LOG_FILE_STATE: Dict[Path, Tuple[int, int, int]] = {}
+MAX_LOG_READ_BYTES = 256 * 1024
 UNITY_EXECUTABLE_COMMAND_INDEX = 0
 
 # Generated artifacts required before Unity can compile the package in IL2CPP.
@@ -455,7 +456,7 @@ def is_important_log_line(line: str) -> bool:
 
 def read_new_important_lines(log_path: Path, offset: int) -> Tuple[int, List[str]]:
     """Read new important log lines since the given byte offset."""
-    if not log_path.exists():
+    if not log_path.exists() or not log_path.is_file():
         return offset, []
 
     try:
@@ -465,13 +466,17 @@ def read_new_important_lines(log_path: Path, offset: int) -> Tuple[int, List[str
         if previous is not None and (identity[:2] != previous[:2] or identity[2] < previous[2]):
             offset = 0
         _LOG_FILE_STATE[log_path] = identity
-        with log_path.open("r", encoding="utf-8", errors="replace") as handle:
+        with log_path.open("rb") as handle:
             handle.seek(offset)
-            lines = handle.readlines()
+            contents = handle.read(MAX_LOG_READ_BYTES)
             new_offset = handle.tell()
     except OSError:
         return offset, []
 
+    chunks = contents.splitlines(keepends=True)
+    if chunks and not chunks[-1].endswith((b"\n", b"\r")):
+        new_offset -= len(chunks.pop())
+    lines = [chunk.decode("utf-8", errors="replace") for chunk in chunks]
     important = [line.strip() for line in lines if is_important_log_line(line)]
     return new_offset, important
 
