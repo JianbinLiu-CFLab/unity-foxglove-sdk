@@ -3,6 +3,8 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.IO;
 using Xunit;
@@ -24,17 +26,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void Ros2RuntimePackagesDeclareSiblingConflictMetadata()
         {
-            var humble = TestSources.Text(
-                "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/package.json");
-            var jazzy = TestSources.Text(
-                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/package.json");
-            var lyrical = TestSources.Text(
-                "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/package.json");
+            AssertSiblingConflicts(
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/package.json",
+                "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+                "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64");
+            AssertSiblingConflicts(
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/package.json",
+                "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+                "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64");
+            AssertSiblingConflicts(
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/package.json",
+                "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+                "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64");
+        }
 
-            Assert.Contains("unity2foxgloveConflicts", humble);
-            Assert.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", humble);
-            Assert.Contains("dev.unity2foxglove.ros2forunity.runtime.humble.win64", jazzy);
-            Assert.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", lyrical);
+        private static void AssertSiblingConflicts(string relativePath, params string[] expected)
+        {
+            using var document = JsonDocument.Parse(TestSources.Text(relativePath));
+            Assert.True(
+                document.RootElement.TryGetProperty("unity2foxgloveConflicts", out var conflicts)
+                    && conflicts.ValueKind == JsonValueKind.Array,
+                "Missing unity2foxgloveConflicts array: " + relativePath);
+            var actual = conflicts.EnumerateArray().Select(item => item.GetString()).ToArray();
+            Assert.Equal(expected, actual);
         }
 
         [Fact]
