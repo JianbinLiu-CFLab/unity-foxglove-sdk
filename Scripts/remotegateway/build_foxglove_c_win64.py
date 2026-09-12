@@ -138,7 +138,7 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
         "cxxflags": env["CXXFLAGS_x86_64_pc_windows_msvc"],
         "environment": {
             "AWS_LC_SYS_PREBUILT_NASM": env["AWS_LC_SYS_PREBUILT_NASM"],
-            "CARGO_TARGET_DIR": env["CARGO_TARGET_DIR"],
+            "CARGO_TARGET_DIR": Path(env["CARGO_TARGET_DIR"]).name or "target",
         },
         "sha256": sha256(dll),
         "sizeBytes": dll.stat().st_size,
