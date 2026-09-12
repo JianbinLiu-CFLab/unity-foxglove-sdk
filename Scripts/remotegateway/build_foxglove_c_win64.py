@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -37,6 +38,7 @@ APPROVED_ARTIFACTS = ("foxglove.dll", "foxglove.dll.lib")
 PDB_ARTIFACT = "foxglove.pdb"
 ALLOWED_ARTIFACTS = frozenset((*APPROVED_ARTIFACTS, PDB_ARTIFACT))
 TARGET_TRIPLE = "x86_64-pc-windows-msvc"
+NATIVE_LOCK_WAIT_SECONDS = 30.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -159,6 +161,32 @@ def ensure_fresh_artifacts(target_dir: Path, artifact_names: tuple[str, ...], st
             raise RuntimeError(f"Stale selected artifact: {artifact}")
 
 
+@contextmanager
+def native_build_lock():
+    """Serialize builders that share staging and package promotion state."""
+    lock = ROOT / "build" / ".remotegateway.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + NATIVE_LOCK_WAIT_SECONDS
+    acquired = False
+    while time.monotonic() < deadline:
+        try:
+            descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(descriptor)
+            acquired = True
+            break
+        except FileExistsError:
+            time.sleep(0.05)
+    if not acquired:
+        raise TimeoutError(f"Timed out acquiring native build lock: {lock}")
+    try:
+        yield
+    finally:
+        try:
+            lock.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[str, ...]) -> Path:
     """Write reviewed native artifact metadata into the staging directory."""
     dll = target_dir / "release" / "foxglove.dll"
@@ -263,24 +291,25 @@ def main() -> int:
     env = build_environment(args)
     artifact_names = selected_artifacts(args.include_pdb)
 
-    build_started = time.time()
-    run(["cargo", "build", "--release", "--features", "remote-access"], cwd=CRATE, env=env)
-    ensure_fresh_artifacts(target_dir, artifact_names, build_started)
-    manifest_path = write_manifest(target_dir, env, artifact_names)
-    print(f"Wrote {manifest_path.relative_to(ROOT)}")
+    with native_build_lock():
+        build_started = time.time()
+        run(["cargo", "build", "--release", "--features", "remote-access"], cwd=CRATE, env=env)
+        ensure_fresh_artifacts(target_dir, artifact_names, build_started)
+        manifest_path = write_manifest(target_dir, env, artifact_names)
+        print(f"Wrote {manifest_path.relative_to(ROOT)}")
 
-    if args.copy_to_package:
-        copy_approved_artifacts(
-            target_dir,
-            manifest_path,
-            artifact_names,
-            copy_manifest=args.update_package_manifest,
-        )
-        print(f"Copied approved artifacts to {PACKAGE_PLUGIN_DIR.relative_to(ROOT)}")
-        if args.update_package_manifest:
-            print("Updated package manifest explicitly; review and commit it before using --skip-native-build.")
-    else:
-        print("Package copy skipped; pass --copy-to-package after reviewing artifacts.")
+        if args.copy_to_package:
+            copy_approved_artifacts(
+                target_dir,
+                manifest_path,
+                artifact_names,
+                copy_manifest=args.update_package_manifest,
+            )
+            print(f"Copied approved artifacts to {PACKAGE_PLUGIN_DIR.relative_to(ROOT)}")
+            if args.update_package_manifest:
+                print("Updated package manifest explicitly; review and commit it before using --skip-native-build.")
+        else:
+            print("Package copy skipped; pass --copy-to-package after reviewing artifacts.")
 
     return 0
 
