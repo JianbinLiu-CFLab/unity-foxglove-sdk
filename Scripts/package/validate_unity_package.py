@@ -166,6 +166,7 @@ THIRD_PARTY_NOTICE_REQUIREMENTS = (
 )
 
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+META_GUID_RE = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
 VALIDATION_PHASE_FILENAME_RE = re.compile(r"^Phase(?P<phase>\d+)(?P<trailing>[A-Za-z0-9_-]*)Validation\.cs$")
 VALIDATION_PHASE_FILENAME_INDEX_RE = re.compile(r"^[_-](?P<index>\d+)")
 LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE = 164
@@ -580,22 +581,53 @@ def check_required_files(results: list[CheckResult]) -> None:
         )
 
 
-def check_sample_meta(results: list[CheckResult], samples_files: list[Path] | None = None) -> None:
-    """Ensure Unity sample assets have matching .meta sidecars."""
+def check_sample_meta(
+    results: list[CheckResult],
+    samples_files: list[Path] | None = None,
+    additional_files: list[Path] | None = None,
+) -> None:
+    """Ensure ordinary Unity assets have valid, unique .meta identities."""
     samples_files = samples_files if samples_files is not None else list(iter_files(SAMPLES))
+    files = list(samples_files) + list(additional_files or [])
     missing: list[str] = []
-    for path in samples_files:
+    malformed: list[str] = []
+    duplicate: list[str] = []
+    guids: dict[str, str] = {}
+    for path in files:
         if path.suffix == ".meta" or path.name == "README.md":
             continue
         if path.suffix.lower() not in UNITY_META_EXTENSIONS:
             continue
-        if not Path(str(path) + ".meta").exists():
+        meta = Path(str(path) + ".meta")
+        if not meta.is_file():
             missing.append(rel(path))
+            continue
+        try:
+            text = meta.read_text(encoding="utf-8")
+        except OSError:
+            malformed.append(rel(meta))
+            continue
+        match = META_GUID_RE.search(text)
+        if match is None:
+            malformed.append(rel(meta))
+            continue
+        guid = match.group(1).lower()
+        previous = guids.get(guid)
+        if previous is not None:
+            duplicate.append(f"{rel(meta)} duplicates {previous}")
+        else:
+            guids[guid] = rel(meta)
     add(
         results,
         "sample Unity asset .meta files",
-        not missing,
-        "; ".join(missing[:MAX_REPORTED_MISSING_META]) if missing else "all checked sample assets have .meta",
+        not missing and not malformed and not duplicate,
+        "; ".join(
+            missing[:MAX_REPORTED_MISSING_META]
+            + malformed[:MAX_REPORTED_MISSING_META]
+            + duplicate[:MAX_REPORTED_MISSING_META]
+        )
+        if missing or malformed or duplicate
+        else f"{len(guids)} ordinary asset metas have unique valid GUIDs",
     )
 
 
@@ -898,7 +930,12 @@ def main() -> int:
     check_ros2_bridge_package(results)
     check_optional_package_boundaries(results)
     check_required_files(results)
-    check_sample_meta(results, samples_files)
+    bridge_files = [
+        path
+        for path in ROS2_BRIDGE_PACKAGE.rglob("*")
+        if path.is_file() and path.suffix.lower() in UNITY_META_EXTENSIONS
+    ]
+    check_sample_meta(results, samples_files, bridge_files)
     check_sample_boundaries(results)
     check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)
