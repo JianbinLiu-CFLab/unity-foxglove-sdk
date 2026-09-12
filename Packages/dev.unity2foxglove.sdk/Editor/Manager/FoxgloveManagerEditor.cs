@@ -633,11 +633,10 @@ namespace Unity.FoxgloveSDK.Editor
 
         private string GetCachedRootCaFingerprint(string resolvedPath)
         {
-            if (string.Equals(_cachedRootCaFingerprintPath, resolvedPath, System.StringComparison.Ordinal))
-                return _cachedRootCaFingerprint;
-
             _cachedRootCaFingerprintPath = resolvedPath;
-            _cachedRootCaFingerprint = FoxgloveCertificateDistributor.ComputeSha256Fingerprint(resolvedPath);
+            _cachedRootCaFingerprint = string.IsNullOrEmpty(resolvedPath) || !File.Exists(resolvedPath)
+                ? string.Empty
+                : FoxgloveCertificateDistributor.ComputeSha256Fingerprint(resolvedPath);
             return _cachedRootCaFingerprint;
         }
 
