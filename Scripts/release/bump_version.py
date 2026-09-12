@@ -25,7 +25,7 @@ from pathlib import Path
 
 
 # Semantic version grammar accepted by the release helper.
-VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z")
 SDK_DEPENDENT_PACKAGE_MANIFESTS = (
     "Packages/dev.unity2foxglove.ros2forunity/package.json",
     "Packages/dev.unity2foxglove.ros2bridge/package.json",
