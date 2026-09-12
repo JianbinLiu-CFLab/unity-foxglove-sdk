@@ -2604,7 +2604,13 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         """Generated build directories should be timezone-stable in CI logs."""
         build_dir = self.unity_il2cpp.default_build_dir(Path("repo"), "win64")
 
-        self.assertRegex(str(build_dir), r"win64-il2cpp-\d{8}-\d{6}Z$")
+        self.assertRegex(str(build_dir), r"win64-il2cpp-\d{8}-\d{6}Z-[0-9a-f]{8}$")
+
+    def test_default_build_dir_reserves_distinct_concurrent_paths(self) -> None:
+        """Concurrent invocations must not share the same default output tree."""
+        first = self.unity_il2cpp.default_build_dir(Path("repo"), "win64")
+        second = self.unity_il2cpp.default_build_dir(Path("repo"), "win64")
+        self.assertNotEqual(first, second)
 
     def _write_unity_stand_in(self, path: Path, executable: bool = True) -> Path:
         """Create a candidate that a host would accept as an executable Unity."""
@@ -2766,6 +2772,7 @@ class UnityIl2CppBuildTests(unittest.TestCase):
                                       "PROGRAMFILES(X86)": str(root / "missing")}, clear=False):
                     resolved = self.unity_il2cpp.find_unity_from_hub()
         self.assertEqual(good.resolve(), Path(resolved))
+
 
     def test_hub_discovery_rejects_a_non_executable_candidate(self) -> None:
         """The generic Hub fallback must apply the same executable gate."""

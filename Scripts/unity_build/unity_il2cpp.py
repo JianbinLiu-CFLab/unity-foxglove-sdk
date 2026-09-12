@@ -30,6 +30,7 @@ import stat
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -435,7 +436,8 @@ def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path
 def default_build_dir(root: Path, target: str) -> Path:
     """Default build output directory with platform and timestamp."""
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
-    return root / "build" / "Unity" / f"{target}-il2cpp-{stamp}"
+    reservation = uuid.uuid4().hex[:8]
+    return root / "build" / "Unity" / f"{target}-il2cpp-{stamp}-{reservation}"
 
 
 def default_output_path(build_dir: Path, target: str) -> Path:
