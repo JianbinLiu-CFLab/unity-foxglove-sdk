@@ -2,17 +2,19 @@
   "status": "CORRECTION_OVERLAY_ACTIVE_REVALIDATION_IN_PROGRESS",
   "branch": "feature/round4/i-series-refuted-evidence-correction",
   "base_head": "9f3620526fb5acdbc70e85b85c400fd39e080ba4",
-  "head": "e2382f970dd4b7f7f889412fba80a1a755213e9e",
+  "head": "858d9e7f5ba17044bb03a9c2367f9541ce2b9acb",
   "overlay": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\R4.1-I_REFUTED_EVIDENCE_CORRECTION_20260912.tsv",
-  "overlay_sha256": "562bc742e05a980a5e88b41fc987738416b971f8deb20ff59027b6a748c76ae0",
+  "overlay_sha256": "f36c9874ec60a27b1de6c57cf89b808d7528ac5ec8b9e70c60d09d981aa3d300",
   "rows": 264,
   "disposition_counts": {
     "SATISFIED_BY_ROUND4": 8,
     "CONFIRMED": 10,
     "SATISFIED_BY_ROUND3": 13,
-    "REFUTED": 12,
+    "R4.1-CORRECTION-DEDICATED": 1,
     "CONFIRMED_FIXED": 60,
-    "PENDING_REVALIDATION": 161
+    "REFUTED": 11,
+    "PENDING_REVALIDATION": 160,
+    "Revisit only if fetchAsset semantic marker contract changes": 1
   },
   "reopened_bulk_rows": 227,
   "direct_revalidations": [
@@ -61,7 +63,8 @@
     "4dc13475689ca9b47c83de368e387e970f006b18",
     "c542e39e0225775c176a15722aab62d0f43657d5",
     "0edceb6ba49a109a40e14413b1fe88597c5a21d7",
-    "f57a3e2376d2960f0736973a99cc79216ab7f61a"
+    "f57a3e2376d2960f0736973a99cc79216ab7f61a",
+    "858d9e7f5ba17044bb03a9c2367f9541ce2b9acb"
   ],
   "historical_overlay_preserved": true,
   "deepwiki_reports_preserved": true,
@@ -100,15 +103,17 @@
     "187-R2-I05-005",
     "187-R2-I06-001"
   ],
-  "correction_overlay_sha256": "562bc742e05a980a5e88b41fc987738416b971f8deb20ff59027b6a748c76ae0",
+  "correction_overlay_sha256": "f36c9874ec60a27b1de6c57cf89b808d7528ac5ec8b9e70c60d09d981aa3d300",
   "current_disposition_counts": {
     "SATISFIED_BY_ROUND4": 8,
     "CONFIRMED": 10,
     "SATISFIED_BY_ROUND3": 13,
-    "REFUTED": 12,
+    "R4.1-CORRECTION-DEDICATED": 1,
     "CONFIRMED_FIXED": 60,
-    "PENDING_REVALIDATION": 161
+    "REFUTED": 11,
+    "PENDING_REVALIDATION": 160,
+    "Revisit only if fetchAsset semantic marker contract changes": 1
   },
-  "current_head": "e2382f970dd4b7f7f889412fba80a1a755213e9e",
-  "last_updated": "2026-09-13T06:45:00Z"
+  "current_head": "858d9e7f5ba17044bb03a9c2367f9541ce2b9acb",
+  "last_updated": "2026-09-13T00:15:10.983896Z"
 }
