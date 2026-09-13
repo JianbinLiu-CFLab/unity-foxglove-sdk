@@ -1,0 +1,13 @@
+I01-019 direct source-level RED/GREEN transaction
+source: Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs
+source_original_sha256: 3aa0f6a68c2e70148e1f5051e9ffdb13cd7bb01b83181a91f7476544674265ca
+source_modified_sha256: db89a50d5cbb392e0dc6874dc384349e6d175cfd8e1161c07446c58068785af3
+RED command: python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_mcap_preflight_rejects_malformed_manifest_hash_identity
+RED literal output/result: FAIL; AssertionError: IsValidFoxRunHash not found
+RED exit_status: 1
+GREEN command: python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_mcap_preflight_rejects_malformed_manifest_hash_identity Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_mcap_preflight_binds_latest_completion_and_clears_stale_evidence Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_latest_recording_scan_is_streaming_and_cancellable
+GREEN literal output/result: Ran 3 tests ... OK
+GREEN exit_status: 0
+controls: existing replay ownership and streaming scan tests passed in same focused suite
+rollback_command: bash ROLLBACK.sh
+rollback_result: ROLLBACK_OK; ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true
