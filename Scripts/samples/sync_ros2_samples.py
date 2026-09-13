@@ -143,31 +143,42 @@ def compare_roots(package_root: Path, imported_root: Path) -> list[Drift]:
 def apply_sync(package_root: Path, imported_root: Path, drift: list[Drift]) -> None:
     """Copy package-owned sample files for every fixable drift entry."""
 
-    for item in drift:
-        if item.kind == "extra imported":
-            continue
-        package_file = package_root / item.path
-        imported_file = imported_root / item.path
-        imported_file.parent.mkdir(parents=True, exist_ok=True)
-        # Unity's asset importer uses timestamps as part of change detection.
-        # Do not preserve a package source timestamp that can predate the
-        # currently cached imported asset. Replace through a sibling temporary
-        # file because Windows sync providers can reject truncating a tracked
-        # file in place even when replacing that file is supported.
-        with tempfile.NamedTemporaryFile(
-            dir=imported_file.parent,
-            prefix=f".{imported_file.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-        try:
-            shutil.copyfile(package_file, temporary_path)
-            if imported_file.exists():
-                shutil.copymode(imported_file, temporary_path)
-            os.replace(temporary_path, imported_file)
-        finally:
-            temporary_path.unlink(missing_ok=True)
+    destinations = [imported_root / item.path for item in drift if item.kind != "extra imported"]
+    snapshots = {dst: (dst.exists(), dst.read_bytes() if dst.exists() else b"") for dst in destinations}
+    try:
+        for item in drift:
+            if item.kind == "extra imported":
+                continue
+            package_file = package_root / item.path
+            imported_file = imported_root / item.path
+            imported_file.parent.mkdir(parents=True, exist_ok=True)
+            # Unity's asset importer uses timestamps as part of change detection.
+            # Do not preserve a package source timestamp that can predate the
+            # currently cached imported asset. Replace through a sibling temporary
+            # file because Windows sync providers can reject truncating a tracked
+            # file in place even when replacing that file is supported.
+            with tempfile.NamedTemporaryFile(
+                dir=imported_file.parent,
+                prefix=f".{imported_file.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+            try:
+                shutil.copyfile(package_file, temporary_path)
+                if imported_file.exists():
+                    shutil.copymode(imported_file, temporary_path)
+                os.replace(temporary_path, imported_file)
+            finally:
+                temporary_path.unlink(missing_ok=True)
+    except Exception:
+        for dst, (existed, payload) in snapshots.items():
+            if existed:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_bytes(payload)
+            elif dst.exists():
+                dst.unlink()
+        raise
 
 
 def blocking_drift_after_apply(drift: list[Drift]) -> list[Drift]:

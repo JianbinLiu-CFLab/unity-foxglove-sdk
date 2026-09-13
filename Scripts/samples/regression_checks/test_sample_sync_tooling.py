@@ -280,6 +280,29 @@ class SampleSyncToolingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.validate_portable_full_demo_scene_payload(payload)
 
+    def test_copy_pairs_transaction_restores_prior_destinations_on_failure(self) -> None:
+        """A failed multi-file sync must not leave a mixed destination tree."""
+        module = load_module("sync_full_demo_transaction_under_test", "Scripts/samples/sync_full_demo.py")
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            src1, src2 = root / "src1", root / "src2"
+            dst1, dst2 = root / "dst1", root / "dst2"
+            src1.write_text("new1", encoding="utf-8"); src2.write_text("new2", encoding="utf-8")
+            dst1.write_text("old1", encoding="utf-8"); dst2.write_text("old2", encoding="utf-8")
+            original = module.copy_file
+            calls = 0
+            def fail_second(src, dst, dry_run):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise OSError("injected copy failure")
+                return original(src, dst, dry_run)
+            with mock.patch.object(module, "copy_file", side_effect=fail_second):
+                with self.assertRaises(OSError):
+                    module.copy_pairs_transaction([(src1, dst1), (src2, dst2)], False)
+            self.assertEqual("old1", dst1.read_text(encoding="utf-8"))
+            self.assertEqual("old2", dst2.read_text(encoding="utf-8"))
+
     def test_full_demo_scene_sanitizes_only_foxglove_manager_component(self) -> None:
         """A same-named field on another component must remain untouched."""
         module = load_module("sync_full_demo_scope_under_test", "Scripts/samples/sync_full_demo.py")

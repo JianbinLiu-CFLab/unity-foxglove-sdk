@@ -135,13 +135,24 @@ def apply_sync(
 ) -> None:
     """Copy package-owned missing or changed files into the imported sample."""
 
-    for item in drift:
-        if item.kind == "extra imported":
-            continue
-        source = package_root / item.path
-        if not source.is_file():
-            raise FileNotFoundError(source)
-        _atomic_copy(source, imported_root / item.path)
+    destinations = [imported_root / item.path for item in drift if item.kind != "extra imported"]
+    snapshots = {dst: (dst.exists(), dst.read_bytes() if dst.exists() else b"") for dst in destinations}
+    try:
+        for item in drift:
+            if item.kind == "extra imported":
+                continue
+            source = package_root / item.path
+            if not source.is_file():
+                raise FileNotFoundError(source)
+            _atomic_copy(source, imported_root / item.path)
+    except Exception:
+        for dst, (existed, payload) in snapshots.items():
+            if existed:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_bytes(payload)
+            elif dst.exists():
+                dst.unlink()
+        raise
 
 
 def capture_generated_scene(package_root: Path, imported_root: Path) -> None:
