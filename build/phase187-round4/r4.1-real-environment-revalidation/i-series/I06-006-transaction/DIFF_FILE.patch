@@ -1,0 +1,104 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
+index c2dfe8472..09a739016 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
+@@ -425,30 +425,69 @@ class Program
+ 
+         var originalOut = Console.Out;
+         var originalError = Console.Error;
++        var originalOutNewLine = originalOut.NewLine;
++        var originalErrorNewLine = originalError.NewLine;
+         var classifiedOut = TextWriter.Synchronized(
+             new ValidationEvidenceTextWriter(originalOut, validation.Evidence));
+         var classifiedError = TextWriter.Synchronized(
+             new ValidationEvidenceTextWriter(originalError, validation.Evidence));
+-
++        var exitCode = 1;
++        Exception primaryFailure = null;
++        Exception cleanupFailure = null;
+         try
+         {
+             Console.SetOut(classifiedOut);
+             Console.SetError(classifiedError);
+             validation.Run();
+             Console.WriteLine($"\n{validation.Name} checks passed.");
+-            return 0;
++            exitCode = 0;
+         }
+         catch (Exception ex)
+         {
+-            Console.Error.WriteLine($"\n[FAIL] {validation.Name}: {ex.Message}");
+-            return 1;
++            primaryFailure = ex;
++            try
++            {
++                originalError.WriteLine($"\n[FAIL] {validation.Name}: {ex.Message}");
++            }
++            catch (Exception writeFailure)
++            {
++                cleanupFailure = writeFailure;
++            }
+         }
+         finally
+         {
+-            classifiedOut.Flush();
+-            classifiedError.Flush();
+-            Console.SetOut(originalOut);
+-            Console.SetError(originalError);
++            TryCleanup(() => classifiedOut.Flush(), ref cleanupFailure);
++            TryCleanup(() => classifiedError.Flush(), ref cleanupFailure);
++            TryCleanup(() => originalOut.NewLine = originalOutNewLine, ref cleanupFailure);
++            TryCleanup(() => originalError.NewLine = originalErrorNewLine, ref cleanupFailure);
++            TryCleanup(() => Console.SetOut(originalOut), ref cleanupFailure);
++            TryCleanup(() => Console.SetError(originalError), ref cleanupFailure);
++            if (cleanupFailure != null && primaryFailure == null)
++            {
++                exitCode = 1;
++                try
++                {
++                    originalError.WriteLine($"[FAIL] {validation.Name}: console cleanup failed: {cleanupFailure.Message}");
++                }
++                catch
++                {
++                    // The original error stream itself is unavailable; retain the non-zero status.
++                }
++            }
++        }
++
++        return exitCode;
++    }
++
++    private static void TryCleanup(Action cleanup, ref Exception firstFailure)
++    {
++        try
++        {
++            cleanup();
++        }
++        catch (Exception ex)
++        {
++            firstFailure ??= ex;
+         }
+     }
+ 
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs b/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
+index e99c022ff..172c820bd 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
+@@ -111,6 +111,17 @@ namespace Unity.FoxgloveSDK.UnitTests
+             Assert.Contains("GetILAsByteArray", source, StringComparison.Ordinal);
+         }
+ 
++        [Fact]
++        public void RunValidationRestoresConsoleStateWithIndependentCleanup()
++        {
++            var source = LoadProgramTree().GetText().ToString();
++
++            Assert.Contains("TryCleanup(() => classifiedOut.Flush()", source, StringComparison.Ordinal);
++            Assert.Contains("TryCleanup(() => classifiedError.Flush()", source, StringComparison.Ordinal);
++            Assert.Contains("originalOut.NewLine = originalOutNewLine", source, StringComparison.Ordinal);
++            Assert.Contains("originalError.NewLine = originalErrorNewLine", source, StringComparison.Ordinal);
++        }
++
+         [Fact]
+         public async Task ServeRejectsConflictingValidationSelector()
+         {

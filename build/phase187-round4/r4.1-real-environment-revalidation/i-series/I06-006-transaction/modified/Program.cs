@@ -1,0 +1,1066 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Runtime
+// Purpose: Test runner entry point - discovers and executes all Phase validation tests.
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using Newtonsoft.Json;
+using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Tests;
+
+/// <summary>Console entry point for runtime validation and manual smoke servers.</summary>
+class Program
+{
+    private static readonly (string Flag, string Category, string Name)[] LegacyToolFlags =
+    {
+        ("--phase97-health", "Tool", "Phase 97 health report generator"),
+        ("--phase98-sample-send-all", "Tool", "Phase 98 all-schema sample sender"),
+        ("--phase98-live", "Tool", "Phase 98 live evidence generator"),
+        ("--phase99-live", "Tool", "Phase 99 release evidence generator"),
+        ("--phase94-bridge-send", "Tool", "Phase 94 bridge sender smoke"),
+        ("--phase91-ros2-cdr-mcap", "Tool", "Phase 91 ROS2 CDR MCAP generator"),
+        ("--phase92-ros2-product-mcap", "Tool", "Phase 92 ROS2 product MCAP generator"),
+        ("--phase93-ros2-full-mcap", "Tool", "Phase 93 ROS2 full-schema MCAP generator"),
+        ("--phase93-inspect-mcap", "Tool", "Phase 93 ROS2 full-schema MCAP inspector"),
+        ("--phase68-indexed-reader-smoke", "Tool", "Phase 68 indexed reader external MCAP smoke"),
+        ("--phase44-all-schemas-mcap", "Tool", "Phase 44 all-schema MCAP generator"),
+        ("--phase185-inspect-mcap", "Tool", "Phase185 typed MessagePack output MCAP inspector"),
+        ("--phase139b-remote-data-loader-server", "Manual", "Phase 139B remote data loader server"),
+    };
+
+    /// <summary>
+    /// Dispatches to test runner or interactive server mode based on
+    /// command-line arguments. <c>--serve</c> starts a manual test
+    /// server; default runs all validation phases.
+    /// </summary>
+    static int Main(string[] args)
+    {
+        try
+        {
+            return MainCore(args);
+        }
+        finally
+        {
+            TempMcapHelper.Cleanup();
+        }
+    }
+
+    private static int MainCore(string[] args)
+    {
+        var argList = args.ToList();
+        var argSet = new HashSet<string>(argList, StringComparer.Ordinal);
+
+        if (argList.Count(argument => string.Equals(argument, "--local-evidence", StringComparison.Ordinal)) > 1)
+        {
+            Console.Error.WriteLine("--local-evidence may be supplied only once.");
+            return 1;
+        }
+
+        if (argSet.Contains("--serve"))
+        {
+            string invalidServeArgument = null;
+            if (argList.Count(argument => argument == "--port") > 1)
+            {
+                Console.Error.WriteLine("--port may be supplied only once.");
+                return 1;
+            }
+            for (var index = 0; index < argList.Count; index++)
+            {
+                var argument = argList[index];
+                var allowed = argument == "--serve" || argument == "--demo" || argument == "--demo3d";
+                if (argument == "--port")
+                    allowed = index + 1 < argList.Count && int.TryParse(argList[index + 1], out _);
+                else if (index > 0 && argList[index - 1] == "--port")
+                    allowed = int.TryParse(argument, out _);
+                if (!allowed)
+                {
+                    invalidServeArgument = argument;
+                    break;
+                }
+            }
+            if (invalidServeArgument != null)
+            {
+                Console.Error.WriteLine("--serve cannot be combined with " + invalidServeArgument + ".");
+                return 1;
+            }
+
+            int port = 8765;
+            var portIdx = argList.IndexOf("--port");
+            if (portIdx >= 0 && portIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--port requires an integer.");
+                return 1;
+            }
+            if (portIdx >= 0)
+            {
+                if (!int.TryParse(argList[portIdx + 1], out port))
+                {
+                    Console.Error.WriteLine("--port must be an integer.");
+                    return 1;
+                }
+            }
+
+            var demo = argSet.Contains("--demo");
+            var demo3d = argSet.Contains("--demo3d");
+            if (demo && demo3d)
+            {
+                Console.Error.WriteLine("--demo and --demo3d cannot be used together.");
+                return 1;
+            }
+
+            if (IsCiEnvironment())
+            {
+                Console.Error.WriteLine("--serve is manual-only and is disabled when CI-like environment variables are set.");
+                return 1;
+            }
+
+            return RunServer(port, demo, demo3d);
+        }
+
+        if (argSet.Contains("--demo") || argSet.Contains("--demo3d"))
+        {
+            Console.Error.WriteLine("--demo and --demo3d require --serve.");
+            return 1;
+        }
+
+        if (argSet.Contains("--all-ci-safe"))
+        {
+            if (argList.Count != 1)
+            {
+                Console.Error.WriteLine("--all-ci-safe cannot be combined with other validation options.");
+                return 1;
+            }
+
+            return RunAllCiSafeValidations();
+        }
+
+        if (TryRunRegisteredValidation(argList, argSet, out var registeredValidationExitCode))
+            return registeredValidationExitCode;
+
+        if (argSet.Contains("--phase185-inspect-mcap"))
+            return RunPhase185MessagePackMcapInspector(argList);
+
+        if (argSet.Contains("--phase139b-remote-data-loader-server"))
+            return RunPhase139BRemoteDataLoaderServer(argList);
+
+        if (argSet.Contains("--phase97-health"))
+            return RunPhase97Health(argList, argSet);
+
+        var phase98SampleSendAllIdx = argList.IndexOf("--phase98-sample-send-all");
+        if (phase98SampleSendAllIdx >= 0)
+        {
+            if (phase98SampleSendAllIdx + 2 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase98-sample-send-all requires host and port.");
+                return 1;
+            }
+
+            if (!int.TryParse(argList[phase98SampleSendAllIdx + 2], out var port))
+            {
+                Console.Error.WriteLine("--phase98-sample-send-all port must be an integer.");
+                return 1;
+            }
+
+            return RunPhase98SampleSendAll(argList[phase98SampleSendAllIdx + 1], port);
+        }
+
+        if (argSet.Contains("--phase98-live"))
+            return RunPhase98Live(argList);
+
+        if (argSet.Contains("--phase99-live"))
+            return RunPhase99Live(argList);
+
+        var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
+        if (phase94BridgeSendIdx >= 0)
+        {
+            if (phase94BridgeSendIdx + 2 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase94-bridge-send requires host and port.");
+                return 1;
+            }
+
+            if (!int.TryParse(argList[phase94BridgeSendIdx + 2], out var port))
+            {
+                Console.Error.WriteLine("--phase94-bridge-send port must be an integer.");
+                return 1;
+            }
+
+            return RunPhase94BridgeSend(argList[phase94BridgeSendIdx + 1], port);
+        }
+
+        var phase91McapIdx = argList.IndexOf("--phase91-ros2-cdr-mcap");
+        if (phase91McapIdx >= 0)
+        {
+            if (phase91McapIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase91-ros2-cdr-mcap requires an output path.");
+                return 1;
+            }
+
+            return RunPhase91Ros2CdrMcap(argList[phase91McapIdx + 1]);
+        }
+
+        var phase92McapIdx = argList.IndexOf("--phase92-ros2-product-mcap");
+        if (phase92McapIdx >= 0)
+        {
+            if (phase92McapIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase92-ros2-product-mcap requires an output path.");
+                return 1;
+            }
+
+            return RunPhase92Ros2ProductMcap(argList[phase92McapIdx + 1]);
+        }
+
+        var phase93McapIdx = argList.IndexOf("--phase93-ros2-full-mcap");
+        if (phase93McapIdx >= 0)
+        {
+            if (phase93McapIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase93-ros2-full-mcap requires an output path.");
+                return 1;
+            }
+
+            return RunPhase93Ros2FullMcap(argList[phase93McapIdx + 1]);
+        }
+
+        var phase93InspectIdx = argList.IndexOf("--phase93-inspect-mcap");
+        if (phase93InspectIdx >= 0)
+        {
+            if (phase93InspectIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase93-inspect-mcap requires an input path.");
+                return 1;
+            }
+
+            return RunPhase93InspectMcap(argList[phase93InspectIdx + 1]);
+        }
+
+        var phase68SmokeIdx = argList.IndexOf("--phase68-indexed-reader-smoke");
+        if (phase68SmokeIdx >= 0)
+            return RunPhase68IndexedReaderSmoke(argList, phase68SmokeIdx);
+
+        var phase44McapIdx = argList.IndexOf("--phase44-all-schemas-mcap");
+        if (phase44McapIdx >= 0)
+        {
+            if (phase44McapIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--phase44-all-schemas-mcap requires an output path.");
+                return 1;
+            }
+
+            try
+            {
+                Phase44Validation.GenerateAllSchemasMcap(argList[phase44McapIdx + 1]);
+                Console.WriteLine($"Phase 44 all-schema smoke MCAP written: {argList[phase44McapIdx + 1]}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to generate Phase 44 all-schema smoke MCAP: {ex.Message}");
+                return 1;
+            }
+        }
+        var unknownFlag = argList.FirstOrDefault(IsUnknownDefaultFlag);
+        if (unknownFlag != null)
+        {
+            Console.Error.WriteLine("Unknown validation flag: " + unknownFlag);
+            return 1;
+        }
+
+        return RunTests(argSet.Contains("--local-evidence"));
+    }
+
+    private static int RunPhase185MessagePackMcapInspector(IReadOnlyList<string> arguments)
+    {
+        try
+        {
+            var values = new Dictionary<string, string>(StringComparer.Ordinal);
+            var allowed = new HashSet<string>(
+                new[]
+                {
+                    "--phase185-inspect-mcap",
+                    "--expected-probe-report",
+                    "--output"
+                },
+                StringComparer.Ordinal);
+
+            for (var index = 0; index < arguments.Count; index += 2)
+            {
+                var flag = arguments[index];
+                if (!allowed.Contains(flag))
+                    throw new ArgumentException("Unexpected Phase185 inspector argument: " + flag);
+                if (index + 1 >= arguments.Count
+                    || arguments[index + 1].StartsWith("--", StringComparison.Ordinal))
+                {
+                    throw new ArgumentException(flag + " requires exactly one path value.");
+                }
+                if (!values.TryAdd(flag, arguments[index + 1]))
+                    throw new ArgumentException(flag + " may be supplied only once.");
+            }
+
+            foreach (var flag in allowed)
+                if (!values.ContainsKey(flag))
+                    throw new ArgumentException("Missing required Phase185 inspector option: " + flag);
+
+            return FoxRunMessagePackMcapInspector.RunCommand(
+                values["--phase185-inspect-mcap"],
+                values["--expected-probe-report"],
+                values["--output"]);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine("Phase185 MessagePack MCAP inspector argument failure: " + exception.Message);
+            return 1;
+        }
+    }
+
+    private static bool TryRunRegisteredValidation(List<string> argList, IReadOnlyCollection<string> argSet, out int exitCode)
+    {
+        if (argSet.Contains("--list-validations"))
+        {
+            if (argList.Count != 1 || !string.Equals(argList[0], "--list-validations", StringComparison.Ordinal))
+            {
+                Console.Error.WriteLine("--list-validations cannot be combined with other arguments.");
+                exitCode = 1;
+                return true;
+            }
+
+            foreach (var validation in PhaseValidationRegistry.All)
+            {
+                var flags = string.Join(", ", validation.AllFlags());
+                if (string.IsNullOrEmpty(flags))
+                    flags = "(default only)";
+                Console.WriteLine(
+                    $"{flags} [{validation.Category}] {ValidationEvidenceFormatter.Format(validation.Evidence)} {validation.Name}");
+            }
+            foreach (var tool in LegacyToolFlags)
+                Console.WriteLine($"{tool.Flag} [{tool.Category}] {tool.Name}");
+
+            exitCode = 0;
+            return true;
+        }
+
+        var selected = PhaseValidationRegistry.FindAll(argList).ToList();
+        if (selected.Count == 0)
+        {
+            exitCode = 0;
+            return false;
+        }
+
+        if (selected.Count > 1)
+        {
+            Console.Error.WriteLine(
+                "Multiple validation flags matched: " +
+                string.Join(", ", selected.Select(item => item.Name + " (" + string.Join("/", item.AllFlags()) + ")")));
+            exitCode = 1;
+            return true;
+        }
+
+        // A registered selector authenticates the complete argv. Reject
+        // unknown/positional tokens and duplicate aliases before invoking any
+        // validation delegate; otherwise FindAll could silently drop intent.
+        var acceptedFlags = new HashSet<string>(selected[0].AllFlags(), StringComparer.Ordinal)
+        {
+            "--local-evidence"
+        };
+        var suppliedFlags = argList.Where(argument => argument.StartsWith("--", StringComparison.Ordinal)).ToList();
+        var invalidToken = argList.FirstOrDefault(argument => !acceptedFlags.Contains(argument));
+        if (invalidToken != null)
+        {
+            Console.Error.WriteLine("Unexpected validation argument: " + invalidToken);
+            exitCode = 1;
+            return true;
+        }
+
+        var selectorOccurrences = suppliedFlags.Count(argument => acceptedFlags.Contains(argument) && argument != "--local-evidence");
+        if (selectorOccurrences != 1)
+        {
+            Console.Error.WriteLine("Validation selector must be supplied exactly once.");
+            exitCode = 1;
+            return true;
+        }
+
+        exitCode = RunValidation(selected[0]);
+        return true;
+    }
+
+    private static bool IsUnknownDefaultFlag(string arg)
+    {
+        return arg.StartsWith("--", StringComparison.Ordinal)
+            && !string.Equals(arg, "--local-evidence", StringComparison.Ordinal)
+            && !string.Equals(arg, "--all-ci-safe", StringComparison.Ordinal);
+    }
+
+    private static bool IsCiEnvironment()
+    {
+        foreach (var name in new[] { "CI", "GITHUB_ACTIONS", "TF_BUILD", "BUILD_BUILDID" })
+        {
+            var value = Environment.GetEnvironmentVariable(name);
+            if (!string.IsNullOrWhiteSpace(value)
+                && !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(value, "0", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static int RunValidation(PhaseValidationCase validation)
+    {
+        var methodBody = validation.Run?.Method.GetMethodBody()?.GetILAsByteArray();
+        if (methodBody == null || methodBody.Length <= 1)
+        {
+            Console.Error.WriteLine($"[FAIL] {validation.Name}: validation delegate has no executable body.");
+            return 1;
+        }
+
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        var originalOutNewLine = originalOut.NewLine;
+        var originalErrorNewLine = originalError.NewLine;
+        var classifiedOut = TextWriter.Synchronized(
+            new ValidationEvidenceTextWriter(originalOut, validation.Evidence));
+        var classifiedError = TextWriter.Synchronized(
+            new ValidationEvidenceTextWriter(originalError, validation.Evidence));
+        var exitCode = 1;
+        Exception primaryFailure = null;
+        Exception cleanupFailure = null;
+        try
+        {
+            Console.SetOut(classifiedOut);
+            Console.SetError(classifiedError);
+            validation.Run();
+            Console.WriteLine($"\n{validation.Name} checks passed.");
+            exitCode = 0;
+        }
+        catch (Exception ex)
+        {
+            primaryFailure = ex;
+            try
+            {
+                originalError.WriteLine($"\n[FAIL] {validation.Name}: {ex.Message}");
+            }
+            catch (Exception writeFailure)
+            {
+                cleanupFailure = writeFailure;
+            }
+        }
+        finally
+        {
+            TryCleanup(() => classifiedOut.Flush(), ref cleanupFailure);
+            TryCleanup(() => classifiedError.Flush(), ref cleanupFailure);
+            TryCleanup(() => originalOut.NewLine = originalOutNewLine, ref cleanupFailure);
+            TryCleanup(() => originalError.NewLine = originalErrorNewLine, ref cleanupFailure);
+            TryCleanup(() => Console.SetOut(originalOut), ref cleanupFailure);
+            TryCleanup(() => Console.SetError(originalError), ref cleanupFailure);
+            if (cleanupFailure != null && primaryFailure == null)
+            {
+                exitCode = 1;
+                try
+                {
+                    originalError.WriteLine($"[FAIL] {validation.Name}: console cleanup failed: {cleanupFailure.Message}");
+                }
+                catch
+                {
+                    // The original error stream itself is unavailable; retain the non-zero status.
+                }
+            }
+        }
+
+        return exitCode;
+    }
+
+    private static void TryCleanup(Action cleanup, ref Exception firstFailure)
+    {
+        try
+        {
+            cleanup();
+        }
+        catch (Exception ex)
+        {
+            firstFailure ??= ex;
+        }
+    }
+
+    private static int RunPhase68IndexedReaderSmoke(List<string> argList, int optionIndex)
+    {
+        if (optionIndex + 1 >= argList.Count)
+        {
+            Console.Error.WriteLine("--phase68-indexed-reader-smoke requires an MCAP path.");
+            return 1;
+        }
+
+        try
+        {
+            var topics = CollectOptionValues(argList, "--phase68-topic");
+            var maxMessages = ReadIntOption(argList, "--phase68-max-messages", 5);
+            var minMessages = ReadIntOption(argList, "--phase68-min-messages", 1);
+
+            Phase68Validation.ValidateExternalMcapSmoke(
+                argList[optionIndex + 1],
+                topics,
+                maxMessages,
+                minMessages);
+            Console.WriteLine("\nPhase 68 indexed reader smoke passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static List<string> CollectOptionValues(List<string> argList, string option)
+    {
+        var values = new List<string>();
+        for (var i = 0; i < argList.Count; i++)
+        {
+            if (argList[i] != option)
+                continue;
+
+            if (i + 1 >= argList.Count)
+                throw new ArgumentException($"{option} requires a value.");
+
+            values.Add(argList[i + 1]);
+            i++;
+        }
+
+        return values;
+    }
+
+    private static int ReadIntOption(List<string> argList, string option, int defaultValue)
+    {
+        var idx = argList.IndexOf(option);
+        if (idx < 0)
+            return defaultValue;
+
+        if (idx + 1 >= argList.Count)
+            throw new ArgumentException($"{option} requires an integer value.");
+
+        if (!int.TryParse(argList[idx + 1], out var value))
+            throw new ArgumentException($"{option} requires an integer value.");
+
+        return value;
+    }
+
+    private static string ReadStringOption(List<string> argList, string option, string defaultValue)
+    {
+        var idx = argList.IndexOf(option);
+        if (idx < 0)
+            return defaultValue;
+
+        if (idx + 1 >= argList.Count)
+            throw new ArgumentException($"{option} requires a value.");
+
+        return argList[idx + 1];
+    }
+
+    private static int RunPhase91Ros2CdrMcap(string outputPath)
+    {
+        try
+        {
+            Phase91Validation.GenerateRos2CdrMcap(outputPath);
+            Console.WriteLine($"Phase 91 ROS2 CDR MCAP written: {outputPath}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase92Ros2ProductMcap(string outputPath)
+    {
+        try
+        {
+            Phase92Validation.GenerateRos2ProductMcap(outputPath);
+            Console.WriteLine($"Phase 92 ROS2 product MCAP written: {outputPath}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase93Ros2FullMcap(string outputPath)
+    {
+        try
+        {
+            Phase93Validation.GenerateRos2FullSchemaMcap(outputPath);
+            Console.WriteLine($"Phase 93 ROS2 full-schema MCAP written: {outputPath}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase93InspectMcap(string inputPath)
+    {
+        try
+        {
+            Phase93Validation.InspectRos2FullSchemaMcap(inputPath);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase94BridgeSend(string host, int port)
+    {
+        try
+        {
+            Phase94Validation.RunBridgeSendSmoke(host, port);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase97Health(List<string> argList, IReadOnlyCollection<string> argSet)
+    {
+        try
+        {
+            var jsonPath = ReadStringOption(argList, "--json", "");
+            if (string.IsNullOrWhiteSpace(jsonPath))
+            {
+                Console.Error.WriteLine("--phase97-health requires --json <path>.");
+                return 1;
+            }
+
+            var liveMode = argSet.Contains("--phase97-live")
+                || string.Equals(
+                    Environment.GetEnvironmentVariable("UNITY2FOXGLOVE_PHASE97_LIVE"),
+                    "1",
+                    StringComparison.Ordinal);
+            var ros2Path = ReadStringOption(argList, "--ros2", "");
+            var host = ReadStringOption(argList, "--host", "127.0.0.1");
+            var port = ReadIntOption(argList, "--port", 8767);
+            var report = Phase97Validation.GenerateHealthReport(jsonPath, liveMode, ros2Path, host, port);
+
+            Console.WriteLine($"Phase 97 health report written: {jsonPath}");
+            Console.WriteLine($"Summary: {report.Summary}");
+            if (liveMode && report.Summary != Unity2Foxglove.Ros2Bridge.Ros2BridgeHealthSummary.Ready)
+                return 1;
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase98SampleSendAll(string host, int port)
+    {
+        try
+        {
+            var summary = Phase98Validation.SendAllSchemaSamples(host, port);
+            Console.WriteLine($"[phase98] sent frames={summary.SentFrames} totalWireBytes={summary.TotalWireBytes}");
+            Console.WriteLine($"[phase98] firstSchema={summary.FirstSchema}");
+            Console.WriteLine($"[phase98] lastSchema={summary.LastSchema}");
+            Console.WriteLine("[phase98] PASS all-schema sample sender");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase98Live(List<string> argList)
+    {
+        try
+        {
+            var jsonPath = ReadStringOption(argList, "--json", "");
+            if (string.IsNullOrWhiteSpace(jsonPath))
+            {
+                Console.Error.WriteLine("--phase98-live requires --json <path>.");
+                return 1;
+            }
+
+            var ros2Path = ReadStringOption(argList, "--ros2", "");
+            var host = ReadStringOption(argList, "--host", "127.0.0.1");
+            var port = ReadIntOption(argList, "--port", 8767);
+            var evidence = Phase98Validation.GenerateLiveEvidence(jsonPath, host, port, ros2Path);
+
+            Console.WriteLine($"Phase 98 live evidence written: {jsonPath}");
+            Console.WriteLine($"Health: {evidence.HealthSummary}");
+            Console.WriteLine($"Product topics: {evidence.ProductTopics?.Length ?? 0}");
+            Console.WriteLine($"All-schema frames: {evidence.AllSchema?.SentFrames ?? 0}");
+            return string.Equals(evidence.HealthSummary, "Ready", StringComparison.Ordinal) ? 0 : 1;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int RunPhase99Live(List<string> argList)
+    {
+        try
+        {
+            var jsonPath = ReadStringOption(argList, "--json", "");
+            if (string.IsNullOrWhiteSpace(jsonPath))
+            {
+                Console.Error.WriteLine("--phase99-live requires --json <path>.");
+                return 1;
+            }
+
+            var evidenceDir = ReadStringOption(argList, "--evidence-dir", "");
+            var ros2Path = ReadStringOption(argList, "--ros2", "");
+            var host = ReadStringOption(argList, "--host", "127.0.0.1");
+            var port = ReadIntOption(argList, "--port", 8767);
+            var report = Phase99Validation.GenerateLiveReport(jsonPath, evidenceDir, host, port, ros2Path);
+
+            Console.WriteLine($"Phase 99 release gate report written: {jsonPath}");
+            Console.WriteLine($"Verdict: {report.Verdict}");
+            Console.WriteLine($"Evidence items: {report.Evidence?.Count ?? 0}");
+            return report.Verdict == Phase99Verdict.Blocked ? 1 : 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"\n[FAIL] {ex.Message}");
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// Runs all Phase validation classes sequentially and returns 0 only when
+    /// every selected validation succeeds. Every validation is executed so a
+    /// failure cannot hide the remaining default-lane results.
+    /// </summary>
+    static int RunTests(bool includeLocalEvidence)
+    {
+        Console.WriteLine(includeLocalEvidence
+            ? "=== FoxgloveSDK CI-safe + local evidence validation ===\n"
+            : "=== FoxgloveSDK CI-safe validation ===\n");
+
+        var validations = PhaseValidationRegistry.DefaultValidations(includeLocalEvidence).ToList();
+        var failures = CollectValidationFailures(
+            validations.Select(validation =>
+                (validation.Name, new Func<int>(() => RunValidation(validation)))));
+        var passed = validations.Count - failures.Count;
+        Console.WriteLine(
+            $"\nDefault validation coverage: passed={passed} failed={failures.Count} total={validations.Count}");
+        if (failures.Count == 0)
+        {
+            Console.WriteLine("All checks passed.");
+            return 0;
+        }
+
+        Console.Error.WriteLine("Failed default validations: " + string.Join("; ", failures));
+        return 1;
+    }
+
+    /// <summary>
+    /// Executes every supplied validation and returns the names of all entries
+    /// that report a non-zero result. Kept as a small seam so the default-runner
+    /// no-early-return contract can be verified without launching the full lane.
+    /// </summary>
+    internal static List<string> CollectValidationFailures(
+        IEnumerable<(string Name, Func<int> Run)> validations)
+    {
+        if (validations == null)
+            throw new ArgumentNullException(nameof(validations));
+
+        var failures = new List<string>();
+        foreach (var validation in validations)
+        {
+            if (validation.Run() != 0)
+                failures.Add(validation.Name);
+        }
+
+        return failures;
+    }
+
+    /// <summary>
+    /// Runs every registry entry classified as CI-safe and collects all
+    /// failures before returning. The fast default sweep intentionally omits
+    /// some expensive or historical selectors; this explicit gate makes that
+    /// coverage visible and prevents the first failure from hiding later ones.
+    /// </summary>
+    private static int RunAllCiSafeValidations()
+    {
+        var validations = PhaseValidationRegistry.CiSafeValidations().ToList();
+        var failures = new List<string>();
+
+        Console.WriteLine("=== FoxgloveSDK all CI-safe validation registry ===\n");
+        foreach (var validation in validations)
+        {
+            if (RunValidation(validation) != 0)
+                failures.Add(validation.Name);
+        }
+
+        var passed = validations.Count - failures.Count;
+        Console.WriteLine(
+            $"\nCI-safe registry coverage: passed={passed} failed={failures.Count} total={validations.Count}");
+        if (failures.Count == 0)
+        {
+            Console.WriteLine("All CI-safe validations passed.");
+            return 0;
+        }
+
+        Console.Error.WriteLine("Failed CI-safe validations: " + string.Join("; ", failures));
+        return 1;
+    }
+
+    /// <summary>Runs the manual Phase139B loopback server used by browser and Python acceptance probes.</summary>
+    private static int RunPhase139BRemoteDataLoaderServer(List<string> args)
+    {
+        var mcapPath = ValueAfter(args, "--mcap");
+        if (string.IsNullOrEmpty(mcapPath))
+        {
+            Console.Error.WriteLine("--phase139b-remote-data-loader-server requires --mcap PATH.");
+            return 1;
+        }
+
+        var port = 8876;
+        var portValue = ValueAfter(args, "--port");
+        if (!string.IsNullOrEmpty(portValue) && !int.TryParse(portValue, out port))
+        {
+            Console.Error.WriteLine("--port must be an integer.");
+            return 1;
+        }
+
+        var maxDataBytes = RemoteMcapDataSourcePrototype.DefaultMaxInMemoryDataBytes;
+        var maxDataBytesValue = ValueAfter(args, "--max-data-bytes");
+        if (!string.IsNullOrEmpty(maxDataBytesValue) && !long.TryParse(maxDataBytesValue, out maxDataBytes))
+        {
+            Console.Error.WriteLine("--max-data-bytes must be an integer.");
+            return 1;
+        }
+
+        var options = new RemoteMcapHttpOptions
+        {
+            Host = ValueAfter(args, "--host") ?? "127.0.0.1",
+            Port = port,
+            McapPath = mcapPath,
+            SourceId = ValueAfter(args, "--source-id") ?? "local-mcap",
+            ManifestName = ValueAfter(args, "--name") ?? "Unity2Foxglove MCAP",
+            RequiredBearerToken = ValueAfter(args, "--token") ?? string.Empty,
+            MaxInMemoryDataBytes = maxDataBytes
+        };
+
+        using (var server = RemoteMcapHttpServer.Start(options))
+        {
+            var ready = JsonConvert.SerializeObject(new
+            {
+                baseUrl = server.BaseUrl,
+                manifestUrl = server.BaseUrl + "/v1/manifest",
+                dataUrl = server.BaseUrl + options.DataRoute,
+                remoteFileUrl = server.BaseUrl + options.DirectFileRoute
+            });
+            Console.WriteLine("PHASE139B_SERVER_READY=" + ready);
+            Console.Out.Flush();
+
+            using var done = new ManualResetEventSlim(false);
+            ConsoleCancelEventHandler handler = (_, e) =>
+            {
+                e.Cancel = true;
+                done.Set();
+            };
+            Console.CancelKeyPress += handler;
+            try
+            {
+                done.Wait();
+            }
+            finally
+            {
+                Console.CancelKeyPress -= handler;
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>Returns the command-line value immediately following a flag, or null when absent.</summary>
+    private static string ValueAfter(List<string> args, string flag)
+    {
+        var idx = args.IndexOf(flag);
+        return idx >= 0 && idx + 1 < args.Count
+            ? args[idx + 1]
+            : null;
+    }
+
+    /// <summary>
+    /// Starts a long-running Foxglove WebSocket server for manual
+    /// testing. <c>demo</c> publishes a heartbeat; <c>demo3d</c>
+    /// publishes FrameTransform and SceneUpdate.
+    /// </summary>
+    static int RunServer(int port, bool demo, bool demo3d)
+    {
+        Console.WriteLine($"=== FoxgloveSDK Manual Server Mode ===");
+        Console.WriteLine($"Starting on ws://127.0.0.1:{port}");
+
+        var runtime = new Unity.FoxgloveSDK.Core.FoxgloveRuntime();
+        Timer heartbeat = null;
+        Timer sceneTimer = null;
+        var stopping = 0;
+
+        try
+        {
+            runtime.Start("Unity Foxglove SDK", "127.0.0.1", port);
+
+            Console.WriteLine($"Server running. SessionId: {runtime.Session.SessionId}");
+            Console.WriteLine("Open Foxglove -> Open connection -> ws://127.0.0.1:{0}", port);
+
+            if (demo)
+            {
+                var ch = new AdvertiseChannel
+                {
+                    Id = 1,
+                    Topic = "/debug/heartbeat",
+                    Encoding = "json",
+                    SchemaName = "",
+                    Schema = ""
+                };
+                runtime.RegisterChannel(ch);
+                Console.WriteLine("Demo: registered /debug/heartbeat (1 Hz)");
+
+                long seq = 0;
+                heartbeat = new Timer(_ =>
+                {
+                    if (Volatile.Read(ref stopping) != 0)
+                        return;
+
+                    var nextSeq = (ulong)Interlocked.Increment(ref seq);
+                    var payload = new
+                    {
+                        seq = nextSeq,
+                        unixTimeNs = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000UL,
+                        message = "hello foxglove"
+                    };
+                    var json = JsonConvert.SerializeObject(payload);
+                    runtime.Publish(1, Encoding.UTF8.GetBytes(json));
+                }, null, 1000, 1000);
+            }
+
+            if (demo3d)
+            {
+                runtime.RegisterSchemaChannel(1, "/tf", "foxglove.FrameTransform");
+                runtime.RegisterSchemaChannel(2, "/scene", "foxglove.SceneUpdate");
+                Console.WriteLine("Demo3D: registered /tf (FrameTransform) and /scene (SceneUpdate) at 1 Hz");
+
+                long tfSeq = 0;
+                sceneTimer = new Timer(_ =>
+                {
+                    if (Volatile.Read(ref stopping) != 0)
+                        return;
+
+                    Interlocked.Increment(ref tfSeq);
+                    var unixNs = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000UL;
+                    var sec = unixNs / 1_000_000_000UL;
+                    var nsec = (uint)(unixNs % 1_000_000_000UL);
+
+                    var tf = new FrameTransformMessage
+                    {
+                        Timestamp = new FoxgloveTime { Sec = sec, Nsec = nsec },
+                        ParentFrameId = "unity_world",
+                        ChildFrameId = "phase3_cube_frame",
+                        Translation = new FoxgloveVector3 { X = 0, Y = 0, Z = 0 },
+                        Rotation = new FoxgloveQuaternion { X = 0, Y = 0, Z = 0, W = 1 }
+                    };
+                    runtime.PublishJson(1, tf, unixNs);
+
+                    var scene = new SceneUpdateMessage
+                    {
+                        Entities = new System.Collections.Generic.List<SceneEntity>
+                        {
+                            new SceneEntity
+                            {
+                                Id = "phase3_cube",
+                                FrameId = "phase3_cube_frame",
+                                Timestamp = new FoxgloveTime { Sec = sec, Nsec = nsec },
+                                Lifetime = new FoxgloveDuration(),
+                                Cubes = new System.Collections.Generic.List<CubePrimitive>
+                                {
+                                    new CubePrimitive
+                                    {
+                                        Pose = new FoxglovePose
+                                        {
+                                            Position = new FoxgloveVector3 { X = 0, Y = 0, Z = 0 },
+                                            Orientation = new FoxgloveQuaternion { X = 0, Y = 0, Z = 0, W = 1 }
+                                        },
+                                        Size = new FoxgloveVector3 { X = 1, Y = 1, Z = 1 },
+                                        Color = new FoxgloveColor { R = 0, G = 1, B = 0, A = 1 }
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    runtime.PublishJson(2, scene, unixNs);
+                }, null, 1000, 1000);
+            }
+
+            Console.WriteLine("Expected: connection succeeds, no topics listed.");
+            if (demo)
+                Console.WriteLine("Demo: /debug/heartbeat visible, subscribe to see messages.");
+            if (demo3d)
+            {
+                Console.WriteLine("Demo3D: /tf and /scene visible.");
+                Console.WriteLine("  Foxglove -> 3D panel -> select /scene -> green cube at origin.");
+            }
+            Console.WriteLine("Press Ctrl+C to stop...");
+
+            using var done = new ManualResetEventSlim(false);
+            ConsoleCancelEventHandler handler = (_, e) =>
+            {
+                e.Cancel = true;
+                done.Set();
+            };
+            Console.CancelKeyPress += handler;
+            try
+            {
+                done.Wait();
+            }
+            finally
+            {
+                Console.CancelKeyPress -= handler;
+            }
+            return 0;
+        }
+        finally
+        {
+            Console.WriteLine("\nStopping...");
+            Interlocked.Exchange(ref stopping, 1);
+            DisposeTimerAndWait(heartbeat);
+            DisposeTimerAndWait(sceneTimer);
+            runtime.Dispose();
+            Console.WriteLine("Server stopped.");
+        }
+    }
+
+    private static void DisposeTimerAndWait(Timer timer)
+    {
+        if (timer == null)
+            return;
+
+        using var disposed = new ManualResetEvent(false);
+        if (timer.Dispose(disposed))
+            disposed.WaitOne(TimeSpan.FromSeconds(5));
+    }
+}
