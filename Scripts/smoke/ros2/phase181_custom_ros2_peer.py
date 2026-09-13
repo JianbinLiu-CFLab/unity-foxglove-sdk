@@ -56,6 +56,9 @@ _PEER_BUILD_CACHE_FORMAT = "phase181-peer-build-v1"
 _PEER_BUILD_STALL_SECONDS = 1800.0
 _WORKER_STARTUP_TIMEOUT_SECONDS = 60.0
 _RUNTIME_SELECTION_STALL_SECONDS = 900.0
+_RUNTIME_SELECTION_MAX_SECONDS = 3600.0
+_RUNTIME_SELECTION_MAX_LOG_BYTES = 8 * 1024 * 1024
+_TOOLCHAIN_CAPTURE_MAX_BYTES = 64 * 1024
 _RUNTIME_SELECTION_PROGRESS_INTERVAL_SECONDS = 30.0
 _RUNTIME_SELECTION_READY_MARKER = "PHASE181_BATCH_RUNTIME_SELECTION_READY"
 _RUNTIME_SELECTION_EXECUTE_METHOD = (
@@ -101,24 +104,30 @@ def capture_windows_msvc_environment(base_environment: Mapping[str, str]) -> dic
     vswhere = pathlib.Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
     if not vswhere.is_file():
         raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Windows peer build requires the Visual Studio C++ x64 toolset.")
-    discovery = subprocess.run(
-        (
-            str(vswhere),
-            "-latest",
-            "-products",
-            "*",
-            "-requires",
-            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-            "-property",
-            "installationPath",
-        ),
-        shell=False,
-        capture_output=True,
-        text=True,
-        errors="replace",
-        env=dict(base_environment),
-        check=False,
-    )
+    try:
+        discovery = subprocess.run(
+            (
+                str(vswhere),
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property",
+                "installationPath",
+            ),
+            shell=False,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            env=dict(base_environment),
+            check=False,
+            timeout=60.0,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "Visual Studio discovery exceeded its bounded timeout.") from exc
+    if len(discovery.stdout or "") + len(discovery.stderr or "") > _TOOLCHAIN_CAPTURE_MAX_BYTES:
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "Visual Studio discovery exceeded its bounded output capacity.")
     roots = discovery.stdout.strip().splitlines()
     if discovery.returncode != 0 or not roots:
         raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Windows peer build requires the Visual Studio C++ x64 toolset.")
@@ -133,15 +142,21 @@ def capture_windows_msvc_environment(base_environment: Mapping[str, str]) -> dic
         f'"{comspec}" '
         f'/d /s /c call "{command}" -arch=x64 -host_arch=x64 >nul && set'
     )
-    result = subprocess.run(
-        command_line,
-        shell=False,
-        capture_output=True,
-        text=True,
-        errors="replace",
-        env=dict(base_environment),
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            command_line,
+            shell=False,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            env=dict(base_environment),
+            check=False,
+            timeout=60.0,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Visual Studio x64 tool activator exceeded its bounded timeout.") from exc
+    if len(result.stdout or "") + len(result.stderr or "") > _TOOLCHAIN_CAPTURE_MAX_BYTES:
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Visual Studio x64 tool activator exceeded its bounded output capacity.")
     if result.returncode != 0:
         raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Visual Studio x64 tool activator could not prepare a build environment.")
     allowed_names = {
@@ -380,6 +395,9 @@ def run_logged_owned_command(
                             returncode = process.wait(timeout=min(1.0, timeout_seconds))
                             break
                         except subprocess.TimeoutExpired:
+                            if log_stream.tell() > _RUNTIME_SELECTION_MAX_LOG_BYTES:
+                                _terminate_owned_child(process)
+                                raise PeerFailure(failure_code, "A helper-owned command exceeded its bounded log capacity.")
                             if not stream_output_is_stalled(last_output_at, time.monotonic(), timeout_seconds):
                                 continue
                             try:
@@ -1142,6 +1160,7 @@ def wait_for_runtime_selection_process(
     clock=None,
     sleep=None,
     terminate_process=None,
+    max_seconds: float | None = _RUNTIME_SELECTION_MAX_SECONDS,
 ) -> int:
     """Wait without a total-duration limit while Unity's owned selection log continues to make progress."""
 
@@ -1152,6 +1171,7 @@ def wait_for_runtime_selection_process(
     terminate = terminate_process or _terminate_owned_child
     last_signature = _runtime_selection_log_signature(selection_log)
     last_progress_at = now()
+    deadline = last_progress_at + max_seconds if max_seconds is not None else None
     next_progress_message_at = last_progress_at + _RUNTIME_SELECTION_PROGRESS_INTERVAL_SECONDS
 
     while True:
@@ -1160,6 +1180,15 @@ def wait_for_runtime_selection_process(
             return exit_code
 
         current_time = now()
+        if deadline is not None and current_time >= deadline:
+            terminate(process)
+            raise PeerFailure("FAIL_RUNTIME_SELECTION", "Unity Batch runtime selection exceeded its bounded total duration.")
+        try:
+            if selection_log.stat().st_size > _RUNTIME_SELECTION_MAX_LOG_BYTES:
+                terminate(process)
+                raise PeerFailure("FAIL_RUNTIME_SELECTION", "Unity Batch runtime selection exceeded its bounded log capacity.")
+        except FileNotFoundError:
+            pass
         signature = _runtime_selection_log_signature(selection_log)
         if signature != last_signature:
             last_signature = signature
@@ -2307,7 +2336,7 @@ def _terminate_owned_child(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
     if os.name == "nt":
-        subprocess.run(
+        result = subprocess.run(
             ["taskkill", "/PID", str(process.pid), "/T", "/F"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -2317,9 +2346,13 @@ def _terminate_owned_child(process: subprocess.Popen[str]) -> None:
         try:
             process.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
-            pass
+            raise PeerFailure("FAIL_PEER_CLEANUP", "Owned Windows process tree did not exit within the cleanup deadline.")
+        if result.returncode != 0 or process.poll() is None:
+            raise PeerFailure("FAIL_PEER_CLEANUP", "Owned Windows process tree could not be retired.")
         return
     protocol.terminate_owned_process(process)
+    if process.poll() is None:
+        raise PeerFailure("FAIL_PEER_CLEANUP", "Owned process could not be retired after bounded cleanup.")
 
 
 

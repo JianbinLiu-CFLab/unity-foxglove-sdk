@@ -243,10 +243,11 @@ def _temporary_short_workspace_root(request: CharacterizationRequest) -> Iterato
             errors="replace",
             check=False,
         )
-        if primary_error is None and (
-            cleanup.returncode != 0 or Path(mapped_drive + ":\\").exists()
-        ):
-            raise CharacterizationError("cleanup-short-windows-build-root")
+        if cleanup.returncode != 0 or Path(mapped_drive + ":\\").exists():
+            cleanup_error = CharacterizationError("cleanup-short-windows-build-root")
+            if primary_error is not None:
+                raise cleanup_error from primary_error
+            raise cleanup_error
 
 
 def build_colcon_command(

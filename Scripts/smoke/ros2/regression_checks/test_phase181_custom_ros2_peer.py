@@ -349,6 +349,48 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertEqual([], terminated)
 
+    def test_runtime_selection_enforces_absolute_deadline(self):
+        peer = load_peer_module()
+
+        class Process:
+            pid = 123
+            def poll(self):
+                return None
+
+        with temporary_directory("peer-deadline-") as temporary:
+            log = pathlib.Path(temporary) / "selection.log"
+            log.write_text("progress\n", encoding="utf-8")
+            clock = {"seconds": 0.0}
+            terminated = []
+            def now():
+                return clock["seconds"]
+            def sleep(_seconds):
+                clock["seconds"] = 10.0
+            with self.assertRaisesRegex(peer.PeerFailure, "bounded total duration"):
+                peer.wait_for_runtime_selection_process(
+                    Process(), log, profile_id="test", stall_seconds=300.0,
+                    clock=now, sleep=sleep,
+                    terminate_process=lambda process: terminated.append(process),
+                    max_seconds=5.0,
+                )
+            self.assertEqual(1, len(terminated))
+
+    def test_capture_windows_msvc_environment_rejects_timeout_and_output_flood(self):
+        peer = load_peer_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            vswhere = root / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+            vswhere.parent.mkdir(parents=True)
+            vswhere.write_bytes(b"")
+            with mock.patch.dict(peer.os.environ, {"ProgramFiles(x86)": temporary}, clear=False):
+                with mock.patch.object(peer.subprocess, "run", side_effect=subprocess.TimeoutExpired("vswhere", 60)):
+                    with self.assertRaisesRegex(peer.PeerFailure, "bounded timeout"):
+                        peer.capture_windows_msvc_environment({})
+                result = SimpleNamespace(stdout="x" * (peer._TOOLCHAIN_CAPTURE_MAX_BYTES + 1), stderr="", returncode=0)
+                with mock.patch.object(peer.subprocess, "run", return_value=result):
+                    with self.assertRaisesRegex(peer.PeerFailure, "output capacity"):
+                        peer.capture_windows_msvc_environment({})
+
     def test_editor_batch_is_an_explicit_opt_in_with_an_editor_path(self):
         """Verify Phase181 behavior: a named profile can opt into an owned Editor Batch launch."""
         peer = load_peer_module()
