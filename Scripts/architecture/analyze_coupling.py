@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -419,7 +420,18 @@ def write_output(payload: str, output: str | None) -> None:
         return
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(payload, encoding="utf-8")
+    temp_path = output_path.with_name(f".{output_path.name}.{os.getpid()}.tmp")
+    try:
+        with temp_path.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, output_path)
+    finally:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
     print(f"wrote {output_path}")
 
 

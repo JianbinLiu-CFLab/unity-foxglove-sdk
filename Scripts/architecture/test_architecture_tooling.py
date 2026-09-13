@@ -120,6 +120,17 @@ class ArchitectureToolingTests(unittest.TestCase):
         self.assertEqual(4, len(metrics))
         self.assertTrue(all(item.name == "<invalid-schema>" for item in metrics))
 
+    def test_write_output_publishes_complete_report_atomically(self) -> None:
+        """Output publication keeps the destination complete across replacement."""
+        module = load_module("analyze_coupling_atomic_output_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "report.json"
+            output.write_text("OLD-COMPLETE\n", encoding="utf-8")
+            module.write_output("NEW-COMPLETE\n", str(output))
+            self.assertEqual("NEW-COMPLETE\n", output.read_text(encoding="utf-8"))
+            self.assertFalse(any(output.parent.glob(".*.tmp")))
+
     def test_report_flags_root_developer_meta_as_a_private_boundary(self) -> None:
         """Architecture reporting must include a tracked root Developer.meta."""
         module = load_module(
