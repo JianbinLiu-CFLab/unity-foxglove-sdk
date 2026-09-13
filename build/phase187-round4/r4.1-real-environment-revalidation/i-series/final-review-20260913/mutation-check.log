@@ -1,0 +1,5 @@
+Scripts/smoke/foxrun/phase184_foxglove_cli_install.py 560775e981c531eb4d98969d58f42202dbc0148d02a3c40f681d96aa663d41b4
+Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs 14d1e99fc57b4f44248ebd3842cd0c848e97b651f0353bc9e6861c53a211cfac
+Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs f82df1668f6a4de2703d4347ab94738011779ecad0e5d7303ee75210fc613baa
+mutation_controls=I01-014 validator mutation-sensitive checks; I09-004 child-tree RED/GREEN
+adjudication=PASS

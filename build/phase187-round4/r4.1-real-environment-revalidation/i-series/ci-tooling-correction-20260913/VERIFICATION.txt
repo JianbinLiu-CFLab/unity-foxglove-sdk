@@ -1,0 +1,9 @@
+finding_id=CI-TOOLING-CORRECTION-20260913
+source_hashes=recorded in *.ORIGINAL_FILE; modified_hashes=recorded in *.MODIFIED_FILE
+RED: stale workflow checkout/provenance expectations and analyzer incremental dependency output caused focused failures; pre-fix run exit=1.
+GREEN: python -m unittest Scripts.smoke.foxrun.regression_checks.test_phase186_provenance (34 tests, exit=0); python -m unittest Scripts.release.regression_checks.test_release_tooling (160 tests, exit=0); python -m unittest Scripts.architecture.test_architecture_tooling (9 tests, exit=0); direct runtime phases 16, 134-32, 180 exit=0.
+controls: python -B Scripts/release/run_ci.py captured at ../final-ci-correction-20260913-final.log; runner exit=0 and literal All CI checks passed.; protected Unity files unchanged.
+rollback_command=bash ROLLBACK.sh
+rollback_exit=0
+rollback_output=ROLLBACK_OK; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true; ROLLBACK_NOOP
+rollback_status=verified on independent rollback-copy; live modified files remain unchanged

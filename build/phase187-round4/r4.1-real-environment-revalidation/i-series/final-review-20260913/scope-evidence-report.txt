@@ -1,0 +1,3 @@
+ROLE: scope/evidence
+COMMAND: python -B scope_check.py
+RESULT: PASS. Live correction overlay has 264 rows, no PENDING_REVALIDATION or CONFIRMED; all listed fix roots have quartet and rollback markers; protected dirty files remain outside changes.

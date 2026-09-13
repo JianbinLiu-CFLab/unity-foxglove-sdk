@@ -1,0 +1,6 @@
+ROLE: mutation/adversarial
+COMMANDS:
+- python -B I09-004-revalidation/red_probe.py (pre-fix RED exit 1; retained red_probe.exit)
+- python -B I09-004-revalidation/red_probe.py (post-fix GREEN exit 0; green.exit)
+- python -B mutation_check.py
+RESULT: PASS. Validator mutation-sensitive checks are present; Windows descendant mutation is killed by taskkill /T /F; controls retained.
