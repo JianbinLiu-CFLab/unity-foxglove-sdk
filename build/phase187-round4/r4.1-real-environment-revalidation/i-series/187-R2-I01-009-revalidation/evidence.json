@@ -1,7 +1,7 @@
 {
   "finding_id": "187-R2-I01-009",
   "source_anchor": "Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs",
-  "source_sha256": "db89a50d5cbb392e0dc6874dc384349e6d175cfd8e1161c07446c58068785af3",
+  "source_sha256": "14d1e99fc57b4f44248ebd3842cd0c848e97b651f0353bc9e6861c53a211cfac",
   "route": "R4.1_REAL_ENV_REVALIDATION",
   "entrypoint": "Unity 6000.3.14f1 source-level deterministic probe",
   "environment_probe": "direct source anchor + behavior matrix evidence",
