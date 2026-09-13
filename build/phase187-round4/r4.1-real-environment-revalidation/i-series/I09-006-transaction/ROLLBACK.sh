@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "$0")" && pwd)"; seed="$root/rollback-copy/phase186_bridge_capability_probe.py"; mod="$root/modified/phase186_bridge_capability_probe.py"; orig="$root/original/phase186_bridge_capability_probe.py"; out="$root/rollback-copy/restored.py"; seeded=$(cmp -s "$seed" "$mod" && echo true || echo false); cp "$orig" "$out"; restored=$(cmp -s "$out" "$orig" && echo true || echo false); live=$(cmp -s "$seed" "$mod" && echo true || echo false); printf "seeded_equals_modified=%s\nrestored_equals_original=%s\nlive_modified_remains=%s\nROLLBACK_OK\n" "$seeded" "$restored" "$live"; test "$seeded" = true -a "$restored" = true -a "$live" = true; printf "ROLLBACK_NOOP\n"
