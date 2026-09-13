@@ -146,16 +146,49 @@ def resolve_existing_path(path_text: str, description: str, workspace_root: path
 
 
 def infer_ros_distro(ros2_root: pathlib.Path) -> str:
-    """Infer the Windows ROS2 distro from the install path."""
+    """Infer the Windows ROS2 distro and authenticate an optional workspace marker."""
 
     root_text = str(ros2_root).lower()
+    path_distro = None
     if "humble" in root_text:
-        return "humble"
-    if "lyrical" in root_text:
-        return "lyrical"
-    if "jazzy" in root_text:
-        return "jazzy"
-    raise ValueError(f"Cannot infer ROS_DISTRO from ROS2 root path: {ros2_root}")
+        path_distro = "humble"
+    elif "lyrical" in root_text:
+        path_distro = "lyrical"
+    elif "jazzy" in root_text:
+        path_distro = "jazzy"
+    if path_distro is None:
+        raise ValueError(f"Cannot infer ROS_DISTRO from ROS2 root path: {ros2_root}")
+    marker_path = ros2_root / "pixi.toml"
+    if marker_path.is_file():
+        try:
+            marker_text = marker_path.read_text(encoding="utf-8", errors="replace")[:8192]
+        except OSError as exc:
+            raise ValueError(f"Cannot read ROS2 workspace identity marker: {marker_path}") from exc
+        marker_match = re.search(r'^\s*name\s*=\s*[\"\']pixi_ros2_(humble|jazzy|lyrical)[\"\']\s*$', marker_text, re.MULTILINE)
+        if marker_match is None:
+            raise ValueError(f"ROS2 workspace identity marker missing: {marker_path}")
+        marker_distro = marker_match.group(1)
+        if marker_distro != path_distro:
+            raise ValueError(
+                f"ROS2 workspace identity mismatch: path={path_distro} marker={marker_distro}"
+            )
+    return path_distro
+
+
+def _workspace_distro_marker(ros2_root: pathlib.Path) -> str | None:
+    """Read the bounded pixi workspace distro marker, if present."""
+    marker_path = ros2_root / "pixi.toml"
+    if not marker_path.is_file():
+        return None
+    text = marker_path.read_text(encoding="utf-8", errors="replace")[:8192]
+    match = re.search(
+        r'^\s*name\s*=\s*[\"\']pixi_ros2_(humble|jazzy|lyrical)[\"\']\s*$',
+        text,
+        re.MULTILINE,
+    )
+    if match is None:
+        raise ValueError(f"ROS2 workspace identity marker missing: {marker_path}")
+    return match.group(1)
 
 
 def ros2_opt_bin_paths(ros2_root: pathlib.Path) -> list[pathlib.Path]:
@@ -214,7 +247,17 @@ def build_ros_env(
     env["COLCON_PYTHON_EXECUTABLE"] = str(pixi / "python.exe")
     env["ROS_VERSION"] = "2"
     env["ROS_PYTHON_VERSION"] = "3"
-    env["ROS_DISTRO"] = ros_distro or infer_ros_distro(ros2_root)
+    inferred_distro = infer_ros_distro(ros2_root)
+    if ros_distro is None and _workspace_distro_marker(ros2_root) is None:
+        raise ValueError(
+            "ROS2 distro must be explicit when the root has no authenticated pixi workspace marker"
+        )
+    if ros_distro is not None and ros_distro.lower().strip() != inferred_distro:
+        raise ValueError(
+            f"ROS2 distro argument does not match authenticated root: "
+            f"argument={ros_distro} root={inferred_distro}"
+        )
+    env["ROS_DISTRO"] = ros_distro or inferred_distro
     env["ROS_DOMAIN_ID"] = str(domain_id) if domain_id is not None else "0"
     inherited_rmw = env.get("RMW_IMPLEMENTATION")
     if rmw_implementation is None and inherited_rmw and inherited_rmw != "rmw_fastrtps_cpp":
