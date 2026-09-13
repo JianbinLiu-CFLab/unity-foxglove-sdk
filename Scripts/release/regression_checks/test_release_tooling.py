@@ -1228,6 +1228,12 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("catch (Exception)", source)
         self.assertIn("return GetDefaultDir();", source)
 
+    def test_phase140_queue_stress_bounds_thread_joins(self) -> None:
+        """Concurrent queue validation must not hang indefinitely on a stalled worker."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase140_7Validation.cs").read_text(encoding="utf-8")
+        self.assertIn("producer.Join(TimeSpan.FromSeconds", source)
+        self.assertIn("consumer.Join(TimeSpan.FromSeconds", source)
+
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
         """The selector must execute exactly six pure unittest suites in locked order."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:

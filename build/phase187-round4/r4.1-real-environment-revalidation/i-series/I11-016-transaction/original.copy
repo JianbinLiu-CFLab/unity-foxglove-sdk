@@ -162,10 +162,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             producer.Start();
             consumer.Start();
-            if (!producer.Join(TimeSpan.FromSeconds(10)))
-                throw new TimeoutException("DropOldestBoundedQueue producer did not terminate within 10 seconds.");
-            if (!consumer.Join(TimeSpan.FromSeconds(10)))
-                throw new TimeoutException("DropOldestBoundedQueue consumer did not terminate within 10 seconds.");
+            producer.Join();
+            consumer.Join();
 
             Check(errors.Count == 0 && consumed > 0,
                 "140-7E-1: DropOldestBoundedQueue tolerates concurrent enqueue/dequeue stress");
