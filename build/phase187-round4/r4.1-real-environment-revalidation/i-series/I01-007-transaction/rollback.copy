@@ -258,19 +258,12 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (!string.IsNullOrEmpty(currentValue))
             {
-                try
-                {
-                    var abs = Path.IsPathRooted(currentValue)
-                        ? currentValue
-                        : Path.GetFullPath(Path.Combine(GetDefaultDir(), currentValue));
-                    var dir = isFile ? Path.GetDirectoryName(abs) : abs;
-                    if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-                        return dir;
-                }
-                catch (Exception)
-                {
-                    return GetDefaultDir();
-                }
+                var abs = Path.IsPathRooted(currentValue)
+                    ? currentValue
+                    : Path.GetFullPath(Path.Combine(GetDefaultDir(), currentValue));
+                var dir = isFile ? Path.GetDirectoryName(abs) : abs;
+                if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+                    return dir;
             }
 
             // Recording output and replay input both normally live under Recordings/.

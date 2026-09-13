@@ -1222,6 +1222,12 @@ class RunCiTests(unittest.TestCase):
         source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Manager" / "FoxgloveManagerEditor.Security.cs").read_text(encoding="utf-8")
         self.assertIn("FoxgloveManager.IsLoopbackHost(distributorHost)", source)
 
+    def test_editor_path_picker_tolerates_malformed_existing_value(self) -> None:
+        """Passive inspector rendering must survive malformed serialized paths."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Manager" / "FoxgloveManagerEditor.Helpers.cs").read_text(encoding="utf-8")
+        self.assertIn("catch (Exception)", source)
+        self.assertIn("return GetDefaultDir();", source)
+
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
         """The selector must execute exactly six pure unittest suites in locked order."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:
