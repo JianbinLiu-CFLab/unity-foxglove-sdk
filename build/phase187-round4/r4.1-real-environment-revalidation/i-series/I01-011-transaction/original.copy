@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.HelpBox("Select SecureWebSocket transport mode to enable WSS settings.", MessageType.Info);
 
             var distributorHost = GetString("_rootCaDistributorHost", "127.0.0.1");
-            if (!FoxgloveManager.IsLoopbackHost(distributorHost))
+            if (distributorHost != "127.0.0.1" && distributorHost != "localhost")
             {
                 EditorGUILayout.HelpBox(
                     "Root CA distributor is not bound to loopback. Only use this on trusted networks.",
