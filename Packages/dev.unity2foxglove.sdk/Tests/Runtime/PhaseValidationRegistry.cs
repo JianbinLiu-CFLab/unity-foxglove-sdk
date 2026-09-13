@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
         /// <summary>
         /// All validation definitions, including CI-safe and local evidence suites.
         /// </summary>
-        public static IReadOnlyList<PhaseValidationCase> All { get; } = new[]
+        public static IReadOnlyList<PhaseValidationCase> All { get; } = Array.AsReadOnly(new[]
         {
             DefaultOnly("Skeleton", SkeletonValidation.Validate),
             Ci("--phase1", "Phase 1: validates serverInfo delivery, session identity, real WebSocket connectivity, and subprotocol negotiation", Phase1Validation.Validate),
@@ -454,7 +454,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase141c", "FoxService DTO serialization analyzer", FoxServiceDtoSerializationAnalyzerValidation.Validate, includeInDefault: false),
             Ci("--phase141e", "FoxService editor schema polish", FoxServiceEditorSchemaPolishValidation.Validate, includeInDefault: false),
             Ci("--phase141f", "FoxService DTO graph walker convergence", FoxServiceDtoGraphWalkerConvergenceValidation.Validate, includeInDefault: false),
-        };
+        });
 
         private static readonly IReadOnlyDictionary<string, PhaseValidationCase> FlagIndex;
 

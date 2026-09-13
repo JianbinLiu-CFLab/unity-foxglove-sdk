@@ -123,6 +123,14 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ValidationRegistryPublishesReadOnlyBackingStorage()
+        {
+            var source = File.ReadAllText(ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs");
+
+            Assert.Contains("Array.AsReadOnly(new[]", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task ServeRejectsConflictingValidationSelector()
         {
             var result = await RunHarnessAsync(new[] { "--serve", "--phase163-57" }, timeoutMilliseconds: 20_000);
