@@ -381,6 +381,8 @@ private static void Next() { }
         public static void AssertConsolePhaseRemoved(string validationFile, string flag, string entryPoint)
         {
             Assert.DoesNotContain(validationFile, Runtime("FoxgloveSdk.Tests.csproj"), StringComparison.Ordinal);
+            var removedPath = Path.Combine(RepoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", validationFile);
+            Assert.False(File.Exists(removedPath), "Migrated console validation source still exists: " + removedPath);
             var registry = Runtime("PhaseValidationRegistry.cs");
             Assert.DoesNotContain("\"" + flag + "\"", registry, StringComparison.Ordinal);
             Assert.DoesNotContain(entryPoint, registry, StringComparison.Ordinal);
