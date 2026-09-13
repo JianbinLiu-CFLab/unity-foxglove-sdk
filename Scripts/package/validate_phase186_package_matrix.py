@@ -269,6 +269,7 @@ def validate_boundaries() -> list[str]:
 
     forbidden_by_root = (
         (sdk, bridge, "Unity2Foxglove.Ros2Bridge"),
+        (sdk, r2fu, "Unity2Foxglove.Ros2ForUnity"),
         (r2fu, bridge, "Unity2Foxglove.Ros2Bridge"),
         (bridge, r2fu, "Unity2Foxglove.Ros2ForUnity"),
     )

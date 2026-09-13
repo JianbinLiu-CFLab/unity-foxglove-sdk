@@ -352,6 +352,18 @@ class Phase186PackageMatrixTests(unittest.TestCase):
                             checked = self.validator.validate_boundaries()
                             self.assertIn("Packages/dev.unity2foxglove.ros2bridge/Bridge.asmdef", checked)
 
+                write_asmdef(
+                    sdk / "Sdk.asmdef",
+                    "Unity2Foxglove.Sdk",
+                    "66666666666666666666666666666666",
+                    ["Unity2Foxglove.Ros2ForUnity"],
+                )
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    r"Sdk\.asmdef references Unity2Foxglove\.Ros2ForUnity",
+                ):
+                    self.validator.validate_boundaries()
+
     def test_public_boundary_authenticates_the_complete_package_matrix(self) -> None:
         """The public matrix gate rejects identity, version, and dependency drift."""
 
