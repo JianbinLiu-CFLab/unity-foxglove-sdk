@@ -962,11 +962,15 @@ def _terminate_and_reap(process: subprocess.Popen[bytes]) -> None:
             # taskkill /T authenticates the root PID and tears down inherited
             # descendants before the root wait below releases its handles.
             with contextlib.suppress(OSError):
-                subprocess.run(
-                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                    check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                taskkill = os.path.join(
+                    os.environ.get("SystemRoot", r"C:\\Windows"),
+                    "System32",
+                    "taskkill.exe",
+                )
+                os.spawnv(
+                    os.P_WAIT,
+                    taskkill,
+                    [taskkill, "/PID", str(process.pid), "/T", "/F"],
                 )
         with contextlib.suppress(OSError):
             process.terminate()
