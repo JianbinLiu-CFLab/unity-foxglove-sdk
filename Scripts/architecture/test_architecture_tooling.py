@@ -152,21 +152,28 @@ class ArchitectureToolingTests(unittest.TestCase):
         module = load_module("analyze_coupling_mutating_source_under_test", "Scripts/architecture/analyze_coupling.py")
 
         class FakePath:
+            """Path fixture whose metadata changes between reads."""
             def __init__(self):
+                """Seed deterministic metadata snapshots."""
                 self._stats = iter(((1, 3, 9), (2, 3, 9)))
 
             def stat(self):
+                """Return the next metadata snapshot."""
                 class S:
+                    """Minimal stat result fixture."""
                     pass
                 s = S()
                 s.st_mtime_ns, s.st_size, s.st_ino = next(self._stats)
                 return s
 
             def read_bytes(self):
+                """Return stable file bytes."""
                 return b"abc"
 
         class FakeRoot:
+            """Root fixture yielding a mutating path."""
             def __truediv__(self, _relative):
+                """Resolve a relative path to the fixture."""
                 return FakePath()
 
         with self.assertRaises(RuntimeError):
