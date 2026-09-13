@@ -290,6 +290,13 @@ class Program
     {
         if (argSet.Contains("--list-validations"))
         {
+            if (argList.Count != 1 || !string.Equals(argList[0], "--list-validations", StringComparison.Ordinal))
+            {
+                Console.Error.WriteLine("--list-validations cannot be combined with other arguments.");
+                exitCode = 1;
+                return true;
+            }
+
             foreach (var validation in PhaseValidationRegistry.All)
             {
                 var flags = string.Join(", ", validation.AllFlags());

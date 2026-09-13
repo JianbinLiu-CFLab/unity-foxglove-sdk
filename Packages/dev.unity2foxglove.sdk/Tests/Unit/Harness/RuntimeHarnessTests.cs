@@ -94,6 +94,15 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public async Task ListValidationsRejectsConflictingArguments()
+        {
+            var result = await RunHarnessAsync(new[] { "--list-validations", "--phase163-57" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("cannot be combined", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public async Task TimedOutHarnessReportsOutputAfterDrainingKilledProcess()
         {
             var environment = new Dictionary<string, string>
