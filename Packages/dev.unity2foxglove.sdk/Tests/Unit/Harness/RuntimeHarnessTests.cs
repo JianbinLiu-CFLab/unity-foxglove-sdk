@@ -125,7 +125,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void ValidationRegistryPublishesReadOnlyBackingStorage()
         {
-            var source = File.ReadAllText(ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs");
+            var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", "PhaseValidationRegistry.cs"));
 
             Assert.Contains("Array.AsReadOnly(new[]", source, StringComparison.Ordinal);
         }

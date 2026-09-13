@@ -136,6 +136,7 @@ class ArchitectureToolingTests(unittest.TestCase):
         module = load_module("analyze_coupling_git_paths_under_test", "Scripts/architecture/analyze_coupling.py")
 
         class Result:
+            """Synthetic subprocess result preserving literal NUL-delimited paths."""
             returncode = 0
             stdout = b"dir/new\nline.cs\0dir/quote\"name.cs\0"
             stderr = b""
