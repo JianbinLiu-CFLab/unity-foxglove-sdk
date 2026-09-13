@@ -292,6 +292,7 @@ class SampleSyncToolingTests(unittest.TestCase):
             original = module.copy_file
             calls = 0
             def fail_second(src, dst, dry_run):
+                """Inject a failure on the second copy operation."""
                 nonlocal calls
                 calls += 1
                 if calls == 2:
