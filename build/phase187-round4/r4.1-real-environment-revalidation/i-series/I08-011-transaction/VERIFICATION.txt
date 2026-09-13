@@ -1,0 +1,6 @@
+I08-011 temp MCAP cleanup transaction
+source_sha256_original=8010F847B1448F2864CEE2EABBDB70C443496548C6C5BAD901DC7F22823FF83D
+source_sha256_modified=6669DF8A6B54E96BA409947A205CF6542FB8CBF08065850CD8F6540C509F14E4
+RED: prior TryDelete swallowed exceptions with no terminal result.
+GREEN: direct --phase134-10 exit 0, Phase 134-10: 31 checks passed, including 134-10L-1 cleanup assertion.
+ROLLBACK: rollback.out records all preservation flags true, ROLLBACK_OK, ROLLBACK_NOOP.

@@ -1,0 +1,5 @@
+I08-011 temp MCAP cleanup transaction
+source=Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
+RED: prior TryDelete swallowed all exceptions and emitted no terminal cleanup result.
+GREEN: 134-10 now counts deletion failures, reports them, and asserts zero residual cleanup failures; runtime exit 0 with 31 checks passed.
+Controls: writable temp fixtures all deleted; failure path increments counter and emits error.
