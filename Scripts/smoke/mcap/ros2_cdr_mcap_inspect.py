@@ -20,12 +20,18 @@ import shutil
 import subprocess
 import sys
 
+try:
+    from Scripts.smoke.mcap.process_runner import run_bounded
+except ModuleNotFoundError:
+    from process_runner import run_bounded
+
 
 REPO_ROOT_PARENT_DEPTH = 3
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 EMPTY_FILE_SIZE_BYTES = 0
 SUBPROCESS_TIMEOUT_SECONDS = 300
+MAX_SUBPROCESS_OUTPUT_BYTES = 1 << 20
 
 REPO_ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PROJECT = REPO_ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "FoxgloveSdk.Tests.csproj"
@@ -64,9 +70,14 @@ def run_dotnet(*runtime_args: str) -> int:
         "--",
         *runtime_args,
     ]
-    try:
-        result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
+    result = run_bounded(
+        cmd,
+        cwd=REPO_ROOT,
+        env=setup_nuget_cache(),
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
+        max_output_bytes=MAX_SUBPROCESS_OUTPUT_BYTES,
+    )
+    if result.timed_out:
         print(f"[phase93] dotnet command timed out after {SUBPROCESS_TIMEOUT_SECONDS}s", file=sys.stderr)
         return EXIT_FAILURE
     if result.stdout:
