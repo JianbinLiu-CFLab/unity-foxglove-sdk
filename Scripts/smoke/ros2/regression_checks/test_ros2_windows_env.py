@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -263,6 +264,23 @@ class Ros2WindowsEnvTests(unittest.TestCase):
                     raise RuntimeError("late launch failure")
 
         self.assertTrue(process.terminated)
+
+    def test_terminate_owned_process_reports_resistant_process(self) -> None:
+        """Cleanup must not report success while an owned process remains live."""
+        class Resistant:
+            pid = 9876
+            def poll(self):
+                return None
+            def terminate(self):
+                return None
+            def kill(self):
+                return None
+            def wait(self, timeout):
+                raise subprocess.TimeoutExpired("resistant", timeout)
+
+        with mock.patch.object(ros2env.os, "name", "posix"):
+            with self.assertRaisesRegex(RuntimeError, "remains live|did not exit"):
+                ros2env.terminate_owned_process(Resistant(), timeout_seconds=0.01)
 
 
 if __name__ == "__main__":

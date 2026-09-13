@@ -109,7 +109,10 @@ def terminate_owned_process(process: subprocess.Popen, timeout_seconds: float = 
             process.kill()
             process.wait(timeout=timeout_seconds)
         except (OSError, subprocess.TimeoutExpired):
-            pass
+            if process.poll() is None:
+                raise RuntimeError(f"Owned process pid={process.pid} did not exit after bounded cleanup.")
+    if process.poll() is None:
+        raise RuntimeError(f"Owned process pid={process.pid} remains live after cleanup.")
 
 
 @contextmanager
