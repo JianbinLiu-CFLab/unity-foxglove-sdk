@@ -1,0 +1,9 @@
+finding_id=I09-028
+source=Unity2Foxglove\Assets\Editor\FoxgloveBuild.cs
+original_sha256=38cb0fd8739173ff4de2611a9fabdb250b51846aa26e733129c20e4b09806f2d
+modified_sha256=1bdd16812e604ab52093f9baf4051fad12f20adf26b13d36489af861da6fb99b
+RED=python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_unity_build_requires_succeeded_build_result
+RED_RESULT=FAIL missing BuildResult gate exit=1
+GREEN=python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_unity_build_requires_succeeded_build_result Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_default_ci_builds_independent_subcommand_jobs
+GREEN_RESULT=OK exit=0
+CONTROLS=source retains totalErrors gate; runtime Unity compile deferred to owner suite
