@@ -1,0 +1,7 @@
+I08-010 MCAP CRC policy transaction
+source=Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
+source_sha256_original=PLACEHOLDER
+source_sha256_modified=PLACEHOLDER
+RED (pre-change): existing Phase134-10 only asserted default UseWithWarning message count and Skip count; no logger warning or Throw assertion.
+GREEN: added ReplayChunkCrcPolicyEmitsWarningsAndThrows. Runtime selector --phase134-10 exited 0 with 30 checks passed.
+Controls: default UseWithWarning, Skip, recording logger warning count/content, Throw InvalidDataException and warning-before-throw.
