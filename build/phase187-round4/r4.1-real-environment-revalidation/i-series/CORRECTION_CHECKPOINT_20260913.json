@@ -1,9 +1,9 @@
 {
-  "status": "I_SERIES_CORRECTION_REMOTE_CHECKS_PASS_READY_TO_MERGE",
-  "branch": "feature/round4/i-series-refuted-evidence-correction",
-  "head": "0f78d1abe81115e172553eefc769dfa224dc1df1",
-  "main": "9f3620526fb5acdbc70e85b85c400fd39e080ba4",
-  "origin_main": "9f3620526fb5acdbc70e85b85c400fd39e080ba4",
+  "status": "I_SERIES_COMPLETE_PR332_MERGED_MAIN_SYNCED",
+  "branch": "main",
+  "head": "8a8bc7e79af95a0621d693d613d03ac996a3b260",
+  "main": "8a8bc7e79af95a0621d693d613d03ac996a3b260",
+  "origin_main": "8a8bc7e79af95a0621d693d613d03ac996a3b260",
   "overlay": {
     "path": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\R4.1-I_REFUTED_EVIDENCE_CORRECTION_20260912.tsv",
     "sha256": "f6febbc05fd58be1210dc063e110c181d337d8733e5b11cda926ba9b55163f63",
@@ -287,7 +287,7 @@
   "ci": {
     "command": "python -B Scripts/release/run_ci.py",
     "log": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\final-ci-correction-20260913-v5.log",
-    "sha256": "2d24c9d7f9b5671d846b737cfa6b4884c237998907460d25943a02f6a2d6d907",
+    "sha256": "78ea7b5e3f32dce13d06c02cede0629b74e654f2b10a3a53948da285dcbfb4c0",
     "exit_status": 0,
     "literal": "All CI checks passed.",
     "run_id": "7144-944109ab"
@@ -346,7 +346,7 @@
   ],
   "remote_checks": {
     "pr": 332,
-    "run_id": "34735053393",
+    "run_id": "34735609421",
     "all_passed": true,
     "checks": [
       "docs",
@@ -358,5 +358,11 @@
       "Windows runtime, xUnit, panel, and package parity",
       "private-boundaries"
     ]
+  },
+  "merge": {
+    "pr": 332,
+    "merge_sha": "8a8bc7e79af95a0621d693d613d03ac996a3b260",
+    "merged_at": "2026-09-13T03:38:10Z",
+    "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/332"
   }
 }
