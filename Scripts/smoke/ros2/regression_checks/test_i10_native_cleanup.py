@@ -28,6 +28,8 @@ class I10NativeCleanupTests(unittest.TestCase):
         """Ensure a failed child removal cannot orphan the node handle."""
         source = (ROOT / "Packages/dev.unity2foxglove.ros2forunity/Samples~/ROS2 For Unity External Adapter/Phase110Ros2ForUnityStringSmoke.cs").read_text(encoding="utf-8")
         self.assertIn("if (!cleanupFailed && _directRos2Unity != null && _directRos2Node != null)", source)
+        self.assertIn("_directRos2Node.RemoveSubscription<std_msgs.msg.String>(_directSubscription);\n                _directSubscription = null;", source)
+        self.assertIn("_directRos2Node.RemovePublisher<std_msgs.msg.String>(_directPublisher);\n                _directPublisher = null;", source)
 
 
 if __name__ == "__main__":

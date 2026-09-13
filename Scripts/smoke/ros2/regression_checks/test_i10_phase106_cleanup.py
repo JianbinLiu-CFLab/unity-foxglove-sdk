@@ -11,6 +11,8 @@ class Phase106CleanupTests(unittest.TestCase):
         self.assertIn("if (cleanupFailed)", source)
         self.assertIn("retaining handle for retry", source)
         self.assertIn("if (!cleanupFailed && _ros2Unity != null && _ros2Node != null)", source)
+        self.assertIn("_ros2Node.RemoveSubscription<std_msgs.msg.String>(_subscriber);\n                _subscriber = null;", source)
+        self.assertIn("_ros2Node.RemovePublisher<std_msgs.msg.String>(_publisher);\n                _publisher = null;", source)
 
 if __name__ == "__main__":
     unittest.main()

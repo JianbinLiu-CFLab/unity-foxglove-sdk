@@ -173,6 +173,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
             try
             {
                 _ros2Node.RemoveSubscription<std_msgs.msg.String>(_subscriber);
+                _subscriber = null;
             }
             catch (Exception ex)
             {
@@ -186,6 +187,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
             try
             {
                 _ros2Node.RemovePublisher<std_msgs.msg.String>(_publisher);
+                _publisher = null;
             }
             catch (Exception ex)
             {

@@ -327,6 +327,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
             try
             {
                 _directRos2Node.RemoveSubscription<std_msgs.msg.String>(_directSubscription);
+                _directSubscription = null;
             }
             catch (System.Exception ex)
             {
@@ -340,6 +341,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
             try
             {
                 _directRos2Node.RemovePublisher<std_msgs.msg.String>(_directPublisher);
+                _directPublisher = null;
             }
             catch (System.Exception ex)
             {
