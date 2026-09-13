@@ -135,7 +135,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCapturedDotnetFailure(string relativePath, string label)
         {
             var source = ReadRepoText(relativePath);
-            Check(source.Contains("capture_output=True", StringComparison.Ordinal)
+            Check(source.Contains("run_bounded(", StringComparison.Ordinal)
                   && source.Contains("text=True", StringComparison.Ordinal)
                   && source.Contains("result.stdout", StringComparison.Ordinal)
                   && source.Contains("result.stderr", StringComparison.Ordinal),
