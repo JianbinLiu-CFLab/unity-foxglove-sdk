@@ -1,0 +1,9 @@
+finding_id=187-R2-I01-003
+source=Packages\dev.unity2foxglove.sdk\Editor\Manager\McapReplayPreflightDrawer.cs
+original_sha256=bc0756283abce0a9138bfdf7ffc25f4dc4e8747625d4ffaed5e05893dcd62ab5
+modified_sha256=876d40cec9abd021af0b288c316ec5e7dcc712a3574c220e0cbaef285ce01432
+RED=python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_mcap_preflight_binds_latest_completion_and_clears_stale_evidence
+RED_RESULT=FAIL missing snapshot/evidence clear exit=1
+GREEN=python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_mcap_preflight_binds_latest_completion_and_clears_stale_evidence
+GREEN_RESULT=OK exit=0
+CONTROLS=invalid Analyze clears selected evidence; latest completion compares serialized snapshot; source compile deferred to Unity owner suite
