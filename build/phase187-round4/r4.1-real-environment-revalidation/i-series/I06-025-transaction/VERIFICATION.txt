@@ -1,0 +1,4 @@
+I06-025 source consistency guard
+BASELINE: read_text performed a mutable direct read with no pre/post identity check (DeepWiki source anchor; mutation accepted)
+MODIFIED: read_bytes strict decode with pre/post stat identity; focused mutation/UTF8 tests passed (exit 0)
+ROLLBACK: ROLLBACK_OK then ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true
