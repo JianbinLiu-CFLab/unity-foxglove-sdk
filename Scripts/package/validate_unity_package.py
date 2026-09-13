@@ -763,7 +763,7 @@ def check_package_build_artifacts(results: list[CheckResult], package_entries: l
     forbidden_dirs = {"bin", "obj", "__pycache__"}
     offenders: list[str] = []
     for path in package_entries:
-        if path.name in forbidden_dirs and path.is_dir():
+        if path.name.casefold() in forbidden_dirs and path.is_dir():
             offenders.append(rel(path))
     add(
         results,

@@ -40,6 +40,15 @@ class ValidatePackageTests(unittest.TestCase):
         """Load a fresh validate_unity_package module for each test."""
         self.validator = load_module("validate_unity_package_under_test", VALIDATE_PACKAGE_PATH)
 
+    def test_build_artifact_guard_rejects_case_variant_directory(self) -> None:
+        """Build/cache directory names are matched case-insensitively."""
+        with tempfile.TemporaryDirectory() as temp:
+            offender = Path(temp) / "Bin"
+            offender.mkdir()
+            results = []
+            self.validator.check_package_build_artifacts(results, [offender])
+        self.assertFalse(results[0].ok)
+
     def test_sample_meta_checks_asmdef_files(self) -> None:
         """Sample asmdef files need stable Unity .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:
