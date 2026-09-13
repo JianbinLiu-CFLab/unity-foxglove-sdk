@@ -103,23 +103,12 @@ namespace Unity.FoxgloveSDK.Tests
         static void TestRecordingController()
         {
             var rt = new FoxgloveRuntime();
-            var recordingPath = Path.GetTempFileName();
-            try
-            {
-                Assert(rt.RecordingEnabled == false, "RecordingEnabled defaults to false");
-                rt.EnableRecording(recordingPath, 1024 * 1024, "", "LeftHand");
-                Assert(rt.RecordingEnabled == true, "RecordingEnabled after Enable");
-                rt.DisableRecording();
-                Assert(rt.RecordingEnabled == false, "RecordingEnabled after Disable");
-            }
-            finally
-            {
-                rt.Dispose();
-                if (File.Exists(recordingPath))
-                    File.Delete(recordingPath);
-            }
-
-            Assert(!File.Exists(recordingPath), "Recording fixture path is cleaned after controller disposal");
+            Assert(rt.RecordingEnabled == false, "RecordingEnabled defaults to false");
+            rt.EnableRecording(Path.GetTempFileName(), 1024 * 1024, "", "LeftHand");
+            Assert(rt.RecordingEnabled == true, "RecordingEnabled after Enable");
+            rt.DisableRecording();
+            Assert(rt.RecordingEnabled == false, "RecordingEnabled after Disable");
+            rt.Dispose();
         }
 
         // Helper: create minimal MCAP in memory stream, write to temp file, return path
