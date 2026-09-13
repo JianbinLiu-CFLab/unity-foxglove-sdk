@@ -1,0 +1,1 @@
+I08-006 GREEN phase10 exit 0, 43 checks passed; firstLength==secondLength and strict MCAP magic; rollback flags true, ROLLBACK_OK, ROLLBACK_NOOP.
