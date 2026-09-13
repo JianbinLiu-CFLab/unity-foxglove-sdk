@@ -105,7 +105,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && program.Contains("--phase97-health", StringComparison.Ordinal)
                   && program.Contains("--phase44-all-schemas-mcap", StringComparison.Ordinal),
                 "134-32D-3: Program still keeps non-registry operational subcommands");
-            Check(program.Contains("Console.Error.WriteLine($\"\\n[FAIL] {validation.Name}: {ex.Message}\")", StringComparison.Ordinal),
+            Check(program.Contains("Console.Error.WriteLine($\"\\n[FAIL] {validation.Name}: {ex.Message}\")", StringComparison.Ordinal)
+                  || (program.Contains("originalError.WriteLine($\"\\n[FAIL] {validation.Name}: {ex.Message}\")", StringComparison.Ordinal)
+                      && program.Contains("Console.SetError(classifiedError)", StringComparison.Ordinal)),
                 "134-32D-4: registry validation failures are written to stderr");
         }
 
