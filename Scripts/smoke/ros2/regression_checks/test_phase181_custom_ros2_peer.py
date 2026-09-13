@@ -304,6 +304,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertTrue(hasattr(peer, "wait_for_runtime_selection_process"))
 
         class Process:
+            """Stalled process double for streamed timeout cleanup."""
             """Provide one deterministic owned Unity process for the selection wait policy."""
 
             def __init__(self):
@@ -927,12 +928,15 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         commands = []
 
         class Result:
+            """Minimal subprocess result for alias reservation probing."""
             def __init__(self, returncode):
+                """Store the mocked command status and empty streams."""
                 self.returncode = returncode
                 self.stdout = ""
                 self.stderr = ""
 
         def run(command, **kwargs):
+            """Record map/unmap calls and make the visibility probe fail."""
             commands.append(tuple(command))
             return Result(0 if len(commands) == 1 else 1)
 
@@ -951,12 +955,15 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         commands = []
 
         class Result:
+            """Minimal subprocess result for plugin alias probing."""
             def __init__(self, returncode):
+                """Store the mocked command status and empty streams."""
                 self.returncode = returncode
                 self.stdout = ""
                 self.stderr = ""
 
         def run(command, **kwargs):
+            """Record map/unmap calls and make the visibility probe fail."""
             commands.append(tuple(command))
             return Result(0 if len(commands) == 1 else 1)
 
@@ -1215,6 +1222,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         calls: list[tuple[list[str], dict[str, object]]] = []
 
         class Process:
+            """Stalled streamed-build process double."""
             """Minimal owned process with two colcon progress lines."""
 
             def __init__(self):
@@ -1223,6 +1231,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
                 self.stdout = io.StringIO("Starting >>> example_interfaces\nFinished <<< example_interfaces\n")
 
             def wait(self, timeout):
+                """Remain stalled when the bounded wait expires."""
                 """Record the supplied timeout and complete successfully."""
 
                 self.timeout = timeout
@@ -1276,6 +1285,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             returncode = None
 
             def wait(self, timeout):
+                """Raise a bounded wait timeout."""
                 raise subprocess.TimeoutExpired(["colcon.exe"], timeout)
 
         with temporary_directory("peer-") as temporary:

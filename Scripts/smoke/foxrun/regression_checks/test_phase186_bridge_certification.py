@@ -100,21 +100,26 @@ class Phase186BridgeCertificationTests(unittest.TestCase):
     def test_timeout_terminates_owned_windows_process_tree(self) -> None:
         """Verify bounded certification timeouts terminate descendants, not only the root PID."""
         class TimedOutProcess:
+            """Process double that times out once before forced tree cleanup."""
             pid = 4242
 
             def __init__(self) -> None:
+                """Initialize wait-call tracking."""
                 self.wait_calls = 0
 
             def wait(self, timeout: float | None = None) -> int:
+                """Timeout on first wait, then report forced termination."""
                 self.wait_calls += 1
                 if self.wait_calls == 1:
                     raise certification.subprocess.TimeoutExpired(["owned"], timeout or 0)
                 return -9
 
             def poll(self) -> int | None:
+                """Report an active process until the test terminator handles it."""
                 return None
 
             def kill(self) -> None:
+                """Fail if root-only cleanup is attempted."""
                 raise AssertionError("tree cleanup must not fall back to root-only kill")
 
         process = TimedOutProcess()
