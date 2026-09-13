@@ -223,7 +223,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            var topicText = string.Join("\n", result.Topics);
+            var topicText = BuildTopicText(result.Topics);
             SetMcapPreflightMessage(
                 "Path: " + MakeRelative(result.Path) + "\n"
                 + $"Size: {result.SizeBytes:N0} bytes\n"
@@ -624,6 +624,31 @@ namespace Unity.FoxgloveSDK.Editor
 
             var suffix = topics.Count > preview.Count ? $" (+{topics.Count - preview.Count} more)" : string.Empty;
             return string.Join(", ", preview) + suffix;
+        }
+
+        private static string BuildTopicText(IReadOnlyList<string> topics)
+        {
+            if (topics == null || topics.Count == 0)
+                return string.Empty;
+
+            const int maxTopicTextCharacters = 64 * 1024;
+            var builder = new System.Text.StringBuilder(Math.Min(maxTopicTextCharacters, topics.Count * 16));
+            for (var i = 0; i < topics.Count; i++)
+            {
+                var topic = topics[i] ?? string.Empty;
+                var required = topic.Length + (builder.Length == 0 ? 0 : 1);
+                if (builder.Length + required > maxTopicTextCharacters)
+                {
+                    builder.Append("\n(topic list truncated)");
+                    break;
+                }
+
+                if (builder.Length > 0)
+                    builder.Append('\n');
+                builder.Append(topic);
+            }
+
+            return builder.ToString();
         }
 
         private static string FormatMcapTimeRange(McapStatistics statistics)
