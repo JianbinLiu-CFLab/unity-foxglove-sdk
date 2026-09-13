@@ -1,1 +1,0 @@
-I01-014 verification: validator predicates now bind action tokens and method edges, require active call-site ownership, and reject missing Undo via >=0/order checks. Source mutation-sensitive probe exit 0.

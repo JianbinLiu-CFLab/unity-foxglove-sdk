@@ -1,5 +1,0 @@
-FINAL THREE-ROLE ADJUDICATION
-mutation/adversarial=PASS
-correctness/runtime=PASS
-scope/evidence=PASS
-adjudicated_by=primary
