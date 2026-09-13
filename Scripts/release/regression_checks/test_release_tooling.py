@@ -1192,6 +1192,13 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("Directory.EnumerateFiles", source)
         self.assertNotIn("Directory.GetFiles(recordingsDir, \"*.mcap\", SearchOption.AllDirectories)", source)
 
+    def test_mcap_preflight_rejects_malformed_manifest_hash_identity(self) -> None:
+        """Replay identity must not classify arbitrary text as a manifest hash."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Manager" / "McapReplayPreflightDrawer.cs").read_text(encoding="utf-8")
+        self.assertIn("IsValidFoxRunHash", source)
+        self.assertIn("if (!IsValidFoxRunHash(hash))", source)
+        self.assertIn("return string.Empty;", source)
+
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
         """The selector must execute exactly six pure unittest suites in locked order."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:

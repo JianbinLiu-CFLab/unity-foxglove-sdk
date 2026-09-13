@@ -379,7 +379,14 @@ namespace Unity.FoxgloveSDK.Editor
                 var hash = index["foxRun"]?["globalManifestHash"]?.ToString() ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(hash))
                     warnings.Add("Recorded FoxRun hash is missing from schema-evidence.json.");
-                return hash.Trim();
+                hash = hash.Trim();
+                if (!IsValidFoxRunHash(hash))
+                {
+                    warnings.Add("Recorded FoxRun hash is malformed; expected 64 hexadecimal characters.");
+                    return string.Empty;
+                }
+
+                return hash;
             }
             catch (Exception ex)
             {
@@ -399,7 +406,36 @@ namespace Unity.FoxgloveSDK.Editor
                 return string.Empty;
             }
 
-            return File.ReadAllText(hashPath).Trim();
+            var hash = File.ReadAllText(hashPath).Trim();
+            if (!IsValidFoxRunHash(hash))
+            {
+                warnings.Add("Current FoxRun hash is malformed; expected 64 hexadecimal characters.");
+                return string.Empty;
+            }
+
+            return hash;
+        }
+
+        private static bool IsValidFoxRunHash(string hash)
+        {
+            if (string.IsNullOrWhiteSpace(hash))
+                return false;
+
+            hash = hash.Trim();
+            if (hash.Length != 64)
+                return false;
+
+            for (var i = 0; i < hash.Length; i++)
+            {
+                var c = hash[i];
+                var hex = (c >= '0' && c <= '9')
+                    || (c >= 'a' && c <= 'f')
+                    || (c >= 'A' && c <= 'F');
+                if (!hex)
+                    return false;
+            }
+
+            return true;
         }
 
         private static string IdentityStatus(string recordedHash, string currentHash)
