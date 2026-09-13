@@ -1,0 +1,1 @@
+I06-004 direct current source probe confirms CollectValidationFailures iterates every validation, accumulates failures, and returns only after loop. RESULT=SATISFIED_BY_ROUND4. Existing focused regression covers no-early-return seam.
