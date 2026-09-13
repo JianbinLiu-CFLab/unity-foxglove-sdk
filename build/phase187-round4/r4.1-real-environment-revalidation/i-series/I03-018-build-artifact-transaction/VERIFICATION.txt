@@ -1,0 +1,1 @@
+I03-018 case-variant build artifact guard fixed; focused test exit 0; rollback outputs recorded.
