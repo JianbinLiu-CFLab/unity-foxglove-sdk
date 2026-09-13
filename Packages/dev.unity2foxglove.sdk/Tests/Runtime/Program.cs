@@ -416,6 +416,13 @@ class Program
 
     private static int RunValidation(PhaseValidationCase validation)
     {
+        var methodBody = validation.Run?.Method.GetMethodBody()?.GetILAsByteArray();
+        if (methodBody == null || methodBody.Length <= 1)
+        {
+            Console.Error.WriteLine($"[FAIL] {validation.Name}: validation delegate has no executable body.");
+            return 1;
+        }
+
         var originalOut = Console.Out;
         var originalError = Console.Error;
         var classifiedOut = TextWriter.Synchronized(

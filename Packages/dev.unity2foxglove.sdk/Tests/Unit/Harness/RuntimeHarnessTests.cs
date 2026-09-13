@@ -103,6 +103,15 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void RunValidationRejectsEmptyDelegateBodies()
+        {
+            var source = LoadProgramTree().GetText().ToString();
+
+            Assert.Contains("validation delegate has no executable body", source, StringComparison.Ordinal);
+            Assert.Contains("GetILAsByteArray", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task ServeRejectsConflictingValidationSelector()
         {
             var result = await RunHarnessAsync(new[] { "--serve", "--phase163-57" }, timeoutMilliseconds: 20_000);
