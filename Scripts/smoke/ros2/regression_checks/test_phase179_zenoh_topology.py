@@ -364,6 +364,23 @@ class Phase179ZenohTopologyTests(unittest.TestCase):
         ):
             self.topology.terminate_owned_process(process)
 
+    def test_cleanup_reports_a_router_that_survives_all_bounded_termination(self) -> None:
+        """A resistant owned router must turn cleanup failure into a non-success signal."""
+        class ResistantProcess:
+            pid = 4246
+            def poll(self):
+                return None
+            def wait(self, timeout=None):
+                raise self_error("still alive", timeout)
+            def kill(self):
+                return None
+
+        self_error = self.topology.subprocess.TimeoutExpired
+        process = ResistantProcess()
+        with mock.patch.object(self.topology.os, "name", "nt"), mock.patch.object(self.topology.subprocess, "run"):
+            with self.assertRaisesRegex(self.topology.ZenohTopologyError, "remained alive"):
+                self.topology.terminate_owned_process(process)
+
 
 if __name__ == "__main__":
     unittest.main()

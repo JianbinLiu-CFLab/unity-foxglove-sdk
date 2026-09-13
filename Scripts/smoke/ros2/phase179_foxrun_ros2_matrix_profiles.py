@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import os
 import pathlib
@@ -373,6 +374,8 @@ def correlate_summaries(
     surface: str,
     linux_summary: Mapping[str, object],
     windows_summary: Mapping[str, object],
+    *,
+    consumed_receipts_path: pathlib.Path | None = None,
 ) -> dict[str, object]:
     """Join matching Linux and Unity half-evidence; only this function emits a final PASS verdict."""
 
@@ -398,6 +401,25 @@ def correlate_summaries(
     if profile.rmw == zenoh_topology.ZENOH_RMW and linux_summary.get("zenohTopologyId") != windows_summary.get("zenohTopologyId"):
         raise MatrixFailure("ZENOH_TOPOLOGY", "Linux and Windows evidence did not name the same Zenoh topology.")
 
+    receipt_payload = json.dumps(
+        {"linux": linux_summary, "windows": windows_summary},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    receipt_digest = hashlib.sha256(receipt_payload).hexdigest()
+    if consumed_receipts_path is not None:
+        receipt_path = pathlib.Path(consumed_receipts_path)
+        try:
+            consumed = json.loads(receipt_path.read_text(encoding="utf-8")) if receipt_path.exists() else []
+        except (OSError, json.JSONDecodeError) as exc:
+            raise MatrixFailure("RECEIPT", "The correlation receipt ledger is unavailable or malformed.") from exc
+        if not isinstance(consumed, list) or any(not isinstance(item, str) for item in consumed):
+            raise MatrixFailure("RECEIPT", "The correlation receipt ledger has an invalid shape.")
+        if receipt_digest in consumed:
+            raise MatrixFailure("REPLAY", "The exact Phase179 evidence pair was already consumed by a prior correlation.")
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(json.dumps([*consumed, receipt_digest], indent=2) + "\n", encoding="utf-8")
+
     label = profile.profile_id.upper().replace("-", "_")
     return {
         "phase": 179,
@@ -410,6 +432,7 @@ def correlate_summaries(
         "token": token,
         "topicPrefix": profile.topic_prefix,
         "messageSet": list(profile.message_set),
+        "correlationReceipt": receipt_digest,
         **({"zenohTopologyId": linux_summary["zenohTopologyId"]} if profile.rmw == zenoh_topology.ZENOH_RMW else {}),
         "verdict": f"PHASE179_{label}_{surface.upper()}_PASS",
     }
@@ -1134,6 +1157,7 @@ def run_correlation(profile: MatrixProfile, args: argparse.Namespace) -> int:
             args.surface,
             _read_summary(args.linux_summary_json),
             _read_summary(args.windows_summary_json),
+            consumed_receipts_path=args.summary_json.with_name("correlation-consumed.json"),
         )
         exit_code = 0
     except MatrixFailure as exc:
