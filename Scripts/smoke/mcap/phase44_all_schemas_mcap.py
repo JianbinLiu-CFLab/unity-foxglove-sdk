@@ -77,6 +77,7 @@ def main() -> int:
 
     output_path = resolve_output(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    previous_stat = output_path.stat() if output_path.is_file() else None
 
     cmd = [
         "dotnet",
@@ -106,6 +107,16 @@ def main() -> int:
     if size <= EMPTY_FILE_SIZE_BYTES:
         print(f"[phase44] all-schema smoke MCAP is empty: {output_path}", file=sys.stderr)
         return EXIT_FAILURE
+
+    if previous_stat is not None:
+        current_stat = output_path.stat()
+        if (current_stat.st_mtime_ns == previous_stat.st_mtime_ns
+                and current_stat.st_size == previous_stat.st_size):
+            print(
+                f"[phase44] output was not refreshed by this generation run: {output_path}",
+                file=sys.stderr,
+            )
+            return EXIT_FAILURE
 
     print(f"[phase44] all-schema smoke MCAP: {output_path}")
     print(f"[phase44] size: {size} bytes")
