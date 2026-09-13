@@ -167,14 +167,17 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
 
     private void DisposeRos2Endpoints()
     {
+        var cleanupFailed = false;
         if (_ros2Node != null && _subscriber != null)
         {
             try
             {
                 _ros2Node.RemoveSubscription<std_msgs.msg.String>(_subscriber);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                cleanupFailed = true;
+                Debug.LogWarning("[Phase106] subscription cleanup failed; retaining handle for retry: " + ex.Message);
             }
         }
 
@@ -184,8 +187,10 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
             {
                 _ros2Node.RemovePublisher<std_msgs.msg.String>(_publisher);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                cleanupFailed = true;
+                Debug.LogWarning("[Phase106] publisher cleanup failed; retaining handle for retry: " + ex.Message);
             }
         }
 
@@ -195,10 +200,15 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
             {
                 _ros2Unity.RemoveNode(_ros2Node);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                cleanupFailed = true;
+                Debug.LogWarning("[Phase106] node cleanup failed; retaining handle for retry: " + ex.Message);
             }
         }
+
+        if (cleanupFailed)
+            return;
 
         _subscriber = null;
         _publisher = null;
