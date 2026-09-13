@@ -957,21 +957,6 @@ def _terminate_and_reap(process: subprocess.Popen[bytes]) -> None:
     """Terminate a child process tree if needed and always reap the root."""
 
     if process.poll() is None:
-        if os.name == "nt" and isinstance(process, subprocess.Popen):
-            # ``Popen.terminate`` only signals the root process on Windows.
-            # taskkill /T authenticates the root PID and tears down inherited
-            # descendants before the root wait below releases its handles.
-            with contextlib.suppress(OSError):
-                taskkill = os.path.join(
-                    os.environ.get("SystemRoot", r"C:\\Windows"),
-                    "System32",
-                    "taskkill.exe",
-                )
-                os.spawnv(
-                    os.P_WAIT,
-                    taskkill,
-                    [taskkill, "/PID", str(process.pid), "/T", "/F"],
-                )
         with contextlib.suppress(OSError):
             process.terminate()
         try:
