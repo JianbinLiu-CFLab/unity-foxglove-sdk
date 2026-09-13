@@ -6542,3 +6542,10 @@ Status: `I_SERIES_COMPLETE / CORRECTION_OVERLAY_TERMINAL / THREE_ROLE_AUDIT_PASS
 - Confirmed repair quartets include `build/phase187-round4/r4.1-real-environment-revalidation/i-series/ci-tooling-correction-20260913/` and `.../posix-process-tree-correction-20260913/`, each retaining `MODIFIED_FILE`, `DIFF_FILE`, `VERIFICATION.txt`, executable `ROLLBACK.sh`, independent rollback copy/output. Exact command `bash ROLLBACK.sh` returned `ROLLBACK_OK`, `seeded_equals_modified=true`, `restored_equals_original=true`, `live_modified_remains=true`, `ROLLBACK_NOOP`, exit `0`; live modified files remained changed.
 - Final refs after `git fetch origin` and `git merge --ff-only origin/main`: local `main`, `HEAD == main == origin/main == 8a8bc7e79af95a0621d693d613d03ac996a3b260`; remote `main` is the only canonical release branch after cleanup. Historical worktrees/evidence remain preserved.
 - Protected dirty files preserved unchanged: `Unity2Foxglove/Assets/Experimental/OpenH264/OpenH264ProbeSidecar.cs` SHA `de447dc56ade5b1ceecc59fc7b15c7c07d05b850fff8e2202d0f603b9617e759`; `Unity2Foxglove/Packages/manifest.json` SHA `db9983a07e81f1f8087d76528f9f6d8a14c991147dd075b683d91ad01f0aec15`; `Unity2Foxglove/Packages/packages-lock.json` SHA `a09ac8fdb69e0eb82a94fcee975b2249f140ca34baabef8a556b02652e8f7b5c`. No reset, stash, clean, broad deletion, or shutdown performed.
+
+# ADDITIVE CHECKPOINT 2026-09-13 — FINAL MAIN REF AFTER PR333
+
+Status: `I_SERIES_COMPLETE / PR332_AND_PR333_MERGED / MAIN_SYNCED / NO_SHUTDOWN`
+
+- PR #333 (`https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/333`) merged the additive AGENTS and correction checkpoint record. Final merge SHA is `da36efafd976d000eacd5de5f96589d0ef028868`; local `main`, `HEAD`, and `origin/main` are synchronized to this SHA. Remote `git ls-remote --heads origin` contains only `refs/heads/main`; both I correction branches were deleted after ancestry verification.
+- `build/phase187-round4/r4.1-real-environment-revalidation/i-series/CORRECTION_CHECKPOINT_20260913.json` was updated with this final ref and PR333 sync data. Historical AGENTS content remains the exact suffix before this additive block.
