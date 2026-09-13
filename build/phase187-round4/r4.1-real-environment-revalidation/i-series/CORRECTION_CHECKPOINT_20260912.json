@@ -2,18 +2,17 @@
   "status": "CORRECTION_OVERLAY_ACTIVE_REVALIDATION_IN_PROGRESS",
   "branch": "feature/round4/i-series-refuted-evidence-correction",
   "base_head": "9f3620526fb5acdbc70e85b85c400fd39e080ba4",
-  "head": "af2afe665408e979e26e95935735bd6cfdc72bb3",
+  "head": "05a5c718011bb5e5e525bb4d2d7cd431391549d0",
   "overlay": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\R4.1-I_REFUTED_EVIDENCE_CORRECTION_20260912.tsv",
-  "overlay_sha256": "474776d6dc22cb930d3cac0cb1c57365b9f91d4abf274ee4d4642a114b5f15df",
+  "overlay_sha256": "e67ce47cd584682dab29a794d39cfae9124f9dc72fd81edd72c815755ee1c163",
   "rows": 264,
   "disposition_counts": {
-    "SATISFIED_BY_ROUND4": 8,
+    "SATISFIED_BY_ROUND4": 9,
     "CONFIRMED": 10,
     "SATISFIED_BY_ROUND3": 13,
-    "R4.1-CORRECTION-DEDICATED": 1,
-    "CONFIRMED_FIXED": 68,
-    "REFUTED": 11,
-    "PENDING_REVALIDATION": 153
+    "REFUTED": 14,
+    "CONFIRMED_FIXED": 79,
+    "PENDING_REVALIDATION": 139
   },
   "reopened_bulk_rows": 227,
   "direct_revalidations": [
@@ -65,7 +64,8 @@
     "f57a3e2376d2960f0736973a99cc79216ab7f61a",
     "858d9e7f5ba17044bb03a9c2367f9541ce2b9acb",
     "d506ec0d15875b0bb7d222a22c6e7d9c369c514a",
-    "af2afe665408e979e26e95935735bd6cfdc72bb3"
+    "af2afe665408e979e26e95935735bd6cfdc72bb3",
+    "05a5c718011bb5e5e525bb4d2d7cd431391549d0"
   ],
   "historical_overlay_preserved": true,
   "deepwiki_reports_preserved": true,
@@ -104,16 +104,15 @@
     "187-R2-I05-005",
     "187-R2-I06-001"
   ],
-  "correction_overlay_sha256": "7ea03bebff40ede78869c198800ab80abad6b7060e27156a003d1f1125c1df9a",
+  "correction_overlay_sha256": "e67ce47cd584682dab29a794d39cfae9124f9dc72fd81edd72c815755ee1c163",
   "current_disposition_counts": {
-    "SATISFIED_BY_ROUND4": 8,
+    "SATISFIED_BY_ROUND4": 9,
     "CONFIRMED": 10,
     "SATISFIED_BY_ROUND3": 13,
-    "R4.1-CORRECTION-DEDICATED": 1,
-    "CONFIRMED_FIXED": 64,
-    "REFUTED": 11,
-    "PENDING_REVALIDATION": 157
+    "REFUTED": 14,
+    "CONFIRMED_FIXED": 79,
+    "PENDING_REVALIDATION": 139
   },
-  "current_head": "af2afe665408e979e26e95935735bd6cfdc72bb3",
-  "last_updated": "2026-09-13T00:15:51.184600+00:00"
+  "current_head": "05a5c718011bb5e5e525bb4d2d7cd431391549d0",
+  "last_updated": "2026-09-13T00:29:15.763047+00:00"
 }
