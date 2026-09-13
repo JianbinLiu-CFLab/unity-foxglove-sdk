@@ -1,0 +1,12 @@
+diff --git a/Scripts/package/validate_local_entrypoints.py b/Scripts/package/validate_local_entrypoints.py
+index c58d1c439..bb01ec994 100644
+--- a/Scripts/package/validate_local_entrypoints.py
++++ b/Scripts/package/validate_local_entrypoints.py
+@@ -125,6 +125,7 @@ def git_grep_failures(label: str, pattern: re.Pattern[str]) -> list[str]:
+             "grep",
+             "-n",
+             "-I",
++            "-i",
+             "-E",
+             pattern.pattern,
+             "--",

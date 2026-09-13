@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I03-003",
+  "source_anchor": "Scripts/package/validate_local_entrypoints.py@ac2f040050f6cdb642b8d18be8ba2dc53cb7c316:66-68; Scripts/package/validate_local_entrypoints.py@ac2f040050f6cdb642b8d18be8ba2dc53cb7c316:21-28; Scripts/package/regression_checks/test_validate_local_entrypoints.py@183b28d566266bffedc5202a0af9596ae01f450f:31-46; .github/workflows/package-check.yml@80965f2f12a7c99a38c0b9b31503e0faab18d71d:31-46; current_primary_sha256=1802df4432c63829f74cfa2bd346da975161d89a07f34150cad943bea98771ae",
+  "source_sha256": "8c7e13354bcb1c06b814bd9f35fd6d87875a20e6e41dfcb97485346a26fe64a9",
+  "command": "python -B Scripts/package/validate_unity_package.py",
+  "literal_output": "; validate_unity_package: 72 check(s) passed.",
+  "exit_status": 0,
+  "disposition": "CONFIRMED_FIXED",
+  "timestamp": "2026-09-13T00:45:37.516299+00:00"
+}

@@ -45,11 +45,6 @@ ROS2_RUNTIME_PACKAGES = (
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
 )
-ROS2_TYPESUPPORT_PACKAGES = (
-    ROOT / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64",
-    ROOT / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64",
-    ROOT / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64",
-)
 CONSUMER_LOCAL_DEPENDENCIES = (
     "dev.unity2foxglove.sdk",
     "dev.unity2foxglove.ros2bridge",
@@ -553,36 +548,6 @@ def check_optional_package_boundaries(results: list[CheckResult]) -> None:
         not offenders,
         "; ".join(offenders) if offenders else "all runtime packages declare sibling conflicts",
     )
-
-    addon_manifests = [path / "package.json" for path in ROS2_TYPESUPPORT_PACKAGES if (path / "package.json").exists()]
-    addon_names: list[str] = []
-    addon_data: list[tuple[Path, dict]] = []
-    for manifest in addon_manifests:
-        try:
-            data = json.loads(manifest.read_text(encoding="utf-8"))
-        except Exception as exc:
-            add(results, "ROS2 typesupport add-on conflict metadata", False, f"{rel(manifest)}: {exc}")
-            addon_data = []
-            break
-        name = data.get("name")
-        if isinstance(name, str):
-            addon_names.append(name)
-        addon_data.append((manifest, data))
-    addon_offenders: list[str] = []
-    for manifest, data in addon_data:
-        name = data.get("name")
-        expected = sorted(item for item in addon_names if item != name)
-        actual = data.get("unity2foxgloveConflicts")
-        actual_conflicts = sorted(actual) if isinstance(actual, list) else []
-        if actual_conflicts != expected:
-            addon_offenders.append(f"{rel(manifest)} expected conflicts {expected!r}")
-    if addon_manifests:
-        add(
-            results,
-            "ROS2 typesupport add-on conflict metadata",
-            not addon_offenders and len(addon_data) == len(addon_manifests),
-            "; ".join(addon_offenders) if addon_offenders else "all typesupport add-ons declare sibling conflicts",
-        )
 
     demo_link = UNITY_DEMO_ASSETS / "link.xml"
     add(

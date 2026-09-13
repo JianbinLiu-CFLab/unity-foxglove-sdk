@@ -13,11 +13,16 @@
   -->
   <Target Name="ValidateUnitTestOutputsStayInsideRepositoryBuildRoot" BeforeTargets="Restore;PrepareForBuild">
     <PropertyGroup>
-      <_RepositoryBuildRoot>$([System.String]::Copy($([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\..\build\'))).ToLowerInvariant())</_RepositoryBuildRoot>
-      <_UnitTestOutputPath>$([System.String]::Copy($([System.IO.Path]::GetFullPath('$(BaseOutputPath)'))).ToLowerInvariant())</_UnitTestOutputPath>
-      <_UnitTestIntermediatePath>$([System.String]::Copy($([System.IO.Path]::GetFullPath('$(BaseIntermediateOutputPath)'))).ToLowerInvariant())</_UnitTestIntermediatePath>
-      <_UnitTestExtensionsPath>$([System.String]::Copy($([System.IO.Path]::GetFullPath('$(MSBuildProjectExtensionsPath)'))).ToLowerInvariant())</_UnitTestExtensionsPath>
-      <_UnitTestRestorePath>$([System.String]::Copy($([System.IO.Path]::GetFullPath('$(RestoreOutputPath)'))).ToLowerInvariant())</_UnitTestRestorePath>
+      <_RepositoryBuildRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\..\build\'))</_RepositoryBuildRoot>
+      <_UnitTestOutputPath>$([System.IO.Path]::GetFullPath('$(BaseOutputPath)'))</_UnitTestOutputPath>
+      <_UnitTestIntermediatePath>$([System.IO.Path]::GetFullPath('$(BaseIntermediateOutputPath)'))</_UnitTestIntermediatePath>
+      <_UnitTestExtensionsPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectExtensionsPath)'))</_UnitTestExtensionsPath>
+      <_UnitTestRestorePath>$([System.IO.Path]::GetFullPath('$(RestoreOutputPath)'))</_UnitTestRestorePath>
+      <_RepositoryBuildRoot Condition="'$(OS)' == 'Windows_NT'">$([System.String]::Copy('$(_RepositoryBuildRoot)').ToLowerInvariant())</_RepositoryBuildRoot>
+      <_UnitTestOutputPath Condition="'$(OS)' == 'Windows_NT'">$([System.String]::Copy('$(_UnitTestOutputPath)').ToLowerInvariant())</_UnitTestOutputPath>
+      <_UnitTestIntermediatePath Condition="'$(OS)' == 'Windows_NT'">$([System.String]::Copy('$(_UnitTestIntermediatePath)').ToLowerInvariant())</_UnitTestIntermediatePath>
+      <_UnitTestExtensionsPath Condition="'$(OS)' == 'Windows_NT'">$([System.String]::Copy('$(_UnitTestExtensionsPath)').ToLowerInvariant())</_UnitTestExtensionsPath>
+      <_UnitTestRestorePath Condition="'$(OS)' == 'Windows_NT'">$([System.String]::Copy('$(_UnitTestRestorePath)').ToLowerInvariant())</_UnitTestRestorePath>
     </PropertyGroup>
     <Error Condition="!$([System.String]::Copy('$(_UnitTestOutputPath)').StartsWith('$(_RepositoryBuildRoot)'))" Text="Unit-test BaseOutputPath must stay below the repository build root: $(BaseOutputPath)" />
     <Error Condition="!$([System.String]::Copy('$(_UnitTestIntermediatePath)').StartsWith('$(_RepositoryBuildRoot)'))" Text="Unit-test BaseIntermediateOutputPath must stay below the repository build root: $(BaseIntermediateOutputPath)" />

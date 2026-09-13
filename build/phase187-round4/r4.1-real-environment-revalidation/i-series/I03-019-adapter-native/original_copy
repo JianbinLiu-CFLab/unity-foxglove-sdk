@@ -433,8 +433,7 @@
     <Compile Include="Phase134_35Validation.cs" />
     <Compile Include="Phase163_33Validation.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="('$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true') and Exists('../../../dev.unity2foxglove.ros2forunity/Runtime')" />
-    <!-- Adapter-only lane must not compile the native implementation tree. -->
-    <Compile Remove="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/**/*.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' and '$(IncludeRos2ForUnityNative)' != 'true'" />
+    <Compile Remove="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/**/*.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityRuntime/Native/FoxRun" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Link="Ros2ForUnityRuntime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Link="AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />

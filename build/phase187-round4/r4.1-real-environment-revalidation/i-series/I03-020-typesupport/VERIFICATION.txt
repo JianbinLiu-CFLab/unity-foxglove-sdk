@@ -1,0 +1,14 @@
+finding transaction: I03-020-typesupport
+source: Scripts/package/validate_unity_package.py
+original_sha256: 6925f83b7567d92436d6fcaa06ad8b40a1d6af94a93438c6b1370c7bc2d2cb5f
+modified_sha256: 70aa6429831f2f12b2faddf25ce89683f12afed1abc9f8964860da1152517207
+MODIFIED_FILE: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\I03-020-typesupport\MODIFIED_FILE
+DIFF_FILE: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\I03-020-typesupport\DIFF_FILE
+VERIFICATION.txt: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\I03-020-typesupport\VERIFICATION.txt
+ROLLBACK.sh: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\I03-020-typesupport\ROLLBACK.sh
+BASELINE command: python -m py_compile Scripts/package/validate_unity_package.py
+BASELINE result: source snapshot before change
+MODIFIED command: python -m py_compile Scripts/package/validate_unity_package.py
+MODIFIED result: exit 0; validator exit 0 (I03 package checks)
+ROLLBACK command: bash D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\I03-020-typesupport\ROLLBACK.sh
+ROLLBACK result: ROLLBACK_OK -> ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true
