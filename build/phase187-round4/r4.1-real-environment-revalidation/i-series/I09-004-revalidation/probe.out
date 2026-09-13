@@ -1,0 +1,4 @@
+BASELINE_RED=direct-child-only cleanup lacked tree termination
+MODIFIED_GREEN=taskkill /PID <root> /T /F then root reap
+PY_COMPILE_EXIT=0
+RESULT=CONFIRMED_FIXED
