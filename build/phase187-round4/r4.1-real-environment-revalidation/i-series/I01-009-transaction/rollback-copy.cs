@@ -137,19 +137,9 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            var token = StartNewPendingWork();
-            try
-            {
-                AnalyzeReplayIdentity(path, refreshCurrentEvidence);
-            }
-            catch (Exception ex)
-            {
-                DisposePendingWorkToken();
-                SetMcapPreflightMessage($"MCAP identity check failed: {ex.Message}", MessageType.Error);
-                return;
-            }
-
+            AnalyzeReplayIdentity(path, refreshCurrentEvidence);
             SetMcapPreflightMessage("Analyzing replay file: " + MakeRelative(path), MessageType.Info);
+            var token = StartNewPendingWork();
             _analyzeReplayTask = Task.Run(() => AnalyzeReplayMcapWorker(path, token), token);
             EditorApplication.update -= CompleteAnalyzeReplayMcapIfReady;
             EditorApplication.update += CompleteAnalyzeReplayMcapIfReady;
