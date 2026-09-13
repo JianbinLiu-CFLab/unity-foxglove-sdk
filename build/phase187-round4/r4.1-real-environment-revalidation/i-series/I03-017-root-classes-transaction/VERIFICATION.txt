@@ -1,0 +1,1 @@
+I03-017 host path scanner now covers alternate drives, UNC, POSIX home roots. Baseline patterns omitted these classes; modified validator exit 0; rollback quartet outputs recorded.
