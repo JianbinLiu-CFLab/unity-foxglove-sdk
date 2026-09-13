@@ -16,6 +16,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 from Scripts.test_support.phase181_scratch import temporary_directory
 
@@ -870,6 +871,57 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
                 "posix",
             )
         )
+
+    def test_failed_peer_alias_probe_releases_subst_reservation(self):
+        """A successful subst call with an invisible drive must be undone before retry."""
+        peer = load_peer_module()
+        workspace = pathlib.Path("D:/" + ("x" * 260))
+        commands = []
+
+        class Result:
+            def __init__(self, returncode):
+                self.returncode = returncode
+                self.stdout = ""
+                self.stderr = ""
+
+        def run(command, **kwargs):
+            commands.append(tuple(command))
+            return Result(0 if len(commands) == 1 else 1)
+
+        with mock.patch.object(peer.subprocess, "run", side_effect=run), mock.patch.object(
+            pathlib.Path, "exists", return_value=False
+        ):
+            with self.assertRaisesRegex(peer.PeerFailure, "FAIL_PEER_WORKSPACE"):
+                with peer.temporary_short_windows_peer_workspace(workspace):
+                    self.fail("alias reservation should not succeed when the mapped drive is invisible")
+
+        self.assertTrue(any(command[-2:] == ("Z:", "/D") for command in commands))
+
+    def test_failed_plugin_alias_probe_releases_subst_reservation(self):
+        """A failed native plugin alias probe must not leak its drive mapping."""
+        peer = load_peer_module()
+        commands = []
+
+        class Result:
+            def __init__(self, returncode):
+                self.returncode = returncode
+                self.stdout = ""
+                self.stderr = ""
+
+        def run(command, **kwargs):
+            commands.append(tuple(command))
+            return Result(0 if len(commands) == 1 else 1)
+
+        with temporary_directory("plugin-alias-") as temporary:
+            plugin_directory = pathlib.Path(temporary)
+            with mock.patch.object(peer.subprocess, "run", side_effect=run), mock.patch.object(
+                pathlib.Path, "exists", return_value=False
+            ):
+                with self.assertRaisesRegex(peer.PeerFailure, "FAIL_EDITOR_BATCH"):
+                    with peer.temporary_short_windows_plugin_alias(plugin_directory):
+                        self.fail("alias reservation should not succeed when the mapped drive is invisible")
+
+        self.assertTrue(any(command[-2:] == ("Z:", "/D") for command in commands))
 
     def test_windows_peer_keeps_the_short_workspace_alias_through_worker_startup(self):
         """Verify Phase181 behavior: generated Python typesupport loads from the same short alias used to build it."""

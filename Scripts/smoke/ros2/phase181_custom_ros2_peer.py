@@ -777,9 +777,21 @@ def temporary_short_windows_peer_workspace(workspace: pathlib.Path) -> Iterator[
             errors="replace",
             check=False,
         )
-        if result.returncode == 0 and candidate.exists():
-            mapped_drive = letter
-            break
+        if result.returncode == 0:
+            if candidate.exists():
+                mapped_drive = letter
+                break
+            # ``subst`` can report success before the drive becomes visible
+            # to this process.  Release that reservation before trying the
+            # next letter; otherwise a failed probe leaks a drive mapping.
+            subprocess.run(
+                (str(subst), letter + ":", "/D"),
+                shell=False,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                check=False,
+            )
     if mapped_drive is None:
         raise PeerFailure("FAIL_PEER_WORKSPACE", "The Windows peer build could not reserve a short workspace alias.")
     mapped_workspace = pathlib.Path(mapped_drive + ":\\")
@@ -822,9 +834,21 @@ def temporary_short_windows_plugin_alias(plugin_directory: pathlib.Path) -> Iter
             errors="replace",
             check=False,
         )
-        if result.returncode == 0 and candidate.exists():
-            mapped_drive = letter
-            break
+        if result.returncode == 0:
+            if candidate.exists():
+                mapped_drive = letter
+                break
+            # ``subst`` can report success before the drive becomes visible
+            # to this process.  Release that reservation before trying the
+            # next letter; otherwise a failed probe leaks a drive mapping.
+            subprocess.run(
+                (str(subst), letter + ":", "/D"),
+                shell=False,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                check=False,
+            )
     if mapped_drive is None:
         raise PeerFailure("FAIL_EDITOR_BATCH", "The Unity Editor Batch could not reserve a short native plugin path.")
     try:
