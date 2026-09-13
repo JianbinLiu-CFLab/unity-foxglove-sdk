@@ -1,0 +1,8 @@
+{
+  "source_sha256": "eed2623adbdbf5af790f58f842d150f39e5fd525a127c02ba64a192ba112231f",
+  "exact_class": false,
+  "enum": true,
+  "formatter": true,
+  "writer": true,
+  "result": "REFUTED"
+}
