@@ -58,11 +58,48 @@ class Program
         var argList = args.ToList();
         var argSet = new HashSet<string>(argList, StringComparer.Ordinal);
 
+        if (argList.Count(argument => string.Equals(argument, "--local-evidence", StringComparison.Ordinal)) > 1)
+        {
+            Console.Error.WriteLine("--local-evidence may be supplied only once.");
+            return 1;
+        }
+
         if (argSet.Contains("--serve"))
         {
+            string invalidServeArgument = null;
+            if (argList.Count(argument => argument == "--port") > 1)
+            {
+                Console.Error.WriteLine("--port may be supplied only once.");
+                return 1;
+            }
+            for (var index = 0; index < argList.Count; index++)
+            {
+                var argument = argList[index];
+                var allowed = argument == "--serve" || argument == "--demo" || argument == "--demo3d";
+                if (argument == "--port")
+                    allowed = index + 1 < argList.Count && int.TryParse(argList[index + 1], out _);
+                else if (index > 0 && argList[index - 1] == "--port")
+                    allowed = int.TryParse(argument, out _);
+                if (!allowed)
+                {
+                    invalidServeArgument = argument;
+                    break;
+                }
+            }
+            if (invalidServeArgument != null)
+            {
+                Console.Error.WriteLine("--serve cannot be combined with " + invalidServeArgument + ".");
+                return 1;
+            }
+
             int port = 8765;
             var portIdx = argList.IndexOf("--port");
-            if (portIdx >= 0 && portIdx + 1 < argList.Count)
+            if (portIdx >= 0 && portIdx + 1 >= argList.Count)
+            {
+                Console.Error.WriteLine("--port requires an integer.");
+                return 1;
+            }
+            if (portIdx >= 0)
             {
                 if (!int.TryParse(argList[portIdx + 1], out port))
                 {

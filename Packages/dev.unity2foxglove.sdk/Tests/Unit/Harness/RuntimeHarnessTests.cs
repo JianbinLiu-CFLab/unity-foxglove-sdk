@@ -103,6 +103,24 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public async Task ServeRejectsConflictingValidationSelector()
+        {
+            var result = await RunHarnessAsync(new[] { "--serve", "--phase163-57" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("cannot be combined", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task ServeRejectsMissingPortValue()
+        {
+            var result = await RunHarnessAsync(new[] { "--serve", "--port" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("--port", result.StandardError, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task TimedOutHarnessReportsOutputAfterDrainingKilledProcess()
         {
             var environment = new Dictionary<string, string>
