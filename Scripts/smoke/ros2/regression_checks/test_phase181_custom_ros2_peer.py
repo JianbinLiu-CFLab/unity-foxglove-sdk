@@ -940,7 +940,9 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             commands.append(tuple(command))
             return Result(0 if len(commands) == 1 else 1)
 
-        with mock.patch.object(peer.os, "name", "nt"), mock.patch.object(
+        windows_os = mock.Mock(wraps=peer.os)
+        windows_os.name = "nt"
+        with mock.patch.object(peer, "os", windows_os), mock.patch.object(
             peer.subprocess, "run", side_effect=run
         ), mock.patch.object(pathlib.Path, "exists", return_value=False):
             with self.assertRaisesRegex(peer.PeerFailure, "FAIL_PEER_WORKSPACE"):
@@ -967,9 +969,11 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             commands.append(tuple(command))
             return Result(0 if len(commands) == 1 else 1)
 
+        windows_os = mock.Mock(wraps=peer.os)
+        windows_os.name = "nt"
         with temporary_directory("plugin-alias-") as temporary:
             plugin_directory = pathlib.Path(temporary)
-            with mock.patch.object(peer.os, "name", "nt"), mock.patch.object(
+            with mock.patch.object(peer, "os", windows_os), mock.patch.object(
                 peer.subprocess, "run", side_effect=run
             ), mock.patch.object(pathlib.Path, "exists", return_value=False):
                 with self.assertRaisesRegex(peer.PeerFailure, "FAIL_EDITOR_BATCH"):
