@@ -9,6 +9,7 @@ from __future__ import annotations
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 from Scripts.smoke.foxrun import phase186_bridge_acceptance as acceptance
 from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
@@ -95,6 +96,51 @@ class Phase186BridgeCertificationTests(unittest.TestCase):
                 bridge_project.MAX_WINDOWS_UNITY_LMDB_PATH,
                 str(search_asset_db),
             )
+
+    def test_timeout_terminates_owned_windows_process_tree(self) -> None:
+        """Verify bounded certification timeouts terminate descendants, not only the root PID."""
+        class TimedOutProcess:
+            pid = 4242
+
+            def __init__(self) -> None:
+                self.wait_calls = 0
+
+            def wait(self, timeout: float | None = None) -> int:
+                self.wait_calls += 1
+                if self.wait_calls == 1:
+                    raise certification.subprocess.TimeoutExpired(["owned"], timeout or 0)
+                return -9
+
+            def poll(self) -> int | None:
+                return None
+
+            def kill(self) -> None:
+                raise AssertionError("tree cleanup must not fall back to root-only kill")
+
+        process = TimedOutProcess()
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(
+            certification.os, "name", "nt"
+        ), mock.patch.object(
+            certification.subprocess, "Popen", return_value=process
+        ) as popen, mock.patch.object(certification.subprocess, "run") as run:
+            with self.assertRaises(certification.CertificationFailure):
+                certification._run_logged(
+                    ["owned"],
+                    repository=pathlib.Path(temp),
+                    log=pathlib.Path(temp) / "owned.log",
+                    timeout_seconds=0.01,
+                )
+        run.assert_called_once_with(
+            ["taskkill", "/PID", "4242", "/T", "/F"],
+            check=False,
+            stdout=certification.subprocess.DEVNULL,
+            stderr=certification.subprocess.DEVNULL,
+        )
+        self.assertEqual(2, process.wait_calls)
+        self.assertEqual(
+            int(getattr(certification.subprocess, "CREATE_NEW_PROCESS_GROUP", 0)),
+            popen.call_args.kwargs["creationflags"],
+        )
 
 
 if __name__ == "__main__":
