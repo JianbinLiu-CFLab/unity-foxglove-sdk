@@ -214,7 +214,7 @@ def _temporary_short_workspace_root(request: CharacterizationRequest) -> Iterato
             # ``subst`` may acknowledge a mapping before the drive is
             # visible to this process. Undo that reservation before trying
             # another letter so failed probes cannot leak mappings.
-            subprocess.run(
+            cleanup = subprocess.run(
                 (str(subst), letter + ":", "/D"),
                 shell=False,
                 capture_output=True,
@@ -222,6 +222,8 @@ def _temporary_short_workspace_root(request: CharacterizationRequest) -> Iterato
                 errors="replace",
                 check=False,
             )
+            if cleanup.returncode != 0 or candidate.exists():
+                raise CharacterizationError("provide-short-windows-build-root")
     if mapped_drive is None:
         raise CharacterizationError("provide-short-windows-build-root")
 
