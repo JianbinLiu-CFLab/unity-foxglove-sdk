@@ -65,7 +65,11 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var scanRoot in ScanRoots)
             {
                 var dir = Path.Combine(packageRoot, scanRoot);
-                if (!Directory.Exists(dir)) continue;
+                if (!Directory.Exists(dir))
+                {
+                    Fail($"137G-R: missing configured scan root: {scanRoot}");
+                    continue;
+                }
                 CollectFiles(dir, allFiles);
             }
 
