@@ -54,6 +54,25 @@ def load_probe():
 class Phase185FoxRunMessagePackProbeTests(unittest.TestCase):
     """Fail-closed protocol and report coverage."""
 
+    def test_observation_windows_require_finite_positive_durations(self) -> None:
+        """Zero, negative, and non-finite quiet windows must be rejected."""
+        module = load_probe()
+        for value in ("0", "-1", "nan", "inf"):
+            with self.subTest(value=value), self.assertRaises(module.argparse.ArgumentTypeError):
+                module._positive_seconds(value)
+
+        original = sys.argv
+        try:
+            for option in ("--exactly-once-quiet-seconds", "--malformed-settle-seconds"):
+                for value in ("0", "-1"):
+                    with self.subTest(option=option, value=value):
+                        sys.argv = ["probe", option, value]
+                        with self.assertRaises(SystemExit) as raised:
+                            module.parse_args()
+                        self.assertEqual(2, raised.exception.code)
+        finally:
+            sys.argv = original
+
     def test_canonical_a_and_b_payloads_are_distinct_and_independently_decodable(self) -> None:
         """Canonical A and B remain distinct complete MessagePack payloads."""
         module = load_probe()

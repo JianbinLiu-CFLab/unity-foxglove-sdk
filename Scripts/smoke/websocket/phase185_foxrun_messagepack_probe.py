@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import ssl
 import struct
 import time
@@ -902,6 +903,17 @@ def _build_ssl_context(url: str, insecure: bool) -> ssl.SSLContext | None:
     return context
 
 
+def _positive_seconds(value: str) -> float:
+    """Parse a strictly positive duration for an observation window."""
+    try:
+        seconds = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("duration must be a finite positive number") from exc
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("duration must be a finite positive number")
+    return seconds
+
+
 def parse_args() -> argparse.Namespace:
     """Parse bounded live-probe command-line options."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -937,12 +949,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--exactly-once-quiet-seconds",
-        type=float,
+        type=_positive_seconds,
         default=EXACTLY_ONCE_QUIET_SECONDS,
     )
     parser.add_argument(
         "--malformed-settle-seconds",
-        type=float,
+        type=_positive_seconds,
         default=MALFORMED_SETTLE_SECONDS,
     )
     parser.add_argument(
