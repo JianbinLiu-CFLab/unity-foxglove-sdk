@@ -1,0 +1,3 @@
+BASELINE_RED=all missing configured scan roots skipped and validation could pass
+MODIFIED_GREEN=missing scan root now records failure
+RESULT=CONFIRMED_FIXED
