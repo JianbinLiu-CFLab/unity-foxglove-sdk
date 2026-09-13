@@ -24,6 +24,11 @@ class I10NativeCleanupTests(unittest.TestCase):
         self.assertIn("private bool RemoveSubscriptionSafely", source)
         self.assertIn("if (!RemoveSubscriptionSafely(subscription))", source)
 
+    def test_direct_node_removal_waits_for_child_cleanup(self):
+        """Ensure a failed child removal cannot orphan the node handle."""
+        source = (ROOT / "Packages/dev.unity2foxglove.ros2forunity/Samples~/ROS2 For Unity External Adapter/Phase110Ros2ForUnityStringSmoke.cs").read_text(encoding="utf-8")
+        self.assertIn("if (!cleanupFailed && _directRos2Unity != null && _directRos2Node != null)", source)
+
 
 if __name__ == "__main__":
     unittest.main()

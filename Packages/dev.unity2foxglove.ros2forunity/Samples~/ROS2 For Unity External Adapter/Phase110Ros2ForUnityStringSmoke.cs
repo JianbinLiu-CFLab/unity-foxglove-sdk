@@ -348,7 +348,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
             }
         }
 
-        if (_directRos2Unity != null && _directRos2Node != null)
+        if (!cleanupFailed && _directRos2Unity != null && _directRos2Node != null)
         {
             try
             {
