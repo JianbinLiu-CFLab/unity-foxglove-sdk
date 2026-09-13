@@ -1,0 +1,10 @@
+{
+  "finding_id": "I10-004",
+  "source_anchor": "Scripts/smoke/ros2/phase179_zenoh_topology.py@3f772a94f4edfd0729ada2e483e3c8439ec895bd:218-269; Scripts/smoke/ros2/phase179_foxrun_ros2_matrix_profiles.py@700550642037a8dcff28b74569aaee2f8a571531:864-877; Scripts/smoke/ros2/phase181_custom_ros2_matrix_profiles.py@cf31604b508f238fc5ae5dd549afac67360e7ae0:294-315; Scripts/smoke/ros2/phase179_foxrun_ros2_inbound_acceptance.py@ca474476085700ed6199d646f729be2a966ffb2e:661-725; current_primary_sha256=997943f2a77472ed5463a83d9a510513fc49bca24194a4176d0a4610d982240a",
+  "source_sha256": "997943f2a77472ed5463a83d9a510513fc49bca24194a4176d0a4610d982240a",
+  "command": "python -m unittest Scripts.smoke.ros2.regression_checks.test_ros2_windows_env Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer",
+  "literal_output": "I10 ROS2 owner suites: PASS; [2026-09-13T02:56:11.106+02:00] [test] RViz2 Popen returned pid=1234 popen_elapsed=0.000s total_elapsed=0.004s",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T00:56:11.561491+00:00"
+}

@@ -1,0 +1,10 @@
+{
+  "finding_id": "I10-001",
+  "source_anchor": "Scripts/smoke/ros2/phase179_foxrun_ros2_matrix_profiles.py@638544657dc5aa68d7f1f32e0ff6ada4f71509ca7c2544362180005fa1fe377d",
+  "source_sha256": "638544657dc5aa68d7f1f32e0ff6ada4f71509ca7c2544362180005fa1fe377d",
+  "command": "python -m unittest Scripts.smoke.ros2.regression_checks.test_ros2_windows_env Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer",
+  "literal_output": "I10 ROS2 owner suites: PASS; [2026-09-13T02:56:11.106+02:00] [test] RViz2 Popen returned pid=1234 popen_elapsed=0.000s total_elapsed=0.004s",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T00:56:11.555867+00:00"
+}

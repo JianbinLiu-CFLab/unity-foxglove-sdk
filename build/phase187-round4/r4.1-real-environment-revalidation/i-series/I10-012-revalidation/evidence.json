@@ -1,0 +1,10 @@
+{
+  "finding_id": "I10-012",
+  "source_anchor": "Scripts/smoke/ros2/_ros2_windows_env.py@01f309b0f44aa9b2e6f63bec3342932a6a577bce:148-158; Scripts/smoke/ros2/_ros2_windows_env.py@01f309b0f44aa9b2e6f63bec3342932a6a577bce:184-238; Scripts/smoke/ros2/regression_checks/test_ros2_windows_env.py@1fe8e0588d30d4b58d88ec1cc19e8bcab160fb93:43-53; Scripts/smoke/ros2/phase128_rviz2_acceptance.py@961354aecad85462ce1b8c7c61f5aa3734855f8d:65-68; Scripts/smoke/ros2/phase129_pointcloud2_acceptance.py@4a97e48aeb2391f2aebe982849f7d7c1b8a70d3e:65-68; Scripts/smoke/ros2/phase130_markerarray_acceptance.py@76a7de476fcd8d6b909a74b358b913f571816f47:65-68; Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py@4c18eec2331d45eb0a890988a85489afa0ecdb85:1091-1102; current_primary_sha256=0d70456ff2abf2ec7b5892d9e391de2e08d8f6b86bc730010fd3a15b1b5778b8",
+  "source_sha256": "0d70456ff2abf2ec7b5892d9e391de2e08d8f6b86bc730010fd3a15b1b5778b8",
+  "command": "python -m unittest Scripts.smoke.ros2.regression_checks.test_ros2_windows_env Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer",
+  "literal_output": "I10 ROS2 owner suites: PASS; [2026-09-13T02:56:11.106+02:00] [test] RViz2 Popen returned pid=1234 popen_elapsed=0.000s total_elapsed=0.004s",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T00:56:11.573075+00:00"
+}
