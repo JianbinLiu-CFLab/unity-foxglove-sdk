@@ -182,9 +182,7 @@ namespace Unity.FoxgloveSDK.Editor
                     var d = defaultDir;
                     EditorApplication.delayCall += () =>
                     {
-                        if (capturedProp.serializedObject == null
-                            || capturedProp.serializedObject.targetObject == null
-                            || Selection.activeObject != capturedProp.serializedObject.targetObject)
+                        if (capturedProp.serializedObject == null || capturedProp.serializedObject.targetObject == null)
                             return;
 
                         string selected;
@@ -219,9 +217,7 @@ namespace Unity.FoxgloveSDK.Editor
                 var d = defaultDir;
                 EditorApplication.delayCall += () =>
                 {
-                    if (capturedProp.serializedObject == null
-                        || capturedProp.serializedObject.targetObject == null
-                        || Selection.activeObject != capturedProp.serializedObject.targetObject)
+                    if (capturedProp.serializedObject == null || capturedProp.serializedObject.targetObject == null)
                         return;
 
                     string selected;
