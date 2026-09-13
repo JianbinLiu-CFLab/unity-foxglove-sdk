@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -95,6 +96,29 @@ class ArchitectureToolingTests(unittest.TestCase):
             path.write_bytes(b"namespace Valid { \xff }\n")
             with self.assertRaises(UnicodeDecodeError):
                 module.read_text(Path(temp), "broken.cs")
+
+    def test_asmdef_collection_rejects_invalid_schema_shapes(self) -> None:
+        """Asmdef names/references must retain their declared JSON types."""
+        module = load_module("analyze_coupling_asmdef_schema_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            paths = []
+            cases = {
+                "missing-name.asmdef": {"references": []},
+                "numeric-name.asmdef": {"name": 7, "references": []},
+                "string-refs.asmdef": {"name": "A", "references": "B"},
+                "nonstring-ref.asmdef": {"name": "A", "references": [3]},
+            }
+            for filename, payload in cases.items():
+                path = root / filename
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                paths.append(filename)
+
+            metrics = module.collect_asmdef_metrics(root, paths)
+
+        self.assertEqual(4, len(metrics))
+        self.assertTrue(all(item.name == "<invalid-schema>" for item in metrics))
 
     def test_report_flags_root_developer_meta_as_a_private_boundary(self) -> None:
         """Architecture reporting must include a tracked root Developer.meta."""

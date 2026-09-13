@@ -205,8 +205,18 @@ def collect_asmdef_metrics(repo_root: Path, tracked_files: list[str]) -> list[As
         if not isinstance(payload, dict):
             metrics.append(AsmdefMetric(path, "<invalid-json-object>", []))
             continue
-        name = str(payload.get("name", ""))
-        references = [normalize_asmdef_reference(str(item)) for item in payload.get("references", [])]
+        name_value = payload.get("name")
+        references_value = payload.get("references", [])
+        if (
+            not isinstance(name_value, str)
+            or not name_value.strip()
+            or not isinstance(references_value, list)
+            or any(not isinstance(item, str) for item in references_value)
+        ):
+            metrics.append(AsmdefMetric(path, "<invalid-schema>", []))
+            continue
+        name = name_value
+        references = [normalize_asmdef_reference(item) for item in references_value]
         metrics.append(AsmdefMetric(path, name, sorted(references)))
     return sorted(metrics, key=lambda item: item.path)
 
