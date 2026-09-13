@@ -23,8 +23,10 @@ GIT_GREP_TIMEOUT_SECONDS = 900
 PROCESS_CLEANUP_TIMEOUT_SECONDS = 10
 
 FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("Windows ROS2 install root", re.compile(r"C:[\\/]+ros2_[A-Za-z0-9_-]+[\\/]+ros2-windows", re.IGNORECASE)),
-    ("external R2FU artifact cache", re.compile(r"D:[\\/]+ros2unity", re.IGNORECASE)),
+    ("Windows ROS2 install root", re.compile(r"[A-Za-z]:[\\/]+ros2_[A-Za-z0-9_-]+[\\/]+ros2-windows", re.IGNORECASE)),
+    ("external R2FU artifact cache", re.compile(r"[A-Za-z]:[\\/]+ros2unity", re.IGNORECASE)),
+    ("UNC ROS2/R2FU resource root", re.compile(r"\\\\[^\\/[[:space:]]]+[\\/]+[^\\/[[:space:]]]+[\\/]+(ros2unity|ros2_[A-Za-z0-9_-]+)", re.IGNORECASE)),
+    ("POSIX ROS2/R2FU resource root", re.compile(r"(/home/[^/[[:space:]]]+|~/)[^[:space:]]*(ros2unity|ros2_[A-Za-z0-9_-]+)", re.IGNORECASE)),
     (
         "temporary GitHub signed release asset URL",
         re.compile(r"(https?|ftp)://release-assets\.githubusercontent\.com/", re.IGNORECASE),
