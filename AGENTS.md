@@ -1,3 +1,10 @@
+# ADDITIVE CHECKPOINT 2026-09-13 — FINAL I-SERIES CLOSURE REFS
+
+Status: `I_SERIES_COMPLETE / PR332_MERGED / PR333_MERGED / PR334_MERGED / MAIN_SYNCED / NO_SHUTDOWN`
+
+- Final local `main`, `HEAD`, and `origin/main`: `d130cda2374d5c8b60dbebc4297310b93d115fe3` after PR #334. PR #332 merge `8a8bc7e79af95a0621d693d613d03ac996a3b260`; PR #333 merge `da36efafd976d000eacd5de5f96589d0ef028868`; PR #334 merge `d130cda2374d5c8b60dbebc4297310b93d115fe3`. Remote heads contain only `refs/heads/main`; all I correction branches were deleted after ancestry verification.
+- The complete prior AGENTS content is preserved below as the exact suffix.
+
 # ADDITIVE TERMINAL CORRECTION 2026-09-12 — I QUARTET PATH RECONCILIATION
 
 - The terminal checkpoint was reopened and corrected to distinguish the shared transaction directory `build/phase187-round4/r4.1-real-environment-revalidation/i-series/behavioral-repair-20260912/` from the direct I09-009 quartet directory `build/phase187-round4/r4.1-real-environment-revalidation/i-series/I09-009-transaction/`. Both retain `MODIFIED_FILE`, `DIFF_FILE`, `VERIFICATION.txt`, and executable `ROLLBACK.sh` with the recorded rollback outputs.
