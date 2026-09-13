@@ -1,0 +1,53 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs b/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs
+index 792f4161a..882530768 100644
+--- a/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs
++++ b/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs
+@@ -503,22 +503,15 @@ namespace Unity.FoxgloveSDK.Editor
+                 return LatestRecordingResult.Failed($"Recordings directory was not found: {recordingsDir}");
+             }
+ 
+-            cancellationToken.ThrowIfCancellationRequested();
+-            var paths = Directory.GetFiles(recordingsDir, "*.mcap", SearchOption.AllDirectories);
+-            var candidates = new LatestRecordingCandidate[paths.Length];
+-            for (var i = 0; i < paths.Length; i++)
+-            {
+-                cancellationToken.ThrowIfCancellationRequested();
+-                candidates[i] = LatestRecordingCandidate.FromPath(paths[i]);
+-            }
+-
+-            Array.Sort(candidates, (left, right) =>
+-                right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc));
+-
++            LatestRecordingCandidate latestReadable = null;
+             var lastError = string.Empty;
+-            foreach (var candidate in candidates)
++            foreach (var path in Directory.EnumerateFiles(recordingsDir, "*.mcap", SearchOption.AllDirectories))
+             {
+                 cancellationToken.ThrowIfCancellationRequested();
++                var candidate = LatestRecordingCandidate.FromPath(path);
++                if (latestReadable != null
++                    && candidate.LastWriteTimeUtc <= latestReadable.LastWriteTimeUtc)
++                    continue;
+                 try
+                 {
+                     var info = new FileInfo(candidate.Path);
+@@ -528,8 +521,7 @@ namespace Unity.FoxgloveSDK.Editor
+                     using (McapIndexedReader.OpenRead(candidate.Path))
+                     {
+                     }
+-
+-                    return LatestRecordingResult.Found(candidate.Path);
++                    latestReadable = candidate;
+                 }
+                 catch (InvalidDataException)
+                 {
+@@ -546,6 +538,9 @@ namespace Unity.FoxgloveSDK.Editor
+                 }
+             }
+ 
++            if (latestReadable != null)
++                return LatestRecordingResult.Found(latestReadable.Path);
++
+             var error = $"No readable MCAP recordings were found under: {recordingsDir}";
+             if (!string.IsNullOrEmpty(lastError))
+                 error += "\n" + lastError;

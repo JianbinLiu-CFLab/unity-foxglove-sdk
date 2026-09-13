@@ -1,0 +1,9 @@
+finding_id=187-R2-I01-004
+source=Packages\dev.unity2foxglove.sdk\Editor\Manager\McapReplayPreflightDrawer.cs
+original_sha256=876d40cec9abd021af0b288c316ec5e7dcc712a3574c220e0cbaef285ce01432
+modified_sha256=c2cd1a21b02471b5344d336170ffcc1d4f713197f90941048b4499c2522bb3ca
+RED=python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_latest_recording_scan_is_streaming_and_cancellable
+RED_RESULT=FAIL eager Directory.GetFiles assertion exit=1
+GREEN=python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_latest_recording_scan_is_streaming_and_cancellable Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_mcap_preflight_binds_latest_completion_and_clears_stale_evidence
+GREEN_RESULT=OK exit=0
+CONTROLS=per-entry cancellation checkpoint and newest-readable selection retained; Unity compile deferred to owner suite
