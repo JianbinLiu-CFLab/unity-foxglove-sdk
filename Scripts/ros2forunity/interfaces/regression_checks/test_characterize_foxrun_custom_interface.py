@@ -43,7 +43,10 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
             commands = []
 
             class Result:
+                """Minimal subprocess result used by the deterministic alias probe."""
+
                 def __init__(self, returncode: int) -> None:
+                    """Store the mocked command status and empty streams."""
                     self.returncode = returncode
                     self.stdout = ""
                     self.stderr = ""
