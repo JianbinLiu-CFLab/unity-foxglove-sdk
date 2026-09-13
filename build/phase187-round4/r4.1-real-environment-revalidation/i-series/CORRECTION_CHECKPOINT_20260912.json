@@ -2,7 +2,7 @@
   "status": "CORRECTION_OVERLAY_ACTIVE_REVALIDATION_IN_PROGRESS",
   "branch": "feature/round4/i-series-refuted-evidence-correction",
   "base_head": "9f3620526fb5acdbc70e85b85c400fd39e080ba4",
-  "head": "eeb1b72fa5e8dc16759d5853d56c2f0d5008770e",
+  "head": "f57a3e2376d2960f0736973a99cc79216ab7f61a",
   "overlay": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\R4.1-I_REFUTED_EVIDENCE_CORRECTION_20260912.tsv",
   "overlay_sha256": "d60a48fa62d07469503a006af05e15eba79ad8b5fba76f8ec71ccf80a4994f25",
   "rows": 264,
@@ -60,7 +60,8 @@
     "9857a5152b2571f64fb997ce2b9b1858caa7746d",
     "4dc13475689ca9b47c83de368e387e970f006b18",
     "c542e39e0225775c176a15722aab62d0f43657d5",
-    "0edceb6ba49a109a40e14413b1fe88597c5a21d7"
+    "0edceb6ba49a109a40e14413b1fe88597c5a21d7",
+    "f57a3e2376d2960f0736973a99cc79216ab7f61a"
   ],
   "historical_overlay_preserved": true,
   "deepwiki_reports_preserved": true,
@@ -108,6 +109,6 @@
     "CONFIRMED_FIXED": 56,
     "PENDING_REVALIDATION": 167
   },
-  "current_head": "eeb1b72fa5e8dc16759d5853d56c2f0d5008770e",
+  "current_head": "f57a3e2376d2960f0736973a99cc79216ab7f61a",
   "last_updated": "2026-09-13T01:45:00Z"
 }
