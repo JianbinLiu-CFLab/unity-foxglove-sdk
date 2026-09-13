@@ -1199,6 +1199,14 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("if (!IsValidFoxRunHash(hash))", source)
         self.assertIn("return string.Empty;", source)
 
+    def test_encoding_inspectors_preserve_unsupported_serialized_values(self) -> None:
+        """Enum inspectors must not rewrite forward-compatible raw values on repaint."""
+        foxrun = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Shared" / "FoxRunEncodingEditorLabels.cs").read_text(encoding="utf-8")
+        publisher = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Shared" / "PublisherEncodingEditorLabels.cs").read_text(encoding="utf-8")
+        self.assertIn("EditorGUI.BeginChangeCheck", foxrun)
+        self.assertIn("EditorGUI.EndChangeCheck", foxrun)
+        self.assertIn("EditorGUI.BeginChangeCheck", publisher)
+
     def test_phase134_read_repo_text_rejects_missing_source(self) -> None:
         """Provider validation must fail closed when a required source file is absent."""
         source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase134_1Validation.cs").read_text(encoding="utf-8")

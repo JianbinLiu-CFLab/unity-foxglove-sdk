@@ -1,0 +1,11 @@
+I01-002 direct source-level RED/GREEN transaction
+source: FoxRunEncodingEditorLabels.cs and PublisherEncodingEditorLabels.cs
+RED command: python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_encoding_inspectors_preserve_unsupported_serialized_values
+RED literal output/result: FAIL; AssertionError: EditorGUI.BeginChangeCheck absent
+RED exit_status: 1
+GREEN command: python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_encoding_inspectors_preserve_unsupported_serialized_values
+GREEN literal output/result: Ran 1 test ... OK
+GREEN exit_status: 0
+controls: unsupported enum values now remain untouched on passive repaint; explicit popup changes commit only valid values and show warning
+rollback_command: bash ROLLBACK.sh
+rollback_result: ROLLBACK_OK; ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true

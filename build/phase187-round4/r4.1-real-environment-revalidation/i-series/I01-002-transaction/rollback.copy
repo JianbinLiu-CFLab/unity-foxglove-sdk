@@ -6,7 +6,6 @@
 
 using Unity.FoxgloveSDK.Components;
 using UnityEditor;
-using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -19,31 +18,21 @@ namespace Unity.FoxgloveSDK.Editor
             if (property == null)
                 return;
 
-            var rawValue = property.intValue;
-            var supported = rawValue == (int)FoxRunEncoding.Protobuf
-                || rawValue == (int)FoxRunEncoding.JSON
-                || rawValue == (int)FoxRunEncoding.MessagePack;
-            if (!supported)
-                EditorGUILayout.HelpBox($"Stored FoxRun encoding value {rawValue} is unsupported. Choose an explicit replacement.", MessageType.Warning);
-
-            var selected = rawValue switch
+            var selected = property.intValue switch
             {
                 (int)FoxRunEncoding.Protobuf => 0,
                 (int)FoxRunEncoding.JSON => 1,
                 (int)FoxRunEncoding.MessagePack => 2,
-                _ => -1
+                _ => 0
             };
-            EditorGUI.BeginChangeCheck();
             selected = EditorGUILayout.Popup(label, selected, ManagerDefaultLabels);
-            if (EditorGUI.EndChangeCheck() && selected >= 0 && selected < ManagerDefaultLabels.Length)
+            property.intValue = selected switch
             {
-                property.intValue = selected switch
-                {
-                    0 => (int)FoxRunEncoding.Protobuf,
-                    1 => (int)FoxRunEncoding.JSON,
-                    _ => (int)FoxRunEncoding.MessagePack
-                };
-            }
+                0 => (int)FoxRunEncoding.Protobuf,
+                1 => (int)FoxRunEncoding.JSON,
+                2 => (int)FoxRunEncoding.MessagePack,
+                _ => (int)FoxRunEncoding.Protobuf
+            };
         }
 
         public static string ToDisplayLabel(FoxRunEncoding encoding)
