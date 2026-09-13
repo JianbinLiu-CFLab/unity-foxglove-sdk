@@ -1,3 +1,17 @@
+# ADDITIVE CHECKPOINT 2026-09-13 — CLAUDE/PHASE184+ RESIDUAL HARDENING MERGED
+
+Status: `CLAUDE_F900_RESIDUAL_HARDENING_MERGED / PR339 / MAIN_SYNCED / NO_SHUTDOWN`
+
+- PR #339 merged normally: https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/339; merge SHA `420b738ceb20f047861235769de9aa8de5578fc7`. Serial branch commits: `a4d103506`, `462713122`, `1faa670e2`, `07becf746`, `a4269ba2b`, `67ae4fffc`, `77ec07c16`, `f3c04f085`, `bccb706fa`, `fc3a7ab96`.
+- Final local CI: `python -B Scripts/release/run_ci.py`; runner exit `0`; literal `All CI checks passed.`; log `build/ci-final-claude-f900-v6.log`.
+- Remote checks all passed: docs, check, test, analyzer-freshness, Windows runtime/xUnit/panel/package parity, optional ROS2 Native, optional ROS2 adapter.
+- Cross-platform Phase181 alias probes now explicitly isolate simulated Windows state and stub `subst.exe`; local 66-test Phase181 suite passed.
+- Dispositions: I09-008/I09-015/I09-016/I09-017/I09-019/I09-021/I09-023/I09-025 confirmed and hardened; I10-007 `REFUTED`; I10-010/I10-011 `DEFERRED_CAPABILITY_GAP`; I09-013 remains partial (descendant/output capture gap).
+- Final refs: `main == HEAD == origin/main == 420b738ceb20f047861235769de9aa8de5578fc7`; remote heads contain only `refs/heads/main`; merged feature branch retained remotely per `--delete-branch=false` and is preserved locally for history.
+- `git ls-files build` and `git ls-files docs/superpowers` are both `0`; protected Unity/package dirty files and untracked evidence remain unchanged. No reset, stash, clean, broad deletion, or shutdown.
+
+AGENTS_PREVIOUS_SHA256=2bf32e476dd5c7ee1a15bd89084043501a438b7d91cc3ef72657dd4879956a7f
+
 # ADDITIVE CHECKPOINT 2026-09-13 — CLAUDE/PHASE184+ RESIDUAL HARDENING
 
 Status: `RESIDUAL_HARDENING / CI_PASSED / BUILD_AND_SUPERPOWERS_PURGED / NO_SHUTDOWN`
