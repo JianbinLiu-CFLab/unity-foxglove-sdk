@@ -958,6 +958,7 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual("partial stderr\n", result.stderr)
 
     def test_run_captured_bounds_large_output_with_marker(self) -> None:
+        """Captured command output is bounded and marked when truncated."""
         huge = "x" * (self.run_ci.MAX_CAPTURED_OUTPUT_CHARS + 4096)
         completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout=huge, stderr=huge)
         with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed):
@@ -967,6 +968,7 @@ class RunCiTests(unittest.TestCase):
         self.assertLessEqual(len(result.stderr), self.run_ci.MAX_CAPTURED_OUTPUT_CHARS)
 
     def test_restore_fallback_retries_only_restore_state_failures(self) -> None:
+        """Restore-state failures trigger exactly one fallback retry."""
         restore_failure = self.run_ci.CapturedCommandResult(
             "build", False, 1, 0.1, "error NETSDK1004: project.assets.json not found", ""
         )
@@ -976,6 +978,7 @@ class RunCiTests(unittest.TestCase):
         fallback.assert_called_once_with(["restore"], "build (retry with restore)", fatal=False)
 
     def test_restore_fallback_does_not_hide_non_restore_failure(self) -> None:
+        """Compiler failures are returned without a misleading restore retry."""
         compiler_failure = self.run_ci.CapturedCommandResult(
             "build", False, 1, 0.1, "error CS1002: ; expected", ""
         )
