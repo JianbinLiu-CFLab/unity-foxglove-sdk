@@ -1,2 +1,0 @@
-RED_RESULT=True
-RED_LITERAL=RunValidation had no executable-body guard; an empty delegate returned PASS

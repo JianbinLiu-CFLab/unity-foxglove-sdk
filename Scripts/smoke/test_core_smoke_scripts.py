@@ -310,6 +310,64 @@ class CoreSmokeScriptTests(unittest.TestCase):
         self.assertEqual(2, process.waits)
         self.assertTrue(stdout_finished.is_set())
 
+    def test_phase139b_rejects_cross_origin_manifest_source(self) -> None:
+        """Manifest source URLs must remain on the authenticated backend origin."""
+        module = load_smoke_module("phase139b_origin_under_test", "replay/phase139b_remote_data_loader_acceptance.py")
+        with self.assertRaisesRegex(ValueError, "cross-origin"):
+            module.build_data_url("http://127.0.0.1:8000", {"url": "http://evil.example/v1/data"}, None)
+
+    def test_phase139b_read_url_caps_response_body(self) -> None:
+        """HTTP probes must reject responses larger than their bounded body budget."""
+        module = load_smoke_module("phase139b_bodycap_under_test", "replay/phase139b_remote_data_loader_acceptance.py")
+
+        class Response:
+            """Bounded-response fixture."""
+            status = 200
+            headers = {"Content-Type": "application/octet-stream"}
+            def __enter__(self):
+                """Enter the response context."""
+                return self
+            def __exit__(self, *args):
+                """Leave the response context."""
+                return False
+            def read(self, size=-1):
+                """Return one byte beyond the requested limit."""
+                return b"x" * (size + 1 if size > 0 else 1025)
+
+        with mock.patch.object(module.urllib.request, "urlopen", return_value=Response()):
+            with self.assertRaisesRegex(ValueError, "response body exceeds"):
+                module.read_url("http://127.0.0.1:8000/data", "", 1.0, max_bytes=1024)
+
+    def test_phase139d_read_bounded_caps_endpoint_body(self) -> None:
+        """Cursor bridge endpoint probes must use the same bounded-read rule."""
+        module = load_smoke_module("phase139d_bodycap_under_test", "replay/phase139d_unity_cursor_bridge_acceptance.py")
+
+        class Response:
+            """Bounded-response fixture."""
+            def read(self, size=-1):
+                """Return one byte beyond the requested limit."""
+                return b"x" * (size + 1 if size > 0 else 1025)
+
+        with self.assertRaisesRegex(ValueError, "response body exceeds"):
+            module.read_bounded(Response(), 1024)
+
+    def test_phase139c_marks_manual_ui_evidence_partial(self) -> None:
+        """Curve-only automation must not claim human UI observations were passed."""
+        source = read_source("replay/phase139c_dataloader_cursor_acceptance.py")
+        self.assertIn('"status": "partial"', source)
+
+    def test_tf_websocket_smoke_requires_message_data(self) -> None:
+        """A subscription that receives no MessageData frames is a failed smoke run."""
+        source = read_source("websocket/tf_websocket_smoke.py")
+        self.assertIn("EXIT_NO_MESSAGE_DATA", source)
+        self.assertIn("message_count == 0", source)
+
+    def test_phase139_e2e_requires_channel_metadata_and_payload(self) -> None:
+        """Required topics must prove schema metadata and non-empty payloads."""
+        source = read_repo_source("Scripts/smoke/replay/phase139_e2e_integration_smoke.py")
+        self.assertIn("Missing required WebSocket channel metadata", source)
+        self.assertIn("payload_bytes == 0", source)
+
     def test_phase139b_windows_stop_backend_does_not_raise_on_wait_timeout(self) -> None:
         """Windows cleanup should not mask the original smoke result."""
         module = load_smoke_module("phase139b_stop_under_test", "replay/phase139b_remote_data_loader_acceptance.py")

@@ -14,6 +14,7 @@ import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -164,6 +165,47 @@ def _write_json_atomic(path: pathlib.Path, value: Mapping[str, Any]) -> None:
             temporary.unlink()
 
 
+def _owned_process_options() -> dict[str, object]:
+    """Create a process group so bounded timeout cleanup can reap descendants."""
+    if os.name == "nt":
+        return {
+            "creationflags": int(
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            )
+        }
+    return {"start_new_session": True}
+
+
+def _terminate_owned(process: subprocess.Popen[str] | None) -> str | None:
+    """Terminate and reap an owned process tree, returning a bounded diagnostic."""
+    if process is None:
+        return None
+    pid = int(getattr(process, "pid", 0) or 0)
+    try:
+        if process.poll() is not None:
+            return None
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+        waiter = getattr(process, "wait", None)
+        if not callable(waiter):
+            process.kill()
+        else:
+            waiter(timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return (
+            f"owned process {pid} could not be terminated or reaped "
+            f"({type(exc).__name__})"
+        )
+    return None
+
+
 def _run_logged(
     command: Sequence[str],
     *,
@@ -181,12 +223,14 @@ def _run_logged(
             stdout=stream,
             stderr=subprocess.STDOUT,
             shell=False,
+            **_owned_process_options(),
         )
         try:
             return process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=30)
+            diagnostic = _terminate_owned(process)
+            if diagnostic is not None:
+                raise CertificationFailure(diagnostic)
             raise CertificationFailure(
                 "owned certification command exceeded its bounded timeout"
             )

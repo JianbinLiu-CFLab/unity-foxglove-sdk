@@ -243,6 +243,8 @@ def terminate_owned_process(process: subprocess.Popen[str]) -> None:
                 process.wait(timeout=3.0)
             except subprocess.TimeoutExpired:
                 pass
+        if process.poll() is None:
+            raise ZenohTopologyError("CLEANUP", "The helper-owned Zenoh router remained alive after bounded tree cleanup.")
         return
 
     try:
@@ -266,6 +268,8 @@ def terminate_owned_process(process: subprocess.Popen[str]) -> None:
                 process.kill()
             except OSError:
                 return
+    if process.poll() is None:
+        raise ZenohTopologyError("CLEANUP", "The helper-owned Zenoh router process group remained alive after bounded cleanup.")
 
 
 def start_topology(

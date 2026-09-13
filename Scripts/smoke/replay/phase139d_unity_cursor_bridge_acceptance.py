@@ -11,6 +11,14 @@ traffic, not playhead-control evidence.
 
 from __future__ import annotations
 
+try:
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+except ModuleNotFoundError:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+
 import argparse
 import json
 import sys
@@ -101,6 +109,21 @@ def build_cursor_payload(sequence: int, sec: int, nsec: int) -> dict:
     }
 
 
+MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+
+
+def read_bounded(stream, max_bytes: int = MAX_RESPONSE_BYTES) -> bytes:
+    """Read endpoint response bodies with a strict memory bound."""
+    body = bytearray()
+    while True:
+        chunk = stream.read(min(64 * 1024, max_bytes - len(body) + 1))
+        if not chunk:
+            return bytes(body)
+        body.extend(chunk)
+        if len(body) > max_bytes:
+            raise ValueError(f"response body exceeds {max_bytes} bytes")
+
+
 def post_cursor(url: str, token: str, payload: dict, timeout: float) -> dict:
     """POST one cursor payload to an explicitly enabled loopback endpoint."""
     body = json.dumps(payload, sort_keys=True).encode("utf-8")
@@ -111,7 +134,7 @@ def post_cursor(url: str, token: str, payload: dict, timeout: float) -> dict:
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            response_body = response.read().decode("utf-8", "replace")
+            response_body = read_bounded(response).decode("utf-8", "replace")
             return {
                 "status": response.status,
                 "body": response_body,
@@ -119,7 +142,7 @@ def post_cursor(url: str, token: str, payload: dict, timeout: float) -> dict:
     except urllib.error.HTTPError as exc:
         return {
             "status": exc.code,
-            "body": exc.read().decode("utf-8", "replace"),
+            "body": read_bounded(exc).decode("utf-8", "replace"),
         }
     except urllib.error.URLError as exc:
         return {
@@ -136,7 +159,7 @@ def get_unity_state(url: str, token: str, timeout: float) -> dict:
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read().decode("utf-8", "replace")
+            body = read_bounded(response).decode("utf-8", "replace")
             parsed = json.loads(body)
             return {
                 "status": response.status,
@@ -145,7 +168,7 @@ def get_unity_state(url: str, token: str, timeout: float) -> dict:
     except urllib.error.HTTPError as exc:
         return {
             "status": exc.code,
-            "body": exc.read().decode("utf-8", "replace"),
+            "body": read_bounded(exc).decode("utf-8", "replace"),
         }
     except urllib.error.URLError as exc:
         return {
@@ -259,7 +282,7 @@ def write_evidence(root: Path, args: argparse.Namespace, evidence: dict) -> None
 
     json_out = (root / args.json_out).resolve()
     json_out.parent.mkdir(parents=True, exist_ok=True)
-    json_out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+    atomic_write_text(json_out, json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
 
 
 if __name__ == "__main__":

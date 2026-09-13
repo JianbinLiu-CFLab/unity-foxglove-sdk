@@ -1,3 +1,0 @@
-escaped=False child_alive_after_reap=False
-escaped=True child_alive_after_reap=False
-tree_cleanup=true

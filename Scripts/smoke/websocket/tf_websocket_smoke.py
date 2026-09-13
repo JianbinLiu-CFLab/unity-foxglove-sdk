@@ -57,6 +57,7 @@ DEFAULT_TRANSLATION_X = 0
 # Process exit code for a completed manual smoke run.
 EXIT_SUCCESS = 0
 EXIT_TOPIC_NOT_FOUND = 3
+EXIT_NO_MESSAGE_DATA = 4
 
 
 @dataclass(frozen=True)
@@ -161,6 +162,7 @@ async def run(args: argparse.Namespace) -> int:
         await ws.send(build_subscribe_payload(channel.channel_id, args.subscription_id))
         await drain_for_seconds(ws, args.settle_seconds)
 
+        message_count = 0
         for index in range(args.max_frames):
             try:
                 msg = await asyncio.wait_for(ws.recv(), timeout=args.timeout_seconds)
@@ -169,6 +171,7 @@ async def run(args: argparse.Namespace) -> int:
                     and len(msg) >= MIN_MESSAGE_DATA_FRAME_BYTES
                     and msg[OPCODE_OFFSET] == MESSAGE_DATA_OPCODE
                 ):
+                    message_count += 1
                     sub_id = struct.unpack("<I", msg[SUBSCRIPTION_ID_START:SUBSCRIPTION_ID_END])[
                         STRUCT_UNPACK_VALUE_INDEX
                     ]
@@ -182,6 +185,10 @@ async def run(args: argparse.Namespace) -> int:
             except asyncio.TimeoutError:
                 print("timeout")
                 break
+
+        if message_count == 0:
+            print("Verdict: NO_MESSAGE_DATA")
+            return EXIT_NO_MESSAGE_DATA
 
     return EXIT_SUCCESS
 

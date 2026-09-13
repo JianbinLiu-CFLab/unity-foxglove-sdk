@@ -555,6 +555,23 @@ class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):
             self.profiles.correlate_summaries(profile, "editor", linux, incomplete)
         self.assertEqual("EDITOR_APPLIED", value_failure.exception.category)
 
+    def test_correlation_consumes_an_exact_pair_once(self) -> None:
+        """A stale matching pair cannot be replayed as a second final PASS."""
+        profile = self.profiles.PROFILES["humble-fastrtps"]
+        linux = self._linux_summary(profile, surface="editor", token="row-token")
+        editor = self._editor_summary(profile, token="row-token")
+        with tempfile.TemporaryDirectory() as temp:
+            receipt = Path(temp) / "correlation-consumed.json"
+            first = self.profiles.correlate_summaries(
+                profile, "editor", linux, editor, consumed_receipts_path=receipt
+            )
+            self.assertTrue(first["correlationReceipt"])
+            with self.assertRaises(self.profiles.MatrixFailure) as replay:
+                self.profiles.correlate_summaries(
+                    profile, "editor", linux, editor, consumed_receipts_path=receipt
+                )
+            self.assertEqual("REPLAY", replay.exception.category)
+
     def test_windows_editor_root_uses_repo_local_ros_python_rclpy_endpoint_evidence(self) -> None:
         """Editor preflight queries all three endpoint contracts through the selected Windows ROS Python, never its CLI."""
 

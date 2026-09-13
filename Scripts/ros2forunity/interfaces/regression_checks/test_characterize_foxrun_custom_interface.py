@@ -35,6 +35,38 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
             self.assertFalse(requires_short_windows_build_alias(Path("T:/")))
             self.assertTrue(requires_short_windows_build_alias(Path("D:/") / ("very-long-root-" * 20)))
 
+    def test_failed_build_alias_probe_releases_subst_reservation(self) -> None:
+        """A successful subst call with an invisible drive must be undone before retry."""
+        with temporary_directory("characterize-alias-") as temporary_root:
+            root = Path(temporary_root)
+            request = self._make_request(root, self._make_static_package(root))
+            commands = []
+
+            class Result:
+                """Minimal subprocess result used by the deterministic alias probe."""
+
+                def __init__(self, returncode: int) -> None:
+                    """Store the mocked command status and empty streams."""
+                    self.returncode = returncode
+                    self.stdout = ""
+                    self.stderr = ""
+
+            def run(command, **kwargs):
+                """Record mocked subst calls and fail the invisible mapping probe."""
+                commands.append(tuple(command))
+                return Result(0 if len(commands) == 1 else 1)
+
+            with patch.object(characterization, "requires_short_windows_build_alias", return_value=True), patch.object(
+                characterization.subprocess, "run", side_effect=run
+            ), patch.object(Path, "exists", return_value=False), patch.object(
+                Path, "is_file", return_value=True
+            ):
+                with self.assertRaisesRegex(CharacterizationError, "provide-short-windows-build-root"):
+                    with characterization._temporary_short_workspace_root(request):
+                        self.fail("alias reservation should not succeed when the mapped drive is invisible")
+
+            self.assertTrue(any(command[-2:] == ("Z:", "/D") for command in commands))
+
     def test_candidate_workspace_uses_a_separate_out_of_tree_root(self) -> None:
         """Verify candidate workspace uses a separate out of tree root."""
         with temporary_directory("characterize-") as temporary_root:

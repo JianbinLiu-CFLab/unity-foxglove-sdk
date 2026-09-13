@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -39,6 +40,28 @@ class Ros2WindowsEnvTests(unittest.TestCase):
             )
 
         self.assertIn(str(vendor_bin), env["PATH"].split(os.pathsep))
+
+    def test_infer_ros_distro_rejects_mismatched_workspace_identity(self) -> None:
+        """A path label cannot override the authenticated pixi workspace identity."""
+        with tempfile.TemporaryDirectory() as temp:
+            ros2_root = Path(temp) / "ros2_jazzy"
+            ros2_root.mkdir()
+            (ros2_root / "pixi.toml").write_text(
+                '[workspace]\nname = "pixi_ros2_humble"\n', encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "identity mismatch"):
+                ros2env.infer_ros_distro(ros2_root)
+
+    def test_build_ros_env_rejects_explicit_distro_mismatch(self) -> None:
+        """Explicit distro labels must agree with the root path and marker."""
+        with tempfile.TemporaryDirectory() as temp:
+            ros2_root = Path(temp) / "ros2_jazzy"
+            ros2_root.mkdir()
+            (ros2_root / "pixi.toml").write_text(
+                '[workspace]\nname = "pixi_ros2_jazzy"\n', encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                ros2env.build_ros_env(ros2_root, ros_distro="humble")
 
     def test_build_ros_env_warns_when_inheriting_non_default_rmw(self) -> None:
         """Implicit inherited Zenoh/FastDDS choices should be visible in acceptance logs."""
@@ -241,6 +264,28 @@ class Ros2WindowsEnvTests(unittest.TestCase):
                     raise RuntimeError("late launch failure")
 
         self.assertTrue(process.terminated)
+
+    def test_terminate_owned_process_reports_resistant_process(self) -> None:
+        """Cleanup must not report success while an owned process remains live."""
+        class Resistant:
+            """Process double that ignores every termination request."""
+            pid = 9876
+            def poll(self):
+                """Remain live."""
+                return None
+            def terminate(self):
+                """Ignore graceful termination."""
+                return None
+            def kill(self):
+                """Ignore forced termination."""
+                return None
+            def wait(self, timeout):
+                """Never complete a bounded wait."""
+                raise subprocess.TimeoutExpired("resistant", timeout)
+
+        with mock.patch.object(ros2env.os, "name", "posix"):
+            with self.assertRaisesRegex(RuntimeError, "remains live|did not exit"):
+                ros2env.terminate_owned_process(Resistant(), timeout_seconds=0.01)
 
 
 if __name__ == "__main__":

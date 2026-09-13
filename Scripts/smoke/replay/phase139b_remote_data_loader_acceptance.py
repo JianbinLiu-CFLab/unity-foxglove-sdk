@@ -14,6 +14,14 @@ scripts and future DataLoader-aware clients.
 
 from __future__ import annotations
 
+try:
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+except ModuleNotFoundError:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+
 import argparse
 import calendar
 import json
@@ -33,6 +41,7 @@ from pathlib import Path
 MCAP_MAGIC = b"\x89MCAP0\r\n"
 NANOSECONDS_PER_SECOND = 1_000_000_000
 STDOUT_POLL_SECONDS = 0.05
+MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 
 
 def repo_root() -> Path:
@@ -45,6 +54,8 @@ def read_url(
     token: str,
     timeout: float,
     headers: dict[str, str] | None = None,
+    *,
+    max_bytes: int = MAX_RESPONSE_BYTES,
 ) -> tuple[int, str, bytes]:
     """Read one HTTP URL and return status, content type, and body."""
     request = urllib.request.Request(url)
@@ -55,9 +66,23 @@ def read_url(
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, response.headers.get("Content-Type", ""), response.read()
+            return response.status, response.headers.get("Content-Type", ""), read_bounded(response, max_bytes)
     except urllib.error.HTTPError as exc:
-        return exc.code, exc.headers.get("Content-Type", ""), exc.read()
+        return exc.code, exc.headers.get("Content-Type", ""), read_bounded(exc, max_bytes)
+
+
+def read_bounded(stream, max_bytes: int) -> bytes:
+    """Read an HTTP body with a strict memory bound."""
+    if max_bytes <= 0:
+        raise ValueError("max_bytes must be positive")
+    body = bytearray()
+    while True:
+        chunk = stream.read(min(64 * 1024, max_bytes - len(body) + 1))
+        if not chunk:
+            return bytes(body)
+        body.extend(chunk)
+        if len(body) > max_bytes:
+            raise ValueError(f"response body exceeds {max_bytes} bytes")
 
 
 def parse_iso_utc_ns(value: str) -> int:
@@ -86,7 +111,10 @@ def build_data_url(base_url: str, source: dict, range_seconds: float | None) -> 
     """Build a concrete /v1/data URL from a manifest source entry."""
     source_url = source.get("url") or "/v1/data"
     absolute = urllib.parse.urljoin(base_url.rstrip("/") + "/", source_url)
+    base = urllib.parse.urlparse(base_url)
     parsed = urllib.parse.urlparse(absolute)
+    if (parsed.scheme, parsed.netloc) != (base.scheme, base.netloc):
+        raise ValueError("cross-origin manifest source URL is not allowed")
     query = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
 
     source_start = source.get("startTime")
@@ -335,7 +363,7 @@ def main(argv: list[str]) -> int:
         range_out = (root / args.range_out).resolve()
         json_out.parent.mkdir(parents=True, exist_ok=True)
         range_out.parent.mkdir(parents=True, exist_ok=True)
-        range_out.write_bytes(data_body)
+        atomic_write_bytes(range_out, data_body)
 
         relevant_backend_logs = [
             line for line in backend_logs
@@ -374,7 +402,7 @@ def main(argv: list[str]) -> int:
             },
             "backend_logs_tail": relevant_backend_logs[-20:],
         }
-        json_out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+        atomic_write_text(json_out, json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
         print(json.dumps(evidence, indent=2, sort_keys=True))
         return 0
     finally:

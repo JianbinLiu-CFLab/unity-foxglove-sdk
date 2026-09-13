@@ -1,2 +1,0 @@
-# deterministic direct source/fixture probe
-print('SILENT_CLEANUP_TOKEN=false\nOBSERVABLE_CLEANUP_FAILURE=true\nPRIMARY_EXCEPTION_PRESERVED=true\nRESULT=CONFIRMED_FIXED\n')

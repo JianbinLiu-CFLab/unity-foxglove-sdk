@@ -16,6 +16,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 from Scripts.test_support.phase181_scratch import temporary_directory
 
@@ -303,6 +304,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertTrue(hasattr(peer, "wait_for_runtime_selection_process"))
 
         class Process:
+            """Stalled process double for streamed timeout cleanup."""
             """Provide one deterministic owned Unity process for the selection wait policy."""
 
             def __init__(self):
@@ -347,6 +349,54 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
 
         self.assertEqual(0, exit_code)
         self.assertEqual([], terminated)
+
+    def test_runtime_selection_enforces_absolute_deadline(self):
+        """A selector that never settles must terminate at the absolute deadline."""
+        peer = load_peer_module()
+
+        class Process:
+            """Resistant process double for deadline cleanup."""
+            pid = 123
+            def poll(self):
+                """Remain live throughout the probe."""
+                return None
+
+        with temporary_directory("peer-deadline-") as temporary:
+            log = pathlib.Path(temporary) / "selection.log"
+            log.write_text("progress\n", encoding="utf-8")
+            clock = {"seconds": 0.0}
+            terminated = []
+            def now():
+                """Expose the deterministic clock value."""
+                return clock["seconds"]
+            def sleep(_seconds):
+                """Advance beyond the configured deadline."""
+                clock["seconds"] = 10.0
+            with self.assertRaisesRegex(peer.PeerFailure, "bounded total duration"):
+                peer.wait_for_runtime_selection_process(
+                    Process(), log, profile_id="test", stall_seconds=300.0,
+                    clock=now, sleep=sleep,
+                    terminate_process=lambda process: terminated.append(process),
+                    max_seconds=5.0,
+                )
+            self.assertEqual(1, len(terminated))
+
+    def test_capture_windows_msvc_environment_rejects_timeout_and_output_flood(self):
+        """Toolchain discovery rejects timeout and oversized captured output."""
+        peer = load_peer_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            vswhere = root / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+            vswhere.parent.mkdir(parents=True)
+            vswhere.write_bytes(b"")
+            with mock.patch.dict(peer.os.environ, {"ProgramFiles(x86)": temporary}, clear=False):
+                with mock.patch.object(peer.subprocess, "run", side_effect=subprocess.TimeoutExpired("vswhere", 60)):
+                    with self.assertRaisesRegex(peer.PeerFailure, "bounded timeout"):
+                        peer.capture_windows_msvc_environment({})
+                result = SimpleNamespace(stdout="x" * (peer._TOOLCHAIN_CAPTURE_MAX_BYTES + 1), stderr="", returncode=0)
+                with mock.patch.object(peer.subprocess, "run", return_value=result):
+                    with self.assertRaisesRegex(peer.PeerFailure, "output capacity"):
+                        peer.capture_windows_msvc_environment({})
 
     def test_editor_batch_is_an_explicit_opt_in_with_an_editor_path(self):
         """Verify Phase181 behavior: a named profile can opt into an owned Editor Batch launch."""
@@ -871,6 +921,71 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             )
         )
 
+    def test_failed_peer_alias_probe_releases_subst_reservation(self):
+        """A successful subst call with an invisible drive must be undone before retry."""
+        peer = load_peer_module()
+        workspace = pathlib.Path("D:/" + ("x" * 260))
+        commands = []
+
+        class Result:
+            """Minimal subprocess result for alias reservation probing."""
+            def __init__(self, returncode):
+                """Store the mocked command status and empty streams."""
+                self.returncode = returncode
+                self.stdout = ""
+                self.stderr = ""
+
+        def run(command, **kwargs):
+            """Record map/unmap calls and make the visibility probe fail."""
+            commands.append(tuple(command))
+            return Result(0 if len(commands) == 1 else 1)
+
+        windows_os = mock.Mock(wraps=peer.os)
+        windows_os.name = "nt"
+        with mock.patch.object(peer, "os", windows_os), mock.patch.object(
+            peer.subprocess, "run", side_effect=run
+        ), mock.patch.object(pathlib.Path, "exists", return_value=False), mock.patch.object(
+            pathlib.Path, "is_file", return_value=True
+        ):
+            with self.assertRaisesRegex(peer.PeerFailure, "FAIL_PEER_WORKSPACE"):
+                with peer.temporary_short_windows_peer_workspace(workspace):
+                    self.fail("alias reservation should not succeed when the mapped drive is invisible")
+
+        self.assertTrue(any(command[-2:] == ("Z:", "/D") for command in commands))
+
+    def test_failed_plugin_alias_probe_releases_subst_reservation(self):
+        """A failed native plugin alias probe must not leak its drive mapping."""
+        peer = load_peer_module()
+        commands = []
+
+        class Result:
+            """Minimal subprocess result for plugin alias probing."""
+            def __init__(self, returncode):
+                """Store the mocked command status and empty streams."""
+                self.returncode = returncode
+                self.stdout = ""
+                self.stderr = ""
+
+        def run(command, **kwargs):
+            """Record map/unmap calls and make the visibility probe fail."""
+            commands.append(tuple(command))
+            return Result(0 if len(commands) == 1 else 1)
+
+        windows_os = mock.Mock(wraps=peer.os)
+        windows_os.name = "nt"
+        with temporary_directory("plugin-alias-") as temporary:
+            plugin_directory = pathlib.Path(temporary)
+            with mock.patch.object(peer, "os", windows_os), mock.patch.object(
+                peer.subprocess, "run", side_effect=run
+            ), mock.patch.object(pathlib.Path, "exists", return_value=False), mock.patch.object(
+                pathlib.Path, "is_file", return_value=True
+            ):
+                with self.assertRaisesRegex(peer.PeerFailure, "FAIL_EDITOR_BATCH"):
+                    with peer.temporary_short_windows_plugin_alias(plugin_directory):
+                        self.fail("alias reservation should not succeed when the mapped drive is invisible")
+
+        self.assertTrue(any(command[-2:] == ("Z:", "/D") for command in commands))
+
     def test_windows_peer_keeps_the_short_workspace_alias_through_worker_startup(self):
         """Verify Phase181 behavior: generated Python typesupport loads from the same short alias used to build it."""
         source = PEER_PATH.read_text(encoding="utf-8")
@@ -1115,6 +1230,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         calls: list[tuple[list[str], dict[str, object]]] = []
 
         class Process:
+            """Stalled streamed-build process double."""
             """Minimal owned process with two colcon progress lines."""
 
             def __init__(self):
@@ -1123,6 +1239,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
                 self.stdout = io.StringIO("Starting >>> example_interfaces\nFinished <<< example_interfaces\n")
 
             def wait(self, timeout):
+                """Remain stalled when the bounded wait expires."""
                 """Record the supplied timeout and complete successfully."""
 
                 self.timeout = timeout
@@ -1164,6 +1281,39 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertFalse(calls[0][1]["shell"])
         self.assertEqual({"PATH": "safe"}, calls[0][1]["env"])
         self.assertEqual(subprocess.PIPE, calls[0][1]["stdout"])
+        self.assertTrue(set(peer.worker_launch_options()).issubset(calls[0][1]))
+
+    def test_streamed_timeout_terminates_owned_process_tree(self):
+        """A stalled streamed build must use the owned tree terminator, not root-only kill."""
+        peer = load_peer_module()
+
+        class Process:
+            """Stalled streamed-build process double."""
+            pid = 4242
+            stdout = io.StringIO("")
+            returncode = None
+
+            def wait(self, timeout):
+                """Raise a bounded wait timeout."""
+                raise subprocess.TimeoutExpired(["colcon.exe"], timeout)
+
+        with temporary_directory("peer-") as temporary:
+            root = pathlib.Path(temporary)
+            with mock.patch.object(peer, "stream_output_is_stalled", return_value=True), mock.patch.object(
+                peer, "_terminate_owned_child"
+            ) as terminate:
+                with self.assertRaisesRegex(peer.PeerFailure, "FAIL_PEER_BUILD"):
+                    peer.run_logged_owned_command(
+                        ["colcon.exe", "build"],
+                        cwd=root,
+                        env={"PATH": "safe"},
+                        log_path=root / "colcon.log",
+                        timeout_seconds=1.0,
+                        failure_code="FAIL_PEER_BUILD",
+                        stream_output=True,
+                        process_factory=lambda *args, **kwargs: Process(),
+                    )
+            terminate.assert_called_once()
 
     def test_worker_ready_file_requires_the_locked_full_interface_digest(self):
         """Verify Phase181 behavior: manual Play prompts cannot follow a stale or foreign worker startup file."""

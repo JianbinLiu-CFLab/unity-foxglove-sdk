@@ -33,6 +33,7 @@ EXIT_FAILURE = 1
 
 # File size threshold that separates an empty failed output from a generated MCAP.
 EMPTY_FILE_SIZE_BYTES = 0
+SUBPROCESS_TIMEOUT_SECONDS = 300
 
 REPO_ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PROJECT = REPO_ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "FoxgloveSdk.Tests.csproj"
@@ -90,7 +91,11 @@ def main() -> int:
         str(output_path),
     ]
 
-    result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        print(f"[phase44] dotnet generation timed out after {SUBPROCESS_TIMEOUT_SECONDS}s", file=sys.stderr)
+        return EXIT_FAILURE
     if result.returncode != EXIT_SUCCESS:
         if result.stdout:
             print(result.stdout, file=sys.stderr, end="")

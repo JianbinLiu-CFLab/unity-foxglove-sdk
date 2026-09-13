@@ -27,6 +27,7 @@ public static class Phase179BatchModeNativeLifecycleProbe
         "Assets/Scenes/Phase179FoxRunRos2NativeSubscribeAcceptance.unity";
     private const string StringTopic = "/foxrun/phase179/string";
     private const double RegistrationTimeoutSeconds = 90.0;
+    private const double PrePlayTimeoutSeconds = 120.0;
     private const double ReadyDwellSeconds = 10.0;
 
     private static readonly string SessionPrefix =
@@ -36,6 +37,7 @@ public static class Phase179BatchModeNativeLifecycleProbe
     private static bool _handlersAttached;
     private static double _playStartedAt;
     private static double _readyObservedAt;
+    private static double _runStartedAt;
 
     [InitializeOnLoadMethod]
     private static void RegisterFromCommandLine()
@@ -67,6 +69,7 @@ public static class Phase179BatchModeNativeLifecycleProbe
             return;
 
         SessionState.SetBool(SessionKey("requested"), true);
+        _runStartedAt = EditorApplication.timeSinceStartup;
         EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
     }
 
@@ -86,6 +89,13 @@ public static class Phase179BatchModeNativeLifecycleProbe
     {
         if (EditorApplication.isCompiling || EditorApplication.isUpdating)
         {
+            if (_runStartedAt > 0.0
+                && EditorApplication.timeSinceStartup - _runStartedAt >= PrePlayTimeoutSeconds)
+            {
+                Debug.LogError("PHASE179_BATCH_NATIVE_PROBE_TIMEOUT_PREPLAY");
+                EditorApplication.Exit(2);
+                return;
+            }
             EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
             return;
         }

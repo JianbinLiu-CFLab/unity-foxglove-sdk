@@ -82,3 +82,9 @@ Tools/foxglove-extensions/*/node_modules/
 Tools/foxglove-extensions/*/dist/
 Tools/foxglove-extensions/*/*.foxe
 Tools/foxglove-extensions/unity-cursor-bridge/src/index.d.ts
+
+# Round4 evidence overlays stay local; never publish generated revalidation artifacts
+build/phase187-round4/r4.1-real-environment-revalidation/i-series/
+
+# Internal superpowers planning artifacts stay under ignored Plan/
+docs/superpowers/

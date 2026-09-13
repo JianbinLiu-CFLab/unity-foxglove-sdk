@@ -9,9 +9,18 @@
 
 from __future__ import annotations
 
+try:
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+except ModuleNotFoundError:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+
 import argparse
 import asyncio
 import json
+import math
 import ssl
 import struct
 import time
@@ -902,6 +911,17 @@ def _build_ssl_context(url: str, insecure: bool) -> ssl.SSLContext | None:
     return context
 
 
+def _positive_seconds(value: str) -> float:
+    """Parse a strictly positive duration for an observation window."""
+    try:
+        seconds = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("duration must be a finite positive number") from exc
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("duration must be a finite positive number")
+    return seconds
+
+
 def parse_args() -> argparse.Namespace:
     """Parse bounded live-probe command-line options."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -937,12 +957,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--exactly-once-quiet-seconds",
-        type=float,
+        type=_positive_seconds,
         default=EXACTLY_ONCE_QUIET_SECONDS,
     )
     parser.add_argument(
         "--malformed-settle-seconds",
-        type=float,
+        type=_positive_seconds,
         default=MALFORMED_SETTLE_SECONDS,
     )
     parser.add_argument(
@@ -973,7 +993,7 @@ def main() -> int:
             "reason": str(exc),
         }
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(
+        atomic_write_text(output,
             json.dumps(failure, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
@@ -983,7 +1003,7 @@ def main() -> int:
 
     report["endpoint"] = _redacted_url(url)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
+    atomic_write_text(output,
         json.dumps(report, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )

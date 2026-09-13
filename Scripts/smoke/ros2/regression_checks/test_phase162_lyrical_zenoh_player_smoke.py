@@ -71,6 +71,11 @@ class Phase162LyricalZenohSmokeTests(unittest.TestCase):
         self.assertIn("--qos-depth", command)
         self.assertIn("1", command)
 
+    def test_echo_only_requires_nonempty_content_oracle(self) -> None:
+        """Legacy echo mode must not report PASS without an expected-text oracle."""
+        with self.assertRaises(SystemExit):
+            self.smoke.parse_args(["--echo-only"])
+
     def test_bare_phase162_builds_rviz2_acceptance_args(self) -> None:
         """Bare Phase162 is a Zenoh RViz2 PointCloud2 acceptance, not only echo."""
         args = SimpleNamespace(

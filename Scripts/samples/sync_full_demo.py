@@ -329,6 +329,38 @@ def copy_file(src: Path, dst: Path, dry_run: bool) -> str:
     return "copied"
 
 
+def copy_pairs_transaction(pairs: tuple[tuple[Path, Path], ...] | list[tuple[Path, Path]], dry_run: bool) -> list[str]:
+    """Apply a batch of copies and restore every destination if one fails."""
+    if dry_run:
+        return [copy_file(src, dst, True) for src, dst in pairs]
+
+    snapshots: dict[Path, tuple[bool, bytes, int]] = {}
+    for _, dst in pairs:
+        if dst in snapshots:
+            continue
+        if dst.exists():
+            stat = dst.stat()
+            snapshots[dst] = (True, dst.read_bytes(), stat.st_mode)
+        else:
+            snapshots[dst] = (False, b"", 0)
+
+    statuses: list[str] = []
+    try:
+        for src, dst in pairs:
+            statuses.append(copy_file(src, dst, False))
+    except Exception:
+        for dst, (existed, payload, mode) in snapshots.items():
+            if existed:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_bytes(payload)
+                if mode:
+                    dst.chmod(mode)
+            elif dst.exists():
+                dst.unlink()
+        raise
+    return statuses
+
+
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for sample synchronization."""
     parser = argparse.ArgumentParser(
@@ -374,8 +406,8 @@ def main() -> int:
             return EXIT_SUCCESS
 
         changed = INITIAL_CHANGED_COUNT
-        for src, dst in pairs:
-            status = copy_file(src, dst, args.dry_run)
+        statuses = copy_pairs_transaction(pairs, args.dry_run)
+        for (src, dst), status in zip(pairs, statuses):
             if status != "unchanged":
                 changed += CHANGE_INCREMENT
             print(f"[{status}] {rel(src)} -> {rel(dst)}")

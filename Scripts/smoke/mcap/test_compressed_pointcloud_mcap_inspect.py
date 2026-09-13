@@ -21,5 +21,28 @@ class CompressedPointCloudMcapInspectTests(unittest.TestCase):
             module.read_records(b"\x01\x02")
 
 
+
+    def test_oversized_input_is_rejected_before_read(self) -> None:
+        """Reject files above the bounded evidence input budget before read_bytes."""
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "oversized.mcap"
+            with path.open("wb") as handle:
+                handle.truncate(module.MAX_INPUT_BYTES + 1)
+            with self.assertRaisesRegex(ValueError, "MCAP input exceeds maximum size"):
+                module.inspect_input_file(path)
+
 if __name__ == "__main__":
     unittest.main()
+
+    def test_oversized_input_is_rejected_before_read(self) -> None:
+        """Reject files above the bounded evidence input budget before read_bytes."""
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "oversized.mcap"
+            with path.open("wb") as handle:
+                handle.truncate(module.MAX_INPUT_BYTES + 1)
+            with self.assertRaisesRegex(ValueError, "MCAP input exceeds maximum size"):
+                module.inspect_input_file(path)

@@ -20,6 +20,14 @@ shape without a ROS2 installation.
 
 from __future__ import annotations
 
+try:
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+except ModuleNotFoundError:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+
 import argparse
 import asyncio
 import ipaddress
@@ -374,6 +382,25 @@ async def run_websocket_core(args: argparse.Namespace) -> tuple[str, dict[str, O
         limitations.append("Missing required WebSocket message samples: " + ", ".join(sorted(failing_topics)))
         return "fail", observed, limitations
 
+    metadata_topics = [
+        topic for topic, item in expected_by_topic.items()
+        if item.classification == "required"
+        and (not observed[topic].encoding or not observed[topic].schema_name)
+    ]
+    if metadata_topics:
+        limitations.append("Missing required WebSocket channel metadata: " + ", ".join(sorted(metadata_topics)))
+        return "fail", observed, limitations
+
+    empty_payload_topics = [
+        topic for topic, item in expected_by_topic.items()
+        if item.classification == "required"
+        and observed[topic].messages > 0
+        and observed[topic].payload_bytes == 0
+    ]
+    if empty_payload_topics:
+        limitations.append("Required WebSocket topics returned empty payloads: " + ", ".join(sorted(empty_payload_topics)))
+        return "fail", observed, limitations
+
     if any(item.classification == "optional" and observed[item.topic].messages == 0 for item in expectations):
         return "pass_with_limitations", observed, limitations
     return "pass", observed, limitations
@@ -510,7 +537,7 @@ def write_json(path_text: str, summary: dict[str, Any]) -> None:
         return
     path = pathlib.Path(path_text)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def print_summary(summary: dict[str, Any]) -> None:

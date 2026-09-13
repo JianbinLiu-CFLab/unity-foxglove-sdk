@@ -26,6 +26,7 @@ namespace Unity2Foxglove
     {
         private const string RunConfigArgument = "-phase186RunConfig";
         private const double TimeoutSeconds = 900d;
+        private const double ManualPreparationTimeoutSeconds = 900d;
         internal const string ManualPointerRelativePath =
             "Library/Phase186Acceptance/current-run.json";
         private const int ManualPreparationMaxSchemaRefreshes = 3;
@@ -156,6 +157,9 @@ namespace Unity2Foxglove
                 configuration.TokenHash);
             SessionState.SetString(Key("manual-prepare-head"), configuration.Head);
             SessionState.SetInt(Key("manual-prepare-refreshes"), 0);
+            SessionState.SetString(
+                Key("manual-prepare-started-at"),
+                EditorApplication.timeSinceStartup.ToString(CultureInfo.InvariantCulture));
         }
 
         private static void ResumePendingManualPreparation()
@@ -198,6 +202,19 @@ namespace Unity2Foxglove
             _manualPreparationQueued = false;
             if (!SessionState.GetBool(Key("manual-prepare-pending"), false))
                 return;
+            if (double.TryParse(
+                    SessionState.GetString(Key("manual-prepare-started-at"), string.Empty),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var manualStartedAt)
+                && EditorApplication.timeSinceStartup - manualStartedAt
+                    >= ManualPreparationTimeoutSeconds)
+            {
+                FailManualPreparation(
+                    Path.Combine(ProjectRoot(), ManualPointerRelativePath),
+                    new TimeoutException("Phase186 manual preparation exceeded its bounded timeout."));
+                return;
+            }
             if (EditorApplication.isPlayingOrWillChangePlaymode
                 || EditorApplication.isCompiling
                 || EditorApplication.isUpdating)
