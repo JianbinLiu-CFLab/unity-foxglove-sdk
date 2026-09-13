@@ -1,0 +1,7 @@
+I11-012 direct revalidation
+source_anchor=Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/Phase173094ReviewTests.cs
+command=python build/.../I11-012-revalidation/probe.py
+literal_output=KillProcessTreeMethod.Invoke, Failed to drain process output streams, Failed to kill timed-out process all PRESENT; EMPTY_CATCH_PATTERN_PRESENT=False; RESULT=REFUTED
+exit_status=0
+probe_sha256=AF8191F12B0D3960EF9A86ABAD003F30413ADA09AA3661984ECD84D7A3D63193
+Current owner Fact asserts exact catch-body tokens and rejects empty catch shape; no product change needed.

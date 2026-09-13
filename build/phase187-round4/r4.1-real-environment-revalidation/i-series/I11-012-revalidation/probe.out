@@ -1,0 +1,5 @@
+KillProcessTreeMethod.Invoke(process, new object[] { true }) PRESENT=True
+LogWarning("Failed to drain process output streams PRESENT=True
+LogWarning("Failed to kill timed-out process PRESENT=True
+EMPTY_CATCH_PATTERN_PRESENT=False
+RESULT=REFUTED
