@@ -40,6 +40,13 @@ class Phase186PackageMatrixTests(unittest.TestCase):
             VALIDATOR_PATH,
         )
 
+    def test_matrix_markers_authenticate_expected_source_paths(self) -> None:
+        """Marker gates must bind compile items to owning paths, not basenames."""
+        props = (ROOT / "Packages/dev.unity2foxglove.sdk/Tests/PackageMatrix/PackageMatrix.Common.props").read_text(encoding="utf-8")
+        self.assertIn("Runtime/Components/FoxRun/Transport/FoxRunTransportProviderRegistry.cs", props)
+        self.assertIn("Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs", props)
+        self.assertNotIn("'%(Compile.Filename)' == 'Ros2CdrWriter'", props)
+
     def test_compile_failure_still_records_the_complete_matrix(self) -> None:
         """One failed composition must not suppress the remaining evidence."""
         outcomes = [
