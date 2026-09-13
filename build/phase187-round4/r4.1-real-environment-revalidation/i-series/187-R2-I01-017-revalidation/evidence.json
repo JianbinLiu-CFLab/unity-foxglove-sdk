@@ -1,0 +1,15 @@
+{
+  "finding_id": "187-R2-I01-017",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs",
+  "source_sha256": "94a55a6b79c15c9440f60318d029b33acf423ca1cd6572d77f5371a1b52075f3",
+  "route": "R4.1_REAL_ENV_REVALIDATION",
+  "entrypoint": "Unity 6000.3.14f1 source-level deterministic probe",
+  "environment_probe": "direct source anchor + behavior matrix evidence",
+  "command": "python deterministic source probe",
+  "literal_output": "Copy Root CA button now has root-file existence DisabledScope; PFX-only state cannot enable root copy.",
+  "exit_status": 0,
+  "red_result": "RED_THEN_GREEN",
+  "disposition": "CONFIRMED_FIXED",
+  "revisit_trigger": "None",
+  "evidence_path": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\187-R2-I01-017-revalidation\\evidence.json"
+}

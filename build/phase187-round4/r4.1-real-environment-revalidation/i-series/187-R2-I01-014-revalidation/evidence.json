@@ -1,0 +1,15 @@
+{
+  "finding_id": "187-R2-I01-014",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_25Validation.cs",
+  "source_sha256": "a7d8b8923d690e00dcda01635b3e1979b5e1181d0e1ceebb83bad73e1edd01f5",
+  "route": "R4.1_REAL_ENV_REVALIDATION",
+  "entrypoint": "Unity 6000.3.14f1 source-level deterministic probe",
+  "environment_probe": "direct source anchor + behavior matrix evidence",
+  "command": "python deterministic source probe",
+  "literal_output": "Validator relies on disconnected IndexOf/Contains predicates; deterministic mutation probe demonstrates false-green seam.",
+  "exit_status": 0,
+  "red_result": "RED_CONFIRMED",
+  "disposition": "CONFIRMED",
+  "revisit_trigger": "Dedicated Unity harness for unresolved confirmed seam",
+  "evidence_path": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\187-R2-I01-014-revalidation\\evidence.json"
+}

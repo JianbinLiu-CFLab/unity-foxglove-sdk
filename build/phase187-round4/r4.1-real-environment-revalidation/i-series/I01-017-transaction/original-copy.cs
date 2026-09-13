@@ -572,12 +572,9 @@ namespace Unity.FoxgloveSDK.Editor
                         EditorUtility.RevealInFinder(revealPath);
                     }
 
-                    using (new EditorGUI.DisabledScope(!File.Exists(rootPath)))
+                    if (GUILayout.Button("Copy Root CA SHA-256"))
                     {
-                        if (GUILayout.Button("Copy Root CA SHA-256"))
-                        {
-                            EditorGUIUtility.systemCopyBuffer = fingerprint ?? string.Empty;
-                        }
+                        EditorGUIUtility.systemCopyBuffer = fingerprint ?? string.Empty;
                     }
                 }
 
