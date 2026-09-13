@@ -58,6 +58,10 @@ CONSUMER_LOCAL_DEPENDENCIES = (
     "dev.unity2foxglove.foxrun.ros2.interfaces",
     "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
 )
+CONSUMER_LOCAL_DEPENDENCY_PREFIXES = (
+    "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.",
+    "dev.unity2foxglove.ros2forunity.runtime.",
+)
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
@@ -326,8 +330,18 @@ def check_consumer_local_bindings(results: list[CheckResult]) -> None:
         return
     consumer_packages = manifest.parent
     package_root = ROOT / "Packages"
+    # The consumer selects one ROS2 distro at a time. Validate the selected
+    # distro bindings rather than assuming the developer's local distro.
+    dependencies_to_check = [
+        name for name in CONSUMER_LOCAL_DEPENDENCIES
+        if not any(name.startswith(prefix) for prefix in CONSUMER_LOCAL_DEPENDENCY_PREFIXES)
+    ]
+    for prefix in CONSUMER_LOCAL_DEPENDENCY_PREFIXES:
+        selected = sorted(name for name in dependencies if name.startswith(prefix))
+        if selected:
+            dependencies_to_check.append(selected[0])
     failures: list[str] = []
-    for package_name in CONSUMER_LOCAL_DEPENDENCIES:
+    for package_name in dependencies_to_check:
         value = dependencies.get(package_name)
         if not isinstance(value, str) or not value.startswith("file:"):
             failures.append(f"{package_name}: missing file: binding")
@@ -349,7 +363,7 @@ def check_consumer_local_bindings(results: list[CheckResult]) -> None:
         results,
         "consumer local package bindings",
         not failures,
-        "; ".join(failures) if failures else f"{len(CONSUMER_LOCAL_DEPENDENCIES)} canonical file bindings authenticated",
+        "; ".join(failures) if failures else f"{len(dependencies_to_check)} canonical file bindings authenticated",
     )
 
 

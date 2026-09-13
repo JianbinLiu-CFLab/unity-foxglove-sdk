@@ -90,11 +90,20 @@ jobs:
             "Scripts"
           )
           set +e
-          rg -n '(^|[^A-Za-z0-9])([A-Za-z]:[\\/]|\\\\[^\\/]+[\\/]|/(home|Users)/)|BaiduSyncdisk|00 Inbox|!\[\[|TODO|FIXME|TBD|Pasted image|Scripts[\/]build[_]unity[_]il2cpp\.py' "${files[@]}" \
-            -g "*.md" -g "*.json" -g "*.py" -g "*.ps1" -g "*.cff" \
-            -g "!Scripts/package/validate_unity_package.py" \
-            -g "!Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py" \
-            -g "!Scripts/ros2forunity/windows/jazzy/regression_checks/test_phase138b_build_defaults.py"
+          pattern='(^|[^A-Za-z0-9])([A-Za-z]:[\\/]|\\\\[^\\/]+[\\/]|/(home|Users)/)|BaiduSyncdisk|00 Inbox|!\[\[|TODO|FIXME|TBD|Pasted image|Scripts[\/]build[_]unity[_]il2cpp\.py'
+          if command -v rg >/dev/null 2>&1; then
+            rg -n "$pattern" "${files[@]}" \
+              -g "*.md" -g "*.json" -g "*.py" -g "*.ps1" -g "*.cff" \
+              -g "!Scripts/package/validate_unity_package.py" \
+              -g "!Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py" \
+              -g "!Scripts/ros2forunity/windows/jazzy/regression_checks/test_phase138b_build_defaults.py"
+          else
+            grep -RInE "$pattern" "${files[@]}" \
+              --include='*.md' --include='*.json' --include='*.py' --include='*.ps1' --include='*.cff' \
+              --exclude='validate_unity_package.py' \
+              --exclude='phase138b_r2fu_jazzy_windows_build.py' \
+              --exclude='test_phase138b_build_defaults.py'
+          fi
           rg_status=$?
           set -e
           if [ "$rg_status" -eq 0 ]; then
