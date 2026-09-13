@@ -1,0 +1,48 @@
+
+[36m--- local CI jobs (parallel) ---[0m
+Run id: 7144-944109ab
+Logs: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs
+Workers: 2
+  - analyzer: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only analyzer
+  - dotnet-runtime: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only dotnet-runtime
+  - xunit: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only xunit
+  - xunit-adapter: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only xunit-adapter
+  - xunit-native: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only xunit-native
+  - foxrun-publish-panel: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only foxrun-publish-panel
+  - phase179-ros2-regression: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only phase179-ros2-regression
+  - phase181-ros2-regression: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only phase181-ros2-regression
+  - phase184-acceptance-tooling: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only phase184-acceptance-tooling
+  - phase186-bridge-tooling: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only phase186-bridge-tooling
+  - mcap-conformance: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only mcap-conformance
+  - packages: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only packages
+  - boundary: C:\Users\LJB\anaconda3\python.exe D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\release\run_ci.py --only boundary
+[32m[PASS] foxrun-publish-panel (35.2s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\foxrun-publish-panel.log)[0m
+[32m[PASS] phase179-ros2-regression (4.9s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\phase179-ros2-regression.log)[0m
+[32m[PASS] phase181-ros2-regression (31.2s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\phase181-ros2-regression.log)[0m
+[32m[PASS] boundary (0.7s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\boundary.log)[0m
+[32m[PASS] analyzer (107.5s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\analyzer.log)[0m
+[32m[PASS] dotnet-runtime (53.4s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\dotnet-runtime.log)[0m
+[32m[PASS] xunit (93.0s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\xunit.log)[0m
+[32m[PASS] xunit-adapter (92.2s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\xunit-adapter.log)[0m
+[32m[PASS] xunit-native (98.3s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\xunit-native.log)[0m
+[32m[PASS] phase184-acceptance-tooling (10.7s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\phase184-acceptance-tooling.log)[0m
+[32m[PASS] phase186-bridge-tooling (66.2s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\phase186-bridge-tooling.log)[0m
+[32m[PASS] mcap-conformance (189.4s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\mcap-conformance.log)[0m
+[32m[PASS] packages (31.6s, log: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\ci\7144-944109ab\logs\packages.log)[0m
+
+============================================================
+  [32m[PASS][0m analyzer
+  [32m[PASS][0m dotnet-runtime
+  [32m[PASS][0m xunit
+  [32m[PASS][0m xunit-adapter
+  [32m[PASS][0m xunit-native
+  [32m[PASS][0m foxrun-publish-panel
+  [32m[PASS][0m phase179-ros2-regression
+  [32m[PASS][0m phase181-ros2-regression
+  [32m[PASS][0m phase184-acceptance-tooling
+  [32m[PASS][0m phase186-bridge-tooling
+  [32m[PASS][0m mcap-conformance
+  [32m[PASS][0m packages
+  [32m[PASS][0m boundary
+
+[32mAll CI checks passed.[0m

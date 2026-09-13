@@ -1,7 +1,7 @@
 {
-  "status": "I_SERIES_CORRECTION_READY_FOR_INTEGRATION",
+  "status": "I_SERIES_CORRECTION_REMOTE_CHECKS_PASS_READY_TO_MERGE",
   "branch": "feature/round4/i-series-refuted-evidence-correction",
-  "head": "fb0aee829c5c513bcde20f50a2f0ac9122c6db9c",
+  "head": "0f78d1abe81115e172553eefc769dfa224dc1df1",
   "main": "9f3620526fb5acdbc70e85b85c400fd39e080ba4",
   "origin_main": "9f3620526fb5acdbc70e85b85c400fd39e080ba4",
   "overlay": {
@@ -16,6 +16,14 @@
     }
   },
   "serial_commits": [
+    "0f78d1abe81115e172553eefc769dfa224dc1df1 fix(process): retain POSIX escaped descendants for cleanup",
+    "08f5e7eb7b66c31d21db6cf3c045ca8fcd1d968f test: treat exited POSIX zombies as retired",
+    "51d36d53fa7b001471220b580129e3d30e2987d5 test(ci): isolate analyzer checkout contract marker",
+    "ca8aa7ea400b9ab24f39fbbc2c0bbb3292857726 test(ci): preserve analyzer long-path step contract",
+    "f368dff7f0aa20d4fe57562de3af609be1ab8627 fix(ci): enable long paths for Windows parity checkout",
+    "5a7585cb426d5f352d42c6fe18064991d7fa96ce fix(ci): make docs policy fallback deterministic",
+    "32d84e5fb35c87e5a031111c075ef2a65c0b5593 fix(ci): support distro-selected bindings and grep fallback",
+    "85286f9840d67b7aa43966dcead5b75976dfa2e1 evidence(i-series): close refuted correction and final review",
     "fb0aee829c5c513bcde20f50a2f0ac9122c6db9c fix(validation): recognize restored stderr writer",
     "0bc5d5698e9ab49f4c80eb6c0dc1d72c81ef8aeb fix(validation): tolerate formatted provider guard AST",
     "235d6a2fd790850eb171d3857ed2188f44650def test: document subprocess fixtures and fallback cases",
@@ -278,10 +286,11 @@
   ],
   "ci": {
     "command": "python -B Scripts/release/run_ci.py",
-    "log": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\final-ci-correction-20260913-final.log",
-    "sha256": "9850bd30abb79f4b32c4116d553d3fc05c061aaf81368f9f80e45a5ad9613b9f",
+    "log": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\final-ci-correction-20260913-v5.log",
+    "sha256": "2d24c9d7f9b5671d846b737cfa6b4884c237998907460d25943a02f6a2d6d907",
     "exit_status": 0,
-    "literal": "All CI checks passed."
+    "literal": "All CI checks passed.",
+    "run_id": "7144-944109ab"
   },
   "quartet": {
     "directory": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\ci-tooling-correction-20260913",
@@ -319,5 +328,35 @@
     "Unity2Foxglove/Packages/manifest.json": "db9983a07e81f1f8087d76528f9f6d8a14c991147dd075b683d91ad01f0aec15",
     "Unity2Foxglove/Packages/packages-lock.json": "a09ac8fdb69e0eb82a94fcee975b2249f140ca34baabef8a556b02652e8f7b5c"
   },
-  "shutdown": "cancelled/no shutdown performed"
+  "shutdown": "cancelled/no shutdown performed",
+  "quartets": [
+    {
+      "directory": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\posix-process-tree-correction-20260913",
+      "verification": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\posix-process-tree-correction-20260913\\VERIFICATION.txt",
+      "rollback_output": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\posix-process-tree-correction-20260913\\rollback.out",
+      "rollback_exit": 0,
+      "markers": [
+        "ROLLBACK_OK",
+        "seeded_equals_modified=true",
+        "restored_equals_original=true",
+        "live_modified_remains=true",
+        "ROLLBACK_NOOP"
+      ]
+    }
+  ],
+  "remote_checks": {
+    "pr": 332,
+    "run_id": "34735053393",
+    "all_passed": true,
+    "checks": [
+      "docs",
+      "check",
+      "test",
+      "analyzer-freshness",
+      "optional ROS2 Native gate",
+      "optional ROS2 adapter gate",
+      "Windows runtime, xUnit, panel, and package parity",
+      "private-boundaries"
+    ]
+  }
 }
