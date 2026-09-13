@@ -612,13 +612,17 @@ class CoreSmokeScriptTests(unittest.TestCase):
                 return frame(b"not-the-required-asset")
 
         class FakeConnection:
+            """Async context manager wrapping the socket fixture."""
             def __init__(self):
+                """Initialize the socket fixture."""
                 self.socket = FakeSocket()
 
             async def __aenter__(self):
+                """Enter the connection context."""
                 return self.socket
 
             async def __aexit__(self, _exc_type, _exc, _traceback):
+                """Leave the connection context."""
                 return False
 
         args = SimpleNamespace(
