@@ -832,37 +832,6 @@ def _posix_process_group_pids(process_group_id: int) -> List[int]:
     return pids
 
 
-def _posix_descendant_pids(root_pid: int) -> List[int]:
-    """Enumerate descendants by authenticated parent links, including setsid escapes."""
-    try:
-        result = subprocess.run(
-            ["ps", "-eo", "pid=,ppid="],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=PROCESS_DIAGNOSTIC_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    children: dict[int, list[int]] = {}
-    for line in result.stdout.splitlines():
-        fields = line.split()
-        if len(fields) != 2:
-            continue
-        try:
-            pid, parent = (int(field) for field in fields)
-        except ValueError:
-            continue
-        children.setdefault(parent, []).append(pid)
-    pending = list(children.get(root_pid, []))
-    descendants: list[int] = []
-    while pending:
-        pid = pending.pop()
-        descendants.append(pid)
-        pending.extend(children.get(pid, []))
-    return descendants
-
-
 def _posix_pid_exists(process_id: int) -> bool:
     """Return whether one previously observed POSIX PID still exists."""
     try:
@@ -898,7 +867,6 @@ class OwnedProcessTree:
             # never trust a recycled numeric PGID; use only authenticated PIDs
             # observed during this invocation.
             if self.process.poll() is None:
-                self._observed_posix_pids.update(_posix_descendant_pids(self.process.pid))
                 self._observed_posix_pids.update(
                     _posix_process_group_pids(self._posix_process_group_id)
                 )
