@@ -1216,6 +1216,37 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertFalse(calls[0][1]["shell"])
         self.assertEqual({"PATH": "safe"}, calls[0][1]["env"])
         self.assertEqual(subprocess.PIPE, calls[0][1]["stdout"])
+        self.assertTrue(set(peer.worker_launch_options()).issubset(calls[0][1]))
+
+    def test_streamed_timeout_terminates_owned_process_tree(self):
+        """A stalled streamed build must use the owned tree terminator, not root-only kill."""
+        peer = load_peer_module()
+
+        class Process:
+            pid = 4242
+            stdout = io.StringIO("")
+            returncode = None
+
+            def wait(self, timeout):
+                raise subprocess.TimeoutExpired(["colcon.exe"], timeout)
+
+        with temporary_directory("peer-") as temporary:
+            root = pathlib.Path(temporary)
+            with mock.patch.object(peer, "stream_output_is_stalled", return_value=True), mock.patch.object(
+                peer, "_terminate_owned_child"
+            ) as terminate:
+                with self.assertRaisesRegex(peer.PeerFailure, "FAIL_PEER_BUILD"):
+                    peer.run_logged_owned_command(
+                        ["colcon.exe", "build"],
+                        cwd=root,
+                        env={"PATH": "safe"},
+                        log_path=root / "colcon.log",
+                        timeout_seconds=1.0,
+                        failure_code="FAIL_PEER_BUILD",
+                        stream_output=True,
+                        process_factory=lambda *args, **kwargs: Process(),
+                    )
+            terminate.assert_called_once()
 
     def test_worker_ready_file_requires_the_locked_full_interface_digest(self):
         """Verify Phase181 behavior: manual Play prompts cannot follow a stale or foreign worker startup file."""

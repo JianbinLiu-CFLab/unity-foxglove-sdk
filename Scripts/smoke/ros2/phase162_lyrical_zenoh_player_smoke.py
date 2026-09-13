@@ -111,7 +111,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=root / "build" / "phase162-lyrical-zenoh-smoke" / "summary.json",
     )
     parser.set_defaults(launch_rviz=True)
-    return parser.parse_args(argv)
+    parsed = parser.parse_args(argv)
+    if parsed.echo_only and not parsed.expected_text.strip():
+        parser.error("--echo-only requires a non-empty --expected-text content oracle")
+    return parsed
 
 
 def default_zenoh_router(ros2_root: pathlib.Path) -> pathlib.Path | None:
@@ -505,7 +508,11 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
-                    pass
+                    summary.setdefault("cleanupTimeouts", []).append(label)
+                    return_code = 1
+            if process.poll() is None:
+                summary.setdefault("cleanupTimeouts", []).append(label)
+                return_code = 1
             summary["exitCodes"][label] = process.returncode
         write_summary(args, summary)
     return return_code

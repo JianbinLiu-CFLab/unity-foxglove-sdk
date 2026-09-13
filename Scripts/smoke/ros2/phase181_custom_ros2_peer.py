@@ -354,6 +354,7 @@ def run_logged_owned_command(
                     errors="replace",
                     bufsize=1,
                     shell=False,
+                    **worker_launch_options(),
                 )
                 if process.stdout is None:
                     raise PeerFailure(failure_code, "A helper-owned command did not expose readable progress output.")
@@ -382,8 +383,7 @@ def run_logged_owned_command(
                             if not stream_output_is_stalled(last_output_at, time.monotonic(), timeout_seconds):
                                 continue
                             try:
-                                process.kill()
-                                process.wait(timeout=5.0)
+                                _terminate_owned_child(process)
                             except (OSError, subprocess.TimeoutExpired):
                                 pass
                             raise
@@ -784,28 +784,18 @@ def temporary_short_windows_peer_workspace(workspace: pathlib.Path) -> Iterator[
             # ``subst`` can report success before the drive becomes visible
             # to this process.  Release that reservation before trying the
             # next letter; otherwise a failed probe leaks a drive mapping.
-            subprocess.run(
-                (str(subst), letter + ":", "/D"),
-                shell=False,
-                capture_output=True,
-                text=True,
-                errors="replace",
-                check=False,
-            )
+
+            _release_subst_mapping(subst, letter, "FAIL_PEER_WORKSPACE")
+
     if mapped_drive is None:
         raise PeerFailure("FAIL_PEER_WORKSPACE", "The Windows peer build could not reserve a short workspace alias.")
     mapped_workspace = pathlib.Path(mapped_drive + ":\\")
     try:
         yield physical_workspace, mapped_workspace
     finally:
-        subprocess.run(
-            (str(subst), mapped_drive + ":", "/D"),
-            shell=False,
-            capture_output=True,
-            text=True,
-            errors="replace",
-            check=False,
-        )
+
+        _release_subst_mapping(subst, mapped_drive, "FAIL_PEER_WORKSPACE")
+
 
 
 @contextlib.contextmanager
@@ -841,27 +831,17 @@ def temporary_short_windows_plugin_alias(plugin_directory: pathlib.Path) -> Iter
             # ``subst`` can report success before the drive becomes visible
             # to this process.  Release that reservation before trying the
             # next letter; otherwise a failed probe leaks a drive mapping.
-            subprocess.run(
-                (str(subst), letter + ":", "/D"),
-                shell=False,
-                capture_output=True,
-                text=True,
-                errors="replace",
-                check=False,
-            )
+
+            _release_subst_mapping(subst, letter, "FAIL_EDITOR_BATCH")
+
     if mapped_drive is None:
         raise PeerFailure("FAIL_EDITOR_BATCH", "The Unity Editor Batch could not reserve a short native plugin path.")
     try:
         yield pathlib.Path(mapped_drive + ":\\")
     finally:
-        subprocess.run(
-            (str(subst), mapped_drive + ":", "/D"),
-            shell=False,
-            capture_output=True,
-            text=True,
-            errors="replace",
-            check=False,
-        )
+
+        _release_subst_mapping(subst, mapped_drive, "FAIL_EDITOR_BATCH")
+
 
 
 def build_colcon_command(
@@ -2342,6 +2322,20 @@ def _terminate_owned_child(process: subprocess.Popen[str]) -> None:
     protocol.terminate_owned_process(process)
 
 
+
+def _release_subst_mapping(subst: pathlib.Path, mapped_drive: str, failure_code: str) -> None:
+    """Remove one owned subst mapping and require command success plus disappearance."""
+
+    result = subprocess.run(
+        (str(subst), mapped_drive + ":", "/D"),
+        shell=False,
+        capture_output=True,
+        text=True,
+        errors="replace",
+        check=False,
+    )
+    if result.returncode != 0 or pathlib.Path(mapped_drive + ":\\").exists():
+        raise PeerFailure(failure_code, "The owned short-path subst mapping could not be released cleanly.")
 def _require_player_path(player: pathlib.Path | None) -> pathlib.Path:
     """Accept only one existing absolute WindowsStandalone64 Player executable."""
 
