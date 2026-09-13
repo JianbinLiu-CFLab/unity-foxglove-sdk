@@ -337,6 +337,11 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
             for (var i = 0; i < _subscriptions.Count; i++)
                 _subscriptions[i].Dispose();
+            for (var i = 0; i < _subscriptions.Count; i++)
+            {
+                if (!_subscriptions[i].IsDisposed)
+                    return;
+            }
 
             try
             {
@@ -354,6 +359,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
     private interface IPhase110DrainableSubscription : IDisposable
     {
+        bool IsDisposed { get; }
         void Drain();
     }
 
@@ -440,6 +446,8 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         }
 
         public string Topic { get; }
+
+        public bool IsDisposed => _disposed;
 
         public int DroppedCallbacks
         {
