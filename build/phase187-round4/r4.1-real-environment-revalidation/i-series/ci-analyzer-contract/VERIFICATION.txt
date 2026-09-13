@@ -1,0 +1,5 @@
+finding_id=CI-ANALYZER-COMPILE-EXCLUDE
+RED: _project_sources returned explicit_sources=47 while MSBuild evaluated 45 because Compile Exclude was ignored.
+GREEN: _project_sources returned explicit_sources=45 and validate_analyzer_contracts(core)=True.
+controls: shared parity and contract checks passed; no generated product files changed.
+rollback: ROLLBACK_OK -> ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true

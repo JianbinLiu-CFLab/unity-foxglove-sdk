@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -385,22 +384,6 @@ def _compile_include_has_wildcard(include: str) -> bool:
 def _project_sources(project: Path) -> list[Path]:
     """Resolve every explicit Compile item in one controlled analyzer project."""
     root = ET.parse(project).getroot()
-    excluded: list[str] = []
-    for node in root.findall(".//Compile"):
-        excluded.extend(
-            _normalize_compile_include(value.strip())
-            for value in node.attrib.get("Exclude", "").split(";")
-            if value.strip()
-        )
-
-    def is_excluded(path: Path) -> bool:
-        relative = os.path.relpath(path.resolve(), project.parent.resolve()).replace("\\", "/")
-        return any(
-            relative == pattern
-            or Path(relative).match(pattern)
-            for pattern in excluded
-        )
-
     sources: list[Path] = []
     for node in root.findall(".//Compile"):
         for include in node.attrib.get("Include", "").split(";"):
@@ -413,7 +396,7 @@ def _project_sources(project: Path) -> list[Path]:
                         for path in project.parent.glob(
                             normalized
                         )
-                        if path.is_file() and not is_excluded(path)
+                        if path.is_file()
                     ]
                     if not matches:
                         raise ValueError(
@@ -422,9 +405,9 @@ def _project_sources(project: Path) -> list[Path]:
                         )
                     sources.extend(matches)
                 else:
-                    path = (project.parent / normalized).resolve()
-                    if not is_excluded(path):
-                        sources.append(path)
+                    sources.append(
+                        (project.parent / normalized).resolve()
+                    )
     return sources
 
 
