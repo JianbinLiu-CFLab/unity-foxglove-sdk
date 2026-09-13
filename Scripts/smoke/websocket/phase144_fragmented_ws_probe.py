@@ -304,10 +304,8 @@ def positive_probe(args: argparse.Namespace) -> None:
     with RawWebSocket(args.url, args.timeout, args.token, args.insecure) as ws:
         channel_id = read_initial_frames(ws)
         if channel_id is None:
-            print("[WARN] No advertise channel observed before timeout; using channelId=1 fallback.")
-            channel_id = 1
-        else:
-            print(f"[INFO] Using advertised channelId={channel_id}.")
+            raise ProbeFailure("No advertise channel observed before subscribe; refusing synthetic channelId fallback.")
+        print(f"[INFO] Using advertised channelId={channel_id}.")
 
         subscribe = json.dumps(
             {"op": "subscribe", "subscriptions": [{"id": 144, "channelId": channel_id}]},

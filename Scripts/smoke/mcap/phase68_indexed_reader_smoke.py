@@ -31,6 +31,7 @@ REPO_ROOT_PARENT_DEPTH = 3
 # Process exit codes returned by this smoke script.
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
+SUBPROCESS_TIMEOUT_SECONDS = 300
 
 # File size threshold that separates an empty failed recording from a usable MCAP.
 EMPTY_FILE_SIZE_BYTES = 0
@@ -203,7 +204,11 @@ def main() -> int:
     print(f"[phase68] size: {size} bytes", flush=True)
     print(f"[phase68] required topics: {', '.join(topics)}", flush=True)
 
-    result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        print(f"[phase68] dotnet command timed out after {SUBPROCESS_TIMEOUT_SECONDS}s", file=sys.stderr)
+        return EXIT_FAILURE
     if result.returncode != EXIT_SUCCESS:
         if result.stdout:
             print(result.stdout, file=sys.stderr, end="")

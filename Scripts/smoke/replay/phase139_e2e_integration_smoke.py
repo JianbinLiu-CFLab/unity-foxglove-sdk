@@ -382,6 +382,25 @@ async def run_websocket_core(args: argparse.Namespace) -> tuple[str, dict[str, O
         limitations.append("Missing required WebSocket message samples: " + ", ".join(sorted(failing_topics)))
         return "fail", observed, limitations
 
+    metadata_topics = [
+        topic for topic, item in expected_by_topic.items()
+        if item.classification == "required"
+        and (not observed[topic].encoding or not observed[topic].schema_name)
+    ]
+    if metadata_topics:
+        limitations.append("Missing required WebSocket channel metadata: " + ", ".join(sorted(metadata_topics)))
+        return "fail", observed, limitations
+
+    empty_payload_topics = [
+        topic for topic, item in expected_by_topic.items()
+        if item.classification == "required"
+        and observed[topic].messages > 0
+        and observed[topic].payload_bytes == 0
+    ]
+    if empty_payload_topics:
+        limitations.append("Required WebSocket topics returned empty payloads: " + ", ".join(sorted(empty_payload_topics)))
+        return "fail", observed, limitations
+
     if any(item.classification == "optional" and observed[item.topic].messages == 0 for item in expectations):
         return "pass_with_limitations", observed, limitations
     return "pass", observed, limitations

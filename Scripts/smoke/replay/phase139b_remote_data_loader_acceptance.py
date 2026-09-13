@@ -41,6 +41,7 @@ from pathlib import Path
 MCAP_MAGIC = b"\x89MCAP0\r\n"
 NANOSECONDS_PER_SECOND = 1_000_000_000
 STDOUT_POLL_SECONDS = 0.05
+MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 
 
 def repo_root() -> Path:
@@ -53,6 +54,8 @@ def read_url(
     token: str,
     timeout: float,
     headers: dict[str, str] | None = None,
+    *,
+    max_bytes: int = MAX_RESPONSE_BYTES,
 ) -> tuple[int, str, bytes]:
     """Read one HTTP URL and return status, content type, and body."""
     request = urllib.request.Request(url)
@@ -63,9 +66,23 @@ def read_url(
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, response.headers.get("Content-Type", ""), response.read()
+            return response.status, response.headers.get("Content-Type", ""), read_bounded(response, max_bytes)
     except urllib.error.HTTPError as exc:
-        return exc.code, exc.headers.get("Content-Type", ""), exc.read()
+        return exc.code, exc.headers.get("Content-Type", ""), read_bounded(exc, max_bytes)
+
+
+def read_bounded(stream, max_bytes: int) -> bytes:
+    """Read an HTTP body with a strict memory bound."""
+    if max_bytes <= 0:
+        raise ValueError("max_bytes must be positive")
+    body = bytearray()
+    while True:
+        chunk = stream.read(min(64 * 1024, max_bytes - len(body) + 1))
+        if not chunk:
+            return bytes(body)
+        body.extend(chunk)
+        if len(body) > max_bytes:
+            raise ValueError(f"response body exceeds {max_bytes} bytes")
 
 
 def parse_iso_utc_ns(value: str) -> int:
@@ -94,7 +111,10 @@ def build_data_url(base_url: str, source: dict, range_seconds: float | None) -> 
     """Build a concrete /v1/data URL from a manifest source entry."""
     source_url = source.get("url") or "/v1/data"
     absolute = urllib.parse.urljoin(base_url.rstrip("/") + "/", source_url)
+    base = urllib.parse.urlparse(base_url)
     parsed = urllib.parse.urlparse(absolute)
+    if (parsed.scheme, parsed.netloc) != (base.scheme, base.netloc):
+        raise ValueError("cross-origin manifest source URL is not allowed")
     query = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
 
     source_start = source.get("startTime")

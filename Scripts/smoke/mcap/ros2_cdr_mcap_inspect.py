@@ -25,6 +25,7 @@ REPO_ROOT_PARENT_DEPTH = 3
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 EMPTY_FILE_SIZE_BYTES = 0
+SUBPROCESS_TIMEOUT_SECONDS = 300
 
 REPO_ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PROJECT = REPO_ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "FoxgloveSdk.Tests.csproj"
@@ -63,7 +64,11 @@ def run_dotnet(*runtime_args: str) -> int:
         "--",
         *runtime_args,
     ]
-    result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        print(f"[phase93] dotnet command timed out after {SUBPROCESS_TIMEOUT_SECONDS}s", file=sys.stderr)
+        return EXIT_FAILURE
     if result.stdout:
         print(result.stdout, file=sys.stderr if result.returncode != EXIT_SUCCESS else sys.stdout, end="")
     if result.stderr:

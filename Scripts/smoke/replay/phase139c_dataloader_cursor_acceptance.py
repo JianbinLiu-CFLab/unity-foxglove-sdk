@@ -184,7 +184,7 @@ def main(argv: list[str]) -> int:
 
     evidence = {
         "phase": "139C",
-        "status": "pass",
+        "status": "partial",
         "mode": args.mode,
         "remote_data_loader": remote,
         "foxglove_manual_acceptance": build_manual_workflow(remote),
