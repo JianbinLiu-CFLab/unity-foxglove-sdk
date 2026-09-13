@@ -1,0 +1,38 @@
+<Project>
+  <PropertyGroup>
+    <OutputPath>$(MSBuildThisFileDirectory)..\..\..\..\build\PackageMatrix\$(MatrixName)\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>$(MSBuildThisFileDirectory)..\..\..\..\build\PackageMatrix\$(MatrixName)\obj\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Unit/Fixtures/UnityEngineMathTypes.cs"
+             Link="CompileStubs/UnityEngineMathTypes.cs" />
+    <Compile Include="../AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs"
+             Link="CompileStubs/FoxgloveLogHubCompileStubs.cs"
+             Condition="'$(ExpectR2fu)' == 'true'" />
+    <Compile Include="PackageMatrixNeutralProbe.cs" />
+  </ItemGroup>
+  <Target Name="ValidatePhase186PackageMatrixSurface" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <_MatrixCoreProviderRegistry Include="@(Compile)"
+          Condition="'%(Compile.Filename)' == 'FoxRunTransportProviderRegistry'" />
+      <_MatrixR2fuFacade Include="@(Compile)"
+          Condition="'%(Compile.Filename)' == 'Unity2FoxgloveRos2ContextFactory'" />
+      <_MatrixBridgeRuntime Include="@(Compile)"
+          Condition="'%(Compile.Filename)' == 'Ros2BridgeRuntime'" />
+      <_MatrixBridgeProvider Include="@(Compile)"
+          Condition="'%(Compile.Filename)' == 'Ros2BridgeTransportProvider'" />
+      <_MatrixBridgeCdr Include="@(Compile)"
+          Condition="'%(Compile.Filename)' == 'Ros2CdrWriter'" />
+    </ItemGroup>
+    <Error Condition="'@(_MatrixCoreProviderRegistry)' == ''"
+           Text="Phase186 package matrix omitted the neutral SDK Provider registry." />
+    <Error Condition="'$(ExpectR2fu)' == 'true' and '@(_MatrixR2fuFacade)' == ''"
+           Text="Phase186 package matrix expected the R2FU facade but compiled none." />
+    <Error Condition="'$(ExpectR2fu)' != 'true' and '@(_MatrixR2fuFacade)' != ''"
+           Text="Phase186 package matrix unexpectedly included R2FU sources." />
+    <Error Condition="'$(ExpectBridge)' == 'true' and ('@(_MatrixBridgeRuntime)' == '' or '@(_MatrixBridgeProvider)' == '' or '@(_MatrixBridgeCdr)' == '')"
+           Text="Phase186 package matrix expected Bridge runtime/provider/CDR sources but compiled an incomplete surface." />
+    <Error Condition="'$(ExpectBridge)' != 'true' and ('@(_MatrixBridgeRuntime)' != '' or '@(_MatrixBridgeProvider)' != '' or '@(_MatrixBridgeCdr)' != '')"
+           Text="Phase186 package matrix unexpectedly included Bridge sources." />
+  </Target>
+</Project>
