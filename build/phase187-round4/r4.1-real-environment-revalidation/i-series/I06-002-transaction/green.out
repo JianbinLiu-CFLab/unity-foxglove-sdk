@@ -1,0 +1,2 @@
+GREEN_RESULT=True
+GREEN_LITERAL=--list-validations cannot be combined with other arguments.
