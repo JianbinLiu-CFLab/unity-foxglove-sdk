@@ -15,6 +15,7 @@ SCRIPT = ROOT / "Scripts" / "smoke" / "ros2" / "launch_phase138l_rviz2.py"
 
 
 def load_module():
+    """Load the launcher module with its ROS2 helper import path configured."""
     smoke_dir = str(SCRIPT.parent)
     if smoke_dir not in sys.path:
         sys.path.insert(0, smoke_dir)
@@ -27,6 +28,7 @@ def load_module():
 
 
 class Phase138LRvizOwnershipTests(unittest.TestCase):
+    """Verify RViz2 process handles transfer into cleanup ownership."""
     def test_launch_transfers_rviz_process_to_owner_list(self) -> None:
         """The returned RViz process must be retained for cleanup ownership."""
         module = load_module()
