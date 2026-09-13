@@ -3537,6 +3537,15 @@ class UnityIl2CppBuildTests(unittest.TestCase):
     def _pid_is_running(pid: int) -> bool:
         """Check one PID with only standard-library platform primitives."""
         if os.name != "nt":
+            proc_stat = Path(f"/proc/{pid}/stat")
+            if proc_stat.is_file():
+                try:
+                    # A reaped process can remain as a zombie briefly; it no
+                    # longer executes and therefore satisfies the exit contract.
+                    if proc_stat.read_text(encoding="utf-8").split()[2] == "Z":
+                        return False
+                except (OSError, IndexError):
+                    return False
             try:
                 os.kill(pid, 0)
                 return True
