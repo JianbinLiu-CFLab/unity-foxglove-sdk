@@ -1,0 +1,6 @@
+I10-006 Phase186 createdAt freshness transaction
+source_sha256_original=F33F185DCE2058CD79734E9E3F3BB9265152A59F17D674631A397EA00977878F
+source_sha256_modified=1FCFDAC985BB63CD26EB4D4FA075680A2CE96784A36D71731E57C16FD3C248A7
+RED: createdAt was required only as a key/type and not checked for freshness.
+GREEN: source-level predicate now parses ISO createdAt and rejects malformed or >30 minute stale values.
+ROLLBACK: rollback.out records all preservation flags true, ROLLBACK_OK, ROLLBACK_NOOP.
