@@ -1205,6 +1205,12 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("if (!File.Exists(path))", source)
         self.assertIn("throw new FileNotFoundException", source)
 
+    def test_phase13_try_read_repo_text_fails_closed_on_missing_source(self) -> None:
+        """Phase 13 validation must not turn missing source files into silent early returns."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase13Validation.cs").read_text(encoding="utf-8")
+        self.assertIn("if (!File.Exists(path))", source)
+        self.assertIn("throw new FileNotFoundException", source)
+
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
         """The selector must execute exactly six pure unittest suites in locked order."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:

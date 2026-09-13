@@ -1239,11 +1239,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var localPath = relativePath.Replace('/', Path.DirectorySeparatorChar);
-            var path = Path.Combine(root, localPath);
-            if (!File.Exists(path))
-                throw new FileNotFoundException("Required validation source is missing.", path);
-
-            source = File.ReadAllText(path);
+            source = File.ReadAllText(Path.Combine(root, localPath));
             return true;
         }
 
