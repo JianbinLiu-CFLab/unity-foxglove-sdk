@@ -1,0 +1,9 @@
+finding_id=I07-027
+source_sha256=Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase137GValidation.cs=e98f5c0f07b904d61a6a39f913de3235484969c3131e2e8ee9211d5c10f82962
+RED=raw fixture demonstrates pre-fix false positive
+GREEN=targeted source/runtime checks pass
+ROLLBACK_OK
+ROLLBACK_NOOP
+seeded_equals_modified=true
+restored_equals_original=true
+live_modified_remains=true

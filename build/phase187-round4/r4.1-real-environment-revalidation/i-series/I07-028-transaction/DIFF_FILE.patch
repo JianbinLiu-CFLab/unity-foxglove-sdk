@@ -1,0 +1,39 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_47Validation.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_47Validation.cs
+index aeeb25bc9..3f2256b51 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_47Validation.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_47Validation.cs
+@@ -42,8 +42,9 @@ namespace Unity.FoxgloveSDK.Tests
+                 "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase55Validation.cs");
+             Check(phase55.Contains("latest 100-message window", StringComparison.Ordinal)
+                   && phase55.Contains("new ReplayController(new NoopLogger()", StringComparison.Ordinal)
+-                  && phase55.Contains("try { File.Delete(tmp); } catch { }", StringComparison.Ordinal),
+-                "163-47C-1: Phase55 validation documents history policy and cleans lifecycle helpers");
++                  && phase55.Contains("cleanup failed", StringComparison.Ordinal)
++                  && phase55.Contains("catch (Exception cleanupException)", StringComparison.Ordinal),
++                "163-47C-1: Phase55 validation documents history policy and observes lifecycle cleanup failures");
+ 
+             var project = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                 "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase55Validation.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase55Validation.cs
+index afbcacb8a..e20e63ad8 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase55Validation.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase55Validation.cs
+@@ -211,9 +211,16 @@ namespace Unity.FoxgloveSDK.Tests
+                 }
+                 return tmp;
+             }
+-            catch
++            catch (Exception exception)
+             {
+-                try { File.Delete(tmp); } catch { }
++                try
++                {
++                    File.Delete(tmp);
++                }
++                catch (Exception cleanupException)
++                {
++                    Console.Error.WriteLine($"Phase55 temporary file cleanup failed: {cleanupException.Message}");
++                }
+                 throw;
+             }
+         }
