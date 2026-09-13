@@ -21,6 +21,7 @@ import json
 import os
 import pathlib
 import platform
+import signal
 import subprocess
 import sys
 import tempfile
@@ -225,8 +226,20 @@ def _terminate_owned(process: subprocess.Popen[str] | None) -> str | None:
     try:
         if process.poll() is not None:
             return None
-        process.kill()
-        process.wait(timeout=10)
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+        waiter = getattr(process, "wait", None)
+        if not callable(waiter):
+            process.kill()
+        else:
+            waiter(timeout=10)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return (
             f"owned process {pid} could not be terminated or reaped "

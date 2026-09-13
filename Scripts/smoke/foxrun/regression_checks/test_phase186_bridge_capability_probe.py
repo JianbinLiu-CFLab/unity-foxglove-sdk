@@ -176,6 +176,12 @@ class Phase186BridgeCapabilityProbeTests(unittest.TestCase):
         self.assertFalse(result["ownedProcesses"]["cleanupComplete"])
         self.assertIn("owned process 4242", result["failure"])
 
+    def test_owned_cleanup_controls_the_process_group(self) -> None:
+        """Owned cleanup must signal the process group, not only the root PID."""
+        source = (probe.__file__ and pathlib.Path(probe.__file__).read_text(encoding="utf-8"))
+        self.assertIn("os.killpg", source)
+        self.assertIn('"/T", "/F"', source)
+
 
 if __name__ == "__main__":
     unittest.main()
