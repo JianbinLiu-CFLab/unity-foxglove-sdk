@@ -1,3 +1,17 @@
+# ADDITIVE CHECKPOINT 2026-09-13 — CLAUDE F900 RESIDUAL CLOSURE (PRE-PUSH)
+
+Status: `CLAUDE_F900_RESIDUALS_REPAIRED / THREE_ROLE_AUDIT_PASS / LOCAL_CI_PASSED / PENDING_REMOTE / NO_SHUTDOWN`
+
+- Serial branch: `feature/review/claude-phase184-residual-completion`; source HEAD before this documentation commit: `7db05ff6d4d8efa0cc65a3f8076e8a596bf5ad99`; base `main/origin/main`: `61d3b762cd7911864cfa29b2934155073edb6197`.
+- Claude-imported Phase184+ review findings were re-bound to current sources. Confirmed repairs include I09 bounded MCAP subprocess output/process-tree cleanup, I10 RViz ownership, and Phase106/109/110/128/129/130/132/138 cleanup ownership with retry-safe child/node teardown and immediate handle clearing only after successful native removal. Historical satisfied/refuted findings were not re-fixed without a direct current RED.
+- Three-role review PASS: mutation/adversarial (3/3 mutation targets killed), correctness/runtime (84 focused tests; package/Assets mirrors equal), and scope/evidence (protected dirty hashes unchanged; `git ls-files build`, `docs/superpowers`, and `Plan` all empty).
+- Quartet evidence remains under ignored `build/phase187-round4/claude-f900-review-20260913/` and existing I09/I10 transaction directories; each confirmed repair has `MODIFIED_FILE`, `DIFF_FILE`, `VERIFICATION.txt`, executable `ROLLBACK.sh`, and rollback markers `ROLLBACK_OK`, `ROLLBACK_NOOP`, `seeded_equals_modified=true`, `restored_equals_original=true`, `live_modified_remains=true`.
+- Focused regression matrix: `python -B -m unittest Scripts.smoke.test_core_smoke_scripts Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup Scripts.smoke.ros2.regression_checks.test_i10_phase106_cleanup Scripts.smoke.ros2.regression_checks.test_i10_phase109_cleanup Scripts.smoke.ros2.regression_checks.test_i10_remaining_cleanup Scripts.smoke.ros2.regression_checks.test_launch_phase138l_rviz2 Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer Scripts.smoke.ros2.regression_checks.test_phase162_lyrical_zenoh_player_smoke Scripts.smoke.foxrun.regression_checks.test_atomic_publication -q` → `Ran 131 tests ... OK`, exit `0`.
+- Full local CI: `python -B Scripts/release/run_ci.py` → run `42456-f85404eb`, runner exit `0`, literal `All CI checks passed.`; log `build/ci/42456-f85404eb/logs/`, captured summary `build/phase187-round4/claude-f900-review-20260913/final-ci-source-head.log`, SHA-256 `916fb8784a82242786ffdc6938f0512a34c68d954414c57fcbbe1c82d627c09b`.
+- Protected dirty Unity/package files, historical worktrees/evidence, ROS2/R2FU Junctions, and all untracked pre-existing files remain preserved. No reset, stash, clean, broad deletion, or shutdown was performed. This block is additive; previous AGENTS content is preserved as the exact suffix.
+
+AGENTS_PREVIOUS_SHA256=4934a7ff7395bb9953b6a8bf3dc5d0979309b04474a84c0144d738151d3db5d4
+
 # ADDITIVE CHECKPOINT 2026-09-13 — CLAUDE/PHASE184+ RESIDUAL HARDENING MERGED
 
 Status: `CLAUDE_F900_RESIDUAL_HARDENING_MERGED / PR339 / PR340 / PR341 / MAIN_SYNCED / NO_SHUTDOWN`

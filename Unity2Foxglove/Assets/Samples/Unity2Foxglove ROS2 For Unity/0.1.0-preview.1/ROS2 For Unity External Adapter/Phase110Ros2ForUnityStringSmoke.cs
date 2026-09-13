@@ -321,14 +321,18 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void DisposeDirectEndpoints()
     {
+        var cleanupFailed = false;
         if (_directRos2Node != null && _directSubscription != null)
         {
             try
             {
                 _directRos2Node.RemoveSubscription<std_msgs.msg.String>(_directSubscription);
+                _directSubscription = null;
             }
-            catch (System.Exception)
+            catch (System.Exception ex)
             {
+                cleanupFailed = true;
+                Debug.LogWarning(LogPrefix + "subscription cleanup failed; retaining handle for retry: " + ex.Message);
             }
         }
 
@@ -337,22 +341,30 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
             try
             {
                 _directRos2Node.RemovePublisher<std_msgs.msg.String>(_directPublisher);
+                _directPublisher = null;
             }
-            catch (System.Exception)
+            catch (System.Exception ex)
             {
+                cleanupFailed = true;
+                Debug.LogWarning(LogPrefix + "publisher cleanup failed; retaining handle for retry: " + ex.Message);
             }
         }
 
-        if (_directRos2Unity != null && _directRos2Node != null)
+        if (!cleanupFailed && _directRos2Unity != null && _directRos2Node != null)
         {
             try
             {
                 _directRos2Unity.RemoveNode(_directRos2Node);
             }
-            catch (System.Exception)
+            catch (System.Exception ex)
             {
+                cleanupFailed = true;
+                Debug.LogWarning(LogPrefix + "node cleanup failed; retaining handle for retry: " + ex.Message);
             }
         }
+
+        if (cleanupFailed)
+            return;
 
         _directSubscription = null;
         _directPublisher = null;

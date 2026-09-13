@@ -338,6 +338,34 @@ class CoreSmokeScriptTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "response body exceeds"):
                 module.read_url("http://127.0.0.1:8000/data", "", 1.0, max_bytes=1024)
 
+    def test_mcap_process_runner_caps_output(self) -> None:
+        """MCAP subprocess diagnostics stay bounded under noisy children."""
+        module = load_smoke_module("mcap_process_runner_under_test", "mcap/process_runner.py")
+        result = module.run_bounded(
+            [sys.executable, "-c", "import sys; sys.stdout.write('x'*100000); sys.stderr.write('y'*100000)"],
+            cwd=ROOT,
+            env=os.environ.copy(),
+            timeout=5.0,
+            max_output_bytes=1024,
+        )
+        self.assertEqual(0, result.returncode)
+        self.assertLessEqual(len(result.stdout), 1024)
+        self.assertLessEqual(len(result.stderr), 1024)
+        self.assertTrue(result.output_truncated)
+
+    def test_mcap_process_runner_reaps_timeout(self) -> None:
+        """MCAP subprocess timeout terminates the owned process tree."""
+        module = load_smoke_module("mcap_process_runner_timeout_under_test", "mcap/process_runner.py")
+        result = module.run_bounded(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            cwd=ROOT,
+            env=os.environ.copy(),
+            timeout=0.1,
+            max_output_bytes=1024,
+        )
+        self.assertTrue(result.timed_out)
+        self.assertNotEqual(0, result.returncode)
+
     def test_phase139d_read_bounded_caps_endpoint_body(self) -> None:
         """Cursor bridge endpoint probes must use the same bounded-read rule."""
         module = load_smoke_module("phase139d_bodycap_under_test", "replay/phase139d_unity_cursor_bridge_acceptance.py")

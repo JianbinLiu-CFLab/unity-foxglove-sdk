@@ -154,9 +154,18 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         if (_disposed)
             return;
 
-        _disposed = true;
         for (var i = 0; i < _nodes.Count; i++)
             _nodes[i].Dispose();
+
+        for (var i = 0; i < _nodes.Count; i++)
+        {
+            if (!_nodes[i].IsDisposed)
+            {
+                _statusMessage = "Phase109 ROS2 For Unity context cleanup is pending; retrying is allowed.";
+                return;
+            }
+        }
+
         _nodes.Clear();
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         if (_ownsRos2UnityComponent && _ros2Unity != null)
@@ -164,6 +173,7 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         _ros2Unity = null;
         _ownsRos2UnityComponent = false;
 #endif
+        _disposed = true;
         _statusMessage = "Phase109 ROS2 For Unity context is disposed.";
     }
 
@@ -321,23 +331,34 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             if (IsDisposed)
                 return;
 
-            IsDisposed = true;
             for (var i = 0; i < _subscriptions.Count; i++)
                 _subscriptions[i].Dispose();
-            _subscriptions.Clear();
+
+            for (var i = 0; i < _subscriptions.Count; i++)
+            {
+                if (!_subscriptions[i].IsDisposed)
+                    return;
+            }
 
             try
             {
                 _ros2Unity.RemoveNode(_ros2Node);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Debug.LogWarning("[Phase109Ros2ForUnityContext] node cleanup failed; retaining ownership for retry: " + ex.Message);
+                return;
             }
+
+            _subscriptions.Clear();
+            IsDisposed = true;
         }
     }
 
     private interface IPhase109DrainableSubscription : IDisposable
     {
+        bool IsDisposed { get; }
+
         void Drain();
     }
 
@@ -385,13 +406,14 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             if (_disposed)
                 return;
 
-            _disposed = true;
             try
             {
                 _ros2Node.RemovePublisher<std_msgs.msg.String>(_publisher);
+                _disposed = true;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Debug.LogWarning("[Phase109Ros2ForUnityContext] publisher cleanup failed; retaining ownership for retry: " + ex.Message);
             }
         }
     }
@@ -476,20 +498,20 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
                 if (_disposed)
                     return;
 
-                _disposed = true;
-                _pending.Clear();
-            }
-
-            var subscription = _subscription;
-            _subscription = null;
-            if (subscription != null)
-            {
                 try
                 {
-                    _ros2Node.RemoveSubscription<std_msgs.msg.String>(subscription);
+                    if (_subscription != null)
+                    {
+                        _ros2Node.RemoveSubscription<std_msgs.msg.String>(_subscription);
+                        _subscription = null;
+                    }
+
+                    _disposed = true;
+                    _pending.Clear();
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    Debug.LogWarning("[Phase109Ros2ForUnityContext] subscription cleanup failed; retaining ownership for retry: " + ex.Message);
                 }
             }
         }

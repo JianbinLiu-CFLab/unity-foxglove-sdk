@@ -20,8 +20,12 @@ import argparse
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import sys
+
+try:
+    from Scripts.smoke.mcap.process_runner import run_bounded
+except ModuleNotFoundError:
+    from process_runner import run_bounded
 
 
 # Number of parent directories between this script and the repository root.
@@ -34,6 +38,7 @@ EXIT_FAILURE = 1
 # File size threshold that separates an empty failed output from a generated MCAP.
 EMPTY_FILE_SIZE_BYTES = 0
 SUBPROCESS_TIMEOUT_SECONDS = 300
+MAX_SUBPROCESS_OUTPUT_BYTES = 1 << 20
 
 REPO_ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PROJECT = REPO_ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "FoxgloveSdk.Tests.csproj"
@@ -91,9 +96,14 @@ def main() -> int:
         str(output_path),
     ]
 
-    try:
-        result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
+    result = run_bounded(
+        cmd,
+        cwd=REPO_ROOT,
+        env=setup_nuget_cache(),
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
+        max_output_bytes=MAX_SUBPROCESS_OUTPUT_BYTES,
+    )
+    if result.timed_out:
         print(f"[phase44] dotnet generation timed out after {SUBPROCESS_TIMEOUT_SECONDS}s", file=sys.stderr)
         return EXIT_FAILURE
     if result.returncode != EXIT_SUCCESS:

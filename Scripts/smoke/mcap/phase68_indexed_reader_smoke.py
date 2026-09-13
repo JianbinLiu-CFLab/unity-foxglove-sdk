@@ -21,8 +21,12 @@ import glob
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import sys
+
+try:
+    from Scripts.smoke.mcap.process_runner import run_bounded
+except ModuleNotFoundError:
+    from process_runner import run_bounded
 
 
 # Number of parent directories between this script and the repository root.
@@ -32,6 +36,7 @@ REPO_ROOT_PARENT_DEPTH = 3
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 SUBPROCESS_TIMEOUT_SECONDS = 300
+MAX_SUBPROCESS_OUTPUT_BYTES = 1 << 20
 
 # File size threshold that separates an empty failed recording from a usable MCAP.
 EMPTY_FILE_SIZE_BYTES = 0
@@ -204,9 +209,14 @@ def main() -> int:
     print(f"[phase68] size: {size} bytes", flush=True)
     print(f"[phase68] required topics: {', '.join(topics)}", flush=True)
 
-    try:
-        result = subprocess.run(cmd, cwd=REPO_ROOT, env=setup_nuget_cache(), capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
+    result = run_bounded(
+        cmd,
+        cwd=REPO_ROOT,
+        env=setup_nuget_cache(),
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
+        max_output_bytes=MAX_SUBPROCESS_OUTPUT_BYTES,
+    )
+    if result.timed_out:
         print(f"[phase68] dotnet command timed out after {SUBPROCESS_TIMEOUT_SECONDS}s", file=sys.stderr)
         return EXIT_FAILURE
     if result.returncode != EXIT_SUCCESS:
