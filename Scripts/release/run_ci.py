@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Keep this release entrypoint under CI coverage for documentation-only ref updates.
+# Release checks also cover post-merge checkpoint alignment commits.
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
