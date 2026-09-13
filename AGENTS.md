@@ -1,3 +1,12 @@
+# ADDITIVE CHECKPOINT 2026-09-13 — PRODUCT RELEASE REF AND DOCUMENT ALIGNMENT
+
+Status: `I_SERIES_COMPLETE / PRODUCT_RELEASE_REF_PR336 / DOCUMENT_ALIGNMENT_PR337 / NO_SHUTDOWN`
+
+- Product release ref remains `0b43a14445341668a604dbd58a9e40bc19c0ff67` (PR #336: https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/336), after PRs #332–#336.
+- Documentation alignment was merged separately as PR #337 (`2d949ad920828d433e15b2925d9d6d2155504a7d`); it is docs-only and does not change the product release ref. The checkpoint records both typed refs so they are not conflated.
+- `CORRECTION_CHECKPOINT_20260913.json` preserves the release ref, the PR337 documentation merge, and the complete preceding chain. Earlier AGENTS blocks remain below as the exact historical suffix.
+- Protected dirty Unity/package files, untracked scripts/metas, scratch, historical worktrees, evidence, and ROS2/R2FU Junctions remain preserved. No reset, stash, clean, broad deletion, or shutdown was performed.
+
 # ADDITIVE CHECKPOINT 2026-09-13 — FINAL LIVE REF ALIGNMENT AFTER PR336
 
 Status: `I_SERIES_COMPLETE / DOCUMENT_REFS_ALIGNED / PR336_MERGED / MAIN_SYNCED / NO_SHUTDOWN`

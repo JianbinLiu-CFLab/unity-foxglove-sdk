@@ -1,9 +1,9 @@
 {
-  "status": "I_SERIES_COMPLETE_FINAL_REFS_AFTER_PR336",
+  "status": "I_SERIES_COMPLETE_DOCUMENT_REFS_ALIGNED_AFTER_PR337",
   "branch": "main",
-  "head": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
-  "main": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
-  "origin_main": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
+  "head": "2d949ad920828d433e15b2925d9d6d2155504a7d",
+  "main": "2d949ad920828d433e15b2925d9d6d2155504a7d",
+  "origin_main": "2d949ad920828d433e15b2925d9d6d2155504a7d",
   "overlay": {
     "path": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\R4.1-I_REFUTED_EVIDENCE_CORRECTION_20260912.tsv",
     "sha256": "f6febbc05fd58be1210dc063e110c181d337d8733e5b11cda926ba9b55163f63",
@@ -366,9 +366,9 @@
     "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/332"
   },
   "final_sync": {
-    "pr": 336,
-    "merge_sha": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
-    "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/336",
+    "pr": 337,
+    "merge_sha": "2d949ad920828d433e15b2925d9d6d2155504a7d",
+    "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/337",
     "remote_heads": [
       "refs/heads/main"
     ]
@@ -394,6 +394,24 @@
       "pr": 336,
       "merge_sha": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
       "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/336"
+    },
+    {
+      "pr": 337,
+      "merge_sha": "2d949ad920828d433e15b2925d9d6d2155504a7d",
+      "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/337",
+      "docs_only": true
     }
-  ]
+  ],
+  "head_semantics": "snapshot at documentation-alignment PR337; product release ref is recorded separately and later docs-only commits may advance main",
+  "release_ref": {
+    "pr": 336,
+    "merge_sha": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
+    "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/336"
+  },
+  "documentation_alignment": {
+    "pr": 337,
+    "merge_sha": "2d949ad920828d433e15b2925d9d6d2155504a7d",
+    "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/337",
+    "docs_only": true
+  }
 }
