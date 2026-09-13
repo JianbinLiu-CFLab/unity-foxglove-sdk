@@ -206,6 +206,14 @@ jobs:
     name: Windows runtime, xUnit, panel, and package parity
     runs-on: windows-latest
     steps:
+      - name: Enable Git long-path support
+        shell: pwsh
+        run: |
+          $globalConfig = Join-Path $env:RUNNER_TEMP ("git-global-{0}.config" -f $env:GITHUB_RUN_ID)
+          "GIT_CONFIG_GLOBAL=$globalConfig" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:GIT_CONFIG_GLOBAL = $globalConfig
+          git config --global core.longpaths true
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
