@@ -108,7 +108,12 @@ def read_text(repo_root: Path, relative_path: str) -> str:
     path = repo_root / relative_path
     # Replacement decoding would invent identifiers and lose the location of
     # corrupt bytes; fail the report instead so the caller gets a hard result.
-    return path.read_text(encoding="utf-8", errors="strict")
+    before = path.stat()
+    raw = path.read_bytes()
+    after = path.stat()
+    if (before.st_mtime_ns, before.st_size, before.st_ino) != (after.st_mtime_ns, after.st_size, after.st_ino):
+        raise RuntimeError(f"source changed while reading: {relative_path}")
+    return raw.decode("utf-8", errors="strict")
 
 
 def find_namespace(text: str) -> str:

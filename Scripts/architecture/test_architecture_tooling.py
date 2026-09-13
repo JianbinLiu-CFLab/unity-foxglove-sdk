@@ -146,6 +146,31 @@ class ArchitectureToolingTests(unittest.TestCase):
         self.assertEqual(["dir/new\nline.cs", 'dir/quote"name.cs'], paths)
         self.assertIn("-z", run.call_args.args[0])
 
+    def test_read_text_rejects_source_changed_during_read(self) -> None:
+        """A report must not mix bytes when a source mutates mid-read."""
+        module = load_module("analyze_coupling_mutating_source_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        class FakePath:
+            def __init__(self):
+                self._stats = iter(((1, 3, 9), (2, 3, 9)))
+
+            def stat(self):
+                class S:
+                    pass
+                s = S()
+                s.st_mtime_ns, s.st_size, s.st_ino = next(self._stats)
+                return s
+
+            def read_bytes(self):
+                return b"abc"
+
+        class FakeRoot:
+            def __truediv__(self, _relative):
+                return FakePath()
+
+        with self.assertRaises(RuntimeError):
+            module.read_text(FakeRoot(), "changed.cs")
+
     def test_report_flags_root_developer_meta_as_a_private_boundary(self) -> None:
         """Architecture reporting must include a tracked root Developer.meta."""
         module = load_module(
