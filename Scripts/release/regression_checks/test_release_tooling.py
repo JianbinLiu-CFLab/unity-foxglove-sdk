@@ -1199,6 +1199,12 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("if (!IsValidFoxRunHash(hash))", source)
         self.assertIn("return string.Empty;", source)
 
+    def test_phase134_read_repo_text_rejects_missing_source(self) -> None:
+        """Provider validation must fail closed when a required source file is absent."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase134_1Validation.cs").read_text(encoding="utf-8")
+        self.assertIn("if (!File.Exists(path))", source)
+        self.assertIn("throw new FileNotFoundException", source)
+
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
         """The selector must execute exactly six pure unittest suites in locked order."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:

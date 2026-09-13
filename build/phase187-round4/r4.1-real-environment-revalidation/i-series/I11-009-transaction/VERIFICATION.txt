@@ -1,0 +1,11 @@
+I11-009 direct source-level RED/GREEN transaction
+source: Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_1Validation.cs
+RED command: python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_phase134_read_repo_text_rejects_missing_source
+RED literal output/result: FAIL; AssertionError: File.Exists guard not found
+RED exit_status: 1
+GREEN command: python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_phase134_read_repo_text_rejects_missing_source
+GREEN literal output/result: Ran 1 test ... OK
+GREEN exit_status: 0
+controls: provider source reads now fail closed with FileNotFoundException; no generic suite mapping used
+rollback_command: bash ROLLBACK.sh
+rollback_result: ROLLBACK_OK; ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true
