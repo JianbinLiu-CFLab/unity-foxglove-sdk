@@ -1,3 +1,15 @@
+# ADDITIVE CHECKPOINT 2026-09-13 — CLAUDE/PHASE184+ RESIDUAL HARDENING
+
+Status: `RESIDUAL_HARDENING / CI_PASSED / BUILD_AND_SUPERPOWERS_PURGED / NO_SHUTDOWN`
+
+- Branch: `feature/review/claude-f900-residual-hardening`; serial commits: `a4d103506`, `462713122`, `1faa670e2`, `07becf746`.
+- Full CI: `python -B Scripts/release/run_ci.py`; runner exit `0`; literal `All CI checks passed.` (log `build/ci-final-claude-f900.log`). Focused final mutation/correctness suites: 141 and 154 tests passed, exit 0.
+- Confirmed fixes: I09-008 transactional sample sync rollback; I09-015 metadata/payload gate; I09-016 cross-origin URL rejection; I09-017/I09-021 bounded HTTP reads; I09-019 partial manual evidence; I09-023 no synthetic channel fallback; I09-025 no-message-data failure; I09-013 bounded timeout guards.
+- Dispositions retained in ignored overlay `build/phase187-round4/claude-f900-review-20260913/CLAUDE_F900_CORRECTION_OVERLAY.tsv`: I10-007 `REFUTED`; I10-010 and I10-011 `DEFERRED_CAPABILITY_GAP`; I09-013 remains partial because descendant process/output capture hardening is not yet implemented.
+- `git ls-files build` and `git ls-files docs/superpowers` are both zero on this branch; protected Unity/package dirty files remain unchanged. No reset, stash, clean, broad deletion, or shutdown performed.
+
+AGENTS_PREVIOUS_SHA256=1ed0262228c5f013b68de8cd3267cb55170e7bdc208bc73d42953e0faad90fb9
+
 # ADDITIVE CHECKPOINT 2026-09-13 — PRODUCT RELEASE REF AND DOCUMENT ALIGNMENT
 
 Status: `I_SERIES_COMPLETE / PRODUCT_RELEASE_REF_PR336 / DOCUMENT_ALIGNMENT_PR337 / NO_SHUTDOWN`
@@ -6580,3 +6592,4 @@ Status: `I_SERIES_COMPLETE / PR332_AND_PR333_MERGED / MAIN_SYNCED / NO_SHUTDOWN`
 
 - PR #333 (`https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/333`) merged the additive AGENTS and correction checkpoint record. Final merge SHA is `da36efafd976d000eacd5de5f96589d0ef028868`; local `main`, `HEAD`, and `origin/main` are synchronized to this SHA. Remote `git ls-remote --heads origin` contains only `refs/heads/main`; both I correction branches were deleted after ancestry verification.
 - `build/phase187-round4/r4.1-real-environment-revalidation/i-series/CORRECTION_CHECKPOINT_20260913.json` was updated with this final ref and PR333 sync data. Historical AGENTS content remains the exact suffix before this additive block.
+
