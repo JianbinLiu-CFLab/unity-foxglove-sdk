@@ -940,9 +940,9 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             commands.append(tuple(command))
             return Result(0 if len(commands) == 1 else 1)
 
-        with mock.patch.object(peer.subprocess, "run", side_effect=run), mock.patch.object(
-            pathlib.Path, "exists", return_value=False
-        ):
+        with mock.patch.object(peer.os, "name", "nt"), mock.patch.object(
+            peer.subprocess, "run", side_effect=run
+        ), mock.patch.object(pathlib.Path, "exists", return_value=False):
             with self.assertRaisesRegex(peer.PeerFailure, "FAIL_PEER_WORKSPACE"):
                 with peer.temporary_short_windows_peer_workspace(workspace):
                     self.fail("alias reservation should not succeed when the mapped drive is invisible")
@@ -969,9 +969,9 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
 
         with temporary_directory("plugin-alias-") as temporary:
             plugin_directory = pathlib.Path(temporary)
-            with mock.patch.object(peer.subprocess, "run", side_effect=run), mock.patch.object(
-                pathlib.Path, "exists", return_value=False
-            ):
+            with mock.patch.object(peer.os, "name", "nt"), mock.patch.object(
+                peer.subprocess, "run", side_effect=run
+            ), mock.patch.object(pathlib.Path, "exists", return_value=False):
                 with self.assertRaisesRegex(peer.PeerFailure, "FAIL_EDITOR_BATCH"):
                     with peer.temporary_short_windows_plugin_alias(plugin_directory):
                         self.fail("alias reservation should not succeed when the mapped drive is invisible")
