@@ -172,6 +172,8 @@ namespace Unity.FoxgloveSDK.Editor
             bool isFile,
             string defaultDir)
         {
+            NormalizeProjectRelativePath(prop);
+
             EditorGUILayout.LabelField(label, EditorStyles.miniBoldLabel);
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -209,6 +211,8 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         internal static void DrawPathBrowse(SerializedProperty prop, string title, string extension, bool isFile, string defaultDir)
         {
+            NormalizeProjectRelativePath(prop);
+
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PropertyField(prop);
             if (GUILayout.Button("...", GUILayout.Width(30)))
