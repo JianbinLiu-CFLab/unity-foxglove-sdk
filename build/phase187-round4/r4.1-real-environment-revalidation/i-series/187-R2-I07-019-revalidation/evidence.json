@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I07-019",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunWireHardeningValidation.cs@0acd946a6f8f66ec1092b9e586400928f78bb47a:1-EOF; current_primary_sha256=62f8e6af22ef897bad76f989dffddce51299acba56c5ebdc05f5e35c123e37da",
+  "source_sha256": "62f8e6af22ef897bad76f989dffddce51299acba56c5ebdc05f5e35c123e37da",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Packages\\dev.unity2foxglove.sdk\\Tests\\Runtime\\FoxRunWireHardeningValidation.cs').read_text(encoding='utf-8'); assert t.strip(); print('I07_SOURCE_BOUND', len(t))\"",
+  "literal_output": "I07_SOURCE_BOUND 4068",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:08:42.099810+00:00"
+}
