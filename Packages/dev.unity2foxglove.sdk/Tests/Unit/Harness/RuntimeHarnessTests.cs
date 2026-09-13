@@ -112,6 +112,17 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void RunValidationRestoresConsoleStateWithIndependentCleanup()
+        {
+            var source = LoadProgramTree().GetText().ToString();
+
+            Assert.Contains("TryCleanup(() => classifiedOut.Flush()", source, StringComparison.Ordinal);
+            Assert.Contains("TryCleanup(() => classifiedError.Flush()", source, StringComparison.Ordinal);
+            Assert.Contains("originalOut.NewLine = originalOutNewLine", source, StringComparison.Ordinal);
+            Assert.Contains("originalError.NewLine = originalErrorNewLine", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task ServeRejectsConflictingValidationSelector()
         {
             var result = await RunHarnessAsync(new[] { "--serve", "--phase163-57" }, timeoutMilliseconds: 20_000);
