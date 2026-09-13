@@ -350,11 +350,14 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertEqual([], terminated)
 
     def test_runtime_selection_enforces_absolute_deadline(self):
+        """A selector that never settles must terminate at the absolute deadline."""
         peer = load_peer_module()
 
         class Process:
+            """Resistant process double for deadline cleanup."""
             pid = 123
             def poll(self):
+                """Remain live throughout the probe."""
                 return None
 
         with temporary_directory("peer-deadline-") as temporary:
@@ -363,8 +366,10 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             clock = {"seconds": 0.0}
             terminated = []
             def now():
+                """Expose the deterministic clock value."""
                 return clock["seconds"]
             def sleep(_seconds):
+                """Advance beyond the configured deadline."""
                 clock["seconds"] = 10.0
             with self.assertRaisesRegex(peer.PeerFailure, "bounded total duration"):
                 peer.wait_for_runtime_selection_process(
@@ -376,6 +381,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             self.assertEqual(1, len(terminated))
 
     def test_capture_windows_msvc_environment_rejects_timeout_and_output_flood(self):
+        """Toolchain discovery rejects timeout and oversized captured output."""
         peer = load_peer_module()
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
