@@ -1,3 +1,11 @@
+# ADDITIVE CHECKPOINT 2026-09-13 — FINAL LIVE REF ALIGNMENT AFTER PR336
+
+Status: `I_SERIES_COMPLETE / DOCUMENT_REFS_ALIGNED / PR336_MERGED / MAIN_SYNCED / NO_SHUTDOWN`
+
+- Final live release ref is `0b43a14445341668a604dbd58a9e40bc19c0ff67` (PR #336: https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/336), after PRs #332, #333, #334, #335, and #336. Local `main`, `HEAD`, and `origin/main` are synchronized to this SHA; remote heads contain only `refs/heads/main`.
+- `CORRECTION_CHECKPOINT_20260913.json` is aligned to the same live ref and records the preceding PR merge chain. Earlier AGENTS blocks remain below as the exact historical suffix.
+- Protected dirty Unity/package files, untracked scripts/metas, scratch, historical worktrees, evidence, and ROS2/R2FU Junctions remain preserved. No reset, stash, clean, broad deletion, or shutdown was performed.
+
 # ADDITIVE CHECKPOINT 2026-09-13 — FINAL RELEASE REF AFTER PR335
 
 Status: `I_SERIES_COMPLETE / ALL_INTEGRATION_PRS_MERGED / MAIN_SYNCED / NO_SHUTDOWN`

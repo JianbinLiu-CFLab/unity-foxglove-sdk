@@ -1,9 +1,9 @@
 {
-  "status": "I_SERIES_COMPLETE_FINAL_REFS_AFTER_PR333",
+  "status": "I_SERIES_COMPLETE_FINAL_REFS_AFTER_PR336",
   "branch": "main",
-  "head": "da36efafd976d000eacd5de5f96589d0ef028868",
-  "main": "da36efafd976d000eacd5de5f96589d0ef028868",
-  "origin_main": "da36efafd976d000eacd5de5f96589d0ef028868",
+  "head": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
+  "main": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
+  "origin_main": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
   "overlay": {
     "path": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\R4.1-I_REFUTED_EVIDENCE_CORRECTION_20260912.tsv",
     "sha256": "f6febbc05fd58be1210dc063e110c181d337d8733e5b11cda926ba9b55163f63",
@@ -366,11 +366,34 @@
     "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/332"
   },
   "final_sync": {
-    "pr": 333,
-    "merge_sha": "da36efafd976d000eacd5de5f96589d0ef028868",
-    "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/333",
+    "pr": 336,
+    "merge_sha": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
+    "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/336",
     "remote_heads": [
       "refs/heads/main"
     ]
-  }
+  },
+  "integration_prs": [
+    {
+      "pr": 332,
+      "merge_sha": "8a8bc7e79af95a0621d693d613d03ac996a3b260"
+    },
+    {
+      "pr": 333,
+      "merge_sha": "da36efafd976d000eacd5de5f96589d0ef028868"
+    },
+    {
+      "pr": 334,
+      "merge_sha": "d130cda2374d5c8b60dbebc4297310b93d115fe3"
+    },
+    {
+      "pr": 335,
+      "merge_sha": "1b4014a706d7cef45a1b9edb0f08edbc11fdb4df"
+    },
+    {
+      "pr": 336,
+      "merge_sha": "0b43a14445341668a604dbd58a9e40bc19c0ff67",
+      "url": "https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/336"
+    }
+  ]
 }
