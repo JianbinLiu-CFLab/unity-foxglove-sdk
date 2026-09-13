@@ -123,18 +123,24 @@ class Phase186BridgeCertificationTests(unittest.TestCase):
                 raise AssertionError("tree cleanup must not fall back to root-only kill")
 
         process = TimedOutProcess()
-        with tempfile.TemporaryDirectory() as temp, mock.patch.object(
-            certification.os, "name", "nt"
-        ), mock.patch.object(
-            certification.subprocess, "Popen", return_value=process
-        ) as popen, mock.patch.object(certification.subprocess, "run") as run:
-            with self.assertRaises(certification.CertificationFailure):
-                certification._run_logged(
-                    ["owned"],
-                    repository=pathlib.Path(temp),
-                    log=pathlib.Path(temp) / "owned.log",
-                    timeout_seconds=0.01,
-                )
+        # Resolve host filesystem paths before simulating ``os.name == "nt"``.
+        # ``pathlib.Path`` selects ``WindowsPath`` from the patched value on
+        # POSIX runners, where constructing it raises ``NotImplementedError``.
+        with tempfile.TemporaryDirectory() as temp:
+            repository_path = pathlib.Path(temp)
+            log_path = repository_path / "owned.log"
+            with mock.patch.object(
+                certification.os, "name", "nt"
+            ), mock.patch.object(
+                certification.subprocess, "Popen", return_value=process
+            ) as popen, mock.patch.object(certification.subprocess, "run") as run:
+                with self.assertRaises(certification.CertificationFailure):
+                    certification._run_logged(
+                        ["owned"],
+                        repository=repository_path,
+                        log=log_path,
+                        timeout_seconds=0.01,
+                    )
         run.assert_called_once_with(
             ["taskkill", "/PID", "4242", "/T", "/F"],
             check=False,
