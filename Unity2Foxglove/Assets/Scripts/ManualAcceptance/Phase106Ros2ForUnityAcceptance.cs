@@ -194,7 +194,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
             }
         }
 
-        if (_ros2Unity != null && _ros2Node != null)
+        if (!cleanupFailed && _ros2Unity != null && _ros2Node != null)
         {
             try
             {
