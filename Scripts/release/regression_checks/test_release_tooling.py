@@ -1163,6 +1163,17 @@ class RunCiTests(unittest.TestCase):
             {name: getattr(self.run_ci, name, None) for name in expected},
         )
 
+    def test_maintained_ci_dispatches_phase185_and_phase186_manual_regressions(self) -> None:
+        """Maintained CI must execute the standalone Phase185 and Phase186-H suites."""
+        self.assertIn(
+            "Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe",
+            self.run_ci.PACKAGE_LANE_REGRESSION_MODULES,
+        )
+        self.assertIn(
+            "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual",
+            self.run_ci.PACKAGE_LANE_REGRESSION_MODULES,
+        )
+
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
         """The selector must execute exactly six pure unittest suites in locked order."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:
