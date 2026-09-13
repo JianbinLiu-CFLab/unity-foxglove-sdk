@@ -1,0 +1,31 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase10Validation.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase10Validation.cs
+index c06023808..1e7dfed7c 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase10Validation.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase10Validation.cs
+@@ -307,16 +307,24 @@ namespace Unity.FoxgloveSDK.Tests
+             var data = ms.ToArray();
+             var (_, records, _) = McapRecordReader.Parse(data);
+             var found = 0;
++            var payloadMatches = 0;
+             foreach (var rec in records)
+             {
+                 if (rec.Opcode == 0x06)
+                 {
+                     var (st, et, sz, crc, comp, _, inner) = McapRecordReader.DecodeChunk(rec.Content);
+                     var (_, innerRecords, _) = McapRecordReader.Parse(inner);
+-                    found += innerRecords.Count(x => x.Opcode == 0x05);
++                    foreach (var message in innerRecords.Where(x => x.Opcode == 0x05))
++                    {
++                        found++;
++                        var decoded = McapRecordReader.DecodeMessage(message.Content);
++                        if (decoded.data.SequenceEqual(new byte[] { 42 }))
++                            payloadMatches++;
++                    }
+                 }
+             }
+-            Assert(found >= 1, $"Dual write: {found} messages in MCAP");
++            Assert(found == 1, $"Dual write: exactly one message in MCAP (got {found})");
++            Assert(payloadMatches == 1, "Dual write: recorded payload matches published byte 42");
+         }
+ 
+         /// <summary>
