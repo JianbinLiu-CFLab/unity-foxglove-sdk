@@ -2,17 +2,17 @@
   "status": "CORRECTION_OVERLAY_ACTIVE_REVALIDATION_IN_PROGRESS",
   "branch": "feature/round4/i-series-refuted-evidence-correction",
   "base_head": "9f3620526fb5acdbc70e85b85c400fd39e080ba4",
-  "head": "4dc13475689ca9b47c83de368e387e970f006b18",
+  "head": "c542e39e0225775c176a15722aab62d0f43657d5",
   "overlay": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\R4.1-I_REFUTED_EVIDENCE_CORRECTION_20260912.tsv",
-  "overlay_sha256": "bcc5dcf717a835f950f675e7b00ed6dd4116d41cbd8c142fbb339a5427eed4fc",
+  "overlay_sha256": "19d7d6fe69e376a05902069c4149a11d166f006dccca2cf043f254548ff9a2c4",
   "rows": 264,
   "disposition_counts": {
     "SATISFIED_BY_ROUND4": 8,
     "CONFIRMED": 10,
     "SATISFIED_BY_ROUND3": 13,
     "REFUTED": 10,
-    "CONFIRMED_FIXED": 54,
-    "PENDING_REVALIDATION": 169
+    "CONFIRMED_FIXED": 55,
+    "PENDING_REVALIDATION": 168
   },
   "reopened_bulk_rows": 227,
   "direct_revalidations": [
@@ -58,7 +58,8 @@
     "b671a9d62d6bb2bb37cc14a91516fc13a3d1cd44",
     "bf5016efde4942f045efffdd3ffe68749076aff8",
     "9857a5152b2571f64fb997ce2b9b1858caa7746d",
-    "4dc13475689ca9b47c83de368e387e970f006b18"
+    "4dc13475689ca9b47c83de368e387e970f006b18",
+    "c542e39e0225775c176a15722aab62d0f43657d5"
   ],
   "historical_overlay_preserved": true,
   "deepwiki_reports_preserved": true,
@@ -94,17 +95,18 @@
     "187-R2-I05-019",
     "187-R2-I05-025",
     "187-R2-I05-022",
-    "187-R2-I05-005"
+    "187-R2-I05-005",
+    "187-R2-I06-001"
   ],
-  "correction_overlay_sha256": "bcc5dcf717a835f950f675e7b00ed6dd4116d41cbd8c142fbb339a5427eed4fc",
+  "correction_overlay_sha256": "19d7d6fe69e376a05902069c4149a11d166f006dccca2cf043f254548ff9a2c4",
   "current_disposition_counts": {
     "SATISFIED_BY_ROUND4": 8,
     "CONFIRMED": 10,
     "SATISFIED_BY_ROUND3": 13,
     "REFUTED": 10,
-    "CONFIRMED_FIXED": 54,
-    "PENDING_REVALIDATION": 169
+    "CONFIRMED_FIXED": 55,
+    "PENDING_REVALIDATION": 168
   },
-  "current_head": "4dc13475689ca9b47c83de368e387e970f006b18",
-  "last_updated": "2026-09-13T00:45:00Z"
+  "current_head": "c542e39e0225775c176a15722aab62d0f43657d5",
+  "last_updated": "2026-09-13T01:15:00Z"
 }

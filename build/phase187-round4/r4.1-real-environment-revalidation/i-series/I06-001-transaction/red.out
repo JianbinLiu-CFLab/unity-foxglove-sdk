@@ -1,0 +1,2 @@
+RED_RESULT=True
+RED_LITERAL=TryRunRegisteredValidation invokes RunValidation immediately after selected.Count checks; no Unexpected validation argument guard

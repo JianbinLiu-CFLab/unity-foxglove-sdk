@@ -1,0 +1,15 @@
+finding_id: 187-R2-I06-001
+source_anchor: Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs::TryRunRegisteredValidation
+original_sha256: 01adaa6c9ba1d3908b366ef7396639e5ae9be0f7bdcccdb6246324a0c1ce64ce
+modified_sha256: 400730520e26f0aa5ca969ef3b91e1f8c920521d2232f1d86bf48009b2fb0f
+RED command: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase163-57 --phase-typo (against original parser)
+RED literal output: registered selector would dispatch before late unknown-token scan; no pre-dispatch rejection
+RED exit status: 0 (deterministic source probe)
+GREEN command: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase163-57 --phase-typo; duplicate selector probe
+GREEN literal output: Unexpected validation argument: --phase-typo; Validation selector must be supplied exactly once.; both exit 1
+GREEN exit status: 1 each
+controls: dotnet build --no-restore FoxgloveSdk.UnitTests.csproj; Build succeeded 0 warnings 0 errors.
+ROLLBACK command: python I06-001-transaction/ROLLBACK.sh
+ROLLBACK literal output: seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true; ROLLBACK_OK; ROLLBACK_NOOP
+ROLLBACK exit status: 0
+restored_behavior: unknown, positional, and duplicate selector tokens are rejected before delegate execution.
