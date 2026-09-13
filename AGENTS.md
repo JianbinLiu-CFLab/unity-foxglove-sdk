@@ -1,3 +1,13 @@
+# ADDITIVE CHECKPOINT 2026-09-13 — FINAL CLAUDE F900 REFS (CORRECTED)
+
+Status: `CLAUDE_F900_RESIDUALS_REPAIRED / PR343_MERGED / PR344_MERGED / MAIN_SYNCED / NO_SHUTDOWN`
+
+- PR #343 product merge SHA: `7d1fc44d661e162dca4ffe329bdae88de111f15d`. PR #344 additive documentation alignment merge SHA: `1924dc9e8c266cb22f74623d5ce549eccfea6572`. Final local `main`, `HEAD`, and `origin/main` all equal `1924dc9e8c266cb22f74623d5ce549eccfea6572`; remote heads contain only `refs/heads/main`; both feature branches were deleted after ancestry verification.
+- PR #343 remote checks and the final local CI on product HEAD passed: `python -B Scripts/release/run_ci.py`, exit `0`, literal `All CI checks passed.`. PR #344 remote checks also passed after the additive reference correction. Existing protected dirty files, historical evidence/worktrees, ROS2/R2FU Junctions, and untracked pre-existing files remain preserved.
+- This correction is additive and keeps every earlier AGENTS block below as the exact suffix.
+
+AGENTS_PREVIOUS_SHA256=c62c9ef314a3a7d8e44bf0dec851d9eeb1703803c329b2c27d80f8494ffc30ff
+
 # ADDITIVE CHECKPOINT 2026-09-13 — CLAUDE F900 RESIDUAL CLOSURE (MERGED)
 
 Status: `CLAUDE_F900_RESIDUALS_REPAIRED / PR343_MERGED / MAIN_SYNCED / LOCAL_CI_PASSED / NO_SHUTDOWN`
