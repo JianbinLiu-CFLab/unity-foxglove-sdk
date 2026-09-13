@@ -442,6 +442,10 @@ namespace Unity.FoxgloveSDK.Tests
             return methods[0]
                 .DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
+                // Calls inside local-function declarations belong to that
+                // nested owner, not the containing method being inspected.
+                .Where(invocation => !invocation.Ancestors()
+                    .Any(ancestor => ancestor is LocalFunctionStatementSyntax))
                 .Count(invocation =>
                     InvocationMatches(
                         invocation,
@@ -495,7 +499,7 @@ namespace Unity.FoxgloveSDK.Tests
                     attributeName.Length - "Attribute".Length)
                 : attributeName;
             var fullName = shortName + "Attribute";
-            return CSharpSyntaxTree.ParseText(source)
+            var matches = CSharpSyntaxTree.ParseText(source)
                 .GetRoot()
                 .DescendantNodes()
                 .OfType<ClassDeclarationSyntax>()
@@ -504,8 +508,11 @@ namespace Unity.FoxgloveSDK.Tests
                         type.Identifier.ValueText,
                         typeName,
                         StringComparison.Ordinal))
-                .SelectMany(type =>
-                    type.AttributeLists)
+                .ToArray();
+            if (matches.Length != 1)
+                return false;
+
+            return matches[0].AttributeLists
                 .SelectMany(list => list.Attributes)
                 .Any(attribute =>
                 {
