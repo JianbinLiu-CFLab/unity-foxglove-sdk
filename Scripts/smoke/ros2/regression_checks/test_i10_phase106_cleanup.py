@@ -5,6 +5,8 @@ ROOT = Path(__file__).resolve().parents[4]
 SOURCE = ROOT / "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase106Ros2ForUnityAcceptance.cs"
 
 class Phase106CleanupTests(unittest.TestCase):
+    """Validate Phase106 cleanup ownership and retry behavior."""
+
     def test_cleanup_retains_handles_on_remove_failure(self):
         """Keep native handles available when Phase106 cleanup needs a retry."""
         source = SOURCE.read_text(encoding="utf-8")
