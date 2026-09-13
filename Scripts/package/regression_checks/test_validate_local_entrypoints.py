@@ -117,7 +117,7 @@ class LocalEntrypointValidationTests(unittest.TestCase):
         class Process:
             pid = 1
             returncode = 1
-            def communicate(self, timeout=None):
+            def communicate(self, input=None, timeout=None):
                 return "", ""
             def wait(self, timeout=None):
                 return self.returncode
