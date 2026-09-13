@@ -1,4 +1,3 @@
-SOURCE_BOUND=True
-WINDOWS_TASKKILL_TREE=True
-POSIX_GROUP_CONTROL=False
-CURRENT_DISPOSITION=SATISFIED_BY_ROUND4
+escaped=False child_alive_after_reap=False
+escaped=True child_alive_after_reap=False
+tree_cleanup=true
