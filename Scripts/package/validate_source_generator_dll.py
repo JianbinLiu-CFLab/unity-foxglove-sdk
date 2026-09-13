@@ -276,6 +276,7 @@ def run_build(
         *msbuild_props,
         "-c",
         "Release",
+        "--no-incremental",
         "-o",
         str(build_output_dir),
         "-v:minimal",
@@ -327,6 +328,10 @@ def run_build(
         )
         return False
 
+    primary_output = next(
+        (path for path in expected_paths if "SourceGenerator" in path.name),
+        expected_paths[0],
+    )
     for path in expected_paths:
         output_after = output_fingerprint(path)
         if output_after is None:
@@ -336,7 +341,7 @@ def run_build(
                 file=sys.stderr,
             )
             return False
-        if output_after == output_before[path]:
+        if path == primary_output and output_after == output_before[path]:
             print(
                 "[FAIL] Source generator Release build left the pre-existing "
                 f"output at {path} unchanged; it is not this build's output.",

@@ -556,7 +556,7 @@ class RunCiTests(unittest.TestCase):
 
         for path in WORKFLOW_PATHS:
             workflow = path.read_text(encoding="utf-8")
-            checkout_count = workflow.count("uses: actions/checkout@v4")
+            checkout_count = len(re.findall(r"uses:\s*actions/checkout@(?:v4|[0-9a-f]{40})(?:\s|#)", workflow))
             hardened_count = workflow.count("persist-credentials: false")
             self.assertGreater(checkout_count, 0, path.name)
             self.assertEqual(
@@ -821,6 +821,8 @@ class RunCiTests(unittest.TestCase):
             "Scripts.smoke.test_core_smoke_scripts",
             "Scripts.smoke.ros2.regression_checks.test_phase162_lyrical_zenoh_player_smoke",
             "Scripts.smoke.ros2.regression_checks.test_ros2_windows_env",
+            "Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe",
+            "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual",
         )
         calls: list[list[str]] = []
 
