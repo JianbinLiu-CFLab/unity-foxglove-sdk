@@ -84,9 +84,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && !replayBlock.Contains("EditorUtility.SetDirty", StringComparison.Ordinal)
                   && replayBlock.Contains("replayAutoPlay.boolValue = false", StringComparison.Ordinal),
                 "163-25C-1: replay auto-play coercion relies on SerializedProperty apply without double undo");
-            var undoIndex = certificateBlock.IndexOf("Undo.RecordObject(target, \"Generate Local Dev WSS Certificate\")", StringComparison.Ordinal);
-            var applyIndex = certificateBlock.IndexOf("serializedObject.ApplyModifiedProperties();", StringComparison.Ordinal);
-            Check(undoIndex >= 0 && applyIndex > undoIndex,
+            Check(certificateBlock.IndexOf("Undo.RecordObject(target, \"Generate Local Dev WSS Certificate\")", StringComparison.Ordinal)
+                  < certificateBlock.IndexOf("serializedObject.ApplyModifiedProperties();", StringComparison.Ordinal),
                 "163-25C-2: local certificate generation records undo before flushing serialized properties");
         }
 

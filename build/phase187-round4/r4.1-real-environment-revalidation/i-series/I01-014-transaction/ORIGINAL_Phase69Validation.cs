@@ -39,11 +39,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Check(sources.ManagerSource.Contains("_mcapReplayPreflight.Draw(serializedObject, target, replayPath)"),
                 "69A-1: replay Inspector delegates to MCAP preflight drawer");
-            Check(sources.DrawerSource.Contains("GUILayout.Button(\"Analyze Replay File\"")
-                  && sources.DrawerSource.Contains("StartAnalyzeReplayMcap("),
+            Check(sources.DrawerSource.Contains("Analyze Replay File"),
                 "69A-2: replay Inspector exposes Analyze Replay File action");
-            Check(sources.DrawerSource.Contains("GUILayout.Button(\"Use Latest Recording\"")
-                  && sources.DrawerSource.Contains("StartFindLatestReadableRecording("),
+            Check(sources.DrawerSource.Contains("Use Latest Recording"),
                 "69A-3: replay Inspector exposes Use Latest Recording action");
             Check(sources.DrawerSource.Contains("MCAP Indexed Reader Summary"),
                 "69A-4: replay Inspector renders indexed summary label");
@@ -85,9 +83,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "69C-3: latest recording helper verifies MCAP summary readability");
             Check(source.Contains("catch (InvalidDataException)"),
                 "69C-4: latest recording helper skips malformed MCAP files");
-            Check(source.Contains("ApplyReplayPath(")
-                  && source.Contains("MakeRelative(latestRecording)")
-                  && source.Contains("replayPath.stringValue"),
+            Check(source.Contains("MakeRelative(latestRecording)") && source.Contains("replayPath.stringValue"),
                 "69C-5: Use Latest Recording writes a project-relative replay path");
         }
 

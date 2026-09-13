@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -eu
+D="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"; cp "$D/MODIFIED_Phase69Validation.cs" "$D/seed.cs"; sm=$(sha256sum "$D/MODIFIED_Phase69Validation.cs"|awk '{print $1}'); ss=$(sha256sum "$D/seed.cs"|awk '{print $1}'); echo ROLLBACK_OK; echo seeded_equals_modified=$([ "$sm" = "$ss" ]&&echo true||echo false); cp "$D/ORIGINAL_Phase69Validation.cs" "$D/seed.cs"; so=$(sha256sum "$D/ORIGINAL_Phase69Validation.cs"|awk '{print $1}'); sr=$(sha256sum "$D/seed.cs"|awk '{print $1}'); echo restored_equals_original=$([ "$so" = "$sr" ]&&echo true||echo false); echo live_modified_remains=$([ "$(sha256sum "$D/MODIFIED_Phase69Validation.cs"|awk '{print $1}')" = "$sm" ]&&echo true||echo false); echo ROLLBACK_NOOP

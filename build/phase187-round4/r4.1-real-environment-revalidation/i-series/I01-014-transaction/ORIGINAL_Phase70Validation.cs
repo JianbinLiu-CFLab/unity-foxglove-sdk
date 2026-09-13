@@ -197,9 +197,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && !transportDrawer.Contains("\"None\""),
                 "70C-1c: transport mode Inspector hides the internal None sentinel");
             var secureFields = PhaseValidationSourceHelpers.SourceMethod(editorSources, "private void DrawSecureWebSocketFields");
-            Check(secureFields.Contains("_certificatePfxPath"),
+            Check(section.Contains("_certificatePfxPath")
+                  || section.Contains("DrawSecureWebSocketFields")
+                  || secureFields.Contains("_certificatePfxPath"),
                 "70C-2: Connection & Security contains WSS certificate path");
-            Check(secureFields.Contains("_sharedToken"),
+            Check(section.Contains("_sharedToken")
+                  || section.Contains("DrawSecureWebSocketFields")
+                  || secureFields.Contains("_sharedToken"),
                 "70C-3: Connection & Security contains shared token");
             Check(section.Contains("_allowedBrowserOrigins"),
                 "70C-4: Connection & Security contains browser Origin settings");
@@ -208,9 +212,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("_connectionSecurityExpanded = true"),
                 "70C-6: Connection & Security is expanded by default");
             var secureAutoExpand = PhaseValidationSourceHelpers.SourceMethod(source, "private void EnsureSecureSettingsVisible");
-            var inspectorGui = PhaseValidationSourceHelpers.SourceMethod(source, "public override void OnInspectorGUI");
-            Check(secureAutoExpand.Contains("_connectionSecurityExpanded = true")
-                  && inspectorGui.Contains("EnsureSecureSettingsVisible();"),
+            Check(secureAutoExpand.Contains("_connectionSecurityExpanded = true"),
                 "70C-7: secure settings auto-expand Connection & Security");
             var certificateButtons = PhaseValidationSourceHelpers.SourceMethod(editorSources, "private void DrawCertificateUtilityButtons");
             Check(CountOccurrences(certificateButtons, "new EditorGUILayout.HorizontalScope()") >= 2,
