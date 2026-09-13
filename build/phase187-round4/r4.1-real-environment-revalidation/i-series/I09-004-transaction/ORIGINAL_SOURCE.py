@@ -29,8 +29,6 @@ from collections.abc import Callable, Mapping, Sequence
 from ctypes import wintypes
 from typing import Any
 
-_REAL_POPEN_TYPE = subprocess.Popen
-
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
 REPOSITORY_ROOT = SCRIPT_PATH.parents[3]
 if str(REPOSITORY_ROOT) not in sys.path:
@@ -959,31 +957,11 @@ def _terminate_and_reap(process: subprocess.Popen[bytes]) -> None:
     """Terminate a child process tree if needed and always reap the root."""
 
     if process.poll() is None:
-        if os.name == "nt" and isinstance(process, _REAL_POPEN_TYPE):
-            # ``Popen.terminate`` only signals the root process on Windows;
-            # taskkill /T retires descendants owned by that root before reap.
-            taskkill = os.path.join(
-                os.environ.get("SystemRoot", r"C:\Windows"),
-                "System32",
-                "taskkill.exe",
-            )
-            with contextlib.suppress(OSError, subprocess.SubprocessError):
-                os.spawnv(
-                    os.P_WAIT,
-                    taskkill,
-                    [taskkill, "/PID", str(process.pid), "/T", "/F"],
-                )
         with contextlib.suppress(OSError):
             process.terminate()
         try:
             process.wait(timeout=1)
         except subprocess.TimeoutExpired:
-            if os.name == "nt":
-                # Terminate descendants without routing through subprocess.run/Popen;
-                # the bounded-process harness patches those APIs to observe the
-                # owned root and must not mistake tree cleanup for a second launch.
-                with contextlib.suppress(OSError):
-                    os.system(f"taskkill /PID {int(process.pid)} /T /F >NUL 2>&1")
             with contextlib.suppress(OSError):
                 process.kill()
             try:

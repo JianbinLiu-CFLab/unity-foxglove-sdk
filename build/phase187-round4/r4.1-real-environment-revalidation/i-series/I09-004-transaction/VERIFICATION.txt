@@ -1,9 +1,5 @@
-BASELINE_RED=direct-child-only cleanup lacked tree termination
-MODIFIED_GREEN=taskkill /PID <root> /T /F then root reap
-PY_COMPILE_EXIT=0
-RESULT=CONFIRMED_FIXED
-ROLLBACK_OK
-ROLLBACK_NOOP
-seeded_equals_modified=true
-restored_equals_original=true
-live_modified_remains=true
+I09-004 verification
+RED: deterministic child-survival probe on pre-fix helper left a spawned descendant alive after root termination.
+GREEN: Windows taskkill /PID <root> /T /F executes only on timeout, then root is reaped. Real probe output: escaped=False child_alive_after_reap=False; escaped=True child_alive_after_reap=False; tree_cleanup=true; exit 0.
+Focused owner suite: python -m unittest Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_cli_install; Ran 44 tests in 2.930s; OK; exit 0.
+Controls: overflow, timeout, interruption, malformed command and cleanup paths all pass; subprocess.Popen capture remains one launch.
