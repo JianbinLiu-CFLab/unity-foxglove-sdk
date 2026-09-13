@@ -1280,6 +1280,7 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         peer = load_peer_module()
 
         class Process:
+            """Stalled streamed-build process double."""
             pid = 4242
             stdout = io.StringIO("")
             returncode = None
