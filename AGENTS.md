@@ -1,3 +1,14 @@
+# ADDITIVE CHECKPOINT 2026-09-13 — CLAUDE F900 RESIDUAL CLOSURE (MERGED)
+
+Status: `CLAUDE_F900_RESIDUALS_REPAIRED / PR343_MERGED / MAIN_SYNCED / LOCAL_CI_PASSED / NO_SHUTDOWN`
+
+- PR #343 (`https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/343`) merged normally with merge SHA `7d1fc44d661e162dca4ffe329bdae88de111f15d`; local `main`, `HEAD`, and `origin/main` are synchronized to this SHA. The serial source branch was deleted locally and remotely after ancestry verification.
+- Final local CI command `python -B Scripts/release/run_ci.py` on final product HEAD exited `0` and emitted literal `All CI checks passed.`; run `57412-009dd022`, logs under `build/ci/57412-009dd022/logs/` (ignored). Remote PR #343 checks all passed: docs, check, test, analyzer-freshness, Windows runtime/xUnit/panel/package parity, optional ROS2 Native, and optional ROS2 adapter.
+- Three-role review remained PASS: mutation/adversarial 3/3 killed; correctness/runtime focused matrix passed with package/Assets mirror equality; scope/evidence confirmed no tracked `build/`, `docs/superpowers/`, or `Plan/` paths and preserved protected dirty files. Quartet artifacts remain in ignored `build/phase187-round4/claude-f900-review-20260913/` and the I09/I10 transaction directories with verified rollback markers.
+- Protected Unity/package dirty files, historical worktrees/evidence, ROS2/R2FU Junctions, and pre-existing untracked files remain preserved. No reset, stash, clean, broad deletion, or shutdown was performed. This block is additive; previous AGENTS content is preserved as the exact suffix.
+
+AGENTS_PREVIOUS_SHA256=d6601c074e94010c1a187d2e528b400f52c2641d49b78505d1ae17d674cd216b
+
 # ADDITIVE CHECKPOINT 2026-09-13 — CLAUDE F900 RESIDUAL CLOSURE (PRE-PUSH)
 
 Status: `CLAUDE_F900_RESIDUALS_REPAIRED / THREE_ROLE_AUDIT_PASS / LOCAL_CI_PASSED / PENDING_REMOTE / NO_SHUTDOWN`
