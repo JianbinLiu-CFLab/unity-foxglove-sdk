@@ -1,0 +1,2 @@
+GREEN_RESULT=True
+GREEN_LITERAL=validation delegate has no executable body -> exit 1

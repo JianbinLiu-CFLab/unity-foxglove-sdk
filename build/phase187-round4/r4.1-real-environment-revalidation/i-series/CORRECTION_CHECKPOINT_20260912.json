@@ -2,17 +2,17 @@
   "status": "CORRECTION_OVERLAY_ACTIVE_REVALIDATION_IN_PROGRESS",
   "branch": "feature/round4/i-series-refuted-evidence-correction",
   "base_head": "9f3620526fb5acdbc70e85b85c400fd39e080ba4",
-  "head": "6f5c500524a937985010321a36b6242326ee6341",
+  "head": "6287f4a51ea0d3bee7f454ee509c630b637fb031",
   "overlay": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\R4.1-I_REFUTED_EVIDENCE_CORRECTION_20260912.tsv",
-  "overlay_sha256": "db74a8aefb6dd4bc7c530f6697e755360ed91d7a406291c2a0765d2a4839edc7",
+  "overlay_sha256": "cbd2e02c91c843ffbe042470efe0d674074e05badc76a95a02583b3bae8efda2",
   "rows": 264,
   "disposition_counts": {
     "SATISFIED_BY_ROUND4": 8,
     "CONFIRMED": 10,
     "SATISFIED_BY_ROUND3": 13,
     "REFUTED": 10,
-    "CONFIRMED_FIXED": 57,
-    "PENDING_REVALIDATION": 166
+    "CONFIRMED_FIXED": 58,
+    "PENDING_REVALIDATION": 165
   },
   "reopened_bulk_rows": 227,
   "direct_revalidations": [
@@ -100,15 +100,15 @@
     "187-R2-I05-005",
     "187-R2-I06-001"
   ],
-  "correction_overlay_sha256": "db74a8aefb6dd4bc7c530f6697e755360ed91d7a406291c2a0765d2a4839edc7",
+  "correction_overlay_sha256": "cbd2e02c91c843ffbe042470efe0d674074e05badc76a95a02583b3bae8efda2",
   "current_disposition_counts": {
     "SATISFIED_BY_ROUND4": 8,
     "CONFIRMED": 10,
     "SATISFIED_BY_ROUND3": 13,
     "REFUTED": 10,
-    "CONFIRMED_FIXED": 57,
-    "PENDING_REVALIDATION": 166
+    "CONFIRMED_FIXED": 58,
+    "PENDING_REVALIDATION": 165
   },
-  "current_head": "6f5c500524a937985010321a36b6242326ee6341",
-  "last_updated": "2026-09-13T02:15:00Z"
+  "current_head": "6287f4a51ea0d3bee7f454ee509c630b637fb031",
+  "last_updated": "2026-09-13T03:30:00Z"
 }
