@@ -9,6 +9,14 @@ Unity scene.
 
 from __future__ import annotations
 
+try:
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+except ModuleNotFoundError:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+
 import argparse
 import importlib.util
 import json
@@ -100,7 +108,7 @@ def probe_remote_data_loader(args: argparse.Namespace, root: Path) -> dict:
 
         range_out = (root / args.range_out).resolve()
         range_out.parent.mkdir(parents=True, exist_ok=True)
-        range_out.write_bytes(data_body)
+        atomic_write_bytes(range_out, data_body)
 
         relevant_logs = [
             line for line in backend_logs
@@ -196,7 +204,7 @@ def main(argv: list[str]) -> int:
 
     json_out = (root / args.json_out).resolve()
     json_out.parent.mkdir(parents=True, exist_ok=True)
-    json_out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+    atomic_write_text(json_out, json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps(evidence, indent=2, sort_keys=True))
     return 0
 

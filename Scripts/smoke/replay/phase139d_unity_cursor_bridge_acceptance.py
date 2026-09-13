@@ -11,6 +11,14 @@ traffic, not playhead-control evidence.
 
 from __future__ import annotations
 
+try:
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+except ModuleNotFoundError:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+
 import argparse
 import json
 import sys
@@ -259,7 +267,7 @@ def write_evidence(root: Path, args: argparse.Namespace, evidence: dict) -> None
 
     json_out = (root / args.json_out).resolve()
     json_out.parent.mkdir(parents=True, exist_ok=True)
-    json_out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+    atomic_write_text(json_out, json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
 
 
 if __name__ == "__main__":

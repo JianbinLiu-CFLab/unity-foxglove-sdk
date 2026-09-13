@@ -9,6 +9,14 @@
 
 from __future__ import annotations
 
+try:
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+except ModuleNotFoundError:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+
 import argparse
 import asyncio
 import json
@@ -985,7 +993,7 @@ def main() -> int:
             "reason": str(exc),
         }
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(
+        atomic_write_text(output,
             json.dumps(failure, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
@@ -995,7 +1003,7 @@ def main() -> int:
 
     report["endpoint"] = _redacted_url(url)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
+    atomic_write_text(output,
         json.dumps(report, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )

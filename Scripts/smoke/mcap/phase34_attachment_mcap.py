@@ -11,6 +11,14 @@
 
 from __future__ import annotations
 
+try:
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+except ModuleNotFoundError:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[3]))
+    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+
 import argparse
 import io
 import struct
@@ -527,7 +535,7 @@ def main() -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     data, attachment_data = build_smoke_file()
-    output.write_bytes(data)
+    atomic_write_bytes(output, data)
     self_check(output, attachment_data)
 
     print(f"[phase34-smoke] Generated: {output}")
