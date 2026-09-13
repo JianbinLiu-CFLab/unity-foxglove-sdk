@@ -1,3 +1,13 @@
+# ADDITIVE CHECKPOINT 2026-09-13 — FINAL CLAUDE F900 REFS (FINALIZED)
+
+Status: `CLAUDE_F900_RESIDUALS_REPAIRED / PR343_MERGED / PR344_MERGED / PR345_MERGED / MAIN_SYNCED / NO_SHUTDOWN`
+
+- Final product merge: PR #343, `7d1fc44d661e162dca4ffe329bdae88de111f15d`; documentation/ref alignment: PR #344, `1924dc9e8c266cb22f74623d5ce549eccfea6572`; final reference correction: PR #345, `d44ebfc57fbd409c1d9727ec657d43b9447174f9`. Final local `main`, `HEAD`, and `origin/main` equal `d44ebfc57fbd409c1d9727ec657d43b9447174f9`; remote heads contain only `refs/heads/main`; all feature branches were deleted after ancestry verification.
+- Product final CI was run with `python -B Scripts/release/run_ci.py` and returned exit `0` with literal `All CI checks passed.`; PR #343, #344, and #345 remote required checks passed. Protected dirty Unity/package files and historical evidence/worktrees remain preserved; no reset, stash, clean, broad deletion, or shutdown.
+- This block is additive and all prior AGENTS content remains below as the exact suffix.
+
+AGENTS_PREVIOUS_SHA256=4f3dca889f593ffdd4d5c496f240bdc06b122f79cf637cdf8451ca72dd1aed7c
+
 # ADDITIVE CHECKPOINT 2026-09-13 — FINAL CLAUDE F900 REFS (CORRECTED)
 
 Status: `CLAUDE_F900_RESIDUALS_REPAIRED / PR343_MERGED / PR344_MERGED / MAIN_SYNCED / NO_SHUTDOWN`
