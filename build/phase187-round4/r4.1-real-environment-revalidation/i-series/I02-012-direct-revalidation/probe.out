@@ -1,0 +1,7 @@
+{
+  "finding_id": "187-R2-I02-012",
+  "source_anchor": "Scripts/unity_build/unity_il2cpp.py::run_with_progress heartbeat scheduling",
+  "existing_evidence": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\behavioral-repair-20260912\\GIANT_PROGRESS_INTERVAL_TRANSACTION\\VERIFICATION.txt",
+  "existing_evidence_sha256": "99bab8e219d98bc6c6e4b4c763642a138a1f053976c75c83972c3ce34df2ab9a",
+  "result": "CONFIRMED_FIXED"
+}

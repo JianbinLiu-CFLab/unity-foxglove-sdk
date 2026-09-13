@@ -1,0 +1,4 @@
+187-R2-I02-012 direct evidence revalidation
+source_anchor=Scripts/unity_build/unity_il2cpp.py::run_with_progress heartbeat scheduling
+existing_quartet=build\phase187-round4\r4.1-real-environment-revalidation\i-series\behavioral-repair-20260912\GIANT_PROGRESS_INTERVAL_TRANSACTION\VERIFICATION.txt
+result=CONFIRMED_FIXED

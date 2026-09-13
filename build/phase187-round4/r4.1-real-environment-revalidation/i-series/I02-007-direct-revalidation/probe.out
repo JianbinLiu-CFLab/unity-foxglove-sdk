@@ -1,0 +1,7 @@
+{
+  "finding_id": "187-R2-I02-007",
+  "source_anchor": "Scripts/unity_build/unity_il2cpp.py::default_build_dir",
+  "existing_evidence": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\behavioral-repair-20260912\\BUILD_DIR_RESERVATION_TRANSACTION\\VERIFICATION.txt",
+  "existing_evidence_sha256": "d61705f4644c43ec71d50471dc0182d9732ca2be09fffd3cf4abeb3d987e245f",
+  "result": "CONFIRMED_FIXED"
+}

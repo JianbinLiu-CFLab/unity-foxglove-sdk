@@ -1,0 +1,4 @@
+187-R2-I02-007 direct evidence revalidation
+source_anchor=Scripts/unity_build/unity_il2cpp.py::default_build_dir
+existing_quartet=build\phase187-round4\r4.1-real-environment-revalidation\i-series\behavioral-repair-20260912\BUILD_DIR_RESERVATION_TRANSACTION\VERIFICATION.txt
+result=CONFIRMED_FIXED

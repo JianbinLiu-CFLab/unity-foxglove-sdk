@@ -1,0 +1,4 @@
+187-R2-I02-008 direct evidence revalidation
+source_anchor=D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\Scripts\unity_build\unity_il2cpp.py#read_new_important_lines [489, 552]; SHA256=7a7826b6311d53bc0336074b9d3511b4a251f3a3fe8e552d980764c2e6b500c3
+existing_quartet=D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\behavioral-repair-20260912\LOG_TRANSACTION\VERIFICATION.txt
+result=CONFIRMED_FIXED

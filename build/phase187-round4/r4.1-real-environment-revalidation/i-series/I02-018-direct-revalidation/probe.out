@@ -1,0 +1,7 @@
+{
+  "finding_id": "187-R2-I02-018",
+  "source_anchor": "Scripts/unity_build/unity_il2cpp.py::OwnedProcessTree POSIX ownership",
+  "existing_evidence": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\behavioral-repair-20260912\\POSIX_GROUP_OWNERSHIP_TRANSACTION\\VERIFICATION.txt",
+  "existing_evidence_sha256": "2639aecfa513631b9091e86b8fe936d7c5432225a8c315a784cf61428a42f618",
+  "result": "CONFIRMED_FIXED"
+}
