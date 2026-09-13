@@ -2,19 +2,18 @@
   "status": "CORRECTION_OVERLAY_ACTIVE_REVALIDATION_IN_PROGRESS",
   "branch": "feature/round4/i-series-refuted-evidence-correction",
   "base_head": "9f3620526fb5acdbc70e85b85c400fd39e080ba4",
-  "head": "858d9e7f5ba17044bb03a9c2367f9541ce2b9acb",
+  "head": "d506ec0d15875b0bb7d222a22c6e7d9c369c514a",
   "overlay": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\R4.1-I_REFUTED_EVIDENCE_CORRECTION_20260912.tsv",
-  "overlay_sha256": "f36c9874ec60a27b1de6c57cf89b808d7528ac5ec8b9e70c60d09d981aa3d300",
+  "overlay_sha256": "7ea03bebff40ede78869c198800ab80abad6b7060e27156a003d1f1125c1df9a",
   "rows": 264,
   "disposition_counts": {
     "SATISFIED_BY_ROUND4": 8,
     "CONFIRMED": 10,
     "SATISFIED_BY_ROUND3": 13,
     "R4.1-CORRECTION-DEDICATED": 1,
-    "CONFIRMED_FIXED": 60,
+    "CONFIRMED_FIXED": 64,
     "REFUTED": 11,
-    "PENDING_REVALIDATION": 160,
-    "Revisit only if fetchAsset semantic marker contract changes": 1
+    "PENDING_REVALIDATION": 157
   },
   "reopened_bulk_rows": 227,
   "direct_revalidations": [
@@ -64,7 +63,8 @@
     "c542e39e0225775c176a15722aab62d0f43657d5",
     "0edceb6ba49a109a40e14413b1fe88597c5a21d7",
     "f57a3e2376d2960f0736973a99cc79216ab7f61a",
-    "858d9e7f5ba17044bb03a9c2367f9541ce2b9acb"
+    "858d9e7f5ba17044bb03a9c2367f9541ce2b9acb",
+    "d506ec0d15875b0bb7d222a22c6e7d9c369c514a"
   ],
   "historical_overlay_preserved": true,
   "deepwiki_reports_preserved": true,
@@ -103,17 +103,16 @@
     "187-R2-I05-005",
     "187-R2-I06-001"
   ],
-  "correction_overlay_sha256": "f36c9874ec60a27b1de6c57cf89b808d7528ac5ec8b9e70c60d09d981aa3d300",
+  "correction_overlay_sha256": "7ea03bebff40ede78869c198800ab80abad6b7060e27156a003d1f1125c1df9a",
   "current_disposition_counts": {
     "SATISFIED_BY_ROUND4": 8,
     "CONFIRMED": 10,
     "SATISFIED_BY_ROUND3": 13,
     "R4.1-CORRECTION-DEDICATED": 1,
-    "CONFIRMED_FIXED": 60,
+    "CONFIRMED_FIXED": 64,
     "REFUTED": 11,
-    "PENDING_REVALIDATION": 160,
-    "Revisit only if fetchAsset semantic marker contract changes": 1
+    "PENDING_REVALIDATION": 157
   },
-  "current_head": "858d9e7f5ba17044bb03a9c2367f9541ce2b9acb",
-  "last_updated": "2026-09-13T00:15:10.983896Z"
+  "current_head": "d506ec0d15875b0bb7d222a22c6e7d9c369c514a",
+  "last_updated": "2026-09-13T00:15:51.184600+00:00"
 }
