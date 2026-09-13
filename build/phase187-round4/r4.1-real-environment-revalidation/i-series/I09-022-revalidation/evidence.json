@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-022",
+  "source_anchor": "Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py@6fb2ba9eaeca2c460445a41263f3768b628b4493:472-523; current_primary_sha256=4d53c51320193612fa708195e39be1f5d0912a5ef2b56b38dfc0c62aad3ade42",
+  "source_sha256": "4d53c51320193612fa708195e39be1f5d0912a5ef2b56b38dfc0c62aad3ade42",
+  "command": "python -m py_compile \"Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:16.275236+00:00"
+}

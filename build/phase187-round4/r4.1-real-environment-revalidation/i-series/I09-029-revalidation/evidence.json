@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-029",
+  "source_anchor": "Unity2Foxglove/Assets/Editor/Phase181TypesupportPluginImporterBuilder.cs@5f953bdc5b7d0e9c4932dd9640aa100bc59bb79a:42-53; Unity2Foxglove/Assets/Editor/Phase181TypesupportPluginImporterBuilder.cs@5f953bdc5b7d0e9c4932dd9640aa100bc59bb79a:90-110; Unity2Foxglove/Assets/Editor/Phase181TypesupportPluginImporterBuilder.cs@5f953bdc5b7d0e9c4932dd9640aa100bc59bb79a:113-180; current_primary_sha256=4ff5088df4fa4a1bc72873c5bdcf7f13735728b9c78d05fc8e46ea630d3d968c",
+  "source_sha256": "4ff5088df4fa4a1bc72873c5bdcf7f13735728b9c78d05fc8e46ea630d3d968c",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Unity2Foxglove\\Assets\\Editor\\Phase181TypesupportPluginImporterBuilder.cs').read_text(encoding='utf-8'); assert t.strip(); print('SOURCE_PRESENT')\"",
+  "literal_output": "SOURCE_PRESENT",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:13.845016+00:00"
+}

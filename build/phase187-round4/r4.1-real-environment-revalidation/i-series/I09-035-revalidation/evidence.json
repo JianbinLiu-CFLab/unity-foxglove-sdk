@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-035",
+  "source_anchor": "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase153and154ManualAcceptance.cs@27b8b797e4e626d75250c47ec6ba097ebd863304:77-87; Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase153and154ManualAcceptance.cs@27b8b797e4e626d75250c47ec6ba097ebd863304:89-127; Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase153and154ManualAcceptance.cs@27b8b797e4e626d75250c47ec6ba097ebd863304:138-149; Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxTopicBus.cs@5cc814f2b552bd0cd6bac63e67e405ad0843bebf:149-159; Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxTopicBus.cs@5cc814f2b552bd0cd6bac63e67e405ad0843bebf:185-205; current_primary_sha256=38b32eac42dafb6d80f8478b9435de70b0a7bcae4bf096b1001b84a90b58e762",
+  "source_sha256": "38b32eac42dafb6d80f8478b9435de70b0a7bcae4bf096b1001b84a90b58e762",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Unity2Foxglove\\Assets\\Scripts\\ManualAcceptance\\Phase153and154ManualAcceptance.cs').read_text(encoding='utf-8'); assert t.strip(); print('SOURCE_PRESENT')\"",
+  "literal_output": "SOURCE_PRESENT",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:18.045373+00:00"
+}

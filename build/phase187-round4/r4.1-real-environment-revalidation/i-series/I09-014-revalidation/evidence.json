@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-014",
+  "source_anchor": "Scripts/smoke/mcap/phase68_indexed_reader_smoke.py@24ac4eaa151006e15474717dbff232536fc72b15:202-215; current_primary_sha256=037abaa79d6a88654f21a9495a43af6941f49e9765a1d113ee5490f3b48c4e48",
+  "source_sha256": "037abaa79d6a88654f21a9495a43af6941f49e9765a1d113ee5490f3b48c4e48",
+  "command": "python -m py_compile \"Scripts/smoke/mcap/phase68_indexed_reader_smoke.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:15.099445+00:00"
+}

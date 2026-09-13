@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-010",
+  "source_anchor": "Scripts/smoke/mcap/compressed_pointcloud_mcap_inspect.py@9dff082b6bb40e9fa936a933dc31a0c49385cbc3:145-200; Scripts/smoke/mcap/compressed_pointcloud_mcap_inspect.py@9dff082b6bb40e9fa936a933dc31a0c49385cbc3:391-403; current_primary_sha256=af12cd0ef28831b32e6f45d0e3a3491ca2253fe944f733a2b839a068d147bd75",
+  "source_sha256": "af12cd0ef28831b32e6f45d0e3a3491ca2253fe944f733a2b839a068d147bd75",
+  "command": "python -m py_compile \"Scripts/smoke/mcap/compressed_pointcloud_mcap_inspect.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:14.657728+00:00"
+}

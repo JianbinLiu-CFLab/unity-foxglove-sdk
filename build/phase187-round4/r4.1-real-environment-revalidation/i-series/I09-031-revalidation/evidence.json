@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-031",
+  "source_anchor": "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase124DecodedDataLoaderAcceptance.cs@ac6a6421ff5637540bb2b24f6d7bd7733c83c2c3:60-72; Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs@1b0adfb5c1d90d7016d0ad85da39c76275e9f370:22-120; Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs@1b0adfb5c1d90d7016d0ad85da39c76275e9f370:413-431; current_primary_sha256=4c3b5179a9c833536f2ac50533b7df5fa182ff559ad56da97aba068e415b4424",
+  "source_sha256": "4c3b5179a9c833536f2ac50533b7df5fa182ff559ad56da97aba068e415b4424",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Unity2Foxglove\\Assets\\Scripts\\ManualAcceptance\\Phase124DecodedDataLoaderAcceptance.cs').read_text(encoding='utf-8'); assert t.strip(); print('SOURCE_PRESENT')\"",
+  "literal_output": "SOURCE_PRESENT",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:17.450395+00:00"
+}

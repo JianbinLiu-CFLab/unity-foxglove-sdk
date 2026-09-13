@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-024",
+  "source_anchor": "Scripts/smoke/websocket/phase144_fragmented_ws_probe.py@6a06f6c9aa85b469c9a122d5fae3e504a5562e0b:184-221; current_primary_sha256=ad74a7d505c1be1fb08d9648a5217364c59e0a6d7498e424951d2dc945e7bd3f",
+  "source_sha256": "ad74a7d505c1be1fb08d9648a5217364c59e0a6d7498e424951d2dc945e7bd3f",
+  "command": "python -m py_compile \"Scripts/smoke/websocket/phase144_fragmented_ws_probe.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:16.629134+00:00"
+}
