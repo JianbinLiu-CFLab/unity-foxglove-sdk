@@ -8,7 +8,10 @@ from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
 
 
 class AtomicPublicationTests(unittest.TestCase):
+    """Verify evidence publication is atomic and failure-safe."""
+
     def test_text_replaces_complete_payload(self):
+        """Text writes replace the destination without temporary residue."""
         with tempfile.TemporaryDirectory() as td:
             target = Path(td) / "nested" / "evidence.json"
             atomic_write_text(target, "{\"status\":\"PASS\"}\n")
@@ -16,12 +19,14 @@ class AtomicPublicationTests(unittest.TestCase):
             self.assertEqual(list(target.parent.glob(".evidence.json.*.tmp")), [])
 
     def test_bytes_replaces_complete_payload(self):
+        """Byte writes publish the complete payload."""
         with tempfile.TemporaryDirectory() as td:
             target = Path(td) / "evidence.bin"
             atomic_write_bytes(target, b"complete")
             self.assertEqual(target.read_bytes(), b"complete")
 
     def test_failure_does_not_publish_partial_payload(self):
+        """Injected publication failure preserves the previous payload."""
         with tempfile.TemporaryDirectory() as td:
             target = Path(td) / "evidence.json"
             target.write_text("old\n", encoding="utf-8")
@@ -30,6 +35,7 @@ class AtomicPublicationTests(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "old\n")
 
     def test_replace_failure_preserves_previous_payload(self):
+        """Replace errors preserve the previous payload and remove the temp file."""
         with tempfile.TemporaryDirectory() as td:
             target = Path(td) / "evidence.json"
             target.write_text("old\n", encoding="utf-8")
