@@ -163,7 +163,8 @@ async def run(args: argparse.Namespace) -> int:
             if EXPECTED_PAYLOAD_MARKER in text:
                 print(f"[PASS] fetchAsset SUCCESS - got {len(payload)} bytes, content matches")
             else:
-                print(f"[CHECK] Got {len(payload)} bytes: {text[:args.preview_chars]}")
+                print(f"[FAIL] fetchAsset response missing expected marker: {text[:args.preview_chars]}")
+                return EXIT_FAILURE
 
             if args.output:
                 write_payload(Path(args.output), payload)
