@@ -204,10 +204,7 @@ def run_bounded_to_file(
         try:
             process.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            process.returncode = 124
-
-    if process.poll() is None:
-        process.returncode = 124
+            pass
 
     with log_path.open("a", encoding="utf-8", errors="replace") as log:
         log.write(f"\nexitCode: {process.returncode}\n")

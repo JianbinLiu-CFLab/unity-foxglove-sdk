@@ -1234,6 +1234,12 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("producer.Join(TimeSpan.FromSeconds", source)
         self.assertIn("consumer.Join(TimeSpan.FromSeconds", source)
 
+    def test_phase162_bounded_runner_does_not_turn_timeout_into_success(self) -> None:
+        """A timed-out ROS2 helper must return a nonzero status even if the child lingers."""
+        source = (ROOT / "Scripts" / "smoke" / "ros2" / "phase162_lyrical_zenoh_player_smoke.py").read_text(encoding="utf-8")
+        self.assertIn("if process.poll() is None", source)
+        self.assertIn("returncode = 124", source)
+
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
         """The selector must execute exactly six pure unittest suites in locked order."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:
