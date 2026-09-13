@@ -58,7 +58,9 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
 
             with patch.object(characterization, "requires_short_windows_build_alias", return_value=True), patch.object(
                 characterization.subprocess, "run", side_effect=run
-            ), patch.object(Path, "exists", return_value=False):
+            ), patch.object(Path, "exists", return_value=False), patch.object(
+                Path, "is_file", return_value=True
+            ):
                 with self.assertRaisesRegex(CharacterizationError, "provide-short-windows-build-root"):
                     with characterization._temporary_short_workspace_root(request):
                         self.fail("alias reservation should not succeed when the mapped drive is invisible")
