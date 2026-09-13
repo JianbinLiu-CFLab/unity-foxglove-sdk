@@ -445,6 +445,7 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
 
     private void CleanupRuntime()
     {
+        var cleanupFailed = false;
         if (_node != null && _tfPublisher != null)
         {
             try
@@ -453,6 +454,7 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
             }
             catch (Exception ex)
             {
+                cleanupFailed = true;
                 WarnCleanupFailure("tf publisher", ex);
             }
         }
@@ -465,6 +467,7 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
             }
             catch (Exception ex)
             {
+                cleanupFailed = true;
                 WarnCleanupFailure("scan publisher", ex);
             }
         }
@@ -477,9 +480,13 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
             }
             catch (Exception ex)
             {
+                cleanupFailed = true;
                 WarnCleanupFailure("node", ex);
             }
         }
+
+        if (cleanupFailed)
+            return;
 
         _tfPublisher = null;
         _scanPublisher = null;
