@@ -1,3 +1,10 @@
+# ADDITIVE CHECKPOINT 2026-09-13 — FINAL RELEASE REF AFTER PR335
+
+Status: `I_SERIES_COMPLETE / ALL_INTEGRATION_PRS_MERGED / MAIN_SYNCED / NO_SHUTDOWN`
+
+- Final main merge SHA is `1b4014a706d7cef45a1b9edb0f08edbc11fdb4df` (PR #335: `https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/pull/335`). PRs #332, #333, #334, and #335 are merged; correction branches are deleted locally and remotely.
+- Prior AGENTS content remains the exact suffix below.
+
 # ADDITIVE CHECKPOINT 2026-09-13 — FINAL I-SERIES CLOSURE REFS
 
 Status: `I_SERIES_COMPLETE / PR332_MERGED / PR333_MERGED / PR334_MERGED / MAIN_SYNCED / NO_SHUTDOWN`

@@ -1346,3 +1346,5 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 # Final I-series checkpoint integration keeps this runner path-triggered for branch policy verification.
+
+# Keep final release checkpoint validation path-triggered.
