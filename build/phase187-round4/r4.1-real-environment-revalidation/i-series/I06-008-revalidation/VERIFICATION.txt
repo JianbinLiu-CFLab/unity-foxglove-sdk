@@ -1,0 +1,7 @@
+finding_id: 187-R2-I06-008
+source_anchor: Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationCase.cs::constructor
+command: python I06-008-revalidation/probe.py
+literal_output: SOURCE_BOUND=True; EVIDENCE_VALIDATED=True; RESULT=REFUTED
+exit_status: 0
+disposition: REFUTED
+reason: constructor validates non-zero known evidence categories and rejects unknown flags.
