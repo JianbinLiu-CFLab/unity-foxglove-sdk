@@ -52,6 +52,7 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
                     self.stderr = ""
 
             def run(command, **kwargs):
+                """Record mocked subst calls and fail the invisible mapping probe."""
                 commands.append(tuple(command))
                 return Result(0 if len(commands) == 1 else 1)
 
