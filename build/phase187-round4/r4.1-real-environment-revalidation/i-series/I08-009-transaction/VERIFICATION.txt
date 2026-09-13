@@ -1,0 +1,1 @@
+I08-009 GREEN runtime build exit 0; evidence and generator logs bounded at 256 KiB each and 128 files; rollback flags true, ROLLBACK_OK, ROLLBACK_NOOP.
