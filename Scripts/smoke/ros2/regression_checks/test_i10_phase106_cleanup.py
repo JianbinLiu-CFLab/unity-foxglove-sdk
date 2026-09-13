@@ -7,7 +7,7 @@ SOURCE = ROOT / "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase106Ros2ForU
 class Phase106CleanupTests(unittest.TestCase):
     """Validate Phase106 cleanup ownership and retry behavior."""
 
-    # Keep this contract visible in the regular validation lane.
+    # Keep this contract visible in the regular validation lane for every closure run.
 
     def test_cleanup_retains_handles_on_remove_failure(self):
         """Keep native handles available when Phase106 cleanup needs a retry."""
