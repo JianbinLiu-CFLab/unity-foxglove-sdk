@@ -204,6 +204,28 @@ def _assembly_guids(package_root: Path, assembly_name: str) -> set[str]:
     return result
 
 
+def _validate_analyzer_meta(meta: Path, owner: str, seen_guids: dict[str, str]) -> None:
+    """Authenticate a controlled analyzer's Unity identity and importer."""
+    if not meta.is_file():
+        raise RuntimeError(f"controlled analyzer meta is missing: {meta}")
+    try:
+        text = meta.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(f"controlled analyzer meta is unreadable: {meta}") from exc
+    match = GUID_PATTERN.search(text)
+    if match is None:
+        raise RuntimeError(f"controlled analyzer GUID is missing or malformed: {meta}")
+    guid = match.group(1).lower()
+    prior = seen_guids.get(guid)
+    if prior is not None:
+        raise RuntimeError(f"controlled analyzer GUID duplicates {prior}: {meta}")
+    seen_guids[guid] = owner
+    if "PluginImporter:" not in text:
+        raise RuntimeError(f"controlled analyzer meta lacks PluginImporter: {meta}")
+    if "RoslynAnalyzer" not in text:
+        raise RuntimeError(f"controlled analyzer meta lacks RoslynAnalyzer label: {meta}")
+
+
 def _references_forbidden_assembly(
     descriptor_path: Path,
     assembly_name: str,
@@ -283,12 +305,15 @@ def validate_boundaries() -> list[str]:
             "FoxRunBridgeSourceGenerator.csproj",
         ),
     )
+    analyzer_meta_guids: dict[str, str] = {}
     for package_root, dll_name, project_name in analyzer_specs:
         generator_root = package_root / "Editor/SourceGenerators"
         dll = generator_root / "analyzers/dotnet/cs" / dll_name
         project = generator_root / project_name
-        if not dll.is_file() or not (Path(str(dll) + ".meta")).is_file():
+        meta = Path(str(dll) + ".meta")
+        if not dll.is_file() or not meta.is_file():
             raise RuntimeError(f"controlled analyzer is incomplete: {dll}")
+        _validate_analyzer_meta(meta, dll_name, analyzer_meta_guids)
         if not project.is_file():
             raise RuntimeError(f"analyzer project is missing: {project}")
         checked.extend(
