@@ -954,9 +954,20 @@ def _download_production(asset_url: str, destination: str) -> None:
 
 
 def _terminate_and_reap(process: subprocess.Popen[bytes]) -> None:
-    """Terminate a child if needed and always reap it."""
+    """Terminate a child process tree if needed and always reap the root."""
 
     if process.poll() is None:
+        if os.name == "nt" and isinstance(process, subprocess.Popen):
+            # ``Popen.terminate`` only signals the root process on Windows.
+            # taskkill /T authenticates the root PID and tears down inherited
+            # descendants before the root wait below releases its handles.
+            with contextlib.suppress(OSError):
+                subprocess.run(
+                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
         with contextlib.suppress(OSError):
             process.terminate()
         try:
