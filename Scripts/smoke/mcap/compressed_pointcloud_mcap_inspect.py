@@ -25,6 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 DEFAULT_RECORDING_DIR = REPO_ROOT / "Unity2Foxglove" / "Recordings"
 
 MCAP_MAGIC = b"\x89MCAP0\r\n"
+MAX_INPUT_BYTES = 64 * 1024 * 1024
 OP_SCHEMA = 0x03
 OP_CHANNEL = 0x04
 OP_MESSAGE = 0x05
@@ -140,6 +141,14 @@ def resolve_mcap(path_or_glob: str | None) -> Path:
         return select_latest_mcap(matches, pattern)
 
     return candidate.resolve()
+
+
+def inspect_input_file(path: Path) -> ParsedMcap:
+    """Read and parse one bounded MCAP evidence file."""
+    size = path.stat().st_size
+    if size > MAX_INPUT_BYTES:
+        raise ValueError(f"MCAP input exceeds maximum size: {size} > {MAX_INPUT_BYTES}")
+    return parse_mcap(path.read_bytes())
 
 
 def parse_mcap(data: bytes) -> ParsedMcap:
@@ -397,7 +406,7 @@ def main() -> int:
         return EXIT_FAILURE
 
     try:
-        parsed = parse_mcap(mcap_path.read_bytes())
+        parsed = inspect_input_file(mcap_path)
         try:
             decode_payload = load_draco_probe_decoder()
         except ImportError as exc:
