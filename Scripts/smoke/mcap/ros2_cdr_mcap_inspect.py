@@ -97,10 +97,16 @@ def main() -> int:
     mcap_path = resolve_path(args.mcap or args.output)
     if args.mcap is None:
         mcap_path.parent.mkdir(parents=True, exist_ok=True)
+        previous_stat = mcap_path.stat() if mcap_path.is_file() else None
         rc = run_dotnet("--phase93-ros2-full-mcap", str(mcap_path))
         if rc != EXIT_SUCCESS:
             print(f"[phase93] dotnet generation exited with code {rc}", file=sys.stderr)
             return rc
+        if previous_stat is not None:
+            current_stat = mcap_path.stat() if mcap_path.is_file() else None
+            if current_stat is not None and current_stat.st_mtime_ns == previous_stat.st_mtime_ns and current_stat.st_size == previous_stat.st_size:
+                print(f"[phase93] output was not refreshed by this generation run: {mcap_path}", file=sys.stderr)
+                return EXIT_FAILURE
 
     if not mcap_path.is_file():
         print(f"[phase93] ROS 2 CDR full-schema MCAP was not found: {mcap_path}", file=sys.stderr)
