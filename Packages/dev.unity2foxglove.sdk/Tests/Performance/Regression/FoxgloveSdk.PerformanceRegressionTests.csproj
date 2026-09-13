@@ -23,8 +23,11 @@
   <ItemGroup>
     <Compile Include="../PerformanceResult.cs" Link="PerformanceResult.cs" />
     <Compile Include="../PerformanceRunner.cs" Link="PerformanceRunner.cs" />
+    <Compile Include="../Phase188ReplayPerformanceMetrics.cs" Link="Phase188ReplayPerformanceMetrics.cs" />
+    <Compile Include="../Phase188ReplayPerformanceResult.cs" Link="Phase188ReplayPerformanceResult.cs" />
     <Compile Include="../FakePerformanceTransport.cs" Link="FakePerformanceTransport.cs" />
     <Compile Include="../../Unit/Fixtures/UnityEngineMathTypes.cs" Link="Fixtures/UnityEngineMathTypes.cs" />
     <Compile Include="PerformanceMetricsTests.cs" />
+    <Compile Include="Phase188ReplayPerformanceProtocolTests.cs" />
   </ItemGroup>
 </Project>
