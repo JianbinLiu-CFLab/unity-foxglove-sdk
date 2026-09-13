@@ -1,0 +1,12 @@
+finding_id: 187-R2-I06-011
+source_anchor: Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs::All
+RED command: python I06-011-transaction/red_probe.py
+RED literal output: RED_RESULT=True; All published raw array through IReadOnlyList; caller could cast and mutate registry entries
+RED exit status: 0
+GREEN command: python I06-011-transaction/green_probe.py; dotnet build --no-restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
+GREEN literal output: GREEN_RESULT=True; Array.AsReadOnly backing storage prevents array cast mutation; Build succeeded 0 errors
+GREEN exit status: 0
+ROLLBACK command: python I06-011-transaction/ROLLBACK.sh
+ROLLBACK literal output: seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true; ROLLBACK_OK; ROLLBACK_NOOP
+ROLLBACK exit status: 0
+restored_behavior: registry publication is read-only and preserves selector/alias identity.

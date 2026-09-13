@@ -1,0 +1,41 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs
+index 742c8b001..912fa140d 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs
+@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
+         /// <summary>
+         /// All validation definitions, including CI-safe and local evidence suites.
+         /// </summary>
+-        public static IReadOnlyList<PhaseValidationCase> All { get; } = new[]
++        public static IReadOnlyList<PhaseValidationCase> All { get; } = Array.AsReadOnly(new[]
+         {
+             DefaultOnly("Skeleton", SkeletonValidation.Validate),
+             Ci("--phase1", "Phase 1: validates serverInfo delivery, session identity, real WebSocket connectivity, and subprotocol negotiation", Phase1Validation.Validate),
+@@ -454,7 +454,7 @@ namespace Unity.FoxgloveSDK.Tests
+             Ci("--phase141c", "FoxService DTO serialization analyzer", FoxServiceDtoSerializationAnalyzerValidation.Validate, includeInDefault: false),
+             Ci("--phase141e", "FoxService editor schema polish", FoxServiceEditorSchemaPolishValidation.Validate, includeInDefault: false),
+             Ci("--phase141f", "FoxService DTO graph walker convergence", FoxServiceDtoGraphWalkerConvergenceValidation.Validate, includeInDefault: false),
+-        };
++        });
+ 
+         private static readonly IReadOnlyDictionary<string, PhaseValidationCase> FlagIndex;
+ 
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs b/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
+index 172c820bd..b4e01a9cb 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
+@@ -122,6 +122,14 @@ namespace Unity.FoxgloveSDK.UnitTests
+             Assert.Contains("originalError.NewLine = originalErrorNewLine", source, StringComparison.Ordinal);
+         }
+ 
++        [Fact]
++        public void ValidationRegistryPublishesReadOnlyBackingStorage()
++        {
++            var source = File.ReadAllText(ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs");
++
++            Assert.Contains("Array.AsReadOnly(new[]", source, StringComparison.Ordinal);
++        }
++
+         [Fact]
+         public async Task ServeRejectsConflictingValidationSelector()
+         {
