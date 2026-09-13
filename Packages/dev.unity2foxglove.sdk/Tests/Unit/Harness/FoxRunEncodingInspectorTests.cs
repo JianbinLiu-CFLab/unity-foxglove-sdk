@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("property.intValue = selected switch", draw, StringComparison.Ordinal);
             Assert.Contains("0 => (int)FoxRunEncoding.Protobuf", draw, StringComparison.Ordinal);
             Assert.Contains("1 => (int)FoxRunEncoding.JSON", draw, StringComparison.Ordinal);
-            Assert.Contains("2 => (int)FoxRunEncoding.MessagePack", draw, StringComparison.Ordinal);
+            Assert.Contains("_ => (int)FoxRunEncoding.MessagePack", draw, StringComparison.Ordinal);
             Assert.DoesNotContain("enumValueIndex", draw, StringComparison.Ordinal);
         }
     }

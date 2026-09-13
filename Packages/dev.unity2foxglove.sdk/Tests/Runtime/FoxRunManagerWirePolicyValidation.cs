@@ -241,7 +241,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && labels.Contains("property.intValue = selected switch", StringComparison.Ordinal)
                   && labels.Contains("0 => (int)FoxRunEncoding.Protobuf", StringComparison.Ordinal)
                   && labels.Contains("1 => (int)FoxRunEncoding.JSON", StringComparison.Ordinal)
-                  && labels.Contains("2 => (int)FoxRunEncoding.MessagePack", StringComparison.Ordinal)
+                  && labels.Contains("_ => (int)FoxRunEncoding.MessagePack", StringComparison.Ordinal)
                   && !labels.Contains("property.enumValueIndex", StringComparison.Ordinal)
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
                 "175C-8: Manager dropdown maps popup indices through serialized enum values without using enumValueIndex as the wire enum");

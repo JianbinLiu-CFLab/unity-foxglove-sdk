@@ -59,7 +59,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var source = TestSources.Text(".github/workflows/dotnet-tests.yml");
             var uploadStart = source.IndexOf("- name: Upload MCAP differential report", StringComparison.Ordinal);
             Assert.True(uploadStart >= 0, "MCAP differential report upload step is missing.");
-            var uploadEnd = source.IndexOf("\n\n", uploadStart, StringComparison.Ordinal);
+            var uploadEnd = source.IndexOf("\n      - ", uploadStart + 1, StringComparison.Ordinal);
             var uploadStep = source.Substring(
                 uploadStart,
                 (uploadEnd >= 0 ? uploadEnd : source.Length) - uploadStart);
