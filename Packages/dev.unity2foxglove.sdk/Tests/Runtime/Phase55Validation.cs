@@ -211,9 +211,16 @@ namespace Unity.FoxgloveSDK.Tests
                 }
                 return tmp;
             }
-            catch
+            catch (Exception exception)
             {
-                try { File.Delete(tmp); } catch { }
+                try
+                {
+                    File.Delete(tmp);
+                }
+                catch (Exception cleanupException)
+                {
+                    Console.Error.WriteLine($"Phase55 temporary file cleanup failed: {cleanupException.Message}");
+                }
                 throw;
             }
         }

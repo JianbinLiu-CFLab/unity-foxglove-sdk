@@ -42,8 +42,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase55Validation.cs");
             Check(phase55.Contains("latest 100-message window", StringComparison.Ordinal)
                   && phase55.Contains("new ReplayController(new NoopLogger()", StringComparison.Ordinal)
-                  && phase55.Contains("try { File.Delete(tmp); } catch { }", StringComparison.Ordinal),
-                "163-47C-1: Phase55 validation documents history policy and cleans lifecycle helpers");
+                  && phase55.Contains("cleanup failed", StringComparison.Ordinal)
+                  && phase55.Contains("catch (Exception cleanupException)", StringComparison.Ordinal),
+                "163-47C-1: Phase55 validation documents history policy and observes lifecycle cleanup failures");
 
             var project = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");

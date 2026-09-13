@@ -9,6 +9,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using System.Text.RegularExpressions;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -87,7 +89,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CheckHeader(string content, string relativePath)
         {
-            if (!content.Contains("// Module:"))
+            var leadingTrivia = CSharpSyntaxTree.ParseText(content)
+                .GetRoot()
+                .GetLeadingTrivia();
+            var hasModuleHeader = leadingTrivia.Any(trivia =>
+                trivia.IsKind(SyntaxKind.SingleLineCommentTrivia)
+                && trivia.ToString().TrimStart().StartsWith("// Module:", StringComparison.Ordinal));
+            if (!hasModuleHeader)
             {
                 _headerMissing.Add(relativePath);
                 Fail($"137G-H: missing Module header: {relativePath}");
