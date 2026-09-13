@@ -321,11 +321,18 @@ class CoreSmokeScriptTests(unittest.TestCase):
         module = load_smoke_module("phase139b_bodycap_under_test", "replay/phase139b_remote_data_loader_acceptance.py")
 
         class Response:
+            """Bounded-response fixture."""
             status = 200
             headers = {"Content-Type": "application/octet-stream"}
-            def __enter__(self): return self
-            def __exit__(self, *args): return False
-            def read(self, size=-1): return b"x" * (size + 1 if size > 0 else 1025)
+            def __enter__(self):
+                """Enter the response context."""
+                return self
+            def __exit__(self, *args):
+                """Leave the response context."""
+                return False
+            def read(self, size=-1):
+                """Return one byte beyond the requested limit."""
+                return b"x" * (size + 1 if size > 0 else 1025)
 
         with mock.patch.object(module.urllib.request, "urlopen", return_value=Response()):
             with self.assertRaisesRegex(ValueError, "response body exceeds"):
@@ -336,7 +343,10 @@ class CoreSmokeScriptTests(unittest.TestCase):
         module = load_smoke_module("phase139d_bodycap_under_test", "replay/phase139d_unity_cursor_bridge_acceptance.py")
 
         class Response:
-            def read(self, size=-1): return b"x" * (size + 1 if size > 0 else 1025)
+            """Bounded-response fixture."""
+            def read(self, size=-1):
+                """Return one byte beyond the requested limit."""
+                return b"x" * (size + 1 if size > 0 else 1025)
 
         with self.assertRaisesRegex(ValueError, "response body exceeds"):
             module.read_bounded(Response(), 1024)
