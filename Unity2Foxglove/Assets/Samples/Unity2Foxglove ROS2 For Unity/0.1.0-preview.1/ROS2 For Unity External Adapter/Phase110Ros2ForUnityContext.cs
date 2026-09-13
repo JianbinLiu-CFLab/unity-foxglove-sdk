@@ -159,9 +159,14 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         if (_disposed)
             return;
 
-        _disposed = true;
         for (var i = 0; i < _nodes.Count; i++)
             _nodes[i].Dispose();
+        for (var i = 0; i < _nodes.Count; i++)
+        {
+            if (!_nodes[i].IsDisposed)
+                return;
+        }
+        _disposed = true;
         _nodes.Clear();
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         if (_ownsRos2UnityComponent && _ros2Unity != null)
