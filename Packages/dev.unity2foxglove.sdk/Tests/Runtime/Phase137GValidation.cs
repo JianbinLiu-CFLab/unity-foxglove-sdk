@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Text.RegularExpressions;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -108,11 +109,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CheckSummaries(string content, string relativePath)
         {
-            var memberCount = MemberDecl.Matches(content).Count;
+            var syntaxRoot = CSharpSyntaxTree.ParseText(content).GetRoot();
+            var memberCount = syntaxRoot.DescendantNodes()
+                .OfType<MemberDeclarationSyntax>()
+                .Count(member => HasPublicOrInternalModifier(member)
+                    && member is not BaseTypeDeclarationSyntax);
             var summaryCount = CountOccurrences(content, "/// <summary>");
 
             // Type declarations should also have summaries, so include them in the expected count.
-            var typeCount = TypeDecl.Matches(content).Count;
+            var typeCount = syntaxRoot.DescendantNodes()
+                .OfType<BaseTypeDeclarationSyntax>()
+                .Count(type => HasPublicOrInternalModifier(type));
             var expectedMinimum = typeCount + memberCount;
             var gap = expectedMinimum - summaryCount;
 
@@ -126,6 +133,11 @@ namespace Unity.FoxgloveSDK.Tests
                 Pass($"137G-S: summaries OK (gap={gap}): {relativePath}");
             }
         }
+
+        private static bool HasPublicOrInternalModifier(MemberDeclarationSyntax declaration)
+            => declaration.Modifiers.Any(modifier =>
+                modifier.IsKind(SyntaxKind.PublicKeyword)
+                || modifier.IsKind(SyntaxKind.InternalKeyword));
 
         private static void ReportHeaderResults()
         {
