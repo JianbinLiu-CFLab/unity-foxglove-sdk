@@ -451,6 +451,7 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
             try
             {
                 _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfPublisher);
+                _tfPublisher = null;
             }
             catch (Exception ex)
             {
@@ -464,6 +465,7 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
             try
             {
                 _node.RemovePublisher<sensor_msgs.msg.LaserScan>(_scanPublisher);
+                _scanPublisher = null;
             }
             catch (Exception ex)
             {
@@ -472,11 +474,12 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
             }
         }
 
-        if (_ros2Unity != null && _node != null)
+        if (!cleanupFailed && _ros2Unity != null && _node != null)
         {
             try
             {
                 _ros2Unity.RemoveNode(_node);
+                _node = null;
             }
             catch (Exception ex)
             {
@@ -488,9 +491,6 @@ public sealed class Phase128Rviz2TfLaserScanSmoke : MonoBehaviour
         if (cleanupFailed)
             return;
 
-        _tfPublisher = null;
-        _scanPublisher = null;
-        _node = null;
         if (_ownsRos2UnityComponent && _ros2Unity != null)
             Destroy(_ros2Unity);
         _ros2Unity = null;
