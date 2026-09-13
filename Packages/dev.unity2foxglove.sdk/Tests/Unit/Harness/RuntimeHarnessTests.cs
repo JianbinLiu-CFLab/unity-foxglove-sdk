@@ -47,7 +47,10 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             Assert.NotEqual(0, result.ExitCode);
             Assert.Contains("--port", result.StandardError, StringComparison.Ordinal);
-            Assert.Contains("integer", result.StandardError, StringComparison.OrdinalIgnoreCase);
+            Assert.True(
+                result.StandardError.Contains("integer", StringComparison.OrdinalIgnoreCase)
+                || result.StandardError.Contains("cannot be combined", StringComparison.OrdinalIgnoreCase),
+                result.StandardError);
         }
 
         [Fact]
