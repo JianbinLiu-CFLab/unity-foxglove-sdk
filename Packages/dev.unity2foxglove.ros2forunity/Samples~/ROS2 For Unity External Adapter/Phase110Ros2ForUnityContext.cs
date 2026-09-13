@@ -335,18 +335,20 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             if (IsDisposed)
                 return;
 
-            IsDisposed = true;
             for (var i = 0; i < _subscriptions.Count; i++)
                 _subscriptions[i].Dispose();
-            _subscriptions.Clear();
 
             try
             {
                 _ros2Unity.RemoveNode(_ros2Node);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Debug.LogWarning("[Ros2ForUnityContext] node cleanup failed; retaining native handle for retry: " + ex.Message);
+                return;
             }
+            IsDisposed = true;
+            _subscriptions.Clear();
         }
     }
 
@@ -399,14 +401,16 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             if (_disposed)
                 return;
 
-            _disposed = true;
             try
             {
                 _ros2Node.RemovePublisher<std_msgs.msg.String>(_publisher);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Debug.LogWarning("[Ros2ForUnityContext] publisher cleanup failed; retaining native handle for retry: " + ex.Message);
+                return;
             }
+            _disposed = true;
         }
     }
 
@@ -509,26 +513,33 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
                 if (_disposed)
                     return;
 
-                _disposed = true;
                 _pending.Clear();
                 subscription = _subscription;
-                _subscription = null;
             }
 
-            RemoveSubscriptionSafely(subscription);
+            if (!RemoveSubscriptionSafely(subscription))
+                return;
+
+            lock (_gate)
+            {
+                _disposed = true;
+                _subscription = null;
+            }
         }
 
-        private void RemoveSubscriptionSafely(ISubscription<std_msgs.msg.String> subscription)
+        private bool RemoveSubscriptionSafely(ISubscription<std_msgs.msg.String> subscription)
         {
-            if (subscription != null)
+            if (subscription == null)
+                return true;
+            try
             {
-                try
-                {
-                    _ros2Node.RemoveSubscription<std_msgs.msg.String>(subscription);
-                }
-                catch (Exception)
-                {
-                }
+                _ros2Node.RemoveSubscription<std_msgs.msg.String>(subscription);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Ros2ForUnityContext] subscription cleanup failed; retaining native handle for retry: " + ex.Message);
+                return false;
             }
         }
     }
