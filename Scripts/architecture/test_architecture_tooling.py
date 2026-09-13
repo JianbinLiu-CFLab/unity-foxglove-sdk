@@ -86,6 +86,16 @@ class ArchitectureToolingTests(unittest.TestCase):
         self.assertEqual("<invalid-json-object>", metrics[0].name)
         self.assertEqual([], metrics[0].references)
 
+    def test_read_text_rejects_lossy_utf8(self) -> None:
+        """Corrupt tracked bytes must fail instead of being replaced."""
+        module = load_module("analyze_coupling_strict_text_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "broken.cs"
+            path.write_bytes(b"namespace Valid { \xff }\n")
+            with self.assertRaises(UnicodeDecodeError):
+                module.read_text(Path(temp), "broken.cs")
+
     def test_report_flags_root_developer_meta_as_a_private_boundary(self) -> None:
         """Architecture reporting must include a tracked root Developer.meta."""
         module = load_module(

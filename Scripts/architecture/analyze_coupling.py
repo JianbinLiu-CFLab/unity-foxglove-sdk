@@ -100,12 +100,11 @@ def is_text_test_file(path: str) -> bool:
 
 
 def read_text(repo_root: Path, relative_path: str) -> str:
-    """Read a tracked text file with UTF-8 fallback behavior."""
+    """Read a tracked UTF-8 text file without silently substituting bytes."""
     path = repo_root / relative_path
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return path.read_text(encoding="utf-8", errors="replace")
+    # Replacement decoding would invent identifiers and lose the location of
+    # corrupt bytes; fail the report instead so the caller gets a hard result.
+    return path.read_text(encoding="utf-8", errors="strict")
 
 
 def find_namespace(text: str) -> str:
