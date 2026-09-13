@@ -131,6 +131,21 @@ class ArchitectureToolingTests(unittest.TestCase):
             self.assertEqual("NEW-COMPLETE\n", output.read_text(encoding="utf-8"))
             self.assertFalse(any(output.parent.glob(".*.tmp")))
 
+    def test_git_ls_files_preserves_newline_and_quote_paths(self) -> None:
+        """NUL-delimited git output keeps literal path identities intact."""
+        module = load_module("analyze_coupling_git_paths_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        class Result:
+            returncode = 0
+            stdout = b"dir/new\nline.cs\0dir/quote\"name.cs\0"
+            stderr = b""
+
+        with mock.patch.object(module.subprocess, "run", return_value=Result()) as run:
+            paths = module.run_git_ls_files(Path("."))
+
+        self.assertEqual(["dir/new\nline.cs", 'dir/quote"name.cs'], paths)
+        self.assertIn("-z", run.call_args.args[0])
+
     def test_report_flags_root_developer_meta_as_a_private_boundary(self) -> None:
         """Architecture reporting must include a tracked root Developer.meta."""
         module = load_module(

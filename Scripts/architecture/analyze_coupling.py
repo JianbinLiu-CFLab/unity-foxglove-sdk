@@ -73,12 +73,15 @@ def repo_root_from(start: Path) -> Path:
 
 
 def run_git_ls_files(repo_root: Path, *pathspecs: str) -> list[str]:
-    """Return git-tracked paths for optional pathspecs."""
-    command = ["git", "ls-files", *pathspecs]
-    result = subprocess.run(command, cwd=repo_root, text=True, capture_output=True, check=False, timeout=30)
+    """Return git-tracked paths without newline/path quoting ambiguity."""
+    command = ["git", "ls-files", "-z", *pathspecs]
+    result = subprocess.run(command, cwd=repo_root, text=False, capture_output=True, check=False, timeout=30)
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "git ls-files failed")
-    return [line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()]
+        error = os.fsdecode(result.stderr).strip() if result.stderr else ""
+        raise RuntimeError(error or "git ls-files failed")
+    # Git's NUL-delimited mode preserves embedded newlines and literal quotes;
+    # fsdecode retains any platform filename bytes via surrogateescape.
+    return [os.fsdecode(item).replace("\\", "/") for item in result.stdout.split(b"\0") if item]
 
 
 def is_generated_source(path: str) -> bool:
