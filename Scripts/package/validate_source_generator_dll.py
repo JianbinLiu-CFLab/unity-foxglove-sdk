@@ -399,6 +399,7 @@ def _project_sources(project: Path) -> list[Path]:
         )
 
     def is_excluded(path: Path) -> bool:
+        """Return whether a source path matches an explicit Compile exclusion."""
         relative = os.path.relpath(path.resolve(), project.parent.resolve()).replace("\\", "/")
         return any(
             relative == pattern
