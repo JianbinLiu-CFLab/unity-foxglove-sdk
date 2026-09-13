@@ -1180,6 +1180,12 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("report.summary.result == BuildResult.Succeeded", source)
         self.assertIn("report.summary.totalErrors == 0", source)
 
+    def test_mcap_preflight_binds_latest_completion_and_clears_stale_evidence(self) -> None:
+        """Replay preflight must not overwrite edits or expose evidence for a failed path."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Manager" / "McapReplayPreflightDrawer.cs").read_text(encoding="utf-8")
+        self.assertIn("_pendingLatestReplayPathSnapshot", source)
+        self.assertIn("ClearCurrentEvidence", source)
+
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
         """The selector must execute exactly six pure unittest suites in locked order."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:

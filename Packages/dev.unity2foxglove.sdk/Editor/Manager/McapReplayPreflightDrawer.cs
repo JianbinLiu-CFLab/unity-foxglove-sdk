@@ -38,6 +38,7 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedObject _pendingLatestSerializedObject;
         private UnityEngine.Object _pendingLatestTargetObject;
         private SerializedProperty _pendingLatestReplayPath;
+        private string _pendingLatestReplayPathSnapshot;
 
         public McapReplayPreflightDrawer()
         {
@@ -122,6 +123,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (string.IsNullOrWhiteSpace(path))
             {
+                ClearCurrentEvidence();
                 SetMcapPreflightMessage("Select an MCAP replay file first.", MessageType.Warning);
                 SetIdentityMessage("Select an MCAP replay file first.", MessageType.Warning);
                 return;
@@ -129,6 +131,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (!File.Exists(path))
             {
+                ClearCurrentEvidence();
                 SetMcapPreflightMessage($"MCAP file was not found: {path}", MessageType.Warning);
                 SetIdentityMessage($"MCAP file was not found: {path}", MessageType.Warning);
                 return;
@@ -158,6 +161,7 @@ namespace Unity.FoxgloveSDK.Editor
             _pendingLatestSerializedObject = null;
             _pendingLatestTargetObject = null;
             _pendingLatestReplayPath = null;
+            _pendingLatestReplayPathSnapshot = null;
         }
 
         private CancellationToken StartNewPendingWork()
@@ -273,6 +277,14 @@ namespace Unity.FoxgloveSDK.Editor
         {
             _identitySummary = message;
             _identityMessageType = messageType;
+        }
+
+        private void ClearCurrentEvidence()
+        {
+            _selectedReplayPath = string.Empty;
+            _selectedSidecarDirectory = string.Empty;
+            SetMcapPreflightMessage(string.Empty, MessageType.Info);
+            SetIdentityMessage(string.Empty, MessageType.Info);
         }
 
         private void AnalyzeReplayIdentity(string path, bool refreshCurrentEvidence)
@@ -416,6 +428,7 @@ namespace Unity.FoxgloveSDK.Editor
             _pendingLatestSerializedObject = serializedObject;
             _pendingLatestTargetObject = targetObject;
             _pendingLatestReplayPath = replayPath?.Copy();
+            _pendingLatestReplayPathSnapshot = replayPath?.stringValue ?? string.Empty;
             _findLatestRecordingTask = Task.Run(() => FindLatestReadableRecordingWorker(recordingsDir, token), token);
             EditorApplication.update -= CompleteFindLatestRecordingIfReady;
             EditorApplication.update += CompleteFindLatestRecordingIfReady;
@@ -458,6 +471,18 @@ namespace Unity.FoxgloveSDK.Editor
                 || _pendingLatestSerializedObject == null
                 || _pendingLatestSerializedObject.targetObject == null)
             {
+                return;
+            }
+
+            _pendingLatestSerializedObject.Update();
+            if (!string.Equals(
+                    _pendingLatestReplayPath.stringValue,
+                    _pendingLatestReplayPathSnapshot,
+                    StringComparison.Ordinal))
+            {
+                SetIdentityMessage(
+                    "Replay path changed while the latest-recording search was running; keeping the newer value.",
+                    MessageType.Warning);
                 return;
             }
 
