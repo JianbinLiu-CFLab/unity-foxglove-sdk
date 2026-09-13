@@ -598,13 +598,17 @@ class CoreSmokeScriptTests(unittest.TestCase):
         module = load_smoke_module("fetch_asset_marker_under_test", "assets/fetch_asset_smoke.py")
 
         def frame(payload: bytes) -> bytes:
+            """Build a deterministic invalid-asset response frame."""
             return bytes([module.FETCH_ASSET_RESPONSE_OPCODE]) + (42).to_bytes(4, "little") + bytes([0]) + (0).to_bytes(4, "little") + payload
 
         class FakeSocket:
+            """Minimal websocket socket fixture."""
             async def send(self, _message):
+                """Accept the request frame."""
                 pass
 
             async def recv(self):
+                """Return a semantically invalid asset frame."""
                 return frame(b"not-the-required-asset")
 
         class FakeConnection:
