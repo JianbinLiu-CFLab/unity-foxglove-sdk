@@ -75,7 +75,7 @@ public static class FoxgloveBuild
 
             Debug.Log($"[FoxgloveBuild] Starting {config.DisplayName} Player build...");
             var report = BuildPipeline.BuildPlayer(options);
-            if (report.summary.totalErrors == 0)
+            if (report.summary.result == BuildResult.Succeeded && report.summary.totalErrors == 0)
             {
                 Debug.Log($"Build succeeded: {outputPath}");
             }

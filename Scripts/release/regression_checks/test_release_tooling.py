@@ -1174,6 +1174,12 @@ class RunCiTests(unittest.TestCase):
             self.run_ci.PACKAGE_LANE_REGRESSION_MODULES,
         )
 
+    def test_unity_build_requires_succeeded_build_result(self) -> None:
+        """Unity build helper must gate success on BuildReport.summary.result."""
+        source = (ROOT / "Unity2Foxglove" / "Assets" / "Editor" / "FoxgloveBuild.cs").read_text(encoding="utf-8")
+        self.assertIn("report.summary.result == BuildResult.Succeeded", source)
+        self.assertIn("report.summary.totalErrors == 0", source)
+
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
         """The selector must execute exactly six pure unittest suites in locked order."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run:
