@@ -268,14 +268,19 @@ class Ros2WindowsEnvTests(unittest.TestCase):
     def test_terminate_owned_process_reports_resistant_process(self) -> None:
         """Cleanup must not report success while an owned process remains live."""
         class Resistant:
+            """Process double that ignores every termination request."""
             pid = 9876
             def poll(self):
+                """Remain live."""
                 return None
             def terminate(self):
+                """Ignore graceful termination."""
                 return None
             def kill(self):
+                """Ignore forced termination."""
                 return None
             def wait(self, timeout):
+                """Never complete a bounded wait."""
                 raise subprocess.TimeoutExpired("resistant", timeout)
 
         with mock.patch.object(ros2env.os, "name", "posix"):
