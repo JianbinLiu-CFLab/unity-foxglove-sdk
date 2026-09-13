@@ -279,6 +279,29 @@ def launch_static_tf(
     return process
 
 
+def launch_owned_rviz(
+    ros2_root: pathlib.Path,
+    runtime_config: pathlib.Path,
+    env: dict[str, str],
+    log_prefix: str,
+    started_helpers: list[subprocess.Popen],
+    *,
+    startup_check_seconds: float,
+    window_wait_seconds: float,
+) -> subprocess.Popen:
+    """Launch RViz2 and transfer its process handle to the caller's owner list."""
+    process = ros2env.launch_rviz(
+        ros2_root,
+        runtime_config,
+        env,
+        log_prefix,
+        startup_check_seconds=startup_check_seconds,
+        window_wait_seconds=window_wait_seconds,
+    )
+    started_helpers.append(process)
+    return process
+
+
 def main(argv: list[str]) -> int:
     """Entry point for this smoke script. Returns process exit status."""
     args = parse_args(argv)
@@ -329,11 +352,12 @@ def main(argv: list[str]) -> int:
             if static_tf is not None:
                 started_helpers.append(static_tf)
 
-        ros2env.launch_rviz(
+        launch_owned_rviz(
             ros2_root,
             runtime_config,
             env,
             "phase138l-rviz",
+            started_helpers,
             startup_check_seconds=args.rviz_startup_check_seconds,
             window_wait_seconds=args.rviz_window_wait_seconds,
         )
