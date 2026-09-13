@@ -234,7 +234,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && editorSources.Contains("\"Subscribe Data\"", StringComparison.Ordinal),
                 "175C-7: Data Transport contains Publish and Subscribe before sibling MCAP and FoxServices");
             Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\", \"MessagePack\" }", StringComparison.Ordinal)
-                  && labels.Contains("var selected = property.intValue switch", StringComparison.Ordinal)
+                  && labels.Contains("var selected = rawValue switch", StringComparison.Ordinal)
                   && labels.Contains("(int)FoxRunEncoding.Protobuf => 0", StringComparison.Ordinal)
                   && labels.Contains("(int)FoxRunEncoding.JSON => 1", StringComparison.Ordinal)
                   && labels.Contains("(int)FoxRunEncoding.MessagePack => 2", StringComparison.Ordinal)

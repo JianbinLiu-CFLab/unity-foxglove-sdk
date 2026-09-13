@@ -187,7 +187,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("directories = [path for _, path in keyed_paths if path.is_dir()]", metas, StringComparison.Ordinal);
             Assert.Contains("files = [path for _, path in keyed_paths if path.is_file()]", metas, StringComparison.Ordinal);
             Assert.Equal(1, TestSources.Count(metas, "package.rglob(\"*\")"));
-            Assert.Contains("if path.name in forbidden_dirs and path.is_dir():", artifacts, StringComparison.Ordinal);
+            Assert.Contains("if path.name.casefold() in forbidden_dirs and path.is_dir():", artifacts, StringComparison.Ordinal);
             Assert.DoesNotContain("if path.is_dir() and path.name in forbidden_dirs:", artifacts, StringComparison.Ordinal);
             Assert.Contains("for name, ok in results.items():", runCi, StringComparison.Ordinal);
             Assert.Contains("failed = [n for n, ok in results.items() if not ok]", runCi, StringComparison.Ordinal);

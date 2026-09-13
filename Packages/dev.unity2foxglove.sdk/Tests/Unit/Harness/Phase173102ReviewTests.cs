@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -73,7 +74,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var source = TestSources.Text(".github/workflows/dotnet-tests.yml");
             var analyzerStart = source.IndexOf("analyzer-freshness:", StringComparison.Ordinal);
             var longPathStep = source.IndexOf("Enable Git long-path support", StringComparison.Ordinal);
-            var checkout = source.IndexOf("uses: actions/checkout@v4", analyzerStart, StringComparison.Ordinal);
+            var checkoutMatch = Regex.Match(source.Substring(analyzerStart), @"uses: actions/checkout@(?:v4|[0-9a-f]{40})");
+            var checkout = checkoutMatch.Success ? analyzerStart + checkoutMatch.Index : -1;
 
             Assert.True(analyzerStart >= 0, "The Windows analyzer job is missing.");
             Assert.True(longPathStep > analyzerStart && longPathStep < checkout, "Git long-path support must be enabled before checkout.");

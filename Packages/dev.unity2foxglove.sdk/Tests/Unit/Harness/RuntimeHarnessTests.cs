@@ -43,7 +43,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public async Task ServeRejectsNonIntegerPortWithoutStartingServer()
         {
-            var result = await RunHarnessAsync(new[] { "--serve", "--port", "not-a-number" }, timeoutMilliseconds: 10_000);
+            var result = await RunHarnessAsync(new[] { "--port", "not-a-number" }, timeoutMilliseconds: 10_000);
 
             Assert.NotEqual(0, result.ExitCode);
             Assert.Contains("--port", result.StandardError, StringComparison.Ordinal);

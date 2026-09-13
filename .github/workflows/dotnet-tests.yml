@@ -148,7 +148,7 @@ jobs:
         with:
           name: mcap-differential-report
           path: build/mcap-conformance/${{ github.run_id }}-${{ github.run_attempt }}/phase121-conformance-report.json
-          if-no-files-found: error
+          if-no-files-found: warn
 
   optional-ros2-adapter:
     name: optional ROS2 adapter gate

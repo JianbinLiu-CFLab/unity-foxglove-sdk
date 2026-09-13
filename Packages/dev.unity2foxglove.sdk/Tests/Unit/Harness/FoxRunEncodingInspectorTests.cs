@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 source,
                 "public static void DrawFoxRunEncoding");
 
-            Assert.Contains("var selected = property.intValue switch", draw, StringComparison.Ordinal);
+            Assert.Contains("var selected = rawValue switch", draw, StringComparison.Ordinal);
             Assert.Contains("(int)FoxRunEncoding.Protobuf => 0", draw, StringComparison.Ordinal);
             Assert.Contains("(int)FoxRunEncoding.JSON => 1", draw, StringComparison.Ordinal);
             Assert.Contains("(int)FoxRunEncoding.MessagePack => 2", draw, StringComparison.Ordinal);
