@@ -1,0 +1,3 @@
+BASELINE_RED=stale nonempty target accepted after zero-exit no-write child
+MODIFIED_GREEN=pre-run stat captured and unchanged output rejected
+RESULT=CONFIRMED_FIXED
