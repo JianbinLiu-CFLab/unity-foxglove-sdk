@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Keep this release entrypoint under CI coverage for documentation-only ref updates.
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
