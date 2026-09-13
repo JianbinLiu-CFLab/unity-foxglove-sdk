@@ -1,0 +1,14 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
+index e7bf758c4..dd6a4adcf 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
+@@ -73,7 +73,8 @@ namespace Unity.FoxgloveSDK.Tests
+                 },
+                 StringComparer.Ordinal);
+             Check(
+-                expectedTypeNames.SetEquals(types.Select(type => type.Name)),
++                expectedTypeNames.SetEquals(types.Select(type => type.Name))
++                && types.All(type => type.Assembly == typeof(FoxRunMessagePackArtifactAcceptanceValidation).Assembly),
+                 "185E-1: all five descriptively named validation types are compiled into this assembly");
+ 
+             var registered = PhaseValidationRegistry.All

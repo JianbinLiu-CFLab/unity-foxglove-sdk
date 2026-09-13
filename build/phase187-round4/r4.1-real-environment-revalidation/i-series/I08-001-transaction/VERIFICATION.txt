@@ -1,0 +1,6 @@
+I08-001 compiled type assembly membership transaction
+source_sha256_original=63FD04B2A088C5E9A2D3E989FA74A0C639792792BE3883E55EF0EA3E34F899BD
+source_sha256_modified=B3F2BF5687237CC7EFCE365E99B6CDFE00023BD3E1DE67F09DB6A8024EDDB2F7
+RED: name-set only.
+GREEN: direct phase185e exit 0 with 19 checks passed after Type.Assembly equality guard.
+ROLLBACK: preservation flags true, ROLLBACK_OK, ROLLBACK_NOOP.
