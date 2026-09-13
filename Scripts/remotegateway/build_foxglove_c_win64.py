@@ -15,6 +15,8 @@ import json
 import os
 import shutil
 import subprocess
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -28,11 +30,15 @@ PACKAGE_PLUGIN_RELATIVE = (
 PACKAGE_PLUGIN_DIR = (
     ROOT / PACKAGE_PLUGIN_RELATIVE
 )
+CANONICAL_STAGING = STAGING
+CANONICAL_PACKAGE_PLUGIN_DIR = PACKAGE_PLUGIN_DIR
 PACKAGE_MANIFEST_NAME = "foxglove-gateway-native-artifact.json"
 DEVICE_TOKEN_ENVIRONMENT_VARIABLE = "FOXGLOVE_DEVICE_TOKEN"
 APPROVED_ARTIFACTS = ("foxglove.dll", "foxglove.dll.lib")
 PDB_ARTIFACT = "foxglove.pdb"
 ALLOWED_ARTIFACTS = frozenset((*APPROVED_ARTIFACTS, PDB_ARTIFACT))
+TARGET_TRIPLE = "x86_64-pc-windows-msvc"
+NATIVE_LOCK_WAIT_SECONDS = 30.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -100,7 +106,9 @@ def build_environment(args: argparse.Namespace) -> dict[str, str]:
 
     cargo_home = Path.home() / ".cargo" / "bin"
     env["PATH"] = str(cargo_home) + os.pathsep + env.get("PATH", "")
-    env["CARGO_TARGET_DIR"] = str(Path(args.target_dir))
+    env["CARGO_TARGET_DIR"] = str(validate_target_dir(resolve_target_dir(args.target_dir)))
+    # Pin the target instead of relying on an inherited Cargo configuration.
+    env["CARGO_BUILD_TARGET"] = TARGET_TRIPLE
     env["AWS_LC_SYS_PREBUILT_NASM"] = "1"
     env["RUSTFLAGS"] = "-C target-feature=+crt-static"
     env["CXXFLAGS_x86_64_pc_windows_msvc"] = "/MT"
@@ -108,9 +116,75 @@ def build_environment(args: argparse.Namespace) -> dict[str, str]:
     return env
 
 
+def resolve_target_dir(value: str | os.PathLike[str]) -> Path:
+    """Resolve target paths once so Cargo and manifest publication share a base."""
+    candidate = Path(value).expanduser()
+    return candidate if candidate.is_absolute() else ROOT / candidate
+
+
+def validate_target_dir(target_dir: Path) -> Path:
+    """Reject target outputs inside repository source or package trees."""
+    resolved = target_dir.resolve()
+    forbidden = tuple(
+        (ROOT / name).resolve()
+        for name in ("Packages", "third-party", "Scripts", "Unity2Foxglove")
+    )
+    if any(resolved == path or path in resolved.parents for path in forbidden):
+        raise ValueError(f"Cargo target directory must not be inside a source tree: {resolved}")
+    return resolved
+
+
+def validate_repo_destination(path: Path, label: str) -> None:
+    """Reject symlink/junction destinations that escape the repository boundary."""
+    lexical = Path(path)
+    if lexical == CANONICAL_STAGING or lexical == CANONICAL_PACKAGE_PLUGIN_DIR or ROOT in lexical.parents:
+        resolved = lexical.resolve()
+        try:
+            resolved.relative_to(ROOT.resolve())
+        except ValueError as error:
+            raise ValueError(f"{label} escapes repository boundary: {resolved}") from error
+
+
 def selected_artifacts(include_pdb: bool) -> tuple[str, ...]:
     """Return the reviewed artifact list for this invocation."""
     return APPROVED_ARTIFACTS + ((PDB_ARTIFACT,) if include_pdb else ())
+
+
+def ensure_fresh_artifacts(target_dir: Path, artifact_names: tuple[str, ...], started_at: float) -> None:
+    """Reject successful Cargo exits that leave stale artifacts in place."""
+    release = target_dir / "release"
+    for name in artifact_names:
+        artifact = release / name
+        if not artifact.is_file():
+            raise FileNotFoundError(f"Missing selected artifact: {artifact}")
+        if artifact.stat().st_mtime < started_at:
+            raise RuntimeError(f"Stale selected artifact: {artifact}")
+
+
+@contextmanager
+def native_build_lock():
+    """Serialize builders that share staging and package promotion state."""
+    lock = ROOT / "build" / ".remotegateway.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + NATIVE_LOCK_WAIT_SECONDS
+    acquired = False
+    while time.monotonic() < deadline:
+        try:
+            descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(descriptor)
+            acquired = True
+            break
+        except FileExistsError:
+            time.sleep(0.05)
+    if not acquired:
+        raise TimeoutError(f"Timed out acquiring native build lock: {lock}")
+    try:
+        yield
+    finally:
+        try:
+            lock.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[str, ...]) -> Path:
@@ -122,7 +196,7 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
     for name in artifact_names:
         artifact = target_dir / "release" / name
         if not artifact.is_file():
-            continue
+            raise FileNotFoundError(f"Missing selected artifact: {artifact}")
         artifacts[name] = {
             "sha256": sha256(artifact),
             "sizeBytes": artifact.stat().st_size,
@@ -131,6 +205,7 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
     manifest = {
         "artifact": "foxglove.dll",
         "platform": "windows-x64",
+        "target": env.get("CARGO_BUILD_TARGET", TARGET_TRIPLE),
         "source": "third-party/foxglove-sdk/c",
         "features": "remote-access",
         "rustflags": env["RUSTFLAGS"],
@@ -138,16 +213,21 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
         "cxxflags": env["CXXFLAGS_x86_64_pc_windows_msvc"],
         "environment": {
             "AWS_LC_SYS_PREBUILT_NASM": env["AWS_LC_SYS_PREBUILT_NASM"],
-            "CARGO_TARGET_DIR": env["CARGO_TARGET_DIR"],
+            "CARGO_TARGET_DIR": Path(env["CARGO_TARGET_DIR"]).name or "target",
+            "RUSTUP_TOOLCHAIN": env.get("RUSTUP_TOOLCHAIN", "default"),
+            "cargoLock": "present" if (CRATE / "Cargo.lock").is_file() else "absent",
         },
         "sha256": sha256(dll),
         "sizeBytes": dll.stat().st_size,
         "artifacts": artifacts,
     }
 
+    validate_repo_destination(STAGING, "staging")
     STAGING.mkdir(parents=True, exist_ok=True)
     manifest_path = STAGING / "foxglove-gateway-native-artifact.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    temporary_manifest = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
+    temporary_manifest.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary_manifest, manifest_path)
     return manifest_path
 
 
@@ -164,7 +244,23 @@ def copy_approved_artifacts(
         raise ValueError(f"unapproved artifact name(s): {', '.join(unapproved)}")
     if len(set(artifact_names)) != len(artifact_names):
         raise ValueError("artifact selection contains duplicate names")
+    manifest_data = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}
+    expected_hashes = {
+        name: str(meta.get("sha256", ""))
+        for name, meta in manifest_data.get("artifacts", {}).items()
+        if isinstance(meta, dict)
+    }
+    if "artifacts" in manifest_data and "foxglove.dll" in artifact_names and manifest_data.get("sha256"):
+        expected_hashes.setdefault("foxglove.dll", str(manifest_data["sha256"]))
+    validate_repo_destination(PACKAGE_PLUGIN_DIR, "package plugin destination")
     PACKAGE_PLUGIN_DIR.mkdir(parents=True, exist_ok=True)
+    unexpected = sorted(
+        path.name
+        for path in PACKAGE_PLUGIN_DIR.iterdir()
+        if path.is_file() and path.name not in ALLOWED_ARTIFACTS | {PACKAGE_MANIFEST_NAME}
+    )
+    if unexpected:
+        raise ValueError(f"package plugin contains unapproved files: {', '.join(unexpected)}")
     for stale_name in sorted(ALLOWED_ARTIFACTS - set(artifact_names)):
         stale = PACKAGE_PLUGIN_DIR / stale_name
         if stale.is_file():
@@ -172,7 +268,15 @@ def copy_approved_artifacts(
     for name in artifact_names:
         source = target_dir / "release" / name
         if source.is_file():
-            shutil.copy2(source, PACKAGE_PLUGIN_DIR / name)
+            destination = PACKAGE_PLUGIN_DIR / name
+            temporary_destination = destination.with_suffix(destination.suffix + ".tmp")
+            shutil.copy2(source, temporary_destination)
+            os.replace(temporary_destination, destination)
+            expected = expected_hashes.get(name)
+            if expected and sha256(source) != expected:
+                raise RuntimeError(f"Source artifact changed after manifest hashing: {source}")
+            if expected and sha256(PACKAGE_PLUGIN_DIR / name) != expected:
+                raise RuntimeError(f"Copied artifact hash mismatch: {name}")
     if copy_manifest:
         if manifest_path.name != PACKAGE_MANIFEST_NAME:
             raise ValueError(
@@ -180,7 +284,10 @@ def copy_approved_artifacts(
             )
         if not manifest_path.is_file():
             raise FileNotFoundError(manifest_path)
-        shutil.copy2(manifest_path, PACKAGE_PLUGIN_DIR / PACKAGE_MANIFEST_NAME)
+        destination = PACKAGE_PLUGIN_DIR / PACKAGE_MANIFEST_NAME
+        temporary_destination = destination.with_suffix(destination.suffix + ".tmp")
+        shutil.copy2(manifest_path, temporary_destination)
+        os.replace(temporary_destination, destination)
 
 
 def main() -> int:
@@ -188,26 +295,29 @@ def main() -> int:
     args = parse_args()
     if args.update_package_manifest and not args.copy_to_package:
         raise SystemExit("--update-package-manifest requires --copy-to-package")
-    target_dir = Path(args.target_dir)
+    target_dir = validate_target_dir(resolve_target_dir(args.target_dir))
     env = build_environment(args)
     artifact_names = selected_artifacts(args.include_pdb)
 
-    run(["cargo", "build", "--release", "--features", "remote-access"], cwd=CRATE, env=env)
-    manifest_path = write_manifest(target_dir, env, artifact_names)
-    print(f"Wrote {manifest_path.relative_to(ROOT)}")
+    with native_build_lock():
+        build_started = time.time()
+        run(["cargo", "build", "--release", "--features", "remote-access"], cwd=CRATE, env=env)
+        ensure_fresh_artifacts(target_dir, artifact_names, build_started)
+        manifest_path = write_manifest(target_dir, env, artifact_names)
+        print(f"Wrote {manifest_path.relative_to(ROOT)}")
 
-    if args.copy_to_package:
-        copy_approved_artifacts(
-            target_dir,
-            manifest_path,
-            artifact_names,
-            copy_manifest=args.update_package_manifest,
-        )
-        print(f"Copied approved artifacts to {PACKAGE_PLUGIN_DIR.relative_to(ROOT)}")
-        if args.update_package_manifest:
-            print("Updated package manifest explicitly; review and commit it before using --skip-native-build.")
-    else:
-        print("Package copy skipped; pass --copy-to-package after reviewing artifacts.")
+        if args.copy_to_package:
+            copy_approved_artifacts(
+                target_dir,
+                manifest_path,
+                artifact_names,
+                copy_manifest=args.update_package_manifest,
+            )
+            print(f"Copied approved artifacts to {PACKAGE_PLUGIN_DIR.relative_to(ROOT)}")
+            if args.update_package_manifest:
+                print("Updated package manifest explicitly; review and commit it before using --skip-native-build.")
+        else:
+            print("Package copy skipped; pass --copy-to-package after reviewing artifacts.")
 
     return 0
 

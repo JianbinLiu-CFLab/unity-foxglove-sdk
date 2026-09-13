@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-025",
+  "source_anchor": "Scripts/smoke/websocket/tf_websocket_smoke.py@3646416b5958642d890ae3da4ba016d2d015e5f6:150-186; current_primary_sha256=3795a3d00b4739382cca8609ef032de30ce85f4f5233a85217b470a7e4b90e29",
+  "source_sha256": "3795a3d00b4739382cca8609ef032de30ce85f4f5233a85217b470a7e4b90e29",
+  "command": "python -m py_compile \"Scripts/smoke/websocket/tf_websocket_smoke.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:16.796960+00:00"
+}

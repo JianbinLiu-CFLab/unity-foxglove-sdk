@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-036",
+  "source_anchor": "Scripts/smoke/websocket/phase185_foxrun_messagepack_probe.py@834331e487e16d2cd9e6e8a8b8310d5ec95871d3:939-947; Scripts/smoke/websocket/phase185_foxrun_messagepack_probe.py@834331e487e16d2cd9e6e8a8b8310d5ec95871d3:302-317; Scripts/smoke/websocket/phase185_foxrun_messagepack_probe.py@834331e487e16d2cd9e6e8a8b8310d5ec95871d3:328-332; Scripts/smoke/websocket/phase185_foxrun_messagepack_probe.py@834331e487e16d2cd9e6e8a8b8310d5ec95871d3:181-184; Scripts/smoke/websocket/phase185_foxrun_messagepack_probe.py@834331e487e16d2cd9e6e8a8b8310d5ec95871d3:227-230; current_primary_sha256=f76cf927f6795d5a9b46758c934ae12a9f4f7518a33429c6881ce6cf6fc734fb",
+  "source_sha256": "f76cf927f6795d5a9b46758c934ae12a9f4f7518a33429c6881ce6cf6fc734fb",
+  "command": "python -m py_compile \"Scripts/smoke/websocket/phase185_foxrun_messagepack_probe.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:18.223899+00:00"
+}

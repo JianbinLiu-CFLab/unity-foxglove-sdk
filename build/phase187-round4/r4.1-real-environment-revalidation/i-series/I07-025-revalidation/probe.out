@@ -1,0 +1,3 @@
+BASELINE_RAW_SCANNER_END=39; EXPECTED_METHOD_END=54; RED=True
+GREEN=Roslyn declaration resolution excludes literal braces and returns exact owner body
+RESULT=CONFIRMED_FIXED

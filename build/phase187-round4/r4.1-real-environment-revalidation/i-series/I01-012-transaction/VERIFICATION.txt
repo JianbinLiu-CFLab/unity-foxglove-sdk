@@ -1,0 +1,1 @@
+I01-012 GREEN: removed passive normalization; picker callback still MakeRelative.

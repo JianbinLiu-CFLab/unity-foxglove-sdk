@@ -45,6 +45,23 @@ ROS2_RUNTIME_PACKAGES = (
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
 )
+ROS2_TYPESUPPORT_PACKAGES = (
+    ROOT / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64",
+    ROOT / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64",
+    ROOT / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64",
+)
+CONSUMER_LOCAL_DEPENDENCIES = (
+    "dev.unity2foxglove.sdk",
+    "dev.unity2foxglove.ros2bridge",
+    "dev.unity2foxglove.ros2forunity",
+    "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64",
+    "dev.unity2foxglove.foxrun.ros2.interfaces",
+    "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+)
+CONSUMER_LOCAL_DEPENDENCY_PREFIXES = (
+    "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.",
+    "dev.unity2foxglove.ros2forunity.runtime.",
+)
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
@@ -158,6 +175,7 @@ THIRD_PARTY_NOTICE_REQUIREMENTS = (
 )
 
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+META_GUID_RE = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
 VALIDATION_PHASE_FILENAME_RE = re.compile(r"^Phase(?P<phase>\d+)(?P<trailing>[A-Za-z0-9_-]*)Validation\.cs$")
 VALIDATION_PHASE_FILENAME_INDEX_RE = re.compile(r"^[_-](?P<index>\d+)")
 LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE = 164
@@ -296,6 +314,57 @@ def check_package_matrix(results: list[CheckResult]) -> None:
             actual_dependencies == expected_dependencies,
             f"expected {expected_dependencies!r}, got {actual_dependencies!r}",
         )
+
+
+def check_consumer_local_bindings(results: list[CheckResult]) -> None:
+    """Authenticate every local UPM binding in the real Unity consumer manifest."""
+    manifest = ROOT / "Unity2Foxglove" / "Packages" / "manifest.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except Exception as exc:
+        add(results, "consumer local package bindings", False, f"{rel(manifest)}: {exc}")
+        return
+    dependencies = data.get("dependencies") if isinstance(data, dict) else None
+    if not isinstance(dependencies, dict):
+        add(results, "consumer local package bindings", False, "dependencies is not an object")
+        return
+    consumer_packages = manifest.parent
+    package_root = ROOT / "Packages"
+    # The consumer selects one ROS2 distro at a time. Validate the selected
+    # distro bindings rather than assuming the developer's local distro.
+    dependencies_to_check = [
+        name for name in CONSUMER_LOCAL_DEPENDENCIES
+        if not any(name.startswith(prefix) for prefix in CONSUMER_LOCAL_DEPENDENCY_PREFIXES)
+    ]
+    for prefix in CONSUMER_LOCAL_DEPENDENCY_PREFIXES:
+        selected = sorted(name for name in dependencies if name.startswith(prefix))
+        if selected:
+            dependencies_to_check.append(selected[0])
+    failures: list[str] = []
+    for package_name in dependencies_to_check:
+        value = dependencies.get(package_name)
+        if not isinstance(value, str) or not value.startswith("file:"):
+            failures.append(f"{package_name}: missing file: binding")
+            continue
+        target = (consumer_packages / value[5:]).resolve()
+        canonical = (package_root / package_name).resolve()
+        if target != canonical:
+            failures.append(f"{package_name}: target {target} is not canonical {canonical}")
+            continue
+        package_manifest = target / "package.json"
+        try:
+            package_data = json.loads(package_manifest.read_text(encoding="utf-8"))
+        except Exception as exc:
+            failures.append(f"{package_name}: package.json unreadable: {exc}")
+            continue
+        if not isinstance(package_data, dict) or package_data.get("name") != package_name:
+            failures.append(f"{package_name}: package identity mismatch")
+    add(
+        results,
+        "consumer local package bindings",
+        not failures,
+        "; ".join(failures) if failures else f"{len(dependencies_to_check)} canonical file bindings authenticated",
+    )
 
 
 def check_ros2_bridge_package(results: list[CheckResult]) -> None:
@@ -499,6 +568,36 @@ def check_optional_package_boundaries(results: list[CheckResult]) -> None:
         "; ".join(offenders) if offenders else "all runtime packages declare sibling conflicts",
     )
 
+    addon_manifests = [path / "package.json" for path in ROS2_TYPESUPPORT_PACKAGES if (path / "package.json").exists()]
+    addon_names: list[str] = []
+    addon_data: list[tuple[Path, dict]] = []
+    for manifest in addon_manifests:
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except Exception as exc:
+            add(results, "ROS2 typesupport add-on conflict metadata", False, f"{rel(manifest)}: {exc}")
+            addon_data = []
+            break
+        name = data.get("name")
+        if isinstance(name, str):
+            addon_names.append(name)
+        addon_data.append((manifest, data))
+    addon_offenders: list[str] = []
+    for manifest, data in addon_data:
+        name = data.get("name")
+        expected = sorted(item for item in addon_names if item != name)
+        actual = data.get("unity2foxgloveConflicts")
+        actual_conflicts = sorted(actual) if isinstance(actual, list) else []
+        if actual_conflicts != expected:
+            addon_offenders.append(f"{rel(manifest)} expected conflicts {expected!r}")
+    if addon_manifests:
+        add(
+            results,
+            "ROS2 typesupport add-on conflict metadata",
+            not addon_offenders and len(addon_data) == len(addon_manifests),
+            "; ".join(addon_offenders) if addon_offenders else "all typesupport add-ons declare sibling conflicts",
+        )
+
     demo_link = UNITY_DEMO_ASSETS / "link.xml"
     add(
         results,
@@ -531,22 +630,53 @@ def check_required_files(results: list[CheckResult]) -> None:
         )
 
 
-def check_sample_meta(results: list[CheckResult], samples_files: list[Path] | None = None) -> None:
-    """Ensure Unity sample assets have matching .meta sidecars."""
+def check_sample_meta(
+    results: list[CheckResult],
+    samples_files: list[Path] | None = None,
+    additional_files: list[Path] | None = None,
+) -> None:
+    """Ensure ordinary Unity assets have valid, unique .meta identities."""
     samples_files = samples_files if samples_files is not None else list(iter_files(SAMPLES))
+    files = list(samples_files) + list(additional_files or [])
     missing: list[str] = []
-    for path in samples_files:
+    malformed: list[str] = []
+    duplicate: list[str] = []
+    guids: dict[str, str] = {}
+    for path in files:
         if path.suffix == ".meta" or path.name == "README.md":
             continue
         if path.suffix.lower() not in UNITY_META_EXTENSIONS:
             continue
-        if not Path(str(path) + ".meta").exists():
+        meta = Path(str(path) + ".meta")
+        if not meta.is_file():
             missing.append(rel(path))
+            continue
+        try:
+            text = meta.read_text(encoding="utf-8")
+        except OSError:
+            malformed.append(rel(meta))
+            continue
+        match = META_GUID_RE.search(text)
+        if match is None:
+            malformed.append(rel(meta))
+            continue
+        guid = match.group(1).lower()
+        previous = guids.get(guid)
+        if previous is not None:
+            duplicate.append(f"{rel(meta)} duplicates {previous}")
+        else:
+            guids[guid] = rel(meta)
     add(
         results,
         "sample Unity asset .meta files",
-        not missing,
-        "; ".join(missing[:MAX_REPORTED_MISSING_META]) if missing else "all checked sample assets have .meta",
+        not missing and not malformed and not duplicate,
+        "; ".join(
+            missing[:MAX_REPORTED_MISSING_META]
+            + malformed[:MAX_REPORTED_MISSING_META]
+            + duplicate[:MAX_REPORTED_MISSING_META]
+        )
+        if missing or malformed or duplicate
+        else f"{len(guids)} ordinary asset metas have unique valid GUIDs",
     )
 
 
@@ -647,7 +777,7 @@ def check_package_build_artifacts(results: list[CheckResult], package_entries: l
     forbidden_dirs = {"bin", "obj", "__pycache__"}
     offenders: list[str] = []
     for path in package_entries:
-        if path.name in forbidden_dirs and path.is_dir():
+        if path.name.casefold() in forbidden_dirs and path.is_dir():
             offenders.append(rel(path))
     add(
         results,
@@ -721,9 +851,19 @@ def check_validation_naming(results: list[CheckResult], package_files: list[Path
 def check_google_protobuf_collision(results: list[CheckResult]) -> None:
     """Ensure Google.Protobuf plugin asmdefs do not collide with DLL names."""
     plugin_dir = PACKAGE / "Plugins" / "Google.Protobuf"
-    dll_stems = {p.stem for p in plugin_dir.glob("*.dll")}
-    asmdef_files = list(plugin_dir.glob("*.asmdef"))
-    filename_collisions = [rel(p) for p in asmdef_files if p.stem in dll_stems]
+    dll_stems = {
+        p.stem.casefold()
+        for p in plugin_dir.iterdir()
+        if p.is_file() and p.suffix.casefold() == ".dll"
+    }
+    asmdef_files = [
+        p
+        for p in plugin_dir.iterdir()
+        if p.is_file() and p.suffix.casefold() == ".asmdef"
+    ]
+    filename_collisions = [
+        rel(p) for p in asmdef_files if p.stem.casefold() in dll_stems
+    ]
 
     name_collisions: list[str] = []
     for asmdef in asmdef_files:
@@ -731,7 +871,7 @@ def check_google_protobuf_collision(results: list[CheckResult]) -> None:
             name = json.loads(asmdef.read_text(encoding="utf-8")).get("name")
         except Exception:
             continue
-        if name in dll_stems:
+        if isinstance(name, str) and name.casefold() in dll_stems:
             name_collisions.append(f"{rel(asmdef)} name={name}")
 
     offenders = filename_collisions + name_collisions
@@ -831,6 +971,7 @@ def main() -> int:
     samples_files = [path for path in samples_entries if path.is_file()]
     docs_files = [path for path in package_files if path_is_relative_to(path, DOCS)]
     check_package_matrix(results)
+    check_consumer_local_bindings(results)
     data = load_package_json(results)
     if data:
         check_package_identity(results, data)
@@ -838,7 +979,12 @@ def main() -> int:
     check_ros2_bridge_package(results)
     check_optional_package_boundaries(results)
     check_required_files(results)
-    check_sample_meta(results, samples_files)
+    bridge_files = [
+        path
+        for path in ROS2_BRIDGE_PACKAGE.rglob("*")
+        if path.is_file() and path.suffix.lower() in UNITY_META_EXTENSIONS
+    ]
+    check_sample_meta(results, samples_files, bridge_files)
     check_sample_boundaries(results)
     check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)

@@ -1,0 +1,4 @@
+I06-031 atomic architecture report publication
+BASELINE: injected write failure left destination PARTIAL, destroying OLD-COMPLETE (probe.out RED=LAST_GOOD_DESTROYED; exit 0)
+MODIFIED: same-directory temp write + flush/fsync + os.replace; focused unittest passed (exit 0)
+ROLLBACK: independent copy ROLLBACK_OK then ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true

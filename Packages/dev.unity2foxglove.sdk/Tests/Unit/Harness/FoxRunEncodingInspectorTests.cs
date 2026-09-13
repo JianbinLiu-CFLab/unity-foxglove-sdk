@@ -20,14 +20,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 source,
                 "public static void DrawFoxRunEncoding");
 
-            Assert.Contains("var selected = property.intValue switch", draw, StringComparison.Ordinal);
+            Assert.Contains("var selected = rawValue switch", draw, StringComparison.Ordinal);
             Assert.Contains("(int)FoxRunEncoding.Protobuf => 0", draw, StringComparison.Ordinal);
             Assert.Contains("(int)FoxRunEncoding.JSON => 1", draw, StringComparison.Ordinal);
             Assert.Contains("(int)FoxRunEncoding.MessagePack => 2", draw, StringComparison.Ordinal);
             Assert.Contains("property.intValue = selected switch", draw, StringComparison.Ordinal);
             Assert.Contains("0 => (int)FoxRunEncoding.Protobuf", draw, StringComparison.Ordinal);
             Assert.Contains("1 => (int)FoxRunEncoding.JSON", draw, StringComparison.Ordinal);
-            Assert.Contains("2 => (int)FoxRunEncoding.MessagePack", draw, StringComparison.Ordinal);
+            Assert.Contains("_ => (int)FoxRunEncoding.MessagePack", draw, StringComparison.Ordinal);
             Assert.DoesNotContain("enumValueIndex", draw, StringComparison.Ordinal);
         }
     }

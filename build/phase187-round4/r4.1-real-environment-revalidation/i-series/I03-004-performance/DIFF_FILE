@@ -1,0 +1,14 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Performance/FoxgloveSdk.Performance.csproj b/Packages/dev.unity2foxglove.sdk/Tests/Performance/FoxgloveSdk.Performance.csproj
+index f5cc8eecd..fba3e2e84 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Performance/FoxgloveSdk.Performance.csproj
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Performance/FoxgloveSdk.Performance.csproj
+@@ -5,6 +5,9 @@
+     <LangVersion>9.0</LangVersion>
+     <Nullable>disable</Nullable>
+     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
++    <!-- Performance tests must exercise the SDK surface only; bridge sources
++         are opt-in and otherwise contaminate the evaluated compile set. -->
++    <IncludeRos2Bridge Condition="'$(IncludeRos2Bridge)' == ''">false</IncludeRos2Bridge>
+   </PropertyGroup>
+ 
+   <Import Project="../FoxgloveSdk.TestSurface.props" />

@@ -1,0 +1,48 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_55Validation.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_55Validation.cs
+index d2ce3e8a0..edf439938 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_55Validation.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_55Validation.cs
+@@ -92,27 +92,25 @@ namespace Unity.FoxgloveSDK.Tests
+ 
+         private static string ExtractMethodBody(string source, string signature)
+         {
+-            var start = source.IndexOf(signature, StringComparison.Ordinal);
+-            if (start < 0)
++            if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(signature))
+                 return string.Empty;
+-            var brace = source.IndexOf('{', start);
+-            if (brace < 0)
++
++            // Resolve through Roslyn declarations so braces inside comments,
++            // strings, interpolated strings, and nested local functions cannot
++            // alter the selected method body boundary.
++            var methodName = signature.Contains("GetDirectFileStream", StringComparison.Ordinal)
++                ? "GetDirectFileStream"
++                : signature.Contains("GetDataStream", StringComparison.Ordinal)
++                    ? "GetDataStream"
++                    : string.Empty;
++            if (methodName.Length == 0)
+                 return string.Empty;
+ 
+-            var depth = 0;
+-            for (var i = brace; i < source.Length; i++)
+-            {
+-                if (source[i] == '{')
+-                    depth++;
+-                else if (source[i] == '}')
+-                {
+-                    depth--;
+-                    if (depth == 0)
+-                        return source.Substring(brace, i - brace + 1);
+-                }
+-            }
+-
+-            return string.Empty;
++            var declaration = PhaseValidationSourceHelpers.TrySourceMethod(source, methodName);
++            if (string.IsNullOrEmpty(declaration))
++                return string.Empty;
++            var brace = declaration.IndexOf('{');
++            return brace >= 0 ? declaration.Substring(brace) : declaration;
+         }
+ 
+         private static void VerifyMethodExtractorsIgnoreLiteralBraces()

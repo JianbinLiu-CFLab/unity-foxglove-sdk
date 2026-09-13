@@ -1,0 +1,9 @@
+finding_id=I07-025
+source_sha256=Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_55Validation.cs=17a6265fcdf7c608952ebae2b4c9c0c695cf6a719040e43fb62461783d08b0f5
+RED=raw fixture demonstrates pre-fix false positive
+GREEN=targeted source/runtime checks pass
+ROLLBACK_OK
+ROLLBACK_NOOP
+seeded_equals_modified=true
+restored_equals_original=true
+live_modified_remains=true

@@ -1,0 +1,1 @@
+I01-009 verification: RED was synchronous AnalyzeReplayIdentity before cancellation. GREEN moves StartNewPendingWork before identity and catches identity exceptions, disposing token. Controls: invalid path still warning; successful analysis starts task with owned token.

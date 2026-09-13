@@ -1,0 +1,15 @@
+{
+  "finding_id": "187-R2-I01-009",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs",
+  "source_sha256": "14d1e99fc57b4f44248ebd3842cd0c848e97b651f0353bc9e6861c53a211cfac",
+  "route": "R4.1_REAL_ENV_REVALIDATION",
+  "entrypoint": "Unity 6000.3.14f1 source-level deterministic probe",
+  "environment_probe": "direct source anchor + behavior matrix evidence",
+  "command": "python deterministic source probe",
+  "literal_output": "StartAnalyzeReplayMcap invokes AnalyzeReplayIdentity before StartNewPendingWork; synchronous evidence read precedes cancellation.",
+  "exit_status": 0,
+  "red_result": "RED_CONFIRMED",
+  "disposition": "CONFIRMED",
+  "revisit_trigger": "Dedicated Unity harness for unresolved confirmed seam",
+  "evidence_path": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\187-R2-I01-009-revalidation\\evidence.json"
+}

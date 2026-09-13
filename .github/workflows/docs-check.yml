@@ -9,10 +9,13 @@ on:
       - "CHANGELOG.md"
       - "CITATION.cff"
       - "PAPER.md"
+      - "AI_NOTICE.md"
+      - "CONTRIBUTING.md"
       - "docs/research-*.md"
       - "docs/releases/**"
       - "THIRD_PARTY_NOTICES.md"
       - "Packages/dev.unity2foxglove.sdk/README.md"
+      - "Packages/dev.unity2foxglove.ros2forunity/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/zh/**"
@@ -20,7 +23,9 @@ on:
       - "Packages/dev.unity2foxglove.sdk/Samples~/**/README.md"
       - "Unity2Foxglove/README.md"
       - "Unity2Foxglove/Docs/**"
+      - "Tools/foxglove-extensions/foxrun-publish-panel/README.md"
       - "Scripts/**"
+      - ".github/workflows/docs-check.yml"
   pull_request:
     branches: [main]
     paths:
@@ -29,10 +34,13 @@ on:
       - "CHANGELOG.md"
       - "CITATION.cff"
       - "PAPER.md"
+      - "AI_NOTICE.md"
+      - "CONTRIBUTING.md"
       - "docs/research-*.md"
       - "docs/releases/**"
       - "THIRD_PARTY_NOTICES.md"
       - "Packages/dev.unity2foxglove.sdk/README.md"
+      - "Packages/dev.unity2foxglove.ros2forunity/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/README.md"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/en/**"
       - "Packages/dev.unity2foxglove.sdk/Documentation~/zh/**"
@@ -40,7 +48,9 @@ on:
       - "Packages/dev.unity2foxglove.sdk/Samples~/**/README.md"
       - "Unity2Foxglove/README.md"
       - "Unity2Foxglove/Docs/**"
+      - "Tools/foxglove-extensions/foxrun-publish-panel/README.md"
       - "Scripts/**"
+      - ".github/workflows/docs-check.yml"
 
 concurrency:
   group: docs-check-${{ github.ref }}
@@ -50,7 +60,7 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
@@ -79,13 +89,32 @@ jobs:
             "Unity2Foxglove/Docs"
             "Scripts"
           )
-          if rg -n "D:/|D:\\\\|BaiduSyncdisk|00 Inbox|!\\[\\[|TODO|FIXME|TBD|Pasted image|Scripts[\\/]build[_]unity[_]il2cpp\\.py" "${files[@]}" \
-            -g "*.md" -g "*.json" -g "*.py" -g "*.ps1" -g "*.cff" \
-            -g "!Scripts/package/validate_unity_package.py" \
-            -g "!Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py" \
-            -g "!Scripts/ros2forunity/windows/jazzy/regression_checks/test_phase138b_build_defaults.py"; then
+          set +e
+          pattern='(^|[^A-Za-z0-9])([A-Za-z]:[\\/]|\\\\[^\\/]+[\\/]|/(home|Users)/)|BaiduSyncdisk|00 Inbox|!\[\[|TODO|FIXME|TBD|Pasted image|Scripts[\/]build[_]unity[_]il2cpp\.py'
+          if command -v rg >/dev/null 2>&1; then
+            rg -n "$pattern" "${files[@]}" \
+              -g "*.md" -g "*.json" -g "*.py" -g "*.ps1" -g "*.cff" \
+              -g "!Scripts/package/validate_unity_package.py" \
+              -g "!Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py" \
+              -g "!Scripts/ros2forunity/windows/jazzy/regression_checks/test_phase138b_build_defaults.py"
+          else
+            # Hosted runners without ripgrep use a conservative documentation
+            # scan; source/test fixtures intentionally contain example paths.
+            grep -RInE 'BaiduSyncdisk|00 Inbox|!\[\[|Pasted image|TODO|FIXME|TBD' \
+              README.md ROADMAP.md CHANGELOG.md CITATION.cff PAPER.md docs THIRD_PARTY_NOTICES.md \
+              Packages/dev.unity2foxglove.sdk/README.md Packages/dev.unity2foxglove.sdk/Documentation~ \
+              Unity2Foxglove/README.md Unity2Foxglove/Docs \
+              --include='*.md' --include='*.json' --include='*.py' --include='*.ps1' --include='*.cff' \
+              --exclude='PAPER.md'
+          fi
+          rg_status=$?
+          set -e
+          if [ "$rg_status" -eq 0 ]; then
             echo "Forbidden local path, placeholder, or Obsidian-only embed found in public docs."
             exit 1
+          elif [ "$rg_status" -ne 1 ]; then
+            echo "Documentation policy scanner failed (rg exit $rg_status)."
+            exit "$rg_status"
           fi
 
       - name: Check markdown links, local images, and mojibake
@@ -103,9 +132,12 @@ jobs:
               Path("CHANGELOG.md"),
               Path("CITATION.cff"),
               Path("PAPER.md"),
+              Path("AI_NOTICE.md"),
+              Path("CONTRIBUTING.md"),
               Path("docs"),
               Path("THIRD_PARTY_NOTICES.md"),
               Path("Packages/dev.unity2foxglove.sdk/README.md"),
+              Path("Packages/dev.unity2foxglove.ros2forunity/README.md"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/README.md"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/en"),
               Path("Packages/dev.unity2foxglove.sdk/Documentation~/zh"),
@@ -114,6 +146,7 @@ jobs:
               Path("Unity2Foxglove/README.md"),
               Path("Unity2Foxglove/Docs"),
               Path("Scripts"),
+              Path("Tools/foxglove-extensions/foxrun-publish-panel/README.md"),
           ]
 
           files = []
@@ -124,25 +157,61 @@ jobs:
                   files.extend(root.rglob("*.md"))
                   files.extend(root.rglob("*.cff"))
 
-          link_pattern = re.compile(r"!?\[[^\]]*\]\(((?:\\.|[^()\\]|\\([^()]*\\))*)\)")
+          repo_root = Path.cwd().resolve()
+          link_pattern = re.compile(r"!?\[[^\]]*\]\(((?:\\.|[^()\\]|\([^()]*\))*)\)")
+          reference_pattern = re.compile(r"(?m)^\s{0,3}\[([^\]]+)\]:\s*(\S+)")
+          reference_use_pattern = re.compile(r"!?\[([^\]]*)\]\[([^\]]*)\]")
+
+          def anchor_ids(markdown):
+              anchors = set(re.findall(r"<a\s+[^>]*id=[\"']([^\"']+)", markdown, re.I))
+              counts = {}
+              for heading in re.findall(r"(?m)^#{1,6}\s+(.+?)\s*#*\s*$", markdown):
+                  slug = re.sub(r"[^a-z0-9 -]", "", heading.lower()).strip().replace(" ", "-")
+                  if not slug:
+                      continue
+                  n = counts.get(slug, 0)
+                  anchors.add(slug if n == 0 else f"{slug}-{n}")
+                  counts[slug] = n + 1
+              return anchors
+
+          def check_link(file, raw, missing):
+              raw = raw.strip()
+              if not raw:
+                  return
+              if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", raw):
+                  return
+              target, fragment = (raw.split("#", 1) + [""])[:2] if "#" in raw else (raw, "")
+              target_path = (file.parent / unquote(target)).resolve() if target else file.resolve()
+              try:
+                  target_path.relative_to(repo_root)
+              except ValueError:
+                  missing.append(f"{file}: outside repository -> {raw}")
+                  return
+              if not target_path.exists():
+                  missing.append(f"{file} -> {raw}")
+                  return
+              if fragment:
+                  try:
+                      target_text = target_path.read_text(encoding="utf-8", errors="replace")
+                  except OSError:
+                      missing.append(f"{file} -> {raw}")
+                      return
+                  if unquote(fragment).lower() not in anchor_ids(target_text):
+                      missing.append(f"{file}: missing fragment -> {raw}")
+
           missing = []
           mojibake = []
           for file in files:
               text = file.read_text(encoding="utf-8", errors="replace")
               if "\ufffd" in text:
                   mojibake.append(str(file))
+              references = {key.strip().lower(): value for key, value in reference_pattern.findall(text)}
               for match in link_pattern.finditer(text):
-                  raw = match.group(1).strip()
-                  if not raw or raw.startswith("#"):
-                      continue
-                  if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", raw):
-                      continue
-                  target = raw.split("#", 1)[0]
-                  if not target:
-                      continue
-                  path = (file.parent / unquote(target)).resolve()
-                  if not path.exists():
-                      missing.append(f"{file}:{match.start(1)} -> {raw}")
+                  check_link(file, match.group(1), missing)
+              for match in reference_use_pattern.finditer(text):
+                  key = (match.group(2) or match.group(1)).strip().lower()
+                  if key in references:
+                      check_link(file, references[key], missing)
 
           if missing:
               print("Missing local markdown links or images:")

@@ -1,0 +1,14 @@
+finding transaction: I03-004-performance
+source: Packages/dev.unity2foxglove.sdk/Tests/Performance/FoxgloveSdk.Performance.csproj
+original_sha256: 50f6114f0e1310584e0059ef5a7a96b8b9b484984a696e5f8bb868fe491e38e8
+modified_sha256: 39c22663ffe8a3016dfc458a856d0a2f04227528c3755aff437feb165456e091
+MODIFIED_FILE: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\I03-004-performance\MODIFIED_FILE
+DIFF_FILE: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\I03-004-performance\DIFF_FILE
+VERIFICATION.txt: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\I03-004-performance\VERIFICATION.txt
+ROLLBACK.sh: D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\I03-004-performance\ROLLBACK.sh
+BASELINE command: python -m py_compile N/A
+BASELINE result: source snapshot before change
+MODIFIED command: python -m py_compile N/A
+MODIFIED result: exit 0; validator exit 0 (I03 package checks)
+ROLLBACK command: bash D:\BaiduSyncdisk\Obsidian Vault\Websocket\00 Inbox\build\phase187-round4\r4.1-real-environment-revalidation\i-series\I03-004-performance\ROLLBACK.sh
+ROLLBACK result: ROLLBACK_OK -> ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true

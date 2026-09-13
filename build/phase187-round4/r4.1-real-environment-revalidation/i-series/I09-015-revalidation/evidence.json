@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-015",
+  "source_anchor": "Scripts/smoke/replay/phase139_e2e_integration_smoke.py@dd34ae9705694b799ace8fdf247ee40440994b6f:333-379; Scripts/smoke/replay/phase139_e2e_integration_smoke.py@dd34ae9705694b799ace8fdf247ee40440994b6f:382-460; Scripts/smoke/replay/phase139_e2e_integration_smoke.py@dd34ae9705694b799ace8fdf247ee40440994b6f:522-530; current_primary_sha256=943bb71ba7fd6a3b017d6ceb2feb87857f50c15e5410235b919ec9b0860b9665",
+  "source_sha256": "943bb71ba7fd6a3b017d6ceb2feb87857f50c15e5410235b919ec9b0860b9665",
+  "command": "python -m py_compile \"Scripts/smoke/replay/phase139_e2e_integration_smoke.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:15.267207+00:00"
+}

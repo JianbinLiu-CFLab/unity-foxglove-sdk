@@ -1,0 +1,2 @@
+GREEN_RESULT=True
+GREEN_COMMAND=dotnet restore sample.csproj

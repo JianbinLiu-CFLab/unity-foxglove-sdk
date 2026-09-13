@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-004",
+  "source_anchor": "Scripts\\smoke\\foxrun\\phase184_foxglove_cli_install.py:_terminate_and_reap; source_sha256=98c7eea5ed6532925da485f970f44470f0c430537ef9df7916eca4cd065a6f3e",
+  "source_sha256": null,
+  "command": "python -c \"from pathlib import Path; assert Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Scripts\\smoke\\foxrun\\phase184_foxglove_cli_install.py:_terminate_and_reap; source_sha256=98c7eea5ed6532925da485f970f44470f0c430537ef9df7916eca4cd065a6f3e').is_file(); print('SOURCE_PRESENT')\"",
+  "literal_output": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    from pathlib import Path; assert Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Scripts\\smoke\\foxrun\\phase184_foxglove_cli_install.py:_terminate_and_reap; source_sha256=98c7eea5ed6532925da485f970f44470f0c430537ef9df7916eca4cd065a6f3e').is_file(); print('SOURCE_PRESENT')\n                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^\nAssertionError",
+  "exit_status": 1,
+  "disposition": "REFUTED",
+  "timestamp": "2026-09-13T01:00:14.242592+00:00"
+}

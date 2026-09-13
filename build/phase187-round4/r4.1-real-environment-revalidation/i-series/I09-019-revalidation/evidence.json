@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-019",
+  "source_anchor": "Scripts/smoke/replay/phase139c_dataloader_cursor_acceptance.py@9101003856331729d890238c28066af4392556e7:144-201; current_primary_sha256=dd53933ffe3c8e90e88a6709cca703fa73deacaf97c43cd5483d151acf785597",
+  "source_sha256": "dd53933ffe3c8e90e88a6709cca703fa73deacaf97c43cd5483d151acf785597",
+  "command": "python -m py_compile \"Scripts/smoke/replay/phase139c_dataloader_cursor_acceptance.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:15.793389+00:00"
+}

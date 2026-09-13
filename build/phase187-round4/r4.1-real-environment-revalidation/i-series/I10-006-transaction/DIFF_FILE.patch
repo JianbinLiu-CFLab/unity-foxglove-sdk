@@ -1,0 +1,21 @@
+diff --git a/Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase186BatchModeRos2BridgeProbe.cs b/Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase186BatchModeRos2BridgeProbe.cs
+index 573a2da53..41cdc2415 100644
+--- a/Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase186BatchModeRos2BridgeProbe.cs
++++ b/Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase186BatchModeRos2BridgeProbe.cs
+@@ -754,6 +754,16 @@ namespace Unity2Foxglove
+                 throw new InvalidDataException("Phase186 run config schema differs.");
+ 
+             var token = RequireString(json, "token");
++            var createdAt = RequireString(json, "createdAt");
++            if (!DateTimeOffset.TryParse(
++                    createdAt,
++                    System.Globalization.CultureInfo.InvariantCulture,
++                    System.Globalization.DateTimeStyles.RoundtripKind,
++                    out var issuedAt)
++                || Math.Abs((DateTimeOffset.UtcNow - issuedAt.ToUniversalTime()).TotalMinutes) > 30)
++            {
++                throw new InvalidDataException("Phase186 run config createdAt is stale or malformed.");
++            }
+             var configuration = new Phase186RunConfiguration
+             {
+                 RunId = RequireString(json, "runId"),

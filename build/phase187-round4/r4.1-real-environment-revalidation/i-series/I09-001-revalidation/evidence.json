@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-001",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackDuplexToolingValidation.cs@579a523dc78d7a9715902bd3e95425913ab814b1:283-337; Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackDuplexToolingValidation.cs@579a523dc78d7a9715902bd3e95425913ab814b1:382-400; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_24Validation.cs@b8d0d292f4ad201226230054f3b8d3f74b2c9d57:55-154; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_29Validation.cs@072b81ad268a43e86f53f6bb2cf9cfdcc98f29bb:42-149; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_35Validation.cs@7b50f758979286b92c2da72bfc6573e38e64ff78:39-120; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_36Validation.cs@ce84275f44a6432eefb7a86554674a9bf8e88c98:34-145; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_37Validation.cs@331af0156347d7cbf73c9028ceb5543288f8c51b:31-84; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase164_36Validation.cs@4a99d437eda3fac1e150eeeb6fb857c1fdd6d20e:27-73; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase164_41Validation.cs@291d19c00ff1f1905760f05bbdb65978699d8d73:26-67; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase17Validation.cs@1ab15ead593610864cbfd8eb1f07d0b4ad91ce3a:80-325; current_primary_sha256=a259fe7bab6a758de897536dd1bd822fc807a7c262495ef9264fcf4ffd7e4876",
+  "source_sha256": "a259fe7bab6a758de897536dd1bd822fc807a7c262495ef9264fcf4ffd7e4876",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Packages\\dev.unity2foxglove.sdk\\Tests\\Runtime\\FoxRunMessagePackDuplexToolingValidation.cs').read_text(encoding='utf-8'); assert t.strip(); print('SOURCE_PRESENT')\"",
+  "literal_output": "SOURCE_PRESENT",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:13.970233+00:00"
+}

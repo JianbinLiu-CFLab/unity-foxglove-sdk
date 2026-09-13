@@ -63,8 +63,7 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                         manifest,
                         ("unreviewed.dll",),
                     )
-
-        self.assertFalse((package / "unreviewed.dll").exists())
+                self.assertFalse((package / "unreviewed.dll").exists())
 
     def test_copy_removes_a_stale_unselected_pdb(self) -> None:
         """A later non-debug copy must not retain an older symbol artifact."""
@@ -147,6 +146,93 @@ class RemoteGatewayToolingTests(unittest.TestCase):
             payload = json.loads(path.read_text(encoding="utf-8"))
 
         self.assertEqual("/MT", payload["cxxflags"])
+
+    def test_manifest_rejects_missing_selected_artifact(self) -> None:
+        """Selected import libraries and symbols cannot disappear silently."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            release = root / "target/release"
+            release.mkdir(parents=True)
+            (release / "foxglove.dll").write_bytes(b"dll")
+            environment = {
+                "RUSTFLAGS": "-C target-feature=+crt-static",
+                "CFLAGS_x86_64_pc_windows_msvc": "/MT",
+                "CXXFLAGS_x86_64_pc_windows_msvc": "/MT",
+                "AWS_LC_SYS_PREBUILT_NASM": "1",
+                "CARGO_TARGET_DIR": str(root / "target"),
+            }
+            with self.assertRaisesRegex(FileNotFoundError, "Missing selected artifact"):
+                self.build.write_manifest(root / "target", environment, self.build.APPROVED_ARTIFACTS)
+
+    def test_relative_target_dir_uses_repository_base(self) -> None:
+        """Cargo and manifest paths must resolve relative targets identically."""
+        resolved = self.build.resolve_target_dir("build/native-target")
+        self.assertEqual(self.build.ROOT / "build/native-target", resolved)
+        args = SimpleNamespace(libclang_path=None, target_dir="build/native-target")
+        environment = self.build.build_environment(args)
+        self.assertEqual(str(resolved), environment["CARGO_TARGET_DIR"])
+
+    def test_target_dir_rejects_public_source_trees(self) -> None:
+        """Cargo cannot write build products into package or source roots."""
+        with self.assertRaisesRegex(ValueError, "inside a source tree"):
+            self.build.validate_target_dir(self.build.ROOT / "Packages" / "bad-target")
+        with self.assertRaisesRegex(ValueError, "inside a source tree"):
+            self.build.validate_target_dir(self.build.ROOT / "third-party" / "bad-target")
+
+    def test_stale_selected_artifact_is_rejected(self) -> None:
+        """A successful no-op Cargo build cannot publish an older DLL."""
+        with tempfile.TemporaryDirectory() as temp:
+            release = Path(temp) / "release"
+            release.mkdir(parents=True)
+            artifact = release / "foxglove.dll"
+            artifact.write_bytes(b"stale")
+            with self.assertRaisesRegex(RuntimeError, "Stale selected artifact"):
+                self.build.ensure_fresh_artifacts(Path(temp), ("foxglove.dll",), artifact.stat().st_mtime + 1)
+
+    def test_copy_rejects_artifact_bytes_diverging_from_manifest(self) -> None:
+        """Promotion verifies source and destination bytes against the manifest."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            release = root / "target/release"
+            package = root / "package"
+            release.mkdir(parents=True)
+            package.mkdir()
+            (release / "foxglove.dll").write_bytes(b"changed")
+            (release / "foxglove.dll.lib").write_bytes(b"lib")
+            manifest = root / "manifest.json"
+            manifest.write_text(json.dumps({"sha256": hashlib.sha256(b"original").hexdigest(), "artifacts": {"foxglove.dll": {"sha256": hashlib.sha256(b"original").hexdigest()}}}), encoding="utf-8")
+            with mock.patch.object(self.build, "PACKAGE_PLUGIN_DIR", package):
+                with self.assertRaisesRegex(RuntimeError, "changed after manifest hashing"):
+                    self.build.copy_approved_artifacts(root / "target", manifest, self.build.APPROVED_ARTIFACTS)
+
+    def test_build_pins_x64_target_and_manifest_provenance(self) -> None:
+        """Native output must identify the explicit Cargo target and inputs."""
+        args = SimpleNamespace(libclang_path=None, target_dir="phase187-target")
+        with mock.patch.dict(os.environ, {"RUSTUP_TOOLCHAIN": "stable-msvc"}, clear=False):
+            environment = self.build.build_environment(args)
+        self.assertEqual("x86_64-pc-windows-msvc", environment["CARGO_BUILD_TARGET"])
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            release = root / "target/release"
+            release.mkdir(parents=True)
+            (release / "foxglove.dll").write_bytes(b"dll")
+            staging = root / "staging"
+            manifest_environment = {
+                "RUSTFLAGS": "-C target-feature=+crt-static",
+                "CFLAGS_x86_64_pc_windows_msvc": "/MT",
+                "CXXFLAGS_x86_64_pc_windows_msvc": "/MT",
+                "AWS_LC_SYS_PREBUILT_NASM": "1",
+                "CARGO_TARGET_DIR": str(root / "target"),
+                "CARGO_BUILD_TARGET": "x86_64-pc-windows-msvc",
+                "RUSTUP_TOOLCHAIN": "stable-msvc",
+            }
+            with mock.patch.object(self.build, "STAGING", staging):
+                path = self.build.write_manifest(root / "target", manifest_environment, ("foxglove.dll",))
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual("x86_64-pc-windows-msvc", payload["target"])
+        self.assertEqual("stable-msvc", payload["environment"]["RUSTUP_TOOLCHAIN"])
+        self.assertEqual("absent", payload["environment"]["cargoLock"])
 
     def test_token_is_trimmed_before_it_is_inherited(self) -> None:
         """Whitespace used for validation cannot survive into Unity's token."""

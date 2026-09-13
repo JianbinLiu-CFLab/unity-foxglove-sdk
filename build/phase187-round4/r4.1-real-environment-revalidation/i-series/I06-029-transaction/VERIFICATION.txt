@@ -1,0 +1,4 @@
+I06-029 UTF-8 strict architecture source reads
+BASELINE: original read_text errors="replace" accepted invalid byte as U+FFFD (probe.out RED=LOSSY_REPLACEMENT_ACCEPTED; exit 0)
+MODIFIED: read_text errors="strict" raises UnicodeDecodeError; focused unittest passed (exit 0)
+ROLLBACK: independent copy produced ROLLBACK_OK then ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true

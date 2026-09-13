@@ -1,0 +1,1 @@
+I06-032 direct declaration probe: exact class ValidationEvidence absent; enum, ValidationEvidenceFormatter, ValidationEvidenceTextWriter present. RESULT=REFUTED. Generic owner suite not used.

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <Import Project="../FoxgloveSdk.TestSurface.props" />
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="PerformanceResult.cs" />
+    <Compile Include="PerformanceRunner.cs" />
+    <Compile Include="FakePerformanceTransport.cs" />
+    <Compile Include="../Unit/Fixtures/UnityEngineMathTypes.cs" Link="Fixtures/UnityEngineMathTypes.cs" />
+  </ItemGroup>
+</Project>

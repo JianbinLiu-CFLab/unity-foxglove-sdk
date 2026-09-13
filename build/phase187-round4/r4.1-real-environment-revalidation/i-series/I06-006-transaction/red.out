@@ -1,0 +1,2 @@
+RED_RESULT=True
+RED_LITERAL=single finally cleanup could mask primary failures and leave console properties mutated

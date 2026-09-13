@@ -402,16 +402,18 @@ namespace Unity.FoxgloveSDK.Tests
             var cameraPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
             var readback = ExtractMethod(camera, "private void OnReadbackComplete");
             var completeCount = CountOccurrences(readback, "CompletePendingReadback()");
+            var completeIndex = readback.IndexOf("CompletePendingReadback()", StringComparison.Ordinal);
+            var finallyIndex = readback.IndexOf("finally", StringComparison.Ordinal);
+            var submitIndex = readback.IndexOf("SubmitVideoFrame", StringComparison.Ordinal);
+            var queueIndex = readback.IndexOf("QueueJpegFrame", StringComparison.Ordinal);
+            var publishIndex = readback.IndexOf("PublishJpegFrame", StringComparison.Ordinal);
             Check(readback.Contains("finally", StringComparison.Ordinal)
                   && completeCount == 1
-                  && readback.IndexOf("CompletePendingReadback()", StringComparison.Ordinal)
-                     > readback.IndexOf("finally", StringComparison.Ordinal)
-                  && readback.IndexOf("CompletePendingReadback()", StringComparison.Ordinal)
-                     > readback.IndexOf("SubmitVideoFrame", StringComparison.Ordinal)
-                  && readback.IndexOf("CompletePendingReadback()", StringComparison.Ordinal)
-                     > readback.IndexOf("QueueJpegFrame", StringComparison.Ordinal)
-                  && readback.IndexOf("CompletePendingReadback()", StringComparison.Ordinal)
-                     > readback.IndexOf("PublishJpegFrame", StringComparison.Ordinal),
+                  && completeIndex >= 0 && finallyIndex >= 0 && submitIndex >= 0 && queueIndex >= 0 && publishIndex >= 0
+                  && completeIndex > finallyIndex
+                  && completeIndex > submitIndex
+                  && completeIndex > queueIndex
+                  && completeIndex > publishIndex,
                 "138P-15C: camera readback drains pending count after request data is consumed");
 
             var ensureWorker = ExtractMethod(cameraPipeline, "public bool Start");
@@ -741,7 +743,7 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
-            return source.Substring(start);
+            return string.Empty;
         }
 
         private static string Read(string path)

@@ -1,0 +1,18 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
+index dd6a4adcf..86ec8c579 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
+@@ -239,8 +239,13 @@ namespace Unity.FoxgloveSDK.Tests
+             var evidencePath = Path.Combine(evidenceRoot, "phase185-generator-evidence.json");
+             if (!File.Exists(evidencePath))
+                 throw new InvalidOperationException("[FAIL] 185E-10: bounded Editor generator evidence is missing.");
++            var evidenceInfo = new FileInfo(evidencePath);
++            if (evidenceInfo.Length > 256 * 1024)
++                throw new InvalidOperationException("[FAIL] 185E-10: evidence exceeds the 256 KiB capacity bound.");
+             var evidence = File.ReadAllText(evidencePath);
+             var logs = Directory.GetFiles(evidenceRoot, "unity-generate-*.log");
++            if (logs.Length > 128 || logs.Any(path => new FileInfo(path).Length > 256 * 1024))
++                throw new InvalidOperationException("[FAIL] 185E-10: generator log set exceeds capacity bounds.");
+             Check(
+                 evidence.Length <= 256 * 1024
+                 && evidence.Contains("\"verdict\": \"PASS\"", StringComparison.Ordinal)

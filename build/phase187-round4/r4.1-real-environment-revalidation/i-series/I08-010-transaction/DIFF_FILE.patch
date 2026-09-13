@@ -1,0 +1,97 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
+index 0cedce04f..52e07deed 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
+@@ -9,6 +9,7 @@ using System.Collections.Generic;
+ using System.IO;
+ using System.Linq;
+ using System.Text;
++using Unity.FoxgloveSDK.Core;
+ using Unity.FoxgloveSDK.IO;
+ using Unity.FoxgloveSDK.Util;
+ 
+@@ -35,6 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
+             ExplicitUnlimitedQueryRemainsAvailable();
+             ReplayTickBudgetPreservesUnlimitedZero();
+             ReplayChunkCrcPolicyUsesWithWarningByDefault();
++            ReplayChunkCrcPolicyEmitsWarningsAndThrows();
+             ReplayChunkIndexesAreSortedOnLoad();
+             TryDecodeMessageReusesDecoderRegistry();
+             EmptyJsonPayloadHasExplicitDiagnostic();
+@@ -134,6 +136,58 @@ namespace Unity.FoxgloveSDK.Tests
+             }
+         }
+ 
++        private static void ReplayChunkCrcPolicyEmitsWarningsAndThrows()
++        {
++            var path = TempMcapPath();
++            try
++            {
++                File.WriteAllBytes(path, BuildChunkMcap(badCrc: true, reverseChunkIndexOrder: false));
++
++                var logger = new RecordingLogger();
++                using (var engine = new McapReplayEngine(logger))
++                {
++                    engine.Load(path);
++                    var result = engine.Snapshot(ulong.MaxValue, new List<McapMessage>());
++                    Check(result.Count == 1,
++                        "134-10E-3: warning policy keeps the corrupt chunk readable");
++                    Check(logger.Warnings.Count == 2
++                          && logger.Warnings.All(message => message.Contains(
++                              "CRC mismatch; data may be corrupted.",
++                              StringComparison.Ordinal)),
++                        "134-10E-4: warning policy emits one diagnostic per corrupt chunk");
++                }
++
++                var strictLogger = new RecordingLogger();
++                using (var strict = new McapReplayEngine(strictLogger)
++                       {
++                           CrcMismatchPolicy = McapReplayEngine.CorruptChunkPolicy.Throw
++                       })
++                {
++                    strict.Load(path);
++                    var threw = false;
++                    try
++                    {
++                        strict.Snapshot(ulong.MaxValue, new List<McapMessage>());
++                    }
++                    catch (InvalidDataException exception)
++                    {
++                        threw = exception.Message.Contains(
++                            "CRC mismatch; data may be corrupted.",
++                            StringComparison.Ordinal);
++                    }
++
++                    Check(threw,
++                        "134-10E-5: throw policy raises the documented CRC mismatch exception");
++                    Check(strictLogger.Warnings.Count == 1,
++                        "134-10E-6: throw policy records the warning before raising");
++                }
++            }
++            finally
++            {
++                TryDelete(path);
++            }
++        }
++
+         private static void ReplayChunkIndexesAreSortedOnLoad()
+         {
+             var path = TempMcapPath();
+@@ -377,6 +431,17 @@ namespace Unity.FoxgloveSDK.Tests
+             }
+         }
+ 
++        private sealed class RecordingLogger : IFoxgloveLogger
++        {
++            internal readonly List<string> Warnings = new List<string>();
++
++            public void LogWarning(string message) => Warnings.Add(message);
++
++            public void LogError(string message)
++            {
++            }
++        }
++
+         private sealed class CountingDecoderFactory : IMcapMessageDecoderFactory
+         {
+             public int TryCreateCount;

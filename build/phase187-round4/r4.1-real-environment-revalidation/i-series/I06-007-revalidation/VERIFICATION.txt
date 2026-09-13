@@ -1,0 +1,7 @@
+finding_id: 187-R2-I06-007
+source_anchor: Packages/dev.unity2foxglove.sdk/Tests/Runtime/ValidationEvidence.cs::ValidationEvidenceTextWriter
+command: python I06-007-revalidation/probe.py
+literal_output: SOURCE_BOUND=True; PREFIX_IS_DELEGATE_LEVEL=True; RESULT=REFUTED
+exit_status: 0
+disposition: REFUTED
+reason: evidence prefix is explicitly delegate-level metadata and does not assert each output line is an independent finding.

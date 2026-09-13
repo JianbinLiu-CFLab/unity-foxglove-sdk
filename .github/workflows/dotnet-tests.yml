@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository with provenance history
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Checkout pinned official Foxglove schema reference
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: foxglove/foxglove-sdk
           ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
@@ -35,7 +35,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout pinned official ROS-TCP-Connector reference
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: Unity-Technologies/ROS-TCP-Connector
           ref: c27f00c6cf750d2d0564349b3039d19aa3925e7c
@@ -45,14 +45,14 @@ jobs:
       - name: Normalize the provenance reference origin
         run: git -C third-party/ROS-TCP-Connector remote set-url origin https://github.com/Unity-Technologies/ROS-TCP-Connector.git
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
       - name: Install pinned Phase186 Python runtime dependency
         run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "10.0"
 
@@ -60,13 +60,15 @@ jobs:
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj
 
       - name: Run xUnit unit tests
+        if: always()
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 
       - name: Run FoxRun publish panel behavior tests
+        if: always()
         working-directory: Tools/foxglove-extensions/foxrun-publish-panel
         run: |
           npm ci
@@ -74,24 +76,31 @@ jobs:
           npm test
 
       - name: Enable Corepack for the pinned official MCAP harness
+        if: always()
         run: corepack enable
 
       - name: Restore Roslyn analyzer project
+        if: always()
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj
 
       - name: Validate source generator DLL freshness script
+        if: always()
         run: python3 Scripts/package/validate_source_generator_dll.py
 
       - name: Validate generated ROS2 schema output freshness
+        if: always()
         run: python3 Scripts/schema/validate_schema_generated_outputs.py
 
       - name: Restore runtime test project
+        if: always()
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
       - name: Run validation suite
+        if: always()
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
       - name: Run Phase179 ROS2 acceptance helper regressions
+        if: always()
         run: |
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_inbound_acceptance
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host
@@ -99,6 +108,7 @@ jobs:
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_zenoh_topology
 
       - name: Run Phase181 custom ROS2 acceptance helper regressions
+        if: always()
         run: |
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer_protocol
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer
@@ -113,39 +123,42 @@ jobs:
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain
 
       - name: Run Phase186 Bridge tooling and package-composition gate
+        if: always()
         run: python3 Scripts/release/run_ci.py --only phase186-bridge-tooling
 
       - name: Run official MCAP differential conformance
-        run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json
+        if: always()
+        run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/${{ github.run_id }}-${{ github.run_attempt }}/phase121-conformance-report.json
 
       - name: Validate local entrypoints
+        if: always()
         run: python3 Scripts/package/validate_local_entrypoints.py
 
       - name: Upload xUnit test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unit-test-results
           path: build/TestResults/Unit
-          if-no-files-found: ignore
+          if-no-files-found: error
 
       - name: Upload MCAP differential report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mcap-differential-report
-          path: build/mcap-conformance/phase121-conformance-report.json
+          path: build/mcap-conformance/${{ github.run_id }}-${{ github.run_attempt }}/phase121-conformance-report.json
           if-no-files-found: warn
 
   optional-ros2-adapter:
     name: optional ROS2 adapter gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "10.0"
 
@@ -157,21 +170,21 @@ jobs:
 
       - name: Upload optional ROS2 adapter test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optional-ros2-adapter-test-results
           path: build/TestResults/OptionalRos2Adapter
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   optional-ros2-native:
     name: optional ROS2 Native gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "10.0"
 
@@ -183,20 +196,75 @@ jobs:
 
       - name: Upload optional ROS2 Native test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: optional-ros2-native-test-results
           path: build/TestResults/OptionalRos2Native
-          if-no-files-found: ignore
+          if-no-files-found: error
+
+  windows-parity:
+    name: Windows runtime, xUnit, panel, and package parity
+    runs-on: windows-latest
+    steps:
+      - name: Configure Git long paths for Windows parity
+        shell: pwsh
+        run: |
+          $globalConfig = Join-Path $env:RUNNER_TEMP ("git-global-{0}.config" -f $env:GITHUB_RUN_ID)
+          "GIT_CONFIG_GLOBAL=$globalConfig" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:GIT_CONFIG_GLOBAL = $globalConfig
+          git config --global core.longpaths true
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Tools/foxglove-extensions/foxrun-publish-panel/package-lock.json
+
+      - name: Run Windows runtime validation
+        shell: pwsh
+        run: python -B Scripts/release/run_ci.py --only dotnet-runtime
+
+      - name: Run Windows core xUnit tests
+        shell: pwsh
+        run: python -B Scripts/release/run_ci.py --only xunit
+
+      - name: Run Windows FoxRun panel tests
+        shell: pwsh
+        run: python -B Scripts/release/run_ci.py --only foxrun-publish-panel
+
+      - name: Run Windows Phase184 acceptance tooling
+        shell: pwsh
+        run: python -B Scripts/release/run_ci.py --only phase184-acceptance-tooling
+
+      - name: Run Windows package validation
+        shell: pwsh
+        run: python -B Scripts/package/validate_unity_package.py
 
   analyzer-freshness:
     runs-on: windows-latest
     steps:
       - name: Enable Git long-path support
         shell: pwsh
-        run: git config --global core.longpaths true
+        run: |
+          $globalConfig = Join-Path $env:RUNNER_TEMP ("git-global-{0}.config" -f $env:GITHUB_RUN_ID)
+          "GIT_CONFIG_GLOBAL=$globalConfig" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:GIT_CONFIG_GLOBAL = $globalConfig
+          git config --global core.longpaths true
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
@@ -207,7 +275,7 @@ jobs:
           python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_fastrtps_cpp
           python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_zenoh_cpp
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "10.0"
 

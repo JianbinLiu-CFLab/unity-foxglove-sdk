@@ -1,0 +1,7 @@
+
+InputObject
+-----------                                                                                                             
+            var removedPath = Path.Combine(RepoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", validati…
+            Assert.False(File.Exists(removedPath), "Migrated console validation source still exists: " + removedPath);  
+
+

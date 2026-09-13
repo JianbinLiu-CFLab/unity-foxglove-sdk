@@ -1,0 +1,15 @@
+overlay_rows=264
+terminal_dispositions={"CONFIRMED_FIXED": 124, "REFUTED": 24, "SATISFIED_BY_ROUND3": 13, "SATISFIED_BY_ROUND4": 103}
+I01-009-transaction: quartet_and_rollback=true
+I01-010-transaction: quartet_and_rollback=true
+I01-012-transaction: quartet_and_rollback=true
+I01-013-transaction: quartet_and_rollback=true
+I01-014-transaction: quartet_and_rollback=true
+I01-017-transaction: quartet_and_rollback=true
+I09-004-transaction: quartet_and_rollback=true
+I08-003-transaction: quartet_and_rollback=true
+I08-004-transaction: quartet_and_rollback=true
+I08-007-transaction: quartet_and_rollback=true
+I08-009-transaction: quartet_and_rollback=true
+overlay_sha256=f6febbc05fd58be1210dc063e110c181d337d8733e5b11cda926ba9b55163f63
+adjudication=PASS

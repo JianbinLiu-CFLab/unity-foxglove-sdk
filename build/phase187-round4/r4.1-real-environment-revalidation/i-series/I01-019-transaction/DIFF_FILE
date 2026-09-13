@@ -1,0 +1,76 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs b/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs
+index 882530768..8a0e7db58 100644
+--- a/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs
++++ b/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs
+@@ -379,7 +379,14 @@ namespace Unity.FoxgloveSDK.Editor
+                 var hash = index["foxRun"]?["globalManifestHash"]?.ToString() ?? string.Empty;
+                 if (string.IsNullOrWhiteSpace(hash))
+                     warnings.Add("Recorded FoxRun hash is missing from schema-evidence.json.");
+-                return hash.Trim();
++                hash = hash.Trim();
++                if (!IsValidFoxRunHash(hash))
++                {
++                    warnings.Add("Recorded FoxRun hash is malformed; expected 64 hexadecimal characters.");
++                    return string.Empty;
++                }
++
++                return hash;
+             }
+             catch (Exception ex)
+             {
+@@ -399,7 +406,36 @@ namespace Unity.FoxgloveSDK.Editor
+                 return string.Empty;
+             }
+ 
+-            return File.ReadAllText(hashPath).Trim();
++            var hash = File.ReadAllText(hashPath).Trim();
++            if (!IsValidFoxRunHash(hash))
++            {
++                warnings.Add("Current FoxRun hash is malformed; expected 64 hexadecimal characters.");
++                return string.Empty;
++            }
++
++            return hash;
++        }
++
++        private static bool IsValidFoxRunHash(string hash)
++        {
++            if (string.IsNullOrWhiteSpace(hash))
++                return false;
++
++            hash = hash.Trim();
++            if (hash.Length != 64)
++                return false;
++
++            for (var i = 0; i < hash.Length; i++)
++            {
++                var c = hash[i];
++                var hex = (c >= '0' && c <= '9')
++                    || (c >= 'a' && c <= 'f')
++                    || (c >= 'A' && c <= 'F');
++                if (!hex)
++                    return false;
++            }
++
++            return true;
+         }
+ 
+         private static string IdentityStatus(string recordedHash, string currentHash)
+diff --git a/Scripts/release/regression_checks/test_release_tooling.py b/Scripts/release/regression_checks/test_release_tooling.py
+index d2a2528b0..1196ed3b7 100644
+--- a/Scripts/release/regression_checks/test_release_tooling.py
++++ b/Scripts/release/regression_checks/test_release_tooling.py
+@@ -1192,6 +1192,13 @@ class RunCiTests(unittest.TestCase):
+         self.assertIn("Directory.EnumerateFiles", source)
+         self.assertNotIn("Directory.GetFiles(recordingsDir, \"*.mcap\", SearchOption.AllDirectories)", source)
+ 
++    def test_mcap_preflight_rejects_malformed_manifest_hash_identity(self) -> None:
++        """Replay identity must not classify arbitrary text as a manifest hash."""
++        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Manager" / "McapReplayPreflightDrawer.cs").read_text(encoding="utf-8")
++        self.assertIn("IsValidFoxRunHash", source)
++        self.assertIn("if (!IsValidFoxRunHash(hash))", source)
++        self.assertIn("return string.Empty;", source)
++
+     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
+         """The selector must execute exactly six pure unittest suites in locked order."""
+         with mock.patch.object(self.run_ci, "run", return_value=True) as run:

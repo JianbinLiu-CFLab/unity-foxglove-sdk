@@ -1,0 +1,7 @@
+{
+  "finding_id": "187-R2-I02-017",
+  "source_anchor": "Scripts/unity_build/unity_il2cpp.py::start_owned_process Windows exception cleanup",
+  "existing_evidence": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\behavioral-repair-20260912\\WINDOWS_PARTIAL_ACQUISITION_TRANSACTION\\VERIFICATION.txt",
+  "existing_evidence_sha256": "a182baa82b7873518a2e874c0104688a068752adbe6afcf9b8bbfa6199446bc3",
+  "result": "CONFIRMED_FIXED"
+}

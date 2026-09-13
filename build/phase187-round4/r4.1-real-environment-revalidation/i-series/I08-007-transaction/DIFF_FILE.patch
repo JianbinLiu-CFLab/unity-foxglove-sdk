@@ -1,0 +1,13 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
+index daecfea49..f11644b7d 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
+@@ -308,6 +308,8 @@ namespace Unity.FoxgloveSDK.Tests
+             var diagnostics = McapDecodeRegistry.OptionalFactoryDiagnostics;
+             Check(diagnostics != null,
+                 "134-10K-1: optional decoder factory reflection diagnostics are exposed");
++            Check(diagnostics.All(message => !string.IsNullOrWhiteSpace(message)),
++                "134-10K-2: optional decoder diagnostics contain no blank entries");
+         }
+ 
+         private static MemoryStream CreateDirectFixture(int messageCount, byte[] payload = null)

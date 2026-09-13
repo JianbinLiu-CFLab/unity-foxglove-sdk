@@ -1,0 +1,1 @@
+I01-010 verification: RED unbounded string.Join over all topics. GREEN uses BuildTopicText with 64K cap and explicit truncation marker. Controls: empty/small lists unchanged; expanded UI and copy consume bounded cache.

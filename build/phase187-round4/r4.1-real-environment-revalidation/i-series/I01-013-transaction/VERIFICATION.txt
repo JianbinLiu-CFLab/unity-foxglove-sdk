@@ -1,0 +1,1 @@
+I01-013 verification: RED static delayCall callback lacked owner selection check. GREEN requires active selected target before picker and serialized write. Controls: original owner selection passes; changed/destroyed target returns.

@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-018",
+  "source_anchor": "Scripts/smoke/replay/phase139b_remote_data_loader_acceptance.py@3ba9b80ced76baf32458f0a6e09e2aaa1017c3df:175-217; Scripts/smoke/replay/phase139b_remote_data_loader_acceptance.py@3ba9b80ced76baf32458f0a6e09e2aaa1017c3df:226-229; Scripts/smoke/replay/phase139b_remote_data_loader_acceptance.py@3ba9b80ced76baf32458f0a6e09e2aaa1017c3df:230-255; Scripts/smoke/replay/phase139c_dataloader_cursor_acceptance.py@9101003856331729d890238c28066af4392556e7:20-33; Scripts/smoke/replay/phase139c_dataloader_cursor_acceptance.py@9101003856331729d890238c28066af4392556e7:61-94; Scripts/smoke/replay/phase139c_dataloader_cursor_acceptance.py@9101003856331729d890238c28066af4392556e7:140-141; current_primary_sha256=e0a7fe554a0e4521fea8810d468c7d291c5c0dcf6daa99e77510f7f0002f5007",
+  "source_sha256": "e0a7fe554a0e4521fea8810d468c7d291c5c0dcf6daa99e77510f7f0002f5007",
+  "command": "python -m py_compile \"Scripts/smoke/replay/phase139b_remote_data_loader_acceptance.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:15.625055+00:00"
+}

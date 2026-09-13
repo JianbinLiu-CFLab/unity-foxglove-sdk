@@ -1,0 +1,4 @@
+I08-007 direct source revalidation
+source-level probe output: CONFIRMED_CANDIDATE
+The current source retains the candidate seam; no broad owner-suite mapping used.
+

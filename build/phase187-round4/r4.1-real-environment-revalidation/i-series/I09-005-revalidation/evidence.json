@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-005",
+  "source_anchor": "Scripts/smoke/foxrun/phase186_bridge_certification.py@8e12cacb96e1a240e8b747130cca591519aabffa:167-192; current_primary_sha256=318afb84ac856168a6249e19ca553d8071b02b69f4eb79a297abbd2fc2928bba",
+  "source_sha256": "318afb84ac856168a6249e19ca553d8071b02b69f4eb79a297abbd2fc2928bba",
+  "command": "python -m py_compile \"Scripts/smoke/foxrun/phase186_bridge_certification.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:14.382522+00:00"
+}

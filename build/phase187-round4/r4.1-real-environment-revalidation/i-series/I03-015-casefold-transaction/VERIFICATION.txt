@@ -1,0 +1,5 @@
+I03-015 case-sensitive path guard transaction
+BASELINE: lower-case path override accepted by ToLowerInvariant guard (historical source)
+MODIFIED: non-Windows path comparison preserves case; Windows folds case
+GREEN: python -m unittest Scripts.package.regression_checks.test_validate_unity_package (relevant package/path checks) exit 0
+ROLLBACK: ROLLBACK_OK -> ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true

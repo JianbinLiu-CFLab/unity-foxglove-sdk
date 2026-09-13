@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-021",
+  "source_anchor": "Scripts/smoke/replay/phase139d_unity_cursor_bridge_acceptance.py@4db9afd9de2afe0faa39c80fc2d8dd20f440b78e:104-154; current_primary_sha256=29a76fb64e157f2aa3cc2fb2c0f89d4da876298bbed93a44ce386de14e696c35",
+  "source_sha256": "29a76fb64e157f2aa3cc2fb2c0f89d4da876298bbed93a44ce386de14e696c35",
+  "command": "python -m py_compile \"Scripts/smoke/replay/phase139d_unity_cursor_bridge_acceptance.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:16.114543+00:00"
+}

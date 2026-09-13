@@ -1,0 +1,9 @@
+finding_id=I09-007
+source=Scripts\release\run_ci.py
+original_sha256=7b4e1a9568f2f8e23741301c9ddcfb320e049c5bda9f3355dedaaea9bf4a8539
+modified_sha256=51eec1fef276f80fff49bae4801854900947b32a3bb0a559797ae5ba725241f4
+RED=python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_maintained_ci_dispatches_phase185_and_phase186_manual_regressions
+RED_RESULT=FAIL missing modules exit=1
+GREEN=python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_maintained_ci_dispatches_phase185_and_phase186_manual_regressions
+GREEN_RESULT=OK exit=0
+CONTROLS=python -m unittest Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual; 14 tests OK exit=0

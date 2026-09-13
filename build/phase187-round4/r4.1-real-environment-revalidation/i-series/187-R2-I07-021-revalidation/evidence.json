@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I07-021",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_45Validation.cs@173b7bdf171c5a7653134994cd4c31227fee57d0:1-EOF; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_46Validation.cs@2698f435d98099ffe465153de2505828497c6d65:1-EOF; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_47Validation.cs@aeeb25bc9ce9c481704a17c93917fc345046b2d4:1-EOF; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_48Validation.cs@2b8fed009d87ffbdaa1c5770350185eb16f62f52:1-EOF; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_50Validation.cs@566d964df4f5582477c2ee9934532b93bb3d00c4:1-EOF; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_51Validation.cs@c5c8e2bfc2b44ab440687f0125f9468a0791fde5:1-EOF; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_52Validation.cs@2f0b738abb87befd7d98202393f52b10cca0d964:1-EOF; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_53Validation.cs@39fd830a0c46ef2fb83623dc86b93c249506cf50:1-EOF; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_54Validation.cs@9553a90138550b14fb42e05039ed30e2df562747:1-EOF; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_55Validation.cs@d2ce3e8a0870e2e507a5a0750d25ac315103b0e4:1-EOF; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_56Validation.cs@f6692e5ea9d37459e49cd415adf17a0c303acc57:1-EOF; current_primary_sha256=c6f7fe1ee486a6231ab6e07ebad5ecf39044d92f80759befc1dac6e9cc86c6a3",
+  "source_sha256": "c6f7fe1ee486a6231ab6e07ebad5ecf39044d92f80759befc1dac6e9cc86c6a3",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Packages\\dev.unity2foxglove.sdk\\Tests\\Runtime\\Phase163_45Validation.cs').read_text(encoding='utf-8'); assert t.strip(); print('I07_SOURCE_BOUND', len(t))\"",
+  "literal_output": "I07_SOURCE_BOUND 5915",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:08:40.089164+00:00"
+}

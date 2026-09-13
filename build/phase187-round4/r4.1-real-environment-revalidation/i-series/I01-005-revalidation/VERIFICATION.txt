@@ -1,0 +1,1 @@
+I01-005 direct source probe: provider registry freezes id/order at registration, quarantines conflicts (Definitions.Count == 1), and reserves built-in ID. RESULT=SATISFIED_BY_ROUND4.

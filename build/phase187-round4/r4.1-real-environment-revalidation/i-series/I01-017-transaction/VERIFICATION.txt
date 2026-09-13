@@ -1,0 +1,4 @@
+I01-017 verification
+RED: pre-fix DrawCertificateUtilityButtons used hasCertificateFiles = File.Exists(pfxPath) || File.Exists(rootPath), enabling Root copy with PFX only.
+GREEN: current source wraps Copy Root CA SHA-256 in DisabledScope(!File.Exists(rootPath)); direct source probe exit 0.
+Controls: root-only and both-file availability remain enabled; PFX-only root copy disabled by predicate.

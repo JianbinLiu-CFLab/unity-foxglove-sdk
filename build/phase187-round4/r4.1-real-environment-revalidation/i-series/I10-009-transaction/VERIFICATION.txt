@@ -1,0 +1,11 @@
+I10-009 direct source-level RED/GREEN transaction
+source: Scripts/smoke/ros2/phase162_lyrical_zenoh_player_smoke.py
+RED command: python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_phase162_bounded_runner_does_not_turn_timeout_into_success
+RED literal output/result: FAIL; AssertionError: timeout sentinel absent
+RED exit_status: 1
+GREEN command: python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_phase162_bounded_runner_does_not_turn_timeout_into_success
+GREEN literal output/result: Ran 1 test ... OK
+GREEN exit_status: 0
+controls: lingering timed-out child now receives explicit nonzero sentinel 124; zero-exit conversion is prevented
+rollback_command: bash ROLLBACK.sh
+rollback_result: ROLLBACK_OK; ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true

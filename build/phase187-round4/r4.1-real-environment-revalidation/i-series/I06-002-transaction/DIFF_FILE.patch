@@ -1,0 +1,38 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
+index 15d9cd74a..5526ddc24 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
+@@ -290,6 +290,13 @@ class Program
+     {
+         if (argSet.Contains("--list-validations"))
+         {
++            if (argList.Count != 1 || !string.Equals(argList[0], "--list-validations", StringComparison.Ordinal))
++            {
++                Console.Error.WriteLine("--list-validations cannot be combined with other arguments.");
++                exitCode = 1;
++                return true;
++            }
++
+             foreach (var validation in PhaseValidationRegistry.All)
+             {
+                 var flags = string.Join(", ", validation.AllFlags());
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs b/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
+index d1a984e73..c0de7698d 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
+@@ -93,6 +93,15 @@ namespace Unity.FoxgloveSDK.UnitTests
+             Assert.Contains("exactly once", result.StandardError, StringComparison.OrdinalIgnoreCase);
+         }
+ 
++        [Fact]
++        public async Task ListValidationsRejectsConflictingArguments()
++        {
++            var result = await RunHarnessAsync(new[] { "--list-validations", "--phase163-57" }, timeoutMilliseconds: 20_000);
++
++            Assert.NotEqual(0, result.ExitCode);
++            Assert.Contains("cannot be combined", result.StandardError, StringComparison.OrdinalIgnoreCase);
++        }
++
+         [Fact]
+         public async Task TimedOutHarnessReportsOutputAfterDrainingKilledProcess()
+         {

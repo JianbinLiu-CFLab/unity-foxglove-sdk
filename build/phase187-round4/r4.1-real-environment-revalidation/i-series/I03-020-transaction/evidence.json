@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I03-020",
+  "source_anchor": "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64/package.json@4a1aa2113126e073b4776d73fe57dca1f9367593:5-19; Scripts/package/validate_unity_package.py@c8c0b57ba6ad785ae9f5f90f75efcaecbbe25363:5-19; .github/workflows/package-check.yml@80965f2f12a7c99a38c0b9b31503e0faab18d71d:45-50; Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64/package.json@4a1aa2113126e073b4776d73fe57dca1f9367593:4; Scripts/package/validate_unity_package.py@c8c0b57ba6ad785ae9f5f90f75efcaecbbe25363:4; .github/workflows/package-check.yml@80965f2f12a7c99a38c0b9b31503e0faab18d71d:4; current_primary_sha256=6101be51a8c9dabfc98241c0c49558bab719bffbc045f352d36604120409d86c",
+  "source_sha256": "6101be51a8c9dabfc98241c0c49558bab719bffbc045f352d36604120409d86c",
+  "command": "python -B Scripts/package/validate_unity_package.py",
+  "literal_output": "; validate_unity_package: 72 check(s) passed.",
+  "exit_status": 0,
+  "disposition": "CONFIRMED_FIXED",
+  "timestamp": "2026-09-13T00:45:37.530542+00:00"
+}

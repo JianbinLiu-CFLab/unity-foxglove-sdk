@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -58,7 +59,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var source = TestSources.Text(".github/workflows/dotnet-tests.yml");
             var uploadStart = source.IndexOf("- name: Upload MCAP differential report", StringComparison.Ordinal);
             Assert.True(uploadStart >= 0, "MCAP differential report upload step is missing.");
-            var uploadEnd = source.IndexOf("\n\n", uploadStart, StringComparison.Ordinal);
+            var uploadEnd = source.IndexOf("\n      - ", uploadStart + 1, StringComparison.Ordinal);
             var uploadStep = source.Substring(
                 uploadStart,
                 (uploadEnd >= 0 ? uploadEnd : source.Length) - uploadStart);
@@ -73,7 +74,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var source = TestSources.Text(".github/workflows/dotnet-tests.yml");
             var analyzerStart = source.IndexOf("analyzer-freshness:", StringComparison.Ordinal);
             var longPathStep = source.IndexOf("Enable Git long-path support", StringComparison.Ordinal);
-            var checkout = source.IndexOf("uses: actions/checkout@v4", analyzerStart, StringComparison.Ordinal);
+            var checkoutMatch = Regex.Match(source.Substring(analyzerStart), @"uses: actions/checkout@(?:v4|[0-9a-f]{40})");
+            var checkout = checkoutMatch.Success ? analyzerStart + checkoutMatch.Index : -1;
 
             Assert.True(analyzerStart >= 0, "The Windows analyzer job is missing.");
             Assert.True(longPathStep > analyzerStart && longPathStep < checkout, "Git long-path support must be enabled before checkout.");

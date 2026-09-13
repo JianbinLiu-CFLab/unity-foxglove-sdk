@@ -1,0 +1,5 @@
+I10-006 Phase186 createdAt freshness transaction
+source=Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase186BatchModeRos2BridgeProbe.cs
+RED: loader required createdAt key but did not parse or enforce invocation freshness.
+GREEN: Load now parses ISO createdAt and rejects malformed or older-than-30-minute run configs.
+Controls: exact key/schema checks remain; current timestamp accepted, stale/malformed rejected by deterministic predicate.

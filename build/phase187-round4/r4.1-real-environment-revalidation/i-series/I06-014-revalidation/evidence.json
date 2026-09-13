@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I06-014",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs@580cb6340fb718e821bbd6694e3cff87f97d19ee:72; Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeValidationOptimizationTests.cs@54a3043fa24de65787ea19a9bbeae4793ba766da:72; current_primary_sha256=170325bf751e8ce962af6944d350237beaab394e91aa344ef42dde816040cc18",
+  "source_sha256": "c794cda6b09dacf6e2785a11d44734a94db08f0e98c76785968c548098aef865",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Packages\\dev.unity2foxglove.sdk\\Tests\\Runtime\\Program.cs').read_text(); assert 'TempMcapHelper.Cleanup()' in t and 'finally' in t; print('RUNTIME_CLEANUP_CONTRACT_OK')\"",
+  "literal_output": "RUNTIME_CLEANUP_CONTRACT_OK",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T00:54:34.574931+00:00"
+}

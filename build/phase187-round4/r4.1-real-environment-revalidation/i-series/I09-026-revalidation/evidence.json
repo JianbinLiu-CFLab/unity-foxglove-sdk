@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-026",
+  "source_anchor": "Tools/foxglove-extensions/foxrun-publish-panel/src/index.ts@bfc70e03325ef85d75e4319568fbe776b51cad52:139-189; current_primary_sha256=b1d5ae42bb739f923e73ae47fcbd9859822851776e949e9c8f376443b9143ab3",
+  "source_sha256": "b1d5ae42bb739f923e73ae47fcbd9859822851776e949e9c8f376443b9143ab3",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Tools\\foxglove-extensions\\foxrun-publish-panel\\src\\index.ts').read_text(encoding='utf-8'); assert t.strip(); print('SOURCE_PRESENT')\"",
+  "literal_output": "SOURCE_PRESENT",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:16.960685+00:00"
+}

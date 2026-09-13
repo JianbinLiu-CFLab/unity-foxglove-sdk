@@ -1,0 +1,5 @@
+I11-008 direct source revalidation
+command: python -B build/phase187-round4/r4.1-real-environment-revalidation/i-series/I11-008-revalidation/probe.py
+literal_output: two_distinct_volume_paths=True; shell_fact_bound=True; three_distro_loop=True; distro_scripts_exist=True; RESULT=REFUTED
+exit_status: 0
+Current tests bind the two volume profile paths independently, the single bridge shell path explicitly, and each humble/jazzy/lyrical build script through a distinct loop iteration. No same-path or omitted-variant defect reproduced.

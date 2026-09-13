@@ -1,0 +1,10 @@
+{
+  "finding_id": "I10-008",
+  "source_anchor": "Scripts/smoke/ros2/phase181_custom_ros2_peer.py@cf2b503be24d91d9b875d56c7d962a0c631c2c56:756-840; Scripts/smoke/ros2/phase181_custom_ros2_peer.py@cf2b503be24d91d9b875d56c7d962a0c631c2c56:2753-2775; current_primary_sha256=399c109a5134e6a418a170872875d80a39c5fa31ced5a2c1e701aa0121f592de",
+  "source_sha256": "399c109a5134e6a418a170872875d80a39c5fa31ced5a2c1e701aa0121f592de",
+  "command": "python -m unittest Scripts.smoke.ros2.regression_checks.test_ros2_windows_env Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer",
+  "literal_output": "I10 ROS2 owner suites: PASS; [2026-09-13T02:56:11.106+02:00] [test] RViz2 Popen returned pid=1234 popen_elapsed=0.000s total_elapsed=0.004s",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T00:56:11.566893+00:00"
+}

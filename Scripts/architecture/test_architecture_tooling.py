@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -85,6 +86,98 @@ class ArchitectureToolingTests(unittest.TestCase):
         self.assertEqual(1, len(metrics))
         self.assertEqual("<invalid-json-object>", metrics[0].name)
         self.assertEqual([], metrics[0].references)
+
+    def test_read_text_rejects_lossy_utf8(self) -> None:
+        """Corrupt tracked bytes must fail instead of being replaced."""
+        module = load_module("analyze_coupling_strict_text_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "broken.cs"
+            path.write_bytes(b"namespace Valid { \xff }\n")
+            with self.assertRaises(UnicodeDecodeError):
+                module.read_text(Path(temp), "broken.cs")
+
+    def test_asmdef_collection_rejects_invalid_schema_shapes(self) -> None:
+        """Asmdef names/references must retain their declared JSON types."""
+        module = load_module("analyze_coupling_asmdef_schema_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            paths = []
+            cases = {
+                "missing-name.asmdef": {"references": []},
+                "numeric-name.asmdef": {"name": 7, "references": []},
+                "string-refs.asmdef": {"name": "A", "references": "B"},
+                "nonstring-ref.asmdef": {"name": "A", "references": [3]},
+            }
+            for filename, payload in cases.items():
+                path = root / filename
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                paths.append(filename)
+
+            metrics = module.collect_asmdef_metrics(root, paths)
+
+        self.assertEqual(4, len(metrics))
+        self.assertTrue(all(item.name == "<invalid-schema>" for item in metrics))
+
+    def test_write_output_publishes_complete_report_atomically(self) -> None:
+        """Output publication keeps the destination complete across replacement."""
+        module = load_module("analyze_coupling_atomic_output_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "report.json"
+            output.write_text("OLD-COMPLETE\n", encoding="utf-8")
+            module.write_output("NEW-COMPLETE\n", str(output))
+            self.assertEqual("NEW-COMPLETE\n", output.read_text(encoding="utf-8"))
+            self.assertFalse(any(output.parent.glob(".*.tmp")))
+
+    def test_git_ls_files_preserves_newline_and_quote_paths(self) -> None:
+        """NUL-delimited git output keeps literal path identities intact."""
+        module = load_module("analyze_coupling_git_paths_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        class Result:
+            """Synthetic subprocess result preserving literal NUL-delimited paths."""
+            returncode = 0
+            stdout = b"dir/new\nline.cs\0dir/quote\"name.cs\0"
+            stderr = b""
+
+        with mock.patch.object(module.subprocess, "run", return_value=Result()) as run:
+            paths = module.run_git_ls_files(Path("."))
+
+        self.assertEqual(["dir/new\nline.cs", 'dir/quote"name.cs'], paths)
+        self.assertIn("-z", run.call_args.args[0])
+
+    def test_read_text_rejects_source_changed_during_read(self) -> None:
+        """A report must not mix bytes when a source mutates mid-read."""
+        module = load_module("analyze_coupling_mutating_source_under_test", "Scripts/architecture/analyze_coupling.py")
+
+        class FakePath:
+            """Path fixture whose metadata changes between reads."""
+            def __init__(self):
+                """Seed deterministic metadata snapshots."""
+                self._stats = iter(((1, 3, 9), (2, 3, 9)))
+
+            def stat(self):
+                """Return the next metadata snapshot."""
+                class S:
+                    """Minimal stat result fixture."""
+                    pass
+                s = S()
+                s.st_mtime_ns, s.st_size, s.st_ino = next(self._stats)
+                return s
+
+            def read_bytes(self):
+                """Return stable file bytes."""
+                return b"abc"
+
+        class FakeRoot:
+            """Root fixture yielding a mutating path."""
+            def __truediv__(self, _relative):
+                """Resolve a relative path to the fixture."""
+                return FakePath()
+
+        with self.assertRaises(RuntimeError):
+            module.read_text(FakeRoot(), "changed.cs")
 
     def test_report_flags_root_developer_meta_as_a_private_boundary(self) -> None:
         """Architecture reporting must include a tracked root Developer.meta."""

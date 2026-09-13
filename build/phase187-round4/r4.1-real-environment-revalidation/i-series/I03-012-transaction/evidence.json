@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I03-012",
+  "source_anchor": "Scripts/package/validate_unity_package.py@c8c0b57ba6ad785ae9f5f90f75efcaecbbe25363:445-465; Scripts/package/validate_source_generator_dll.py@66348745e50432de3eda1ad6b5e34e55dcb11fcd:445-465; Scripts/package/validate_unity_package.py@c8c0b57ba6ad785ae9f5f90f75efcaecbbe25363:123-157; Scripts/package/validate_source_generator_dll.py@66348745e50432de3eda1ad6b5e34e55dcb11fcd:123-157; Scripts/package/validate_unity_package.py@c8c0b57ba6ad785ae9f5f90f75efcaecbbe25363:275-301; current_primary_sha256=10eb4a9d5ca4e4e9d95d5232d5fc304c5993f8722a8971cf760c9d6d67ed9c51",
+  "source_sha256": "70aa6429831f2f12b2faddf25ce89683f12afed1abc9f8964860da1152517207",
+  "command": "python -B Scripts/package/validate_unity_package.py",
+  "literal_output": "; validate_unity_package: 72 check(s) passed.",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T00:45:37.521580+00:00"
+}

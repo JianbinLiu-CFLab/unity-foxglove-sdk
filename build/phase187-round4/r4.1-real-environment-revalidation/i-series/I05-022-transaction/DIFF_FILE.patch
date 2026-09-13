@@ -1,0 +1,128 @@
+diff --git a/.github/workflows/dotnet-tests.yml b/.github/workflows/dotnet-tests.yml
+index 668e4b597..af102739a 100644
+--- a/.github/workflows/dotnet-tests.yml
++++ b/.github/workflows/dotnet-tests.yml
+@@ -60,6 +60,7 @@ jobs:
+         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj
+ 
+       - name: Run xUnit unit tests
++        if: always()
+         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
+ 
+       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+@@ -67,6 +68,7 @@ jobs:
+           node-version: "22"
+ 
+       - name: Run FoxRun publish panel behavior tests
++        if: always()
+         working-directory: Tools/foxglove-extensions/foxrun-publish-panel
+         run: |
+           npm ci
+@@ -74,24 +76,31 @@ jobs:
+           npm test
+ 
+       - name: Enable Corepack for the pinned official MCAP harness
++        if: always()
+         run: corepack enable
+ 
+       - name: Restore Roslyn analyzer project
++        if: always()
+         run: dotnet restore Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj
+ 
+       - name: Validate source generator DLL freshness script
++        if: always()
+         run: python3 Scripts/package/validate_source_generator_dll.py
+ 
+       - name: Validate generated ROS2 schema output freshness
++        if: always()
+         run: python3 Scripts/schema/validate_schema_generated_outputs.py
+ 
+       - name: Restore runtime test project
++        if: always()
+         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
+ 
+       - name: Run validation suite
++        if: always()
+         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
+ 
+       - name: Run Phase179 ROS2 acceptance helper regressions
++        if: always()
+         run: |
+           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_inbound_acceptance
+           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host
+@@ -99,6 +108,7 @@ jobs:
+           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_zenoh_topology
+ 
+       - name: Run Phase181 custom ROS2 acceptance helper regressions
++        if: always()
+         run: |
+           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer_protocol
+           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer
+@@ -113,12 +123,15 @@ jobs:
+           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain
+ 
+       - name: Run Phase186 Bridge tooling and package-composition gate
++        if: always()
+         run: python3 Scripts/release/run_ci.py --only phase186-bridge-tooling
+ 
+       - name: Run official MCAP differential conformance
++        if: always()
+         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/${{ github.run_id }}-${{ github.run_attempt }}/phase121-conformance-report.json
+ 
+       - name: Validate local entrypoints
++        if: always()
+         run: python3 Scripts/package/validate_local_entrypoints.py
+ 
+       - name: Upload xUnit test results
+diff --git a/Scripts/release/regression_checks/test_release_tooling.py b/Scripts/release/regression_checks/test_release_tooling.py
+index 282284966..c3afd19d9 100644
+--- a/Scripts/release/regression_checks/test_release_tooling.py
++++ b/Scripts/release/regression_checks/test_release_tooling.py
+@@ -571,6 +571,18 @@ class RunCiTests(unittest.TestCase):
+         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+         self.assertNotIn("--ignore-failed-sources", workflow)
+ 
++    def test_local_restore_matches_remote_strict_source_semantics(self) -> None:
++        """Local restore must not turn an unavailable feed into a cache-only green run."""
++        with mock.patch.object(self.run_ci, "run", return_value=True) as run_command:
++            self.assertTrue(
++                self.run_ci.restore_with_ignoring_failed_sources(
++                    "sample.csproj", "strict restore", fatal=False
++                )
++            )
++        command = run_command.call_args.args[0]
++        self.assertEqual(["dotnet", "restore", "sample.csproj"], command)
++        self.assertNotIn("--ignore-failed-sources", command)
++
+     def test_heavy_pull_request_workflows_cancel_superseded_runs(self) -> None:
+         """Superseded dotnet and package runs should release hosted CI capacity."""
+ 
+@@ -624,6 +636,28 @@ class RunCiTests(unittest.TestCase):
+         runtime = active_workflow_line_index(workflow, "- name: Run validation suite")
+         self.assertLess(xunit, runtime)
+ 
++    def test_dotnet_workflow_collects_independent_gate_results_after_early_failure(self) -> None:
++        """Independent remote gates must execute after an earlier step fails."""
++        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
++        for step in (
++            "- name: Run xUnit unit tests",
++            "- name: Run FoxRun publish panel behavior tests",
++            "- name: Validate source generator DLL freshness script",
++            "- name: Validate generated ROS2 schema output freshness",
++            "- name: Run validation suite",
++            "- name: Run Phase179 ROS2 acceptance helper regressions",
++            "- name: Run Phase181 custom ROS2 acceptance helper regressions",
++            "- name: Run Phase186 Bridge tooling and package-composition gate",
++            "- name: Run official MCAP differential conformance",
++            "- name: Validate local entrypoints",
++        ):
++            start = active_workflow_line_index(workflow, step)
++            lines = workflow.splitlines()
++            self.assertTrue(
++                any(line.strip() == "if: always()" for line in lines[start + 1 : start + 4]),
++                step,
++            )
++
+     def test_dotnet_workflow_runs_xunit_before_panel_lane(self) -> None:
+         """The unit-test gate must run even when the panel lane fails first."""
+         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")

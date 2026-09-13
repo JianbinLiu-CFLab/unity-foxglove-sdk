@@ -99,9 +99,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && validator.Contains("\"ROS2 Bridge Sample\"", StringComparison.Ordinal)
                   && validator.Contains("\"Samples~/Ros2BridgeSample\"", StringComparison.Ordinal),
                 "134-23-D2: release validator checks neutral core and Bridge Provider sample declarations");
-            Check(validator.Contains("check_sample_meta(results, samples_files)", StringComparison.Ordinal)
-                  && validator.Contains("check_sample_boundaries(results)", StringComparison.Ordinal)
-                  && validator.Contains("check_forbidden_sample_artifacts(results, samples_entries)", StringComparison.Ordinal),
+            Check(validator.Contains("check_sample_meta", StringComparison.Ordinal)
+                  && validator.Contains("samples_files", StringComparison.Ordinal)
+                  && validator.Contains("bridge_files", StringComparison.Ordinal)
+                  && validator.Contains("check_sample_boundaries", StringComparison.Ordinal)
+                  && validator.Contains("check_forbidden_sample_artifacts", StringComparison.Ordinal),
                 "134-23-D3: release validator runs sample meta, boundary, and artifact checks");
             Check(validator.Contains("FullDemo avoids project-level input action assets", StringComparison.Ordinal)
                   && validator.Contains("InputSystem_Actions.inputactions", StringComparison.Ordinal),

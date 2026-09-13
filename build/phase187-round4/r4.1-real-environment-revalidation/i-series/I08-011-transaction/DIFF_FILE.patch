@@ -1,0 +1,44 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
+index 52e07deed..daecfea49 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
+@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
+     public static class Phase134_10Validation
+     {
+         private static int _passed;
++        private static int _cleanupFailures;
+ 
+         /// <summary>
+         /// Validation method for Validate.
+@@ -30,6 +31,7 @@ namespace Unity.FoxgloveSDK.Tests
+             Console.WriteLine();
+             Console.WriteLine("=== Phase 134-10: MCAP Replay DataLoader Remote ===");
+             _passed = 0;
++            _cleanupFailures = 0;
+ 
+             DefaultQueryAppliesMessageBudget();
+             ExplicitQueryCapStillWins();
+@@ -43,6 +45,8 @@ namespace Unity.FoxgloveSDK.Tests
+             DecodedPayloadAvailabilityDistinguishesWarnings();
+             RemoteManifestResponsesAreClonedAndTyped();
+             OptionalDecoderFactoryDiagnosticsAreExposed();
++            Check(_cleanupFailures == 0,
++                "134-10L-1: all temporary MCAP fixtures are deleted successfully");
+ 
+             Console.WriteLine($"Phase 134-10: {_passed} checks passed.");
+         }
+@@ -424,10 +428,13 @@ namespace Unity.FoxgloveSDK.Tests
+             {
+                 if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                     File.Delete(path);
++                if (!string.IsNullOrEmpty(path) && File.Exists(path))
++                    _cleanupFailures++;
+             }
+             catch
+             {
+-                // Best-effort cleanup for temp validation fixtures.
++                _cleanupFailures++;
++                Console.Error.WriteLine("[FAIL] 134-10 cleanup could not delete temporary MCAP fixture: " + path);
+             }
+         }
+ 

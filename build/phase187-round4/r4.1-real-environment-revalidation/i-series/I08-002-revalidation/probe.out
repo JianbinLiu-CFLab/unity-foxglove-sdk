@@ -1,0 +1,4 @@
+default_branch_delegates_to_unity_gate=true
+materialized_artifact_read_requires_evidence_root=true
+result=SATISFIED_BY_ROUND4
+source_sha256=f82df1668f6a4de2703d4347ab94738011779ecad0e5d7303ee75210fc613baa

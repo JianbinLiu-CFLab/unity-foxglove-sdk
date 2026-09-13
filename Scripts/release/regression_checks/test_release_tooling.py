@@ -556,7 +556,7 @@ class RunCiTests(unittest.TestCase):
 
         for path in WORKFLOW_PATHS:
             workflow = path.read_text(encoding="utf-8")
-            checkout_count = workflow.count("uses: actions/checkout@v4")
+            checkout_count = len(re.findall(r"uses:\s*actions/checkout@(?:v4|[0-9a-f]{40})(?:\s|#)", workflow))
             hardened_count = workflow.count("persist-credentials: false")
             self.assertGreater(checkout_count, 0, path.name)
             self.assertEqual(
@@ -570,6 +570,18 @@ class RunCiTests(unittest.TestCase):
 
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
         self.assertNotIn("--ignore-failed-sources", workflow)
+
+    def test_local_restore_matches_remote_strict_source_semantics(self) -> None:
+        """Local restore must not turn an unavailable feed into a cache-only green run."""
+        with mock.patch.object(self.run_ci, "run", return_value=True) as run_command:
+            self.assertTrue(
+                self.run_ci.restore_with_ignoring_failed_sources(
+                    "sample.csproj", "strict restore", fatal=False
+                )
+            )
+        command = run_command.call_args.args[0]
+        self.assertEqual(["dotnet", "restore", "sample.csproj"], command)
+        self.assertNotIn("--ignore-failed-sources", command)
 
     def test_heavy_pull_request_workflows_cancel_superseded_runs(self) -> None:
         """Superseded dotnet and package runs should release hosted CI capacity."""
@@ -623,6 +635,28 @@ class RunCiTests(unittest.TestCase):
         xunit = active_workflow_line_index(workflow, "- name: Run xUnit unit tests")
         runtime = active_workflow_line_index(workflow, "- name: Run validation suite")
         self.assertLess(xunit, runtime)
+
+    def test_dotnet_workflow_collects_independent_gate_results_after_early_failure(self) -> None:
+        """Independent remote gates must execute after an earlier step fails."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        for step in (
+            "- name: Run xUnit unit tests",
+            "- name: Run FoxRun publish panel behavior tests",
+            "- name: Validate source generator DLL freshness script",
+            "- name: Validate generated ROS2 schema output freshness",
+            "- name: Run validation suite",
+            "- name: Run Phase179 ROS2 acceptance helper regressions",
+            "- name: Run Phase181 custom ROS2 acceptance helper regressions",
+            "- name: Run Phase186 Bridge tooling and package-composition gate",
+            "- name: Run official MCAP differential conformance",
+            "- name: Validate local entrypoints",
+        ):
+            start = active_workflow_line_index(workflow, step)
+            lines = workflow.splitlines()
+            self.assertTrue(
+                any(line.strip() == "if: always()" for line in lines[start + 1 : start + 4]),
+                step,
+            )
 
     def test_dotnet_workflow_runs_xunit_before_panel_lane(self) -> None:
         """The unit-test gate must run even when the panel lane fails first."""
@@ -787,6 +821,8 @@ class RunCiTests(unittest.TestCase):
             "Scripts.smoke.test_core_smoke_scripts",
             "Scripts.smoke.ros2.regression_checks.test_phase162_lyrical_zenoh_player_smoke",
             "Scripts.smoke.ros2.regression_checks.test_ros2_windows_env",
+            "Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe",
+            "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual",
         )
         calls: list[list[str]] = []
 
@@ -920,6 +956,36 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual(7, result.timeout_seconds)
         self.assertEqual("partial stdout\n", result.stdout)
         self.assertEqual("partial stderr\n", result.stderr)
+
+    def test_run_captured_bounds_large_output_with_marker(self) -> None:
+        """Captured command output is bounded and marked when truncated."""
+        huge = "x" * (self.run_ci.MAX_CAPTURED_OUTPUT_CHARS + 4096)
+        completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout=huge, stderr=huge)
+        with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed):
+            result = self.run_ci.run_captured(["tool"], "large output")
+        self.assertLessEqual(len(result.stdout), self.run_ci.MAX_CAPTURED_OUTPUT_CHARS)
+        self.assertIn("output truncated at", result.stdout)
+        self.assertLessEqual(len(result.stderr), self.run_ci.MAX_CAPTURED_OUTPUT_CHARS)
+
+    def test_restore_fallback_retries_only_restore_state_failures(self) -> None:
+        """Restore-state failures trigger exactly one fallback retry."""
+        restore_failure = self.run_ci.CapturedCommandResult(
+            "build", False, 1, 0.1, "error NETSDK1004: project.assets.json not found", ""
+        )
+        with mock.patch.object(self.run_ci, "run_captured", return_value=restore_failure):
+            with mock.patch.object(self.run_ci, "run", return_value=True) as fallback:
+                self.assertTrue(self.run_ci.run_with_restore_fallback(["first"], ["restore"], "build"))
+        fallback.assert_called_once_with(["restore"], "build (retry with restore)", fatal=False)
+
+    def test_restore_fallback_does_not_hide_non_restore_failure(self) -> None:
+        """Compiler failures are returned without a misleading restore retry."""
+        compiler_failure = self.run_ci.CapturedCommandResult(
+            "build", False, 1, 0.1, "error CS1002: ; expected", ""
+        )
+        with mock.patch.object(self.run_ci, "run_captured", return_value=compiler_failure):
+            with mock.patch.object(self.run_ci, "run") as fallback:
+                self.assertFalse(self.run_ci.run_with_restore_fallback(["first"], ["restore"], "build"))
+        fallback.assert_not_called()
 
     def test_run_parallel_replays_ordered_command_elapsed_time(self) -> None:
         """Parallel validator replay should retain labels, output order, return codes, and elapsed time."""
@@ -1085,9 +1151,7 @@ class RunCiTests(unittest.TestCase):
         )
         self.assertEqual(
             {
-                "mcap-conformance",
                 "phase184-acceptance-tooling",
-                "phase186-bridge-tooling",
             },
             {job.name for job in jobs if job.disable_timeout},
         )
@@ -1103,6 +1167,91 @@ class RunCiTests(unittest.TestCase):
             expected,
             {name: getattr(self.run_ci, name, None) for name in expected},
         )
+
+    def test_maintained_ci_dispatches_phase185_and_phase186_manual_regressions(self) -> None:
+        """Maintained CI must execute the standalone Phase185 and Phase186-H suites."""
+        self.assertIn(
+            "Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe",
+            self.run_ci.PACKAGE_LANE_REGRESSION_MODULES,
+        )
+        self.assertIn(
+            "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual",
+            self.run_ci.PACKAGE_LANE_REGRESSION_MODULES,
+        )
+
+    def test_unity_build_requires_succeeded_build_result(self) -> None:
+        """Unity build helper must gate success on BuildReport.summary.result."""
+        source = (ROOT / "Unity2Foxglove" / "Assets" / "Editor" / "FoxgloveBuild.cs").read_text(encoding="utf-8")
+        self.assertIn("report.summary.result == BuildResult.Succeeded", source)
+        self.assertIn("report.summary.totalErrors == 0", source)
+
+    def test_mcap_preflight_binds_latest_completion_and_clears_stale_evidence(self) -> None:
+        """Replay preflight must not overwrite edits or expose evidence for a failed path."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Manager" / "McapReplayPreflightDrawer.cs").read_text(encoding="utf-8")
+        self.assertIn("_pendingLatestReplayPathSnapshot", source)
+        self.assertIn("ClearCurrentEvidence", source)
+
+    def test_latest_recording_scan_is_streaming_and_cancellable(self) -> None:
+        """Latest-recording discovery must avoid eager path-array materialization."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Manager" / "McapReplayPreflightDrawer.cs").read_text(encoding="utf-8")
+        self.assertIn("Directory.EnumerateFiles", source)
+        self.assertNotIn("Directory.GetFiles(recordingsDir, \"*.mcap\", SearchOption.AllDirectories)", source)
+
+    def test_mcap_preflight_rejects_malformed_manifest_hash_identity(self) -> None:
+        """Replay identity must not classify arbitrary text as a manifest hash."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Manager" / "McapReplayPreflightDrawer.cs").read_text(encoding="utf-8")
+        self.assertIn("IsValidFoxRunHash", source)
+        self.assertIn("if (!IsValidFoxRunHash(hash))", source)
+        self.assertIn("return string.Empty;", source)
+
+    def test_encoding_inspectors_preserve_unsupported_serialized_values(self) -> None:
+        """Enum inspectors must not rewrite forward-compatible raw values on repaint."""
+        foxrun = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Shared" / "FoxRunEncodingEditorLabels.cs").read_text(encoding="utf-8")
+        publisher = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Shared" / "PublisherEncodingEditorLabels.cs").read_text(encoding="utf-8")
+        self.assertIn("EditorGUI.BeginChangeCheck", foxrun)
+        self.assertIn("EditorGUI.EndChangeCheck", foxrun)
+        self.assertIn("EditorGUI.BeginChangeCheck", publisher)
+
+    def test_phase134_read_repo_text_rejects_missing_source(self) -> None:
+        """Provider validation must fail closed when a required source file is absent."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase134_1Validation.cs").read_text(encoding="utf-8")
+        self.assertIn("if (!File.Exists(path))", source)
+        self.assertIn("throw new FileNotFoundException", source)
+
+    def test_phase13_try_read_repo_text_fails_closed_on_missing_source(self) -> None:
+        """Phase 13 validation must not turn missing source files into silent early returns."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase13Validation.cs").read_text(encoding="utf-8")
+        self.assertIn("if (!File.Exists(path))", source)
+        self.assertIn("throw new FileNotFoundException", source)
+
+    def test_phase13_recording_fixture_owns_and_cleans_temp_path(self) -> None:
+        """Recording validation must retain the temp-path identity through cleanup."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase13Validation.cs").read_text(encoding="utf-8")
+        self.assertIn("var recordingPath = Path.GetTempFileName()", source)
+        self.assertIn("File.Delete(recordingPath)", source)
+
+    def test_editor_security_uses_canonical_loopback_host_policy(self) -> None:
+        """Root-CA exposure warnings must normalize IPv4/IPv6 loopback forms."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Manager" / "FoxgloveManagerEditor.Security.cs").read_text(encoding="utf-8")
+        self.assertIn("FoxgloveManager.IsLoopbackHost(distributorHost)", source)
+
+    def test_editor_path_picker_tolerates_malformed_existing_value(self) -> None:
+        """Passive inspector rendering must survive malformed serialized paths."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Editor" / "Manager" / "FoxgloveManagerEditor.Helpers.cs").read_text(encoding="utf-8")
+        self.assertIn("catch (Exception)", source)
+        self.assertIn("return GetDefaultDir();", source)
+
+    def test_phase140_queue_stress_bounds_thread_joins(self) -> None:
+        """Concurrent queue validation must not hang indefinitely on a stalled worker."""
+        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase140_7Validation.cs").read_text(encoding="utf-8")
+        self.assertIn("producer.Join(TimeSpan.FromSeconds", source)
+        self.assertIn("consumer.Join(TimeSpan.FromSeconds", source)
+
+    def test_phase162_bounded_runner_does_not_turn_timeout_into_success(self) -> None:
+        """A timed-out ROS2 helper must return a nonzero status even if the child lingers."""
+        source = (ROOT / "Scripts" / "smoke" / "ros2" / "phase162_lyrical_zenoh_player_smoke.py").read_text(encoding="utf-8")
+        self.assertIn("if process.poll() is None", source)
+        self.assertIn("returncode = 124", source)
 
     def test_phase184_acceptance_regressions_have_a_truthful_dedicated_lane(self) -> None:
         """The selector must execute exactly six pure unittest suites in locked order."""
@@ -1231,7 +1380,7 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("phase186-bridge-tooling", names)
         self.assertNotIn("phase186-bridge-windows-live", names)
         tooling = next(job for job in jobs if job.name == "phase186-bridge-tooling")
-        self.assertTrue(tooling.disable_timeout)
+        self.assertFalse(tooling.disable_timeout)
 
     def test_phase186_bridge_tooling_selector_runs_exact_static_suites_and_matrix(self) -> None:
         """The tooling selector must never launch Unity, a sidecar, or a ROS peer."""
@@ -1272,7 +1421,7 @@ class RunCiTests(unittest.TestCase):
             for call in run.call_args_list
             if call.args[0][-1] == "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance"
         )
-        self.assertIs(True, provenance_call.kwargs["disable_timeout"])
+        self.assertEqual(self.run_ci.job_timeout_seconds(), provenance_call.kwargs["timeout_seconds"])
         for call in run.call_args_list:
             command = call.args[0]
             if command[-1] not in self.PHASE186_BRIDGE_TOOLING_SUITES or command[-1] == "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance":
@@ -1308,7 +1457,7 @@ class RunCiTests(unittest.TestCase):
             ],
             command,
         )
-        self.assertTrue(run.call_args.kwargs["disable_timeout"])
+        self.assertEqual(self.run_ci.job_timeout_seconds(), run.call_args.kwargs["timeout_seconds"])
 
     def test_phase186_bridge_windows_live_not_run_is_not_promoted_to_pass(self) -> None:
         """Any nonzero certification result, including NOT RUN, fails the selector."""
@@ -1922,7 +2071,7 @@ class RunCiTests(unittest.TestCase):
             """Capture the dedicated conformance command without executing it."""
             observed["cmd"] = cmd
             observed["label"] = label
-            observed["disable_timeout"] = kwargs.get("disable_timeout")
+            observed["timeout_seconds"] = kwargs.get("timeout_seconds")
             return True
 
         with mock.patch.object(self.run_ci, "run", side_effect=fake_run):
@@ -1931,7 +2080,7 @@ class RunCiTests(unittest.TestCase):
 
         self.assertIn("run_phase121_conformance.py", " ".join(observed["cmd"]))
         self.assertEqual("Official MCAP differential conformance", observed["label"])
-        self.assertIs(True, observed["disable_timeout"])
+        self.assertEqual(self.run_ci.job_timeout_seconds(), observed["timeout_seconds"])
 
     def test_parallel_mcap_job_disables_wall_clock_timeout(self) -> None:
         """The parent CI process must not reintroduce a deadline around the MCAP child."""
@@ -3388,6 +3537,15 @@ class UnityIl2CppBuildTests(unittest.TestCase):
     def _pid_is_running(pid: int) -> bool:
         """Check one PID with only standard-library platform primitives."""
         if os.name != "nt":
+            proc_stat = Path(f"/proc/{pid}/stat")
+            if proc_stat.is_file():
+                try:
+                    # A reaped process can remain as a zombie briefly; it no
+                    # longer executes and therefore satisfies the exit contract.
+                    if proc_stat.read_text(encoding="utf-8").split()[2] == "Z":
+                        return False
+                except (OSError, IndexError):
+                    return False
             try:
                 os.kill(pid, 0)
                 return True

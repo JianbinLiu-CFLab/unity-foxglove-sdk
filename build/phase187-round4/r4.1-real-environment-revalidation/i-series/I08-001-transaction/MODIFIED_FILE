@@ -1,0 +1,5 @@
+I08-001 compiled type assembly membership transaction
+source=Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
+RED: name-set check alone did not authenticate Type.Assembly identity.
+GREEN: VerifyCompiledTypesAndDefaultRegistry requires all five validation types to belong to the acceptance test assembly; phase185e exit 0, 19 checks passed.
+Controls: expected names and registry selectors remain asserted.

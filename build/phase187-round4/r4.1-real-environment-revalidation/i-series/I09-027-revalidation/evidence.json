@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-027",
+  "source_anchor": "Tools/foxglove-extensions/foxrun-publish-panel/src/protobuf.ts@b9c356d023d027e9f3f953be792132e840f43ebe:65-95; Tools/foxglove-extensions/foxrun-publish-panel/src/protobuf.ts@b9c356d023d027e9f3f953be792132e840f43ebe:146-159; Tools/foxglove-extensions/foxrun-publish-panel/src/protobuf.ts@b9c356d023d027e9f3f953be792132e840f43ebe:301-328; Tools/foxglove-extensions/foxrun-publish-panel/src/protocol.ts@99f8067e84b0f3e105b39cb70b05ba89128061e3:54-66; current_primary_sha256=9da919c3a466b5d4d2b39622563a94b2a4cc0ab60c768d096523a40d4e4d5ba5",
+  "source_sha256": "9da919c3a466b5d4d2b39622563a94b2a4cc0ab60c768d096523a40d4e4d5ba5",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Tools\\foxglove-extensions\\foxrun-publish-panel\\src\\protobuf.ts').read_text(encoding='utf-8'); assert t.strip(); print('SOURCE_PRESENT')\"",
+  "literal_output": "SOURCE_PRESENT",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:17.138437+00:00"
+}

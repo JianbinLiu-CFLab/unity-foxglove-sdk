@@ -1,0 +1,65 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
+index ca7c5c8f4..15d9cd74a 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
+@@ -321,6 +321,30 @@ class Program
+             return true;
+         }
+ 
++        // A registered selector authenticates the complete argv. Reject
++        // unknown/positional tokens and duplicate aliases before invoking any
++        // validation delegate; otherwise FindAll could silently drop intent.
++        var acceptedFlags = new HashSet<string>(selected[0].AllFlags(), StringComparer.Ordinal)
++        {
++            "--local-evidence"
++        };
++        var suppliedFlags = argList.Where(argument => argument.StartsWith("--", StringComparison.Ordinal)).ToList();
++        var invalidToken = argList.FirstOrDefault(argument => !acceptedFlags.Contains(argument));
++        if (invalidToken != null)
++        {
++            Console.Error.WriteLine("Unexpected validation argument: " + invalidToken);
++            exitCode = 1;
++            return true;
++        }
++
++        var selectorOccurrences = suppliedFlags.Count(argument => acceptedFlags.Contains(argument) && argument != "--local-evidence");
++        if (selectorOccurrences != 1)
++        {
++            Console.Error.WriteLine("Validation selector must be supplied exactly once.");
++            exitCode = 1;
++            return true;
++        }
++
+         exitCode = RunValidation(selected[0]);
+         return true;
+     }
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs b/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
+index 580cb6340..d1a984e73 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
+@@ -74,6 +74,25 @@ namespace Unity.FoxgloveSDK.UnitTests
+             Assert.Contains("--phase2", result.StandardError, StringComparison.Ordinal);
+         }
+ 
++        [Fact]
++        public async Task RegisteredValidationRejectsUnknownTokenBeforeDelegate()
++        {
++            var result = await RunHarnessAsync(new[] { "--phase163-57", "--phase-typo" }, timeoutMilliseconds: 20_000);
++
++            Assert.NotEqual(0, result.ExitCode);
++            Assert.Contains("Unexpected validation argument", result.StandardError, StringComparison.Ordinal);
++            Assert.DoesNotContain("checks passed", result.StandardOutput, StringComparison.OrdinalIgnoreCase);
++        }
++
++        [Fact]
++        public async Task RegisteredValidationRejectsDuplicateSelector()
++        {
++            var result = await RunHarnessAsync(new[] { "--phase163-57", "--phase163-57" }, timeoutMilliseconds: 20_000);
++
++            Assert.NotEqual(0, result.ExitCode);
++            Assert.Contains("exactly once", result.StandardError, StringComparison.OrdinalIgnoreCase);
++        }
++
+         [Fact]
+         public async Task TimedOutHarnessReportsOutputAfterDrainingKilledProcess()
+         {

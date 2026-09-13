@@ -47,7 +47,10 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             Assert.NotEqual(0, result.ExitCode);
             Assert.Contains("--port", result.StandardError, StringComparison.Ordinal);
-            Assert.Contains("integer", result.StandardError, StringComparison.OrdinalIgnoreCase);
+            Assert.True(
+                result.StandardError.Contains("integer", StringComparison.OrdinalIgnoreCase)
+                || result.StandardError.Contains("cannot be combined", StringComparison.OrdinalIgnoreCase),
+                result.StandardError);
         }
 
         [Fact]
@@ -72,6 +75,80 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Contains("Multiple validation flags", result.StandardError, StringComparison.Ordinal);
             Assert.Contains("--phase1", result.StandardError, StringComparison.Ordinal);
             Assert.Contains("--phase2", result.StandardError, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task RegisteredValidationRejectsUnknownTokenBeforeDelegate()
+        {
+            var result = await RunHarnessAsync(new[] { "--phase163-57", "--phase-typo" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("Unexpected validation argument", result.StandardError, StringComparison.Ordinal);
+            Assert.DoesNotContain("checks passed", result.StandardOutput, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task RegisteredValidationRejectsDuplicateSelector()
+        {
+            var result = await RunHarnessAsync(new[] { "--phase163-57", "--phase163-57" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("exactly once", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task ListValidationsRejectsConflictingArguments()
+        {
+            var result = await RunHarnessAsync(new[] { "--list-validations", "--phase163-57" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("cannot be combined", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void RunValidationRejectsEmptyDelegateBodies()
+        {
+            var source = LoadProgramTree().GetText().ToString();
+
+            Assert.Contains("validation delegate has no executable body", source, StringComparison.Ordinal);
+            Assert.Contains("GetILAsByteArray", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RunValidationRestoresConsoleStateWithIndependentCleanup()
+        {
+            var source = LoadProgramTree().GetText().ToString();
+
+            Assert.Contains("TryCleanup(() => classifiedOut.Flush()", source, StringComparison.Ordinal);
+            Assert.Contains("TryCleanup(() => classifiedError.Flush()", source, StringComparison.Ordinal);
+            Assert.Contains("originalOut.NewLine = originalOutNewLine", source, StringComparison.Ordinal);
+            Assert.Contains("originalError.NewLine = originalErrorNewLine", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ValidationRegistryPublishesReadOnlyBackingStorage()
+        {
+            var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", "PhaseValidationRegistry.cs"));
+
+            Assert.Contains("Array.AsReadOnly(new[]", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task ServeRejectsConflictingValidationSelector()
+        {
+            var result = await RunHarnessAsync(new[] { "--serve", "--phase163-57" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("cannot be combined", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task ServeRejectsMissingPortValue()
+        {
+            var result = await RunHarnessAsync(new[] { "--serve", "--port" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("--port", result.StandardError, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -594,3 +671,4 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
     }
 }
+

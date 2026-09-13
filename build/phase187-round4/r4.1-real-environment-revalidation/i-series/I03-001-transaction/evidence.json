@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I03-001",
+  "source_anchor": "Scripts/package/validate_unity_package.py@c8c0b57ba6ad785ae9f5f90f75efcaecbbe25363:740-747; Scripts/package/validate_unity_package.py@c8c0b57ba6ad785ae9f5f90f75efcaecbbe25363:223-232; Scripts/package/regression_checks/test_validate_unity_package.py@05aa0e8abff96407a7fef5cb64cc08784b99f594:34-443; Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase16Validation.cs@729f6d428f274b5555f2c1ce075ab6c52a2fb7a6:34-443; current_primary_sha256=10eb4a9d5ca4e4e9d95d5232d5fc304c5993f8722a8971cf760c9d6d67ed9c51",
+  "source_sha256": "70aa6429831f2f12b2faddf25ce89683f12afed1abc9f8964860da1152517207",
+  "command": "python -B Scripts/package/validate_unity_package.py",
+  "literal_output": "; validate_unity_package: 72 check(s) passed.",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T00:45:37.513884+00:00"
+}

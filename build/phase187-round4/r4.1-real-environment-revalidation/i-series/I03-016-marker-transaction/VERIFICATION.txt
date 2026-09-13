@@ -1,0 +1,1 @@
+I03-016 marker source-path ownership fix; matrix validator exit 0; focused marker test exit 0; rollback outputs ROLLBACK_OK, ROLLBACK_NOOP, seeded_equals_modified=true, restored_equals_original=true, live_modified_remains=true

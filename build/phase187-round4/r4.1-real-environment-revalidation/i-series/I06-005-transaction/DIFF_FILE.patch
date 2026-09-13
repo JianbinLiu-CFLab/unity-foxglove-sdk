@@ -1,0 +1,38 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
+index efbe750f6..c2dfe8472 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs
+@@ -416,6 +416,13 @@ class Program
+ 
+     private static int RunValidation(PhaseValidationCase validation)
+     {
++        var methodBody = validation.Run?.Method.GetMethodBody()?.GetILAsByteArray();
++        if (methodBody == null || methodBody.Length <= 1)
++        {
++            Console.Error.WriteLine($"[FAIL] {validation.Name}: validation delegate has no executable body.");
++            return 1;
++        }
++
+         var originalOut = Console.Out;
+         var originalError = Console.Error;
+         var classifiedOut = TextWriter.Synchronized(
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs b/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
+index e8d2adf18..e99c022ff 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs
+@@ -102,6 +102,15 @@ namespace Unity.FoxgloveSDK.UnitTests
+             Assert.Contains("cannot be combined", result.StandardError, StringComparison.OrdinalIgnoreCase);
+         }
+ 
++        [Fact]
++        public void RunValidationRejectsEmptyDelegateBodies()
++        {
++            var source = LoadProgramTree().GetText().ToString();
++
++            Assert.Contains("validation delegate has no executable body", source, StringComparison.Ordinal);
++            Assert.Contains("GetILAsByteArray", source, StringComparison.Ordinal);
++        }
++
+         [Fact]
+         public async Task ServeRejectsConflictingValidationSelector()
+         {

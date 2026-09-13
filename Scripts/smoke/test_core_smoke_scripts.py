@@ -593,6 +593,48 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
         self.assertEqual(module.EXIT_SUCCESS, result)
 
+    def test_fetch_asset_rejects_success_without_expected_marker(self) -> None:
+        """A status-ok response lacking the semantic asset marker must fail."""
+        module = load_smoke_module("fetch_asset_marker_under_test", "assets/fetch_asset_smoke.py")
+
+        def frame(payload: bytes) -> bytes:
+            """Build a deterministic invalid-asset response frame."""
+            return bytes([module.FETCH_ASSET_RESPONSE_OPCODE]) + (42).to_bytes(4, "little") + bytes([0]) + (0).to_bytes(4, "little") + payload
+
+        class FakeSocket:
+            """Minimal websocket socket fixture."""
+            async def send(self, _message):
+                """Accept the request frame."""
+                pass
+
+            async def recv(self):
+                """Return a semantically invalid asset frame."""
+                return frame(b"not-the-required-asset")
+
+        class FakeConnection:
+            """Async context manager wrapping the socket fixture."""
+            def __init__(self):
+                """Initialize the socket fixture."""
+                self.socket = FakeSocket()
+
+            async def __aenter__(self):
+                """Enter the connection context."""
+                return self.socket
+
+            async def __aexit__(self, _exc_type, _exc, _traceback):
+                """Leave the connection context."""
+                return False
+
+        args = SimpleNamespace(
+            host="127.0.0.1", port=8765, request_id=42, uri="asset://demo/test", output="",
+            drain_attempts=0, drain_timeout_seconds=0.01, response_attempts=1,
+            response_timeout_seconds=0.01, preview_chars=40,
+        )
+        with mock.patch.object(module.websockets, "connect", return_value=FakeConnection()):
+            result = asyncio.run(module.run(args))
+
+        self.assertEqual(module.EXIT_FAILURE, result)
+
     def test_phase138l_rviz_config_patch_fails_when_required_topic_tokens_are_missing(self) -> None:
         """RViz2 topic patching should not silently leave the default /points topic."""
         module = load_smoke_module("phase138l_rviz_under_test", "ros2/launch_phase138l_rviz2.py")

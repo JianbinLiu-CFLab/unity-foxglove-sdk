@@ -1,0 +1,19 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs b/Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs
+index 7703ac18a..4ccaed0f0 100644
+--- a/Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs
++++ b/Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs
+@@ -572,9 +572,12 @@ namespace Unity.FoxgloveSDK.Editor
+                         EditorUtility.RevealInFinder(revealPath);
+                     }
+ 
+-                    if (GUILayout.Button("Copy Root CA SHA-256"))
++                    using (new EditorGUI.DisabledScope(!File.Exists(rootPath)))
+                     {
+-                        EditorGUIUtility.systemCopyBuffer = fingerprint ?? string.Empty;
++                        if (GUILayout.Button("Copy Root CA SHA-256"))
++                        {
++                            EditorGUIUtility.systemCopyBuffer = fingerprint ?? string.Empty;
++                        }
+                     }
+                 }
+ 

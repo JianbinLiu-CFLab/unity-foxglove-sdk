@@ -1,0 +1,26 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Helpers.cs b/Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Helpers.cs
+index ccd1a81c0..fde457087 100644
+--- a/Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Helpers.cs
++++ b/Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Helpers.cs
+@@ -182,7 +182,9 @@ namespace Unity.FoxgloveSDK.Editor
+                     var d = defaultDir;
+                     EditorApplication.delayCall += () =>
+                     {
+-                        if (capturedProp.serializedObject == null || capturedProp.serializedObject.targetObject == null)
++                        if (capturedProp.serializedObject == null
++                            || capturedProp.serializedObject.targetObject == null
++                            || Selection.activeObject != capturedProp.serializedObject.targetObject)
+                             return;
+ 
+                         string selected;
+@@ -217,7 +219,9 @@ namespace Unity.FoxgloveSDK.Editor
+                 var d = defaultDir;
+                 EditorApplication.delayCall += () =>
+                 {
+-                    if (capturedProp.serializedObject == null || capturedProp.serializedObject.targetObject == null)
++                    if (capturedProp.serializedObject == null
++                        || capturedProp.serializedObject.targetObject == null
++                        || Selection.activeObject != capturedProp.serializedObject.targetObject)
+                         return;
+ 
+                     string selected;

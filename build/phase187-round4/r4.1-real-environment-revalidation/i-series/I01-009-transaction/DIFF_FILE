@@ -1,0 +1,26 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs b/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs
+index 8a0e7db58..780d3f64d 100644
+--- a/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs
++++ b/Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs
+@@ -137,9 +137,19 @@ namespace Unity.FoxgloveSDK.Editor
+                 return;
+             }
+ 
+-            AnalyzeReplayIdentity(path, refreshCurrentEvidence);
+-            SetMcapPreflightMessage("Analyzing replay file: " + MakeRelative(path), MessageType.Info);
+             var token = StartNewPendingWork();
++            try
++            {
++                AnalyzeReplayIdentity(path, refreshCurrentEvidence);
++            }
++            catch (Exception ex)
++            {
++                DisposePendingWorkToken();
++                SetMcapPreflightMessage($"MCAP identity check failed: {ex.Message}", MessageType.Error);
++                return;
++            }
++
++            SetMcapPreflightMessage("Analyzing replay file: " + MakeRelative(path), MessageType.Info);
+             _analyzeReplayTask = Task.Run(() => AnalyzeReplayMcapWorker(path, token), token);
+             EditorApplication.update -= CompleteAnalyzeReplayMcapIfReady;
+             EditorApplication.update += CompleteAnalyzeReplayMcapIfReady;

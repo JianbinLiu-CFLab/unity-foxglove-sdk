@@ -1,0 +1,24 @@
+Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/GenerationEditorOptimizationTests.cs calls= 6
+Phase140_68Validation.cs --phase140-68 Phase140_68Validation.Validate
+Phase140_69Validation.cs --phase140-69 Phase140_69Validation.Validate
+Phase140_70Validation.cs --phase140-70 Phase140_70Validation.Validate
+Phase140_71Validation.cs --phase140-71 Phase140_71Validation.Validate
+Phase140_72Validation.cs --phase140-72 Phase140_72Validation.Validate
+Phase140_73Validation.cs --phase140-73 Phase140_73Validation.Validate
+Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeValidationOptimizationTests.cs calls= 5
+Phase140_89Validation.cs --phase140-89 Phase140_89Validation.Validate
+Phase140_90Validation.cs --phase140-90 Phase140_90Validation.Validate
+Phase140_91Validation.cs --phase140-91 Phase140_91Validation.Validate
+Phase140_92Validation.cs --phase140-92 Phase140_92Validation.Validate
+Phase140_94Validation.cs --phase140-94 Phase140_94Validation.Validate
+Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/SampleToolingOptimizationTests.cs calls= 8
+Phase140_74Validation.cs --phase140-74 Phase140_74Validation.Validate
+Phase140_75Validation.cs --phase140-75 Phase140_75Validation.Validate
+Phase140_76Validation.cs --phase140-76 Phase140_76Validation.Validate
+Phase140_78Validation.cs --phase140-78 Phase140_78Validation.Validate
+Phase140_79Validation.cs --phase140-79 Phase140_79Validation.Validate
+Phase140_80Validation.cs --phase140-80 Phase140_80Validation.Validate
+Phase140_81Validation.cs --phase140-81 Phase140_81Validation.Validate
+Phase140_82Validation.cs --phase140-82 Phase140_82Validation.Validate
+TOTAL_EXACT_HELPER_CALLS= 19
+RESULT=REFUTED

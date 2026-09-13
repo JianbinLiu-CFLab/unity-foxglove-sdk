@@ -1,0 +1,28 @@
+002 Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
+  if (string.IsNullOrWhiteSpace(evidenceRoot)) = True
+  return; = True
+RESULT=CONFIRMED_CANDIDATE
+003 Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
+  if (string.IsNullOrWhiteSpace(evidenceRoot)) = True
+  return; = True
+  185E-10 = True
+RESULT=CONFIRMED_CANDIDATE
+004 Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
+  File.ReadAllText(evidencePath) = True
+  verdict = True
+RESULT=CONFIRMED_CANDIDATE
+005 Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase10Validation.cs
+  found >= 1 = True
+RESULT=CONFIRMED_CANDIDATE
+006 Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase10Validation.cs
+  Close() = True
+  Count = True
+RESULT=CONFIRMED_CANDIDATE
+007 Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_10Validation.cs
+  OptionalFactoryDiagnostics = True
+  diagnostics != null = True
+RESULT=CONFIRMED_CANDIDATE
+009 Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs
+  File.ReadAllText = True
+  Directory.GetFiles = True
+RESULT=CONFIRMED_CANDIDATE

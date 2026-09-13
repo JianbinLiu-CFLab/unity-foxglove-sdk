@@ -1,0 +1,15 @@
+finding_id: 187-R2-I05-005
+source_anchor: .github/workflows/dotnet-tests.yml::test.steps
+original_sha256: 031a40a5da01584ddcfb572515401d74873ce7a08f6087a9eb8369b88a1bb72a
+modified_sha256: add8dac184ea3a0d53eb8f8a6d577087a7b9bd8153703b3eed4db2505cc8d25b
+RED command: python I05-005-transaction/red_probe.py
+RED literal output: RED_MISSING_ALWAYS=10; RED_RESULT=True
+RED exit status: 0
+GREEN command: python I05-005-transaction/green_probe.py
+GREEN literal output: GREEN_MISSING_ALWAYS=0; GREEN_RESULT=True
+GREEN exit status: 0
+focused controls: RunCiTests workflow ordering and independent-gate collection tests passed.
+ROLLBACK command: python I05-005-transaction/ROLLBACK.sh
+ROLLBACK literal output: seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true; ROLLBACK_OK; ROLLBACK_NOOP
+ROLLBACK exit status: 0
+restored_behavior: independent remote gates execute under always() after earlier failures and each retains its own status.

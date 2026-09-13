@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
+import os
 import re
 import shutil
 import subprocess
@@ -74,6 +76,35 @@ TARGETS = {
         REPO_ROOT / "build/SourceGenerators/Ros2Bridge/validator/Release/netstandard2.0",
     ),
 }
+
+META_GUID_PATTERN = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
+
+
+def _validate_analyzer_meta(meta: Path, owner: str, seen_guids: dict[str, str]) -> list[str]:
+    """Validate Unity analyzer meta identity, importer kind, and GUID uniqueness."""
+    failures: list[str] = []
+    if not meta.is_file():
+        return [f"{owner}: analyzer .meta missing: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}"]
+    try:
+        text = meta.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"{owner}: analyzer .meta unreadable: {exc}"]
+    match = META_GUID_PATTERN.search(text)
+    if match is None:
+        failures.append(f"{owner}: analyzer .meta GUID is missing or malformed: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}")
+    else:
+        guid = match.group(1).lower()
+        prior = seen_guids.get(guid)
+        if prior is not None:
+            failures.append(f"{owner}: analyzer .meta GUID duplicates {prior}: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}")
+        else:
+            seen_guids[guid] = owner
+    if "PluginImporter:" not in text:
+        failures.append(f"{owner}: analyzer .meta lacks PluginImporter: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}")
+    if not re.search(r"(?m)^-\s+RoslynAnalyzer\s*$", text):
+        failures.append(f"{owner}: analyzer .meta lacks RoslynAnalyzer label: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}")
+    return failures
+
 
 PROVIDER_DEPENDENCIES = {
     "Microsoft.CodeAnalysis.Analyzers",
@@ -245,6 +276,7 @@ def run_build(
         *msbuild_props,
         "-c",
         "Release",
+        "--no-incremental",
         "-o",
         str(build_output_dir),
         "-v:minimal",
@@ -296,6 +328,10 @@ def run_build(
         )
         return False
 
+    primary_output = next(
+        (path for path in expected_paths if "SourceGenerator" in path.name),
+        expected_paths[0],
+    )
     for path in expected_paths:
         output_after = output_fingerprint(path)
         if output_after is None:
@@ -305,7 +341,7 @@ def run_build(
                 file=sys.stderr,
             )
             return False
-        if output_after == output_before[path]:
+        if path == primary_output and output_after == output_before[path]:
             print(
                 "[FAIL] Source generator Release build left the pre-existing "
                 f"output at {path} unchanged; it is not this build's output.",
@@ -346,22 +382,44 @@ def _normalize_compile_include(include: str) -> str:
     return include.replace("\\", "/")
 
 
+def _compile_include_has_wildcard(include: str) -> bool:
+    """Return whether a Compile Include uses any glob wildcard."""
+    return "*" in include or "?" in include
+
+
 def _project_sources(project: Path) -> list[Path]:
     """Resolve every explicit Compile item in one controlled analyzer project."""
     root = ET.parse(project).getroot()
+    excluded: list[str] = []
+    for node in root.findall(".//Compile"):
+        excluded.extend(
+            _normalize_compile_include(value.strip())
+            for value in node.attrib.get("Exclude", "").split(";")
+            if value.strip()
+        )
+
+    def is_excluded(path: Path) -> bool:
+        """Return whether a source path matches an explicit Compile exclusion."""
+        relative = os.path.relpath(path.resolve(), project.parent.resolve()).replace("\\", "/")
+        return any(
+            relative == pattern
+            or Path(relative).match(pattern)
+            for pattern in excluded
+        )
+
     sources: list[Path] = []
     for node in root.findall(".//Compile"):
         for include in node.attrib.get("Include", "").split(";"):
             include = include.strip()
             if include:
                 normalized = _normalize_compile_include(include)
-                if "*" in normalized or "?" in normalized:
+                if _compile_include_has_wildcard(normalized):
                     matches = [
                         path.resolve()
                         for path in project.parent.glob(
                             normalized
                         )
-                        if path.is_file()
+                        if path.is_file() and not is_excluded(path)
                     ]
                     if not matches:
                         raise ValueError(
@@ -370,10 +428,41 @@ def _project_sources(project: Path) -> list[Path]:
                         )
                     sources.extend(matches)
                 else:
-                    sources.append(
-                        (project.parent / normalized).resolve()
-                    )
+                    path = (project.parent / normalized).resolve()
+                    if not is_excluded(path):
+                        sources.append(path)
     return sources
+
+
+def _evaluated_msbuild_items(project: Path) -> dict[str, list[dict[str, str]]]:
+    """Read effective MSBuild items, including imported props/targets."""
+    command = [
+        "dotnet",
+        "msbuild",
+        str(project),
+        "-getItem:Compile;PackageReference;ProjectReference;Reference",
+        "-nologo",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"MSBuild evaluation failed for {project}: {exc}") from exc
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"MSBuild evaluation failed for {project}: exit {result.returncode}: {result.stderr.strip()}"
+        )
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"MSBuild evaluation returned non-JSON for {project}: {exc}") from exc
+    return payload.get("Items", {})
 
 
 def _strip_csharp_comments_and_literals(source: str) -> str:
@@ -531,11 +620,16 @@ def _ledger_ids(project: Path) -> set[str]:
 def _provider_descriptor_ids(sources: list[Path], prefix: str) -> set[str]:
     """Return Provider-owned diagnostic IDs referenced by compiled sources."""
     ids: set[str] = set()
-    pattern = re.compile(rf'\b({re.escape(prefix)}\d{{3}})\b')
+    pattern = re.compile(r"\b((?:FOXRUN|FOXR2F|FOXBRG)\d{3})\b")
+    constructed_pattern = re.compile(
+        r"[\"']((?:FOXRUN|FOXR2F|FOXBRG))[\"']\s*\+\s*[\"'](\d{3})[\"']"
+    )
     for source in sources:
         if not source.exists():
             continue
-        ids.update(pattern.findall(source.read_text(encoding="utf-8")))
+        text = source.read_text(encoding="utf-8")
+        ids.update(pattern.findall(text))
+        ids.update(prefix + number for prefix, number in constructed_pattern.findall(text))
     return ids
 
 
@@ -547,6 +641,8 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
     assembly_names: dict[str, str] = {}
     ledger_owners: dict[str, str] = {}
     hint_tokens: dict[str, str] = {}
+    analyzer_meta_guids: dict[str, str] = {}
+    core_diagnostic_ids = _ledger_ids(TARGETS["core"].project)
 
     for name in target_names:
         if name not in TARGETS:
@@ -575,20 +671,57 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
             if artifact.suffix.lower() != ".dll":
                 continue
             meta = Path(str(artifact) + ".meta")
-            if not meta.exists():
-                failures.append(
-                    f"{name}: analyzer .meta missing: "
-                    f"{meta.relative_to(REPO_ROOT)}"
+            if artifact.name == "Google.Protobuf.dll":
+                if not meta.is_file():
+                    failures.append(f"{name}: dependency .meta missing: {meta if not meta.is_relative_to(REPO_ROOT) else meta.relative_to(REPO_ROOT)}")
+            else:
+                failures.extend(
+                    _validate_analyzer_meta(
+                        meta,
+                        f"{name}:{artifact.name}",
+                        analyzer_meta_guids,
+                    )
                 )
 
         try:
             sources = _project_sources(target.project)
-        except (OSError, ET.ParseError, ValueError) as exc:
-            failures.append(f"{name}: cannot resolve compiled sources: {exc}")
+            evaluated = _evaluated_msbuild_items(target.project)
+            evaluated_sources = {
+                Path(item.get("FullPath", item.get("Identity", ""))).resolve()
+                for item in evaluated.get("Compile", [])
+                if item.get("FullPath", item.get("Identity", ""))
+            }
+            explicit_sources = set(sources)
+            if evaluated_sources != explicit_sources:
+                failures.append(
+                    f"{name}: evaluated MSBuild Compile items differ from explicit project ownership "
+                    f"(evaluated={len(evaluated_sources)}, explicit={len(explicit_sources)})"
+                )
+            if name != "core":
+                evaluated_packages = {
+                    item.get("Identity", item.get("Include", ""))
+                    for item in evaluated.get("PackageReference", [])
+                }
+                unexpected_packages = evaluated_packages - PROVIDER_DEPENDENCIES - {"NETStandard.Library"}
+                missing_packages = PROVIDER_DEPENDENCIES - evaluated_packages
+                if unexpected_packages or missing_packages:
+                    failures.append(
+                        f"{name}: evaluated PackageReference set is not Roslyn-only: "
+                        f"unexpected={sorted(unexpected_packages)}, missing={sorted(missing_packages)}"
+                    )
+                if evaluated.get("ProjectReference"):
+                    failures.append(f"{name}: evaluated ProjectReference is forbidden")
+                imported_references = [
+                    item for item in evaluated.get("Reference", [])
+                    if item.get("DefiningProjectFullPath", "").lower().startswith(str(REPO_ROOT).lower())
+                    and Path(item.get("DefiningProjectFullPath", "")).resolve() != target.project.resolve()
+                ]
+                if imported_references:
+                    failures.append(f"{name}: imported assembly Reference is forbidden")
+        except (OSError, ET.ParseError, ValueError, RuntimeError) as exc:
+            failures.append(f"{name}: cannot resolve evaluated MSBuild ownership: {exc}")
             sources = []
-        missing_sources = [
-            source for source in sources if not source.exists()
-        ]
+        missing_sources = [source for source in sources if not source.exists()]
         for source in missing_sources:
             failures.append(
                 f"{name}: compiled source missing: {source}"
@@ -622,7 +755,7 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
                     if not include:
                         continue
                     normalized = _normalize_compile_include(include)
-                    if "*" in normalized:
+                    if _compile_include_has_wildcard(normalized):
                         failures.append(
                             f"{name}: wildcard Compile item is forbidden: "
                             f"{include}"
@@ -669,7 +802,22 @@ def validate_analyzer_contracts(target_names: tuple[str, ...]) -> bool:
                 sources,
                 prefix,
             )
-            undeclared = source_ids - ledgers
+            wrong_namespace = {
+                diagnostic_id
+                for diagnostic_id in source_ids
+                if not diagnostic_id.startswith(prefix)
+                and diagnostic_id not in core_diagnostic_ids
+            }
+            if wrong_namespace:
+                failures.append(
+                    f"{name}: diagnostic IDs use another provider namespace: "
+                    f"{sorted(wrong_namespace)}"
+                )
+            undeclared = {
+                diagnostic_id
+                for diagnostic_id in source_ids
+                if diagnostic_id.startswith(prefix)
+            } - ledgers
             if undeclared:
                 failures.append(
                     f"{name}: diagnostic IDs missing from release "

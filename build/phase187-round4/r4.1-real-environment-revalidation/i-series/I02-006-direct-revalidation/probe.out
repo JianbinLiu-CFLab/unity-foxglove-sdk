@@ -1,0 +1,7 @@
+{
+  "finding_id": "187-R2-I02-006",
+  "source_anchor": "Scripts/unity_build/unity_il2cpp.py::build_command workspace path authority",
+  "existing_evidence": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\behavioral-repair-20260912\\WORKSPACE_PATH_BOUNDARY_TRANSACTION\\VERIFICATION.txt",
+  "existing_evidence_sha256": "814f1eba8cd825e4040695e02c3500e5e7af2bd86c8961d36e1d6fda28747b9f",
+  "result": "CONFIRMED_FIXED"
+}

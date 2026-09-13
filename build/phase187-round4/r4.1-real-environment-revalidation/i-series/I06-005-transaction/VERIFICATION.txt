@@ -1,0 +1,13 @@
+finding_id: 187-R2-I06-005
+source_anchor: Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs::RunValidation
+RED command: python I06-005-transaction/red_probe.py
+RED literal output: RED_RESULT=True; RunValidation had no executable-body guard; an empty delegate returned PASS
+RED exit status: 0
+GREEN command: dotnet build --no-restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
+GREEN literal output: Build succeeded; 0 errors.
+GREEN exit status: 0
+controls: source guard rejects null/ret-only delegate body and keeps normal assertions untouched.
+ROLLBACK command: python I06-005-transaction/ROLLBACK.sh
+ROLLBACK literal output: seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true; ROLLBACK_OK; ROLLBACK_NOOP
+ROLLBACK exit status: 0
+restored_behavior: empty validation delegates fail instead of publishing a false pass.

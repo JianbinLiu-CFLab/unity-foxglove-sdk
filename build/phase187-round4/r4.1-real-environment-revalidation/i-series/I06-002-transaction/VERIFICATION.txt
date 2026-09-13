@@ -1,0 +1,12 @@
+finding_id: 187-R2-I06-002
+source_anchor: Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs::TryRunRegisteredValidation list mode
+RED command: python I06-002-transaction/red_probe.py
+RED literal output: RED_RESULT=True; list mode returned catalog despite conflicting trailing selector
+RED exit status: 0
+GREEN command: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --list-validations --phase163-57
+GREEN literal output: --list-validations cannot be combined with other arguments.
+GREEN exit status: 1
+ROLLBACK command: python I06-002-transaction/ROLLBACK.sh
+ROLLBACK literal output: seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true; ROLLBACK_OK; ROLLBACK_NOOP
+ROLLBACK exit status: 0
+restored_behavior: list mode is exclusive and side-effect free for conflicting argv.

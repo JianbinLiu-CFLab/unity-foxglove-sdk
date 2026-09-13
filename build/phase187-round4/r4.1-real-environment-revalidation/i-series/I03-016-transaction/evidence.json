@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I03-016",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Tests/PackageMatrix/PackageMatrix.Common.props@3b7cd8a2dcba8acc741109b1ae6aef65b201c1a8:14-25; Packages/dev.unity2foxglove.sdk/Tests/PackageMatrix/PackageMatrix.Common.props@3b7cd8a2dcba8acc741109b1ae6aef65b201c1a8:3; current_primary_sha256=11adcfda1cab8098b0d553c1cb2ad87d8899bde6d33cbb883147a868d3002c66",
+  "source_sha256": "11adcfda1cab8098b0d553c1cb2ad87d8899bde6d33cbb883147a868d3002c66",
+  "command": "python -B Scripts/package/validate_unity_package.py",
+  "literal_output": "; validate_unity_package: 72 check(s) passed.",
+  "exit_status": 0,
+  "disposition": "REFUTED",
+  "timestamp": "2026-09-13T00:45:37.524554+00:00"
+}

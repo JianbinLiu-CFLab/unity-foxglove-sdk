@@ -1,0 +1,21 @@
+diff --git a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase10Validation.cs b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase10Validation.cs
+index 1e7dfed7c..d1553b4d3 100644
+--- a/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase10Validation.cs
++++ b/Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase10Validation.cs
+@@ -336,8 +336,15 @@ namespace Unity.FoxgloveSDK.Tests
+             var ms = new MemoryStream();
+             var r = new McapRecorder(ms);
+             r.Close();
++            var firstLength = ms.Length;
+             r.Close(); // must not throw
+-            Assert(ms.Length > 0, "Close is idempotent and writes a valid MCAP payload");
++            var secondLength = ms.Length;
++            var data = ms.ToArray();
++            var (hasLeadingMagic, records, hasTrailingMagic) = McapRecordReader.Parse(data);
++            Assert(firstLength == secondLength,
++                $"Close is idempotent and does not append bytes (first={firstLength}, second={secondLength})");
++            Assert(hasLeadingMagic && hasTrailingMagic && records.Count >= 2,
++                "Close writes a complete MCAP container with terminal magic");
+         }
+ 
+         /// <summary>

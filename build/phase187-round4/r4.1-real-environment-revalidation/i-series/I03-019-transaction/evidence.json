@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I03-019",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj@630cc80bb4c793c72758946b57d4d86a5d3fbba9:8-17; Packages/dev.unity2foxglove.sdk/Tests/FoxgloveSdk.TestSurface.props@4e11ff2e0bcfd17cd96fa554306b3a77011b6f91:62-66; current_primary_sha256=9dd390df08acb0158fe2dec43560dfcae173c7d170ac48684ecf75c6a666549a",
+  "source_sha256": "4ab468392b9b4c6d45a51a859e8e2858b7e38f073d7be11e83910d0350cf0c3a",
+  "command": "python -B Scripts/package/validate_unity_package.py",
+  "literal_output": "; validate_unity_package: 72 check(s) passed.",
+  "exit_status": 0,
+  "disposition": "CONFIRMED_FIXED",
+  "timestamp": "2026-09-13T00:45:37.529133+00:00"
+}

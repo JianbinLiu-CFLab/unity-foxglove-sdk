@@ -1,0 +1,2 @@
+RED_RESULT=True
+RED_LITERAL=All published raw array through IReadOnlyList; caller could cast and mutate registry entries

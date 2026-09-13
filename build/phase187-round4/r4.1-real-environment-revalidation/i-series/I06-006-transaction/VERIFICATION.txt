@@ -1,0 +1,13 @@
+finding_id: 187-R2-I06-006
+source_anchor: Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs::RunValidation cleanup
+RED command: python I06-006-transaction/red_probe.py
+RED literal output: RED_RESULT=True; single finally cleanup could mask primary failures and leave console properties mutated
+RED exit status: 0
+GREEN command: dotnet build --no-restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
+GREEN literal output: Build succeeded; 0 errors.
+GREEN exit status: 0
+controls: source-level independent cleanup assertions cover stdout/stderr flush, NewLine restoration, and writer restoration.
+ROLLBACK command: python I06-006-transaction/ROLLBACK.sh
+ROLLBACK literal output: seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true; ROLLBACK_OK; ROLLBACK_NOOP
+ROLLBACK exit status: 0
+restored_behavior: primary validation status is preserved while cleanup failures are recorded and both console streams are restored.

@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-008",
+  "source_anchor": "Scripts/samples/sync_full_demo.py@0dfe7270db18beb0ef5ca9bb9b541e330e4b39c7:306-329; Scripts/samples/sync_full_demo.py@0dfe7270db18beb0ef5ca9bb9b541e330e4b39c7:362-387; Scripts/samples/sync_ros2_bridge_sample.py@418faa7dd24679d59b914d76b28455877a72837e:113-145; Scripts/samples/sync_ros2_samples.py@b9ba90a53f67601916c7395a11cbe08f6db6187b:143-170; current_primary_sha256=db1e7bf011bd234aec79e6abfd6ad3438c75cb9f1cd47b002d886294a2361347",
+  "source_sha256": "db1e7bf011bd234aec79e6abfd6ad3438c75cb9f1cd47b002d886294a2361347",
+  "command": "python -m py_compile \"Scripts/samples/sync_full_demo.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:14.520034+00:00"
+}

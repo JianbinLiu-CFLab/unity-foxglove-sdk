@@ -1,0 +1,10 @@
+{
+  "finding_id": "I10-005",
+  "source_anchor": "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase179BatchModeNativeLifecycleProbe.cs@4d0830b1bba75d5fdf6910d9aaf324ed60ab8b2d:57-70; Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase186BatchModeRos2BridgeProbe.cs@573a2da53ac3c087721532ac36442e09704e3dcb:148-165; current_primary_sha256=963b488f7626bb03b3e57261c26a6d17bc5cdb3ecd92b85558243e0c41348137",
+  "source_sha256": "963b488f7626bb03b3e57261c26a6d17bc5cdb3ecd92b85558243e0c41348137",
+  "command": "python -m unittest Scripts.smoke.ros2.regression_checks.test_ros2_windows_env Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer",
+  "literal_output": "I10 ROS2 owner suites: PASS; [2026-09-13T02:56:11.106+02:00] [test] RViz2 Popen returned pid=1234 popen_elapsed=0.000s total_elapsed=0.004s",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T00:56:11.563267+00:00"
+}

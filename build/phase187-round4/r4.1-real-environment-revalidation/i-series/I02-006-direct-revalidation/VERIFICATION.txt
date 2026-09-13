@@ -1,0 +1,4 @@
+187-R2-I02-006 direct evidence revalidation
+source_anchor=Scripts/unity_build/unity_il2cpp.py::build_command workspace path authority
+existing_quartet=build\phase187-round4\r4.1-real-environment-revalidation\i-series\behavioral-repair-20260912\WORKSPACE_PATH_BOUNDARY_TRANSACTION\VERIFICATION.txt
+result=CONFIRMED_FIXED

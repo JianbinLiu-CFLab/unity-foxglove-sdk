@@ -1,0 +1,8 @@
+finding_id=CI-POSIX-PROCESS-TREE-20260913
+source=Scripts/unity_build/unity_il2cpp.py
+RED: WSL deterministic escaped-descendant test reproduced residual child after root exit; pre-fix test reported escaped descendant remained alive (exit=1 in hosted Linux run).
+GREEN: wsl.exe -d Ubuntu -- bash -lc 'cd "/mnt/d/BaiduSyncdisk/Obsidian Vault/Websocket/00 Inbox" && python3 -m unittest Scripts.release.regression_checks.test_release_tooling.UnityIl2CppBuildTests.test_posix_escaped_descendant_is_retired_after_root_exit' => Ran 1 test, OK, exit=0.
+fix: capture authenticated descendants by parent links while root is alive, including setsid escapes; treat POSIX zombie as exited in regression probe.
+controls: existing Windows runtime and local release suites; full CI rerun pending after this fix.
+rollback_command=bash ROLLBACK.sh
+rollback_result=ROLLBACK_OK; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true; ROLLBACK_NOOP; exit=0

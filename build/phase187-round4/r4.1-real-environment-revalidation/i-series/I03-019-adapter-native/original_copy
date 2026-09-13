@@ -1,0 +1,500 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <IncludeRos2ForUnityNative Condition="'$(IncludeRos2ForUnityNative)' == ''">false</IncludeRos2ForUnityNative>
+    <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityNative)' == 'true' and '$(IncludeRos2ForUnityAdapter)' == ''">true</IncludeRos2ForUnityAdapter>
+    <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityAdapter)' == ''">false</IncludeRos2ForUnityAdapter>
+    <IncludeRos2Bridge Condition="'$(IncludeRos2Bridge)' == ''">true</IncludeRos2Bridge>
+    <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY</DefineConstants>
+    <DefineConstants Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_R2FU_VALIDATION</DefineConstants>
+    <Phase179OptionalCompilationLane>default</Phase179OptionalCompilationLane>
+    <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityAdapter)' == 'true'">adapter</Phase179OptionalCompilationLane>
+    <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityNative)' == 'true'">native</Phase179OptionalCompilationLane>
+    <AssemblyName Condition="'$(IncludeRos2ForUnityNative)' == 'true'">Unity2Foxglove.Ros2ForUnity.Native</AssemblyName>
+    <OutputPath>$(BaseOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="K4os.Compression.LZ4.Streams" Version="1.3.8" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.4" />
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+    <PackageReference Include="StbImageWriteSharp" Version="1.16.7" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.2.0" PrivateAssets="all" />
+
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../Runtime/Components/Attributes/*.cs" />
+    <Compile Include="../../Runtime/Components/FoxService/FoxgloveGeneratedServiceDescriptor.cs" />
+    <Compile Include="../../Runtime/Components/FoxService/IFoxgloveServiceSource.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/FoxRun*.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/IFoxRun*.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/Transport/*.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/FoxgloveLogHub.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../Runtime/Components/FoxRun/IFoxgloveLogConditionSource.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2NativeOutputPolicy.cs"
+             Link="Ros2ForUnityRuntime/Native/Ros2NativeOutputPolicy.cs"
+             Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../Runtime/Components/FoxRun/FoxTopic*.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/IFoxTopic*.cs" />
+    <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
+    <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
+    <Compile Include="../../Runtime/Core/**/*.cs" />
+    <Compile Include="../../Runtime/Protocol/**/*.cs" />
+    <Compile Include="../../Runtime/Transport/**/*.cs" />
+    <Compile Include="../../Runtime/IO/**/*.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/**/*.cs" LinkBase="Ros2BridgeRuntime" Condition="'$(IncludeRos2Bridge)' != 'false'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Runtime/Protocol/**/*.cs" LinkBase="Ros2BridgeProtocol" Condition="'$(IncludeRos2Bridge)' != 'false'" />
+    <!-- Runtime/Sensors wildcard is intentionally broad; every Unity-dependent file must stay explicitly excluded here. -->
+    <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs;../../Runtime/Sensors/**/VirtualLidarScanBuffers.cs;../../Runtime/Sensors/**/VirtualLidarScanFramePublisher.cs;../../Runtime/Sensors/**/VirtualLidarScanScheduler.cs;../../Runtime/Sensors/**/VirtualImu.cs;../../Runtime/Sensors/**/SensorUnitProfile.cs;../../Runtime/Sensors/**/LidarUnityNumericsConversions.cs" />
+    <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />
+    <Compile Include="../../Runtime/Schemas/Registry/*.cs" />
+    <Compile Include="../../Runtime/Schemas/Camera/**/*.cs" />
+    <Compile Include="../../Runtime/Schemas/PointCloud/**/*.cs" />
+    <Compile Include="../../Runtime/Schemas/Imu/*.cs" />
+    <Compile Include="../../Runtime/Schemas/MsgPack/FoxgloveMsgPackWriter.cs" />
+    <Compile Include="../../Runtime/Schemas/MsgPack/FoxgloveMsgPackReader.cs" />
+    <Compile Include="../../Runtime/Schemas/MsgPack/FoxgloveMsgPackReadLimits.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/**/*.cs" LinkBase="Ros2BridgeSchemas" Condition="'$(IncludeRos2Bridge)' != 'false'" />
+    <!-- Runtime/Schemas/Proto wildcard is intentionally broad; Unity-facing publishers/builders must stay explicitly excluded. -->
+    <Compile Include="../../Runtime/Schemas/Proto/**/*.cs" Exclude="../../Runtime/Schemas/Proto/**/*Publisher.cs;../../Runtime/Schemas/Proto/**/Channels/**/*.cs;../../Runtime/Schemas/Proto/**/FoxgloveCameraPublisher.*.cs;../../Runtime/Schemas/Proto/**/FoxglovePointCloudPublisher.*.cs;../../Runtime/Schemas/Proto/**/ImuMessageBuilder.cs;../../Runtime/Schemas/Proto/**/PointCloudTransformFrameBuilder.cs;../../Runtime/Schemas/Proto/**/CameraCaptureResources.cs" />
+    <Compile Include="../../Runtime/Schemas/Proto/Builders/ImuMessageBuilder.cs" />
+    <Compile Include="../../Runtime/Utilities/*.cs" />
+    <Compile Include="../../Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="Fixtures/FoxRunGenerationModelFixture.cs" />
+    <Compile Include="ValidationCategory.cs" />
+    <Compile Include="ValidationEvidence.cs" />
+    <Compile Include="PhaseValidationCase.cs" />
+    <Compile Include="PhaseValidationRegistry.cs" />
+    <Compile Include="PhaseRos2ForUnityValidationHelpers.cs" />
+    <Compile Include="FoxRunGenerationDescriptorJsonReader.cs" />
+    <Compile Include="SkeletonValidation.cs" />
+    <Compile Include="Phase1Validation.cs" />
+    <Compile Include="Phase2Validation.cs" />
+    <Compile Include="Phase3Validation.cs" />
+    <Compile Include="Phase4Validation.cs" />
+    <Compile Include="Phase5Validation.cs" />
+    <Compile Include="Phase6Validation.cs" />
+    <Compile Include="Phase7Validation.cs" />
+    <Compile Include="Phase8Validation.cs" />
+    <Compile Include="Phase9Validation.cs" />
+    <Compile Include="Phase10Validation.cs" />
+    <Compile Include="Phase11Validation.cs" />
+    <Compile Include="Phase12Validation.cs" />
+    <Compile Include="Phase13Validation.cs" />
+    <Compile Include="Phase14Validation.cs" />
+    <Compile Include="Phase16Validation.cs" />
+    <Compile Include="Phase17Validation.cs" />
+    <Compile Include="Phase24DValidation.cs" />
+    <Compile Include="Phase28Validation.cs" />
+    <Compile Include="Phase31Validation.cs" />
+    <Compile Include="Phase32Validation.cs" />
+    <Compile Include="Phase33Validation.cs" />
+    <Compile Include="Phase34Validation.cs" />
+    <Compile Include="Phase36Validation.cs" />
+    <Compile Include="Phase37Validation.cs" />
+    <Compile Include="Phase40Validation.cs" />
+    <Compile Include="Phase41Validation.cs" />
+    <Compile Include="FoxgloveProtoSampleFactory.cs" />
+    <Compile Include="Phase44Validation.cs" />
+    <Compile Include="Phase48Validation.cs" />
+    <Compile Include="Phase49Validation.cs" />
+    <Compile Include="Phase50Validation.cs" />
+    <Compile Include="Phase51Validation.cs" />
+    <Compile Include="Phase52Validation.cs" />
+    <Compile Include="Phase53Validation.cs" />
+    <Compile Include="Phase54Validation.cs" />
+    <Compile Include="Phase55Validation.cs" />
+    <Compile Include="Phase56Validation.cs" />
+    <Compile Include="Phase57Validation.cs" />
+    <Compile Include="Phase65Validation.cs" />
+    <Compile Include="Phase67Validation.cs" />
+    <Compile Include="Phase68Validation.cs" />
+    <Compile Include="Phase69Validation.cs" />
+    <Compile Include="Phase70Validation.cs" />
+    <Compile Include="Phase71Validation.cs" />
+    <Compile Include="Phase72Validation.cs" />
+    <Compile Include="Phase73Validation.cs" />
+    <Compile Include="Phase74Validation.cs" />
+    <Compile Include="Phase75Validation.cs" />
+    <Compile Include="Phase76Validation.cs" />
+    <Compile Include="Phase77Validation.cs" />
+    <Compile Include="OpenH264ValidationHelpers.cs" />
+    <Compile Include="PhaseValidationReflectionHelpers.cs" />
+    <Compile Include="PhaseValidationSourceHelpers.cs" />
+    <Compile Include="Phase80Validation.cs" />
+    <Compile Include="Phase81Validation.cs" />
+    <Compile Include="Phase82Validation.cs" />
+    <Compile Include="Phase83Validation.cs" />
+    <Compile Include="Phase84Validation.cs" />
+    <Compile Include="Phase85Validation.cs" />
+    <Compile Include="Phase86Validation.cs" />
+    <Compile Include="Phase87Validation.cs" />
+    <Compile Include="Phase88Validation.cs" />
+    <Compile Include="Phase89Validation.cs" />
+    <Compile Include="Phase90Validation.cs" />
+    <Compile Include="Ros2CdrTestReader.cs" />
+    <Compile Include="Phase91Validation.cs" />
+    <Compile Include="Phase92Validation.cs" />
+    <Compile Include="Phase93Validation.cs" />
+    <Compile Include="Phase94Validation.cs" />
+    <Compile Include="Phase95Validation.cs" />
+    <Compile Include="Phase96Validation.cs" />
+    <Compile Include="Phase97Validation.cs" />
+    <Compile Include="Phase98Validation.cs" />
+    <Compile Include="Phase99Validation.cs" />
+    <Compile Include="Phase100Validation.cs" />
+    <Compile Include="Phase105Validation.cs" />
+    <Compile Include="Phase106Validation.cs" />
+    <Compile Include="Phase137BValidation.cs" />
+    <Compile Include="Phase137CValidation.cs" />
+    <Compile Include="Phase137DValidation.cs" />
+    <Compile Include="Phase137EValidation.cs" />
+	    <Compile Include="Phase137FValidation.cs" />
+	    <Compile Include="Phase137GValidation.cs" />
+    <Compile Include="Phase137Validation.cs" />
+    <Compile Include="Phase138C2Validation.cs" />
+    <Compile Include="Phase142Validation.cs" />
+    <Compile Include="Phase143Validation.cs" />
+    <Compile Include="ProtocolEdgeHardeningValidation.cs" />
+    <Compile Include="SystemInfoPublisherValidation.cs" />
+    <Compile Include="Phase147Validation.cs" />
+    <Compile Include="Phase148Validation.cs" />
+    <Compile Include="Phase149AValidation.cs" />
+    <Compile Include="Phase149BValidation.cs" />
+    <Compile Include="Phase149CValidation.cs" />
+    <Compile Include="Phase150Validation.cs" />
+    <Compile Include="Phase151Validation.cs" />
+    <Compile Include="Phase153Validation.cs" />
+    <Compile Include="Phase154Validation.cs" />
+    <Compile Include="Phase155Validation.cs" />
+    <Compile Include="Phase156Validation.cs" />
+    <Compile Include="Phase157Validation.cs" />
+    <Compile Include="FoxRunProtobufContractValidation.cs" />
+    <Compile Include="FoxRunDualCodecValidation.cs" />
+    <Compile Include="FoxRunManagerWirePolicyValidation.cs" />
+    <Compile Include="FoxRunSubscribeDataValidation.cs" />
+    <Compile Include="FoxRunWireHardeningValidation.cs" />
+    <Compile Include="FoxRunRos2NativeSubscriptionValidation.cs"
+             Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="DataTransportInspectorValidation.cs" />
+    <Compile Include="FoxRunCustomRos2InterfaceValidation.cs"
+             Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="FoxRunDeclarationModelValidation.cs" />
+    <Compile Include="FoxRunProfileModelValidation.cs" />
+    <Compile Include="FoxRunMessagePackPublicContractValidation.cs" />
+    <Compile Include="FoxRunMessagePackPublishFanoutValidation.cs" />
+    <Compile Include="FoxRunMessagePackBoundedInputValidation.cs" />
+    <Compile Include="FoxRunMessagePackDuplexToolingValidation.cs" />
+    <Compile Include="FoxRunMessagePackArtifactAcceptanceValidation.cs" />
+    <Compile Include="Ros2BridgeBidirectionalValidation.cs" />
+    <Compile Include="Phase163_2Validation.cs" />
+    <Compile Include="Phase163_3Validation.cs" />
+    <Compile Include="Phase163_4Validation.cs" />
+    <Compile Include="Phase163_5Validation.cs" />
+    <Compile Include="Phase163_6Validation.cs" />
+    <Compile Include="Phase163_7Validation.cs" />
+    <Compile Include="Phase163_8Validation.cs" />
+    <Compile Include="Phase163_9Validation.cs" />
+    <Compile Include="Phase163_10Validation.cs" />
+    <Compile Include="Phase163_11Validation.cs" />
+    <Compile Include="Phase163_12Validation.cs" />
+    <Compile Include="Phase163_13Validation.cs" />
+    <Compile Include="Phase163_14Validation.cs" />
+    <Compile Include="Phase163_15Validation.cs" />
+    <Compile Include="Phase163_16Validation.cs" />
+    <Compile Include="Phase163_17Validation.cs" />
+    <Compile Include="Phase163_18Validation.cs" />
+    <Compile Include="Phase163_19Validation.cs" />
+    <Compile Include="Phase163_20Validation.cs" />
+    <Compile Include="Phase163_21Validation.cs" />
+    <Compile Include="Phase163_22Validation.cs" />
+    <Compile Include="Phase163_23Validation.cs" />
+    <Compile Include="Phase163_24Validation.cs" />
+    <Compile Include="Phase163_25Validation.cs" />
+    <Compile Include="Phase163_26Validation.cs" />
+    <Compile Include="Phase163_27Validation.cs" />
+    <Compile Include="Phase163_28Validation.cs" />
+    <Compile Include="Phase163_29Validation.cs" />
+    <Compile Include="Phase163_30Validation.cs" />
+    <Compile Include="Phase163_31Validation.cs" />
+    <Compile Include="Phase163_32Validation.cs" />
+    <Compile Include="Phase163_35Validation.cs" />
+    <Compile Include="Phase163_36Validation.cs" />
+    <Compile Include="Phase163_37Validation.cs" />
+    <Compile Include="Phase163_38Validation.cs" />
+    <Compile Include="Phase163_39Validation.cs" />
+    <Compile Include="Phase163_40Validation.cs" />
+    <Compile Include="Phase163_44Validation.cs" />
+    <Compile Include="Phase163_45Validation.cs" />
+    <Compile Include="Phase163_46Validation.cs" />
+    <Compile Include="Phase163_47Validation.cs" />
+    <Compile Include="Phase163_48Validation.cs" />
+    <Compile Include="Phase163_49Validation.cs" />
+    <Compile Include="Phase163_50Validation.cs" />
+    <Compile Include="Phase163_51Validation.cs" />
+    <Compile Include="Phase163_52Validation.cs" />
+    <Compile Include="Phase163_53Validation.cs" />
+    <Compile Include="Phase163_54Validation.cs" />
+    <Compile Include="Phase163_55Validation.cs" />
+    <Compile Include="Phase163_56Validation.cs" />
+    <Compile Include="Phase163_57Validation.cs" />
+    <Compile Include="Phase163_58Validation.cs" />
+    <Compile Include="Phase164_1Validation.cs" />
+    <Compile Include="Phase164_2Validation.cs" />
+    <Compile Include="Phase164_3Validation.cs" />
+    <Compile Include="Phase164_4Validation.cs" />
+    <Compile Include="Phase164_5Validation.cs" />
+    <Compile Include="Phase164_6Validation.cs" />
+    <Compile Include="Phase164_7Validation.cs" />
+    <Compile Include="Phase164_8Validation.cs" />
+    <Compile Include="Phase164_9Validation.cs" />
+    <Compile Include="Phase164_10Validation.cs" />
+    <Compile Include="Phase164_11Validation.cs" />
+    <Compile Include="Phase164_12Validation.cs" />
+    <Compile Include="Phase164_13Validation.cs" />
+    <Compile Include="Phase164_14Validation.cs" />
+    <Compile Include="Phase164_15Validation.cs" />
+    <Compile Include="Phase164_16Validation.cs" />
+    <Compile Include="Phase164_17Validation.cs" />
+    <Compile Include="Phase164_18Validation.cs" />
+    <Compile Include="Phase164_19Validation.cs" />
+    <Compile Include="Phase164_20Validation.cs" />
+    <Compile Include="Phase164_21Validation.cs" />
+    <Compile Include="Phase164_22Validation.cs" />
+    <Compile Include="Phase164_23Validation.cs" />
+    <Compile Include="Phase164_24Validation.cs" />
+    <Compile Include="Phase164_25Validation.cs" />
+    <Compile Include="Phase164_26Validation.cs" />
+    <Compile Include="Phase164_27Validation.cs" />
+    <Compile Include="Phase164_28Validation.cs" />
+    <Compile Include="Phase164_29Validation.cs" />
+    <Compile Include="Phase164_30Validation.cs" />
+    <Compile Include="Phase164_31Validation.cs" />
+    <Compile Include="Phase164_32Validation.cs" />
+    <Compile Include="Phase164_33Validation.cs" />
+    <Compile Include="Phase164_34Validation.cs" />
+    <Compile Include="Phase164_35Validation.cs" />
+    <Compile Include="Phase164_36Validation.cs" />
+    <Compile Include="Phase164_37Validation.cs" />
+    <Compile Include="Phase164_38Validation.cs" />
+    <Compile Include="Phase164_39Validation.cs" />
+    <Compile Include="Phase164_40Validation.cs" />
+    <Compile Include="Phase164_41Validation.cs" />
+    <Compile Include="Phase164_42Validation.cs" />
+    <Compile Include="Phase164_43Validation.cs" />
+    <Compile Include="Phase164_44Validation.cs" />
+    <Compile Include="Phase164_45Validation.cs" />
+    <Compile Include="Phase164_46Validation.cs" />
+    <Compile Include="Phase164_47Validation.cs" />
+    <Compile Include="Phase164_48Validation.cs" />
+    <Compile Include="Phase164_49Validation.cs" />
+    <Compile Include="Phase164_50Validation.cs" />
+    <Compile Include="Phase164_51Validation.cs" />
+    <Compile Include="Phase164_52Validation.cs" />
+    <Compile Include="Phase164_53Validation.cs" />
+    <Compile Include="Phase164_54Validation.cs" />
+    <Compile Include="Phase164_55Validation.cs" />
+    <Compile Include="Phase164_56Validation.cs" />
+    <Compile Include="Phase164_57Validation.cs" />
+    <Compile Include="TestRepoRootLocator.cs" />
+    <Compile Include="ValidationRegistryDescriptiveNamesValidation.cs" />
+    <Compile Include="ValidationNamingGuardsValidation.cs" />
+    <Compile Include="R2fuNativeBridgeHotPathLifecycleValidation.cs" />
+    <Compile Include="R2fuActiveRuntimeSelectorValidation.cs" />
+    <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
+    <Compile Include="R2fuHumbleRuntimePackageValidation.cs" />
+    <Compile Include="R2fuJazzyRuntimeRefreshValidation.cs" />
+    <Compile Include="MessagePackRawChannelEncodingValidation.cs" />
+    <Compile Include="RemoteGatewayBoundaryValidation.cs" />
+    <Compile Include="CameraHealthCaptureAdmissionValidation.cs" />
+    <Compile Include="Phase138Validation.cs" />
+    <Compile Include="Phase138BValidation.cs" />
+    <Compile Include="Phase138HValidation.cs" />
+    <Compile Include="Phase138DValidation.cs" />
+    <Compile Include="Phase138FValidation.cs" />
+    <Compile Include="Phase138IValidation.cs" />
+    <Compile Include="Phase138JValidation.cs" />
+    <!-- 138K: validate camera video encoder dimension hardening and video diagnostics. -->
+    <Compile Include="Phase138KValidation.cs" />
+    <!-- 138L: validate standard sensor_msgs PointCloud2 SLAM pipeline boundaries. -->
+    <Compile Include="Phase138LValidation.cs" />
+    <!-- 138M: validate cart-mounted camera time sync and standard ROS camera schemas. -->
+    <Compile Include="Phase138MValidation.cs" />
+    <Compile Include="Phase138TValidation.cs" />
+    <Compile Include="Phase138UValidation.cs" />
+    <Compile Include="Phase139Validation.cs" />
+    <Compile Include="Phase139BValidation.cs" />
+    <Compile Include="Phase139CValidation.cs" />
+    <Compile Include="Phase139DValidation.cs" />
+    <Compile Include="Phase140_1Validation.cs" />
+    <Compile Include="Phase140_2Validation.cs" />
+    <Compile Include="Phase140_3Validation.cs" />
+    <Compile Include="Phase140_4Validation.cs" />
+    <Compile Include="Phase140_5Validation.cs" />
+    <Compile Include="Phase140_6Validation.cs" />
+    <Compile Include="Phase140_7Validation.cs" />
+    <Compile Include="Phase140_8Validation.cs" />
+    <Compile Include="Phase140_9Validation.cs" />
+    <Compile Include="Phase140_10Validation.cs" />
+    <Compile Include="Phase140_11Validation.cs" />
+    <Compile Include="Phase140_12Validation.cs" />
+    <Compile Include="Phase140_13Validation.cs" />
+    <Compile Include="Phase140_14Validation.cs" />
+    <Compile Include="Phase140_15Validation.cs" />
+    <Compile Include="Phase140_16Validation.cs" />
+    <Compile Include="Phase140_17Validation.cs" />
+    <Compile Include="Phase140GValidation.cs" />
+    <Compile Include="Phase140HValidation.cs" />
+    <Compile Include="Phase140H2Validation.cs" />
+    <Compile Include="Phase140JValidation.cs" />
+    <Compile Include="FoxRunConditionalPublishGateValidation.cs" />
+    <Compile Include="FoxServiceDeclarativeRpcValidation.cs" />
+    <Compile Include="FoxServiceDtoSerializationAnalyzerValidation.cs" />
+    <Compile Include="FoxServiceEditorSchemaPolishValidation.cs" />
+    <Compile Include="FoxServiceDtoGraphWalkerConvergenceValidation.cs" />
+    <Compile Include="Phase138PValidation.cs" />
+    <Compile Include="Phase138QValidation.cs" />
+    <!-- 138S: validate VirtualImu native DDS output contracts. -->
+    <Compile Include="Phase138SValidation.cs" />
+    <Compile Include="Phase107Validation.cs" />
+    <Compile Include="Phase108Validation.cs" />
+    <Compile Include="Phase109Validation.cs" />
+    <Compile Include="Phase110Validation.cs" />
+    <Compile Include="Phase111FValidation.cs" />
+    <Compile Include="Phase112Validation.cs" />
+    <Compile Include="Phase112BValidation.cs" />
+    <Compile Include="Phase113Validation.cs" />
+    <Compile Include="Phase114Validation.cs" />
+    <Compile Include="Phase115Validation.cs" />
+    <Compile Include="Phase115BValidation.cs" />
+    <Compile Include="Phase115CValidation.cs" />
+    <Compile Include="Phase115DValidation.cs" />
+    <Compile Include="Phase115EValidation.cs" />
+    <Compile Include="Phase115FValidation.cs" />
+    <Compile Include="Phase115GValidation.cs" />
+    <Compile Include="Phase115HValidation.cs" />
+    <Compile Include="Phase116Validation.cs" />
+    <Compile Include="Phase117Validation.cs" />
+    <Compile Include="Phase118Validation.cs" />
+    <Compile Include="Phase119Validation.cs" />
+    <Compile Include="Phase120Validation.cs" />
+    <Compile Include="Phase120BValidation.cs" />
+    <Compile Include="Phase121Validation.cs" />
+    <Compile Include="Phase122Validation.cs" />
+    <Compile Include="Phase123Validation.cs" />
+    <Compile Include="Phase124Validation.cs" />
+    <Compile Include="Phase125Validation.cs" />
+    <Compile Include="Phase126Validation.cs" />
+    <Compile Include="Phase128Validation.cs" />
+    <Compile Include="Phase129Validation.cs" />
+    <Compile Include="Phase130Validation.cs" />
+    <Compile Include="Phase131Validation.cs" />
+    <Compile Include="Phase132Validation.cs" />
+    <Compile Include="Phase134_1Validation.cs" />
+    <Compile Include="Phase134_2Validation.cs" />
+    <Compile Include="Phase134_3Validation.cs" />
+    <Compile Include="Phase134_4Validation.cs" />
+    <Compile Include="Phase134_5Validation.cs" />
+    <Compile Include="Phase134_6Validation.cs" />
+    <Compile Include="Phase134_7Validation.cs" />
+    <Compile Include="Phase134_8Validation.cs" />
+    <Compile Include="Phase134_9Validation.cs" />
+    <Compile Include="Phase134_10Validation.cs" />
+    <Compile Include="Phase134_11Validation.cs" />
+    <Compile Include="Phase134_12Validation.cs" />
+    <Compile Include="Phase134_13Validation.cs" />
+    <Compile Include="Phase134_14Validation.cs" />
+    <Compile Include="Phase134_15Validation.cs" />
+    <Compile Include="Phase134_16Validation.cs" />
+    <Compile Include="Phase134_17Validation.cs" />
+    <Compile Include="Phase134_18Validation.cs" />
+    <Compile Include="Phase134_19Validation.cs" />
+    <Compile Include="Phase134_20Validation.cs" />
+    <Compile Include="Phase134_21Validation.cs" />
+    <Compile Include="Phase134_22Validation.cs" />
+    <Compile Include="Phase134_23Validation.cs" />
+    <Compile Include="Phase134_24Validation.cs" />
+    <Compile Include="Phase134_25Validation.cs" />
+    <Compile Include="Phase134_26Validation.cs" />
+    <Compile Include="Phase134_27Validation.cs" />
+    <Compile Include="Phase134_28Validation.cs" />
+    <Compile Include="Phase134_29Validation.cs" />
+    <Compile Include="Phase134_30Validation.cs" />
+    <Compile Include="Phase134_31Validation.cs" />
+    <Compile Include="Phase134_32Validation.cs" />
+    <Compile Include="Phase134_33Validation.cs" />
+    <Compile Include="Phase134_34Validation.cs" />
+    <Compile Include="Phase134_35Validation.cs" />
+    <Compile Include="Phase163_33Validation.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="('$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true') and Exists('../../../dev.unity2foxglove.ros2forunity/Runtime')" />
+    <Compile Remove="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/**/*.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityRuntime/Native/FoxRun" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Link="Ros2ForUnityRuntime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Link="AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Link="NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Link="NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="McapRecordReader.cs" />
+    <Compile Include="TempMcapHelper.cs" />
+    <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter/**/*.cs" LinkBase="Shared/FoxgloveSourceEmitter" />
+    <Compile Include="../../Editor/Shared/FoxServiceSourceEmitter/**/*.cs" LinkBase="Shared/FoxServiceSourceEmitter" />
+    <Compile Include="../../Editor/Shared/FoxServiceSchema/**/*.cs" LinkBase="Shared/FoxServiceSchema" />
+    <Compile Include="../../Editor/Shared/FoxServiceDtoValidation/**/*.cs" LinkBase="Shared/FoxServiceDtoValidation" />
+    <Compile Include="../../Editor/SourceGenerators/src/**/*.cs" LinkBase="SourceGenerators" />
+    <Compile Include="../../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />
+    <Compile Include="../../Editor/Shared/FoxRunDescriptor/**/*.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="../../Editor/Shared/OpenH264/**/*.cs" LinkBase="Shared/OpenH264" />
+    <Compile Include="../../Editor/Shared/Process/**/*.cs" LinkBase="Shared/Process" />
+    <Compile Include="../../Editor/Shared/SchemaManifest/**/*.cs" LinkBase="Shared/SchemaManifest" />
+    <Compile Include="../../Editor/FoxRun/FoxrunManifestWriter.cs" Link="Editor/FoxRun/FoxrunManifestWriter.cs" />
+    <Compile Include="../../Editor/FoxRun/FoxRunSchemaInfoWriter.cs" Link="Editor/FoxRun/FoxRunSchemaInfoWriter.cs" />
+    <Compile Include="../../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityEditor/FoxRun" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" Link="Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
+    <Reference Include="ros2cs_common" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/ros2cs_common.dll" Private="true" />
+    <Reference Include="ros2cs_core" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/ros2cs_core.dll" Private="true" />
+    <Reference Include="builtin_interfaces_assembly" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/builtin_interfaces_assembly.dll" Private="true" />
+    <Reference Include="std_msgs_assembly" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/std_msgs_assembly.dll" Private="true" />
+    <Reference Include="geometry_msgs_assembly" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/geometry_msgs_assembly.dll" Private="true" />
+    <Reference Include="sensor_msgs_assembly" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/sensor_msgs_assembly.dll" Private="true" />
+  </ItemGroup>
+  <Target Name="ValidatePhase179NativeCompileSurface" BeforeTargets="CoreCompile" Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
+    <ItemGroup>
+      <_Phase179Contract Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2GeneratedContract'" />
+      <_Phase179Registrar Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2SubscriptionRegistrar'" />
+      <_Phase179LifecycleGate Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityNativeBridgeLifecycleGate'" />
+      <_Phase179InboundHub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2SubscriptionHub'" />
+      <_Phase179InboundBackend Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityFoxRunInboundBackend'" />
+      <_Phase179InboundDiagnostics Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2SubscriptionDiagnostics'" />
+      <_Phase179CompileStub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityNativeCompileStubs'" />
+      <_Phase179UnrelatedNative Include="@(Compile)" Condition="$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/')) and '%(Compile.Filename)' != 'Ros2ForUnityNativeBridgeLifecycleGate' and '%(Compile.Filename)' != 'Ros2NativeOutputPolicy' and !$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/FoxRun/'))" />
+    </ItemGroup>
+    <Error Condition="!$([System.String]::Copy('$(DefineConstants)').Contains('UNITY2FOXGLOVE_ROS2_FOR_UNITY'))" Text="Phase179 Native lane must define UNITY2FOXGLOVE_ROS2_FOR_UNITY." />
+    <Error Condition="'@(_Phase179Contract)' == '' or '@(_Phase179Registrar)' == '' or '@(_Phase179LifecycleGate)' == '' or '@(_Phase179InboundHub)' == '' or '@(_Phase179InboundBackend)' == '' or '@(_Phase179InboundDiagnostics)' == '' or '@(_Phase179CompileStub)' == ''" Text="Phase179 Native lane compiled no named host/binding/lifecycle/stub surface (vacuous green)." />
+    <Error Condition="'@(_Phase179UnrelatedNative)' != ''" Text="Phase179 focused Native lane included unrelated native bridge sources: @(_Phase179UnrelatedNative)." />
+  </Target>
+
+  <Target Name="ValidatePhase181CustomRos2CompileSurface" BeforeTargets="CoreCompile" Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
+    <ItemGroup>
+      <_Phase181CustomInterfaceStub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunCustomRos2InterfaceCompileStubs'" />
+      <_Phase181CustomCatalogContract Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2CustomTypesupportCatalog'" />
+      <_Phase181CustomCatalogRegistry Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomTypesupportCatalogRegistry'" />
+      <_Phase181CustomCatalogReadiness Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomTypesupportReadiness'" />
+      <_Phase181CustomTransportHost Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomNativeTransportHost'" />
+      <_Phase181CustomPublisherHub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomPublisherHub'" />
+      <_Phase181CustomPublisherBinding Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomPublisherBinding'" />
+      <_Phase181CustomPublisherSource Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2CustomPublisherSource'" />
+      <_Phase181CustomSubscriptionSource Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2CustomSubscriptionSource'" />
+      <_Phase181CustomMapperEmitter Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2CustomDtoMapperEmitter'" />
+      <_Phase181CustomPublishEmitter Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2CustomPublishEmitter'" />
+    </ItemGroup>
+    <Error Condition="'@(_Phase181CustomInterfaceStub)' == '' or '@(_Phase181CustomCatalogContract)' == '' or '@(_Phase181CustomCatalogRegistry)' == '' or '@(_Phase181CustomCatalogReadiness)' == '' or '@(_Phase181CustomTransportHost)' == '' or '@(_Phase181CustomPublisherHub)' == '' or '@(_Phase181CustomPublisherBinding)' == '' or '@(_Phase181CustomPublisherSource)' == '' or '@(_Phase181CustomSubscriptionSource)' == '' or '@(_Phase181CustomMapperEmitter)' == '' or '@(_Phase181CustomPublishEmitter)' == ''" Text="Phase181 Native lane compiled no named custom interface/catalog/transport/generator surface (vacuous green)." />
+  </Target>
+</Project>

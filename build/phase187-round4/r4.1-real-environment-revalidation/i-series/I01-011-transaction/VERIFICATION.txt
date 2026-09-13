@@ -1,0 +1,11 @@
+I01-011 direct source-level RED/GREEN transaction
+source: Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Security.cs
+RED command: python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_editor_security_uses_canonical_loopback_host_policy
+RED literal output/result: FAIL; AssertionError: canonical loopback policy call absent
+RED exit_status: 1
+GREEN command: python -m unittest Scripts.release.regression_checks.test_release_tooling.RunCiTests.test_editor_security_uses_canonical_loopback_host_policy
+GREEN literal output/result: Ran 1 test ... OK
+GREEN exit_status: 0
+controls: canonical FoxRunInboundAuthorization policy accepts localhost, 127/8, ::1 and [::1], replacing exact-string check
+rollback_command: bash ROLLBACK.sh
+rollback_result: ROLLBACK_OK; ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true

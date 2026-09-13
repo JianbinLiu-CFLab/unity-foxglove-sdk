@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I06-027",
+  "source_anchor": "Scripts/architecture/analyze_coupling.py@45a78892b031b3f4be2e87608f5862a56742b50d:45; Scripts/architecture/test_architecture_tooling.py@35c5dd474c845c09407ac7c2340e847436172dc4:45; current_primary_sha256=6e8830aa03d4ddc676ac64e33b5ac3d17b02093864acaa6fba78d617a8b07f0f",
+  "source_sha256": "f60736fda52c1676ccea8b720fa9040e1dace39fa5443b33bd99a4138907a390",
+  "command": "python -m unittest Scripts.architecture.test_architecture_tooling",
+  "literal_output": "Ran 9 tests in 0.0s; OK",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T00:54:35.433185+00:00"
+}

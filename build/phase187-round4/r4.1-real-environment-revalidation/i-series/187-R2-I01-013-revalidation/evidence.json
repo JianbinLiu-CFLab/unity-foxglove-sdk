@@ -1,0 +1,15 @@
+{
+  "finding_id": "187-R2-I01-013",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Helpers.cs",
+  "source_sha256": "bcca61f3c49faf1aca155ebecf2a0eaa1106b60e27522f719b9369eee00c7b09",
+  "route": "R4.1_REAL_ENV_REVALIDATION",
+  "entrypoint": "Unity 6000.3.14f1 source-level deterministic probe",
+  "environment_probe": "direct source anchor + behavior matrix evidence",
+  "command": "python deterministic source probe",
+  "literal_output": "Path picker registers static EditorApplication.delayCall without owner unsubscription.",
+  "exit_status": 0,
+  "red_result": "RED_CONFIRMED",
+  "disposition": "CONFIRMED",
+  "revisit_trigger": "Dedicated Unity harness for unresolved confirmed seam",
+  "evidence_path": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\187-R2-I01-013-revalidation\\evidence.json"
+}

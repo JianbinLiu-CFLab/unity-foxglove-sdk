@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-002",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs@e85a1d8615231db5106e6055f78f19994436782f:41-75; Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs@e85a1d8615231db5106e6055f78f19994436782f:79-237; Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs@e85a1d8615231db5106e6055f78f19994436782f:281-297; Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs@0c5efa204c71fc281ba75bad1bff17342d7eaf6e:41-75; Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs@0c5efa204c71fc281ba75bad1bff17342d7eaf6e:79-237; Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs@0c5efa204c71fc281ba75bad1bff17342d7eaf6e:281-297; current_primary_sha256=918387cc9146bc2f4fc749038da9219d95d4f1013b267bea9fb84252237df03c",
+  "source_sha256": "918387cc9146bc2f4fc749038da9219d95d4f1013b267bea9fb84252237df03c",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Packages\\dev.unity2foxglove.sdk\\Samples~\\Virtual LiDAR Maze Demo\\Editor\\Phase138MazeDemoSceneBuilder.cs').read_text(encoding='utf-8'); assert t.strip(); print('SOURCE_PRESENT')\"",
+  "literal_output": "SOURCE_PRESENT",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:14.096020+00:00"
+}

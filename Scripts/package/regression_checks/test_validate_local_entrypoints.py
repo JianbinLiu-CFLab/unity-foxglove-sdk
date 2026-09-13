@@ -108,6 +108,36 @@ class LocalEntrypointValidationTests(unittest.TestCase):
         )
         terminate.assert_called_once_with(process)
 
+    def test_git_grep_preserves_case_insensitive_pattern_flag(self) -> None:
+        """Compiled IGNORECASE patterns must retain -i at the git boundary."""
+        validator = load_module(
+            "validate_local_entrypoints_case_flag_under_test",
+            VALIDATOR_PATH,
+        )
+        class Process:
+            """Subprocess fixture for git grep timeout assertions."""
+            pid = 1
+            returncode = 1
+            def communicate(self, input=None, timeout=None):
+                """Return empty captured streams."""
+                return "", ""
+            def wait(self, timeout=None):
+                """Return the seeded process status."""
+                return self.returncode
+            def poll(self):
+                """Return the seeded process status without blocking."""
+                return self.returncode
+            def __enter__(self):
+                """Enter the process context."""
+                return self
+            def __exit__(self, *_):
+                """Leave the process context."""
+                return False
+        with mock.patch.object(validator.subprocess, "Popen", return_value=Process()) as popen:
+            validator.git_grep_failures("label", re.compile("Token", re.IGNORECASE))
+        argv = popen.call_args.args[0]
+        self.assertIn("-i", argv)
+
 
 if __name__ == "__main__":
     unittest.main()

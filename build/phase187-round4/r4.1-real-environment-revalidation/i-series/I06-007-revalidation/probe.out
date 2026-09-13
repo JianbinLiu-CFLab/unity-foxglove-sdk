@@ -1,0 +1,4 @@
+SOURCE_BOUND=True
+PREFIX_IS_DELEGATE_LEVEL=True
+RESULT=REFUTED
+DETAIL=writer intentionally classifies every line from one selected delegate; no per-line claim is emitted

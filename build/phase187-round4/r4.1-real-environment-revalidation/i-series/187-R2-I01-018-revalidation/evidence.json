@@ -1,0 +1,15 @@
+{
+  "finding_id": "187-R2-I01-018",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs",
+  "source_sha256": "94a55a6b79c15c9440f60318d029b33acf423ca1cd6572d77f5371a1b52075f3",
+  "route": "R4.1_REAL_ENV_REVALIDATION",
+  "entrypoint": "Unity 6000.3.14f1 source-level deterministic probe",
+  "environment_probe": "direct source anchor + behavior matrix evidence",
+  "command": "python deterministic source probe",
+  "literal_output": "Existing serializedObject.isEditingMultipleObjects guard blocks host-specific generation on mixed selection.",
+  "exit_status": 0,
+  "red_result": "GREEN_EXISTING",
+  "disposition": "SATISFIED_BY_ROUND4",
+  "revisit_trigger": "None",
+  "evidence_path": "build\\phase187-round4\\r4.1-real-environment-revalidation\\i-series\\187-R2-I01-018-revalidation\\evidence.json"
+}

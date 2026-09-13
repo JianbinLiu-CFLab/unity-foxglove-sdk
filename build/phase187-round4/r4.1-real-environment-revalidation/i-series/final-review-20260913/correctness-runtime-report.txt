@@ -1,0 +1,5 @@
+ROLE: correctness/runtime
+COMMANDS:
+- python -m unittest Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_cli_install
+- python -m unittest focused release regression subset (8 tests)
+RESULT: PASS. Phase184 owner suite Ran 44 tests, OK, exit 0. Focused subset Ran 8 tests, OK, exit 0.

@@ -1,0 +1,4 @@
+I06-024 NUL-delimited git path inventory
+BASELINE: newline-containing path split into separate entries (probe.out RED=NEWLINE_PATH_SPLIT; exit 0)
+MODIFIED: git ls-files -z + fsdecode preserves literal paths; focused unittest passed (exit 0)
+ROLLBACK: ROLLBACK_OK then ROLLBACK_NOOP; seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true

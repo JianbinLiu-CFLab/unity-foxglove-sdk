@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-033",
+  "source_anchor": "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase127R2FURealProjectSmoke.cs@6b24cca6055f74f8bc707d29cbac83164f54b57e:687-719; Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase127R2FURealProjectSmoke.cs@6b24cca6055f74f8bc707d29cbac83164f54b57e:722-765; current_primary_sha256=55b40593898f496da0b0d54a8529d47c5d40029f6baf8ebbed8746b9610f1d08",
+  "source_sha256": "55b40593898f496da0b0d54a8529d47c5d40029f6baf8ebbed8746b9610f1d08",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Unity2Foxglove\\Assets\\Scripts\\ManualAcceptance\\Phase127R2FURealProjectSmoke.cs').read_text(encoding='utf-8'); assert t.strip(); print('SOURCE_PRESENT')\"",
+  "literal_output": "SOURCE_PRESENT",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:17.740313+00:00"
+}

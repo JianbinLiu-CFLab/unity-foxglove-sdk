@@ -1,0 +1,10 @@
+{
+  "finding_id": "187-R2-I07-012",
+  "source_anchor": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase115HValidation.cs@43ab2957e8c1cc64ee13ed3bce9733deb63fa6cc:43; current_primary_sha256=8b3ebab8ece55f85c8be360312205c0005fadbb7194b65078512f3f7d05e0a97",
+  "source_sha256": "8b3ebab8ece55f85c8be360312205c0005fadbb7194b65078512f3f7d05e0a97",
+  "command": "python -c \"from pathlib import Path; t=Path(r'D:\\BaiduSyncdisk\\Obsidian Vault\\Websocket\\00 Inbox\\Packages\\dev.unity2foxglove.sdk\\Tests\\Runtime\\Phase115HValidation.cs').read_text(encoding='utf-8'); assert t.strip(); print('I07_SOURCE_BOUND', len(t))\"",
+  "literal_output": "I07_SOURCE_BOUND 16575",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:08:39.020658+00:00"
+}

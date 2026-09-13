@@ -1,0 +1,3 @@
+SOURCE_SHA256=c794cda6b09dacf6e2785a11d44734a94db08f0e98c76785968c548098aef865
+CHECKS={'foreach': True, 'no_early_return': True, 'failure_accumulation': True}
+RESULT=SATISFIED_BY_ROUND4

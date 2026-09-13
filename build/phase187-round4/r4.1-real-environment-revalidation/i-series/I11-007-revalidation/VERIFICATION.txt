@@ -1,0 +1,8 @@
+I11-007 direct revalidation
+source anchors: GenerationEditorOptimizationTests.cs, RuntimeValidationOptimizationTests.cs, SampleToolingOptimizationTests.cs
+source_sha256: current anchors inspected directly by probe
+command: python build/.../I11-007-revalidation/probe.py
+literal_output: TOTAL_EXACT_HELPER_CALLS=19; RESULT=REFUTED
+exit_status: 0
+The current test sources bind every migrated-console Fact to AssertConsolePhaseRemoved with exact file, phase flag and Validate entrypoint; shared helper independently checks obsolete source absence.
+probe_sha256=437F0F6788C35124221A63D7ACB9A2F5BD181DDA8728B4551D07BF0FD4F10084

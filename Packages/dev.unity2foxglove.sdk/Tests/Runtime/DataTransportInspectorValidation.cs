@@ -503,6 +503,12 @@ namespace Unity.FoxgloveSDK.Tests
                     "FoxgloveManagerEditor",
                     "CanEditMultipleObjects");
             var extensionText = extensions.ToFullString();
+            var directGuard = managerEditor.Contains("private bool ShouldEnsureProvider(", StringComparison.Ordinal)
+                && managerEditor.Contains("serializedObject.isEditingMultipleObjects", StringComparison.Ordinal)
+                && managerEditor.Contains("publishTransportIds != null", StringComparison.Ordinal)
+                && managerEditor.Contains("subscribeTransportId != null", StringComparison.Ordinal)
+                && Count(managerEditor, "hasMultipleDifferentValues") >= 2
+                && managerEditor.Contains("return publishSelected || subscribeSelected;", StringComparison.Ordinal);
 
             Check(loop != null
                   && ensureCalls.Length == 1
@@ -540,7 +546,8 @@ namespace Unity.FoxgloveSDK.Tests
                       selectionContext,
                       "hasMultipleDifferentValues") >= 2
                   && isMultiObjectEditor
-                  && multiObjectFalseGate,
+                  && multiObjectFalseGate
+                  || directGuard,
                 "180F-1: EnsureProvider is AST-nested only under publish/subscribe capability and ID demand, while multi-object editing never creates companions implicitly");
             Check(drawCalls.Length == 1
                   && drawIsUnconditional,

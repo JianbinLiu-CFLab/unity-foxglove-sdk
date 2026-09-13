@@ -1,0 +1,13 @@
+finding_id: 187-R2-I06-003
+source_anchor: Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs::MainCore mode grammar
+RED command: python I06-003-transaction/red_probe.py
+RED literal output: RED_RESULT=True; --serve branch ignored conflicting selector and bare --port
+RED exit status: 0
+GREEN command: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --serve --phase163-57; --serve --port
+GREEN literal output: --serve cannot be combined with --phase163-57.; --serve cannot be combined with --port.; both exit 1
+GREEN exit status: 1 each
+controls: valid --serve --port 8765 remains accepted by grammar; build 0 errors.
+ROLLBACK command: python I06-003-transaction/ROLLBACK.sh
+ROLLBACK literal output: seeded_equals_modified=true; restored_equals_original=true; live_modified_remains=true; ROLLBACK_OK; ROLLBACK_NOOP
+ROLLBACK exit status: 0
+restored_behavior: conflicting modes, repeated local evidence, and missing serve values are rejected before side effects.

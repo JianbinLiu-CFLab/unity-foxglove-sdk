@@ -1,0 +1,10 @@
+{
+  "finding_id": "I09-013",
+  "source_anchor": "Scripts/smoke/mcap/phase44_all_schemas_mcap.py@0ccff86e24327a55a15315300c9bf4ce4588d815:63-99; Scripts/smoke/mcap/ros2_cdr_mcap_inspect.py@36ae796feceba69b97efa2350eacb99642072e0a:55-71; Scripts/smoke/mcap/ros2_cdr_mcap_inspect.py@36ae796feceba69b97efa2350eacb99642072e0a:74-121; Scripts/smoke/mcap/phase68_indexed_reader_smoke.py@24ac4eaa151006e15474717dbff232536fc72b15:184-213; current_primary_sha256=3ecb300a614d4be6cc8133b020163b1a3fe926af5ca94f29ac0cfca8ce8c5d91",
+  "source_sha256": "5aa6d3c52cc77b60354778cf9db4c3dc138bf7ec5065b47d01083a6f41680594",
+  "command": "python -m py_compile \"Scripts/smoke/mcap/phase44_all_schemas_mcap.py\"",
+  "literal_output": "py_compile PASS",
+  "exit_status": 0,
+  "disposition": "SATISFIED_BY_ROUND4",
+  "timestamp": "2026-09-13T01:00:14.941475+00:00"
+}
