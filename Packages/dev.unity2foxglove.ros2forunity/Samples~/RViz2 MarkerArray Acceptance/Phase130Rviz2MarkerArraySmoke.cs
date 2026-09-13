@@ -415,14 +415,17 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 
     private void CleanupRuntime()
     {
+        var cleanupFailed = false;
         if (_node != null && _tfPublisher != null)
         {
             try
             {
                 _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfPublisher);
+                _tfPublisher = null;
             }
             catch (Exception ex)
             {
+                cleanupFailed = true;
                 WarnCleanupFailure("tf publisher", ex);
             }
         }
@@ -432,28 +435,32 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
             try
             {
                 _node.RemovePublisher<visualization_msgs.msg.MarkerArray>(_markerPublisher);
+                _markerPublisher = null;
             }
             catch (Exception ex)
             {
+                cleanupFailed = true;
                 WarnCleanupFailure("marker publisher", ex);
             }
         }
 
-        if (_ros2Unity != null && _node != null)
+        if (!cleanupFailed && _ros2Unity != null && _node != null)
         {
             try
             {
                 _ros2Unity.RemoveNode(_node);
+                _node = null;
             }
             catch (Exception ex)
             {
+                cleanupFailed = true;
                 WarnCleanupFailure("node", ex);
             }
         }
 
-        _tfPublisher = null;
-        _markerPublisher = null;
-        _node = null;
+        if (cleanupFailed)
+            return;
+
         if (_ownsRos2UnityComponent && _ros2Unity != null)
             Destroy(_ros2Unity);
         _ros2Unity = null;

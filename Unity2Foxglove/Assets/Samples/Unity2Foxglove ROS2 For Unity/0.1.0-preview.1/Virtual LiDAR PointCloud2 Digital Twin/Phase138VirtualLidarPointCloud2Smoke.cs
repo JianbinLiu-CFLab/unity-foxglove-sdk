@@ -435,27 +435,52 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
 
     private void CleanupRuntime()
     {
+        var cleanupFailed = false;
         if (_node != null && _tfPublisher != null)
         {
-            try { _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfPublisher); }
-            catch (Exception ex) { RecordCleanupFailure("removing TF publisher", ex); }
+            try
+            {
+                _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfPublisher);
+                _tfPublisher = null;
+            }
+            catch (Exception ex)
+            {
+                cleanupFailed = true;
+                RecordCleanupFailure("removing TF publisher", ex);
+            }
         }
 
         if (_node != null && _publisher != null)
         {
-            try { _node.RemovePublisher<sensor_msgs.msg.PointCloud2>(_publisher); }
-            catch (Exception ex) { RecordCleanupFailure("removing PointCloud2 publisher", ex); }
+            try
+            {
+                _node.RemovePublisher<sensor_msgs.msg.PointCloud2>(_publisher);
+                _publisher = null;
+            }
+            catch (Exception ex)
+            {
+                cleanupFailed = true;
+                RecordCleanupFailure("removing PointCloud2 publisher", ex);
+            }
         }
 
-        if (_ros2Unity != null && _node != null)
+        if (!cleanupFailed && _ros2Unity != null && _node != null)
         {
-            try { _ros2Unity.RemoveNode(_node); }
-            catch (Exception ex) { RecordCleanupFailure("removing ROS2 node", ex); }
+            try
+            {
+                _ros2Unity.RemoveNode(_node);
+                _node = null;
+            }
+            catch (Exception ex)
+            {
+                cleanupFailed = true;
+                RecordCleanupFailure("removing ROS2 node", ex);
+            }
         }
 
-        _tfPublisher = null;
-        _publisher = null;
-        _node = null;
+        if (cleanupFailed)
+            return;
+
         _effectiveNodeName = string.Empty;
         if (_ownsRos2UnityComponent && _ros2Unity != null)
             Destroy(_ros2Unity);

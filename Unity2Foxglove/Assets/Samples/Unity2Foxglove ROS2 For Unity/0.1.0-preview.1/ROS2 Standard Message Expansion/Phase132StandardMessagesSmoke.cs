@@ -456,32 +456,31 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
 
     private void CleanupRuntime()
     {
-        RemovePublisherIfPresent(_cameraInfoPublisher);
-        RemovePublisherIfPresent(_imagePublisher);
-        RemovePublisherIfPresent(_imuPublisher);
-        RemovePublisherIfPresent(_odometryPublisher);
-        RemovePublisherIfPresent(_posePublisher);
-        RemovePublisherIfPresent(_navSatFixPublisher);
+        var cleanupFailed = false;
+        cleanupFailed |= !RemovePublisherIfPresent(ref _cameraInfoPublisher);
+        cleanupFailed |= !RemovePublisherIfPresent(ref _imagePublisher);
+        cleanupFailed |= !RemovePublisherIfPresent(ref _imuPublisher);
+        cleanupFailed |= !RemovePublisherIfPresent(ref _odometryPublisher);
+        cleanupFailed |= !RemovePublisherIfPresent(ref _posePublisher);
+        cleanupFailed |= !RemovePublisherIfPresent(ref _navSatFixPublisher);
 
-        if (_ros2Unity != null && _node != null)
+        if (!cleanupFailed && _ros2Unity != null && _node != null)
         {
             try
             {
                 _ros2Unity.RemoveNode(_node);
+                _node = null;
             }
             catch (Exception ex)
             {
+                cleanupFailed = true;
                 WarnCleanupFailure("node", ex);
             }
         }
 
-        _cameraInfoPublisher = null;
-        _imagePublisher = null;
-        _imuPublisher = null;
-        _odometryPublisher = null;
-        _posePublisher = null;
-        _navSatFixPublisher = null;
-        _node = null;
+        if (cleanupFailed)
+            return;
+
         _executorStarted = false;
         _warnedMissingStartExecutor = false;
         _readyInitializationBlocked = false;
@@ -493,18 +492,21 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         _ownsRos2UnityComponent = false;
     }
 
-    private void RemovePublisherIfPresent<T>(IPublisher<T> publisher) where T : ROS2.Message
+    private bool RemovePublisherIfPresent<T>(ref IPublisher<T> publisher) where T : ROS2.Message
     {
         if (_node == null || publisher == null)
-            return;
+            return true;
 
         try
         {
             _node.RemovePublisher<T>(publisher);
+            publisher = null;
+            return true;
         }
         catch (Exception ex)
         {
             WarnCleanupFailure(typeof(T).Name + " publisher", ex);
+            return false;
         }
     }
 

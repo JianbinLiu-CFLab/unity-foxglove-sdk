@@ -473,14 +473,17 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
 
     private void CleanupRuntime()
     {
+        var cleanupFailed = false;
         if (_node != null && _tfPublisher != null)
         {
             try
             {
                 _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfPublisher);
+                _tfPublisher = null;
             }
             catch (Exception ex)
             {
+                cleanupFailed = true;
                 WarnCleanupFailure("tf publisher", ex);
             }
         }
@@ -490,28 +493,32 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
             try
             {
                 _node.RemovePublisher<sensor_msgs.msg.PointCloud2>(_pointCloudPublisher);
+                _pointCloudPublisher = null;
             }
             catch (Exception ex)
             {
+                cleanupFailed = true;
                 WarnCleanupFailure("point cloud publisher", ex);
             }
         }
 
-        if (_ros2Unity != null && _node != null)
+        if (!cleanupFailed && _ros2Unity != null && _node != null)
         {
             try
             {
                 _ros2Unity.RemoveNode(_node);
+                _node = null;
             }
             catch (Exception ex)
             {
+                cleanupFailed = true;
                 WarnCleanupFailure("node", ex);
             }
         }
 
-        _tfPublisher = null;
-        _pointCloudPublisher = null;
-        _node = null;
+        if (cleanupFailed)
+            return;
+
         if (_ownsRos2UnityComponent && _ros2Unity != null)
             Destroy(_ros2Unity);
         _ros2Unity = null;
