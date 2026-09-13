@@ -78,8 +78,7 @@ def run_bounded(
     sizes = {"stdout": 0, "stderr": 0}
     truncated = False
 
-    def drain(name: str, stream) -> None:
-        """Drain one pipe while retaining only the configured byte budget."""
+    def drain(name: str, stream) -> None: """Drain one pipe while retaining only the configured byte budget."""
         nonlocal truncated
         while True:
             chunk = stream.read(8192)
