@@ -94,5 +94,75 @@ namespace FoxgloveSdk.UnitTests.Mcap
                     File.Delete(path);
             }
         }
+
+        [Fact]
+        public void SnapshotMatchesIndependentLinearCanonicalOracleAcrossChunks()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-oracle-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(stream, null, chunkSizeBytes: 96, compression: "", leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/oracle/a", "json", "phase188.A", "jsonschema", "{}");
+                    recorder.AddChannel(2, "/phase188/oracle/b", "json", "phase188.B", "jsonschema", "{}");
+                    for (ulong time = 1; time <= 20; time++)
+                    {
+                        var channel = (uint)(time % 2) + 1;
+                        recorder.WriteMessage(channel, time * 1000, new byte[] { (byte)time });
+                    }
+                    recorder.Close();
+                }
+
+                var expected = new Dictionary<ushort, McapMessage>();
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new McapReader(stream))
+                {
+                    var summary = reader.ReadSummary();
+                    foreach (var index in summary.ChunkIndexes)
+                    {
+                        var records = reader.ReadChunkRecords(index.ChunkStartOffset, index.ChunkLength, out _);
+                        foreach (var message in reader.ReadChunkMessages(records))
+                        {
+                            if (message.LogTime > 20000)
+                                continue;
+                            if (!expected.TryGetValue(message.ChannelId, out var current)
+                                || CompareCanonical(message, current) > 0)
+                                expected[message.ChannelId] = message;
+                        }
+                    }
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var actual = engine.Snapshot(20000, new List<McapMessage>());
+
+                Assert.Equal(expected.Count, actual.Count);
+                foreach (var message in actual)
+                {
+                    Assert.True(expected.TryGetValue(message.ChannelId, out var oracle));
+                    Assert.Equal(oracle.LogTime, message.LogTime);
+                    Assert.Equal(oracle.Sequence, message.Sequence);
+                    Assert.Equal(oracle.PublishTime, message.PublishTime);
+                    Assert.Equal(oracle.Data, message.Data);
+                }
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        private static int CompareCanonical(McapMessage left, McapMessage right)
+        {
+            var comparison = left.LogTime.CompareTo(right.LogTime);
+            if (comparison != 0)
+                return comparison;
+            comparison = left.Sequence.CompareTo(right.Sequence);
+            if (comparison != 0)
+                return comparison;
+            return left.PublishTime.CompareTo(right.PublishTime);
+        }
     }
 }
