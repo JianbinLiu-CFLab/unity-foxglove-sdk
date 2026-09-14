@@ -15,8 +15,11 @@ namespace Unity.FoxgloveSDK.Performance
             if (string.IsNullOrWhiteSpace(result.Scenario)
                 || string.IsNullOrWhiteSpace(result.FixtureHashSha256)
                 || result.FixtureHashSha256.Length != 64
-                || !IsUpperHex(result.FixtureHashSha256))
-                throw new ArgumentException("Scenario and uppercase fixture SHA-256 are required.", nameof(result));
+                || !IsUpperHex(result.FixtureHashSha256)
+                || string.IsNullOrWhiteSpace(result.ResultDigestSha256)
+                || result.ResultDigestSha256.Length != 64
+                || !IsUpperHex(result.ResultDigestSha256))
+                throw new ArgumentException("Scenario, fixture SHA-256, and result digest are required.", nameof(result));
             if (result.FixtureSeed <= 0 || result.WarmupIterations < 0 || result.MeasuredIterations <= 0)
                 throw new ArgumentException("Fixture seed and iteration counts are invalid.", nameof(result));
             if (!FiniteOrdered(result.P50Milliseconds, result.P95Milliseconds, result.P99Milliseconds, result.MaxMilliseconds))

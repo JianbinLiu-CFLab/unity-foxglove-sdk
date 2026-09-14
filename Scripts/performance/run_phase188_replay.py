@@ -30,7 +30,8 @@ def compare_results(baseline_dir: pathlib.Path, candidate_dir: pathlib.Path, out
     candidate_path, candidate = latest_result(candidate_dir)
     if baseline.get("fixtureHashSha256") != candidate.get("fixtureHashSha256"):
         raise RuntimeError("baseline and candidate fixtures differ")
-    required = ("p50Milliseconds", "p95Milliseconds", "p99Milliseconds", "returnedMessages")
+    required = ("p50Milliseconds", "p95Milliseconds", "p99Milliseconds", "returnedMessages",
+                "resultDigestSha256")
     for label, payload in (("baseline", baseline), ("candidate", candidate)):
         missing = [key for key in required if key not in payload]
         if missing:
@@ -45,14 +46,17 @@ def compare_results(baseline_dir: pathlib.Path, candidate_dir: pathlib.Path, out
         "baseline": {"path": str(baseline_path), "implementation": baseline.get("implementation"),
                      "p50Milliseconds": baseline["p50Milliseconds"], "p95Milliseconds": baseline["p95Milliseconds"],
                      "p99Milliseconds": baseline["p99Milliseconds"], "returnedMessages": baseline["returnedMessages"],
+                     "resultDigestSha256": baseline["resultDigestSha256"],
                      "decompressedChunks": baseline.get("decompressedChunks"), "headersScanned": baseline.get("headersScanned")},
         "candidate": {"path": str(candidate_path), "implementation": candidate.get("implementation"),
                       "p50Milliseconds": candidate["p50Milliseconds"], "p95Milliseconds": candidate["p95Milliseconds"],
                       "p99Milliseconds": candidate["p99Milliseconds"], "returnedMessages": candidate["returnedMessages"],
+                      "resultDigestSha256": candidate["resultDigestSha256"],
                       "decompressedChunks": candidate.get("decompressedChunks"), "headersScanned": candidate.get("headersScanned")},
         "latencyRatioCandidateOverBaseline": {"p50": ratio("p50Milliseconds"), "p95": ratio("p95Milliseconds"),
                                                 "p99": ratio("p99Milliseconds")},
-        "semanticParity": candidate["returnedMessages"] == baseline["returnedMessages"],
+        "semanticParity": (candidate["returnedMessages"] == baseline["returnedMessages"]
+                           and candidate["resultDigestSha256"] == baseline["resultDigestSha256"]),
         "noiseBand": "not_estimated",
     }
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -104,7 +108,7 @@ def main() -> int:
             print("Phase188 result JSON was not produced.", file=sys.stderr)
             return 1
         data = json.loads(results[-1].read_text(encoding="utf-8"))
-        required = ("fixtureHashSha256", "fixtureSeed", "p50Milliseconds", "p95Milliseconds", "p99Milliseconds", "payloadBytesCopied")
+        required = ("fixtureHashSha256", "fixtureSeed", "resultDigestSha256", "p50Milliseconds", "p95Milliseconds", "p99Milliseconds", "payloadBytesCopied")
         if any(key not in data for key in required):
             print("Phase188 result is missing required deterministic fields.", file=sys.stderr)
             return 1

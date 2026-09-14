@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography;
 using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Performance
@@ -45,6 +46,7 @@ namespace Unity.FoxgloveSDK.Performance
                 Scenario = full ? "latest-at-full" : "latest-at-quick",
                 Implementation = candidate ? "optimized-indexed-latest-at" : "reference-linear-scan",
                 FixtureHashSha256 = fixture.HashSha256,
+                ResultDigestSha256 = ComputeResultDigest(resultBuffer),
                 FixtureSeed = fixture.Seed,
                 Runtime = Environment.Version.ToString(),
                 BuildType = "dotnet",
@@ -139,6 +141,35 @@ namespace Unity.FoxgloveSDK.Performance
                 if (values[i] > max)
                     max = values[i];
             return max;
+        }
+
+        private static string ComputeResultDigest(IReadOnlyList<McapMessage> messages)
+        {
+            using var stream = new MemoryStream();
+            using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
+            {
+                writer.Write(messages.Count);
+                for (var i = 0; i < messages.Count; i++)
+                {
+                    var message = messages[i];
+                    writer.Write(message.ChannelId);
+                    writer.Write(message.Sequence);
+                    writer.Write(message.LogTime);
+                    writer.Write(message.PublishTime);
+                    if (message.Data == null)
+                    {
+                        writer.Write(-1);
+                    }
+                    else
+                    {
+                        writer.Write(message.Data.Length);
+                        writer.Write(message.Data);
+                    }
+                }
+            }
+            stream.Position = 0;
+            using var sha = SHA256.Create();
+            return Convert.ToHexString(sha.ComputeHash(stream));
         }
     }
 }

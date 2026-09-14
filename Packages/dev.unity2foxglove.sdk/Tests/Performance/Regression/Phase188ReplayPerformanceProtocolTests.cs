@@ -37,6 +37,7 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             var result = new Phase188ReplayPerformanceResult
             {
                 Scenario = "latest-at-middle",
+                ResultDigestSha256 = new string('A', 64),
                 WarmupIterations = 10,
                 MeasuredIterations = 50,
                 P50Milliseconds = 1.25,
@@ -63,6 +64,7 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             Assert.Contains("\"payloadCopies\":3", json);
             Assert.Contains("\"payloadBytesCopied\":12", json);
             Assert.Contains("\"returnedMessages\":3", json);
+            Assert.Contains("\"resultDigestSha256\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"", json);
             Assert.Contains("\"p95Milliseconds\":2.5", json);
             Assert.Contains("\"applyMilliseconds\":0.375", json);
         }
@@ -74,6 +76,7 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             {
                 Scenario = "latest-at",
                 FixtureHashSha256 = new string('A', 64),
+                ResultDigestSha256 = new string('B', 64),
                 FixtureSeed = 188042,
                 Runtime = "net10",
                 BuildType = "dotnet",
