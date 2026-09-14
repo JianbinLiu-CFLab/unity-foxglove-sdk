@@ -42,6 +42,26 @@ class Phase188ReplayRunnerTests(unittest.TestCase):
             path.write_text(json.dumps({"fixtureHashSha256": "B" * 64}), encoding="utf-8")
             self.assertTrue(path.is_file())
 
+    def test_comparison_does_not_call_count_only_semantic_parity(self):
+        """Equal counts with different output digests must not be called semantic parity."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            fields = {
+                "fixtureHashSha256": "A" * 64,
+                "p50Milliseconds": 1.0,
+                "p95Milliseconds": 2.0,
+                "p99Milliseconds": 3.0,
+                "returnedMessages": 4,
+            }
+            (root / "baseline").mkdir(); (root / "candidate").mkdir()
+            (root / "baseline" / "phase188-replay_x.json").write_text(
+                json.dumps({**fields, "resultDigestSha256": "B" * 64}), encoding="utf-8")
+            (root / "candidate" / "phase188-replay_x.json").write_text(
+                json.dumps({**fields, "resultDigestSha256": "C" * 64}), encoding="utf-8")
+            comparison = run_phase188_replay.compare_results(
+                root / "baseline", root / "candidate", root / "comparison.json")
+            self.assertFalse(comparison["semanticParity"])
+
 
 if __name__ == "__main__":
     unittest.main()
