@@ -3,6 +3,7 @@
 //
 // Module: Editor/Manager
 
+using System;
 using System.IO;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Transport;

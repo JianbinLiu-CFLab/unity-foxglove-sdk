@@ -432,6 +432,15 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         private int _droppedCallbacks;
         private bool _disposed;
 
+        public bool IsDisposed
+        {
+            get
+            {
+                lock (_gate)
+                    return _disposed;
+            }
+        }
+
         public StringSubscription(
             ROS2Node ros2Node,
             string topic,
