@@ -195,6 +195,7 @@ namespace Unity.FoxgloveSDK.Editor
         public bool SupportsProtobuf { get; }
         public bool SupportsMsgPack { get; }
         public bool IsTemplate { get; }
+        public string MessagePackSupportMode { get; }
         public string ProductNote { get; }
 
         public Unity2FoxgloveSdkTypedPublisherEntry(
@@ -207,7 +208,8 @@ namespace Unity.FoxgloveSDK.Editor
             bool supportsProtobuf,
             bool supportsMsgPack,
             bool isTemplate,
-            string productNote)
+            string productNote,
+            string messagePackSupportMode = "unsupported")
         {
             PublisherTypeFullName = publisherTypeFullName ?? string.Empty;
             EntryKind = entryKind ?? string.Empty;
@@ -218,6 +220,7 @@ namespace Unity.FoxgloveSDK.Editor
             SupportsProtobuf = supportsProtobuf;
             SupportsMsgPack = supportsMsgPack;
             IsTemplate = isTemplate;
+            MessagePackSupportMode = messagePackSupportMode ?? "unsupported";
             ProductNote = productNote ?? string.Empty;
         }
     }

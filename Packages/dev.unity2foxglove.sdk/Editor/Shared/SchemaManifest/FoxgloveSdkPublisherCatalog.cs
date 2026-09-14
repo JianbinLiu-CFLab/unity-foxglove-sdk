@@ -104,7 +104,8 @@ namespace Unity.FoxgloveSDK.Editor
                     "jsonTyped",
                     supportsJson: true,
                     supportsProtobuf: false,
-                    "Generic JSON publisher template; its concrete schema is supplied by TMessage."),
+                    "Generic JSON publisher template; its concrete schema is supplied by TMessage.",
+                    messagePackSupportMode: "generatedCodec"),
                 Template(
                     "Foxglove.Components.ProtobufPublisher<T>",
                     "protobufTyped",
@@ -123,7 +124,8 @@ namespace Unity.FoxgloveSDK.Editor
             string foxgloveSchemaName,
             bool supportsJson,
             bool supportsProtobuf,
-            string productNote)
+            string productNote,
+            string messagePackSupportMode = "always")
             => new Unity2FoxgloveSdkTypedPublisherEntry(
                 publisherTypeFullName,
                 "concretePublisher",
@@ -132,16 +134,18 @@ namespace Unity.FoxgloveSDK.Editor
                 foxgloveSchemaName,
                 supportsJson,
                 supportsProtobuf,
-                supportsMsgPack: false,
+                supportsMsgPack: messagePackSupportMode == "always",
                 isTemplate: false,
-                productNote);
+                productNote,
+                messagePackSupportMode);
 
         private static Unity2FoxgloveSdkTypedPublisherEntry Template(
             string publisherTypeFullName,
             string publisherFamily,
             bool supportsJson,
             bool supportsProtobuf,
-            string productNote)
+            string productNote,
+            string messagePackSupportMode = "unsupported")
             => new Unity2FoxgloveSdkTypedPublisherEntry(
                 publisherTypeFullName,
                 "genericTemplate",
@@ -150,8 +154,9 @@ namespace Unity.FoxgloveSDK.Editor
                 "",
                 supportsJson,
                 supportsProtobuf,
-                supportsMsgPack: false,
+                supportsMsgPack: messagePackSupportMode == "always" || messagePackSupportMode == "generatedCodec",
                 isTemplate: true,
-                productNote);
+                productNote,
+                messagePackSupportMode);
     }
 }
