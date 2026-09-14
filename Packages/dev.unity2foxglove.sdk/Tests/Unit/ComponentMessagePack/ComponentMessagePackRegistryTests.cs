@@ -61,6 +61,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("excluded", entry.Diagnostic, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void LogicalSchemaConflictMarksEachClrTypeIndependently()
+        {
+            ComponentMessagePackCodecRegistry.ResetForSubsystemRegistration();
+            ComponentMessagePackGeneratedBootstrap.RegisterGenerated(new ComponentMessagePackGeneratedManifest("a", "1", new[] { Entry(typeof(Alpha), "schema.same", "shape.a") }));
+            ComponentMessagePackGeneratedBootstrap.RegisterGenerated(new ComponentMessagePackGeneratedManifest("b", "2", new[] { Entry(typeof(Beta), "schema.same", "shape.b") }));
+            Assert.True(ComponentMessagePackCodecRegistry.TryGet(typeof(Alpha), out var alpha));
+            Assert.True(ComponentMessagePackCodecRegistry.TryGet(typeof(Beta), out var beta));
+            Assert.False(alpha.IsAvailable);
+            Assert.False(beta.IsAvailable);
+            Assert.Equal(typeof(Alpha), alpha.ClrType);
+            Assert.Equal(typeof(Beta), beta.ClrType);
+        }
+
         private static ComponentMessagePackGeneratedEntry Entry(Type type, string schema, string shape)
             => new ComponentMessagePackGeneratedEntry(type, schema, shape, true, true, string.Empty, _ => Array.Empty<byte>());
     }

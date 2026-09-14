@@ -39,15 +39,14 @@ namespace Unity.FoxgloveSDK.Components.Publishing.MessagePack
                     if (!ComponentMessagePackMetadataLimits.Fits(entry.ClrType.FullName) || !ComponentMessagePackMetadataLimits.Fits(entry.LogicalSchemaName) || !ComponentMessagePackMetadataLimits.Fits(entry.ShapeIdentity) || !ComponentMessagePackMetadataLimits.Fits(entry.Diagnostic, ComponentMessagePackMetadataLimits.MaxDiagnosticUtf8Bytes)) continue;
                     if (ByType.TryGetValue(entry.ClrType, out var existing))
                     {
-                        if (!Equivalent(existing, entry)) ByType[entry.ClrType] = Conflict(existing, entry);
+                        if (!Equivalent(existing, entry)) ByType[entry.ClrType] = Conflict(existing, entry, entry.ClrType);
                         continue;
                     }
                     if (entry.ClaimsLogicalSchemaKey && BySchema.TryGetValue(entry.LogicalSchemaName, out var schemaExisting) && !Equivalent(schemaExisting, entry))
                     {
-                        var conflict = Conflict(schemaExisting, entry);
-                        ByType[schemaExisting.ClrType] = conflict;
-                        ByType[entry.ClrType] = conflict;
-                        BySchema[entry.LogicalSchemaName] = conflict;
+                        ByType[schemaExisting.ClrType] = Conflict(schemaExisting, entry, schemaExisting.ClrType);
+                        ByType[entry.ClrType] = Conflict(schemaExisting, entry, entry.ClrType);
+                        BySchema[entry.LogicalSchemaName] = ByType[schemaExisting.ClrType];
                         continue;
                     }
                     ByType.Add(entry.ClrType, entry);
@@ -69,7 +68,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.MessagePack
 
         private static bool Equivalent(ComponentMessagePackGeneratedEntry a, ComponentMessagePackGeneratedEntry b)
             => a.ClrType == b.ClrType && string.Equals(a.LogicalSchemaName, b.LogicalSchemaName, StringComparison.Ordinal) && string.Equals(a.ShapeIdentity, b.ShapeIdentity, StringComparison.Ordinal) && a.IsAvailable == b.IsAvailable && a.ClaimsLogicalSchemaKey == b.ClaimsLogicalSchemaKey;
-        private static ComponentMessagePackGeneratedEntry Conflict(ComponentMessagePackGeneratedEntry a, ComponentMessagePackGeneratedEntry b)
-            => new ComponentMessagePackGeneratedEntry(a.ClrType, a.LogicalSchemaName, a.ShapeIdentity, false, false, "MessagePack codec conflict for CLR type or logical schema.");
+        private static ComponentMessagePackGeneratedEntry Conflict(ComponentMessagePackGeneratedEntry a, ComponentMessagePackGeneratedEntry b, Type clrType)
+            => new ComponentMessagePackGeneratedEntry(clrType, a.LogicalSchemaName, a.ShapeIdentity, false, false, "MessagePack codec conflict for CLR type or logical schema.");
     }
 }

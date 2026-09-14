@@ -18,7 +18,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
         [Fact]
         public void SupportedSchemaGeneratesExecutableManifestAndBinaryWriter()
         {
-            var source = "using Unity.FoxgloveSDK.Protocol; using Newtonsoft.Json; "
+            var source = "using System; using Unity.FoxgloveSDK.Protocol; using Newtonsoft.Json; "
                 + "[FoxgloveSchema(\"demo.Telemetry\")] public sealed class Telemetry "
                 + "{ [JsonProperty(\"count\")] public int Count; public byte[] Data; [JsonIgnore] public int Ignored; }";
             var compilation = CSharpCompilation.Create("Phase189BFixture", new[] { CSharpSyntaxTree.ParseText(source) }, References(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
@@ -40,6 +40,25 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Single(manifest.Entries);
             Assert.True(manifest.Entries[0].IsAvailable);
             Assert.Equal("demo.Telemetry", manifest.Entries[0].LogicalSchemaName);
+        }
+
+        [Fact]
+        public void DuplicateAndUnsupportedMembersProduceDiagnosticsAndUnavailableEntries()
+        {
+            var source = "using System; using Unity.FoxgloveSDK.Protocol; using Newtonsoft.Json; "
+                + "[FoxgloveSchema(\"demo.Bad\")] public sealed class Bad "
+                + "{ [JsonProperty(\"same\")] public int A; [JsonProperty(\"same\")] public int B; public DateTime Unsupported; }";
+            var compilation = CSharpCompilation.Create("Phase189BBadFixture", new[] { CSharpSyntaxTree.ParseText(source) }, References(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new ComponentMessagePackSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
+            var runDiagnostics = driver.GetRunResult().Diagnostics.Concat(diagnostics).ToArray();
+            Assert.Contains(runDiagnostics, d => d.Id == "FOXCOMP001");
+            Assert.Contains(runDiagnostics, d => d.Id == "FOXCOMP002");
+            using var image = new MemoryStream();
+            var emit = updated.Emit(image);
+            Assert.True(emit.Success, string.Join("; ", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+            var generated = driver.GetRunResult().GeneratedTrees.Single(tree => tree.FilePath.EndsWith("ComponentMessagePackManifest.g.cs", StringComparison.Ordinal)).GetText().ToString();
+            Assert.Contains("false, false", generated, StringComparison.Ordinal);
         }
 
         private static IEnumerable<MetadataReference> References()
