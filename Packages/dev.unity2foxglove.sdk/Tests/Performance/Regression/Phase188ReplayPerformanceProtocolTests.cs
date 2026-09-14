@@ -66,5 +66,34 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             Assert.Contains("\"p95Milliseconds\":2.5", json);
             Assert.Contains("\"applyMilliseconds\":0.375", json);
         }
+
+        [Fact]
+        public void ValidationRejectsNonFiniteAndInconsistentResults()
+        {
+            var result = new Phase188ReplayPerformanceResult
+            {
+                Scenario = "latest-at",
+                FixtureHashSha256 = new string('A', 64),
+                FixtureSeed = 188042,
+                Runtime = "net10",
+                BuildType = "dotnet",
+                Compression = "none",
+                CacheState = "cold",
+                CursorPosition = "middle",
+                WarmupIterations = 1,
+                MeasuredIterations = 1,
+                P50Milliseconds = 1,
+                P95Milliseconds = 2,
+                P99Milliseconds = 3,
+                MaxMilliseconds = 4,
+                PayloadCopies = 0,
+                PayloadBytesCopied = 1
+            };
+
+            Assert.Throws<ArgumentException>(() => Phase188ReplayPerformanceProtocol.Validate(result));
+            result.PayloadBytesCopied = 0;
+            result.P99Milliseconds = double.NaN;
+            Assert.Throws<ArgumentException>(() => Phase188ReplayPerformanceProtocol.Validate(result));
+        }
     }
 }

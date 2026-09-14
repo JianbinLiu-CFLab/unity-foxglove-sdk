@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Performance
                 metrics = engine.LastSnapshotMetrics;
             }
 
-            return new Phase188ReplayPerformanceResult
+            var result = new Phase188ReplayPerformanceResult
             {
                 Scenario = full ? "latest-at-full" : "latest-at-quick",
                 FixtureHashSha256 = fixture.HashSha256,
@@ -62,6 +62,8 @@ namespace Unity.FoxgloveSDK.Performance
                 ReturnedMessages = metrics.ReturnedMessages,
                 QueryMilliseconds = Phase188ReplayPerformanceMetrics.Percentile(samples, 50)
             };
+            Phase188ReplayPerformanceProtocol.Validate(result);
+            return result;
         }
 
         private static double Max(IReadOnlyList<double> values)

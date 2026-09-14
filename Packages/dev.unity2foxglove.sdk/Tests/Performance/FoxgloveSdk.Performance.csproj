@@ -17,6 +17,7 @@
     <Compile Include="PerformanceResult.cs" />
     <Compile Include="PerformanceRunner.cs" />
     <Compile Include="Phase188ReplayPerformanceMetrics.cs" />
+    <Compile Include="Phase188ReplayPerformanceProtocol.cs" />
     <Compile Include="Phase188ReplayPerformanceResult.cs" />
     <Compile Include="ReplayPerformanceFixtures.cs" />
     <Compile Include="ReplayPerformanceScenarios.cs" />
