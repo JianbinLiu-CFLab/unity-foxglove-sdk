@@ -49,6 +49,7 @@ namespace Unity.FoxgloveSDK.Performance.Tests
                 HeadersScanned = 120,
                 CandidateUpdates = 6,
                 PayloadCopies = 3,
+                PayloadBytesCopied = 12,
                 ReturnedMessages = 3,
                 QueryMilliseconds = 0.5,
                 DecodeMilliseconds = 0.25,
@@ -60,6 +61,7 @@ namespace Unity.FoxgloveSDK.Performance.Tests
 
             Assert.Contains("\"eligibleChunks\":12", json);
             Assert.Contains("\"payloadCopies\":3", json);
+            Assert.Contains("\"payloadBytesCopied\":12", json);
             Assert.Contains("\"returnedMessages\":3", json);
             Assert.Contains("\"p95Milliseconds\":2.5", json);
             Assert.Contains("\"applyMilliseconds\":0.375", json);

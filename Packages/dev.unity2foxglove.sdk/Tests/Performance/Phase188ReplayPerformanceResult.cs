@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Performance
         [JsonProperty("headersScanned")] public long HeadersScanned { get; set; }
         [JsonProperty("candidateUpdates")] public long CandidateUpdates { get; set; }
         [JsonProperty("payloadCopies")] public long PayloadCopies { get; set; }
+        [JsonProperty("payloadBytesCopied")] public long PayloadBytesCopied { get; set; }
         [JsonProperty("returnedMessages")] public long ReturnedMessages { get; set; }
         [JsonProperty("queryMilliseconds")] public double QueryMilliseconds { get; set; }
         [JsonProperty("decodeMilliseconds")] public double DecodeMilliseconds { get; set; }
