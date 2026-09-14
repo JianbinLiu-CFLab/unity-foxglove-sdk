@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.Performance
         {
             var mode = "quick";
             var modeWasSpecified = false;
+            var phase188 = false;
             string outputDir = null;
             string thresholdPath = null;
             var resultPrefix = DefaultResultFilePrefix;
@@ -45,6 +46,7 @@ namespace Unity.FoxgloveSDK.Performance
             {
                 switch (args[i])
                 {
+                    case "--phase188": phase188 = true; break;
                     case "--quick":
                         if (modeWasSpecified && mode != "quick")
                             return UsageError("--quick and --full cannot be used together.");
@@ -87,6 +89,9 @@ namespace Unity.FoxgloveSDK.Performance
                     : "Performance threshold self-test failed.");
                 return ok ? 0 : 1;
             }
+
+            if (phase188)
+                return RunPhase188(mode, outputDir, resultPrefix);
 
             if (outputDir == null)
                 outputDir = Path.Combine(RepoRoot, "build", "performance");
@@ -183,6 +188,27 @@ namespace Unity.FoxgloveSDK.Performance
             Console.Error.WriteLine(
                 "Usage: [--quick|--full] [--output <directory>] [--thresholds <json>] [--result-prefix <prefix>] [--no-thresholds] [--threshold-self-test]");
             return 2;
+        }
+
+        private static int RunPhase188(string mode, string outputDir, string resultPrefix)
+        {
+            outputDir ??= Path.Combine(RepoRoot, "build", "phase188", mode == "full" ? "baseline-full" : "baseline-quick");
+            Directory.CreateDirectory(outputDir);
+            try
+            {
+                var result = ReplayPerformanceScenarios.Run(outputDir, mode == "full");
+                var json = JsonConvert.SerializeObject(result, Formatting.Indented);
+                var path = Path.Combine(outputDir, $"{resultPrefix}_{mode}_{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+                File.WriteAllText(path, json);
+                Console.WriteLine($"Phase188 replay result written to: {path}");
+                Console.WriteLine($"[PASS] {result.Scenario} - p50={result.P50Milliseconds.ToString("F3", CultureInfo.InvariantCulture)}ms, p95={result.P95Milliseconds.ToString("F3", CultureInfo.InvariantCulture)}ms, chunks={result.DecompressedChunks}/{result.EligibleChunks}, returned={result.ReturnedMessages}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("Phase188 replay benchmark failed: " + ex.Message);
+                return 1;
+            }
         }
 
         private static string ResolveGitCommit()

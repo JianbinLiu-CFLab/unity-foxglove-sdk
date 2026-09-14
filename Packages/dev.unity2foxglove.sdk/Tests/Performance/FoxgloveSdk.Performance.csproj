@@ -18,6 +18,8 @@
     <Compile Include="PerformanceRunner.cs" />
     <Compile Include="Phase188ReplayPerformanceMetrics.cs" />
     <Compile Include="Phase188ReplayPerformanceResult.cs" />
+    <Compile Include="ReplayPerformanceFixtures.cs" />
+    <Compile Include="ReplayPerformanceScenarios.cs" />
     <Compile Include="FakePerformanceTransport.cs" />
     <Compile Include="../Unit/Fixtures/UnityEngineMathTypes.cs" Link="Fixtures/UnityEngineMathTypes.cs" />
   </ItemGroup>
