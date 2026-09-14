@@ -553,7 +553,7 @@ namespace Unity.FoxgloveSDK.IO
                         PublishTime = record.PublishTime
                     };
                     if (latestByChannel.TryGetValue(record.ChannelId, out var current)
-                        && McapIndexedReaderHelpers.CompareLatestCandidate(candidate, current) <= 0)
+                        && McapLatestAtQuery.CompareLatestCandidate(candidate, current) <= 0)
                         continue;
 
                     var data = new byte[dataLen];
@@ -1290,7 +1290,7 @@ namespace Unity.FoxgloveSDK.IO
             if (_snapshotChunkIndexesByDescendingEndTime != null)
                 return _snapshotChunkIndexesByDescendingEndTime;
 
-            var ordered = McapIndexedReaderHelpers.OrderChunkIndexesByDescendingEndTime(_summary.ChunkIndexes);
+            var ordered = McapLatestAtQuery.OrderChunkIndexesByDescendingEndTime(_summary.ChunkIndexes);
             _snapshotChunkIndexesByDescendingEndTime = ordered;
             return ordered;
         }

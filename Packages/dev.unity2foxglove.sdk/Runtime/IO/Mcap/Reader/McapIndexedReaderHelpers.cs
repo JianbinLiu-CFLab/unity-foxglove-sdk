@@ -1,223 +1,26 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/IO/Mcap
-// Purpose: Pure query/order helpers for McapIndexedReader.
+// Compatibility facade for non-latest streaming readers. Latest-at policy lives in
+// McapLatestAtQuery and is consumed directly by McapIndexedReader and replay.
 
-using System;
 using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.IO
 {
     internal static class McapIndexedReaderHelpers
     {
-        internal static List<McapChunkIndex> OrderChunkIndexesByDescendingEndTime(
-            IReadOnlyList<McapChunkIndex> chunkIndexes)
-        {
-            var ordered = new List<McapChunkIndex>(chunkIndexes ?? Array.Empty<McapChunkIndex>());
-            ordered.Sort((left, right) =>
-            {
-                var cmp = right.MessageEndTime.CompareTo(left.MessageEndTime);
-                if (cmp != 0)
-                    return cmp;
-                cmp = right.MessageStartTime.CompareTo(left.MessageStartTime);
-                if (cmp != 0)
-                    return cmp;
-                return right.ChunkStartOffset.CompareTo(left.ChunkStartOffset);
-            });
-            return ordered;
-        }
-
-        internal static void ConsiderLatestCandidate(
-            McapMessage message,
-            McapReadOptions options,
-            HashSet<ushort> selectedChannelIds,
-            Dictionary<ushort, McapMessage> latestByChannel)
-        {
-            if (!IsInTimeRange(message.LogTime, options))
-                return;
-            if (selectedChannelIds != null && !selectedChannelIds.Contains(message.ChannelId))
-                return;
-            if (!latestByChannel.TryGetValue(message.ChannelId, out var current) ||
-                CompareLatestCandidate(message, current) > 0)
-                latestByChannel[message.ChannelId] = message;
-        }
-
-        internal static bool CanStopLatestScan(
-            Dictionary<ushort, McapMessage> latestByChannel,
-            int expectedCount,
-            ulong nextOlderTime)
-        {
-            if (expectedCount <= 0 || latestByChannel.Count < expectedCount)
-                return false;
-
-            var oldestSelected = ulong.MaxValue;
-            foreach (var message in latestByChannel.Values)
-            {
-                if (message.LogTime < oldestSelected)
-                    oldestSelected = message.LogTime;
-            }
-
-            return nextOlderTime < oldestSelected;
-        }
-
-        internal static bool ContainsAnySelectedChannel(
-            Dictionary<ushort, ulong> messageIndexOffsets,
-            HashSet<ushort> selectedChannelIds)
-        {
-            foreach (var channelId in selectedChannelIds)
-            {
-                if (messageIndexOffsets.ContainsKey(channelId))
-                    return true;
-            }
-
-            return false;
-        }
-
-        internal static int CompareMessages(McapMessage left, McapMessage right)
-        {
-            var cmp = left.LogTime.CompareTo(right.LogTime);
-            if (cmp != 0)
-                return cmp;
-
-            cmp = left.ChannelId.CompareTo(right.ChannelId);
-            if (cmp != 0)
-                return cmp;
-
-            cmp = left.Sequence.CompareTo(right.Sequence);
-            if (cmp != 0)
-                return cmp;
-
-            return left.PublishTime.CompareTo(right.PublishTime);
-        }
-
-        internal static int CompareLatestCandidate(McapMessage left, McapMessage right)
-        {
-            var cmp = left.LogTime.CompareTo(right.LogTime);
-            if (cmp != 0)
-                return cmp;
-
-            cmp = left.Sequence.CompareTo(right.Sequence);
-            if (cmp != 0)
-                return cmp;
-
-            return left.PublishTime.CompareTo(right.PublishTime);
-        }
-
-        internal static int CompareLatestOutput(McapMessage left, McapMessage right)
-        {
-            var cmp = left.ChannelId.CompareTo(right.ChannelId);
-            if (cmp != 0)
-                return cmp;
-
-            return CompareLatestCandidate(left, right);
-        }
-
-        internal static bool IsInTimeRange(ulong logTime, McapReadOptions options)
-        {
-            if (logTime < options.StartTimeNs)
-                return false;
-            return !IsAtOrPastEnd(logTime, options);
-        }
-
-        internal static McapReadOptions CreateLazyReadOptions(McapReadOptions source)
-        {
-            var options = source == null
-                ? new McapReadOptions { Order = McapReadOrder.FileOrder }
-                : CopyReadOptions(source);
-            if (options.Order != McapReadOrder.FileOrder)
-                throw new NotSupportedException("Lazy MCAP message enumeration supports FileOrder only.");
-            return options;
-        }
-
-        internal static bool IsAtOrPastEnd(ulong logTime, McapReadOptions options)
-        {
-            return options.UseOfficialEndTimeSemantics
-                ? logTime >= options.EndTimeNs
-                : logTime > options.EndTimeNs;
-        }
-
-        internal static void ApplyOrderingAndLimit(List<McapMessage> result, McapReadOptions options)
-        {
-            if (options.Order == McapReadOrder.LogTimeAscending)
-                result.Sort(CompareMessages);
-            else if (options.Order == McapReadOrder.LogTimeDescending)
-                result.Sort((left, right) => CompareMessages(right, left));
-
-            if (options.MaxMessages <= 0 || result.Count <= options.MaxMessages)
-                return;
-
-            if (options.Order == McapReadOrder.LogTimeDescending || options.Order == McapReadOrder.FileOrder)
-                result.RemoveRange(options.MaxMessages, result.Count - options.MaxMessages);
-            else
-                result.RemoveRange(0, result.Count - options.MaxMessages);
-        }
-
-        internal static bool TryAddBoundedMessage(
-            List<McapMessage> result,
-            McapMessage message,
-            McapReadOptions options,
-            out McapMessage evicted)
-        {
-            evicted = null;
-            if (options.MaxMessages <= 0)
-            {
-                result.Add(message);
-                return true;
-            }
-
-            if (options.Order == McapReadOrder.FileOrder && result.Count >= options.MaxMessages)
-                return false;
-
-            if (options.Order == McapReadOrder.LogTimeAscending ||
-                options.Order == McapReadOrder.LogTimeDescending)
-            {
-                var descending = options.Order == McapReadOrder.LogTimeDescending;
-                var low = 0;
-                var high = result.Count;
-                while (low < high)
-                {
-                    var middle = low + ((high - low) / 2);
-                    var comparison = CompareMessages(result[middle], message);
-                    if ((!descending && comparison <= 0) || (descending && comparison >= 0))
-                        low = middle + 1;
-                    else
-                        high = middle;
-                }
-
-                result.Insert(low, message);
-                if (result.Count > options.MaxMessages)
-                {
-                    evicted = result[0];
-                    result.RemoveAt(0);
-                }
-                return true;
-            }
-
-            result.Add(message);
-            if (result.Count <= options.MaxMessages)
-                return true;
-
-            evicted = result[options.MaxMessages];
-            result.RemoveAt(options.MaxMessages);
-            return true;
-        }
-
-        private static McapReadOptions CopyReadOptions(McapReadOptions source)
-        {
-            return new McapReadOptions
-            {
-                StartTimeNs = source.StartTimeNs,
-                EndTimeNs = source.EndTimeNs,
-                Topics = source.Topics == null ? null : new List<string>(source.Topics),
-                ChannelIds = source.ChannelIds == null ? null : new List<ushort>(source.ChannelIds),
-                MaxMessages = source.MaxMessages,
-                Order = source.Order,
-                UseOfficialEndTimeSemantics = source.UseOfficialEndTimeSemantics,
-                AllowLinearFallback = source.AllowLinearFallback,
-                ValidateCrcs = source.ValidateCrcs,
-                ChunkUncompressedSizeLimit = source.ChunkUncompressedSizeLimit
-            };
-        }
+        internal static List<McapChunkIndex> OrderChunkIndexesByDescendingEndTime(IReadOnlyList<McapChunkIndex> x) => McapLatestAtQuery.OrderChunkIndexesByDescendingEndTime(x);
+        internal static void ConsiderLatestCandidate(McapMessage m, McapReadOptions o, HashSet<ushort> s, Dictionary<ushort, McapMessage> l) => McapLatestAtQuery.ConsiderLatestCandidate(m,o,s,l);
+        internal static bool CanStopLatestScan(Dictionary<ushort,McapMessage> l,int e,ulong t) => McapLatestAtQuery.CanStopLatestScan(l,e,t);
+        internal static bool ContainsAnySelectedChannel(Dictionary<ushort,ulong> i,HashSet<ushort> s) => McapLatestAtQuery.ContainsAnySelectedChannel(i,s);
+        internal static int CompareMessages(McapMessage l,McapMessage r) => McapLatestAtQuery.CompareMessages(l,r);
+        internal static int CompareLatestCandidate(McapMessage l,McapMessage r) => McapLatestAtQuery.CompareLatestCandidate(l,r);
+        internal static int CompareLatestOutput(McapMessage l,McapMessage r) => McapLatestAtQuery.CompareLatestOutput(l,r);
+        internal static bool IsInTimeRange(ulong t,McapReadOptions o) => McapLatestAtQuery.IsInTimeRange(t,o);
+        internal static McapReadOptions CreateLazyReadOptions(McapReadOptions s) => McapLatestAtQuery.CreateLazyReadOptions(s);
+        internal static bool IsAtOrPastEnd(ulong t,McapReadOptions o) => McapLatestAtQuery.IsAtOrPastEnd(t,o);
+        internal static void ApplyOrderingAndLimit(List<McapMessage> r,McapReadOptions o) => McapLatestAtQuery.ApplyOrderingAndLimit(r,o);
+        internal static bool TryAddBoundedMessage(List<McapMessage> r,McapMessage m,McapReadOptions o,out McapMessage e) => McapLatestAtQuery.TryAddBoundedMessage(r,m,o,out e);
     }
 }
