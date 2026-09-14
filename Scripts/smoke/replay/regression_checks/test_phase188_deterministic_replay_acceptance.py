@@ -1,4 +1,5 @@
 import json
+import hashlib
 import subprocess
 import tempfile
 import unittest
@@ -158,8 +159,41 @@ class Phase188DeterministicReplayAcceptanceTests(unittest.TestCase):
                     mode="windows-editor", output_dir=Path(td), fixture=Path("missing.mcap"),
                     unity=Path("Unity.exe"), project=Path("Unity2Foxglove"))
             self.assertEqual(result["status"], "fail")
-            self.assertIn("missing fixture", result["error"])
+            self.assertIn("fixture missing", result["error"])
             self.assertTrue((Path(td) / "phase188-acceptance.json").exists())
+
+    def test_fixture_manifest_is_verified_before_launch(self):
+        """Acceptance must bind the run to a complete, byte-matching fixture manifest."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            fixture = root / "fixture.mcap"
+            fixture.write_bytes(b"deterministic-fixture")
+            digest = hashlib.sha256(fixture.read_bytes()).hexdigest().upper()
+            manifest = {
+                "Path": str(fixture), "HashSha256": digest, "Bytes": fixture.stat().st_size,
+                "Seed": 188042, "MessageCount": 4, "ChannelCount": 2,
+                "GeneratorVersion": "phase188-fixture-v2", "ChunkSizeBytes": 4096,
+                "Compression": "none", "Density": "dense", "EncodingMix": ["json"],
+                "TimeStartNs": 0, "TimeEndNs": 3000, "MessagesPerChannel": [2, 2],
+            }
+            (root / "fixture.mcap.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            self.assertEqual(manifest, acceptance.validate_fixture_manifest(fixture))
+
+    def test_fixture_manifest_rejects_hash_mismatch(self):
+        """A stale manifest cannot be used to certify an acceptance run."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            fixture = root / "fixture.mcap"
+            fixture.write_bytes(b"actual")
+            (root / "fixture.mcap.manifest.json").write_text(json.dumps({
+                "Path": str(fixture), "HashSha256": "0" * 64, "Bytes": fixture.stat().st_size,
+                "Seed": 188042, "MessageCount": 1, "ChannelCount": 1,
+                "GeneratorVersion": "phase188-fixture-v2", "ChunkSizeBytes": 4096,
+                "Compression": "none", "Density": "dense", "EncodingMix": ["json"],
+                "TimeStartNs": 0, "TimeEndNs": 0, "MessagesPerChannel": [1],
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "SHA-256 mismatch"):
+                acceptance.validate_fixture_manifest(fixture)
 
 
 if __name__ == "__main__":

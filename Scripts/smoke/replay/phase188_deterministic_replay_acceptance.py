@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -20,6 +21,65 @@ REQUIRED_COUNTERS = (
     "returnedMessages", "eligibleChunks", "skippedChunks", "decompressedChunks",
     "headersScanned", "payloadCopies", "payloadBytesCopied",
 )
+
+REQUIRED_FIXTURE_FIELDS = (
+    "Path", "HashSha256", "Bytes", "Seed", "MessageCount", "ChannelCount",
+    "GeneratorVersion", "ChunkSizeBytes", "Compression", "Density",
+    "EncodingMix", "TimeStartNs", "TimeEndNs", "MessagesPerChannel",
+)
+
+
+def _manifest_value(manifest: dict, name: str):
+    """Read a manifest field while accepting Newtonsoft's and camel-case JSON."""
+    if name in manifest:
+        return manifest[name]
+    camel = name[0].lower() + name[1:]
+    return manifest.get(camel)
+
+
+def validate_fixture_manifest(fixture: Path) -> dict:
+    """Fail closed unless the MCAP and its deterministic manifest agree."""
+    if not fixture.is_file():
+        raise RuntimeError(f"fixture missing: {fixture}")
+    manifest_path = Path(str(fixture) + ".manifest.json")
+    if not manifest_path.is_file():
+        raise RuntimeError(f"fixture manifest missing: {manifest_path}")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"fixture manifest unreadable: {manifest_path}") from exc
+    missing = [name for name in REQUIRED_FIXTURE_FIELDS if _manifest_value(manifest, name) is None]
+    if missing:
+        raise RuntimeError("fixture manifest missing fields: " + ", ".join(missing))
+
+    digest = hashlib.sha256(fixture.read_bytes()).hexdigest().upper()
+    recorded_hash = str(_manifest_value(manifest, "HashSha256"))
+    if recorded_hash != digest:
+        raise RuntimeError(f"fixture SHA-256 mismatch: recorded={recorded_hash} actual={digest}")
+    recorded_bytes = _manifest_value(manifest, "Bytes")
+    if recorded_bytes != fixture.stat().st_size:
+        raise RuntimeError(
+            f"fixture byte-size mismatch: recorded={recorded_bytes} actual={fixture.stat().st_size}"
+        )
+    message_count = _manifest_value(manifest, "MessageCount")
+    channel_count = _manifest_value(manifest, "ChannelCount")
+    per_channel = _manifest_value(manifest, "MessagesPerChannel")
+    if not isinstance(message_count, int) or message_count <= 0:
+        raise RuntimeError("fixture message count is invalid")
+    if not isinstance(channel_count, int) or channel_count <= 0:
+        raise RuntimeError("fixture channel count is invalid")
+    if (not isinstance(per_channel, list) or len(per_channel) != channel_count
+            or any(not isinstance(value, int) or value < 0 for value in per_channel)
+            or sum(per_channel) != message_count):
+        raise RuntimeError("fixture per-channel counts are inconsistent")
+    encodings = _manifest_value(manifest, "EncodingMix")
+    if not isinstance(encodings, list) or not encodings:
+        raise RuntimeError("fixture encoding mix is empty")
+    time_start = _manifest_value(manifest, "TimeStartNs")
+    time_end = _manifest_value(manifest, "TimeEndNs")
+    if not isinstance(time_start, int) or not isinstance(time_end, int) or time_end < time_start:
+        raise RuntimeError("fixture time range is invalid")
+    return manifest
 
 
 def run_owned_process(command: list[str], cwd: Path, timeout_seconds: float,
@@ -159,6 +219,7 @@ def run_acceptance(mode: str, output_dir: Path, fixture: Path, unity: Path | Non
     """Execute one acceptance mode and write fail-closed machine-readable evidence."""
     evidence = {"phase": "188", "mode": mode, "generatedAtUnix": time.time(), "status": "pass"}
     try:
+        evidence["fixtureManifest"] = validate_fixture_manifest(fixture)
         if mode == "windows-editor":
             if unity is None or project is None:
                 raise RuntimeError("windows-editor requires an explicit Unity executable and project")
