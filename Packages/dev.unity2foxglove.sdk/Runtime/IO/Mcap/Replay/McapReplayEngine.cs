@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.IO
                 long headersScanned,
                 long candidateUpdates,
                 long payloadCopies,
+                long payloadBytesCopied,
                 long returnedMessages)
             {
                 EligibleChunks = eligibleChunks;
@@ -43,6 +44,7 @@ namespace Unity.FoxgloveSDK.IO
                 HeadersScanned = headersScanned;
                 CandidateUpdates = candidateUpdates;
                 PayloadCopies = payloadCopies;
+                PayloadBytesCopied = payloadBytesCopied;
                 ReturnedMessages = returnedMessages;
             }
 
@@ -51,6 +53,7 @@ namespace Unity.FoxgloveSDK.IO
             public long HeadersScanned { get; }
             public long CandidateUpdates { get; }
             public long PayloadCopies { get; }
+            public long PayloadBytesCopied { get; }
             public long ReturnedMessages { get; }
         }
 
@@ -471,10 +474,11 @@ namespace Unity.FoxgloveSDK.IO
             long headersScanned = 0;
             long candidateUpdates = 0;
             long payloadCopies = 0;
+            long payloadBytesCopied = 0;
 
             if (!IsLoaded || !CanSeek)
             {
-                LastSnapshotMetrics = new SnapshotMetrics(0, 0, 0, 0, 0, 0);
+                LastSnapshotMetrics = new SnapshotMetrics(0, 0, 0, 0, 0, 0, 0);
                 return result;
             }
 
@@ -526,6 +530,7 @@ namespace Unity.FoxgloveSDK.IO
                     latestByChannel[record.ChannelId] = candidate;
                     candidateUpdates++;
                     payloadCopies++;
+                    payloadBytesCopied += dataLen;
                 }
             }
 
@@ -538,6 +543,7 @@ namespace Unity.FoxgloveSDK.IO
                 headersScanned,
                 candidateUpdates,
                 payloadCopies,
+                payloadBytesCopied,
                 result.Count);
             return result;
         }

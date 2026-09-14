@@ -47,6 +47,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 Assert.True(metrics.HeadersScanned >= 5);
                 Assert.True(metrics.CandidateUpdates >= 1);
                 Assert.Equal(5, metrics.PayloadCopies);
+                Assert.Equal(5, metrics.PayloadBytesCopied);
                 Assert.Equal(1, metrics.ReturnedMessages);
             }
             finally
