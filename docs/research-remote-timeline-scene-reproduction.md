@@ -307,7 +307,9 @@ configured latency budget, so no speculative decoder fast path (188-C) or
 background stale-safe preparation (188-D) was activated. Stage timing fields
 remain fail-closed and the generic decoder path remains the semantic fallback.
 The real Unity 6000.3.14f1 Editor probe emitted `PHASE188_EDITOR_PASS` with
-structural counters. The explicit Windows IL2CPP entry point produced
+five cursor operations (forward, backward, and a late jump), strict cursor
+sequence monotonicity, per-operation snapshot digests, and a disposed replay
+lifecycle. The explicit Windows IL2CPP entry point produced
 `FoxgloveDemo.exe` with build exit status 0 after the shader cache was warmed.
 The opt-in player smoke loaded the same fixture and emitted
 `PHASE188_PLAYER_PASS` with runtime exit status 0. These probes certify
@@ -317,19 +319,18 @@ evidence is recorded in
 `build/phase188/windows-il2cpp-player-runtime-v3/phase188-acceptance.json`
 and the corresponding Player log.
 
-For a paired quick-fixture comparison (two measured repetitions per mode), the
-latest reference linear scan measured p50/p95/p99 of
-`2.9201/6.1795/6.1795 ms`, while the indexed candidate measured
-`0.0853/0.1462/0.1462 ms`. Both returned four messages from the same fixture
-(`7DEAD571CA45350440D81B6A44CE7A8CE5A546112D8E493FE3D485BB396953B9`), with
-the candidate decompressing 1 of 2 eligible chunks and scanning 30 headers
+For a frozen three-run quick-fixture comparison, the reference linear scan
+measured p95 values of `89.4408/4.8338/6.1720 ms` (median `6.1720 ms`), while
+the indexed candidate's latest p95 was `0.0678 ms`. The robust noise band is
+the baseline median plus three MAD (`10.1866 ms`); the candidate remains below
+that bound on every run. Both modes returned four messages from the same
+fixture (`7DEAD571CA45350440D81B6A44CE7A8CE5A546112D8E493FE3D485BB396953B9`),
+with the candidate decompressing 1 of 2 eligible chunks and scanning 30 headers
 versus 19 chunks and 1200 headers for the reference. The comparison artifact
-is `build/phase188/semantic-compare-fixed/phase188-replay-comparison.json`; its
-semantic parity is based on equal returned-result SHA-256 digests as well as
-returned count. A noise band was not estimated, so these are paired observed
-timings rather than a statistical confidence interval. The fixture is a small
-quick cell, not the 16--64 MiB quick matrix or 256 MiB/1 GiB full matrix
-required for final performance claims.
+is `build/phase188/noise-compare-v2/phase188-replay-comparison.json`; semantic
+parity is based on equal returned-result SHA-256 digests and returned count.
+The fixture is still a small quick cell, not the 16--64 MiB quick matrix or
+256 MiB/1 GiB full matrix required for final large-scale performance claims.
 
 These results are Windows measurements, not platform-wide performance claims.
 They do not establish zero allocation, deterministic physics simulation,
