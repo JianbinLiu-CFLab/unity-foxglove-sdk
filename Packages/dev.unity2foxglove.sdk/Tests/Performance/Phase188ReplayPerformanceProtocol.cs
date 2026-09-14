@@ -21,6 +21,9 @@ namespace Unity.FoxgloveSDK.Performance
                 throw new ArgumentException("Fixture seed and iteration counts are invalid.", nameof(result));
             if (!FiniteOrdered(result.P50Milliseconds, result.P95Milliseconds, result.P99Milliseconds, result.MaxMilliseconds))
                 throw new ArgumentException("Latency summaries must be finite and ordered.", nameof(result));
+            if (!FiniteNonNegative(result.QueryMilliseconds, result.DecodeMilliseconds,
+                    result.PrepareMilliseconds, result.ApplyMilliseconds))
+                throw new ArgumentException("Stage timings must be finite and non-negative.", nameof(result));
             if (result.EligibleChunks < 0 || result.SkippedChunks < 0 || result.DecompressedChunks < 0
                 || result.HeadersScanned < 0 || result.CandidateUpdates < 0 || result.PayloadCopies < 0
                 || result.PayloadBytesCopied < 0 || result.ReturnedMessages < 0)
@@ -53,6 +56,14 @@ namespace Unity.FoxgloveSDK.Performance
                 && !double.IsNaN(p99) && !double.IsInfinity(p99)
                 && !double.IsNaN(max) && !double.IsInfinity(max)
                 && p50 >= 0 && p50 <= p95 && p95 <= p99 && p99 <= max;
+        }
+
+        private static bool FiniteNonNegative(params double[] values)
+        {
+            for (var i = 0; i < values.Length; i++)
+                if (double.IsNaN(values[i]) || double.IsInfinity(values[i]) || values[i] < 0)
+                    return false;
+            return true;
         }
     }
 }

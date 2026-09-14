@@ -94,6 +94,9 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             result.PayloadBytesCopied = 0;
             result.P99Milliseconds = double.NaN;
             Assert.Throws<ArgumentException>(() => Phase188ReplayPerformanceProtocol.Validate(result));
+            result.P99Milliseconds = 3;
+            result.ApplyMilliseconds = -1;
+            Assert.Throws<ArgumentException>(() => Phase188ReplayPerformanceProtocol.Validate(result));
         }
     }
 }
