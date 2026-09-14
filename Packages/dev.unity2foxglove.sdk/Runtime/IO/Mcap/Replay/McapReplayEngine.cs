@@ -1276,17 +1276,7 @@ namespace Unity.FoxgloveSDK.IO
             if (_snapshotChunkIndexesByDescendingEndTime != null)
                 return _snapshotChunkIndexesByDescendingEndTime;
 
-            var ordered = new List<McapChunkIndex>(_summary.ChunkIndexes);
-            ordered.Sort((left, right) =>
-            {
-                var cmp = right.MessageEndTime.CompareTo(left.MessageEndTime);
-                if (cmp != 0)
-                    return cmp;
-                cmp = right.MessageStartTime.CompareTo(left.MessageStartTime);
-                if (cmp != 0)
-                    return cmp;
-                return right.ChunkStartOffset.CompareTo(left.ChunkStartOffset);
-            });
+            var ordered = McapIndexedReaderHelpers.OrderChunkIndexesByDescendingEndTime(_summary.ChunkIndexes);
             _snapshotChunkIndexesByDescendingEndTime = ordered;
             return ordered;
         }

@@ -556,8 +556,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (_chunkIndexesByDescendingEndTime != null)
                     return _chunkIndexesByDescendingEndTime;
 
-                var ordered = new List<McapChunkIndex>(chunkIndexes);
-                ordered.Sort((left, right) => right.MessageEndTime.CompareTo(left.MessageEndTime));
+                var ordered = McapIndexedReaderHelpers.OrderChunkIndexesByDescendingEndTime(chunkIndexes);
                 Volatile.Write(ref _chunkIndexesByDescendingEndTime, ordered);
                 return ordered;
             }

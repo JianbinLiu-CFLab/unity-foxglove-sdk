@@ -11,6 +11,23 @@ namespace Unity.FoxgloveSDK.IO
 {
     internal static class McapIndexedReaderHelpers
     {
+        internal static List<McapChunkIndex> OrderChunkIndexesByDescendingEndTime(
+            IReadOnlyList<McapChunkIndex> chunkIndexes)
+        {
+            var ordered = new List<McapChunkIndex>(chunkIndexes ?? Array.Empty<McapChunkIndex>());
+            ordered.Sort((left, right) =>
+            {
+                var cmp = right.MessageEndTime.CompareTo(left.MessageEndTime);
+                if (cmp != 0)
+                    return cmp;
+                cmp = right.MessageStartTime.CompareTo(left.MessageStartTime);
+                if (cmp != 0)
+                    return cmp;
+                return right.ChunkStartOffset.CompareTo(left.ChunkStartOffset);
+            });
+            return ordered;
+        }
+
         internal static void ConsiderLatestCandidate(
             McapMessage message,
             McapReadOptions options,
