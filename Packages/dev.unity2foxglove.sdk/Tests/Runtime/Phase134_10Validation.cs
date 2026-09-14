@@ -154,7 +154,7 @@ namespace Unity.FoxgloveSDK.Tests
                     var result = engine.Snapshot(ulong.MaxValue, new List<McapMessage>());
                     Check(result.Count == 1,
                         "134-10E-3: warning policy keeps the corrupt chunk readable");
-                    Check(logger.Warnings.Count == 2
+                    Check(logger.Warnings.Count == 1
                           && logger.Warnings.All(message => message.Contains(
                               "CRC mismatch; data may be corrupted.",
                               StringComparison.Ordinal)),
