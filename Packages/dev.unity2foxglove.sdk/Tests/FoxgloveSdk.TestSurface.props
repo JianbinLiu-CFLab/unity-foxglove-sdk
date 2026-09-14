@@ -39,6 +39,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/Coordinate*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Profiling/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/MessagePack/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Core/**/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Protocol/**/*.cs" />
@@ -122,3 +123,4 @@
     </Reference>
   </ItemGroup>
 </Project>
+
