@@ -44,11 +44,49 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 Assert.Equal(50UL, result[0].LogTime);
                 Assert.True(metrics.EligibleChunks > 0);
                 Assert.True(metrics.DecompressedChunks > 0);
-                Assert.True(metrics.HeadersScanned >= 5);
+                Assert.True(metrics.HeadersScanned >= 1);
                 Assert.True(metrics.CandidateUpdates >= 1);
-                Assert.Equal(5, metrics.PayloadCopies);
-                Assert.Equal(5, metrics.PayloadBytesCopied);
+                Assert.True(metrics.PayloadCopies >= metrics.ReturnedMessages);
+                Assert.True(metrics.PayloadBytesCopied >= metrics.ReturnedMessages);
                 Assert.Equal(1, metrics.ReturnedMessages);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void SnapshotUsesDescendingChunkOrderForLateSingleChannelQueries()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-late-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(stream, null, chunkSizeBytes: 96, compression: "", leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/late", "json", "phase188.Late", "jsonschema", "{}");
+                    for (ulong time = 1; time <= 20; time++)
+                        recorder.WriteMessage(1, time * 1000, new byte[] { (byte)time });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                using (var inspectStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var inspectReader = new McapReader(inspectStream))
+                {
+                    var inspectSummary = inspectReader.ReadSummary();
+                    Assert.True(inspectSummary.ChunkIndexes.Count > 1, $"chunks={inspectSummary.ChunkIndexes.Count}");
+                }
+                var result = engine.Snapshot(20000, new List<McapMessage>());
+
+                Assert.Single(result);
+                Assert.Equal(20000UL, result[0].LogTime);
+                Assert.True(
+                    engine.LastSnapshotMetrics.DecompressedChunks < engine.LastSnapshotMetrics.EligibleChunks,
+                    $"eligible={engine.LastSnapshotMetrics.EligibleChunks}; decompressed={engine.LastSnapshotMetrics.DecompressedChunks}");
             }
             finally
             {
