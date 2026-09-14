@@ -962,7 +962,7 @@ class OwnedProcessTree:
             self._posix_process_group_id = None
 
 
-def start_owned_process(cmd: List[str], root: Path) -> OwnedProcessTree:
+def start_owned_process(cmd: List[str], root: Path, **popen_kwargs) -> OwnedProcessTree:
     """Start Unity inside a platform-owned process tree."""
     if os.name == "nt":
         job = _WindowsKillOnCloseJob()
@@ -972,6 +972,7 @@ def start_owned_process(cmd: List[str], root: Path) -> OwnedProcessTree:
                 cmd,
                 cwd=root,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | WINDOWS_CREATE_SUSPENDED,
+                **popen_kwargs,
             )
             job.assign(process.pid)
             _resume_suspended_windows_process(process.pid)
@@ -988,7 +989,7 @@ def start_owned_process(cmd: List[str], root: Path) -> OwnedProcessTree:
 
     process = None
     try:
-        process = subprocess.Popen(cmd, cwd=root, start_new_session=True)
+        process = subprocess.Popen(cmd, cwd=root, start_new_session=True, **popen_kwargs)
         return OwnedProcessTree(process, posix_process_group_id=process.pid)
     except BaseException:
         if process is not None:

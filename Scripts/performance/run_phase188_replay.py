@@ -36,6 +36,7 @@ def compare_results(baseline_dir: pathlib.Path, candidate_dir: pathlib.Path, out
         if missing:
             raise RuntimeError(f"{label} result missing: {', '.join(missing)}")
     def ratio(name: str) -> float:
+        """Return candidate-over-baseline ratio, using zero for empty baselines."""
         value = float(candidate[name])
         return value / float(baseline[name]) if float(baseline[name]) > 0 else 0.0
     comparison = {

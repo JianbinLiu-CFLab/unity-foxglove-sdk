@@ -8,7 +8,12 @@ import json
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
+
+# Direct CLI execution keeps repository-owned launch helpers importable.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from Scripts.unity_build.unity_il2cpp import start_owned_process, await_tree_quiescence
 
 
 REQUIRED_COUNTERS = (
@@ -17,11 +22,37 @@ REQUIRED_COUNTERS = (
 )
 
 
-def terminate_process_tree(pid: int) -> None:
-    """Terminate a Windows child process tree after a bounded smoke timeout."""
-    if sys.platform.startswith("win"):
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                       capture_output=True, text=True, check=False)
+def run_owned_process(command: list[str], cwd: Path, timeout_seconds: float,
+                      stdout_path: Path | None = None, stderr_path: Path | None = None) -> int:
+    """Run a child inside the existing owned job/group and verify tree quiescence."""
+    stdout_file = stdout_path.open("w", encoding="utf-8") if stdout_path else None
+    stderr_file = stderr_path.open("w", encoding="utf-8") if stderr_path else None
+    try:
+        tree = start_owned_process(command, cwd, stdout=stdout_file, stderr=stderr_file)
+    except BaseException:
+        if stdout_file:
+            stdout_file.close()
+        if stderr_file:
+            stderr_file.close()
+        raise
+    try:
+        try:
+            returncode = tree.process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired as exc:
+            residual = tree.terminate()
+            if residual:
+                raise RuntimeError(f"player timed out; owned tree still active: {residual}") from exc
+            raise
+        residual = await_tree_quiescence(tree, 5)
+        if residual:
+            raise RuntimeError(f"player exited but owned descendants remain: {residual}")
+        return returncode
+    finally:
+        tree.close()
+        if stdout_file:
+            stdout_file.close()
+        if stderr_file:
+            stderr_file.close()
 
 
 def repo_root() -> Path:
@@ -67,17 +98,24 @@ def validate_editor_probe(output: Path, log: Path) -> dict:
 def run_editor(unity: Path, fixture: Path, output_dir: Path, project: Path) -> dict:
     """Run Unity Editor and persist stdout, stderr, log, and validated evidence."""
     output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = output_dir / "editor-runs" / uuid.uuid4().hex
+    output_dir.mkdir(parents=True, exist_ok=False)
     probe = output_dir / "phase188-editor-probe.json"
     log = output_dir / "Editor.log"
     command = build_editor_command(unity, fixture, probe, log, project)
-    completed = subprocess.run(command, cwd=project.parent, text=True, capture_output=True)
-    (output_dir / "Editor.stdout.log").write_text(completed.stdout or "", encoding="utf-8")
-    (output_dir / "Editor.stderr.log").write_text(completed.stderr or "", encoding="utf-8")
-    if completed.returncode != 0:
-        raise RuntimeError(f"Unity Editor exited {completed.returncode}; see {log}")
+    try:
+        editor_exit = run_owned_process(command, project.parent, 1800,
+                                        output_dir / "Editor.stdout.log",
+                                        output_dir / "Editor.stderr.log")
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Unity Editor probe timed out; see {log}") from exc
+    if editor_exit != 0:
+        raise RuntimeError(f"Unity Editor exited {editor_exit}; see {log}")
     result = validate_editor_probe(probe, log)
     result["command"] = command
-    result["exitStatus"] = completed.returncode
+    result["probePath"] = str(probe)
+    result["logPath"] = str(log)
+    result["exitStatus"] = editor_exit
     return result
 
 
@@ -99,37 +137,21 @@ def run_il2cpp(unity: Path, output_dir: Path, project: Path, fixture: Path, time
         raise RuntimeError(f"IL2CPP player missing: {player}")
     run_command = [str(player), "-batchmode", "-nographics", "-phase188PlayerAcceptance",
                    "-phase188Fixture", str(fixture)]
-    run_log = output_dir / "player.stdout.log"
-    run_err = output_dir / "player.stderr.log"
-    player_log = output_dir / "Player.log"
+    runtime_dir = output_dir / "player-runs" / uuid.uuid4().hex
+    runtime_dir.mkdir(parents=True, exist_ok=False)
+    player_log = runtime_dir / "Player.log"
     run_command += ["-logFile", str(player_log)]
     try:
-        player_run = subprocess.run(run_command, cwd=output_dir, text=True,
-                                    capture_output=True, timeout=120)
+        runtime_exit = run_owned_process(run_command, output_dir, 120)
     except subprocess.TimeoutExpired as exc:
-        # subprocess.run has no handle available in the exception; the
-        # executable is launched from this output directory, so terminate only
-        # matching player processes and leave all unrelated Unity processes.
-        for process in subprocess.check_output(
-                ["tasklist", "/FI", "IMAGENAME eq FoxgloveDemo.exe", "/FO", "CSV", "/NH"],
-                text=True, errors="replace").splitlines():
-            if "FoxgloveDemo.exe" in process:
-                fields = [part.strip('"') for part in process.split('","')]
-                if len(fields) > 1:
-                    terminate_process_tree(int(fields[1]))
-        run_log.write_text(exc.stdout or "", encoding="utf-8")
-        run_err.write_text(exc.stderr or "", encoding="utf-8")
         raise RuntimeError("IL2CPP player replay smoke timed out") from exc
-    run_log.write_text(player_run.stdout or "", encoding="utf-8")
-    run_err.write_text(player_run.stderr or "", encoding="utf-8")
-    combined = (player_run.stdout or "") + (player_run.stderr or "")
     player_log_text = player_log.read_text(encoding="utf-8", errors="replace") if player_log.is_file() else ""
-    if player_run.returncode != 0 or "PHASE188_PLAYER_PASS" not in (combined + player_log_text):
-        raise RuntimeError(
-            f"IL2CPP player replay smoke failed exit={player_run.returncode}; see {run_log}")
+    if runtime_exit != 0 or "PHASE188_PLAYER_PASS" not in player_log_text:
+        raise RuntimeError(f"IL2CPP player replay smoke failed exit={runtime_exit}; see {player_log}")
     return {"status": "pass", "player": str(player), "command": command,
             "exitStatus": completed.returncode, "runtimeCommand": run_command,
-            "runtimeExitStatus": player_run.returncode, "runtimeMarker": "PHASE188_PLAYER_PASS"}
+            "runtimeExitStatus": runtime_exit, "runtimeMarker": "PHASE188_PLAYER_PASS",
+            "runtimeLogPath": str(player_log), "ownedTreeQuiescent": True}
 
 
 def run_acceptance(mode: str, output_dir: Path, fixture: Path, unity: Path | None = None,
