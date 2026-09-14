@@ -119,6 +119,16 @@ class Phase188DeterministicReplayAcceptanceTests(unittest.TestCase):
                 "headersScanned": 30,
                 "payloadCopies": 30,
                 "payloadBytesCopied": 960,
+                "operationCount": 4,
+                "operations": [
+                    {"name": "first", "requestedCursorSequence": i + 1,
+                     "requestedTimeNs": i, "snapshotDigestSha256": "A" * 64,
+                     "elapsedMilliseconds": 1.0, "returnedMessages": 4,
+                     "eligibleChunks": 2, "skippedChunks": 0, "decompressedChunks": 1,
+                     "headersScanned": 30, "payloadCopies": 30, "payloadBytesCopied": 960}
+                    for i in range(4)
+                ],
+                "lifecycle": {"disposedByUsingScope": True},
             }), encoding="utf-8")
             log.write_text("PHASE188_EDITOR_PASS\n", encoding="utf-8")
             result = acceptance.validate_editor_probe(output, log)
@@ -135,6 +145,16 @@ class Phase188DeterministicReplayAcceptanceTests(unittest.TestCase):
                 "returnedMessages": 4, "eligibleChunks": 2, "skippedChunks": 0,
                 "decompressedChunks": 1, "headersScanned": 30,
                 "payloadCopies": 30, "payloadBytesCopied": 960,
+                "operationCount": 4,
+                "operations": [
+                    {"name": "first", "requestedCursorSequence": i + 1,
+                     "requestedTimeNs": i, "snapshotDigestSha256": "A" * 64,
+                     "elapsedMilliseconds": 1.0, "returnedMessages": 4,
+                     "eligibleChunks": 2, "skippedChunks": 0, "decompressedChunks": 1,
+                     "headersScanned": 30, "payloadCopies": 30, "payloadBytesCopied": 960}
+                    for i in range(4)
+                ],
+                "lifecycle": {"disposedByUsingScope": True},
             }), encoding="utf-8")
             log.write_text("PHASE188_EDITOR_FAIL\n", encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "PHASE188_EDITOR_PASS"):

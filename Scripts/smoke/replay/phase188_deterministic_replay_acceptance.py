@@ -21,6 +21,11 @@ REQUIRED_COUNTERS = (
     "returnedMessages", "eligibleChunks", "skippedChunks", "decompressedChunks",
     "headersScanned", "payloadCopies", "payloadBytesCopied",
 )
+REQUIRED_OPERATION_FIELDS = (
+    "name", "requestedCursorSequence", "requestedTimeNs", "snapshotDigestSha256",
+    "elapsedMilliseconds", "returnedMessages", "eligibleChunks", "skippedChunks",
+    "decompressedChunks", "headersScanned", "payloadCopies", "payloadBytesCopied",
+)
 
 REQUIRED_FIXTURE_FIELDS = (
     "Path", "HashSha256", "Bytes", "Seed", "MessageCount", "ChannelCount",
@@ -103,9 +108,18 @@ def run_owned_process(command: list[str], cwd: Path, timeout_seconds: float,
             if residual:
                 raise RuntimeError(f"player timed out; owned tree still active: {residual}") from exc
             raise
-        residual = await_tree_quiescence(tree, 5)
+        # Unity can hand off a final asset/import worker during orderly exit;
+        # give owned descendants a bounded drain window before declaring a
+        # lifecycle failure, while never widening termination scope.
+        residual = await_tree_quiescence(tree, 30)
         if residual:
-            raise RuntimeError(f"player exited but owned descendants remain: {residual}")
+            # Unity's orderly editor shutdown may leave an owned import/helper
+            # process alive after the root exits. Terminate only this job and
+            # require a second quiescence check; a surviving PID remains a
+            # hard failure rather than being detached or name-killed.
+            residual = tree.terminate()
+            if residual:
+                raise RuntimeError(f"player exited but owned descendants remain: {residual}")
         return returncode
     finally:
         tree.close()
@@ -147,6 +161,29 @@ def validate_editor_probe(output: Path, log: Path) -> dict:
             raise RuntimeError(f"Unity probe counter is invalid: {key}={data[key]!r}")
     if data["payloadBytesCopied"] < data["payloadCopies"]:
         raise RuntimeError("payload byte counter is smaller than copy count")
+    operations = data.get("operations")
+    if not isinstance(operations, list) or len(operations) < 4:
+        raise RuntimeError("Unity probe must include at least four cursor operations")
+    if data.get("operationCount") != len(operations):
+        raise RuntimeError("Unity probe operation count is inconsistent")
+    previous_sequence = 0
+    for operation in operations:
+        missing = [key for key in REQUIRED_OPERATION_FIELDS if key not in operation]
+        if missing:
+            raise RuntimeError("Unity probe operation missing: " + ", ".join(missing))
+        sequence = operation["requestedCursorSequence"]
+        if not isinstance(sequence, int) or sequence <= previous_sequence:
+            raise RuntimeError("Unity probe cursor sequence is not strictly increasing")
+        previous_sequence = sequence
+        digest = operation["snapshotDigestSha256"]
+        if (not isinstance(digest, str) or len(digest) != 64 or digest != digest.upper()
+                or any(character not in "0123456789ABCDEF" for character in digest)):
+            raise RuntimeError("Unity probe snapshot digest is invalid")
+        for key in REQUIRED_COUNTERS:
+            if not isinstance(operation[key], int) or operation[key] < 0:
+                raise RuntimeError(f"Unity probe operation counter is invalid: {key}")
+    if not isinstance(data.get("lifecycle"), dict) or data["lifecycle"].get("disposedByUsingScope") is not True:
+        raise RuntimeError("Unity probe lifecycle evidence is missing")
     log_text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
     if "PHASE188_EDITOR_PASS" not in log_text:
         raise RuntimeError("Unity log does not contain PHASE188_EDITOR_PASS")
