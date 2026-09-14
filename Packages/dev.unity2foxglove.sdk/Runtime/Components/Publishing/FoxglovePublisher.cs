@@ -10,6 +10,7 @@ using System;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Components.Publishing.MessagePack;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
@@ -39,11 +40,18 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Called at publish time. Subclass builds the message object.</summary>
         protected abstract TMessage CreateMessage();
 
-        /// <summary>
-        /// Optionally create a pre-serialized MessagePack payload for publishers
-        /// that explicitly opt into MessagePack support.
-        /// </summary>
+        /// <summary>Legacy compatibility hook; generated registry codecs are authoritative.</summary>
+        [Obsolete("Component MessagePack codecs are generated from FoxgloveSchema DTOs; override only for source compatibility.")]
         protected virtual byte[] CreateMsgPackPayload(TMessage message) => null;
+
+        public override bool SupportsMsgPackEncoding
+        {
+            get
+            {
+                return ComponentMessagePackCodecRegistry.TryGet(typeof(TMessage), out var entry)
+                    && entry.IsAvailable;
+            }
+        }
 
         protected virtual void Update()
         {
@@ -58,9 +66,10 @@ namespace Unity.FoxgloveSDK.Components
             var unixNs = CurrentLogTimeNs;
             if (resolution.Effective == PublisherEffectiveEncoding.MsgPack)
             {
-                var payload = CreateMsgPackPayload(message);
-                if (payload != null)
+                if (ComponentMessagePackCodecRegistry.TryGet(typeof(TMessage), out var generated)
+                    && generated.IsAvailable)
                 {
+                    var payload = generated.Serialize(message);
                     _warnedMissingMsgPackPayload = false;
                     PublishMsgPack(payload, unixNs, resolution);
                 }
