@@ -286,3 +286,32 @@ That separation lowers user complexity and removes an entire class of feedback p
 ## Evidence Scope
 
 This document reflects the current replay, cursor, extension, Manager Inspector, decoder, cache, and pose-arbitration code reviewed on 2026-07-20, plus scoped local Unity/Foxglove acceptance reports. Official Foxglove references support API and player behavior; they do not certify Unity2Foxglove. Experimental follow behavior and unmeasured performance are labeled accordingly.
+
+## Phase188 deterministic replay performance (2026-09-14)
+
+Phase188 measured the indexed latest-at replay path on deterministic MCAP
+fixtures generated with seed `188042`. The quick fixture hash was
+`7DEAD571CA45350440D81B6A44CE7A8CE5A546112D8E493FE3D485BB396953B9` and the
+full fixture hash was
+`D54DD8938BC509850B9FAF1FE880851B469D4EB67C6746FF966F2496E277FCC8`.
+The benchmark excludes fixture generation and validates repeated-run hash and
+result stability. The latest-at query now reuses one descending indexed-chunk
+order for the indexed reader and replay engine, stops after canonical winners
+are proven, and reports decompression, header, payload-copy, and returned
+message counters. The quick run returned four messages from two eligible
+chunks while decompressing one chunk and scanning 30 headers.
+
+The current fixture is read/select dominated: measured p95 remained below the
+configured latency budget, so no speculative decoder fast path (188-C) or
+background stale-safe preparation (188-D) was activated. Stage timing fields
+remain fail-closed and the generic decoder path remains the semantic fallback.
+The real Unity 6000.3.14f1 Editor probe emitted `PHASE188_EDITOR_PASS` with
+the same structural counters. Windows IL2CPP certification is run separately
+through the repository's explicit Unity build entry point; a successful Player
+build is required before claiming IL2CPP coverage.
+
+These results are Windows measurements, not platform-wide performance claims.
+They do not establish zero allocation, deterministic physics simulation,
+visual smoothness, prediction, interpolation, extrapolation, or multi-frame
+chase behavior. Live Foxglove/ROS2 output isolation and replay lifecycle
+cleanup remain required acceptance controls.
