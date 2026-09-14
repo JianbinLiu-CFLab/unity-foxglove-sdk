@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Attributes/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/Session/**/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/FoxRun*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/IFoxRun*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/Transport/*.cs" />

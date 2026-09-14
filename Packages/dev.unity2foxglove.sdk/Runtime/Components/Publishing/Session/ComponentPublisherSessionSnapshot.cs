@@ -1,0 +1,17 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+namespace Unity.FoxgloveSDK.Components.Publishing.Session
+{
+    public sealed class ComponentPublisherSessionSnapshot
+    {
+        internal ComponentPublisherSessionSnapshot(long generation, IReadOnlyList<ComponentPublisherSessionEntry> entries)
+        { Generation = generation; Entries = entries.ToArray(); IsAvailable = true; }
+        internal ComponentPublisherSessionSnapshot(long generation, string diagnostic)
+        { Generation = generation; Entries = Array.Empty<ComponentPublisherSessionEntry>(); IsAvailable = false; Diagnostic = diagnostic ?? string.Empty; }
+        public long Generation { get; }
+        public IReadOnlyList<ComponentPublisherSessionEntry> Entries { get; }
+        public bool IsAvailable { get; }
+        public string Diagnostic { get; }
+    }
+}
