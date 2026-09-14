@@ -8,7 +8,10 @@ from Scripts.smoke.replay import phase188_deterministic_replay_acceptance as acc
 
 
 class Phase188DeterministicReplayAcceptanceTests(unittest.TestCase):
+    """Regression tests for fail-closed Phase188 Unity acceptance orchestration."""
+
     def test_validate_editor_probe_requires_marker_and_structural_counters(self):
+        """Accept a probe only when all counters and the pass marker are present."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             output = root / "probe.json"
@@ -28,6 +31,7 @@ class Phase188DeterministicReplayAcceptanceTests(unittest.TestCase):
             self.assertEqual(result["returnedMessages"], 4)
 
     def test_validate_editor_probe_fails_closed_without_marker(self):
+        """Reject probe evidence that lacks the terminal editor pass marker."""
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             output = root / "probe.json"
@@ -42,6 +46,7 @@ class Phase188DeterministicReplayAcceptanceTests(unittest.TestCase):
                 acceptance.validate_editor_probe(output, log)
 
     def test_build_command_uses_explicit_unity_and_output(self):
+        """Build commands must carry explicit Unity, fixture, and output paths."""
         command = acceptance.build_editor_command(
             Path(r"C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe"),
             Path("fixture.mcap"), Path("probe.json"), Path("Editor.log"), Path("Unity2Foxglove")
@@ -51,6 +56,7 @@ class Phase188DeterministicReplayAcceptanceTests(unittest.TestCase):
         self.assertIn("-phase188Fixture", command)
 
     def test_acceptance_writes_failure_evidence_and_nonzero_status(self):
+        """Persist structured failure evidence when an acceptance run raises."""
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / "evidence.json"
             with mock.patch.object(acceptance, "run_editor", side_effect=RuntimeError("missing fixture")):

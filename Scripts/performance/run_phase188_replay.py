@@ -15,6 +15,7 @@ PROJECT = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Performance"
 
 
 def main() -> int:
+    """Run one or more deterministic replay benchmark passes and validate output."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--full", action="store_true")

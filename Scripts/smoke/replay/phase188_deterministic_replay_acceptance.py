@@ -18,6 +18,7 @@ REQUIRED_COUNTERS = (
 
 
 def repo_root() -> Path:
+    """Resolve and validate the repository root for acceptance runs."""
     root = Path(__file__).resolve().parents[3]
     if not (root / "Packages").exists():
         raise RuntimeError(f"repository root not found: {root}")
@@ -25,6 +26,7 @@ def repo_root() -> Path:
 
 
 def build_editor_command(unity: Path, fixture: Path, output: Path, log: Path, project: Path) -> list[str]:
+    """Build the explicit Unity batch command for the Phase188 editor probe."""
     return [
         str(unity), "-batchmode", "-nographics", "-quit",
         "-projectPath", str(project),
@@ -35,6 +37,7 @@ def build_editor_command(unity: Path, fixture: Path, output: Path, log: Path, pr
 
 
 def validate_editor_probe(output: Path, log: Path) -> dict:
+    """Validate probe counters and the terminal pass marker in Unity output."""
     if not output.is_file():
         raise RuntimeError(f"Unity probe output missing: {output}")
     data = json.loads(output.read_text(encoding="utf-8"))
@@ -55,6 +58,7 @@ def validate_editor_probe(output: Path, log: Path) -> dict:
 
 
 def run_editor(unity: Path, fixture: Path, output_dir: Path, project: Path) -> dict:
+    """Run Unity Editor and persist stdout, stderr, log, and validated evidence."""
     output_dir.mkdir(parents=True, exist_ok=True)
     probe = output_dir / "phase188-editor-probe.json"
     log = output_dir / "Editor.log"
@@ -71,6 +75,7 @@ def run_editor(unity: Path, fixture: Path, output_dir: Path, project: Path) -> d
 
 
 def run_il2cpp(unity: Path, output_dir: Path, project: Path, timeout_minutes: int) -> dict:
+    """Run the explicit Windows IL2CPP build and require a produced player."""
     output_dir.mkdir(parents=True, exist_ok=True)
     player = output_dir / "FoxgloveDemo.exe"
     log = output_dir / "build.log"
@@ -90,6 +95,7 @@ def run_il2cpp(unity: Path, output_dir: Path, project: Path, timeout_minutes: in
 
 def run_acceptance(mode: str, output_dir: Path, fixture: Path, unity: Path | None = None,
                    project: Path | None = None, timeout_minutes: int = 45) -> dict:
+    """Execute one acceptance mode and write fail-closed machine-readable evidence."""
     evidence = {"phase": "188", "mode": mode, "generatedAtUnix": time.time(), "status": "pass"}
     try:
         if mode == "windows-editor":
@@ -111,6 +117,7 @@ def run_acceptance(mode: str, output_dir: Path, fixture: Path, unity: Path | Non
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse command-line mode, environment, fixture, and output settings."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--windows-editor", action="store_true")
     parser.add_argument("--windows-il2cpp-player", action="store_true")
@@ -126,6 +133,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str]) -> int:
+    """Run the selected acceptance mode and return its observed status code."""
     args = parse_args(argv)
     root = repo_root()
     mode = "windows-editor" if args.windows_editor else "windows-il2cpp-player"
