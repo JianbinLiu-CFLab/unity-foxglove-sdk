@@ -313,9 +313,10 @@ warmed. The opt-in player smoke then loaded the same fixture and emitted
 recorded in `build/phase188/windows-il2cpp-player-runtime-v3/phase188-acceptance.json`
 and `Player.log`.
 
-For a paired quick-fixture comparison, the reference linear scan measured
-p50/p95/p99 of `3.6187/5.0651/5.0651 ms`, while the indexed candidate measured
-`0.0848/0.1047/0.1047 ms`. Both returned four messages from the same fixture
+For a paired quick-fixture comparison (two measured repetitions per mode), the
+latest reference linear scan measured p50/p95/p99 of
+`3.2042/5.4727/5.4727 ms`, while the indexed candidate measured
+`0.0357/0.0425/0.0425 ms`. Both returned four messages from the same fixture
 (`7DEAD571CA45350440D81B6A44CE7A8CE5A546112D8E493FE3D485BB396953B9`), with
 the candidate decompressing 1 of 2 eligible chunks and scanning 30 headers
 versus 19 chunks and 1200 headers for the reference. The comparison artifact
