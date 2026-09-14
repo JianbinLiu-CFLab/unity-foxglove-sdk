@@ -494,9 +494,21 @@ namespace Unity.FoxgloveSDK.IO
             var latestByChannel = _snapshotLatestByChannel;
             latestByChannel.Clear();
             var chunkIndexes = GetSnapshotChunkIndexesByDescendingEndTime();
-            var expectedChannelCount = _summary.Statistics == null
-                ? 0
-                : (int)_summary.Statistics.ChannelCount;
+            // Use the declared channel IDs, rather than only the aggregate
+            // statistics count. A malformed chunk can contain a message for an
+            // undeclared channel; admitting it would satisfy the count early
+            // and allow the scan to stop before an older declared channel is
+            // considered.
+            var declaredChannelIds = new HashSet<ushort>();
+            if (_summary.Channels != null)
+            {
+                foreach (var channel in _summary.Channels)
+                {
+                    if (channel != null)
+                        declaredChannelIds.Add(channel.Id);
+                }
+            }
+            var expectedChannelCount = declaredChannelIds.Count;
             foreach (var chunkIndex in chunkIndexes)
             {
                 if (chunkIndex.MessageStartTime > clampedTime)
@@ -529,6 +541,8 @@ namespace Unity.FoxgloveSDK.IO
                     var logNs = record.LogTime;
                     var dataLen = record.DataLength;
                     if (logNs > clampedTime)
+                        continue;
+                    if (expectedChannelCount > 0 && !declaredChannelIds.Contains(record.ChannelId))
                         continue;
 
                     var candidate = new McapMessage

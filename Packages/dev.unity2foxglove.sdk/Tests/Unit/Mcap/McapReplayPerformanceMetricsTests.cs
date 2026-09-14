@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Unity.FoxgloveSDK.IO;
 using Xunit;
 
@@ -154,6 +155,70 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
         }
 
+        [Fact]
+        public void SnapshotDoesNotLetUndeclaredNewestChannelHideDeclaredWinner()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-unknown-channel-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(stream, null, chunkSizeBytes: 64, compression: "", leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/declared", "json", "phase188.Declared", "jsonschema", "{}");
+                    for (ulong time = 1; time <= 12; time++)
+                        recorder.WriteMessage(1, time * 1000, new byte[] { (byte)time });
+                    recorder.Close();
+                }
+
+                // Corrupt only the newest chunk's message channel IDs. The
+                // stale chunk CRC intentionally exercises the existing
+                // UseWithWarning policy while preserving the summary's one
+                // declared channel.
+                byte[] bytes = File.ReadAllBytes(path);
+                McapChunkIndex newest;
+                byte[] newestRecords;
+                using (var inspectStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var inspectReader = new McapReader(inspectStream))
+                {
+                    var summary = inspectReader.ReadSummary();
+                    newest = summary.ChunkIndexes.OrderByDescending(index => index.MessageEndTime).First();
+                    newestRecords = inspectReader.ReadChunkRecords(
+                        newest.ChunkStartOffset, newest.ChunkLength, out _);
+                }
+                var records = FindSubsequence(bytes, newestRecords);
+                Assert.True(records >= 0, "newest chunk records were not found in the file");
+                var end = records + newestRecords.Length;
+                var mutated = 0;
+                for (var offset = records; offset + 9 <= end;)
+                {
+                    var opcode = bytes[offset];
+                    var length = checked((int)BitConverter.ToUInt64(bytes, offset + 1));
+                    if (opcode == 0x05 && length >= 2)
+                    {
+                        bytes[offset + 9] = 0xE7;
+                        bytes[offset + 10] = 0x03; // 999, not a declared ID
+                        mutated++;
+                    }
+                    offset += 9 + length;
+                }
+                Assert.True(mutated > 0, $"newest chunk contained no message records (records={records}, end={end})");
+                File.WriteAllBytes(path, bytes);
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = engine.Snapshot(engine.EndTimeNs, new List<McapMessage>());
+
+                Assert.Single(result);
+                Assert.Equal((ushort)1, result[0].ChannelId);
+                Assert.Equal(11000UL, result[0].LogTime);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
         private static int CompareCanonical(McapMessage left, McapMessage right)
         {
             var comparison = left.LogTime.CompareTo(right.LogTime);
@@ -163,6 +228,25 @@ namespace FoxgloveSdk.UnitTests.Mcap
             if (comparison != 0)
                 return comparison;
             return left.PublishTime.CompareTo(right.PublishTime);
+        }
+
+        private static int FindSubsequence(byte[] haystack, byte[] needle)
+        {
+            for (var start = 0; start <= haystack.Length - needle.Length; start++)
+            {
+                var match = true;
+                for (var i = 0; i < needle.Length; i++)
+                {
+                    if (haystack[start + i] != needle[i])
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match)
+                    return start;
+            }
+            return -1;
         }
     }
 }
