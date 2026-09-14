@@ -209,7 +209,7 @@ namespace Unity.FoxgloveSDK.IO
 
             foreach (var message in EnumerateIndexedMessagesInFileOrder(options))
             {
-                if (!McapIndexedReaderHelpers.TryAddBoundedMessage(result, message, options, out _))
+                if (!McapLatestAtQuery.TryAddBoundedMessage(result, message, options, out _))
                     break;
                 if (options.Order == McapReadOrder.FileOrder &&
                     options.MaxMessages > 0 &&
@@ -217,7 +217,7 @@ namespace Unity.FoxgloveSDK.IO
                     break;
             }
 
-            McapIndexedReaderHelpers.ApplyOrderingAndLimit(result, options);
+            McapLatestAtQuery.ApplyOrderingAndLimit(result, options);
 
             return result;
         }
@@ -235,7 +235,7 @@ namespace Unity.FoxgloveSDK.IO
         public IEnumerable<McapMessage> EnumerateMessages(McapReadOptions options = null)
         {
             ThrowIfDisposed();
-            var lazyOptions = McapIndexedReaderHelpers.CreateLazyReadOptions(options);
+            var lazyOptions = McapLatestAtQuery.CreateLazyReadOptions(options);
             return new McapSinglePassEnumerable<McapMessage>(
                 nameof(McapIndexedReader) + "." + nameof(EnumerateMessages),
                 () => EnumerateMessagesCore(lazyOptions).GetEnumerator());
@@ -265,7 +265,7 @@ namespace Unity.FoxgloveSDK.IO
             var messages = ReadLinearMessages(options);
             result.AddRange(messages);
 
-            McapIndexedReaderHelpers.ApplyOrderingAndLimit(result, options);
+            McapLatestAtQuery.ApplyOrderingAndLimit(result, options);
 
             return result;
         }
@@ -338,7 +338,7 @@ namespace Unity.FoxgloveSDK.IO
             foreach (var chunkIndex in chunkIndexes)
             {
                 ThrowIfDisposed();
-                if (chunkIndex.MessageEndTime < options.StartTimeNs || McapIndexedReaderHelpers.IsAtOrPastEnd(chunkIndex.MessageStartTime, options))
+                if (chunkIndex.MessageEndTime < options.StartTimeNs || McapLatestAtQuery.IsAtOrPastEnd(chunkIndex.MessageStartTime, options))
                     continue;
 
                 var uncompressed = _reader.ReadChunkRecords(
@@ -352,7 +352,7 @@ namespace Unity.FoxgloveSDK.IO
                 foreach (var message in _reader.EnumerateChunkMessages(uncompressed))
                 {
                     ThrowIfDisposed();
-                    if (!McapIndexedReaderHelpers.IsInTimeRange(message.LogTime, options))
+                    if (!McapLatestAtQuery.IsInTimeRange(message.LogTime, options))
                         continue;
                     if (selectedChannelIds != null && !selectedChannelIds.Contains(message.ChannelId))
                         continue;
@@ -414,7 +414,7 @@ namespace Unity.FoxgloveSDK.IO
             }
 
             result.AddRange(latestByChannel.Values);
-            result.Sort(McapIndexedReaderHelpers.CompareLatestOutput);
+            result.Sort(McapLatestAtQuery.CompareLatestOutput);
             return result;
         }
 
@@ -428,11 +428,11 @@ namespace Unity.FoxgloveSDK.IO
             for (var i = 0; i < chunkIndexes.Count; i++)
             {
                 var chunkIndex = chunkIndexes[i];
-                if (McapIndexedReaderHelpers.IsAtOrPastEnd(chunkIndex.MessageStartTime, options))
+                if (McapLatestAtQuery.IsAtOrPastEnd(chunkIndex.MessageStartTime, options))
                     continue;
                 if (chunkIndex.MessageEndTime < options.StartTimeNs)
                     continue;
-                if (McapIndexedReaderHelpers.CanStopLatestScan(latestByChannel, expectedCount, chunkIndex.MessageEndTime))
+                if (McapLatestAtQuery.CanStopLatestScan(latestByChannel, expectedCount, chunkIndex.MessageEndTime))
                     break;
                 var uncompressed = _reader.ReadChunkRecords(
                     chunkIndex.ChunkStartOffset,
@@ -443,7 +443,7 @@ namespace Unity.FoxgloveSDK.IO
                     throw new InvalidDataException("MCAP chunk CRC mismatch.");
 
                 foreach (var message in _reader.EnumerateChunkMessages(uncompressed))
-                    McapIndexedReaderHelpers.ConsiderLatestCandidate(message, options, selectedChannelIds, latestByChannel);
+                    McapLatestAtQuery.ConsiderLatestCandidate(message, options, selectedChannelIds, latestByChannel);
             }
         }
 
@@ -459,10 +459,10 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     if (expectedCount > 0 && latestByChannel.Count >= expectedCount &&
                         latestByChannel.TryGetValue(message.ChannelId, out var current) &&
-                        McapIndexedReaderHelpers.CompareLatestCandidate(current, message) >= 0)
+                        McapLatestAtQuery.CompareLatestCandidate(current, message) >= 0)
                         return;
 
-                    McapIndexedReaderHelpers.ConsiderLatestCandidate(message, options, selectedChannelIds, latestByChannel);
+                    McapLatestAtQuery.ConsiderLatestCandidate(message, options, selectedChannelIds, latestByChannel);
                 },
                 validateCrcs: options.ValidateCrcs,
                 chunkUncompressedSizeLimit: options.ChunkUncompressedSizeLimit);
@@ -556,8 +556,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (_chunkIndexesByDescendingEndTime != null)
                     return _chunkIndexesByDescendingEndTime;
 
-                var ordered = new List<McapChunkIndex>(chunkIndexes);
-                ordered.Sort((left, right) => right.MessageEndTime.CompareTo(left.MessageEndTime));
+                var ordered = McapLatestAtQuery.OrderChunkIndexesByDescendingEndTime(chunkIndexes);
                 Volatile.Write(ref _chunkIndexesByDescendingEndTime, ordered);
                 return ordered;
             }

@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <BaseOutputPath>$(MSBuildProjectDirectory)/../../../../build/performance/dotnet/</BaseOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)../../../../build/performance/dotnet/</BaseOutputPath>
     <BaseIntermediateOutputPath>$(BaseOutputPath)obj/</BaseIntermediateOutputPath>
   </PropertyGroup>
 </Project>

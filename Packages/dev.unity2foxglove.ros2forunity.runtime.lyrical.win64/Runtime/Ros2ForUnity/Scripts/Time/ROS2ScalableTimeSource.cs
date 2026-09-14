@@ -100,7 +100,13 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     }
     else
     {
-      double rosNow = offsetAcquiredAtRead ? 0.0 : GetRosNowSeconds();
+      double rosNow = 0.0;
+      if (!offsetAcquiredAtRead && !TryGetRosNowSeconds(out rosNow))
+      {
+        seconds = 0;
+        nanoseconds = 0;
+        return false;
+      }
       double adjustedTime;
       lock (mutex)
       {

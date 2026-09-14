@@ -3,7 +3,9 @@
 //
 // Module: Editor/Manager
 
+using System;
 using System.IO;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using UnityEngine;
 using UnityEditor;

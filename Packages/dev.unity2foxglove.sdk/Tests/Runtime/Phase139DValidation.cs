@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCursorControllerContract()
         {
             var controller = new ExternalReplayCursorController();
-            var request = ReplayCursorRequest.CreateForTests(20_000_000_000UL, "test", 1);
+            var request = ReplayCursorRequest.CreateForTests(20_000_000_000UL, "test", 1, didSeek: false);
 
             Check(controller.TryEnqueue(request, replayEnabled: false, startNs: 0, endNs: 30_000_000_000UL, out var disabled)
                   == ExternalReplayCursorEnqueueResult.Disabled

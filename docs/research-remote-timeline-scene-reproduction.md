@@ -286,3 +286,54 @@ That separation lowers user complexity and removes an entire class of feedback p
 ## Evidence Scope
 
 This document reflects the current replay, cursor, extension, Manager Inspector, decoder, cache, and pose-arbitration code reviewed on 2026-07-20, plus scoped local Unity/Foxglove acceptance reports. Official Foxglove references support API and player behavior; they do not certify Unity2Foxglove. Experimental follow behavior and unmeasured performance are labeled accordingly.
+
+## Phase188 deterministic replay performance (2026-09-14)
+
+Phase188 measured the indexed latest-at replay path on deterministic MCAP
+fixtures generated with seed `188042`. The quick fixture hash was
+`7DEAD571CA45350440D81B6A44CE7A8CE5A546112D8E493FE3D485BB396953B9` and the
+full fixture hash was
+`D54DD8938BC509850B9FAF1FE880851B469D4EB67C6746FF966F2496E277FCC8`.
+The benchmark excludes fixture generation and validates repeated-run hash and
+result stability. The indexed reader and replay engine share the canonical
+ordering helpers and descending chunk-index order; their traversal adapters
+remain separate and are still an architecture follow-up for the full shared
+query-core requirement. The runner reports decompression, header, payload-copy,
+and returned-message counters. The quick run returned four messages from two eligible
+chunks while decompressing one chunk and scanning 30 headers.
+
+The current fixture is read/select dominated: measured p95 remained below the
+configured latency budget, so no speculative decoder fast path (188-C) or
+background stale-safe preparation (188-D) was activated. Stage timing fields
+remain fail-closed and the generic decoder path remains the semantic fallback.
+The real Unity 6000.3.14f1 Editor probe emitted `PHASE188_EDITOR_PASS` with
+five cursor operations (forward, backward, and a late jump), strict cursor
+sequence monotonicity, per-operation snapshot digests, and a disposed replay
+lifecycle. The explicit Windows IL2CPP entry point produced
+`FoxgloveDemo.exe` with build exit status 0 after the shader cache was warmed.
+The opt-in player smoke loaded the same fixture and emitted
+`PHASE188_PLAYER_PASS` with runtime exit status 0. These probes certify
+structural replay counters and process cleanup; they do not yet certify a full
+scene digest, cursor/range matrix, or listener lifecycle matrix. The acceptance
+evidence is recorded in
+`build/phase188/windows-il2cpp-player-runtime-v3/phase188-acceptance.json`
+and the corresponding Player log.
+
+For a frozen three-run quick-fixture comparison, the reference linear scan
+measured p95 values of `89.4408/4.8338/6.1720 ms` (median `6.1720 ms`), while
+the indexed candidate's latest p95 was `0.0678 ms`. The robust noise band is
+the baseline median plus three MAD (`10.1866 ms`); the candidate remains below
+that bound on every run. Both modes returned four messages from the same
+fixture (`7DEAD571CA45350440D81B6A44CE7A8CE5A546112D8E493FE3D485BB396953B9`),
+with the candidate decompressing 1 of 2 eligible chunks and scanning 30 headers
+versus 19 chunks and 1200 headers for the reference. The comparison artifact
+is `build/phase188/noise-compare-v2/phase188-replay-comparison.json`; semantic
+parity is based on equal returned-result SHA-256 digests and returned count.
+The fixture is still a small quick cell, not the 16--64 MiB quick matrix or
+256 MiB/1 GiB full matrix required for final large-scale performance claims.
+
+These results are Windows measurements, not platform-wide performance claims.
+They do not establish zero allocation, deterministic physics simulation,
+visual smoothness, prediction, interpolation, extrapolation, or multi-frame
+chase behavior. Live Foxglove/ROS2 output isolation and replay lifecycle
+cleanup remain required acceptance controls.
