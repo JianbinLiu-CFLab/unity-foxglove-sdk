@@ -24,6 +24,37 @@ namespace Unity.FoxgloveSDK.IO
     public class McapReplayEngine : IDisposable
     {
         /// <summary>
+        /// Structural counters collected by the most recent <see cref="Snapshot"/>
+        /// call. These counters are diagnostic only and do not alter replay
+        /// selection or payload ownership semantics.
+        /// </summary>
+        public readonly struct SnapshotMetrics
+        {
+            public SnapshotMetrics(
+                long eligibleChunks,
+                long decompressedChunks,
+                long headersScanned,
+                long candidateUpdates,
+                long payloadCopies,
+                long returnedMessages)
+            {
+                EligibleChunks = eligibleChunks;
+                DecompressedChunks = decompressedChunks;
+                HeadersScanned = headersScanned;
+                CandidateUpdates = candidateUpdates;
+                PayloadCopies = payloadCopies;
+                ReturnedMessages = returnedMessages;
+            }
+
+            public long EligibleChunks { get; }
+            public long DecompressedChunks { get; }
+            public long HeadersScanned { get; }
+            public long CandidateUpdates { get; }
+            public long PayloadCopies { get; }
+            public long ReturnedMessages { get; }
+        }
+
+        /// <summary>
         /// Underlying MCAP binary reader.
         /// </summary>
         private McapReader _reader;
@@ -58,6 +89,11 @@ namespace Unity.FoxgloveSDK.IO
             Comparer<McapMessage>.Create(CompareMessages);
         private readonly Dictionary<ushort, McapMessage> _snapshotLatestByChannel = new();
         private readonly IFoxgloveLogger _logger;
+
+        /// <summary>
+        /// Counters from the most recent <see cref="Snapshot"/> call.
+        /// </summary>
+        public SnapshotMetrics LastSnapshotMetrics { get; private set; }
 
         // Per-chunk state
         /// <summary>
@@ -430,9 +466,17 @@ namespace Unity.FoxgloveSDK.IO
             if (result == null) throw new ArgumentNullException(nameof(result));
             ThrowIfDisposed();
             result.Clear();
+            long eligibleChunks = 0;
+            long decompressedChunks = 0;
+            long headersScanned = 0;
+            long candidateUpdates = 0;
+            long payloadCopies = 0;
 
             if (!IsLoaded || !CanSeek)
+            {
+                LastSnapshotMetrics = new SnapshotMetrics(0, 0, 0, 0, 0, 0);
                 return result;
+            }
 
             var clampedTime = timeNs > EndTimeNs ? EndTimeNs : timeNs;
             if (clampedTime < StartTimeNs)
@@ -445,7 +489,10 @@ namespace Unity.FoxgloveSDK.IO
                 if (chunkIndex.MessageStartTime > clampedTime)
                     break;
 
+                eligibleChunks++;
+
                 var uncompressed = _reader.ReadChunkRecords(chunkIndex.ChunkStartOffset, chunkIndex.ChunkLength, out var crcValid);
+                decompressedChunks++;
                 if (!ShouldUseChunkRecords("Snapshot chunk", crcValid))
                     continue;
 
@@ -453,6 +500,7 @@ namespace Unity.FoxgloveSDK.IO
                 while (offset + 9 <= uncompressed.Length)
                 {
                     var record = McapReplayChunkRecordReader.ReadNext(uncompressed, ref offset);
+                    headersScanned++;
                     if (!record.IsMessage)
                         continue;
 
@@ -476,12 +524,21 @@ namespace Unity.FoxgloveSDK.IO
                     Buffer.BlockCopy(uncompressed, record.DataOffset, data, 0, dataLen);
                     candidate.Data = data;
                     latestByChannel[record.ChannelId] = candidate;
+                    candidateUpdates++;
+                    payloadCopies++;
                 }
             }
 
             result.AddRange(latestByChannel.Values);
             if (result.Count > 1)
                 result.Sort(CompareMessages);
+            LastSnapshotMetrics = new SnapshotMetrics(
+                eligibleChunks,
+                decompressedChunks,
+                headersScanned,
+                candidateUpdates,
+                payloadCopies,
+                result.Count);
             return result;
         }
 
