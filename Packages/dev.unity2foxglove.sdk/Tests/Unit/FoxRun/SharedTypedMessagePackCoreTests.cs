@@ -4,7 +4,12 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.Loader;
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Unity.FoxgloveSDK.Editor;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
@@ -36,6 +41,31 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal("e072d43f7846f16193b2830ac45c04d5b9ab843c", manifest.RootElement.GetProperty("base_sha").GetString());
             Assert.Equal("dd60ced22ff4027ef665085964eeca7e46d90ef76e320ce00e76461f8cda96d0", manifest.RootElement.GetProperty("source_sha256").GetString());
             Assert.False(string.IsNullOrWhiteSpace(manifest.RootElement.GetProperty("payload_sha256").GetString()));
+
+            var caller = CSharpSyntaxTree.ParseText(
+                "using System.Text; using Unity.FoxgloveSDK.Editor; "
+                + "public static class SharedCoreCaller { public static string Build() { "
+                + "var sb = new StringBuilder(); "
+                + "TypedMessagePackWriterEmitter.EmitValue(sb, FoxRunTypeShape.Canonical(\"int32\"), \"value\", \"writer\", \"\"); "
+                + "return sb.ToString(); } }");
+            var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))
+                .Split(Path.PathSeparator)
+                .Select(path => MetadataReference.CreateFromFile(path))
+                .Concat(new[] { MetadataReference.CreateFromFile(typeof(FoxRunTypeShape).Assembly.Location) });
+            var compilation = CSharpCompilation.Create(
+                "Phase189A_SharedCoreCaller",
+                new[] { caller },
+                references,
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            using var image = new MemoryStream();
+            var emit = compilation.Emit(image);
+            Assert.True(emit.Success, string.Join("; ", emit.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+            image.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(image);
+            var generated = assembly.GetType("SharedCoreCaller", throwOnError: true)!
+                .GetMethod("Build", BindingFlags.Public | BindingFlags.Static)!
+                .Invoke(null, null) as string;
+            Assert.Contains("WriteInt32((int)value)", generated, StringComparison.Ordinal);
         }
 
         private static string FindRepoRoot()
