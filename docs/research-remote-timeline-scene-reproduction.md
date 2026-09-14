@@ -306,9 +306,10 @@ configured latency budget, so no speculative decoder fast path (188-C) or
 background stale-safe preparation (188-D) was activated. Stage timing fields
 remain fail-closed and the generic decoder path remains the semantic fallback.
 The real Unity 6000.3.14f1 Editor probe emitted `PHASE188_EDITOR_PASS` with
-the same structural counters. Windows IL2CPP certification is run separately
-through the repository's explicit Unity build entry point; a successful Player
-build is required before claiming IL2CPP coverage.
+the same structural counters. The explicit Windows IL2CPP entry point also
+produced `FoxgloveDemo.exe` with exit status 0 after the shader cache was
+warmed; the acceptance evidence is recorded in
+`build/phase188/windows-il2cpp-quarantined-v2/phase188-acceptance.json`.
 
 These results are Windows measurements, not platform-wide performance claims.
 They do not establish zero allocation, deterministic physics simulation,
