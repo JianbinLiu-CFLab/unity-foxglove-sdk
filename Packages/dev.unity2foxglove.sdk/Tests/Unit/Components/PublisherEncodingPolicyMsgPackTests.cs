@@ -85,6 +85,23 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ExplicitMsgPackRequestFailsClosedWhenCodecUnavailable()
+        {
+            var resolution = PublisherEncodingPolicy.Resolve(
+                GlobalEncoding.MsgPack,
+                allowPublisherOverride: false,
+                PublisherEncodingOverride.UseManager,
+                supportsJson: true,
+                supportsProtobuf: true,
+                supportsMsgPack: false);
+
+            Assert.Equal(PublisherEffectiveEncoding.MsgPack, resolution.Requested);
+            Assert.Equal(PublisherEffectiveEncoding.Unsupported, resolution.Effective);
+            Assert.False(resolution.FellBack);
+            Assert.False(resolution.IsSupported);
+        }
+
+        [Fact]
         public void JsonIsUsedWhenItIsTheOnlySupportedFallback()
         {
             var resolution = PublisherEncodingPolicy.Resolve(
