@@ -40,6 +40,7 @@ namespace Unity.FoxgloveSDK.Performance
             string outputDir = null;
             string thresholdPath = null;
             var resultPrefix = DefaultResultFilePrefix;
+            var phase188Candidate = true;
             var thresholdsEnabled = true;
             var thresholdSelfTest = false;
             for (int i = 0; i < args.Length; i++)
@@ -47,6 +48,7 @@ namespace Unity.FoxgloveSDK.Performance
                 switch (args[i])
                 {
                     case "--phase188": phase188 = true; break;
+                    case "--phase188-reference": phase188Candidate = false; break;
                     case "--quick":
                         if (modeWasSpecified && mode != "quick")
                             return UsageError("--quick and --full cannot be used together.");
@@ -91,7 +93,7 @@ namespace Unity.FoxgloveSDK.Performance
             }
 
             if (phase188)
-                return RunPhase188(mode, outputDir, resultPrefix);
+                return RunPhase188(mode, outputDir, resultPrefix, phase188Candidate);
 
             if (outputDir == null)
                 outputDir = Path.Combine(RepoRoot, "build", "performance");
@@ -190,13 +192,13 @@ namespace Unity.FoxgloveSDK.Performance
             return 2;
         }
 
-        private static int RunPhase188(string mode, string outputDir, string resultPrefix)
+        private static int RunPhase188(string mode, string outputDir, string resultPrefix, bool candidate)
         {
             outputDir ??= Path.Combine(RepoRoot, "build", "phase188", mode == "full" ? "baseline-full" : "baseline-quick");
             Directory.CreateDirectory(outputDir);
             try
             {
-                var result = ReplayPerformanceScenarios.Run(outputDir, mode == "full");
+                var result = ReplayPerformanceScenarios.Run(outputDir, mode == "full", candidate);
                 var json = JsonConvert.SerializeObject(result, Formatting.Indented);
                 var path = Path.Combine(outputDir, $"{resultPrefix}_{mode}_{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
                 File.WriteAllText(path, json);

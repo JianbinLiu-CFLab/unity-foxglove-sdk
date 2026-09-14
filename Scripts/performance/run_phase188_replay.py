@@ -8,10 +8,55 @@ import json
 import pathlib
 import subprocess
 import sys
+import time
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PROJECT = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Performance" / "FoxgloveSdk.Performance.csproj"
+
+
+def latest_result(directory: pathlib.Path) -> tuple[pathlib.Path, dict]:
+    """Load the newest Phase188 result JSON from a benchmark directory."""
+    results = sorted(directory.glob("phase188-replay_*.json"), key=lambda p: p.stat().st_mtime_ns)
+    if not results:
+        raise RuntimeError(f"no Phase188 result JSON in {directory}")
+    path = results[-1]
+    return path, json.loads(path.read_text(encoding="utf-8"))
+
+
+def compare_results(baseline_dir: pathlib.Path, candidate_dir: pathlib.Path, output: pathlib.Path) -> dict:
+    """Compare paired deterministic runs without claiming an unmeasured noise band."""
+    baseline_path, baseline = latest_result(baseline_dir)
+    candidate_path, candidate = latest_result(candidate_dir)
+    if baseline.get("fixtureHashSha256") != candidate.get("fixtureHashSha256"):
+        raise RuntimeError("baseline and candidate fixtures differ")
+    required = ("p50Milliseconds", "p95Milliseconds", "p99Milliseconds", "returnedMessages")
+    for label, payload in (("baseline", baseline), ("candidate", candidate)):
+        missing = [key for key in required if key not in payload]
+        if missing:
+            raise RuntimeError(f"{label} result missing: {', '.join(missing)}")
+    def ratio(name: str) -> float:
+        value = float(candidate[name])
+        return value / float(baseline[name]) if float(baseline[name]) > 0 else 0.0
+    comparison = {
+        "generatedAtUnix": time.time(),
+        "fixtureHashSha256": baseline["fixtureHashSha256"],
+        "baseline": {"path": str(baseline_path), "implementation": baseline.get("implementation"),
+                     "p50Milliseconds": baseline["p50Milliseconds"], "p95Milliseconds": baseline["p95Milliseconds"],
+                     "p99Milliseconds": baseline["p99Milliseconds"], "returnedMessages": baseline["returnedMessages"],
+                     "decompressedChunks": baseline.get("decompressedChunks"), "headersScanned": baseline.get("headersScanned")},
+        "candidate": {"path": str(candidate_path), "implementation": candidate.get("implementation"),
+                      "p50Milliseconds": candidate["p50Milliseconds"], "p95Milliseconds": candidate["p95Milliseconds"],
+                      "p99Milliseconds": candidate["p99Milliseconds"], "returnedMessages": candidate["returnedMessages"],
+                      "decompressedChunks": candidate.get("decompressedChunks"), "headersScanned": candidate.get("headersScanned")},
+        "latencyRatioCandidateOverBaseline": {"p50": ratio("p50Milliseconds"), "p95": ratio("p95Milliseconds"),
+                                                "p99": ratio("p99Milliseconds")},
+        "semanticParity": candidate["returnedMessages"] == baseline["returnedMessages"],
+        "noiseBand": "not_estimated",
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(comparison, indent=2, sort_keys=True), encoding="utf-8")
+    return comparison
 
 
 def main() -> int:
@@ -19,10 +64,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--full", action="store_true")
-    parser.add_argument("--mode", choices=("baseline",), default="baseline")
+    parser.add_argument("--mode", choices=("baseline", "candidate"), default="candidate")
     parser.add_argument("--repeat", type=int, default=1)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--compare", nargs=2, metavar=("BASELINE_DIR", "CANDIDATE_DIR"))
     args = parser.parse_args()
+    if args.compare:
+        if args.quick or args.full:
+            parser.error("--compare cannot be combined with --quick or --full")
+        comparison = compare_results(pathlib.Path(args.compare[0]), pathlib.Path(args.compare[1]),
+                                      pathlib.Path(args.output) / "phase188-replay-comparison.json")
+        print(json.dumps(comparison, indent=2, sort_keys=True))
+        return 0 if comparison["semanticParity"] else 1
     if args.quick and args.full or not (args.quick or args.full):
         parser.error("choose exactly one of --quick or --full")
     if args.repeat < 1:
@@ -38,6 +91,8 @@ def main() -> int:
             "--phase188", mode_arg, "--output", str(output),
             "--result-prefix", "phase188-replay",
         ]
+        if args.mode == "baseline":
+            command.append("--phase188-reference")
         completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
         sys.stdout.write(completed.stdout)
         sys.stderr.write(completed.stderr)

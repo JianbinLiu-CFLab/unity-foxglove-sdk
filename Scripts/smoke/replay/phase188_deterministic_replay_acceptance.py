@@ -17,6 +17,13 @@ REQUIRED_COUNTERS = (
 )
 
 
+def terminate_process_tree(pid: int) -> None:
+    """Terminate a Windows child process tree after a bounded smoke timeout."""
+    if sys.platform.startswith("win"):
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                       capture_output=True, text=True, check=False)
+
+
 def repo_root() -> Path:
     """Resolve and validate the repository root for acceptance runs."""
     root = Path(__file__).resolve().parents[3]
@@ -74,8 +81,8 @@ def run_editor(unity: Path, fixture: Path, output_dir: Path, project: Path) -> d
     return result
 
 
-def run_il2cpp(unity: Path, output_dir: Path, project: Path, timeout_minutes: int) -> dict:
-    """Run the explicit Windows IL2CPP build and require a produced player."""
+def run_il2cpp(unity: Path, output_dir: Path, project: Path, fixture: Path, timeout_minutes: int) -> dict:
+    """Build and execute the opt-in Phase188 player replay smoke."""
     output_dir.mkdir(parents=True, exist_ok=True)
     player = output_dir / "FoxgloveDemo.exe"
     log = output_dir / "build.log"
@@ -90,7 +97,39 @@ def run_il2cpp(unity: Path, output_dir: Path, project: Path, timeout_minutes: in
         raise RuntimeError(f"IL2CPP build exited {completed.returncode}; see {log}")
     if not player.exists():
         raise RuntimeError(f"IL2CPP player missing: {player}")
-    return {"status": "pass", "player": str(player), "command": command, "exitStatus": completed.returncode}
+    run_command = [str(player), "-batchmode", "-nographics", "-phase188PlayerAcceptance",
+                   "-phase188Fixture", str(fixture)]
+    run_log = output_dir / "player.stdout.log"
+    run_err = output_dir / "player.stderr.log"
+    player_log = output_dir / "Player.log"
+    run_command += ["-logFile", str(player_log)]
+    try:
+        player_run = subprocess.run(run_command, cwd=output_dir, text=True,
+                                    capture_output=True, timeout=120)
+    except subprocess.TimeoutExpired as exc:
+        # subprocess.run has no handle available in the exception; the
+        # executable is launched from this output directory, so terminate only
+        # matching player processes and leave all unrelated Unity processes.
+        for process in subprocess.check_output(
+                ["tasklist", "/FI", "IMAGENAME eq FoxgloveDemo.exe", "/FO", "CSV", "/NH"],
+                text=True, errors="replace").splitlines():
+            if "FoxgloveDemo.exe" in process:
+                fields = [part.strip('"') for part in process.split('","')]
+                if len(fields) > 1:
+                    terminate_process_tree(int(fields[1]))
+        run_log.write_text(exc.stdout or "", encoding="utf-8")
+        run_err.write_text(exc.stderr or "", encoding="utf-8")
+        raise RuntimeError("IL2CPP player replay smoke timed out") from exc
+    run_log.write_text(player_run.stdout or "", encoding="utf-8")
+    run_err.write_text(player_run.stderr or "", encoding="utf-8")
+    combined = (player_run.stdout or "") + (player_run.stderr or "")
+    player_log_text = player_log.read_text(encoding="utf-8", errors="replace") if player_log.is_file() else ""
+    if player_run.returncode != 0 or "PHASE188_PLAYER_PASS" not in (combined + player_log_text):
+        raise RuntimeError(
+            f"IL2CPP player replay smoke failed exit={player_run.returncode}; see {run_log}")
+    return {"status": "pass", "player": str(player), "command": command,
+            "exitStatus": completed.returncode, "runtimeCommand": run_command,
+            "runtimeExitStatus": player_run.returncode, "runtimeMarker": "PHASE188_PLAYER_PASS"}
 
 
 def run_acceptance(mode: str, output_dir: Path, fixture: Path, unity: Path | None = None,
@@ -105,7 +144,7 @@ def run_acceptance(mode: str, output_dir: Path, fixture: Path, unity: Path | Non
         elif mode == "windows-il2cpp-player":
             if unity is None or project is None:
                 raise RuntimeError("windows-il2cpp-player requires an explicit Unity executable and project")
-            evidence["player"] = run_il2cpp(unity, output_dir, project, timeout_minutes)
+            evidence["player"] = run_il2cpp(unity, output_dir, project, fixture, timeout_minutes)
         else:
             raise RuntimeError(f"unsupported mode: {mode}")
     except Exception as exc:

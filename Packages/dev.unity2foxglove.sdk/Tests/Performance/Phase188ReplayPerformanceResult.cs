@@ -12,6 +12,7 @@ namespace Unity.FoxgloveSDK.Performance
     public sealed class Phase188ReplayPerformanceResult
     {
         [JsonProperty("scenario")] public string Scenario { get; set; }
+        [JsonProperty("implementation")] public string Implementation { get; set; }
         [JsonProperty("fixtureHashSha256")] public string FixtureHashSha256 { get; set; }
         [JsonProperty("fixtureSeed")] public int FixtureSeed { get; set; }
         [JsonProperty("runtime")] public string Runtime { get; set; }
