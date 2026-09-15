@@ -29,6 +29,18 @@ Foxglove schema requires binary payloads. Provider-only modes expose a neutral
 frame to an installed companion and publish nothing if no matching Provider is
 available.
 
+## 2.1 Component MessagePack contracts
+
+Component publishers freeze their effective encoding and schema at Manager
+capture. MessagePack-capable camera and point-cloud modes use generated,
+direct byte-array views; they do not transcode through JSON or Protobuf. The
+wire schema is schemaless (`SchemaId = 0`) and binary members are MessagePack
+`bin` values. Use a custom client and the read-only
+`/foxglove/component-publish-contracts` service; built-in Foxglove panels do
+not decode schemaless MessagePack. Changing topic or encoding is pending until
+the Manager is restarted (disable/re-enable), preserving the active frozen
+descriptor.
+
 ## 3. Point Cloud Publisher
 
 Add `FoxglovePointCloudPublisher` to a GameObject when you need a Unity-side point-cloud topic.
