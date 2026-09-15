@@ -23,8 +23,11 @@ namespace Unity.FoxgloveSDK.Components
         internal bool TryGetActiveComponentPublisherSessionEntry(
             object publisher,
             out ComponentPublisherSessionEntry entry)
-            => _activeComponentPublisherSession != null
-               && _activeComponentPublisherSession.TryGetEntry(publisher, out entry);
+        {
+            entry = null;
+            return _activeComponentPublisherSession != null
+                   && _activeComponentPublisherSession.TryGetEntry(publisher, out entry);
+        }
 
         internal void CaptureComponentPublisherSession()
         {
