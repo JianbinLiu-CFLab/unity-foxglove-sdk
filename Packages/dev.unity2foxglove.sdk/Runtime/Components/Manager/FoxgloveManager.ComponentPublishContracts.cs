@@ -20,6 +20,12 @@ namespace Unity.FoxgloveSDK.Components
         internal void SetActiveComponentPublisherSession(ComponentPublisherSessionSnapshot snapshot)
             => _activeComponentPublisherSession = snapshot;
 
+        internal bool TryGetActiveComponentPublisherSessionEntry(
+            object publisher,
+            out ComponentPublisherSessionEntry entry)
+            => _activeComponentPublisherSession != null
+               && _activeComponentPublisherSession.TryGetEntry(publisher, out entry);
+
         internal void CaptureComponentPublisherSession()
         {
             var drafts = new List<ComponentPublisherContractDraft>();

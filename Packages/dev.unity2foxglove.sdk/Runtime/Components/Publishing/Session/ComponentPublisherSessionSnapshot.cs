@@ -13,5 +13,21 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public IReadOnlyList<ComponentPublisherSessionEntry> Entries { get; }
         public bool IsAvailable { get; }
         public string Diagnostic { get; }
+
+        /// <summary>Finds the immutable contract captured for one publisher instance.</summary>
+        public bool TryGetEntry(object publisher, out ComponentPublisherSessionEntry entry)
+        {
+            entry = null;
+            if (publisher == null) return false;
+            foreach (var candidate in Entries)
+            {
+                if (ReferenceEquals(candidate.Publisher, publisher))
+                {
+                    entry = candidate;
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }

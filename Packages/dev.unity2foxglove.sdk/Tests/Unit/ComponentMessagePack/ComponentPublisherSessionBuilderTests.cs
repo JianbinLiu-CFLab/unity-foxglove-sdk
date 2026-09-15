@@ -51,5 +51,28 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.False(entry.IsAvailable);
             Assert.Contains("bounded", entry.Diagnostic, StringComparison.OrdinalIgnoreCase);
         }
+
+        [Fact]
+        public void SnapshotResolvesFrozenEntryByPublisherReference()
+        {
+            var publisher = new Publisher();
+            var snapshot = new ComponentPublisherSessionBuilder().Build(
+                9,
+                new[]
+                {
+                    new ComponentPublisherContractDraft(
+                        publisher, "scene/A", typeof(Publisher), "mode", "/a", "schema.a",
+                        PublisherEffectiveEncoding.MsgPack,
+                        PublisherEffectiveEncoding.MsgPack,
+                        new ComponentMessagePackGeneratedEntry(
+                            typeof(Publisher), "schema.a", "shape.a", true, true, string.Empty,
+                            _ => new byte[] { 1 }))
+                });
+
+            Assert.True(snapshot.TryGetEntry(publisher, out var entry));
+            Assert.Same(publisher, entry.Publisher);
+            Assert.Equal(PublisherEffectiveEncoding.MsgPack, entry.EffectiveEncoding);
+            Assert.False(snapshot.TryGetEntry(new Publisher(), out _));
+        }
     }
 }

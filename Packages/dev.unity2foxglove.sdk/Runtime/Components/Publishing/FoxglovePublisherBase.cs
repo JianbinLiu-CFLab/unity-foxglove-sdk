@@ -564,6 +564,15 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual PublisherEncodingResolution ResolvePublisherEncoding()
         {
+            if (_manager != null
+                && _manager.TryGetActiveComponentPublisherSessionEntry(this, out var frozen))
+            {
+                return new PublisherEncodingResolution(
+                    frozen.RequestedEncoding,
+                    frozen.EffectiveEncoding,
+                    fellBack: false);
+            }
+
             var managerDefault = _manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Json;
             var allowPublisherOverride = _manager == null || _manager.AllowPublisherOverride;
             return PublisherEncodingPolicy.Resolve(
