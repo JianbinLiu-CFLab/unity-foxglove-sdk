@@ -5,6 +5,7 @@ import argparse
 import time
 
 def main() -> int:
+    """Print the bounded manual acceptance handoff for a Unity operator."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", default="phase189-manual")
     args = parser.parse_args()
