@@ -75,5 +75,14 @@ class Phase189ManualAcceptanceTests(unittest.TestCase):
         for token in ("expectedRun", "expectedHead", "expectedGeneration", "messageEncoding", "SchemaId", "payload", "stale", "/phase189/component/jpeg", "/phase189/component/pointcloud", "binaryMember", "recordingClose", "EDIT_MODE"):
             self.assertIn(token, source)
 
+    def test_controller_requires_probe_and_inspector_evidence_before_complete(self):
+        """Prevent the UI from declaring PASS without the two independent evidence gates."""
+        source = CONTROLLER.read_text(encoding="utf-8")
+        self.assertIn("_probeEvidence", source)
+        self.assertIn("_inspectorEvidence", source)
+        self.assertIn("RecordProbeEvidence", source)
+        self.assertIn("RecordInspectorEvidence", source)
+        self.assertIn("Probe and MCAP inspector evidence are required", source)
+
 if __name__ == "__main__":
     unittest.main()

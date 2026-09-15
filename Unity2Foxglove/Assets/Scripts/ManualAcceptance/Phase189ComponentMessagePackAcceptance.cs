@@ -29,6 +29,8 @@ namespace Unity2Foxglove.ManualAcceptance
         [SerializeField, TextArea(2, 5)] private string _status = "Run is not configured.";
         [SerializeField] private int _stage;
         [SerializeField] private bool _terminal;
+        [SerializeField] private bool _probeEvidence;
+        [SerializeField] private bool _inspectorEvidence;
         private readonly List<string> _observedTopics = new List<string>();
 
         /// <summary>Current operator stage, from 1 preflight through 5 cleanup.</summary>
@@ -59,6 +61,8 @@ namespace Unity2Foxglove.ManualAcceptance
             _recordingPath = recordingPath ?? string.Empty;
             _stage = 1;
             _terminal = false;
+            _probeEvidence = false;
+            _inspectorEvidence = false;
             SetStatus("preflight ready");
         }
 
@@ -111,17 +115,39 @@ namespace Unity2Foxglove.ManualAcceptance
             }
             _stage = 4;
             SetStatus("final MessagePack generation active; live probe and recording are required");
+        }
+
+        /// <summary>Record the independent live-probe result for this run.</summary>
+        public void RecordProbeEvidence()
+        {
+            RequireStage(4);
+            _probeEvidence = true;
+            SetStatus("live probe evidence recorded; MCAP inspection still required");
             Debug.Log("PHASE189_COMPONENT_MESSAGEPACK_PROBE_PASS", this);
+        }
+
+        /// <summary>Record strict MCAP identity inspection for this run.</summary>
+        public void RecordInspectorEvidence(string recordingPath)
+        {
+            RequireStage(4);
+            if (string.IsNullOrWhiteSpace(recordingPath) ||
+                (!string.IsNullOrWhiteSpace(_recordingPath) && recordingPath != _recordingPath))
+                throw new InvalidOperationException("MCAP inspector path is not bound to the final recording.");
+            _recordingPath = recordingPath;
+            _inspectorEvidence = true;
+            SetStatus("final-generation MCAP identity verified");
+            Debug.Log("PHASE189_COMPONENT_MESSAGEPACK_MCAP_INSPECTOR_PASS", this);
         }
 
         /// <summary>Close the run only after the final probe and MCAP identity evidence exist.</summary>
         public void Complete()
         {
             RequireStage(4);
+            if (!_probeEvidence || !_inspectorEvidence)
+                throw new InvalidOperationException("Probe and MCAP inspector evidence are required before Complete.");
             _stage = 5;
             _terminal = true;
             SetStatus("cleanup complete; final-generation MCAP identity verified");
-            Debug.Log("PHASE189_COMPONENT_MESSAGEPACK_MCAP_INSPECTOR_PASS", this);
             Debug.Log("PHASE189 MANUAL VERDICT: PASS", this);
 #if UNITY_EDITOR
             if (Application.isPlaying)
@@ -138,13 +164,14 @@ namespace Unity2Foxglove.ManualAcceptance
             GUILayout.Label("Session generation: " + (_manager?.ActiveComponentPublisherSession?.Generation.ToString() ?? "not ready"));
             GUILayout.Label("Capture: " + (_manager?.ActiveComponentPublisherSession == null ? "not ready" : "active") + "\nRecording: " + (_recordingPath.Length == 0 ? "configured by coordinator" : _recordingPath));
             GUILayout.Label("Topics: " + string.Join(", ", _observedTopics));
+            GUILayout.Label($"Evidence: probe={_probeEvidence}, inspector={_inspectorEvidence}");
             GUI.enabled = _stage == 1;
             if (GUILayout.Button("Stage pending topic + JSON")) StagePendingTopicJson();
             GUI.enabled = _stage == 2;
             if (GUILayout.Button("Restart Manager and apply pending")) RestartManager();
             GUI.enabled = _stage == 3;
             if (GUILayout.Button("Restore MessagePack and restart")) RestoreMessagePack();
-            GUI.enabled = _stage == 4;
+            GUI.enabled = _stage == 4 && _probeEvidence && _inspectorEvidence;
             if (GUILayout.Button("Complete")) Complete();
             GUI.enabled = true;
             GUILayout.EndArea();
