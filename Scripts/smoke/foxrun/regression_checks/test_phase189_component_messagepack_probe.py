@@ -1,3 +1,5 @@
+"""Regression tests for the Phase189 Component MessagePack probe contract."""
+
 import importlib.util
 import sys
 import unittest
@@ -12,13 +14,17 @@ sys.modules[spec.name] = probe
 spec.loader.exec_module(probe)
 
 class Phase189ProbeTests(unittest.TestCase):
+    """Exercise protocol vectors and sensor publication failure controls."""
+
     def test_contract_service_and_binary_vector(self):
+        """Require the catalog service and deterministic binary vector."""
         self.assertEqual(probe.CATALOG_SERVICE, "/foxglove/component-publish-contracts")
         payload = probe.encode_probe_payload(189001, 42)
         self.assertEqual(probe.decode_complete_msgpack(payload), {"messagePackSequence": 189001, "messagePackValue": 42})
 
 
     def test_sensor_msgpack_success_gates_state_and_diagnostics(self):
+        """Require camera, video, and point-cloud state to follow helper success."""
         jpeg = (ROOT / "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Jpeg.cs").read_text(encoding="utf-8")
         video = (ROOT / "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Video.cs").read_text(encoding="utf-8")
         pointcloud = (ROOT / "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Raw.cs").read_text(encoding="utf-8")
@@ -30,6 +36,7 @@ class Phase189ProbeTests(unittest.TestCase):
         self.assertNotIn("TryPublishComponentMessagePackVideo(accessUnit, unixNs, ResolveFrameId(), videoFormat);\n                _diagnostics.RecordVideoAccessUnitPublished", video)
 
     def test_malformed_vector_is_rejected(self):
+        """Reject truncated MessagePack vectors."""
         with self.assertRaises(probe.ProbeFailure):
             probe.decode_complete_msgpack(probe.encode_probe_payload(1, 2)[:-1])
 
