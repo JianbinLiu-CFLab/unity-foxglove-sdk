@@ -6,8 +6,12 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Schemas.MsgPack;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -56,26 +60,131 @@ namespace Unity.FoxgloveSDK.Tests
             var report = JObject.Parse(File.ReadAllText(expectedProbeReportPath));
             RequireIdentity(report, expectedRun, expectedHead, expectedGeneration);
             RequireLifecycleEvidence(report, expectedRun, expectedHead, expectedGeneration);
-            if (!Path.GetFullPath(mcapPath).Contains(expectedRun, StringComparison.Ordinal))
+            var fullMcapPath = Path.GetFullPath(mcapPath);
+            if (!fullMcapPath.Contains(expectedRun, StringComparison.Ordinal))
                 throw new InvalidDataException("MCAP path is not bound to the expected run; stale artifacts are rejected.");
+            var closePath = (report["recordingClose"] as JObject)?.Value<string>("path");
+            if (string.IsNullOrWhiteSpace(closePath)
+                || !string.Equals(Path.GetFullPath(closePath), fullMcapPath, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Recording-close path does not identify the inspected MCAP.");
 
-            var intermediate = outputPath + ".phase185.json";
-            var oldExit = FoxRunMessagePackMcapInspector.RunCommand(mcapPath, expectedProbeReportPath, intermediate);
-            if (oldExit != 0)
-                throw new InvalidDataException("Phase185 MessagePack payload inspection failed.");
-            var payloadArtifact = JObject.Parse(File.ReadAllText(intermediate));
-            payloadArtifact["phase189Identity"] = new JObject
+            var final = report["finalMessagePack"] as JObject
+                        ?? throw new InvalidDataException("Probe report has no finalMessagePack segment.");
+            var topics = final["topics"] as JObject
+                         ?? throw new InvalidDataException("Probe report finalMessagePack topics are missing.");
+
+            McapFileSummary summary;
+            System.Collections.Generic.List<McapMessage> messages;
+            using (var stream = new FileStream(mcapPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var reader = new McapReader(stream))
             {
+                summary = reader.ReadSummary();
+                messages = reader.ReadSequentialMessages(
+                    summary.DataSectionEndOffset,
+                    sequentialLimits: new McapSequentialReadLimits
+                    {
+                        MaxMessages = 10_000,
+                        MaxPayloadBytes = 16L * 1024L * 1024L
+                    });
+            }
+
+            var selected = new JArray();
+            foreach (var topic in RequiredTopics)
+            {
+                var contract = topics[topic] as JObject
+                                ?? throw new InvalidDataException("Required Phase189 topic is missing: " + topic);
+                var expectedPayload = FromHex(contract.Value<string>("payloadHex"));
+                ValidateMessagePackPayload(expectedPayload, topic, contract.Value<string>("binaryMember"));
+
+                var channels = summary.Channels.Where(channel => string.Equals(channel.Topic, topic, StringComparison.Ordinal)).ToArray();
+                if (channels.Length != 1)
+                    throw new InvalidDataException("Expected exactly one MCAP channel for " + topic + ".");
+                var channel = channels[0];
+                if (!string.Equals(channel.MessageEncoding, "msgpack", StringComparison.Ordinal))
+                    throw new InvalidDataException(topic + " MCAP channel encoding is not msgpack.");
+                if (channel.SchemaId != 0)
+                    throw new InvalidDataException(topic + " MCAP channel schema id must be zero.");
+                if (summary.Schemas.Any(schema => schema.Id == channel.SchemaId && schema.Id != 0))
+                    throw new InvalidDataException(topic + " has an associated MessagePack schema record.");
+
+                var topicMessages = messages.Where(message => message.ChannelId == channel.Id).ToArray();
+                if (topicMessages.Length != 1 || topicMessages[0].Data == null || !topicMessages[0].Data.SequenceEqual(expectedPayload))
+                    throw new InvalidDataException(topic + " payload bytes do not exactly match the independent probe report.");
+                selected.Add(new JObject
+                {
+                    ["topic"] = topic,
+                    ["channelId"] = channel.Id,
+                    ["messageEncoding"] = channel.MessageEncoding,
+                    ["schemaId"] = channel.SchemaId,
+                    ["payloadHex"] = ToHex(expectedPayload),
+                    ["payloadSha256"] = Convert.ToHexString(SHA256.HashData(expectedPayload)).ToLowerInvariant()
+                });
+            }
+
+            var artifact = new JObject
+            {
+                ["version"] = 1,
+                ["verdict"] = "PASS",
                 ["runId"] = expectedRun,
                 ["head"] = expectedHead,
                 ["generation"] = expectedGeneration,
-                ["messageEncoding"] = payloadArtifact["selectedOutput"]?["messageEncoding"],
-                ["SchemaId"] = payloadArtifact["selectedOutput"]?["schemaId"]
+                ["topicCount"] = selected.Count,
+                ["selectedOutputs"] = selected
             };
-            payloadArtifact["verdict"] = "PASS";
-            WriteArtifact(outputPath, payloadArtifact);
-            File.Delete(intermediate);
+            WriteArtifact(outputPath, artifact);
         }
+
+        private static readonly string[] RequiredTopics =
+        {
+            "/phase189/component/scalar",
+            "/phase189/component/nested",
+            "/phase189/component/jpeg",
+            "/phase189/component/pointcloud"
+        };
+
+        private static void ValidateMessagePackPayload(byte[] payload, string topic, string binaryMember)
+        {
+            if (payload == null || payload.Length == 0)
+                throw new InvalidDataException(topic + " payload identity is empty.");
+            var reader = new FoxgloveMsgPackReader(
+                payload,
+                FoxgloveMsgPackReadLimits.ForPayloadBytes(Math.Max(payload.Length, 64)));
+            if (!reader.TryReadMapHeader(out var count))
+                throw new InvalidDataException(topic + " payload is not a MessagePack map: " + reader.Error);
+            var foundBinary = false;
+            for (var index = 0; index < count; index++)
+            {
+                if (!reader.TryReadString(out var key))
+                    throw new InvalidDataException(topic + " payload map key is invalid: " + reader.Error);
+                if (string.Equals(key, binaryMember, StringComparison.Ordinal) && !string.IsNullOrEmpty(binaryMember))
+                {
+                    if (!reader.TryReadBinary(out _))
+                        throw new InvalidDataException(topic + " binary member is not MessagePack bin: " + reader.Error);
+                    foundBinary = true;
+                }
+                else if (!reader.TrySkipValue())
+                {
+                    throw new InvalidDataException(topic + " payload value is invalid: " + reader.Error);
+                }
+            }
+            if (reader.HasError || reader.RemainingBytes != 0)
+                throw new InvalidDataException(topic + " payload has trailing or malformed MessagePack bytes.");
+            if (!string.IsNullOrEmpty(binaryMember) && !foundBinary)
+                throw new InvalidDataException(topic + " binary member is missing.");
+        }
+
+        private static byte[] FromHex(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value) || (value.Length & 1) != 0 || value.Any(character => !Uri.IsHexDigit(character)))
+                throw new InvalidDataException("Probe payloadHex is missing or malformed.");
+            var bytes = new byte[value.Length / 2];
+            for (var index = 0; index < bytes.Length; index++)
+                bytes[index] = Convert.ToByte(value.Substring(index * 2, 2), 16);
+            return bytes;
+        }
+
+        private static string ToHex(byte[] bytes)
+            => Convert.ToHexString(bytes ?? Array.Empty<byte>()).ToLowerInvariant();
 
         private static void RequireIdentity(JObject report, string expectedRun, string expectedHead, string expectedGeneration)
         {

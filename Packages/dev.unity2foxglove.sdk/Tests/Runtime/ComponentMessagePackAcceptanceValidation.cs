@@ -43,6 +43,7 @@ namespace Unity.FoxgloveSDK.Tests
             var bytes = codec.Serialize(null);
             if (bytes.Length != 4 || bytes[0] != 0x81 || bytes[3] != 0x01)
                 throw new InvalidOperationException("Generated codec acceptance vector did not preserve deterministic bytes.");
+            ComponentMessagePackMcapInspectorValidation.ValidateIndependentFourTopicInspection();
             Console.WriteLine("PHASE189_AUTOMATIC_PASS");
         }
     }
