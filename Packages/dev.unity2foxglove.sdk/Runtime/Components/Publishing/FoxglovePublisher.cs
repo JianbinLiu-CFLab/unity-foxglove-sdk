@@ -39,6 +39,8 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        public override Type ComponentMessagePackMessageType => typeof(TMessage);
+
         /// <summary>Called at publish time. Subclass builds the message object.</summary>
         protected abstract TMessage CreateMessage();
 

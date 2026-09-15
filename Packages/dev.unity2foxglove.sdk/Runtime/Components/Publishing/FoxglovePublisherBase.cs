@@ -6,6 +6,7 @@
 // Provides FoxgloveManager auto-resolution, publish-rate throttling,
 // frame ID sanitization, encoding override, and publish helpers.
 
+using System;
 using Unity.FoxgloveSDK.Util;
 using System.Collections.Generic;
 using UnityEngine;
@@ -63,6 +64,12 @@ namespace Unity.FoxgloveSDK.Components
         protected abstract string SchemaName { get; }
         /// <summary>Logical schema identity used by the immutable Component contract snapshot.</summary>
         public string ContractSchemaName => SchemaName ?? string.Empty;
+
+        /// <summary>
+        /// CLR message type used by the generated MessagePack codec, when this
+        /// publisher has a typed MessagePack contract.
+        /// </summary>
+        public virtual Type ComponentMessagePackMessageType => null;
         protected ulong CurrentLogTimeNs
         {
             get
