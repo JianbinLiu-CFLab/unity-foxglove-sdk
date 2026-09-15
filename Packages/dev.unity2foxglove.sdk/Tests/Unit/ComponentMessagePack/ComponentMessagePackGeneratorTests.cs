@@ -93,6 +93,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.NotEqual(firstHash, secondHash);
         }
 
+        [Fact]
+        public void SameSimpleTypeNamesInDifferentNamespacesCompile()
+        {
+            var source = "using Unity.FoxgloveSDK.Protocol; namespace A { [FoxgloveSchema(\"demo.A\")] public sealed class Sample { public int Value; } } "
+                + "namespace B { [FoxgloveSchema(\"demo.B\")] public sealed class Sample { public int Value; } }";
+            var compilation = CSharpCompilation.Create("CollisionFixture", new[] { CSharpSyntaxTree.ParseText(source) }, References(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new ComponentMessagePackSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
+            Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+            using var image = new MemoryStream();
+            var emit = updated.Emit(image);
+            Assert.True(emit.Success, string.Join("; ", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        }
+
         private static string GenerateManifest(string model)
         {
             var source = "using Unity.FoxgloveSDK.Protocol; " + model;

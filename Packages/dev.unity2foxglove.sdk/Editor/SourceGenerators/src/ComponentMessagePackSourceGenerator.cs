@@ -152,7 +152,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             sb.AppendLine("            {");
             foreach (var type in types)
             {
-                var method = "Serialize_" + Sanitize(type.Type.Name);
+                var method = MethodName(type.Type);
                 var supported = IsSupported(type);
                 var reason = type.Ignored ? "excluded by ComponentMessagePackIgnoreAttribute" : supported ? string.Empty : "unsupported typed MessagePack member or shape";
                 sb.Append("                new ComponentMessagePackGeneratedEntry(typeof(").Append(type.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).Append("), \"").Append(Escape(type.SchemaName)).Append("\", \"").Append(Escape(type.Type.ToDisplayString())).Append("\", ");
@@ -176,7 +176,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             {
                 var supported = IsSupported(type);
                 if (!supported) continue;
-                var method = "Serialize_" + Sanitize(type.Type.Name);
+                var method = MethodName(type.Type);
                 var objectShapes = new List<TypedMessagePackWriterEmitter.TypedMessagePackObjectShape>();
                 foreach (var member in type.Members) TypedMessagePackWriterEmitter.CollectTypedMessagePackObjectShapes(member.Shape, objectShapes);
                 sb.Append("        private static byte[] ").Append(method).Append("(object value)\n        {\n            var typed = (" ).Append(type.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).AppendLine(")value;\n            using (var writer = new global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter())\n            {\n                writer.WriteMapHeader(" + type.Members.Count + ");");
@@ -199,6 +199,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         private static string Escape(string value) => (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
         private static string Sanitize(string value) => new string((value ?? "Type").Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+        private static string MethodName(INamedTypeSymbol type)
+        {
+            var fullyQualified = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            using (var sha = SHA256.Create())
+            {
+                var suffix = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(fullyQualified))).Replace("-", string.Empty).Substring(0, 10).ToLowerInvariant();
+                return "Serialize_" + Sanitize(type.Name) + "_" + suffix;
+            }
+        }
         private static bool IsSupported(ComponentMessagePackTypeModel type)
             => !type.Ignored && !string.IsNullOrWhiteSpace(type.SchemaName) && !type.Type.IsGenericType
                && type.Members.Count > 0 && type.Members.All(m => m.Shape != null)
