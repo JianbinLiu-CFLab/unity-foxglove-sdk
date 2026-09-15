@@ -15,6 +15,7 @@ using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Components.Publishing.Session;
 using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.Schemas.MsgPack;
 using Unity.FoxgloveSDK.SourceGenerators;
@@ -1039,7 +1040,7 @@ namespace Demo
                         "__BuildFoxRunMessagePack_1",
                         BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(instance, null));
-            var enumError = Assert.IsType<InvalidOperationException>(
+            var enumError = Assert.IsType<ComponentPublisherSessionFailure>(
                 undeclaredEnum.InnerException);
             Assert.Contains(
                 "declared enum",
