@@ -143,8 +143,8 @@ namespace Unity.FoxgloveSDK.Components
                 unixNs = CurrentLogTimeNs;
             if (EffectiveEncoding == PublisherEffectiveEncoding.MsgPack)
             {
-                TryPublishComponentMessagePackVideo(accessUnit, unixNs, ResolveFrameId(), videoFormat);
-                _diagnostics.RecordVideoAccessUnitPublished(accessUnit.Length);
+                if (TryPublishComponentMessagePackVideo(accessUnit, unixNs, ResolveFrameId(), videoFormat))
+                    _diagnostics.RecordVideoAccessUnitPublished(accessUnit.Length);
                 return;
             }
             var payload = CameraCompressedVideoBuilder.Serialize(

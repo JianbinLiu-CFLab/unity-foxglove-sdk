@@ -35,7 +35,9 @@ namespace Unity.FoxgloveSDK.Components
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.MsgPack)
             {
-                TryPublishComponentMessagePackRaw(frame, unixNs, packedLayout);
+                var msgPackPublished = TryPublishComponentMessagePackRaw(frame, unixNs, packedLayout);
+                if (!msgPackPublished && !publishProvider)
+                    return;
             }
             else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {

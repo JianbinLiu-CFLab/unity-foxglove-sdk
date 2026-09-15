@@ -208,9 +208,11 @@ namespace Unity.FoxgloveSDK.Components
 
             if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.MsgPack)
             {
-                TryPublishComponentMessagePackImage(result.JpegBytes, captureUnixNs, ResolveFrameId(), "jpeg");
-                _lastPublishedCaptureUnixNs = captureUnixNs;
-                _backpressureGate.ResetSkipLogCount();
+                if (TryPublishComponentMessagePackImage(result.JpegBytes, captureUnixNs, ResolveFrameId(), "jpeg"))
+                {
+                    _lastPublishedCaptureUnixNs = captureUnixNs;
+                    _backpressureGate.ResetSkipLogCount();
+                }
             }
             else if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Protobuf)
             {
@@ -271,9 +273,11 @@ namespace Unity.FoxgloveSDK.Components
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.MsgPack)
             {
-                TryPublishComponentMessagePackImage(jpeg, unixNs, frameId, "jpeg");
-                _lastPublishedCaptureUnixNs = unixNs;
-                _backpressureGate.ResetSkipLogCount();
+                if (TryPublishComponentMessagePackImage(jpeg, unixNs, frameId, "jpeg"))
+                {
+                    _lastPublishedCaptureUnixNs = unixNs;
+                    _backpressureGate.ResetSkipLogCount();
+                }
             }
             else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
