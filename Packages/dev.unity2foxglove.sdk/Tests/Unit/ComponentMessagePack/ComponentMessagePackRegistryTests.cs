@@ -75,6 +75,15 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Equal(typeof(Beta), beta.ClrType);
         }
 
+        [Fact]
+        public void SnapshotEntriesCannotBeMutatedThroughIListCast()
+        {
+            ComponentMessagePackCodecRegistry.ResetForSubsystemRegistration();
+            ComponentMessagePackGeneratedBootstrap.RegisterGenerated(new ComponentMessagePackGeneratedManifest("a", "1", new[] { Entry(typeof(Alpha), "schema.alpha", "shape.a") }));
+            var entries = ComponentMessagePackCodecRegistry.CaptureSnapshot().Entries;
+            Assert.Throws<NotSupportedException>(() => ((IList<ComponentMessagePackGeneratedEntry>)entries)[0] = Entry(typeof(Beta), "schema.beta", "shape.b"));
+        }
+
         private static ComponentMessagePackGeneratedEntry Entry(Type type, string schema, string shape)
             => new ComponentMessagePackGeneratedEntry(type, schema, shape, true, true, string.Empty, _ => Array.Empty<byte>());
     }

@@ -7,7 +7,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.MessagePack
     public sealed class ComponentMessagePackCodecSnapshot
     {
         internal ComponentMessagePackCodecSnapshot(IReadOnlyList<ComponentMessagePackGeneratedEntry> entries, string hash, bool sealedState)
-        { Entries = entries; ManifestHash = hash; IsSealed = sealedState; }
+        { Entries = Array.AsReadOnly(entries.ToArray()); ManifestHash = hash; IsSealed = sealedState; }
         public IReadOnlyList<ComponentMessagePackGeneratedEntry> Entries { get; }
         public string ManifestHash { get; }
         public bool IsSealed { get; }
