@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
             Diagnostic = entry.Diagnostic.Length == 0 ? entry.MessagePackEntry?.Diagnostic ?? string.Empty : entry.Diagnostic;
         }
 
-        public long Generation { get; }
+        public ulong Generation { get; }
         public string SourceKind { get; }
         public string CaptureIdentity { get; }
         public string PublisherType { get; }

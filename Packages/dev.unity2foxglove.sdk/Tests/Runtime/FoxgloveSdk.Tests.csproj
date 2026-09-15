@@ -74,6 +74,7 @@
     <Compile Include="PhaseValidationCase.cs" />
     <Compile Include="PhaseValidationRegistry.cs" />
     <Compile Include="ComponentMessagePackAcceptanceValidation.cs" />
+    <Compile Include="ComponentMessagePackMcapInspector.cs" />
     <Compile Include="PhaseRos2ForUnityValidationHelpers.cs" />
     <Compile Include="FoxRunGenerationDescriptorJsonReader.cs" />
     <Compile Include="SkeletonValidation.cs" />

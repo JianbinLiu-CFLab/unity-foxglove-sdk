@@ -199,3 +199,7 @@ Draco native encode runs on a worker thread. Large frames can still spend main-t
 
 Use them as examples, not as required components for your own project.
 
+
+## Phase189 contract identity
+
+The Inspector exposes the active Component publisher generation, effective encoding, logical schema, and shape identity. The active snapshot does not change when a pending descriptor is edited; restart the Manager to apply JSON/topic changes, then restart again to restore MessagePack. The strict runtime MCAP inspector accepts only the exact final run, HEAD, generation, `messageEncoding=msgpack`, `SchemaId=0`, and no MessagePack schema record.

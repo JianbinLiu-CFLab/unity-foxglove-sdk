@@ -33,6 +33,7 @@ class Program
         ("--phase68-indexed-reader-smoke", "Tool", "Phase 68 indexed reader external MCAP smoke"),
         ("--phase44-all-schemas-mcap", "Tool", "Phase 44 all-schema MCAP generator"),
         ("--phase185-inspect-mcap", "Tool", "Phase185 typed MessagePack output MCAP inspector"),
+        ("--phase189-inspect-mcap", "Tool", "Phase189 Component MessagePack identity MCAP inspector"),
         ("--phase139b-remote-data-loader-server", "Manual", "Phase 139B remote data loader server"),
     };
 
@@ -147,6 +148,9 @@ class Program
 
         if (argSet.Contains("--phase185-inspect-mcap"))
             return RunPhase185MessagePackMcapInspector(argList);
+
+        if (argSet.Contains("--phase189-inspect-mcap"))
+            return RunPhase189ComponentMessagePackMcapInspector(argList);
 
         if (argSet.Contains("--phase139b-remote-data-loader-server"))
             return RunPhase139BRemoteDataLoaderServer(argList);
@@ -319,6 +323,48 @@ class Program
         catch (Exception exception)
         {
             Console.Error.WriteLine("Phase185 MessagePack MCAP inspector argument failure: " + exception.Message);
+            return 1;
+        }
+    }
+
+    private static int RunPhase189ComponentMessagePackMcapInspector(IReadOnlyList<string> arguments)
+    {
+        try
+        {
+            var values = new Dictionary<string, string>(StringComparer.Ordinal);
+            var allowed = new HashSet<string>(new[]
+            {
+                "--phase189-inspect-mcap",
+                "--expected-probe-report",
+                "--expected-run",
+                "--expected-head",
+                "--expected-generation",
+                "--output"
+            }, StringComparer.Ordinal);
+            for (var index = 0; index < arguments.Count; index += 2)
+            {
+                var flag = arguments[index];
+                if (!allowed.Contains(flag))
+                    throw new ArgumentException("Unexpected Phase189 inspector argument: " + flag);
+                if (index + 1 >= arguments.Count || arguments[index + 1].StartsWith("--", StringComparison.Ordinal))
+                    throw new ArgumentException(flag + " requires exactly one path/value.");
+                if (!values.TryAdd(flag, arguments[index + 1]))
+                    throw new ArgumentException(flag + " may be supplied only once.");
+            }
+            foreach (var flag in allowed)
+                if (!values.ContainsKey(flag))
+                    throw new ArgumentException("Missing required Phase189 inspector option: " + flag);
+            return ComponentMessagePackMcapInspector.RunCommand(
+                values["--phase189-inspect-mcap"],
+                values["--expected-probe-report"],
+                values["--expected-run"],
+                values["--expected-head"],
+                values["--expected-generation"],
+                values["--output"]);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine("Phase189 Component MessagePack inspector argument failure: " + exception.Message);
             return 1;
         }
     }

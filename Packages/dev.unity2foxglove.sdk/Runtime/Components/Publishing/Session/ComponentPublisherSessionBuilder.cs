@@ -15,7 +15,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
     }
     public sealed class ComponentPublisherSessionBuilder
     {
-        public ComponentPublisherSessionSnapshot Build(long generation, IEnumerable<ComponentPublisherContractDraft> drafts)
+        public ComponentPublisherSessionSnapshot Build(ulong generation, IEnumerable<ComponentPublisherContractDraft> drafts)
         {
             if (drafts == null) throw new ArgumentNullException(nameof(drafts));
             var ordered = drafts.OrderBy(d => d.CaptureIdentity, StringComparer.Ordinal).ThenBy(d => d.PublisherType.FullName, StringComparer.Ordinal).ToArray();

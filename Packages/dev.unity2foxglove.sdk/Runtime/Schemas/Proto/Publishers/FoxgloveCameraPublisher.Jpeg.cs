@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.MsgPack)
             {
-                if (TryPublishComponentMessagePackImage(result.JpegBytes, captureUnixNs, ResolveFrameId(), "jpeg"))
+                if (TryPublishComponentMessagePackImage(result.EncodedJpeg, captureUnixNs, ResolveFrameId(), "jpeg"))
                 {
                     _lastPublishedCaptureUnixNs = captureUnixNs;
                     _backpressureGate.ResetSkipLogCount();

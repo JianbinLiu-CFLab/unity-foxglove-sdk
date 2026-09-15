@@ -91,6 +91,7 @@ namespace Unity.FoxgloveSDK.Components
                     jsonMessage,
                     protobufMessage,
                     sensorFrame,
+                    jpeg,
                     jpeg.Length,
                     encodeMs,
                     ElapsedMs(serializeStart));
@@ -167,6 +168,7 @@ namespace Unity.FoxgloveSDK.Components
             CompressedImageMessage jsonMessage,
             Foxglove.CompressedImage protobufMessage,
             SensorCompressedImageFrame sensorFrame,
+            byte[] encodedJpeg,
             int jpegBytes,
             string error,
             double encodeMs,
@@ -179,6 +181,7 @@ namespace Unity.FoxgloveSDK.Components
             JsonMessage = jsonMessage;
             ProtobufMessage = protobufMessage;
             SensorFrame = sensorFrame;
+            EncodedJpeg = encodedJpeg;
             JpegBytes = jpegBytes;
             Error = error;
             EncodeMs = encodeMs;
@@ -192,6 +195,7 @@ namespace Unity.FoxgloveSDK.Components
         public CompressedImageMessage JsonMessage { get; }
         public Foxglove.CompressedImage ProtobufMessage { get; }
         public SensorCompressedImageFrame SensorFrame { get; }
+        public byte[] EncodedJpeg { get; }
         public int JpegBytes { get; }
         public string Error { get; }
         public double EncodeMs { get; }
@@ -203,6 +207,7 @@ namespace Unity.FoxgloveSDK.Components
             CompressedImageMessage jsonMessage,
             Foxglove.CompressedImage protobufMessage,
             SensorCompressedImageFrame sensorFrame,
+            byte[] encodedJpeg,
             int jpegBytes,
             double encodeMs,
             double serializeMs)
@@ -214,6 +219,7 @@ namespace Unity.FoxgloveSDK.Components
                 jsonMessage,
                 protobufMessage,
                 sensorFrame,
+                encodedJpeg,
                 jpegBytes,
                 error: null,
                 encodeMs,
@@ -233,6 +239,7 @@ namespace Unity.FoxgloveSDK.Components
                 jsonMessage: null,
                 protobufMessage: null,
                 sensorFrame: null,
+                encodedJpeg: null,
                 jpegBytes,
                 error,
                 encodeMs,
@@ -251,6 +258,7 @@ namespace Unity.FoxgloveSDK.Components
                 jsonMessage: null,
                 protobufMessage: null,
                 sensorFrame: null,
+                encodedJpeg: null,
                 jpegBytes,
                 error: null,
                 encodeMs,

@@ -9,6 +9,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
     public sealed class ComponentPublisherSessionBuilderTests
     {
         private sealed class Publisher { }
+
+        [Fact]
+        public void PreservesUnsignedChannelGenerationAtMaximumValue()
+        {
+            var snapshot = new ComponentPublisherSessionBuilder().Build(
+                ulong.MaxValue,
+                Array.Empty<ComponentPublisherContractDraft>());
+
+            Assert.Equal(ulong.MaxValue, snapshot.Generation);
+        }
+
         [Fact]
         public void BuilderNormalizesOrderAndUsesReferenceIdentity()
         {
@@ -22,7 +33,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             var snapshot = new ComponentPublisherSessionBuilder().Build(7, drafts.Reverse());
             Assert.True(snapshot.IsAvailable);
             Assert.Equal(new[] { "scene/A", "scene/B" }, snapshot.Entries.Select(e => e.CaptureIdentity));
-            Assert.Equal(7, snapshot.Generation);
+            Assert.Equal(7UL, snapshot.Generation);
         }
         [Fact]
         public void UnsupportedMessagePackEntryIsUnavailableWithoutFallback()
