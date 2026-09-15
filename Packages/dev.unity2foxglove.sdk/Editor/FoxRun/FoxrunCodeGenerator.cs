@@ -146,6 +146,16 @@ namespace Unity.FoxgloveSDK.Editor
 
                 foreach (var type in model.Types)
                 {
+                    // Roslyn analyzers generate the Player-safe partial inside
+                    // every asmdef assembly. A physical fallback written to
+                    // Assets/Scripts/Generated is only valid for the default
+                    // Assembly-CSharp host; placing an asmdef-owned partial in
+                    // Assembly-CSharp creates a second type and IL2CPP then
+                    // reports missing private FoxRun fields. Reconcile such
+                    // stale files instead of emitting them into the wrong
+                    // assembly.
+                    if (!RequiresPhysicalFallback(type))
+                        continue;
                     var kv = (Key: (Ns: type.Namespace, ClassName: type.ClassName), Value: type);
                     var source = EmitSourceFile(kv.Value);
                     var fileName = FoxgloveSourceEmitter.GeneratedSourceName(kv.Key.Ns, kv.Key.ClassName);
@@ -217,6 +227,28 @@ namespace Unity.FoxgloveSDK.Editor
             WriteDescriptorFile(model);
 
             return result;
+        }
+
+        private static bool RequiresPhysicalFallback(FoxRunGenerationType type)
+        {
+            if (type == null || string.IsNullOrWhiteSpace(type.DeclaringType))
+                return false;
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    if (assembly.GetType(type.DeclaringType, throwOnError: false) != null)
+                        return string.Equals(assembly.GetName().Name, "Assembly-CSharp", StringComparison.Ordinal)
+                               || string.Equals(assembly.GetName().Name, "Assembly-CSharp-firstpass", StringComparison.Ordinal);
+                }
+                catch (ReflectionTypeLoadException)
+                {
+                    // A partially loadable optional assembly cannot prove
+                    // ownership; leave it to the analyzer and do not emit a
+                    // fallback into the default assembly.
+                }
+            }
+            return false;
         }
 
         /// <summary>
