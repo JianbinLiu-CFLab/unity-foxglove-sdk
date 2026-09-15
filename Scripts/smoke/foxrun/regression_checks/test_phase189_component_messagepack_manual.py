@@ -18,6 +18,7 @@ INSPECTOR = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" /
 VALIDATION = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "ComponentMessagePackAcceptanceValidation.cs"
 
 class Phase189ManualAcceptanceTests(unittest.TestCase):
+    """Validate the maintained Phase189 manual acceptance assets and protocol."""
     def test_maintained_acceptance_assets_are_present(self):
         """Require the maintained scene, controller, builder, probe, and inspector assets."""
         for path in (SCENE, CONTROLLER, BUILDER, BATCH, INSPECTOR, VALIDATION):

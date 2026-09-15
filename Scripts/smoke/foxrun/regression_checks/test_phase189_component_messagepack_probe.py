@@ -17,6 +17,7 @@ sys.modules[spec.name] = probe
 spec.loader.exec_module(probe)
 
 class Phase189ProbeTests(unittest.TestCase):
+    """Validate deterministic Component MessagePack probe vectors and controls."""
     def test_component_fixture_reports_identity_segments_and_binary_members(self):
         """Require the deterministic fixture to emit identity segments and binary members."""
         output = ROOT / "build" / "phase189" / "probe" / "component-fixture-test.json"
