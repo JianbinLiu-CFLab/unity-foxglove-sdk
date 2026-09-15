@@ -45,6 +45,30 @@ class Phase189ManualAcceptanceTests(unittest.TestCase):
         self.assertIn("PHASE189_MANUAL_STATUS", output)
         self.assertNotIn("placeholder", output.lower())
 
+    def test_noninteractive_batch_binds_component_fixture_evidence(self):
+        """Require non-interactive mode to emit and validate concrete four-topic evidence."""
+        run_id = "red-evidence"
+        completed = subprocess.run(
+            [sys.executable, str(MANUAL), "--run-id", run_id, "--non-interactive"],
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        report_path = ROOT / "build" / "phase189" / "manual" / run_id / "batch-report.json"
+        self.assertTrue(report_path.is_file(), report_path)
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(report.get("verdict"), "PASS")
+        final = report.get("finalMessagePack", {})
+        self.assertEqual(final.get("runId"), run_id)
+        self.assertEqual(final.get("recordingClosed"), True)
+        self.assertEqual(set(final.get("topics", {})), {
+            "/phase189/component/scalar",
+            "/phase189/component/nested",
+            "/phase189/component/jpeg",
+            "/phase189/component/pointcloud",
+        })
+        self.assertEqual(report.get("recordingClose", {}).get("path"), final.get("recordingPath"))
+
     def test_inspector_declares_identity_and_binary_guards(self):
         """Require strict run identity, close, and binary-member inspector guards."""
         source = INSPECTOR.read_text(encoding="utf-8")
