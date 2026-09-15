@@ -1,4 +1,7 @@
 using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using UnityEngine;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -16,6 +19,29 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publishes a newly frozen Component snapshot to the read-only service.</summary>
         internal void SetActiveComponentPublisherSession(ComponentPublisherSessionSnapshot snapshot)
             => _activeComponentPublisherSession = snapshot;
+
+        internal void CaptureComponentPublisherSession()
+        {
+            var drafts = new List<ComponentPublisherContractDraft>();
+            foreach (var publisher in FindObjectsByType<FoxglovePublisherBase>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                if (publisher == null || publisher.ConfiguredManager != this || !publisher.HasValidTopic)
+                    continue;
+                var resolution = publisher.EncodingResolution;
+                drafts.Add(new ComponentPublisherContractDraft(
+                    publisher,
+                    publisher.GetInstanceID().ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    publisher.GetType(),
+                    publisher.GetType().Name,
+                    publisher.Topic,
+                    publisher.ContractSchemaName,
+                    resolution.Requested,
+                    resolution.Effective));
+            }
+            SetActiveComponentPublisherSession(new ComponentPublisherSessionBuilder().Build(
+                _connectionState.ChannelSessionGeneration,
+                drafts));
+        }
 
         private void RegisterComponentPublishContractsService()
         {

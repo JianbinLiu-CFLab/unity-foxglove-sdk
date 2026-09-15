@@ -79,6 +79,7 @@ namespace Unity.FoxgloveSDK.Components
 
                 SetupAllowedOrigins();
                 StartCertificateDistributorIfNeeded();
+                CaptureComponentPublisherSession();
                 RegisterFoxRunSubscriptionCatalogService();
                 RegisterComponentPublishContractsService();
                 _runtime.StartWithSessionSetup(
