@@ -18,6 +18,7 @@ spec.loader.exec_module(probe)
 
 class Phase189ProbeTests(unittest.TestCase):
     def test_component_fixture_reports_identity_segments_and_binary_members(self):
+        """Require the deterministic fixture to emit identity segments and binary members."""
         output = ROOT / "build" / "phase189" / "probe" / "component-fixture-test.json"
         completed = subprocess.run([sys.executable, str(PROBE), "--component-fixture", "--run-id", "fixture-test", "--head", "head-test", "--generation", "7", "--output", str(output)], text=True, capture_output=True)
         self.assertEqual(completed.returncode, 0, completed.stderr)
