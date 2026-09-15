@@ -61,6 +61,8 @@ namespace Unity.FoxgloveSDK.Components
 
         protected FoxgloveManager Manager => _manager;
         protected abstract string SchemaName { get; }
+        /// <summary>Logical schema identity used by the immutable Component contract snapshot.</summary>
+        public string ContractSchemaName => SchemaName ?? string.Empty;
         protected ulong CurrentLogTimeNs
         {
             get

@@ -129,6 +129,7 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Whether the selected output mode supports protobuf payloads.</summary>
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
+        public override bool SupportsMsgPackEncoding => _outputMode == PointCloudOutputMode.Raw || _outputMode == PointCloudOutputMode.Draco;
 
         /// <summary>Current user-selected point-cloud output mode.</summary>
         public PointCloudOutputMode OutputMode => _outputMode;

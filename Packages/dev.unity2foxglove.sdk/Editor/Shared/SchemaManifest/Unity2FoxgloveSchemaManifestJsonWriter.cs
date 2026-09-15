@@ -282,6 +282,9 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendPropertyName(sb, "supportsMsgPack");
                 AppendBool(sb, entry.SupportsMsgPack);
                 sb.Append(',');
+                AppendPropertyName(sb, "messagePackSupportMode");
+                AppendString(sb, entry.MessagePackSupportMode);
+                sb.Append(',');
                 AppendPropertyName(sb, "isTemplate");
                 AppendBool(sb, entry.IsTemplate);
                 sb.Append(',');

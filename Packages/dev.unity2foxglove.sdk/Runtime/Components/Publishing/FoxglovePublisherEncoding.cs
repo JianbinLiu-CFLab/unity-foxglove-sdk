@@ -105,6 +105,14 @@ namespace Unity.FoxgloveSDK.Components
             if (Supports(requested, supportsJson, supportsProtobuf, supportsMsgPack))
                 return new PublisherEncodingResolution(requested, requested, fellBack: false);
 
+            // A typed Component MessagePack request is an explicit contract.  Do
+            // not silently downgrade it to JSON/Protobuf when its generated
+            // codec is unavailable; callers must surface Unsupported and keep
+            // the channel unopened.  Legacy fallback remains for JSON/Protobuf
+            // requests to preserve existing publisher compatibility.
+            if (requested == PublisherEffectiveEncoding.MsgPack)
+                return new PublisherEncodingResolution(requested, PublisherEffectiveEncoding.Unsupported, fellBack: false);
+
             var fallback = FirstSupported(supportsJson, supportsProtobuf, supportsMsgPack);
 
             return new PublisherEncodingResolution(requested, fallback, fellBack: true);

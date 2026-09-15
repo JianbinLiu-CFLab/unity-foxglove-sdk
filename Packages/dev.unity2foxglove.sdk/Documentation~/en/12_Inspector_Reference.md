@@ -156,7 +156,7 @@ These fields appear on publisher components derived from `FoxglovePublisherBase`
 | Topic | `/unity/camera` | Image topic. | Change when publishing multiple cameras. | Two cameras publishing to the same topic unintentionally. |
 | Publish Rate Hz | `10` | Image publish rate. | Lower for slow networks; raise carefully. | High rate plus high resolution can overload the Player. |
 
-JPEG mode publishes `foxglove.CompressedImage` on `/unity/camera` and requires no external dependency. H.264 and H.265 modes publish protobuf `foxglove.CompressedVideo` and use the same default `/unity/camera` topic so existing Foxglove image panels do not need a topic change; the channel schema changes with the selected mode. H.264 uses `format = h264`; H.265/HEVC uses `format = h265` and depends on platform decoder support in Foxglove/browser playback. Missing or invalid video encoder configuration is reported explicitly and does not fall back to JPEG.
+JPEG mode publishes `foxglove.CompressedImage` on `/unity/camera` and requires no external dependency. H.264 and H.265 modes publish `foxglove.CompressedVideo` and use the same default `/unity/camera` topic; Protobuf remains the panel-compatible default, while MessagePack uses generated direct byte-array views for custom clients. The channel schema changes with the selected mode. H.264 uses `format = h264`; H.265/HEVC uses `format = h265` and depends on platform decoder support in Foxglove/browser playback. Missing or invalid video encoder configuration is reported explicitly and does not fall back to JPEG.
 
 For FFmpeg modes, leave `FFmpeg Path` empty to resolve `ffmpeg` from process, user, or machine `PATH`, use the `...` button to set a full executable path, or enter a folder that directly contains `ffmpeg.exe`.
 
@@ -198,3 +198,4 @@ Draco native encode runs on a worker thread. Large frames can still spend main-t
 `FoxgloveDemoSetup` and `MouseDragCube` are demo/sample scripts. They are documented in the Full Demo sample and `Unity2Foxglove` demo documentation rather than treated as SDK core API.
 
 Use them as examples, not as required components for your own project.
+

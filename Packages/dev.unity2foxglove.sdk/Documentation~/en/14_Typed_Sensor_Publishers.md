@@ -29,6 +29,18 @@ Foxglove schema requires binary payloads. Provider-only modes expose a neutral
 frame to an installed companion and publish nothing if no matching Provider is
 available.
 
+## 2.1 Component MessagePack contracts
+
+Component publishers freeze their effective encoding and schema at Manager
+capture. MessagePack-capable camera and point-cloud modes use generated,
+direct byte-array views; they do not transcode through JSON or Protobuf. The
+wire schema is schemaless (`SchemaId = 0`) and binary members are MessagePack
+`bin` values. Use a custom client and the read-only
+`/foxglove/component-publish-contracts` service; built-in Foxglove panels do
+not decode schemaless MessagePack. Changing topic or encoding is pending until
+the Manager is restarted (disable/re-enable), preserving the active frozen
+descriptor.
+
 ## 3. Point Cloud Publisher
 
 Add `FoxglovePointCloudPublisher` to a GameObject when you need a Unity-side point-cloud topic.
@@ -37,11 +49,11 @@ Add `FoxglovePointCloudPublisher` to a GameObject when you need a Unity-side poi
 
 | Mode | Default topic | Schema | Encoding | Dependency |
 |---|---|---|---|---|
-| `Raw` | `/unity/point_cloud` | `foxglove.PointCloud` | JSON or Protobuf | none |
-| `Draco` | `/unity/point_cloud_draco` | `foxglove.CompressedPointCloud` | Protobuf | bundled Windows native plugin |
+| `Raw` | `/unity/point_cloud` | `foxglove.PointCloud` | JSON, Protobuf, or MessagePack* | none |
+| `Draco` | `/unity/point_cloud_draco` | `foxglove.CompressedPointCloud` | Protobuf or MessagePack* | bundled Windows native plugin |
 | `Packed Provider Frame` | `/unity/point_cloud_packed` | `unity2foxglove.PackedPointCloud` | Provider handoff only | matching optional Provider |
 
-Raw mode is the default and dependency-free path.
+Raw mode is the default and dependency-free path. *MessagePack is schemaless and intended for maintained custom clients; built-in Foxglove panels do not decode it.
 
 Raw default topic:
 
@@ -187,3 +199,4 @@ For a real-time Ouster workflow, the usual architecture is:
 4. Let `FoxglovePointCloudPublisher` publish the result as `foxglove.PointCloud`.
 
 Packet decoding and Ouster sensor simulation are intentionally separate from this component so the publisher stays focused on official Foxglove schema parity.
+

@@ -124,6 +124,7 @@ namespace Unity.FoxgloveSDK.Components
         protected override string SchemaName => ActiveProfile.SchemaName;
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
         public override bool SupportsProtobufEncoding => ActiveProfile.SupportsProtobuf;
+        public override bool SupportsMsgPackEncoding => ActiveProfile.Mode == CameraOutputMode.Jpeg || ActiveProfile.IsVideo;
         /// <summary>
         /// Raised after the JPEG path produces a standard compressed image frame.
         /// Optional Providers can translate this core-SDK DTO into their wire contract.

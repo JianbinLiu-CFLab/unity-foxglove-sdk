@@ -65,3 +65,15 @@ FOXRUN044 | FoxRun | Warning | Retired; renumbered as FOXRUN213 and permanently 
 ; FOXRUN401 | FoxRun | Error | Retired before release; directional profiles resolve full-duplex encodings independently and this ID remains permanently reserved.
 ; FOXRUN601 | FoxRun | Error | Retired before release with the removed Unless declaration and remains permanently reserved.
 ; FOXRUN204, FOXRUN207-FOXRUN212, FOXRUN402, FOXRUN606-FOXRUN608, and FOXRUN611-FOXRUN615 are retired before release with the removed closed transport model and remain permanently reserved.
+
+
+### New Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+FOXCOMP001 | ComponentMessagePack | Warning | Duplicate effective wire member name; type is unavailable.
+FOXCOMP002 | ComponentMessagePack | Info | Unsupported typed MessagePack member or shape; type is unavailable.
+FOXCOMP003 | ComponentMessagePack | Warning | Invalid or conflicting FoxgloveSchema declaration; type is unavailable.
+FOXCOMP004 | ComponentMessagePack | Info | Open polymorphic, converter, or extension-data shape cannot be inferred.
+FOXCOMP005 | ComponentMessagePack | Error | Component MessagePack generator invariant failure; output fails closed.
+

@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Attributes/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/Session/**/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/FoxRun*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/IFoxRun*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/Transport/*.cs" />
@@ -39,6 +40,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/Coordinate*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Profiling/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/MessagePack/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Core/**/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Protocol/**/*.cs" />
@@ -66,6 +68,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Link="Ros2ForUnityRuntime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <!-- Phase181's named custom catalog files remain inside the focused native FoxRun allowlist above. -->
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxgloveSourceEmitter/**/*.cs" LinkBase="Shared/FoxgloveSourceEmitter" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/TypedMessagePack/**/*.cs" LinkBase="Shared/TypedMessagePack" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceSourceEmitter/**/*.cs" LinkBase="Shared/FoxServiceSourceEmitter" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceSchema/**/*.cs" LinkBase="Shared/FoxServiceSchema" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceDtoValidation/**/*.cs" LinkBase="Shared/FoxServiceDtoValidation" />
@@ -121,3 +124,4 @@
     </Reference>
   </ItemGroup>
 </Project>
+

@@ -141,6 +141,12 @@ namespace Unity.FoxgloveSDK.Components
 
             if (unixNs == 0UL)
                 unixNs = CurrentLogTimeNs;
+            if (EffectiveEncoding == PublisherEffectiveEncoding.MsgPack)
+            {
+                if (TryPublishComponentMessagePackVideo(accessUnit, unixNs, ResolveFrameId(), videoFormat))
+                    _diagnostics.RecordVideoAccessUnitPublished(accessUnit.Length);
+                return;
+            }
             var payload = CameraCompressedVideoBuilder.Serialize(
                 unixNs,
                 ResolveFrameId(),

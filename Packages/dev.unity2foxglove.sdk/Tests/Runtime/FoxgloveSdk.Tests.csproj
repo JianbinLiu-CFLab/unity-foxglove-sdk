@@ -43,6 +43,8 @@
     <Compile Include="../../Runtime/Components/FoxRun/IFoxTopic*.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
+    <Compile Include="../../Runtime/Components/Publishing/MessagePack/**/*.cs" />
+    <Compile Include="../../Runtime/Components/Publishing/Session/**/*.cs" />
     <Compile Include="../../Runtime/Core/**/*.cs" />
     <Compile Include="../../Runtime/Protocol/**/*.cs" />
     <Compile Include="../../Runtime/Transport/**/*.cs" />
@@ -71,6 +73,7 @@
     <Compile Include="ValidationEvidence.cs" />
     <Compile Include="PhaseValidationCase.cs" />
     <Compile Include="PhaseValidationRegistry.cs" />
+    <Compile Include="ComponentMessagePackAcceptanceValidation.cs" />
     <Compile Include="PhaseRos2ForUnityValidationHelpers.cs" />
     <Compile Include="FoxRunGenerationDescriptorJsonReader.cs" />
     <Compile Include="SkeletonValidation.cs" />
@@ -443,6 +446,7 @@
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="TempMcapHelper.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter/**/*.cs" LinkBase="Shared/FoxgloveSourceEmitter" />
+    <Compile Include="../../Editor/Shared/TypedMessagePack/**/*.cs" LinkBase="Shared/TypedMessagePack" />
     <Compile Include="../../Editor/Shared/FoxServiceSourceEmitter/**/*.cs" LinkBase="Shared/FoxServiceSourceEmitter" />
     <Compile Include="../../Editor/Shared/FoxServiceSchema/**/*.cs" LinkBase="Shared/FoxServiceSchema" />
     <Compile Include="../../Editor/Shared/FoxServiceDtoValidation/**/*.cs" LinkBase="Shared/FoxServiceDtoValidation" />

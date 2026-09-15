@@ -43,8 +43,8 @@ Check:
 
 For point clouds:
 
-- Raw `Point Cloud Output Mode` publishes `foxglove.PointCloud` on `/unity/point_cloud` in JSON or Protobuf mode.
-- Draco `Point Cloud Output Mode` publishes `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` in Protobuf mode with format = `draco`.
+- Raw `Point Cloud Output Mode` publishes `foxglove.PointCloud` on `/unity/point_cloud` in JSON, Protobuf, or schemaless MessagePack mode (MessagePack requires a custom client).
+- Draco `Point Cloud Output Mode` publishes `foxglove.CompressedPointCloud` on `/unity/point_cloud_draco` in Protobuf or schemaless MessagePack mode with format = `draco`; MessagePack requires a custom client.
 - Packed Provider Frame mode emits a transport-neutral frame only when a matching optional Provider is listening.
 - If you switched output modes while Foxglove was already connected, reconnect so the 3D panel sees the updated topic and schema.
 - If Draco mode is selected, click `Check Draco` in the Inspector and fix any native plugin warning before expecting points to appear.
@@ -179,3 +179,4 @@ The demo project expects the local package dependency to remain relative:
 ```
 
 If Unity rewrote it to an absolute path, change it back before sharing or committing.
+

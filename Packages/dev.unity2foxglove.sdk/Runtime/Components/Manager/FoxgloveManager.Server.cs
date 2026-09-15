@@ -79,7 +79,9 @@ namespace Unity.FoxgloveSDK.Components
 
                 SetupAllowedOrigins();
                 StartCertificateDistributorIfNeeded();
+                CaptureComponentPublisherSession();
                 RegisterFoxRunSubscriptionCatalogService();
+                RegisterComponentPublishContractsService();
                 _runtime.StartWithSessionSetup(
                     _serverName,
                     _host,
@@ -121,6 +123,7 @@ namespace Unity.FoxgloveSDK.Components
             TryCleanupStartupStep(StopReplayCursorEndpoint, "stop replay cursor endpoint");
             TryCleanupStartupStep(StopCertificateDistributor, "stop certificate distributor");
             TryCleanupStartupStep(UnregisterFoxRunSubscriptionCatalogService, "unregister FoxRun subscription catalog service");
+            TryCleanupStartupStep(UnregisterComponentPublishContractsService, "unregister Component publish contracts service");
             TryCleanupStartupStep(
                 () => DetachTransportForwarders(_runtime?.CleanupSession),
                 "detach transport forwarders after failed startup");
@@ -314,7 +317,8 @@ namespace Unity.FoxgloveSDK.Components
                 var preTailFailure = RunStopPreTailCleanup(
                     () => DetachTransportForwarders(cleanupSession),
                     () => DetachRuntimeForwarders(cleanupSession),
-                    UnregisterFoxRunSubscriptionCatalogService);
+                    UnregisterFoxRunSubscriptionCatalogService,
+                    UnregisterComponentPublishContractsService);
                 firstFailure ??= preTailFailure;
 
                 FoxgloveManagerTeardownState.RunStopServer(

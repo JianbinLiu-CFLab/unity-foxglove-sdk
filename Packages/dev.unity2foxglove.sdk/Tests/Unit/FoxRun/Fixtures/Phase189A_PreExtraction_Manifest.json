@@ -1,0 +1,14 @@
+{
+  "fixture_input": "Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs",
+  "payload_sha256": "54aaea719b8b09f285fb979a0074e4bf9bf2471fb60eca64bbb248d327ff4b39",
+  "source_sha256": "dd60ced22ff4027ef665085964eeca7e46d90ef76e320ce00e76461f8cda96d0",
+  "topics": [
+    "/phase185/vector2",
+    "/phase185/vector3",
+    "/phase185/quaternion",
+    "/phase185/color",
+    "/phase185/envelope",
+    "/phase185/text"
+  ],
+  "base_sha": "e072d43f7846f16193b2830ac45c04d5b9ab843c"
+}
