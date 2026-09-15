@@ -18,6 +18,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
     [Trait("Domain", "TypedMessagePack")]
     public sealed class SharedTypedMessagePackCoreTests
     {
+        private static string NormalizeLineEndings(string value) => value.Replace("\r\n", "\n");
+
         [Fact]
         public void CompleteFoxRunOutputIsFrozenBeforeExtraction()
         {
@@ -25,7 +27,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var fixture = Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Tests", "Unit", "FoxRun", "Fixtures");
             var expectedSource = File.ReadAllText(Path.Combine(fixture, "Phase189A_PreExtraction_FoxRun.g.cs.txt"));
             var actualSource = File.ReadAllText(Path.Combine(root, "Unity2Foxglove", "Assets", "Scripts", "Generated", "TestLog_FoxRun.g.cs"));
-            Assert.Equal(expectedSource, actualSource);
+            Assert.Equal(NormalizeLineEndings(expectedSource), NormalizeLineEndings(actualSource));
 
             using var payloads = JsonDocument.Parse(File.ReadAllText(Path.Combine(fixture, "Phase189A_PreExtraction_Payloads.json")));
             Assert.Equal(6, payloads.RootElement.EnumerateObject().Count());
