@@ -206,7 +206,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         private static string ComputeManifestHash(IEnumerable<ComponentMessagePackTypeModel> types)
         {
-            var canonical = string.Join("\n", types.Select(t => t.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "|" + t.SchemaName + "|" + string.Join(",", t.Members.OrderBy(m => m.WireName, StringComparer.Ordinal).ThenBy(m => m.MemberName, StringComparer.Ordinal).Select(m => m.WireName + ":" + (m.CanonicalType ?? "unsupported")))));
+            // Include the complete recursive shape in the manifest identity.  Using
+            // only CanonicalType here collapses every nested object/collection to
+            // the same "unsupported" token, allowing a changed generated codec to
+            // retain a stale manifest hash.
+            var canonical = string.Join("\n", types.Select(t => t.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "|" + t.SchemaName + "|" + string.Join(",", t.Members.OrderBy(m => m.WireName, StringComparer.Ordinal).ThenBy(m => m.MemberName, StringComparer.Ordinal).Select(m => m.WireName + ":" + (m.Shape == null ? "unsupported" : FoxRunMessagePackTypeShapeIdentity.Build(m.Shape))))));
             using (var sha = SHA256.Create())
                 return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(canonical))).Replace("-", string.Empty).ToLowerInvariant();
         }

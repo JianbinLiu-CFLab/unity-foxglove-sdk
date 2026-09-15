@@ -80,6 +80,29 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.True(emit.Success, string.Join("; ", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
         }
 
+        [Fact]
+        public void ManifestHashChangesWhenNestedShapeChanges()
+        {
+            var first = GenerateManifest("public sealed class Stamp { public ulong Sec; public uint Nsec; }\n"
+                + "[FoxgloveSchema(\"demo.Nested\")] public sealed class Nested { public Stamp Timestamp; }");
+            var second = GenerateManifest("public sealed class Stamp { public ulong Sec; public ulong Nsec; }\n"
+                + "[FoxgloveSchema(\"demo.Nested\")] public sealed class Nested { public Stamp Timestamp; }");
+            var marker = "new ComponentMessagePackGeneratedManifest(\"NestedHashFixture\", \"";
+            var firstHash = first.Substring(first.IndexOf(marker, StringComparison.Ordinal) + marker.Length, 64);
+            var secondHash = second.Substring(second.IndexOf(marker, StringComparison.Ordinal) + marker.Length, 64);
+            Assert.NotEqual(firstHash, secondHash);
+        }
+
+        private static string GenerateManifest(string model)
+        {
+            var source = "using Unity.FoxgloveSDK.Protocol; " + model;
+            var compilation = CSharpCompilation.Create("NestedHashFixture", new[] { CSharpSyntaxTree.ParseText(source) }, References(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new ComponentMessagePackSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var diagnostics);
+            Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+            return driver.GetRunResult().GeneratedTrees.Single(tree => tree.FilePath.EndsWith("ComponentMessagePackManifest.g.cs", StringComparison.Ordinal)).GetText().ToString();
+        }
+
         private static IEnumerable<MetadataReference> References()
         {
             var trusted = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")).Split(Path.PathSeparator).Select(path => MetadataReference.CreateFromFile(path));
