@@ -29,25 +29,4 @@ namespace Unity2Foxglove.ManualAcceptance
         public Phase189NestedValue Nested;
     }
 
-    public sealed class Phase189ScalarPublisher : FoxglovePublisher<Phase189ScalarMessage>
-    {
-        public string AcceptanceTopic => Topic;
-        public PublisherEncodingOverride AcceptanceEncoding => EncodingOverride;
-        public void SetAcceptanceContract(string topic, PublisherEncodingOverride encoding) { _topic = topic ?? string.Empty; _encodingOverride = encoding; }
-        protected override Phase189ScalarMessage CreateMessage()
-            => new Phase189ScalarMessage { Value = 189, Label = "phase189-scalar" };
-    }
-
-    public sealed class Phase189NestedPublisher : FoxglovePublisher<Phase189NestedMessage>
-    {
-        public string AcceptanceTopic => Topic;
-        public PublisherEncodingOverride AcceptanceEncoding => EncodingOverride;
-        public void SetAcceptanceContract(string topic, PublisherEncodingOverride encoding) { _topic = topic ?? string.Empty; _encodingOverride = encoding; }
-        protected override Phase189NestedMessage CreateMessage()
-            => new Phase189NestedMessage
-            {
-                Sequence = 189,
-                Nested = new Phase189NestedValue { Enabled = true, Label = "phase189-nested" }
-            };
-    }
 }
