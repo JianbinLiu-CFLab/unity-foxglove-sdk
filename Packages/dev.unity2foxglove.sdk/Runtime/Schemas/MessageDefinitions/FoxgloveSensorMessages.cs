@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.Schemas
 
     /// <summary>foxglove.PointCloud JSON message.</summary>
     [Unity.FoxgloveSDK.Protocol.FoxgloveSchema("foxglove.PointCloud")]
+    [Unity.FoxgloveSDK.Components.ComponentMessagePackIgnore]
     public class PointCloudMessage
     {
         /// <summary>Timestamp of the point cloud.</summary>

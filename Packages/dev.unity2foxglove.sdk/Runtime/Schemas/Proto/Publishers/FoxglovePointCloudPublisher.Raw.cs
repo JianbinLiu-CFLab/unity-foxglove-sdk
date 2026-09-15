@@ -33,7 +33,11 @@ namespace Unity.FoxgloveSDK.Components
             Foxglove.PointCloud protobufMessage = null;
             PointCloudBuildResult sharedBuild = null;
 
-            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.MsgPack)
+            {
+                TryPublishComponentMessagePackRaw(frame, unixNs, packedLayout);
+            }
+            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
                 protobufMessage = packedLayout == null
                     ? PointCloudMessageBuilder.CreateProtobuf(frame)
