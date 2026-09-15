@@ -125,17 +125,17 @@ namespace Unity.FoxgloveSDK.Tests
             Check(msgPackSupported.Effective == PublisherEffectiveEncoding.MsgPack && !msgPackSupported.FellBack,
                 "92B-5: global MessagePack resolves when supported");
 
-            var protobufFallback = PublisherEncodingPolicy.Resolve(
+            var unsupportedMsgPack = PublisherEncodingPolicy.Resolve(
                 GlobalEncoding.MsgPack,
                 allowPublisherOverride: false,
                 PublisherEncodingOverride.Json,
                 supportsJson: false,
                 supportsProtobuf: true,
                 supportsMsgPack: false);
-            Check(protobufFallback.Requested == PublisherEffectiveEncoding.MsgPack
-                  && protobufFallback.Effective == PublisherEffectiveEncoding.Protobuf
-                  && protobufFallback.FellBack,
-                "92B-6: unsupported MessagePack falls back to Protobuf");
+            Check(unsupportedMsgPack.Requested == PublisherEffectiveEncoding.MsgPack
+                  && unsupportedMsgPack.Effective == PublisherEffectiveEncoding.Unsupported
+                  && !unsupportedMsgPack.FellBack,
+                "92B-6: unsupported MessagePack fails closed without fallback");
 
             var jsonFallback = PublisherEncodingPolicy.Resolve(
                 GlobalEncoding.Protobuf,
