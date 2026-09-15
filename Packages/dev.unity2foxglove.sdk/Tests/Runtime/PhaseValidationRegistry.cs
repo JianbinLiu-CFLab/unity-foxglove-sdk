@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static IReadOnlyList<PhaseValidationCase> All { get; } = Array.AsReadOnly(new[]
         {
             DefaultOnly("Skeleton", SkeletonValidation.Validate),
+            Ci("--phase189", "Phase 189: Component MessagePack acceptance contract", ComponentMessagePackAcceptanceValidation.Validate),
             Ci("--phase1", "Phase 1: validates serverInfo delivery, session identity, real WebSocket connectivity, and subprotocol negotiation", Phase1Validation.Validate),
             Ci("--phase2", "Phase 2: validates protocol DTO serialization, channel registration/unregistration, advertise snapshots, subscribe/unsubscribe parsing, and publish routing", Phase2Validation.Validate),
             Ci("--phase3", "Phase 3: validates core schema registration, typed channel advertising, SceneUpdate DTO serialization, and real WebSocket integration with schemas", Phase3Validation.Validate),
