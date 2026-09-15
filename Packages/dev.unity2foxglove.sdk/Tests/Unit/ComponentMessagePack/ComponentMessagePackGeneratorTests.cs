@@ -61,6 +61,25 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("false, false", generated, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void NestedObjectAndCollectionShapesCompileAndEmitMaps()
+        {
+            var source = "using System.Collections.Generic; using Unity.FoxgloveSDK.Protocol; using Newtonsoft.Json; "
+                + "public sealed class Stamp { public ulong Sec; public uint Nsec; } "
+                + "[FoxgloveSchema(\"demo.Nested\")] public sealed class Nested "
+                + "{ public Stamp Timestamp; [JsonProperty(\"values\")] public List<int> Values; }";
+            var compilation = CSharpCompilation.Create("Phase189BNestedFixture", new[] { CSharpSyntaxTree.ParseText(source) }, References(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new ComponentMessagePackSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
+            Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+            var generated = driver.GetRunResult().GeneratedTrees.Single(tree => tree.FilePath.EndsWith("ComponentMessagePackManifest.g.cs", StringComparison.Ordinal)).GetText().ToString();
+            Assert.Contains("__WriteFoxRunMessagePackObject_", generated, StringComparison.Ordinal);
+            Assert.Contains("WriteArrayHeader", generated, StringComparison.Ordinal);
+            using var image = new MemoryStream();
+            var emit = updated.Emit(image);
+            Assert.True(emit.Success, string.Join("; ", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+        }
+
         private static IEnumerable<MetadataReference> References()
         {
             var trusted = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")).Split(Path.PathSeparator).Select(path => MetadataReference.CreateFromFile(path));

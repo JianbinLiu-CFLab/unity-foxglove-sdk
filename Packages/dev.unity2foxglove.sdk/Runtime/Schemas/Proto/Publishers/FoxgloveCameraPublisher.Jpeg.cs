@@ -206,7 +206,13 @@ namespace Unity.FoxgloveSDK.Components
                 _backpressureGate.ResetSkipLogCount();
             }
 
-            if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Protobuf)
+            if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.MsgPack)
+            {
+                TryPublishComponentMessagePackImage(result.JpegBytes, captureUnixNs, ResolveFrameId(), "jpeg");
+                _lastPublishedCaptureUnixNs = captureUnixNs;
+                _backpressureGate.ResetSkipLogCount();
+            }
+            else if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Protobuf)
             {
                 PublishProto(result.WebSocketPayload, captureUnixNs);
                 _lastPublishedCaptureUnixNs = captureUnixNs;
@@ -263,7 +269,13 @@ namespace Unity.FoxgloveSDK.Components
             Foxglove.CompressedImage protobufMessage = null;
             SensorCompressedImageFrame sensorFrame = null;
 
-            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
+            if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.MsgPack)
+            {
+                TryPublishComponentMessagePackImage(jpeg, unixNs, frameId, "jpeg");
+                _lastPublishedCaptureUnixNs = unixNs;
+                _backpressureGate.ResetSkipLogCount();
+            }
+            else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
                 protobufMessage = CameraCompressedImageBuilder.Create(unixNs, frameId, jpeg, "jpeg");
                 PublishProto(protobufMessage.ToByteArray(), unixNs);

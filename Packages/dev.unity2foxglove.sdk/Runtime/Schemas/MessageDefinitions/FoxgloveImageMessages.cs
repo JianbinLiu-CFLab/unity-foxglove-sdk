@@ -10,6 +10,7 @@ namespace Unity.FoxgloveSDK.Schemas
 {
     /// <summary>foxglove.CompressedImage message.</summary>
     [Unity.FoxgloveSDK.Protocol.FoxgloveSchema("foxglove.CompressedImage")]
+    [Unity.FoxgloveSDK.Components.ComponentMessagePackIgnore]
     public class CompressedImageMessage
     {
         /// <summary>Timestamp of the image.</summary>

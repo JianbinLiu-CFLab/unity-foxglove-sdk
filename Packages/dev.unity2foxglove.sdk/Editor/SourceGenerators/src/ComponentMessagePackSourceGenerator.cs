@@ -50,7 +50,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 var json = member.GetAttributes().FirstOrDefault(a => string.Equals(a.AttributeClass?.ToDisplayString(), JsonPropertyAttribute, StringComparison.Ordinal));
                 var wire = json?.NamedArguments.FirstOrDefault(x => x.Key == "PropertyName").Value.Value as string;
                 if (string.IsNullOrEmpty(wire) && json?.ConstructorArguments.Length == 1) wire = json.ConstructorArguments[0].Value as string;
-                members.Add(new ComponentMessagePackMemberModel(member.Name, wire ?? member.Name, memberType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), Canonical(memberType)));
+                var shape = BuildShape(memberType, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
+                members.Add(new ComponentMessagePackMemberModel(member.Name, wire ?? member.Name, memberType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), Canonical(memberType), shape));
             }
             return new ComponentMessagePackTypeModel(type, schemaName ?? string.Empty, ignored, members);
         }
@@ -69,6 +70,59 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             return null;
         }
 
+        private static FoxRunTypeShape BuildShape(ITypeSymbol type, HashSet<ITypeSymbol> stack)
+        {
+            if (type == null) return null;
+            if (type.SpecialType == SpecialType.System_Boolean) return FoxRunTypeShape.Canonical("bool");
+            if (type.SpecialType == SpecialType.System_Int32) return FoxRunTypeShape.Canonical("int32");
+            if (type.SpecialType == SpecialType.System_UInt32) return FoxRunTypeShape.Canonical("uint32");
+            if (type.SpecialType == SpecialType.System_Int64) return FoxRunTypeShape.Canonical("int64");
+            if (type.SpecialType == SpecialType.System_UInt64) return FoxRunTypeShape.Canonical("uint64");
+            if (type.SpecialType == SpecialType.System_Single) return FoxRunTypeShape.Canonical("float32");
+            if (type.SpecialType == SpecialType.System_Double) return FoxRunTypeShape.Canonical("float64");
+            if (type.SpecialType == SpecialType.System_String) return FoxRunTypeShape.Canonical("string");
+            if (type is IArrayTypeSymbol array)
+            {
+                if (array.ElementType.SpecialType == SpecialType.System_Byte) return FoxRunTypeShape.Collection(FoxRunCollectionKind.Binary, FoxRunTypeShape.Canonical("uint8"));
+                var element = BuildShape(array.ElementType, stack);
+                return element == null ? null : FoxRunTypeShape.Collection(FoxRunCollectionKind.Array, element);
+            }
+            if (type is INamedTypeSymbol named)
+            {
+                if (named.IsGenericType && named.TypeArguments.Length == 1
+                    && (named.Name == "List" || named.Name == "IList" || named.Name == "IReadOnlyList" || named.Name == "IEnumerable" || named.Name == "ICollection"))
+                {
+                    var element = BuildShape(named.TypeArguments[0], stack);
+                    return element == null ? null : FoxRunTypeShape.Collection(FoxRunCollectionKind.List, element);
+                }
+                if (named.TypeKind == TypeKind.Enum)
+                {
+                    var values = named.GetMembers().OfType<IFieldSymbol>().Where(f => f.HasConstantValue)
+                        .Select(f => new FoxRunEnumValue(f.Name, Convert.ToInt32(f.ConstantValue))).ToArray();
+                    return values.Length == 0 ? null : FoxRunTypeShape.Enum(named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), values);
+                }
+                if (named.SpecialType != SpecialType.None || !stack.Add(named)) return null;
+                var fields = new List<FoxRunTypeField>();
+                foreach (var member in named.GetMembers().Where(m => m.Kind == SymbolKind.Field || m.Kind == SymbolKind.Property).OrderBy(m => m.Name, StringComparer.Ordinal))
+                {
+                    if (member.IsStatic || member.IsImplicitlyDeclared) continue;
+                    var field = member as IFieldSymbol; var property = member as IPropertySymbol;
+                    if (property != null && property.IsIndexer) continue;
+                    var memberType = field?.Type ?? property?.Type;
+                    if (memberType == null || member.GetAttributes().Any(a => string.Equals(a.AttributeClass?.ToDisplayString(), JsonIgnoreAttribute, StringComparison.Ordinal))) continue;
+                    var json = member.GetAttributes().FirstOrDefault(a => string.Equals(a.AttributeClass?.ToDisplayString(), JsonPropertyAttribute, StringComparison.Ordinal));
+                    var wire = json?.NamedArguments.FirstOrDefault(x => x.Key == "PropertyName").Value.Value as string;
+                    if (string.IsNullOrEmpty(wire) && json?.ConstructorArguments.Length == 1) wire = json.ConstructorArguments[0].Value as string;
+                    var child = BuildShape(memberType, stack);
+                    if (child == null) { stack.Remove(named); return null; }
+                    fields.Add(new FoxRunTypeField(wire ?? member.Name, member.Name, child));
+                }
+                stack.Remove(named);
+                return fields.Count == 0 ? null : FoxRunTypeShape.Object(named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), fields, isValueType: named.IsValueType);
+            }
+            return null;
+        }
+
         private static void Emit(SourceProductionContext context, Compilation compilation, ImmutableArray<ComponentMessagePackTypeModel> items)
         {
             var types = items.Where(t => t != null).OrderBy(t => t.Type.ToDisplayString(), StringComparer.Ordinal).ToArray();
@@ -80,7 +134,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     context.ReportDiagnostic(Diagnostic.Create(ComponentMessagePackSourceGeneratorDiagnostics.OpenShapeRule, type.Type.Locations.FirstOrDefault(), type.Type.Name));
                 foreach (var duplicate in type.Members.GroupBy(m => m.WireName, StringComparer.Ordinal).Where(g => g.Count() > 1))
                     context.ReportDiagnostic(Diagnostic.Create(ComponentMessagePackSourceGeneratorDiagnostics.DuplicateWireNameRule, type.Type.Locations.FirstOrDefault(), type.Type.Name, duplicate.Key));
-                if (!type.Ignored && (type.Members.Count == 0 || type.Members.Any(m => m.CanonicalType == null)))
+                if (!type.Ignored && (type.Members.Count == 0 || type.Members.Any(m => m.Shape == null)))
                     context.ReportDiagnostic(Diagnostic.Create(ComponentMessagePackSourceGeneratorDiagnostics.UnsupportedShapeRule, type.Type.Locations.FirstOrDefault(), type.Type.Name));
             }
             var manifestHash = ComputeManifestHash(types);
@@ -99,7 +153,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             foreach (var type in types)
             {
                 var method = "Serialize_" + Sanitize(type.Type.Name);
-                var supported = !type.Ignored && !string.IsNullOrWhiteSpace(type.SchemaName) && !type.Type.IsGenericType && type.Members.Count > 0 && type.Members.All(m => m.CanonicalType != null) && !type.Members.GroupBy(m => m.WireName, StringComparer.Ordinal).Any(g => g.Count() > 1);
+                var supported = IsSupported(type);
                 var reason = type.Ignored ? "excluded by ComponentMessagePackIgnoreAttribute" : supported ? string.Empty : "unsupported typed MessagePack member or shape";
                 sb.Append("                new ComponentMessagePackGeneratedEntry(typeof(").Append(type.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).Append("), \"").Append(Escape(type.SchemaName)).Append("\", \"").Append(Escape(type.Type.ToDisplayString())).Append("\", ");
                 if (supported)
@@ -120,19 +174,23 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             sb.AppendLine("#endif");
             foreach (var type in types)
             {
-                var supported = !type.Ignored && !string.IsNullOrWhiteSpace(type.SchemaName) && !type.Type.IsGenericType && type.Members.Count > 0 && type.Members.All(m => m.CanonicalType != null) && !type.Members.GroupBy(m => m.WireName, StringComparer.Ordinal).Any(g => g.Count() > 1);
+                var supported = IsSupported(type);
                 if (!supported) continue;
                 var method = "Serialize_" + Sanitize(type.Type.Name);
+                var objectShapes = new List<TypedMessagePackWriterEmitter.TypedMessagePackObjectShape>();
+                foreach (var member in type.Members) TypedMessagePackWriterEmitter.CollectTypedMessagePackObjectShapes(member.Shape, objectShapes);
                 sb.Append("        private static byte[] ").Append(method).Append("(object value)\n        {\n            var typed = (" ).Append(type.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).AppendLine(")value;\n            using (var writer = new global::Unity.FoxgloveSDK.Schemas.MsgPack.FoxgloveMsgPackWriter())\n            {\n                writer.WriteMapHeader(" + type.Members.Count + ");");
                 foreach (var member in type.Members.OrderBy(m => m.WireName, StringComparer.Ordinal).ThenBy(m => m.MemberName, StringComparer.Ordinal))
                 {
                     sb.Append("                writer.WriteString(\"").Append(Escape(member.WireName)).AppendLine("\");");
-                    var shape = member.CanonicalType == "binary" ? FoxRunTypeShape.Collection(FoxRunCollectionKind.Binary, FoxRunTypeShape.Canonical("uint8")) : FoxRunTypeShape.Canonical(member.CanonicalType);
                     var code = new StringBuilder();
-                    TypedMessagePackWriterEmitter.EmitValue(code, shape, "typed." + member.MemberName, "writer", "                ");
+                    var counter = new TypedMessagePackWriterEmitter.TypedMessagePackCounter();
+                    TypedMessagePackWriterEmitter.EmitValue(code, member.Shape, "typed." + member.MemberName, "writer", "                ", objectShapes, counter);
                     sb.Append(code);
                 }
                 sb.AppendLine("                return writer.ToArray();\n            }\n        }");
+                for (var shapeIndex = 0; shapeIndex < objectShapes.Count; shapeIndex++)
+                    TypedMessagePackWriterEmitter.EmitObjectWriter(sb, objectShapes[shapeIndex].Shape, shapeIndex, "        ", objectShapes);
             }
             sb.AppendLine("    }");
             sb.AppendLine("}");
@@ -141,6 +199,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         private static string Escape(string value) => (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
         private static string Sanitize(string value) => new string((value ?? "Type").Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+        private static bool IsSupported(ComponentMessagePackTypeModel type)
+            => !type.Ignored && !string.IsNullOrWhiteSpace(type.SchemaName) && !type.Type.IsGenericType
+               && type.Members.Count > 0 && type.Members.All(m => m.Shape != null)
+               && !type.Members.GroupBy(m => m.WireName, StringComparer.Ordinal).Any(g => g.Count() > 1);
 
         private static string ComputeManifestHash(IEnumerable<ComponentMessagePackTypeModel> types)
         {

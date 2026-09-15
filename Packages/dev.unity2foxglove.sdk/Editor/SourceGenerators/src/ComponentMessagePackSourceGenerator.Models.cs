@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
+using Unity.FoxgloveSDK.Editor;
 
 namespace Unity.FoxgloveSDK.SourceGenerators
 {
@@ -14,11 +15,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     }
     internal sealed class ComponentMessagePackMemberModel
     {
-        internal ComponentMessagePackMemberModel(string memberName, string wireName, string typeName, string canonicalType)
-        { MemberName = memberName; WireName = wireName; TypeName = typeName; CanonicalType = canonicalType; }
+        internal ComponentMessagePackMemberModel(string memberName, string wireName, string typeName, string canonicalType, FoxRunTypeShape shape)
+        { MemberName = memberName; WireName = wireName; TypeName = typeName; CanonicalType = canonicalType; Shape = shape; }
         internal string MemberName { get; }
         internal string WireName { get; }
         internal string TypeName { get; }
         internal string CanonicalType { get; }
+        internal FoxRunTypeShape Shape { get; }
     }
 }
