@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text;
 
 namespace Unity.FoxgloveSDK.Components.Publishing.Session
@@ -23,9 +24,10 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
 
             var builder = new StringBuilder();
             var bytes = 0;
-            foreach (var rune in value.EnumerateRunes())
+            var enumerator = StringInfo.GetTextElementEnumerator(value);
+            while (enumerator.MoveNext())
             {
-                var text = rune.ToString();
+                var text = (string)enumerator.Current;
                 var size = Encoding.UTF8.GetByteCount(text);
                 if (bytes + size > Math.Max(0, maxBytes - 3)) break;
                 builder.Append(text);
