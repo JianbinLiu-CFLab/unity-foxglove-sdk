@@ -97,9 +97,21 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 }
                 if (named.TypeKind == TypeKind.Enum)
                 {
-                    var values = named.GetMembers().OfType<IFieldSymbol>().Where(f => f.HasConstantValue)
-                        .Select(f => new FoxRunEnumValue(f.Name, Convert.ToInt32(f.ConstantValue))).ToArray();
-                    return values.Length == 0 ? null : FoxRunTypeShape.Enum(named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), values);
+                    var values = new List<FoxRunEnumValue>();
+                    foreach (var field in named.GetMembers().OfType<IFieldSymbol>().Where(f => f.HasConstantValue))
+                    {
+                        try
+                        {
+                            values.Add(new FoxRunEnumValue(field.Name, Convert.ToInt32(field.ConstantValue)));
+                        }
+                        catch (OverflowException)
+                        {
+                            // MessagePack enum emission is int32-based; report the
+                            // shape as unsupported instead of crashing the generator.
+                            return null;
+                        }
+                    }
+                    return values.Count == 0 ? null : FoxRunTypeShape.Enum(named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), values);
                 }
                 if (named.SpecialType != SpecialType.None || !stack.Add(named)) return null;
                 var fields = new List<FoxRunTypeField>();

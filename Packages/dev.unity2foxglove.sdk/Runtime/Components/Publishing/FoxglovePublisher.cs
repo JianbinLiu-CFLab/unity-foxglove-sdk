@@ -11,6 +11,7 @@ using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Components.Publishing.MessagePack;
+using Unity.FoxgloveSDK.Components.Publishing.Session;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
@@ -23,6 +24,7 @@ namespace Unity.FoxgloveSDK.Components
     {
         private string _cachedSchemaName;
         private bool _warnedMissingMsgPackPayload;
+        private bool _warnedMsgPackSerializationFailure;
 
         protected override string SchemaName
         {
@@ -69,8 +71,20 @@ namespace Unity.FoxgloveSDK.Components
                 if (ComponentMessagePackCodecRegistry.TryGet(typeof(TMessage), out var generated)
                     && generated.IsAvailable)
                 {
-                    var payload = generated.Serialize(message);
+                    if (!ComponentPublisherSerializationBoundary.TrySerialize(
+                            () => generated.Serialize(message),
+                            "component.msgpack.serialize",
+                            diagnostic =>
+                            {
+                                if (_warnedMsgPackSerializationFailure) return;
+                                _warnedMsgPackSerializationFailure = true;
+                                Debug.LogWarning($"[Foxglove] {GetType().Name} dropped MsgPack sample: {diagnostic}");
+                            },
+                            out var payload,
+                            out _))
+                        return;
                     _warnedMissingMsgPackPayload = false;
+                    _warnedMsgPackSerializationFailure = false;
                     PublishMsgPack(payload, unixNs, resolution);
                 }
                 else if (!_warnedMissingMsgPackPayload)

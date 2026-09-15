@@ -207,7 +207,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}        break;");
             sb.AppendLine($"{pad}    default:");
             sb.AppendLine(
-                $"{pad}        throw new global::System.InvalidOperationException(\"FoxRun MessagePack value is not a declared enum value.\");");
+                $"{pad}        throw new global::Unity.FoxgloveSDK.Components.Publishing.Session.ComponentPublisherSessionFailure(\"FoxRun MessagePack value is not a declared enum value.\");");
             sb.AppendLine($"{pad}}}");
             sb.AppendLine(
                 $"{pad}{writer}.WriteInt32(__enum_{suffix});");

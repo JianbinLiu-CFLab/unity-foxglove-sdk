@@ -107,6 +107,22 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.True(emit.Success, string.Join("; ", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
         }
 
+        [Fact]
+        public void OutOfRangeEnumFailsClosedWithoutGeneratorCrash()
+        {
+            var source = "using Unity.FoxgloveSDK.Protocol; enum Huge : ulong { Value = 4294967296 } "
+                + "[FoxgloveSchema(\"demo.Huge\")] public sealed class Payload { public Huge Value; }";
+            var compilation = CSharpCompilation.Create("HugeEnumFixture", new[] { CSharpSyntaxTree.ParseText(source) }, References(), new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new ComponentMessagePackSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
+            var all = driver.GetRunResult().Diagnostics.Concat(diagnostics).ToArray();
+            Assert.Contains(all, d => d.Id == "FOXCOMP002");
+            // Unsupported shapes still produce a diagnostic and no generator
+            // exception; the host compilation may legitimately reject the
+            // out-of-range fixture itself.
+            Assert.NotNull(updated);
+        }
+
         private static string GenerateManifest(string model)
         {
             var source = "using Unity.FoxgloveSDK.Protocol; " + model;
