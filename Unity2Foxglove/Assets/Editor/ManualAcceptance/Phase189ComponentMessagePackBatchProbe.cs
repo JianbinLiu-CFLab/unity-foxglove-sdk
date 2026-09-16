@@ -29,8 +29,10 @@ namespace Unity2Foxglove
             var managerCount = roots.SelectMany(x => x.GetComponentsInChildren<Unity.FoxgloveSDK.Components.FoxgloveManager>(true)).Count();
             if (controllerCount != 1 || managerCount != 1)
                 throw new InvalidDataException("Phase189 batch diagnostic requires exactly one maintained controller and manager.");
-            var root = Path.GetDirectoryName(Application.dataPath) ?? throw new DirectoryNotFoundException("Unity project root missing.");
-            var report = Path.Combine(root, "build", "phase189", "manual", "batch-diagnostic.json");
+            var projectRoot = Path.GetDirectoryName(Application.dataPath) ?? throw new DirectoryNotFoundException("Unity project root missing.");
+            var repoRoot = Directory.GetParent(projectRoot)?.FullName
+                ?? throw new DirectoryNotFoundException("Repository root missing above Unity project.");
+            var report = Path.Combine(repoRoot, "build", "phase189", "manual", "batch-diagnostic.json");
             Directory.CreateDirectory(Path.GetDirectoryName(report));
             File.WriteAllText(report, "{\"verdict\":\"PASS\",\"scene\":\"" + Phase189ComponentMessagePackAcceptanceBuilder.AcceptanceSceneAssetPath + "\",\"controllerCount\":1,\"managerCount\":1,\"cleanup\":true}\n");
             Debug.Log("PHASE189_BATCH_DIAGNOSTIC_PASS report=" + report);

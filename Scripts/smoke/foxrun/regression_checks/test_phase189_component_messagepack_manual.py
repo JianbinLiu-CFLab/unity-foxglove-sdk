@@ -84,5 +84,11 @@ class Phase189ManualAcceptanceTests(unittest.TestCase):
         self.assertIn("RecordInspectorEvidence", source)
         self.assertIn("Probe and MCAP inspector evidence are required", source)
 
+    def test_batch_diagnostic_writes_to_repository_evidence_root(self):
+        """Keep Unity batch evidence in the repository build boundary, not inside the project."""
+        source = BATCH.read_text(encoding="utf-8")
+        self.assertIn("Directory.GetParent(projectRoot)", source)
+        self.assertIn('"build", "phase189", "manual", "batch-diagnostic.json"', source)
+
 if __name__ == "__main__":
     unittest.main()
