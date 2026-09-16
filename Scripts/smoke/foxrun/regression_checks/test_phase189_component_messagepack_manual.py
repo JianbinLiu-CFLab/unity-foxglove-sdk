@@ -89,6 +89,9 @@ class Phase189ManualAcceptanceTests(unittest.TestCase):
         source = BATCH.read_text(encoding="utf-8")
         self.assertIn("Directory.GetParent(projectRoot)", source)
         self.assertIn('"build", "phase189", "manual", "batch-diagnostic.json"', source)
+        self.assertIn("FoxgloveMsgPackWriter", source)
+        self.assertIn("WriteBinary", source)
+        self.assertIn('\\"wireVectors\\":true', source)
 
 if __name__ == "__main__":
     unittest.main()
