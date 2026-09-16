@@ -106,3 +106,7 @@ Potential future dedicated core publishers include:
 
 Add them when a real demo, dataset, or user workflow needs a polished Unity
 Inspector experience.
+
+## Phase189 schema coverage
+
+Component MessagePack is schemaless on the wire but retains logical schema and shape identity in the contract service. Scalar, nested, JPEG, and point-cloud fixtures are covered by generated codecs and direct payload checks; JPEG and point-cloud binary members remain MessagePack `bin` values. JSON and Protobuf compatibility is preserved, and unsupported/conflicting requests fail closed.

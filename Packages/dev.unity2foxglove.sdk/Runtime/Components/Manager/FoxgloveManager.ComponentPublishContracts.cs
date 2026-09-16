@@ -20,6 +20,15 @@ namespace Unity.FoxgloveSDK.Components
         internal void SetActiveComponentPublisherSession(ComponentPublisherSessionSnapshot snapshot)
             => _activeComponentPublisherSession = snapshot;
 
+        internal bool TryGetActiveComponentPublisherSessionEntry(
+            object publisher,
+            out ComponentPublisherSessionEntry entry)
+        {
+            entry = null;
+            return _activeComponentPublisherSession != null
+                   && _activeComponentPublisherSession.TryGetEntry(publisher, out entry);
+        }
+
         internal void CaptureComponentPublisherSession()
         {
             var drafts = new List<ComponentPublisherContractDraft>();
@@ -28,6 +37,9 @@ namespace Unity.FoxgloveSDK.Components
                 if (publisher == null || publisher.ConfiguredManager != this || !publisher.HasValidTopic)
                     continue;
                 var resolution = publisher.EncodingResolution;
+                var messagePackEntry = ComponentPublisherMessagePackEntryResolver.Resolve(
+                    publisher.ComponentMessagePackMessageType,
+                    resolution.Effective);
                 drafts.Add(new ComponentPublisherContractDraft(
                     publisher,
                     publisher.GetInstanceID().ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -36,7 +48,8 @@ namespace Unity.FoxgloveSDK.Components
                     publisher.Topic,
                     publisher.ContractSchemaName,
                     resolution.Requested,
-                    resolution.Effective));
+                    resolution.Effective,
+                    messagePackEntry));
             }
             SetActiveComponentPublisherSession(new ComponentPublisherSessionBuilder().Build(
                 _connectionState.ChannelSessionGeneration,

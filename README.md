@@ -234,3 +234,13 @@ All generated build, restore, test, Unity, CMake, and colcon output belongs belo
 For research use, cite [CITATION.cff](CITATION.cff) or the Zenodo Concept DOI [`10.5281/zenodo.20112833`](https://doi.org/10.5281/zenodo.20112833). Use the version-specific DOI from the relevant archived release when exact artifact reproduction matters. Research positioning and evidence boundaries are summarized in [PAPER.md](PAPER.md).
 
 Unity2Foxglove is licensed under the [Apache License 2.0](LICENSE). It is an independent project that grew from experiments at [Construction Future Lab](https://cflab.de).
+
+## Phase189 Component MessagePack acceptance
+
+Phase189 adds a maintained acceptance scene at `Assets/Scenes/ManualAcceptance/Phase189ComponentMessagePackAcceptance.unity` and the bounded coordinator command:
+
+```text
+python Scripts/smoke/websocket/phase189_component_messagepack_manual.py
+```
+
+Component MessagePack sessions are frozen at capture. A topic/encoding edit is pending until the FoxgloveManager is restarted; restoring the original MessagePack contracts starts the authoritative recording generation. Use `phase189_component_messagepack_probe.py` (or a maintained custom client) for schemaless MessagePack and binary `bin` payloads. Foxglove built-in panels that do not decode schemaless MessagePack are not acceptance evidence.

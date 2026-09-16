@@ -200,3 +200,7 @@ For a real-time Ouster workflow, the usual architecture is:
 
 Packet decoding and Ouster sensor simulation are intentionally separate from this component so the publisher stays focused on official Foxglove schema parity.
 
+
+## Phase189 typed sensor publishers
+
+Camera JPEG and raw point-cloud Component publishers preserve owned byte buffers through the MessagePack path. The publisher owns allocation and release boundaries; consumers receive exact binary payloads rather than a string or transcode. The maintained acceptance scene provides deterministic fixtures for these paths.

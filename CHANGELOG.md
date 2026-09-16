@@ -512,3 +512,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - macOS / Linux platforms have not been verified
 - WSS/TLS and authentication are not implemented in v1.0.0. This historical limitation changed in v1.4.0: optional Unity-native WSS/TLS and a lightweight shared query-token gate are now available, but production authentication/authorization is still out of scope.
 - Native Backend (C implementation) has not yet been integrated into the transport layer
+
+### Phase189 Component MessagePack certification
+
+- Added a maintained Unity acceptance scene, bounded manual coordinator, live/deterministic probe, batch diagnostic, and strict run-identity MCAP inspector.
+- Component sessions freeze their active descriptors; pending topic/JSON edits apply only after Manager restart, and the final MessagePack generation owns the authoritative recording.
+- MessagePack remains a custom-client format; built-in panels without schemaless MessagePack support are not evidence.

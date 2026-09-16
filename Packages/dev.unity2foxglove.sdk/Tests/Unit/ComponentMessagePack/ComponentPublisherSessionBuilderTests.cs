@@ -9,6 +9,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
     public sealed class ComponentPublisherSessionBuilderTests
     {
         private sealed class Publisher { }
+
+        [Fact]
+        public void PreservesUnsignedChannelGenerationAtMaximumValue()
+        {
+            var snapshot = new ComponentPublisherSessionBuilder().Build(
+                ulong.MaxValue,
+                Array.Empty<ComponentPublisherContractDraft>());
+
+            Assert.Equal(ulong.MaxValue, snapshot.Generation);
+        }
+
         [Fact]
         public void BuilderNormalizesOrderAndUsesReferenceIdentity()
         {
@@ -22,7 +33,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             var snapshot = new ComponentPublisherSessionBuilder().Build(7, drafts.Reverse());
             Assert.True(snapshot.IsAvailable);
             Assert.Equal(new[] { "scene/A", "scene/B" }, snapshot.Entries.Select(e => e.CaptureIdentity));
-            Assert.Equal(7, snapshot.Generation);
+            Assert.Equal(7UL, snapshot.Generation);
         }
         [Fact]
         public void UnsupportedMessagePackEntryIsUnavailableWithoutFallback()
@@ -39,6 +50,29 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             var entry = new ComponentPublisherSessionBuilder().Build(1, new[] { draft }).Entries.Single();
             Assert.False(entry.IsAvailable);
             Assert.Contains("bounded", entry.Diagnostic, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void SnapshotResolvesFrozenEntryByPublisherReference()
+        {
+            var publisher = new Publisher();
+            var snapshot = new ComponentPublisherSessionBuilder().Build(
+                9,
+                new[]
+                {
+                    new ComponentPublisherContractDraft(
+                        publisher, "scene/A", typeof(Publisher), "mode", "/a", "schema.a",
+                        PublisherEffectiveEncoding.MsgPack,
+                        PublisherEffectiveEncoding.MsgPack,
+                        new ComponentMessagePackGeneratedEntry(
+                            typeof(Publisher), "schema.a", "shape.a", true, true, string.Empty,
+                            _ => new byte[] { 1 }))
+                });
+
+            Assert.True(snapshot.TryGetEntry(publisher, out var entry));
+            Assert.Same(publisher, entry.Publisher);
+            Assert.Equal(PublisherEffectiveEncoding.MsgPack, entry.EffectiveEncoding);
+            Assert.False(snapshot.TryGetEntry(new Publisher(), out _));
         }
     }
 }

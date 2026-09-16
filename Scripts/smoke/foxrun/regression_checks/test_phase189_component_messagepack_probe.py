@@ -1,12 +1,15 @@
 """Regression tests for the Phase189 Component MessagePack probe contract."""
 
 import importlib.util
+import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 MODULE = ROOT / "Scripts" / "smoke" / "websocket" / "phase189_component_messagepack_probe.py"
+PROBE = MODULE
 
 spec = importlib.util.spec_from_file_location("phase189_probe", MODULE)
 probe = importlib.util.module_from_spec(spec)
@@ -14,6 +17,20 @@ sys.modules[spec.name] = probe
 spec.loader.exec_module(probe)
 
 class Phase189ProbeTests(unittest.TestCase):
+    """Validate deterministic Component MessagePack probe vectors and controls."""
+    def test_component_fixture_reports_identity_segments_and_binary_members(self):
+        """Require the deterministic fixture to emit identity segments and binary members."""
+        output = ROOT / "build" / "phase189" / "probe" / "component-fixture-test.json"
+        completed = subprocess.run([sys.executable, str(PROBE), "--component-fixture", "--run-id", "fixture-test", "--head", "head-test", "--generation", "7", "--output", str(output)], text=True, capture_output=True)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        report = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual(report["verdict"], "PASS")
+        self.assertEqual(report["finalMessagePack"]["runId"], "fixture-test")
+        self.assertEqual(report["finalMessagePack"]["generation"], "7")
+        self.assertTrue(report["recordingClose"]["closed"])
+        self.assertEqual(report["playExit"]["marker"], "EDIT_MODE")
+        self.assertIn("data", report["finalMessagePack"]["topics"]["/phase189/component/jpeg"]["binaryMember"])
+
     """Exercise protocol vectors and sensor publication failure controls."""
 
     def test_contract_service_and_binary_vector(self):

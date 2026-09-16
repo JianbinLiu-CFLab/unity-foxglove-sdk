@@ -90,3 +90,7 @@ Inspector fallback values:
 ## Full documentation
 
 See [Documentation~/README.md](Documentation~/README.md).
+
+## Phase189 acceptance and upgrade note
+
+The maintained Phase189 scene exercises scalar, nested, JPEG, and point-cloud Component publishers. The session contract is immutable for a running Manager; changing a topic or encoding requires a Manager restart. MessagePack is intended for custom clients/extensions, remains schemaless on the wire, and does not transcode to JSON or Protobuf. `ProtobufPublisher` remains Protobuf-only and provider-only modes remain excluded. Use the coordinator and probe under `Scripts/smoke/websocket/` for the bounded manual workflow.

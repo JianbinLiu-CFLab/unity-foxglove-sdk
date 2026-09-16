@@ -93,3 +93,7 @@ Typical build log:
 ## 9. Scope Exclusions
 
 This page is the practical build path. For source generator internals, linker behavior, and runtime architecture, read [10_Architecture](10_Architecture.md).
+
+## Phase189 IL2CPP/AOT note
+
+Generated Component MessagePack codecs use direct generated access and must survive stripping/AOT. Run the Phase189 runtime marker and the Windows IL2CPP build from the exact release tip; do not substitute a reflection-only probe for Player evidence.
