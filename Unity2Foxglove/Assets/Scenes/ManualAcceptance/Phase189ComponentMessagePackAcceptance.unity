@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &130058452
+--- !u!1 &122226725
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -127,8 +127,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 130058454}
-  - component: {fileID: 130058453}
+  - component: {fileID: 122226727}
+  - component: {fileID: 122226726}
   m_Layer: 0
   m_Name: Component Scalar and Nested Fixture
   m_TagString: Untagged
@@ -136,30 +136,30 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &130058453
+--- !u!114 &122226726
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 130058452}
+  m_GameObject: {fileID: 122226725}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 81deb8f35602aae43b28002bdb1e18fa, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TestLog
   _trackedCube: {fileID: 0}
   telemetryEnabled: 1
   isPaused: 0
   conditionalPosition: {x: 0, y: 0, z: 0}
   conditionalHealth: 100
---- !u!4 &130058454
+--- !u!4 &122226727
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 130058452}
+  m_GameObject: {fileID: 122226725}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -168,7 +168,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &488825279
+--- !u!1 &125444500
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -176,356 +176,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 488825281}
-  - component: {fileID: 488825280}
-  m_Layer: 0
-  m_Name: Component Scalar Publisher
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &488825280
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 488825279}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 1505300087}
-  m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase189ScalarPublisher
-  _manager: {fileID: 1628253403}
-  _topic: /phase189/component/scalar
-  _publishRateSource: 0
-  _publishRateHz: 10
-  _publishOnEnable: 1
-  _warnIfManagerMissing: 1
-  _encodingOverride: 4
---- !u!4 &488825281
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 488825279}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &499878118
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 499878121}
-  - component: {fileID: 499878120}
-  - component: {fileID: 499878119}
-  m_Layer: 0
-  m_Name: JPEG Camera Publisher
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &499878119
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 499878118}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 22775ec7d076a0f418601210279775ae, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
-  _manager: {fileID: 1628253403}
-  _topic: /phase189/component/jpeg
-  _publishRateSource: 0
-  _publishRateHz: 10
-  _publishOnEnable: 1
-  _warnIfManagerMissing: 1
-  _encodingOverride: 4
-  _outputMode: 0
-  _frameId: unity_camera
-  _width: 640
-  _height: 480
-  _jpegQuality: 70
-  _maxPendingReadbacks: 1
-  _maxCaptureRateHz: 10
-  _cameraHealthMode: 2
-  _useAsyncJpeg: 1
-  _maxJpegEncodeQueue: 2
-  _maxCompletedJpegQueue: 2
-  _maxCompletedJpegPublishesPerFrame: 1
-  _maxPixelsPerFrame: 0
-  _requireIdleJpegPipeline: 1
-  _pipelineCooldownThresholdMs: 50
-  _pipelineCooldownMs: 1000
-  _mainLoopCaptureCooldownThresholdMs: 100
-  _mainLoopStableFramesBeforeCapture: 2
-  _logCameraDiagnostics: 0
-  _cameraDiagnosticsIntervalSeconds: 2
-  _cameraSlowStageThresholdMs: 50
-  _ffmpegPath:
-  _videoBitrateKbps: 4000
-  _videoKeyframeInterval: 30
-  _videoMaxOutputQueue: 4
-  _logVideoDiagnostics: 0
-  _logEncoderStderr: 0
-  _openH264HelperPath:
-  _openH264DllPath:
-  _openH264MaxInputQueue: 2
-  _enableBackpressureAdaptation: 0
-  _backpressureCooldownSeconds: 0.5
-  _maxEncodedBytes: 0
-  _logBackpressureSkips: 0
-  _sensorUnitProfile: {fileID: 0}
-  _useSharedSensorClock: 1
-  _sensorCameraRawImageTopic: /unity/sensor/camera/image
---- !u!20 &499878120
-Camera:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 499878118}
-  m_Enabled: 1
-  serializedVersion: 2
-  m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
-  m_projectionMatrixMode: 1
-  m_GateFitMode: 2
-  m_FOVAxisMode: 0
-  m_Iso: 200
-  m_ShutterSpeed: 0.005
-  m_Aperture: 16
-  m_FocusDistance: 10
-  m_FocalLength: 50
-  m_BladeCount: 5
-  m_Curvature: {x: 2, y: 11}
-  m_BarrelClipping: 0.25
-  m_Anamorphism: 0
-  m_SensorSize: {x: 36, y: 24}
-  m_LensShift: {x: 0, y: 0}
-  m_NormalizedViewPortRect:
-    serializedVersion: 2
-    x: 0
-    y: 0
-    width: 1
-    height: 1
-  near clip plane: 0.3
-  far clip plane: 1000
-  field of view: 60
-  orthographic: 0
-  orthographic size: 5
-  m_Depth: 0
-  m_CullingMask:
-    serializedVersion: 2
-    m_Bits: 4294967295
-  m_RenderingPath: -1
-  m_TargetTexture: {fileID: 0}
-  m_TargetDisplay: 0
-  m_TargetEye: 3
-  m_HDR: 1
-  m_AllowMSAA: 1
-  m_AllowDynamicResolution: 0
-  m_ForceIntoRT: 0
-  m_OcclusionCulling: 1
-  m_StereoConvergence: 10
-  m_StereoSeparation: 0.022
---- !u!4 &499878121
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 499878118}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &920772031
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 920772033}
-  - component: {fileID: 920772032}
-  m_Layer: 0
-  m_Name: Component Nested Publisher
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &920772032
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 920772031}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 1999437629}
-  m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase189NestedPublisher
-  _manager: {fileID: 1628253403}
-  _topic: /phase189/component/nested
-  _publishRateSource: 0
-  _publishRateHz: 10
-  _publishOnEnable: 1
-  _warnIfManagerMissing: 1
-  _encodingOverride: 4
---- !u!4 &920772033
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 920772031}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1233419267
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1233419269}
-  - component: {fileID: 1233419268}
-  m_Layer: 0
-  m_Name: SystemInfo Publisher
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1233419268
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1233419267}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f95d096284914d38bc538e65006f9d2d, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveSystemInfoPublisher
-  _manager: {fileID: 1628253403}
-  _topic: /phase189/component/system
-  _publishRateSource: 1
-  _publishRateHz: 0.2
-  _publishOnEnable: 1
-  _warnIfManagerMissing: 1
-  _encodingOverride: 1
---- !u!4 &1233419269
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1233419267}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1250024399
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1250024401}
-  - component: {fileID: 1250024400}
-  m_Layer: 0
-  m_Name: Transform Publisher
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1250024400
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1250024399}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4c1d6a066ac4948418f4df6fdc4c5e3c, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveTransformPublisher
-  _manager: {fileID: 1628253403}
-  _topic: /phase189/component/transform
-  _publishRateSource: 0
-  _publishRateHz: 10
-  _publishOnEnable: 1
-  _warnIfManagerMissing: 1
-  _encodingOverride: 4
-  _parentFrameId: unity_world
-  _childFrameId:
-  _useLocalTransform: 0
-  _useSharedSensorClock: 1
---- !u!4 &1250024401
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1250024399}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1422203683
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1422203685}
-  - component: {fileID: 1422203684}
+  - component: {fileID: 125444502}
+  - component: {fileID: 125444501}
   m_Layer: 0
   m_Name: Raw PointCloud Publisher
   m_TagString: Untagged
@@ -533,19 +185,19 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1422203684
+--- !u!114 &125444501
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1422203683}
+  m_GameObject: {fileID: 125444500}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 30efba2d25ad48cfb9769811e4e56e63, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxglovePointCloudPublisher
-  _manager: {fileID: 1628253403}
+  _manager: {fileID: 522119112}
   _topic: /phase189/component/pointcloud
   _publishRateSource: 0
   _publishRateHz: 10
@@ -566,7 +218,7 @@ MonoBehaviour:
   _includeSyntheticIntensity: 0
   _publishPackedPointCloudTfAnchor: 0
   _packedPointCloudTfParentFrame: map
-  _packedPointCloudTfChildFrame:
+  _packedPointCloudTfChildFrame: 
   _packedPointCloudTfTranslation: {x: 0, y: 0, z: 0}
   _packedPointCloudTfRotationEuler: {x: 0, y: 0, z: 0}
   _enableMotionCompensation: 0
@@ -577,13 +229,13 @@ MonoBehaviour:
   _motionCompensationSource: 0
   _nativeDracoMaxPublishRateHz: 6
   _suppressTransformFallbackAfterSourceFrames: 1
---- !u!4 &1422203685
+--- !u!4 &125444502
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1422203683}
+  m_GameObject: {fileID: 125444500}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -592,22 +244,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!115 &1505300087
-MonoScript:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name:
-  serializedVersion: 7
-  m_DefaultReferences: {}
-  m_Icon: {fileID: 0}
-  m_Type: 0
-  m_ExecutionOrder: 0
-  m_ClassName: Phase189ScalarPublisher
-  m_Namespace: Unity2Foxglove.ManualAcceptance
-  m_AssemblyName: Assembly-CSharp
---- !u!1 &1628253402
+--- !u!1 &212366551
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -615,9 +252,111 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1628253405}
-  - component: {fileID: 1628253403}
-  - component: {fileID: 1628253404}
+  - component: {fileID: 212366553}
+  - component: {fileID: 212366552}
+  m_Layer: 0
+  m_Name: Component Nested Publisher
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &212366552
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 212366551}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b0d6ea6f63d43b5a3c1f2b1c4d8e7f0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase189NestedPublisher
+  _manager: {fileID: 522119112}
+  _topic: /phase189/component/nested
+  _publishRateSource: 0
+  _publishRateHz: 10
+  _publishOnEnable: 1
+  _warnIfManagerMissing: 1
+  _encodingOverride: 4
+--- !u!4 &212366553
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 212366551}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &357540399
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 357540401}
+  - component: {fileID: 357540400}
+  m_Layer: 0
+  m_Name: SystemInfo Publisher
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &357540400
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 357540399}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f95d096284914d38bc538e65006f9d2d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveSystemInfoPublisher
+  _manager: {fileID: 522119112}
+  _topic: /phase189/component/system
+  _publishRateSource: 1
+  _publishRateHz: 0.2
+  _publishOnEnable: 1
+  _warnIfManagerMissing: 1
+  _encodingOverride: 1
+--- !u!4 &357540401
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 357540399}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &522119111
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 522119114}
+  - component: {fileID: 522119112}
+  - component: {fileID: 522119113}
   m_Layer: 0
   m_Name: Phase189 Component MessagePack Acceptance
   m_TagString: Untagged
@@ -625,17 +364,17 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1628253403
+--- !u!114 &522119112
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1628253402}
+  m_GameObject: {fileID: 522119111}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: afc2d6291bf7eb743b8c49690ebc3c6f, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveManager
   _publishCadenceDiagnosticsEnabled: 0
   _publishCadenceDiagnosticsSummaryIntervalSeconds: 5
@@ -680,66 +419,68 @@ MonoBehaviour:
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
   _enableReplay: 0
-  _replayFilePath:
+  _replayFilePath: 
   _replayAutoPlay: 0
   _disableLivePublishers: 0
   _enableRemoteMcapFileServer: 0
   _remoteMcapFileServerHost: 127.0.0.1
   _remoteMcapFileServerPort: 8891
   _remoteMcapFileServerSourceId: local-mcap
-  _remoteMcapFileServerToken:
+  _remoteMcapFileServerToken: 
   _enableReplayCursorBridge: 0
   _replayCursorBridgeHost: 127.0.0.1
   _replayCursorBridgePort: 8892
-  _replayCursorBridgeToken:
+  _replayCursorBridgeToken: 
   _identityModeSource: 0
   _identityModeOverride: 0
   _projectSettingsIdentityMode: 0
   _schemaEvidenceRoot: Assets/Generated
   _allowHostedFoxgloveWeb: 1
   _allowedBrowserOrigins: []
-  _certificatePfxPath:
-  _certificatePassword:
+  _certificatePfxPath: 
+  _certificatePassword: 
   _rootCaDistributorEnabled: 0
   _rootCaDistributorHost: 127.0.0.1
   _rootCaDistributorPort: 8766
-  _rootCaFilePath:
-  _sharedToken:
---- !u!114 &1628253404
+  _rootCaFilePath: 
+  _sharedToken: 
+--- !u!114 &522119113
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1628253402}
+  m_GameObject: {fileID: 522119111}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1c189a4f2cfe4c6d8a8d5c442189a001, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase189ComponentMessagePackAcceptance
-  _manager: {fileID: 1628253403}
+  _manager: {fileID: 522119112}
   _publishers:
-  - {fileID: 488825280}
-  - {fileID: 920772032}
-  - {fileID: 1250024400}
-  - {fileID: 1233419268}
-  - {fileID: 499878119}
-  - {fileID: 1422203684}
-  _scalar: {fileID: 488825280}
-  _nested: {fileID: 920772032}
+  - {fileID: 2007530952}
+  - {fileID: 212366552}
+  - {fileID: 1510512772}
+  - {fileID: 357540400}
+  - {fileID: 2044740471}
+  - {fileID: 125444501}
+  _scalar: {fileID: 2007530952}
+  _nested: {fileID: 212366552}
   _runId: phase189-manual
-  _featureHead:
-  _recordingPath:
+  _featureHead: 
+  _recordingPath: 
   _status: preflight ready
   _stage: 1
   _terminal: 0
---- !u!4 &1628253405
+  _probeEvidence: 0
+  _inspectorEvidence: 0
+--- !u!4 &522119114
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1628253402}
+  m_GameObject: {fileID: 522119111}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -748,30 +489,261 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!115 &1999437629
-MonoScript:
+--- !u!1 &1510512771
+GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name:
-  serializedVersion: 7
-  m_DefaultReferences: {}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1510512773}
+  - component: {fileID: 1510512772}
+  m_Layer: 0
+  m_Name: Transform Publisher
+  m_TagString: Untagged
   m_Icon: {fileID: 0}
-  m_Type: 0
-  m_ExecutionOrder: 0
-  m_ClassName: Phase189NestedPublisher
-  m_Namespace: Unity2Foxglove.ManualAcceptance
-  m_AssemblyName: Assembly-CSharp
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1510512772
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1510512771}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c1d6a066ac4948418f4df6fdc4c5e3c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveTransformPublisher
+  _manager: {fileID: 522119112}
+  _topic: /phase189/component/transform
+  _publishRateSource: 0
+  _publishRateHz: 10
+  _publishOnEnable: 1
+  _warnIfManagerMissing: 1
+  _encodingOverride: 4
+  _parentFrameId: unity_world
+  _childFrameId: 
+  _useLocalTransform: 0
+  _useSharedSensorClock: 1
+--- !u!4 &1510512773
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1510512771}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2007530951
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2007530953}
+  - component: {fileID: 2007530952}
+  m_Layer: 0
+  m_Name: Component Scalar Publisher
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2007530952
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2007530951}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9e2b2f9db2d943e4a91a5e6f31f8f8a1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase189ScalarPublisher
+  _manager: {fileID: 522119112}
+  _topic: /phase189/component/scalar
+  _publishRateSource: 0
+  _publishRateHz: 10
+  _publishOnEnable: 1
+  _warnIfManagerMissing: 1
+  _encodingOverride: 4
+--- !u!4 &2007530953
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2007530951}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2044740470
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2044740473}
+  - component: {fileID: 2044740472}
+  - component: {fileID: 2044740471}
+  m_Layer: 0
+  m_Name: JPEG Camera Publisher
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2044740471
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2044740470}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 22775ec7d076a0f418601210279775ae, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
+  _manager: {fileID: 522119112}
+  _topic: /phase189/component/jpeg
+  _publishRateSource: 0
+  _publishRateHz: 10
+  _publishOnEnable: 1
+  _warnIfManagerMissing: 1
+  _encodingOverride: 4
+  _outputMode: 0
+  _frameId: unity_camera
+  _width: 640
+  _height: 480
+  _jpegQuality: 70
+  _maxPendingReadbacks: 1
+  _maxCaptureRateHz: 10
+  _cameraHealthMode: 2
+  _useAsyncJpeg: 1
+  _maxJpegEncodeQueue: 2
+  _maxCompletedJpegQueue: 2
+  _maxCompletedJpegPublishesPerFrame: 1
+  _maxPixelsPerFrame: 0
+  _requireIdleJpegPipeline: 1
+  _pipelineCooldownThresholdMs: 50
+  _pipelineCooldownMs: 1000
+  _mainLoopCaptureCooldownThresholdMs: 100
+  _mainLoopStableFramesBeforeCapture: 2
+  _logCameraDiagnostics: 0
+  _cameraDiagnosticsIntervalSeconds: 2
+  _cameraSlowStageThresholdMs: 50
+  _ffmpegPath: 
+  _videoBitrateKbps: 4000
+  _videoKeyframeInterval: 30
+  _videoMaxOutputQueue: 4
+  _logVideoDiagnostics: 0
+  _logEncoderStderr: 0
+  _openH264HelperPath: 
+  _openH264DllPath: 
+  _openH264MaxInputQueue: 2
+  _enableBackpressureAdaptation: 0
+  _backpressureCooldownSeconds: 0.5
+  _maxEncodedBytes: 0
+  _logBackpressureSkips: 0
+  _sensorUnitProfile: {fileID: 0}
+  _useSharedSensorClock: 1
+  _sensorCameraRawImageTopic: /unity/sensor/camera/image
+--- !u!20 &2044740472
+Camera:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2044740470}
+  m_Enabled: 1
+  serializedVersion: 2
+  m_ClearFlags: 1
+  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_projectionMatrixMode: 1
+  m_GateFitMode: 2
+  m_FOVAxisMode: 0
+  m_Iso: 200
+  m_ShutterSpeed: 0.005
+  m_Aperture: 16
+  m_FocusDistance: 10
+  m_FocalLength: 50
+  m_BladeCount: 5
+  m_Curvature: {x: 2, y: 11}
+  m_BarrelClipping: 0.25
+  m_Anamorphism: 0
+  m_SensorSize: {x: 36, y: 24}
+  m_LensShift: {x: 0, y: 0}
+  m_NormalizedViewPortRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  near clip plane: 0.3
+  far clip plane: 1000
+  field of view: 60
+  orthographic: 0
+  orthographic size: 5
+  m_Depth: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingPath: -1
+  m_TargetTexture: {fileID: 0}
+  m_TargetDisplay: 0
+  m_TargetEye: 3
+  m_HDR: 1
+  m_AllowMSAA: 1
+  m_AllowDynamicResolution: 0
+  m_ForceIntoRT: 0
+  m_OcclusionCulling: 1
+  m_StereoConvergence: 10
+  m_StereoSeparation: 0.022
+--- !u!4 &2044740473
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2044740470}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 1628253405}
-  - {fileID: 488825281}
-  - {fileID: 920772033}
-  - {fileID: 1250024401}
-  - {fileID: 1233419269}
-  - {fileID: 499878121}
-  - {fileID: 1422203685}
-  - {fileID: 130058454}
+  - {fileID: 522119114}
+  - {fileID: 2007530953}
+  - {fileID: 212366553}
+  - {fileID: 1510512773}
+  - {fileID: 357540401}
+  - {fileID: 2044740473}
+  - {fileID: 125444502}
+  - {fileID: 122226727}
