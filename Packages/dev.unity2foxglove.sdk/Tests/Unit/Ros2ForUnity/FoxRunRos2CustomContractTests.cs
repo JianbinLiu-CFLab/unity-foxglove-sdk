@@ -26,11 +26,27 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var time = Ros2ForUnityRosTime.SplitUnixNanoseconds(unixNs);
 
             Assert.Equal(int.MaxValue, time.Seconds);
-            Assert.Equal(0U, time.Nanoseconds);
+            Assert.Equal(999_999_999U, time.Nanoseconds);
             var builder = File.ReadAllText(Path.Combine(
                 FindRepositoryRoot(),
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityCameraMessageBuilder.cs"));
             Assert.Contains("Ros2ForUnityRosTime.ToBuiltinTime", builder, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ClampedRosTimestampsNeverMoveBackwards()
+        {
+            var lastRepresentable = Ros2ForUnityRosTime.SplitUnixNanoseconds(
+                (ulong)int.MaxValue * 1_000_000_000UL + 900_000_000UL);
+            var laterClamped = Ros2ForUnityRosTime.SplitUnixNanoseconds(
+                ((ulong)int.MaxValue + 1UL) * 1_000_000_000UL + 100_000_000UL);
+
+            Assert.Equal(int.MaxValue, lastRepresentable.Seconds);
+            Assert.Equal(900_000_000U, lastRepresentable.Nanoseconds);
+            Assert.Equal(int.MaxValue, laterClamped.Seconds);
+            Assert.True(
+                laterClamped.Nanoseconds >= lastRepresentable.Nanoseconds,
+                "A later clamped timestamp must not precede the last representable timestamp.");
         }
 
         [Fact]
