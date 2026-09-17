@@ -1059,6 +1059,113 @@ namespace Demo
         }
 
         [Fact]
+        public void GeneratedPayloadsBindMultiFieldCapturesByMemberAndEncodeUnsignedAndNullCollections()
+        {
+            var topics = new[] { "/phase190/binding", "/phase190/nulllist", "/phase190/unsigned" };
+            var topicMap = new Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>>
+            {
+                // Member-name order (_zeta, alpha) differs from JSON-name order (alpha, zeta).
+                ["/phase190/binding"] = new List<FoxgloveSourceEmitter.TopicMember>
+                {
+                    Phase190Member("_zeta", "System.Double", "/phase190/binding", FoxRunTypeShape.Canonical("float64")),
+                    Phase190Member("alpha", "System.Int32", "/phase190/binding", FoxRunTypeShape.Canonical("int32"))
+                },
+                ["/phase190/nulllist"] = new List<FoxgloveSourceEmitter.TopicMember>
+                {
+                    Phase190Member(
+                        "_value",
+                        "System.Collections.Generic.List<int>",
+                        "/phase190/nulllist",
+                        FoxRunTypeShape.Collection(FoxRunCollectionKind.List, FoxRunTypeShape.Canonical("int32")))
+                },
+                ["/phase190/unsigned"] = new List<FoxgloveSourceEmitter.TopicMember>
+                {
+                    Phase190Member("_value", "System.UInt32", "/phase190/unsigned", FoxRunTypeShape.Canonical("uint32"))
+                }
+            };
+            var generated = new StringBuilder();
+            MessagePackPublishDispatchEmitter.EmitFieldsAndBuilders(generated, topics, topicMap, "    ");
+            var declaration = @"
+using System.Collections.Generic;
+
+namespace Phase190
+{
+    public sealed class MessagePackBinding
+    {
+        private double __foxRunCapture_0_0;
+        private int __foxRunCapture_0_1;
+        private List<int> __foxRunCapture_1_0;
+        private uint __foxRunCapture_2_0;
+"
+                + generated
+                + @"
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "Phase190GeneratedMessagePack_" + Guid.NewGuid().ToString("N"),
+                new[] { CSharpSyntaxTree.ParseText(declaration) },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            using var image = new MemoryStream();
+            var emit = compilation.Emit(image);
+            Assert.True(
+                emit.Success,
+                "Generated MessagePack fixture failed to compile: "
+                + string.Join("; ", emit.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+
+            image.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(image);
+            var type = assembly.GetType("Phase190.MessagePackBinding", throwOnError: true);
+            var instance = Activator.CreateInstance(type);
+            const BindingFlags fieldFlags = BindingFlags.Instance | BindingFlags.NonPublic;
+            type.GetField("__foxRunCapture_0_0", fieldFlags)!.SetValue(instance, 1.5d);
+            type.GetField("__foxRunCapture_0_1", fieldFlags)!.SetValue(instance, 7);
+            type.GetField("__foxRunCapture_1_0", fieldFlags)!.SetValue(instance, null);
+            type.GetField("__foxRunCapture_2_0", fieldFlags)!.SetValue(instance, 3_000_000_000u);
+
+            var expected = new[]
+            {
+                // {"alpha": 7, "zeta": 1.5}
+                new byte[]
+                {
+                    0x82,
+                    0xa5, 0x61, 0x6c, 0x70, 0x68, 0x61, 0x07,
+                    0xa4, 0x7a, 0x65, 0x74, 0x61, 0xcb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                },
+                // {"value": nil}
+                new byte[] { 0x81, 0xa5, 0x76, 0x61, 0x6c, 0x75, 0x65, 0xc0 },
+                // {"value": uint32 3000000000}
+                new byte[] { 0x81, 0xa5, 0x76, 0x61, 0x6c, 0x75, 0x65, 0xce, 0xb2, 0xd0, 0x5e, 0x00 }
+            };
+            for (var index = 0; index < topics.Length; index++)
+            {
+                var payload = Assert.IsType<byte[]>(
+                    type.GetMethod(
+                            "__BuildFoxRunMessagePack_" + index,
+                            BindingFlags.Instance | BindingFlags.NonPublic)!
+                        .Invoke(instance, null));
+                Assert.Equal(expected[index], payload);
+            }
+        }
+
+        private static FoxgloveSourceEmitter.TopicMember Phase190Member(
+            string memberName,
+            string typeName,
+            string topic,
+            FoxRunTypeShape shape)
+            => new FoxgloveSourceEmitter.TopicMember(
+                memberName,
+                typeName,
+                topic,
+                10f,
+                typeName,
+                (int)FoxRunPolicy.FixedRate,
+                0f,
+                mode: (int)FoxRunFlow.Publish,
+                encoding: FoxRunGenerationDescriptorConstants.MessagePackEncoding,
+                typeShape: shape);
+
+        [Fact]
         public void RoslynAndReflectionLoweringEmitTheSameMessagePackSource()
         {
             var shape = FoxRunTypeShape.Object(
