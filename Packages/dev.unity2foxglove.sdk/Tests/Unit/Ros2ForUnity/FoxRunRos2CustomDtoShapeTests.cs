@@ -13,6 +13,23 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 {
     public sealed class FoxRunRos2CustomDtoShapeTests
     {
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        [Fact]
+        public void ReflectionMessageBuilderSkipsInheritedRos2InfrastructureMembers()
+        {
+            // The Roslyn generator host filters ros2cs infrastructure members at
+            // every inheritance level; the reflection host must agree.
+            var shape = FoxRunReflectionRos2MessageShapeBuilder.Build(
+                typeof(phase190_fixture.msg.DerivedPose));
+
+            Assert.True(shape.ImplementsRos2Message);
+            Assert.Empty(shape.Diagnostics);
+            Assert.Equal(
+                new[] { "Extra", "Orientation", "Position" },
+                shape.Members.Select(member => member.Name));
+        }
+
+#endif
         [Fact]
         public void ReflectionBuilderProducesDeterministicSupportedDtoShape()
         {
@@ -322,3 +339,13 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
     }
 }
+
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+namespace phase190_fixture.msg
+{
+    public class DerivedPose : geometry_msgs.msg.Pose
+    {
+        public int Extra;
+    }
+}
+#endif

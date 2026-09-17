@@ -212,14 +212,17 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static ISet<MethodInfo> Ros2csInfrastructureImplementationMethods(Type type)
+        private static ISet<RuntimeMethodHandle> Ros2csInfrastructureImplementationMethods(Type type)
         {
-            var methods = new HashSet<MethodInfo>();
+            // Compare by handle: a MethodInfo from the derived type's interface map
+            // and the same accessor enumerated from a base type differ in
+            // ReflectedType and are not equal as MethodInfo objects.
+            var methods = new HashSet<RuntimeMethodHandle>();
             foreach (var contract in type.GetInterfaces().Where(IsRos2csInfrastructureContract))
             {
                 var map = type.GetInterfaceMap(contract);
                 foreach (var target in map.TargetMethods)
-                    methods.Add(target);
+                    methods.Add(target.MethodHandle);
             }
             return methods;
         }
@@ -232,9 +235,9 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool PropertyImplementsInfrastructureContract(
             PropertyInfo property,
-            ISet<MethodInfo> infrastructureMethods)
-            => (property.GetMethod != null && infrastructureMethods.Contains(property.GetMethod))
-               || (property.SetMethod != null && infrastructureMethods.Contains(property.SetMethod));
+            ISet<RuntimeMethodHandle> infrastructureMethods)
+            => (property.GetMethod != null && infrastructureMethods.Contains(property.GetMethod.MethodHandle))
+               || (property.SetMethod != null && infrastructureMethods.Contains(property.SetMethod.MethodHandle));
 
         private static bool IsWritableSetter(MethodInfo setter)
             => setter?.IsPublic == true
