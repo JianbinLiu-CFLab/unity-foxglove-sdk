@@ -22,11 +22,13 @@ REQUIRED = {
 
 
 def fail(message: str, code: int = 1) -> int:
+    """Emit an inventory failure and return its command exit status."""
     print(f"CLAIM_INVENTORY_INVALID {message}")
     return code
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Validate claim fields, unique IDs and architecture section coverage."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--architecture", required=True, type=Path)

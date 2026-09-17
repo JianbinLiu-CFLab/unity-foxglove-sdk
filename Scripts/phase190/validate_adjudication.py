@@ -18,6 +18,7 @@ REQUIRED = {"finding_id", "claim_id", "root_cluster", "disposition", "evidence"}
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Check finding IDs, claim references and required disposition fields."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--inventory", required=True, type=Path)
     parser.add_argument("--adjudication", required=True, type=Path)

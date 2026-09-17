@@ -13,7 +13,10 @@ from Scripts.phase190 import validate_adjudication, validate_claim_inventory
 
 
 class Phase190ValidatorTests(unittest.TestCase):
+    """Exercise inventory structure and finding-level disposition guards."""
+
     def test_claim_inventory_accepts_eleven_claims_and_maps_sections(self) -> None:
+        """Accept unique complete rows mapping the eight architecture sections."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             inventory = root / "inventory.tsv"
@@ -36,6 +39,7 @@ class Phase190ValidatorTests(unittest.TestCase):
             self.assertEqual(validate_claim_inventory.main(["--input", str(inventory), "--architecture", str(architecture)]), 0)
 
     def test_adjudication_requires_boundary_for_blocked(self) -> None:
+        """Accept a historical blocked record with its explicit boundary field."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             inventory = root / "inventory.tsv"
@@ -49,6 +53,7 @@ class Phase190ValidatorTests(unittest.TestCase):
             self.assertEqual(validate_adjudication.main(["--inventory", str(inventory), "--adjudication", str(adjudication)]), 0)
 
     def test_adjudication_rejects_unknown_claim(self) -> None:
+        """Reject a finding whose claim is absent from the frozen inventory."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             inventory = root / "inventory.tsv"

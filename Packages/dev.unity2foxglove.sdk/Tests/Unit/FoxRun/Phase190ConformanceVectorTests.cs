@@ -18,6 +18,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
     public sealed class Phase190ConformanceVectorTests
     {
         [Fact]
+        public void VectorCatalogContainsEveryFrozenClaim()
+        {
+            Assert.Equal(11, Phase190ConformanceVectors.ByClaim.Count);
+            Assert.Equal(
+                new[]
+                {
+                    "FR-DECL-001", "FR-HOST-002", "FR-EMIT-003", "FR-OUT-004",
+                    "FR-IN-005", "FR-OWN-006", "FR-LIFE-007", "FR-SCHEMA-008",
+                    "FR-ROS-009", "FR-AOT-010", "FR-EVID-011"
+                },
+                Phase190ConformanceVectors.ByClaim.Keys);
+        }
+
+        [Fact]
         public void DeclarationDefaultsVector()
             => new FoxRunDeclarationModelTests().FoxRunAttributeDefaultsToPublishFlow();
 
