@@ -820,6 +820,23 @@ public void PhysicalAndRoslynProviderEmittersStayEquivalent() { }
 
         self.assertEqual(expected, set(groups["Identifier utility"]))
 
+    def test_verbatim_provider_copies_of_core_sources_are_parity_guarded(self) -> None:
+        """Every core source copied verbatim into a provider analyzer must be exact-parity gated."""
+        groups = dict(self.validator.EXACT_SHARED_SOURCE_GROUPS)
+        shared = "Editor/SourceGenerators/src/Shared/"
+        validator_group = {
+            ROOT / "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
+            ROOT / f"Packages/dev.unity2foxglove.ros2forunity/{shared}FoxRunGenerationModelValidator.cs",
+            ROOT / f"Packages/dev.unity2foxglove.ros2bridge/{shared}FoxRunGenerationModelValidator.cs",
+        }
+
+        self.assertEqual(validator_group, set(groups["Generation model validator"]))
+        self.assertEqual(2, len(groups["Type expression emitter"]))
+        for label, paths in self.validator.EXACT_SHARED_SOURCE_GROUPS:
+            for path in paths:
+                self.assertTrue(path.is_file(), f"{label}: {path}")
+        self.assertTrue(self.validator.validate_shared_source_parity())
+
     def test_shared_analyzer_source_parity_rejects_one_copy_drift(self) -> None:
         """The independently packaged analyzers must fail on shared semantic drift."""
         with tempfile.TemporaryDirectory() as temp:

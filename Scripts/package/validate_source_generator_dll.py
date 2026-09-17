@@ -186,6 +186,33 @@ EXACT_SHARED_SOURCE_GROUPS = (
         ),
     ),
 )
+# Core-tested sources copied verbatim into the provider analyzers: (label, core path, ros2bridge copy exists).
+_VERBATIM_PROVIDER_COPIES = (
+    ("Canonical type normalizer", "Editor/Shared/FoxRunDescriptor/FoxRunCanonicalTypeNormalizer.cs", True),
+    ("Emission type name formatter", "Editor/Shared/FoxRunDescriptor/FoxRunEmissionTypeNameFormatter.cs", True),
+    ("Generation descriptor constants", "Editor/Shared/FoxRunDescriptor/FoxRunGenerationDescriptorConstants.cs", True),
+    ("Generation model validator", "Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs", True),
+    ("Protobuf field number", "Editor/Shared/FoxRunDescriptor/FoxRunProtobufFieldNumber.cs", True),
+    ("Roslyn generation model lowerer", "Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs", True),
+    ("Service DTO rules", "Editor/Shared/FoxServiceDtoValidation/FoxServiceDtoRules.cs", True),
+    ("Service DTO type names", "Editor/Shared/FoxServiceDtoValidation/FoxServiceDtoTypeNames.cs", True),
+    ("Service Roslyn type helpers", "Editor/SourceGenerators/src/FoxService/FoxServiceRoslynTypeHelpers.cs", True),
+    ("String literal emitter", "Editor/Shared/FoxgloveSourceEmitter/StringLiteralEmitter.cs", False),
+    ("Type expression emitter", "Editor/Shared/FoxgloveSourceEmitter/TypeExprEmitter.cs", False),
+)
+EXACT_SHARED_SOURCE_GROUPS = EXACT_SHARED_SOURCE_GROUPS + tuple(
+    (
+        label,
+        (REPO_ROOT / "Packages/dev.unity2foxglove.sdk" / core,)
+        + tuple(
+            REPO_ROOT
+            / f"Packages/dev.unity2foxglove.{package}/Editor/SourceGenerators/src/Shared"
+            / Path(core).name
+            for package in (("ros2forunity", "ros2bridge") if in_bridge else ("ros2forunity",))
+        ),
+    )
+    for label, core, in_bridge in _VERBATIM_PROVIDER_COPIES
+)
 PROVIDER_TYPE_SHAPE = (
     REPO_ROOT
     / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/FoxRunTypeShape.cs"
