@@ -83,6 +83,27 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FatalInboundInspectionFailureRollsBackAndEscapesInsteadOfBecomingBackendFailure()
+        {
+            var driver = new InspectionFailureNodeDriver(new OutOfMemoryException("inspection fatal"));
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
+            var backend = owner.AcquireBackend();
+
+            var thrown = Record.Exception(() => backend.Register<FakeMessage>(
+                Contract(),
+                new ManagedQosProfile(),
+                _ => { }));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, driver.CreateSubscriptionCount);
+            Assert.Equal(1, driver.RemoveSubscriptionCount);
+
+            backend.ReleaseNodeOwnership();
+            owner.ReleaseHostOwnership();
+            Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
         public void DiagnosticSnapshotReportsLivePendingAndExactOwnershipCounters()
         {
             var backend = new FakeBackend();
@@ -1959,6 +1980,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         private sealed class InspectionFailureNodeDriver : IFoxRunRos2R2fuNodeDriver
         {
             private readonly object _subscription = new object();
+            private readonly Exception _inspectionFailure;
+
+            public InspectionFailureNodeDriver(Exception inspectionFailure = null)
+                => _inspectionFailure = inspectionFailure
+                    ?? new InvalidOperationException("inspection failed before acknowledgement");
 
             public int CreateSubscriptionCount { get; private set; }
             public int RemoveSubscriptionCount { get; private set; }
@@ -1975,7 +2001,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             }
 
             public bool IsSubscriptionUsable(object subscription)
-                => throw new InvalidOperationException("inspection failed before acknowledgement");
+                => throw _inspectionFailure;
 
             public bool RemoveSubscription(object subscription)
             {
