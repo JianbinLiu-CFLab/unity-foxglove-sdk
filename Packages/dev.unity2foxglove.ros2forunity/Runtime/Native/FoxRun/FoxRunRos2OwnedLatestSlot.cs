@@ -184,8 +184,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     }
                     catch (Exception exception)
                     {
-                        TryClear(clearIfOwned, candidate);
-                        TryDispose(candidate);
+                        try
+                        {
+                            TryClear(clearIfOwned, candidate);
+                        }
+                        finally
+                        {
+                            TryDispose(candidate);
+                        }
                         primaryFailure = ExceptionDispatchInfo.Capture(exception);
                     }
 
@@ -216,7 +222,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 catch (Exception exception)
                 {
-                    if (primaryFailure == null)
+                    if (ReplacesFailure(primaryFailure?.SourceException, exception))
                         primaryFailure = ExceptionDispatchInfo.Capture(exception);
                 }
             }
@@ -264,8 +270,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     }
                     catch (Exception exception)
                     {
-                        TryClear(clearIfOwned, candidate);
-                        TryDispose(candidate);
+                        try
+                        {
+                            TryClear(clearIfOwned, candidate);
+                        }
+                        finally
+                        {
+                            TryDispose(candidate);
+                        }
                         primaryFailure = ExceptionDispatchInfo.Capture(exception);
                     }
 
@@ -308,7 +320,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 catch (Exception exception)
                 {
-                    if (primaryFailure == null)
+                    if (ReplacesFailure(primaryFailure?.SourceException, exception))
                         primaryFailure = ExceptionDispatchInfo.Capture(exception);
                 }
             }
@@ -384,8 +396,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         }
                         catch (Exception exception)
                         {
-                            TryClear(clearIfOwned, candidate);
-                            TryDispose(candidate);
+                            try
+                            {
+                                TryClear(clearIfOwned, candidate);
+                            }
+                            finally
+                            {
+                                TryDispose(candidate);
+                            }
                             primaryFailure = ExceptionDispatchInfo.Capture(exception);
                         }
 
@@ -423,7 +441,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 catch (Exception exception)
                 {
-                    if (primaryFailure == null)
+                    if (ReplacesFailure(primaryFailure?.SourceException, exception))
                         primaryFailure = ExceptionDispatchInfo.Capture(exception);
                 }
             }
@@ -585,10 +603,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             catch (Exception exception)
             {
-                if (firstFailure == null)
+                if (ReplacesFailure(firstFailure, exception))
                     firstFailure = exception;
             }
         }
+
+        private static bool ReplacesFailure(Exception current, Exception candidate)
+            => current == null
+               || (FoxRunRos2NativeExceptionPolicy.IsRecoverable(current)
+                   && !FoxRunRos2NativeExceptionPolicy.IsRecoverable(candidate));
 
         private bool EnterCurrentOperation()
         {

@@ -811,6 +811,99 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 throw failure;
         }
 
+        [Fact]
+        public void ApplyFailureDisposesCandidateBeforeFatalClearEscapes()
+        {
+            var candidate = new OwnedProbe(1);
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe => probe.Dispose());
+            Assert.True(slot.TryPublish(() => candidate));
+
+            var thrown = Record.Exception(() => slot.TryApplyLatest(
+                (Action<OwnedProbe>)(_ => throw new ApplicationException("apply failed")),
+                _ => throw new OutOfMemoryException("clear fatal")));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, candidate.DisposeCount);
+        }
+
+        [Fact]
+        public void ApplyAndRetainFailureDisposesCandidateBeforeFatalClearEscapes()
+        {
+            var candidate = new OwnedProbe(1);
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe => probe.Dispose());
+            Assert.True(slot.TryPublish(() => candidate));
+
+            var thrown = Record.Exception(() => slot.TryApplyLatest(
+                (Func<OwnedProbe, bool>)(_ => throw new ApplicationException("apply failed")),
+                _ => throw new OutOfMemoryException("clear fatal")));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, candidate.DisposeCount);
+        }
+
+        [Fact]
+        public void StopDrainPrefersFatalCleanupOverEarlierRecoverableFailure()
+        {
+            var applied = new OwnedProbe(1);
+            var pending = new OwnedProbe(2);
+            OwnedProbe target = null;
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe =>
+            {
+                probe.Dispose();
+                if (probe.Value == 2)
+                    throw new OutOfMemoryException("pending dispose fatal");
+            });
+            Assert.True(slot.TryPublish(() => applied));
+            Assert.True(slot.TryApplyLatest((Action<OwnedProbe>)(value => target = value), value => ReferenceEquals(target, value)));
+            Assert.True(slot.TryPublish(() => pending));
+
+            var thrown = Record.Exception(() => slot.Stop(
+                _ => throw new InvalidOperationException("clear recoverable")));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, pending.DisposeCount);
+            Assert.Equal(1, applied.DisposeCount);
+            Assert.True(slot.IsStopped);
+        }
+
+        [Fact]
+        public void ApplyFailurePrefersFatalDeferredStopCleanup()
+        {
+            var applied = new OwnedProbe(1);
+            var candidate = new OwnedProbe(2);
+            OwnedProbe target = null;
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe =>
+            {
+                probe.Dispose();
+                if (probe.Value == 1)
+                    throw new OutOfMemoryException("deferred cleanup fatal");
+            });
+            Func<OwnedProbe, bool> clear = value =>
+            {
+                if (!ReferenceEquals(target, value))
+                    return false;
+                target = null;
+                return true;
+            };
+            Assert.True(slot.TryPublish(() => applied));
+            Assert.True(slot.TryApplyLatest((Action<OwnedProbe>)(value => target = value), clear));
+            Assert.True(slot.TryPublish(() => candidate));
+
+            var thrown = Record.Exception(() => slot.TryApplyLatest(
+                (Action<OwnedProbe>)(value =>
+                {
+                    target = value;
+                    slot.Stop(clear);
+                    throw new ApplicationException("apply failed");
+                }),
+                clear));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, applied.DisposeCount);
+            Assert.Equal(1, candidate.DisposeCount);
+            Assert.True(slot.IsStopped);
+        }
+
         private sealed class OwnedProbe
         {
             private int _disposeCount;
