@@ -10,6 +10,8 @@ using UnityEngine.Scripting;
 /// <summary>
 /// Opt-in IL2CPP player check that the physical FoxRun generated capture code
 /// survives stripping and transfers concrete values to in-process observers.
+/// A batch-mode Editor started with the same argument enters Play Mode and
+/// runs the identical check.
 /// </summary>
 [Preserve]
 public static class Phase190FoxRunPlayerAcceptance
@@ -17,6 +19,19 @@ public static class Phase190FoxRunPlayerAcceptance
     private const string EnableArgument = "-phase190FoxRunPlayerAcceptance";
     private const int ConditionalHealthTopic = 0;
     private const int ConditionalPositionTopic = 1;
+
+#if UNITY_EDITOR
+    [UnityEditor.InitializeOnLoadMethod]
+    private static void EnterPlayModeIfRequested()
+    {
+        if (!Application.isBatchMode
+            || Array.IndexOf(Environment.GetCommandLineArgs(), EnableArgument) < 0
+            || UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode)
+            return;
+
+        UnityEditor.EditorApplication.delayCall += UnityEditor.EditorApplication.EnterPlaymode;
+    }
+#endif
 
     [Preserve]
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -88,14 +103,24 @@ public static class Phase190FoxRunPlayerAcceptance
 
             Debug.Log($"PHASE190_FOXRUN_PLAYER_PASS health={healths.Count} position={positions.Count}");
             UnityEngine.Object.Destroy(host);
-            Application.Quit(0);
+            Finish(0);
         }
         catch (Exception ex)
         {
             Debug.LogError("PHASE190_FOXRUN_PLAYER_FAIL " + ex);
             UnityEngine.Object.Destroy(host);
-            Application.Quit(1);
+            Finish(1);
         }
+    }
+
+    private static void Finish(int exitCode)
+    {
+#if UNITY_EDITOR
+        Debug.Log("PHASE190_FOXRUN_EDITOR_PLAYMODE isPlaying=" + Application.isPlaying);
+        UnityEditor.EditorApplication.Exit(exitCode);
+#else
+        Application.Quit(exitCode);
+#endif
     }
 
     private static void Transfer(
