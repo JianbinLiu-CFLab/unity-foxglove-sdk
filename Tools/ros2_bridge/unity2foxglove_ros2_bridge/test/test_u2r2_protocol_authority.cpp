@@ -436,7 +436,7 @@ TEST(U2R2ProtocolAuthority, SharedCommit2LedgerDrivesEveryBoundedAuthorityScenar
   const auto limits_json = authority_json.at("limits");
   const auto limits = LimitsFrom(limits_json);
   const auto & scenarios = authority_json.at("scenarios");
-  ASSERT_EQ(57U, scenarios.size());
+  ASSERT_EQ(58U, scenarios.size());
 
   std::unordered_set<std::string> consumed;
   for (const auto & scenario : scenarios) {
@@ -2322,6 +2322,71 @@ TEST(U2R2ProtocolAuthority, SharedCommit2LedgerDrivesEveryBoundedAuthorityScenar
       EXPECT_EQ(
         Bytes(scenario.at("abortResponseHex").get<std::string>()),
         DrainOne(scheduler).bytes());
+    } else if (id == "removal_abort_restores_ready_contract") {
+      u2r2::BoundedOutboundScheduler scheduler(limits);
+      u2r2::RequestReplayAuthority replay(limits);
+      u2r2::ContractAuthority contracts(
+        limits,
+        [&](u2r2::Operation operation,
+          uint64_t request_id,
+          const u2r2::ProtocolError & error)
+        {
+          EXPECT_EQ(
+            scenario.at("responseOperation").get<std::string>(),
+            OperationToken(operation));
+          EXPECT_EQ(
+            scenario.at("abortErrorCode").get<std::string>(),
+            error.code());
+          return u2r2::OutboundFrame::control(
+            OperationToken(operation) + ":" + std::to_string(request_id),
+            Bytes(scenario.at("abortResponseHex").get<std::string>()));
+        });
+      const auto key = Key(scenario);
+      const auto identity = Identity(key);
+      auto ready_response = replay.admit(
+        scenario.at("registerRequestId").get<uint64_t>(),
+        RequestBytes("register_subscription", identity),
+        1,
+        scheduler);
+      auto registration = contracts.begin_registration(
+        identity, scheduler, replay, ready_response);
+      contracts.commit_ready(
+        registration,
+        replay,
+        ready_response,
+        u2r2::OutboundFrame::control("subscription_ready", Bytes("01")));
+      (void)DrainOne(scheduler);
+      auto removed_response = replay.admit(
+        scenario.at("unregisterRequestId").get<uint64_t>(),
+        RequestBytes("unregister_subscription", identity),
+        1,
+        scheduler);
+      auto removal = contracts.begin_unregister(
+        identity, scheduler, replay, removed_response);
+      contracts.abort_removal(
+        removal,
+        scheduler,
+        replay,
+        removed_response,
+        u2r2::ProtocolError(
+          scenario.at("abortErrorCode").get<std::string>(),
+          "unregister backend timed out",
+          false));
+      EXPECT_EQ(
+        Bytes(scenario.at("abortResponseHex").get<std::string>()),
+        DrainOne(scheduler).bytes());
+      EXPECT_EQ(
+        scenario.at("expectedContractCount").get<uint64_t>(),
+        contracts.contract_count());
+      EXPECT_EQ(
+        u2r2::MessageAdmission::accepted,
+        contracts.admit_message(
+          identity, scenario.at("messageSequence").get<uint64_t>()));
+      EXPECT_EQ(
+        u2r2::EnqueueDisposition::accepted,
+        scheduler.enqueue_data(
+          u2r2::OutboundFrame::data("message", key, 1, Bytes("aa")),
+          u2r2::QueueOverflowPolicy::reject));
     } else if (id == "cached_replay_rejects_wrong_scheduler") {
       u2r2::BoundedOutboundScheduler original(limits);
       u2r2::BoundedOutboundScheduler wrong(limits);

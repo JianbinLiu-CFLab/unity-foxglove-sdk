@@ -2271,6 +2271,18 @@
           "expectedOutstandingRequests": 0
         },
         {
+          "id": "removal_abort_restores_ready_contract",
+          "contractId": 131,
+          "generation": 1,
+          "registerRequestId": 141,
+          "unregisterRequestId": 142,
+          "responseOperation": "subscription_removed",
+          "abortErrorCode": "invalid_contract",
+          "abortResponseHex": "b2",
+          "messageSequence": 1,
+          "expectedContractCount": 1
+        },
+        {
           "id": "cached_replay_rejects_wrong_scheduler",
           "requestId": 91,
           "canonicalRequestHex": "c1",

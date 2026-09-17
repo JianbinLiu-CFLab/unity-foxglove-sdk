@@ -1194,8 +1194,8 @@ namespace Unity2Foxglove.Ros2Bridge.Protocol
                     response.RequestId,
                     error);
                 replay.RejectClaimed(response, exactErrorFrame);
-                _contracts.Remove(admission.Identity.Key);
-                scheduler.RetireContract(admission.Identity.Key);
+                entry.State = ContractState.Ready;
+                scheduler.ActivateContract(admission.Identity.Key);
                 admission.IsSettled = true;
             }
         }
