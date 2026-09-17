@@ -280,28 +280,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void StopClearsAndDisposesSharedPendingAppliedReferenceExactlyOnce()
-        {
-            var owned = new OwnedProbe(1);
-            OwnedProbe target = null;
-            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe => probe.Dispose());
-            Assert.True(slot.TryPublish(() => owned));
-            Assert.True(slot.TryApplyLatest(value => target = value, value => ReferenceEquals(target, value)));
-            Assert.True(slot.TryPublish(() => owned));
-
-            slot.Stop(value =>
-            {
-                if (!ReferenceEquals(target, value))
-                    return false;
-                target = null;
-                return true;
-            });
-
-            Assert.Null(target);
-            Assert.Equal(1, owned.DisposeCount);
-        }
-
-        [Fact]
         public void StopWaitsForInFlightApplyThenClearsAndDisposesOnStopCaller()
         {
             using var applyEntered = new ManualResetEventSlim();
@@ -379,14 +357,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void ConcurrentStopCallsDrainSharedPendingAppliedReferenceOnce()
+        public void ConcurrentStopCallsDrainPendingAndAppliedOnce()
         {
             using var firstDisposeEntered = new ManualResetEventSlim();
             using var releaseFirstDispose = new ManualResetEventSlim();
             using var secondStopEntered = new ManualResetEventSlim();
             using var secondStopReturned = new ManualResetEventSlim();
             var disposeEntries = 0;
-            var owned = new OwnedProbe(1);
+            var applied = new OwnedProbe(1);
+            var pending = new OwnedProbe(2);
             OwnedProbe target = null;
             var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe =>
             {
@@ -397,9 +376,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 }
                 probe.Dispose();
             });
-            Assert.True(slot.TryPublish(() => owned));
+            Assert.True(slot.TryPublish(() => applied));
             Assert.True(slot.TryApplyLatest(value => target = value, value => ReferenceEquals(target, value)));
-            Assert.True(slot.TryPublish(() => owned));
+            Assert.True(slot.TryPublish(() => pending));
 
             Exception firstFailure = null;
             Exception secondFailure = null;
@@ -443,8 +422,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Null(firstFailure);
             Assert.Null(secondFailure);
             Assert.Null(target);
-            Assert.Equal(1, disposeEntries);
-            Assert.Equal(1, owned.DisposeCount);
+            Assert.Equal(2, disposeEntries);
+            Assert.Equal(1, applied.DisposeCount);
+            Assert.Equal(1, pending.DisposeCount);
         }
 
         [Fact]

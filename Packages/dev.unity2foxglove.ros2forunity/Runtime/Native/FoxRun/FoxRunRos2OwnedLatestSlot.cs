@@ -21,7 +21,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     }
 
     /// <summary>
-    /// Owns at most one pending and one applied reference. Publishing replaces
+    /// Owns at most one pending and one applied reference. Every published value
+    /// must be a distinct owned instance: publishing an instance that is still
+    /// pending or applied is not supported, because replacement and drain would
+    /// dispose it while another slot position still owns it.
+    /// Publishing replaces
     /// and disposes pending ownership on the producer thread; applying replaces
     /// and disposes applied ownership on the consumer thread. A Stop call made
     /// from the same operation or disposer stack only requests shutdown; final
