@@ -812,6 +812,65 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void BoundedExternalStopReturnsUndrainedUntilALaterStopDrains()
+        {
+            var applied = new OwnedProbe(1);
+            OwnedProbe target = null;
+            Func<OwnedProbe, bool> clear = value =>
+            {
+                if (!ReferenceEquals(target, value))
+                    return false;
+                target = null;
+                return true;
+            };
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe => probe.Dispose());
+            Assert.True(slot.TryPublish(() => applied));
+            Assert.True(slot.TryApplyLatest((Action<OwnedProbe>)(value => target = value), clear));
+
+            using var copyEntered = new ManualResetEventSlim();
+            using var releaseCopy = new ManualResetEventSlim();
+            var producer = new Thread(() => slot.TryPublish(() =>
+            {
+                copyEntered.Set();
+                releaseCopy.Wait(TimeSpan.FromSeconds(30));
+                return new OwnedProbe(2);
+            }))
+            {
+                IsBackground = true,
+            };
+            Thread stopper = null;
+            try
+            {
+                producer.Start();
+                Assert.True(copyEntered.Wait(TimeSpan.FromSeconds(10)));
+
+                stopper = new Thread(() => slot.Stop(clear)) { IsBackground = true };
+                stopper.Start();
+                Assert.True(
+                    stopper.Join(TimeSpan.FromSeconds(5)),
+                    "A bounded external Stop must return while a publisher is still active.");
+                Assert.False(slot.IsStopped);
+                Assert.True(slot.IsStopping);
+                Assert.Same(applied, target);
+                Assert.Equal(0, applied.DisposeCount);
+
+                releaseCopy.Set();
+                Assert.True(producer.Join(TimeSpan.FromSeconds(10)));
+
+                slot.Stop(clear);
+                Assert.True(slot.IsStopped);
+                Assert.Null(target);
+                Assert.Equal(1, applied.DisposeCount);
+            }
+            finally
+            {
+                releaseCopy.Set();
+                producer.Join(TimeSpan.FromSeconds(10));
+                stopper?.Join(TimeSpan.FromSeconds(10));
+            }
+        }
+
+        [Fact]
         public void ApplyFailureDisposesCandidateBeforeFatalClearEscapes()
         {
             var candidate = new OwnedProbe(1);

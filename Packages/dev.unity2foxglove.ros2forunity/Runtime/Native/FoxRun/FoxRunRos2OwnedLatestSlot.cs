@@ -26,8 +26,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     /// and disposes applied ownership on the consumer thread. A Stop call made
     /// from the same operation or disposer stack only requests shutdown; final
     /// draining is performed by the main-thread consumer's apply-finally path or
-    /// by a later external main-thread Stop. A non-reentrant external Stop drains
-    /// synchronously before it returns.
+    /// by a later external main-thread Stop. A non-reentrant external Stop waits
+    /// up to one second for in-flight publishers and appliers and then drains; if
+    /// they are still active at that bound it returns without draining,
+    /// <see cref="IsStopped"/> stays false, and the owner must call Stop again
+    /// after they exit.
     /// </summary>
     public sealed class FoxRunRos2OwnedLatestSlot<T>
         where T : class
