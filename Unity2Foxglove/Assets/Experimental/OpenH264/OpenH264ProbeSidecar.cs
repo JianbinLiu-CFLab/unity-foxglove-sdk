@@ -12,6 +12,7 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Foxglove.Schemas.Video;
 
 /// <summary>
 /// Launches the locally built OpenH264 probe helper process and exposes
@@ -23,6 +24,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
     private readonly ConcurrentQueue<ProbeInputFrame> _inputFrames = new ConcurrentQueue<ProbeInputFrame>();
     private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
+    private readonly ConcurrentQueue<ulong> _encodedFrameTimestamps = new ConcurrentQueue<ulong>();
     private readonly object _lifecycleLock = new object();
     private bool _stopping;
     private readonly object _outputLock = new object();
