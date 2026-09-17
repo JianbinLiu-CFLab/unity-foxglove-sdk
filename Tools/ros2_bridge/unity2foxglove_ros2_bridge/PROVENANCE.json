@@ -163,7 +163,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority.cpp",
-      "sha256": "e8d82d92f3d5ab1ad1a0a0daedc090f8dc87524d16ca6fe7e9dc215ebe2f8f07",
+      "sha256": "8914c1bd2bed1c9c02d855d98dc749e3ed9eb7ff7b58f163cbd9640f7aeb7f1d",
       "classification": "original",
       "influence": "Original C++ replay, ordering, queue, limit, and contract authority implementation.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
