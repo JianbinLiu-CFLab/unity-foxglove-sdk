@@ -106,6 +106,22 @@ namespace Unity.FoxgloveSDK.Tests
                 malformed["finalMessagePack"]["topics"][Topics[0]]["payloadHex"] = "00";
                 File.WriteAllText(reportPath, malformed.ToString(Formatting.Indented));
                 ExpectInspectorFailure(mcapPath, reportPath, run, head, generation, outputPath, "payload");
+
+                // A structurally valid map that is not the recorded one: only the byte comparison
+                // against the MCAP message can reject it.
+                var divergent = (JObject)report.DeepClone();
+                divergent["finalMessagePack"]["topics"][Topics[0]]["payloadHex"] =
+                    ToHex(MapPayload("value", 8, "label", "scalar"));
+                File.WriteAllText(reportPath, divergent.ToString(Formatting.Indented));
+                ExpectInspectorFailure(
+                    mcapPath, reportPath, run, head, generation, outputPath, "do not exactly match");
+
+                var divergentBinary = (JObject)report.DeepClone();
+                divergentBinary["finalMessagePack"]["topics"][Topics[2]]["payloadHex"] =
+                    ToHex(BinaryPayload(new byte[] { 0xff, 0xd8, 0xff, 0xda }));
+                File.WriteAllText(reportPath, divergentBinary.ToString(Formatting.Indented));
+                ExpectInspectorFailure(
+                    mcapPath, reportPath, run, head, generation, outputPath, "do not exactly match");
             }
             finally
             {

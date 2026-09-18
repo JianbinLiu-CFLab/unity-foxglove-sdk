@@ -218,7 +218,98 @@ namespace Unity.FoxgloveSDK.UnitTests
             McapIndexedReaderHelpers.TryAddBoundedMessage(descending, Message(1, 2, 1), descendingOptions, out _);
             McapIndexedReaderHelpers.TryAddBoundedMessage(descending, Message(1, 3, 3), descendingOptions, out _);
 
-            Assert.Equal(new[] { 3UL, 1UL }, descending.Select(message => message.LogTime));
+            Assert.Equal(new[] { 5UL, 3UL }, descending.Select(message => message.LogTime));
+        }
+
+        [Fact]
+        public void LogTimeBoundedHelperRetainsTheLatestMessagesInBothOrders()
+        {
+            var ascending = new List<McapMessage>();
+            var descending = new List<McapMessage>();
+            var ascendingOptions = new McapReadOptions
+            {
+                Order = McapReadOrder.LogTimeAscending,
+                MaxMessages = 3
+            };
+            var descendingOptions = new McapReadOptions
+            {
+                Order = McapReadOrder.LogTimeDescending,
+                MaxMessages = 3
+            };
+
+            for (uint sequence = 1; sequence <= 10; sequence++)
+            {
+                McapIndexedReaderHelpers.TryAddBoundedMessage(ascending, Message(1, sequence, sequence), ascendingOptions, out _);
+                McapIndexedReaderHelpers.TryAddBoundedMessage(descending, Message(1, sequence, sequence), descendingOptions, out _);
+            }
+
+            Assert.Equal(new[] { 8UL, 9UL, 10UL }, ascending.Select(message => message.LogTime));
+            Assert.Equal(new[] { 10UL, 9UL, 8UL }, descending.Select(message => message.LogTime));
+        }
+
+        [Fact]
+        public void LogTimeBoundedHelperEvictsTheOldestMessageInBothOrders()
+        {
+            var ascending = new List<McapMessage>();
+            var descending = new List<McapMessage>();
+            var ascendingOptions = new McapReadOptions
+            {
+                Order = McapReadOrder.LogTimeAscending,
+                MaxMessages = 2
+            };
+            var descendingOptions = new McapReadOptions
+            {
+                Order = McapReadOrder.LogTimeDescending,
+                MaxMessages = 2
+            };
+
+            McapIndexedReaderHelpers.TryAddBoundedMessage(ascending, Message(1, 1, 5), ascendingOptions, out _);
+            McapIndexedReaderHelpers.TryAddBoundedMessage(ascending, Message(1, 2, 7), ascendingOptions, out _);
+            McapIndexedReaderHelpers.TryAddBoundedMessage(ascending, Message(1, 3, 9), ascendingOptions, out var ascendingEvicted);
+
+            McapIndexedReaderHelpers.TryAddBoundedMessage(descending, Message(1, 1, 5), descendingOptions, out _);
+            McapIndexedReaderHelpers.TryAddBoundedMessage(descending, Message(1, 2, 7), descendingOptions, out _);
+            McapIndexedReaderHelpers.TryAddBoundedMessage(descending, Message(1, 3, 9), descendingOptions, out var descendingEvicted);
+
+            Assert.Equal(5UL, ascendingEvicted?.LogTime);
+            Assert.Equal(5UL, descendingEvicted?.LogTime);
+        }
+
+        [Fact]
+        public void LatestScanStopsOnlyWhenOlderChunksCannotImproveTheSelection()
+        {
+            var latestByChannel = new Dictionary<ushort, McapMessage>
+            {
+                [1] = Message(1, 1, 10),
+                [2] = Message(2, 1, 4)
+            };
+
+            Assert.False(McapIndexedReaderHelpers.CanStopLatestScan(latestByChannel, 2, 6));
+            Assert.False(McapIndexedReaderHelpers.CanStopLatestScan(latestByChannel, 2, 4));
+            Assert.True(McapIndexedReaderHelpers.CanStopLatestScan(latestByChannel, 2, 3));
+
+            var incomplete = new Dictionary<ushort, McapMessage>
+            {
+                [1] = Message(1, 1, 10)
+            };
+
+            Assert.False(McapIndexedReaderHelpers.CanStopLatestScan(incomplete, 2, 0));
+            Assert.False(McapIndexedReaderHelpers.CanStopLatestScan(latestByChannel, 0, 0));
+        }
+
+        [Fact]
+        public void OfficialEndTimeSemanticsExcludeTheEndBoundaryOnlyWhenEnabled()
+        {
+            var inclusive = new McapReadOptions { EndTimeNs = 100 };
+            var official = new McapReadOptions { EndTimeNs = 100, UseOfficialEndTimeSemantics = true };
+
+            Assert.False(McapIndexedReaderHelpers.IsAtOrPastEnd(99, inclusive));
+            Assert.False(McapIndexedReaderHelpers.IsAtOrPastEnd(100, inclusive));
+            Assert.True(McapIndexedReaderHelpers.IsAtOrPastEnd(101, inclusive));
+
+            Assert.False(McapIndexedReaderHelpers.IsAtOrPastEnd(99, official));
+            Assert.True(McapIndexedReaderHelpers.IsAtOrPastEnd(100, official));
+            Assert.True(McapIndexedReaderHelpers.IsAtOrPastEnd(101, official));
         }
 
         [Fact]

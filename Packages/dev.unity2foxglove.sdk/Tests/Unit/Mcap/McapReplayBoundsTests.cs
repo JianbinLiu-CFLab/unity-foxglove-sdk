@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using Unity.FoxgloveSDK.IO;
 using Xunit;
@@ -84,6 +86,81 @@ namespace FoxgloveSdk.UnitTests.Mcap
 
                 Assert.Equal(100, emitted);
                 Assert.Equal(100UL, previousTime);
+            }
+            finally
+            {
+                TryDelete(path);
+            }
+        }
+
+        [Fact]
+        public void ScanBudgetBoundaryFollowsTheOldestRetainedCandidates()
+        {
+            // Out-of-order records inside one chunk: after the budget is reached the boundary must
+            // track the oldest retained candidates, so a record past that boundary ends the tick.
+            var times = new ulong[] { 10, 20, 15, 18, 40 };
+            var path = CreateMcap(pathName: "mseries-m2-r2-boundary", chunkSizeBytes: 4096,
+                writeMessages: recorder =>
+                {
+                    for (var i = 0; i < times.Length; i++)
+                        recorder.WriteMessage(1, times[i], new byte[] { (byte)i });
+                });
+            try
+            {
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                engine.MaxMessagesPerTick = 2;
+                engine.Play();
+
+                // Tick reuses its result buffer, so each tick is copied before the next one runs.
+                var first = engine.Tick(100).Select(message => message.LogTime).ToArray();
+                var scanned = engine.LastTickScannedRecordCount;
+                var second = engine.Tick(100).Select(message => message.LogTime).ToArray();
+
+                // The tick emits the two oldest due records and stops at the boundary they define;
+                // the out-of-order records behind that boundary follow in the next tick.
+                Assert.Equal(new ulong[] { 10, 15 }, first);
+                Assert.Equal(new ulong[] { 18, 20 }, second);
+                // Retaining the newest candidates instead of the oldest would raise the boundary and
+                // scan past it, so the scanned-record count is part of the contract.
+                Assert.Equal(4, scanned);
+            }
+            finally
+            {
+                TryDelete(path);
+            }
+        }
+
+        [Fact]
+        public void SnapshotKeepsScanningOverlappingOlderChunksForABetterChannelWinner()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "mseries-m2-r3-overlap-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(stream, null, chunkSizeBytes: 4096, compression: "", leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/mseries/first", "json", "mseries.First", "jsonschema", "{}");
+                    recorder.AddChannel(2, "/mseries/second", "json", "mseries.Second", "jsonschema", "{}");
+                    // Chunk 1 spans [1000, 6000] and already holds a candidate for both channels.
+                    recorder.WriteMessage(1, 6000, new byte[] { 1 });
+                    recorder.WriteMessage(2, 1000, new byte[] { 2 });
+                    // The attachment closes the chunk, so the newer channel-2 message lands in an
+                    // older-ending chunk that still overlaps the first one.
+                    recorder.AddAttachment("boundary", "application/octet-stream", new byte[] { 0 }, 1000);
+                    recorder.WriteMessage(2, 5000, new byte[] { 3 });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var snapshot = engine.Snapshot(engine.EndTimeNs, new List<McapMessage>());
+
+                Assert.Equal(2, snapshot.Count);
+                Assert.Equal(6000UL, snapshot.Single(message => message.ChannelId == 1).LogTime);
+                Assert.Equal(5000UL, snapshot.Single(message => message.ChannelId == 2).LogTime);
             }
             finally
             {

@@ -104,7 +104,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
-      "sha256": "cdabcd75a347b54add0638bbdf170592df5bb3e7ba0a27e86504ceecc7c48026",
+      "sha256": "9cf22c0d0903000816095fa7bd54e35edc6d933156e8be315b4db10601853133",
       "classification": "original",
       "influence": "Original C# behavioral coverage for replay, ordering, queues, limits, and contracts.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
