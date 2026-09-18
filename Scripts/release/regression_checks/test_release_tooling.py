@@ -823,6 +823,9 @@ class RunCiTests(unittest.TestCase):
             "Scripts.smoke.ros2.regression_checks.test_ros2_windows_env",
             "Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe",
             "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual",
+            "Scripts.phase190.regression_checks.test_phase190_validators",
+            "Scripts.phase190.regression_checks.test_phase190_script_documentation",
+            "Scripts.phase190.regression_checks.test_run_conformance",
         )
         calls: list[list[str]] = []
 
