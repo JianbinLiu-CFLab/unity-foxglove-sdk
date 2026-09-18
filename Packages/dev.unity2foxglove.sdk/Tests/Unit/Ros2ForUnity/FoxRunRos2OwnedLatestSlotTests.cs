@@ -881,6 +881,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void DecidedApplyFailureDisposesCandidateBeforeFatalClearEscapes()
+        {
+            var candidate = new OwnedProbe(1);
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe => probe.Dispose());
+            Assert.True(slot.TryPublish(() => candidate));
+
+            var thrown = Record.Exception(() => slot.TryApplyLatest(
+                (next, current) => FoxRunRos2PendingDecision.Apply,
+                _ => throw new ApplicationException("apply failed"),
+                _ => throw new OutOfMemoryException("clear fatal")));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, candidate.DisposeCount);
+        }
+
+        [Fact]
         public void StopDrainPrefersFatalCleanupOverEarlierRecoverableFailure()
         {
             var applied = new OwnedProbe(1);
@@ -907,6 +923,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
         [Fact]
         public void ApplyFailurePrefersFatalDeferredStopCleanup()
+            => AssertApplyFailurePrefersFatalDeferredStopCleanup(
+                (slot, apply, clear) => slot.TryApplyLatest(apply, clear));
+
+        [Fact]
+        public void ApplyAndRetainFailurePrefersFatalDeferredStopCleanup()
+            => AssertApplyFailurePrefersFatalDeferredStopCleanup(
+                (slot, apply, clear) => slot.TryApplyLatest(
+                    (Func<OwnedProbe, bool>)(value =>
+                    {
+                        apply(value);
+                        return true;
+                    }),
+                    clear));
+
+        [Fact]
+        public void DecidedApplyFailurePrefersFatalDeferredStopCleanup()
+            => AssertApplyFailurePrefersFatalDeferredStopCleanup(
+                (slot, apply, clear) => slot.TryApplyLatest(
+                    (next, current) => FoxRunRos2PendingDecision.Apply,
+                    apply,
+                    clear));
+
+        private static void AssertApplyFailurePrefersFatalDeferredStopCleanup(
+            Func<FoxRunRos2OwnedLatestSlot<OwnedProbe>, Action<OwnedProbe>, Func<OwnedProbe, bool>, bool> applyLatest)
         {
             var applied = new OwnedProbe(1);
             var candidate = new OwnedProbe(2);
@@ -928,13 +968,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.True(slot.TryApplyLatest((Action<OwnedProbe>)(value => target = value), clear));
             Assert.True(slot.TryPublish(() => candidate));
 
-            var thrown = Record.Exception(() => slot.TryApplyLatest(
-                (Action<OwnedProbe>)(value =>
+            var thrown = Record.Exception(() => applyLatest(
+                slot,
+                value =>
                 {
                     target = value;
                     slot.Stop(clear);
                     throw new ApplicationException("apply failed");
-                }),
+                },
                 clear));
 
             Assert.IsType<OutOfMemoryException>(thrown);
