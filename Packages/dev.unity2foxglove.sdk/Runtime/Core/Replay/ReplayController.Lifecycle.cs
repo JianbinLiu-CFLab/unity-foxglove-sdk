@@ -100,11 +100,11 @@ namespace Unity.FoxgloveSDK.Core
                     var summary = _replayEngine.Summary;
                     if (identityMode != SchemaIdentityMode.Off)
                     {
-                        var schemaGuard = ReplaySchemaGuard.Evaluate(_replayEngine);
+                        var schemaGuard = ReplaySchemaGuard.Evaluate(_replayEngine, identityMode);
                         if (schemaGuard.State == FoxRunReplaySchemaGuardState.Mismatch)
                             Volatile.Write(ref _lastEnableHadSchemaMismatch, true);
 
-                        if (schemaGuard.IsBlocking && identityMode == SchemaIdentityMode.Strict)
+                        if (schemaGuard.IsBlocking)
                         {
                             Volatile.Write(ref _lastEnableBlockedBySchemaMismatch, true);
                             throw new InvalidDataException(schemaGuard.Message);

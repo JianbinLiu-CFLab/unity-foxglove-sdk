@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json;
+using Unity.FoxgloveSDK.Core;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -75,6 +76,25 @@ namespace Unity.FoxgloveSDK.Components
 
         [JsonProperty("policyHash", Order = 5)]
         public string PolicyHash { get; set; }
+
+        [JsonProperty("fields", Order = 6)]
+        public List<FoxRunSchemaMcapFieldMetadata> Fields { get; set; }
+    }
+
+    /// <summary>Stable field digest data emitted by schema metadata version 2.</summary>
+    public sealed class FoxRunSchemaMcapFieldMetadata
+    {
+        [JsonProperty("name", Order = 0)]
+        public string Name { get; set; }
+
+        [JsonProperty("canonicalType", Order = 1)]
+        public string CanonicalType { get; set; }
+
+        [JsonProperty("ordinal", Order = 2)]
+        public int Ordinal { get; set; }
+
+        [JsonProperty("encoding", Order = 3)]
+        public string Encoding { get; set; }
     }
 
     /// <summary>Deterministic JSON payload stored in the FoxRun MCAP metadata record.</summary>
@@ -118,7 +138,7 @@ namespace Unity.FoxgloveSDK.Components
     public static class FoxRunSchemaMcapMetadata
     {
         public const string MetadataName = "unity2foxglove.foxrun.schema";
-        public const int SchemaMetadataVersion = 1;
+        public const int SchemaMetadataVersion = 2;
 
         public static bool TryCreateJson(FoxRunSchemaManifestInfo manifest, out string json)
         {
@@ -154,7 +174,16 @@ namespace Unity.FoxgloveSDK.Components
                         Encoding = contract.Encoding ?? string.Empty,
                         ContractHash = contract.ContractHash ?? string.Empty,
                         BindingHash = contract.BindingHash ?? string.Empty,
-                        PolicyHash = contract.PolicyHash ?? string.Empty
+                        PolicyHash = contract.PolicyHash ?? string.Empty,
+                        Fields = contract.Fields == null
+                            ? new List<FoxRunSchemaMcapFieldMetadata>()
+                            : contract.Fields.Select((field, ordinal) => new FoxRunSchemaMcapFieldMetadata
+                            {
+                                Name = field?.JsonName ?? string.Empty,
+                                CanonicalType = field?.Type ?? string.Empty,
+                                Ordinal = ordinal,
+                                Encoding = contract.Encoding ?? string.Empty
+                            }).ToList()
                     });
                 }
             }
@@ -206,7 +235,8 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if (record.SchemaMetadataVersion != SchemaMetadataVersion)
+            if (record.SchemaMetadataVersion != 1
+                && record.SchemaMetadataVersion != SchemaMetadataVersion)
             {
                 error = "unsupported schema metadata version: " + record.SchemaMetadataVersion.ToString(CultureInfo.InvariantCulture);
                 return false;
@@ -227,6 +257,13 @@ namespace Unity.FoxgloveSDK.Components
             if (record.Contracts == null)
             {
                 error = "contracts array is missing";
+                return false;
+            }
+
+            if (record.SchemaMetadataVersion == 2
+                && record.Contracts.Any(contract => contract?.Fields == null))
+            {
+                error = "version 2 contract fields are missing";
                 return false;
             }
 
@@ -258,6 +295,41 @@ namespace Unity.FoxgloveSDK.Components
                 return CreateMalformedRecordedResult(error);
 
             return Evaluate(recorded, current);
+        }
+
+        public static FoxRunReplaySchemaGuardResult EvaluateRecordedJson(
+            string recordedJson,
+            FoxRunSchemaManifestInfo current,
+            SchemaIdentityMode identityMode)
+        {
+            if (!TryParseJson(recordedJson, out var recorded, out var error))
+                return CreateMalformedRecordedResult(error);
+            return Evaluate(recorded, current, identityMode);
+        }
+
+        public static FoxRunReplaySchemaGuardResult Evaluate(
+            FoxRunSchemaMcapMetadataRecord recorded,
+            FoxRunSchemaManifestInfo current,
+            SchemaIdentityMode identityMode)
+        {
+            if (recorded == null)
+                return CreateMissingRecordedResult();
+            var compatibility = FoxRunCompatibilityAnalyzer.Analyze(recorded, current);
+            var decision = compatibility.Decide(identityMode);
+            var isBlocking = decision == FoxRunCompatibilityDecision.Block;
+            if (compatibility.Classification == FoxRunCompatibilityClass.Exact)
+                return new FoxRunReplaySchemaGuardResult(
+                    FoxRunReplaySchemaGuardState.Match,
+                    false,
+                    compatibility.Message,
+                    recorded.GlobalManifestHash,
+                    current?.GlobalManifestHash ?? string.Empty);
+            return new FoxRunReplaySchemaGuardResult(
+                FoxRunReplaySchemaGuardState.Mismatch,
+                isBlocking,
+                compatibility.Message + (isBlocking ? "\nReplay blocked." : "\nReplay continued."),
+                recorded.GlobalManifestHash,
+                current?.GlobalManifestHash ?? string.Empty);
         }
 
         public static FoxRunReplaySchemaGuardResult Evaluate(

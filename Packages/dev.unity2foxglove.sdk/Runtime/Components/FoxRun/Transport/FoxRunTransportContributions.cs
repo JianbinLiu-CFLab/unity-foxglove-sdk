@@ -200,6 +200,13 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 catch (Exception exception)
                 {
+                    if (session is IFoxRunTransportSession providerSession)
+                        FoxRunProviderDiagnostics.Record(
+                            providerSession.Id.Value,
+                            "PublishGenerated",
+                            exception,
+                            providerSession.Generation,
+                            request.Topic);
                     result = FoxRunTransportPublishResult.Failed(
                         exception.Message);
                 }
@@ -510,6 +517,13 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 catch (Exception exception)
                 {
+                    if (session is IFoxRunTransportSession providerSession)
+                        FoxRunProviderDiagnostics.Record(
+                            providerSession.Id.Value,
+                            "Publish",
+                            exception,
+                            providerSession.Generation,
+                            request.Topic);
                     result =
                         FoxRunTransportPublishResult.Failed(
                             exception.Message);
