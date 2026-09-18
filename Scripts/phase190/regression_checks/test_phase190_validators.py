@@ -52,6 +52,34 @@ class Phase190ValidatorTests(unittest.TestCase):
             )
             self.assertEqual(validate_adjudication.main(["--inventory", str(inventory), "--adjudication", str(adjudication)]), 0)
 
+    def test_adjudication_rejects_confirmed_without_test(self) -> None:
+        """Reject a confirmed finding that carries no test reference."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            inventory = root / "inventory.tsv"
+            adjudication = root / "adjudication.tsv"
+            inventory.write_text("claim_id\nC001\n", encoding="utf-8")
+            adjudication.write_text(
+                "finding_id\tclaim_id\troot_cluster\tdisposition\tevidence\ttest\n"
+                "F001\tC001\troot\tCONFIRMED\tevidence\t\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(validate_adjudication.main(["--inventory", str(inventory), "--adjudication", str(adjudication)]), 1)
+
+    def test_adjudication_rejects_blocked_without_boundary(self) -> None:
+        """Reject a blocked finding that states no applicability boundary."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            inventory = root / "inventory.tsv"
+            adjudication = root / "adjudication.tsv"
+            inventory.write_text("claim_id\nC001\n", encoding="utf-8")
+            adjudication.write_text(
+                "finding_id\tclaim_id\troot_cluster\tdisposition\tevidence\ttest\tboundary\n"
+                "F001\tC001\troot\tBLOCKED\tevidence\tprobe\t\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(validate_adjudication.main(["--inventory", str(inventory), "--adjudication", str(adjudication)]), 1)
+
     def test_adjudication_rejects_unknown_claim(self) -> None:
         """Reject a finding whose claim is absent from the frozen inventory."""
         with tempfile.TemporaryDirectory() as temp:
