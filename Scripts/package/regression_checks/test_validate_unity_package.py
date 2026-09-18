@@ -837,6 +837,78 @@ public void PhysicalAndRoslynProviderEmittersStayEquivalent() { }
                 self.assertTrue(path.is_file(), f"{label}: {path}")
         self.assertTrue(self.validator.validate_shared_source_parity())
 
+        guarded = {
+            (core, copy)
+            for _label, paths in self.validator.EXACT_SHARED_SOURCE_GROUPS
+            for core in paths
+            for copy in paths
+        }
+        sdk = ROOT / "Packages/dev.unity2foxglove.sdk"
+        cores = {
+            path.name: path
+            for folder in ("Editor/Shared", "Editor/SourceGenerators/src")
+            for path in (sdk / folder).rglob("*.cs")
+        }
+        known_unguarded_variants = {
+            "FoxgloveLogSourceGenerator.cs",
+            "FoxgloveLogSourceGenerator.Models.cs",
+            "FoxRunGenerationModel.cs",
+            "FoxRunTypeShape.cs",
+        }
+        for package in ("ros2forunity", "ros2bridge"):
+            for copy in (ROOT / f"Packages/dev.unity2foxglove.{package}/{shared}").rglob("*.cs"):
+                core = cores.get(copy.name)
+                if core is None or copy.name in known_unguarded_variants:
+                    continue
+                self.assertTrue((core, copy) in guarded, f"{package} copy {copy.name} is not parity guarded")
+
+    def test_verbatim_provider_copy_drift_fails_actual_parity_gate(self) -> None:
+        """Canonical and service provider copies must fail the real parity validator when drifted."""
+        groups = tuple(self.validator.EXACT_SHARED_SOURCE_GROUPS)
+        expected = {
+            "Canonical type normalizer": (
+                "FoxRunCanonicalTypeNormalizer.cs",
+                "FoxRunCanonicalTypeNormalizer.cs",
+                "FoxRunCanonicalTypeNormalizer.cs",
+            ),
+            "Service DTO rules": (
+                "FoxServiceDtoRules.cs",
+                "FoxServiceDtoRules.cs",
+                "FoxServiceDtoRules.cs",
+            ),
+        }
+        by_label = dict(groups)
+        for label, expected_names in expected.items():
+            with self.subTest(label=label):
+                self.assertIn(label, by_label)
+                source_paths = tuple(by_label[label])
+                self.assertEqual(expected_names, tuple(path.name for path in source_paths))
+                with tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    cloned_groups = []
+                    mutated_copy = None
+                    for group_label, paths in groups:
+                        clones = []
+                        for index, source in enumerate(paths):
+                            clone = root / group_label / f"{index}-{source.name}"
+                            clone.parent.mkdir(parents=True, exist_ok=True)
+                            clone.write_bytes(source.read_bytes())
+                            clones.append(clone)
+                        if group_label == label:
+                            mutated_copy = clones[-1]
+                        cloned_groups.append((group_label, tuple(clones)))
+                    assert mutated_copy is not None
+                    mutated_copy.write_text(
+                        mutated_copy.read_text(encoding="utf-8") + "// isolated parity drift\n",
+                        encoding="utf-8",
+                    )
+                    with mock.patch.object(
+                        self.validator,
+                        "EXACT_SHARED_SOURCE_GROUPS",
+                        tuple(cloned_groups),
+                    ), mock.patch("sys.stderr"):
+                        self.assertFalse(self.validator.validate_shared_source_parity())
+
     def test_shared_analyzer_source_parity_rejects_one_copy_drift(self) -> None:
         """The independently packaged analyzers must fail on shared semantic drift."""
         with tempfile.TemporaryDirectory() as temp:
