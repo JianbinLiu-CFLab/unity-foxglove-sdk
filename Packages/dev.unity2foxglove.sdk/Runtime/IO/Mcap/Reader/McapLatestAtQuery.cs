@@ -188,8 +188,12 @@ namespace Unity.FoxgloveSDK.IO
                 result.Insert(low, message);
                 if (result.Count > options.MaxMessages)
                 {
-                    evicted = result[0];
-                    result.RemoveAt(0);
+                    // The window is kept in query order, so the oldest retained message sits at the
+                    // end for descending queries and at index 0 for ascending queries. Both orders
+                    // retain the latest MaxMessages, as McapReadOptions.MaxMessages documents.
+                    var oldest = descending ? result.Count - 1 : 0;
+                    evicted = result[oldest];
+                    result.RemoveAt(oldest);
                 }
                 return true;
             }
