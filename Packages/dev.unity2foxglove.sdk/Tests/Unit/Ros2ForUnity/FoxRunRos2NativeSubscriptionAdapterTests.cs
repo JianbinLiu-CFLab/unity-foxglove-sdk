@@ -95,6 +95,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 _ => { }));
 
             Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Contains(
+                nameof(InspectionFailureNodeDriver.IsSubscriptionUsable),
+                thrown.StackTrace,
+                StringComparison.Ordinal);
             Assert.Equal(1, driver.CreateSubscriptionCount);
             Assert.Equal(1, driver.RemoveSubscriptionCount);
 
