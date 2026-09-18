@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -106,6 +107,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [InlineData(0)]
         [InlineData(1)]
         [InlineData(2)]
+        public async Task SubmittedFrameTimestampsReachThePairingQueueUnchanged(int codec)
+        {
+            using var fixture = new WorkerFixture(codec, "silent");
+            await fixture.ExpectLine("READY");
+            fixture.StartWriter();
+            var submitted = new[] { 123_456_789UL, 987_654_321UL, 1_000_000_007UL };
+            for (var i = 0; i < submitted.Length; i++)
+            {
+                Assert.True(fixture.Submit(submitted[i]));
+                await fixture.ExpectLine("FRAME_READ_" + (i + 1));
+            }
+
+            Assert.Equal(submitted.Length, fixture.PendingTimestamps);
+            Assert.Equal(submitted, fixture.PendingTimestampValues);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
         public async Task StdoutEndRetiresChildAfterOutputClosure(int codec)
         {
             using var fixture = new WorkerFixture(codec, "close-stdout");
@@ -157,6 +178,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             public void Stop() => Sidecar.GetType().GetMethod("Stop", Type.EmptyTypes).Invoke(Sidecar, null);
             public int PendingTimestamps => (int)Sidecar.GetType().GetProperty(
                 "PendingTimestampCountForTests", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(Sidecar);
+            public ulong[] PendingTimestampValues =>
+                ((ConcurrentQueue<ulong>)Get("_encodedFrameTimestamps")).ToArray();
 
             public WorkerFixture(int codec, string mode)
             {
