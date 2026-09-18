@@ -208,6 +208,105 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
         }
 
         [Fact]
+        public void CachedContractReplayIsRejectedForAnotherContractOperationOrScheduler()
+        {
+            var limits = U2R2ProtocolLimits.Default;
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            var otherScheduler = new U2R2BoundedOutboundScheduler(limits);
+            var replay = new U2R2RequestReplayAuthority(limits);
+            var contracts = new U2R2ContractAuthority(limits, DefaultSemanticErrorFrame);
+            var otherContracts = new U2R2ContractAuthority(limits, DefaultSemanticErrorFrame);
+            var identity = Identity(new U2R2ContractKey(51, 1));
+            var otherIdentity = Identity(new U2R2ContractKey(52, 1));
+
+            var first = replay.AdmitContract(
+                1,
+                RequestBytes("register_subscription", identity),
+                1,
+                scheduler,
+                U2R2Operation.RegisterSubscription,
+                identity);
+            replay.Complete(first, new byte[] { 0x11 });
+            DrainOne(scheduler);
+
+            var cached = replay.AdmitContract(
+                1,
+                RequestBytes("register_subscription", identity),
+                1,
+                scheduler,
+                U2R2Operation.RegisterSubscription,
+                identity);
+            Assert.Equal(U2R2ReplayDecision.ReplayCached, cached.Decision);
+            DrainOne(scheduler);
+
+            Assert.Throws<InvalidOperationException>(
+                () => contracts.BeginRegistration(otherIdentity, scheduler, replay, cached));
+            Assert.Throws<InvalidOperationException>(
+                () => contracts.BeginUnregister(identity, scheduler, replay, cached));
+            Assert.Throws<InvalidOperationException>(
+                () => otherContracts.BeginRegistration(identity, otherScheduler, replay, cached));
+            Assert.Equal(0UL, contracts.ContractCount);
+            Assert.Equal(0UL, otherContracts.ContractCount);
+
+            var replayed = contracts.BeginRegistration(identity, scheduler, replay, cached);
+            Assert.True(replayed.Replayed);
+            contracts.CommitReady(
+                replayed,
+                replay,
+                cached,
+                U2R2OutboundFrame.Control("subscription_ready:1", new byte[] { 0x11 }));
+            cached.Dispose();
+        }
+
+        [Fact]
+        public void PendingContractClaimIsRejectedForAnotherOperation()
+        {
+            var limits = U2R2ProtocolLimits.Default;
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            var replay = new U2R2RequestReplayAuthority(limits);
+            var contracts = new U2R2ContractAuthority(limits, DefaultSemanticErrorFrame);
+            var identity = Identity(new U2R2ContractKey(41, 7));
+            var pending = replay.AdmitContract(
+                1,
+                RequestBytes("register_subscription", identity),
+                1,
+                scheduler,
+                U2R2Operation.RegisterSubscription,
+                identity);
+
+            Assert.Throws<InvalidOperationException>(
+                () => contracts.BeginUnregister(identity, scheduler, replay, pending));
+            Assert.Equal(0UL, contracts.ContractCount);
+
+            var registration = contracts.BeginRegistration(identity, scheduler, replay, pending);
+            Assert.False(registration.Replayed);
+            contracts.CommitReady(
+                registration,
+                replay,
+                pending,
+                U2R2OutboundFrame.Control("subscription_ready:1", new byte[] { 0x11 }));
+            pending.Dispose();
+        }
+
+        [Fact]
+        public void CancelledRequestIdStaysStaleAtTheHighWaterMark()
+        {
+            var limits = U2R2ProtocolLimits.Default;
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            var replay = new U2R2RequestReplayAuthority(limits);
+
+            var pending = replay.Admit(7, Bytes("06"), 1, scheduler);
+            Assert.Equal(U2R2ReplayDecision.BeginMutation, pending.Decision);
+            Assert.Equal(7UL, replay.HighWaterMark);
+            replay.CancelPending(pending);
+
+            var stale = Assert.Throws<U2R2ProtocolException>(
+                () => replay.Admit(7, Bytes("06"), 1, scheduler));
+            Assert.Equal("stale_request", stale.ErrorCode);
+            Assert.Equal(0UL, replay.OutstandingRequests);
+        }
+
+        [Fact]
         public void DroppedAdmissionsRollbackEveryOwnedBoundedResource()
         {
             var limits = U2R2ProtocolLimits.Default;
