@@ -33,7 +33,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
         [Fact]
         public void DeclarationDefaultsVector()
-            => new FoxRunDeclarationModelTests().FoxRunAttributeDefaultsToPublishFlow();
+        {
+            var tests = new FoxRunDeclarationModelTests();
+            tests.FoxRunAttributeDefaultsToPublishFlow();
+            tests.ReflectionAndRoslynLowerersProduceEquivalentCanonicalConditionModel();
+        }
 
         [Fact]
         public void DualHostVector()
@@ -41,27 +45,71 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
         [Fact]
         public void SharedEmitterVector()
-            => new DescriptorEmitterTests().ChunkedDescriptorCarrierDoesNotSplitAStringEscape();
+        {
+            var descriptor = new DescriptorEmitterTests();
+            descriptor.ChunkedDescriptorCarrierDoesNotSplitAStringEscape();
+            var aggregate = new FoxRunAggregationEmitterTests();
+            aggregate.AggregateMessagePackEmitsOneDirectStableMapBuilderWithoutJsonFallback();
+        }
 
         [Fact]
         public void OutputFanoutVector()
-            => new FoxRunAggregationEmitterTests().AggregateMemberEmitsSinkFanoutSideChannelReusingExplicitJsonBytes();
+        {
+            var aggregate = new FoxRunAggregationEmitterTests();
+            aggregate.AggregateMemberEmitsSinkFanoutSideChannelReusingExplicitJsonBytes();
+            aggregate.AggregateMemberEmitsBusSideChannelReusingExplicitJsonBytes();
+            aggregate.LegacySingleFieldTopicEmitsSinkFanoutSideChannel();
+            aggregate.AggregateSchedulingUsesTheSameShortVocabulary();
+            var providers = new Unity.FoxgloveSDK.Tests.FoxRunTransportProviderTests();
+            providers.OrdinaryFanoutContinuesAcrossThreeProvidersWhenMiddleProviderFails();
+            providers.GeneratedFanoutUsesExplicitRoutesAndClassifiesEverySelectedProvider();
+        }
 
         [Fact]
         public void InputAdmissionVector()
-            => new FoxRunInboundTests().RouterUsesGeneratedAllowlistAndRegistrationOrder();
+        {
+            var inbound = new FoxRunInboundTests();
+            inbound.RouterUsesGeneratedAllowlistAndRegistrationOrder();
+            inbound.RouterRejectsUnknownOversizedAndRateLimitedMessages();
+            inbound.RouterRejectsWrongEncodingBeforeItConsumesTheTopicRateQuota();
+            inbound.RouterConsumesOneQuotaAndAppliesOnlyMatchingSharedTopicRegistrations();
+            inbound.RouterUnregisterStopsAssignment();
+            inbound.InputHubSafelyRebindsSessionPolicyAndAppliesTheCurrentSnapshotImmediately();
+            inbound.InputHubRefreshesSessionPolicyBeforeFirstMessageDispatch();
+            var providers = new Unity.FoxgloveSDK.Tests.FoxRunTransportProviderTests();
+            providers.CaptureFailsClosedForMissingUnavailableOrCapabilityMismatch();
+            providers.ResolveRevalidatesProviderAfterReentrantMetadataMutation();
+        }
 
         [Fact]
         public void OwnershipVector()
-            => new FoxRunInboundTests().RouterUnregisterClearsOptionalOwnedInputExactlyOncePerRegistrationLifetime();
+        {
+            var inbound = new FoxRunInboundTests();
+            inbound.RouterUnregisterClearsOptionalOwnedInputExactlyOncePerRegistrationLifetime();
+            inbound.FailedSecondOwnershipAcquisitionClearsTheFirstMemberExactlyOnce();
+            inbound.GeneratedWebSocketStreamFreezesRegisteredInstanceUntilOwnedClear();
+        }
 
         [Fact]
         public void LifecycleVector()
-            => new FoxgloveManagerTeardownTests().DisableTeardownRunsEveryMandatoryStepInOrderAndRethrowsFirstFatal();
+        {
+            new FoxgloveManagerTeardownTests().DisableTeardownRunsEveryMandatoryStepInOrderAndRethrowsFirstFatal();
+            var runtime = new Unity.FoxgloveSDK.UnitTests.Harness.RuntimeStateReviewTests();
+            runtime.RuntimeStopDetachesRecordingExactlyOnceBeforeSessionDispose();
+            runtime.RuntimeStartFailureDisposesPartiallyStartedSessionBeforeRethrowing();
+            runtime.RuntimeDisposePreservesCleanupAndReleasesTransportAfterStopFailure();
+        }
 
         [Fact]
         public void SchemaReplayVector()
-            => new FoxgloveSdk.UnitTests.Mcap.McapReplayBoundsTests().DeferredFutureMessageCountBoundIsIndependentOfOwnerByteBound();
+        {
+            new FoxgloveSdk.UnitTests.Mcap.McapReplayBoundsTests().DeferredFutureMessageCountBoundIsIndependentOfOwnerByteBound();
+            var replay = new Unity.FoxgloveSDK.Tests.Replay.ReplayFileValidatorTests();
+            replay.ValidateReplayFileForLoadRejectsEmptyMissingAndUnfinalizedFiles();
+            replay.ValidateReplayFileForLoadAcceptsFinalizedMcapEnvelope();
+            var schema = new Unity.FoxgloveSDK.UnitTests.Harness.SchemaManifestJsonWriterTests();
+            schema.WriteReportRejectsNullManifestWithParameterName();
+        }
 
         [Fact]
         public void Ros2MappingSourceVector()
