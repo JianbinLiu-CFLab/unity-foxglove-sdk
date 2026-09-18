@@ -102,8 +102,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                 .Values<JObject>()
                 .ToArray();
 
-            Assert.Equal(57, scenarios.Length);
-            Assert.Equal(57, scenarios
+            Assert.Equal(58, scenarios.Length);
+            Assert.Equal(58, scenarios
                 .Select(scenario => scenario.Value<string>("id"))
                 .Distinct(StringComparer.Ordinal)
                 .Count());
@@ -435,6 +435,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
                     return;
                 case "contract_claim_blocks_external_cancel":
                     ContractClaimBlocksExternalCancel(scenario, limits);
+                    return;
+                case "removal_abort_restores_ready_contract":
+                    RemovalAbortRestoresReadyContract(scenario, limits);
                     return;
                 case "cached_replay_rejects_wrong_scheduler":
                     CachedReplayRejectsWrongScheduler(scenario, limits);
@@ -2841,6 +2844,83 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
             Assert.Equal(
                 Bytes(scenario.Value<string>("abortResponseHex")),
                 DrainOne(scheduler).Bytes.ToArray());
+        }
+
+        private static void RemovalAbortRestoresReadyContract(
+            JObject scenario,
+            U2R2ProtocolLimits limits)
+        {
+            var scheduler = new U2R2BoundedOutboundScheduler(limits);
+            var replay = new U2R2RequestReplayAuthority(limits);
+            var contracts = new U2R2ContractAuthority(
+                limits,
+                (operation, requestId, error) =>
+                {
+                    Assert.Equal(
+                        scenario.Value<string>("responseOperation"),
+                        OperationToken(operation));
+                    Assert.Equal(
+                        scenario.Value<string>("abortErrorCode"),
+                        error.ErrorCode);
+                    return U2R2OutboundFrame.Control(
+                        OperationToken(operation)
+                        + ":"
+                        + requestId.ToString(CultureInfo.InvariantCulture),
+                        Bytes(scenario.Value<string>("abortResponseHex")));
+                });
+            var key = Key(scenario);
+            var identity = Identity(key);
+            var readyResponse = replay.Admit(
+                scenario.Value<ulong>("registerRequestId"),
+                RequestBytes("register_subscription", identity),
+                1,
+                scheduler);
+            var registration = contracts.BeginRegistration(
+                identity,
+                scheduler,
+                replay,
+                readyResponse);
+            contracts.CommitReady(
+                registration,
+                replay,
+                readyResponse,
+                U2R2OutboundFrame.Control("subscription_ready", Bytes("01")));
+            DrainOne(scheduler);
+            var removedResponse = replay.Admit(
+                scenario.Value<ulong>("unregisterRequestId"),
+                RequestBytes("unregister_subscription", identity),
+                1,
+                scheduler);
+            var removal = contracts.BeginUnregister(
+                identity,
+                scheduler,
+                replay,
+                removedResponse);
+
+            contracts.AbortRemoval(
+                removal,
+                scheduler,
+                replay,
+                removedResponse,
+                new U2R2ProtocolException(
+                    scenario.Value<string>("abortErrorCode"),
+                    "unregister backend timed out",
+                    terminal: false));
+
+            Assert.Equal(
+                Bytes(scenario.Value<string>("abortResponseHex")),
+                DrainOne(scheduler).Bytes.ToArray());
+            Assert.Equal(
+                scenario.Value<ulong>("expectedContractCount"),
+                contracts.ContractCount);
+            Assert.Equal(
+                U2R2MessageAdmission.Accepted,
+                contracts.AdmitMessage(identity, scenario.Value<ulong>("messageSequence")));
+            Assert.Equal(
+                U2R2EnqueueDisposition.Accepted,
+                scheduler.EnqueueData(
+                    U2R2OutboundFrame.Data("message", key, 1, Bytes("aa")),
+                    U2R2QueueOverflowPolicy.Reject));
         }
 
         private static void CachedReplayRejectsWrongScheduler(

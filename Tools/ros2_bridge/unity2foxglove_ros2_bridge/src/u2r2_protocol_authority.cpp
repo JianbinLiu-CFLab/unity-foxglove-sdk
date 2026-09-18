@@ -2941,8 +2941,8 @@ void ContractAuthority::abort_registration(
             "the semantic error factory must return a control frame");
   }
   replay.finish(response, std::move(frame), false, true);
-  found->second.state = Impl::State::ready;
-  scheduler.activate_contract(admission.identity_->key);
+  state->contracts.erase(found);
+  scheduler.retire_contract(admission.identity_->key);
   admission.settled_ = true;
   DisarmRollback(admission.rollback_);
 }

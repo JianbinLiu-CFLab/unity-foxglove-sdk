@@ -218,6 +218,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             catch (Exception exception)
             {
                 RollbackAfterRegistrationFailure(token);
+                if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                    throw;
                 return FoxRunRos2NativeBackendRegistration.Failure(
                     FoxRunRos2RegistrationError.BackendFailure,
                     Describe(exception));

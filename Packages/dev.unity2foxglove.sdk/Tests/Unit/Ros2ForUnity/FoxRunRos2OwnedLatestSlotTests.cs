@@ -280,28 +280,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void StopClearsAndDisposesSharedPendingAppliedReferenceExactlyOnce()
-        {
-            var owned = new OwnedProbe(1);
-            OwnedProbe target = null;
-            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe => probe.Dispose());
-            Assert.True(slot.TryPublish(() => owned));
-            Assert.True(slot.TryApplyLatest(value => target = value, value => ReferenceEquals(target, value)));
-            Assert.True(slot.TryPublish(() => owned));
-
-            slot.Stop(value =>
-            {
-                if (!ReferenceEquals(target, value))
-                    return false;
-                target = null;
-                return true;
-            });
-
-            Assert.Null(target);
-            Assert.Equal(1, owned.DisposeCount);
-        }
-
-        [Fact]
         public void StopWaitsForInFlightApplyThenClearsAndDisposesOnStopCaller()
         {
             using var applyEntered = new ManualResetEventSlim();
@@ -379,14 +357,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void ConcurrentStopCallsDrainSharedPendingAppliedReferenceOnce()
+        public void ConcurrentStopCallsDrainPendingAndAppliedOnce()
         {
             using var firstDisposeEntered = new ManualResetEventSlim();
             using var releaseFirstDispose = new ManualResetEventSlim();
             using var secondStopEntered = new ManualResetEventSlim();
             using var secondStopReturned = new ManualResetEventSlim();
             var disposeEntries = 0;
-            var owned = new OwnedProbe(1);
+            var applied = new OwnedProbe(1);
+            var pending = new OwnedProbe(2);
             OwnedProbe target = null;
             var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe =>
             {
@@ -397,9 +376,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 }
                 probe.Dispose();
             });
-            Assert.True(slot.TryPublish(() => owned));
+            Assert.True(slot.TryPublish(() => applied));
             Assert.True(slot.TryApplyLatest(value => target = value, value => ReferenceEquals(target, value)));
-            Assert.True(slot.TryPublish(() => owned));
+            Assert.True(slot.TryPublish(() => pending));
 
             Exception firstFailure = null;
             Exception secondFailure = null;
@@ -443,8 +422,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Null(firstFailure);
             Assert.Null(secondFailure);
             Assert.Null(target);
-            Assert.Equal(1, disposeEntries);
-            Assert.Equal(1, owned.DisposeCount);
+            Assert.Equal(2, disposeEntries);
+            Assert.Equal(1, applied.DisposeCount);
+            Assert.Equal(1, pending.DisposeCount);
         }
 
         [Fact]
@@ -809,6 +789,199 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "Slot operation did not complete within the reentrancy bound.");
             if (failure != null)
                 throw failure;
+        }
+
+        [Fact]
+        public void BoundedExternalStopReturnsUndrainedUntilALaterStopDrains()
+        {
+            var applied = new OwnedProbe(1);
+            OwnedProbe target = null;
+            Func<OwnedProbe, bool> clear = value =>
+            {
+                if (!ReferenceEquals(target, value))
+                    return false;
+                target = null;
+                return true;
+            };
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe => probe.Dispose());
+            Assert.True(slot.TryPublish(() => applied));
+            Assert.True(slot.TryApplyLatest((Action<OwnedProbe>)(value => target = value), clear));
+
+            using var copyEntered = new ManualResetEventSlim();
+            using var releaseCopy = new ManualResetEventSlim();
+            var producer = new Thread(() => slot.TryPublish(() =>
+            {
+                copyEntered.Set();
+                releaseCopy.Wait(TimeSpan.FromSeconds(30));
+                return new OwnedProbe(2);
+            }))
+            {
+                IsBackground = true,
+            };
+            Thread stopper = null;
+            try
+            {
+                producer.Start();
+                Assert.True(copyEntered.Wait(TimeSpan.FromSeconds(10)));
+
+                stopper = new Thread(() => slot.Stop(clear)) { IsBackground = true };
+                stopper.Start();
+                Assert.True(
+                    stopper.Join(TimeSpan.FromSeconds(5)),
+                    "A bounded external Stop must return while a publisher is still active.");
+                Assert.False(slot.IsStopped);
+                Assert.True(slot.IsStopping);
+                Assert.Same(applied, target);
+                Assert.Equal(0, applied.DisposeCount);
+
+                releaseCopy.Set();
+                Assert.True(producer.Join(TimeSpan.FromSeconds(10)));
+
+                slot.Stop(clear);
+                Assert.True(slot.IsStopped);
+                Assert.Null(target);
+                Assert.Equal(1, applied.DisposeCount);
+            }
+            finally
+            {
+                releaseCopy.Set();
+                producer.Join(TimeSpan.FromSeconds(10));
+                stopper?.Join(TimeSpan.FromSeconds(10));
+            }
+        }
+
+        [Fact]
+        public void ApplyFailureDisposesCandidateBeforeFatalClearEscapes()
+        {
+            var candidate = new OwnedProbe(1);
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe => probe.Dispose());
+            Assert.True(slot.TryPublish(() => candidate));
+
+            var thrown = Record.Exception(() => slot.TryApplyLatest(
+                (Action<OwnedProbe>)(_ => throw new ApplicationException("apply failed")),
+                _ => throw new OutOfMemoryException("clear fatal")));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, candidate.DisposeCount);
+        }
+
+        [Fact]
+        public void ApplyAndRetainFailureDisposesCandidateBeforeFatalClearEscapes()
+        {
+            var candidate = new OwnedProbe(1);
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe => probe.Dispose());
+            Assert.True(slot.TryPublish(() => candidate));
+
+            var thrown = Record.Exception(() => slot.TryApplyLatest(
+                (Func<OwnedProbe, bool>)(_ => throw new ApplicationException("apply failed")),
+                _ => throw new OutOfMemoryException("clear fatal")));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, candidate.DisposeCount);
+        }
+
+        [Fact]
+        public void DecidedApplyFailureDisposesCandidateBeforeFatalClearEscapes()
+        {
+            var candidate = new OwnedProbe(1);
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe => probe.Dispose());
+            Assert.True(slot.TryPublish(() => candidate));
+
+            var thrown = Record.Exception(() => slot.TryApplyLatest(
+                (next, current) => FoxRunRos2PendingDecision.Apply,
+                _ => throw new ApplicationException("apply failed"),
+                _ => throw new OutOfMemoryException("clear fatal")));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, candidate.DisposeCount);
+        }
+
+        [Fact]
+        public void StopDrainPrefersFatalCleanupOverEarlierRecoverableFailure()
+        {
+            var applied = new OwnedProbe(1);
+            var pending = new OwnedProbe(2);
+            OwnedProbe target = null;
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe =>
+            {
+                probe.Dispose();
+                if (probe.Value == 2)
+                    throw new OutOfMemoryException("pending dispose fatal");
+            });
+            Assert.True(slot.TryPublish(() => applied));
+            Assert.True(slot.TryApplyLatest((Action<OwnedProbe>)(value => target = value), value => ReferenceEquals(target, value)));
+            Assert.True(slot.TryPublish(() => pending));
+
+            var thrown = Record.Exception(() => slot.Stop(
+                _ => throw new InvalidOperationException("clear recoverable")));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, pending.DisposeCount);
+            Assert.Equal(1, applied.DisposeCount);
+            Assert.True(slot.IsStopped);
+        }
+
+        [Fact]
+        public void ApplyFailurePrefersFatalDeferredStopCleanup()
+            => AssertApplyFailurePrefersFatalDeferredStopCleanup(
+                (slot, apply, clear) => slot.TryApplyLatest(apply, clear));
+
+        [Fact]
+        public void ApplyAndRetainFailurePrefersFatalDeferredStopCleanup()
+            => AssertApplyFailurePrefersFatalDeferredStopCleanup(
+                (slot, apply, clear) => slot.TryApplyLatest(
+                    (Func<OwnedProbe, bool>)(value =>
+                    {
+                        apply(value);
+                        return true;
+                    }),
+                    clear));
+
+        [Fact]
+        public void DecidedApplyFailurePrefersFatalDeferredStopCleanup()
+            => AssertApplyFailurePrefersFatalDeferredStopCleanup(
+                (slot, apply, clear) => slot.TryApplyLatest(
+                    (next, current) => FoxRunRos2PendingDecision.Apply,
+                    apply,
+                    clear));
+
+        private static void AssertApplyFailurePrefersFatalDeferredStopCleanup(
+            Func<FoxRunRos2OwnedLatestSlot<OwnedProbe>, Action<OwnedProbe>, Func<OwnedProbe, bool>, bool> applyLatest)
+        {
+            var applied = new OwnedProbe(1);
+            var candidate = new OwnedProbe(2);
+            OwnedProbe target = null;
+            var slot = new FoxRunRos2OwnedLatestSlot<OwnedProbe>(probe =>
+            {
+                probe.Dispose();
+                if (probe.Value == 1)
+                    throw new OutOfMemoryException("deferred cleanup fatal");
+            });
+            Func<OwnedProbe, bool> clear = value =>
+            {
+                if (!ReferenceEquals(target, value))
+                    return false;
+                target = null;
+                return true;
+            };
+            Assert.True(slot.TryPublish(() => applied));
+            Assert.True(slot.TryApplyLatest((Action<OwnedProbe>)(value => target = value), clear));
+            Assert.True(slot.TryPublish(() => candidate));
+
+            var thrown = Record.Exception(() => applyLatest(
+                slot,
+                value =>
+                {
+                    target = value;
+                    slot.Stop(clear);
+                    throw new ApplicationException("apply failed");
+                },
+                clear));
+
+            Assert.IsType<OutOfMemoryException>(thrown);
+            Assert.Equal(1, applied.DisposeCount);
+            Assert.Equal(1, candidate.DisposeCount);
+            Assert.True(slot.IsStopped);
         }
 
         private sealed class OwnedProbe

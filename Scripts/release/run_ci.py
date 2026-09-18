@@ -184,6 +184,9 @@ PACKAGE_LANE_REGRESSION_MODULES = (
     "Scripts.smoke.ros2.regression_checks.test_ros2_windows_env",
     "Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe",
     "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual",
+    "Scripts.phase190.regression_checks.test_phase190_validators",
+    "Scripts.phase190.regression_checks.test_phase190_script_documentation",
+    "Scripts.phase190.regression_checks.test_run_conformance",
 )
 PHASE181_TYPESUPPORT_VALIDATOR = "Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py"
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
