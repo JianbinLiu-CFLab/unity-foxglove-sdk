@@ -123,6 +123,165 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.NotNull(updated);
         }
 
+        [Fact]
+        public void GeneratedCodecWritesOrderedWireNamesAndSkipsIgnoredMembers()
+        {
+            // Declaration order (by member name) is Alpha, Ignored, Zeta; wire order is alpha, zulu.
+            // The two orders disagree, so a dropped sort, a member-name key or an included
+            // [JsonIgnore] member all change the bytes.
+            var source = "using System; using Unity.FoxgloveSDK.Protocol; using Newtonsoft.Json; "
+                + "[FoxgloveSchema(\"demo.Ordered\")] public sealed class Ordered "
+                + "{ [JsonProperty(\"zulu\")] public int Alpha; [JsonProperty(\"alpha\")] public uint Zeta; "
+                + "[JsonIgnore] public int Ignored; }";
+            var manifest = BuildManifest(source, "OrderedCodecFixture", out var assembly);
+            var entry = Assert.Single(manifest.Entries);
+            Assert.True(entry.IsAvailable, entry.Diagnostic);
+
+            var fixture = Activator.CreateInstance(assembly.GetType("Ordered", true)!)!;
+            fixture.GetType().GetField("Alpha")!.SetValue(fixture, 7);
+            fixture.GetType().GetField("Zeta")!.SetValue(fixture, 3_000_000_000u);
+            fixture.GetType().GetField("Ignored")!.SetValue(fixture, 42);
+
+            var decoded = DecodeMessagePackMap(entry.Serialize(fixture));
+
+            Assert.Equal(new[] { "alpha", "zulu" }, decoded.Select(pair => pair.Key));
+            Assert.Equal(3_000_000_000UL, Assert.IsType<ulong>(decoded[0].Value));
+            Assert.Equal(7L, Assert.IsType<long>(decoded[1].Value));
+        }
+
+        [Fact]
+        public void DuplicateWireNamesAloneFailClosedWithDuplicateDiagnostic()
+        {
+            var source = "using System; using Unity.FoxgloveSDK.Protocol; using Newtonsoft.Json; "
+                + "[FoxgloveSchema(\"demo.Duplicate\")] public sealed class Duplicate "
+                + "{ [JsonProperty(\"same\")] public int First; [JsonProperty(\"same\")] public int Second; }";
+            var manifest = BuildManifest(source, "DuplicateWireNameFixture", out _, "FOXCOMP001");
+            var entry = Assert.Single(manifest.Entries);
+            Assert.False(entry.IsAvailable);
+            Assert.Throws<InvalidOperationException>(() => entry.Serialize(new object()));
+        }
+
+        [Fact]
+        public void EmptySchemaNameAloneFailsClosedWithInvalidSchemaDiagnostic()
+        {
+            var source = "using System; using Unity.FoxgloveSDK.Protocol; "
+                + "[FoxgloveSchema(\"\")] public sealed class NoSchema { public int Value; }";
+            var manifest = BuildManifest(source, "InvalidSchemaFixture", out _, "FOXCOMP003");
+            var entry = Assert.Single(manifest.Entries);
+            Assert.False(entry.IsAvailable);
+        }
+
+        private static ComponentMessagePackGeneratedManifest BuildManifest(
+            string source,
+            string assemblyName,
+            out Assembly assembly,
+            string expectedDiagnosticId = null)
+        {
+            var compilation = CSharpCompilation.Create(
+                assemblyName,
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                References(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new ComponentMessagePackSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out var diagnostics);
+            Assert.Empty(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));
+            var runDiagnostics = driver.GetRunResult().Diagnostics;
+            if (expectedDiagnosticId != null)
+                Assert.Contains(runDiagnostics, d => d.Id == expectedDiagnosticId);
+
+            using var image = new MemoryStream();
+            var emit = updated.Emit(image);
+            Assert.True(emit.Success, string.Join("; ", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
+            image.Position = 0;
+            assembly = AssemblyLoadContext.Default.LoadFromStream(image);
+            var factory = assembly
+                .GetType("Unity.FoxgloveSDK.Generated.__Unity2FoxgloveComponentMessagePackManifest", true)!
+                .GetMethod("Create", BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)!;
+            return (ComponentMessagePackGeneratedManifest)factory.Invoke(null, null);
+        }
+
+        /// <summary>
+        /// Decodes the small MessagePack map subset the component codec emits, so a test can read
+        /// the bytes the generated writer produced instead of the source text that produced it.
+        /// </summary>
+        private static List<KeyValuePair<string, object>> DecodeMessagePackMap(byte[] payload)
+        {
+            var offset = 0;
+            var header = payload[offset++];
+            int count;
+            if ((header & 0xF0) == 0x80)
+                count = header & 0x0F;
+            else if (header == 0xDE)
+            {
+                count = (payload[offset] << 8) | payload[offset + 1];
+                offset += 2;
+            }
+            else
+                throw new InvalidOperationException("Unexpected MessagePack map header 0x" + header.ToString("x2"));
+
+            var map = new List<KeyValuePair<string, object>>(count);
+            for (var i = 0; i < count; i++)
+            {
+                var key = ReadString(payload, ref offset);
+                map.Add(new KeyValuePair<string, object>(key, ReadValue(payload, ref offset)));
+            }
+
+            Assert.Equal(payload.Length, offset);
+            return map;
+        }
+
+        private static string ReadString(byte[] payload, ref int offset)
+        {
+            var header = payload[offset++];
+            int length;
+            if ((header & 0xE0) == 0xA0)
+                length = header & 0x1F;
+            else if (header == 0xD9)
+                length = payload[offset++];
+            else
+                throw new InvalidOperationException("Unexpected MessagePack string header 0x" + header.ToString("x2"));
+
+            var value = System.Text.Encoding.UTF8.GetString(payload, offset, length);
+            offset += length;
+            return value;
+        }
+
+        private static object ReadValue(byte[] payload, ref int offset)
+        {
+            var header = payload[offset++];
+            if (header <= 0x7F)
+                return (long)header;
+            if (header >= 0xE0)
+                return (long)(sbyte)header;
+            switch (header)
+            {
+                case 0xCC:
+                    return (ulong)payload[offset++];
+                case 0xCD:
+                    offset += 2;
+                    return (ulong)((payload[offset - 2] << 8) | payload[offset - 1]);
+                case 0xCE:
+                    offset += 4;
+                    return (ulong)(((uint)payload[offset - 4] << 24)
+                                   | ((uint)payload[offset - 3] << 16)
+                                   | ((uint)payload[offset - 2] << 8)
+                                   | payload[offset - 1]);
+                case 0xD0:
+                    return (long)(sbyte)payload[offset++];
+                case 0xD1:
+                    offset += 2;
+                    return (long)(short)((payload[offset - 2] << 8) | payload[offset - 1]);
+                case 0xD2:
+                    offset += 4;
+                    return (long)(int)(((uint)payload[offset - 4] << 24)
+                                       | ((uint)payload[offset - 3] << 16)
+                                       | ((uint)payload[offset - 2] << 8)
+                                       | payload[offset - 1]);
+                default:
+                    throw new InvalidOperationException("Unexpected MessagePack value header 0x" + header.ToString("x2"));
+            }
+        }
+
         private static string GenerateManifest(string model)
         {
             var source = "using Unity.FoxgloveSDK.Protocol; " + model;

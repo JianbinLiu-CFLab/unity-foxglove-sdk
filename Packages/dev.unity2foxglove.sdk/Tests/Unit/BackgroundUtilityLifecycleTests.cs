@@ -90,6 +90,12 @@ namespace Unity.FoxgloveSDK.UnitTests
                     releaseEncode.Wait();
                     return request.Id;
                 });
+            var handleDisposalHooks = 0;
+            pipeline.TestHook = point =>
+            {
+                if (point == "DisposeBeforeHandleDisposal")
+                    Interlocked.Increment(ref handleDisposalHooks);
+            };
 
             try
             {
@@ -97,6 +103,10 @@ namespace Unity.FoxgloveSDK.UnitTests
                 Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
 
                 pipeline.Dispose();
+
+                // Dispose returns while the abandoned worker still owns the handles, so the
+                // hook must come from the worker exit path, not from Dispose.
+                Assert.Equal(0, Volatile.Read(ref handleDisposalHooks));
 
                 var workerSignal = GetWorkerSignal(pipeline);
                 var worker = GetWorker(pipeline);
@@ -113,6 +123,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                     "The final abandoned worker must deterministically release the retained handles.");
                 Assert.Throws<ObjectDisposedException>(() => workerSignal.Set());
                 Assert.Throws<ObjectDisposedException>(() => worker.Idle.Wait(0));
+                Assert.Equal(1, Volatile.Read(ref handleDisposalHooks));
                 pipeline.Dispose();
             }
             finally

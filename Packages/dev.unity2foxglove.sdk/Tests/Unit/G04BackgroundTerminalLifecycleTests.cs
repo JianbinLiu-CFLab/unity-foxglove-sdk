@@ -5,6 +5,7 @@
 // Purpose: Round4 G04 terminal admission and handle-lifecycle regressions.
 
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -248,6 +249,112 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
+        [Fact]
+        public void EncodeErrorDiagnosticsStayExactlyAtTheConfiguredBound()
+        {
+            var observed = 0;
+            var pipeline = new BackgroundEncodePipeline<TestRequest, int>(
+                "mseries-m3-b1-error-bound",
+                completedCapacity: 2,
+                stopWaitMs: 5000,
+                encode: _ => throw new InvalidOperationException("encode boom"),
+                onEncodeError: _ => Interlocked.Increment(ref observed));
+            try
+            {
+                for (var i = 1; i <= 6; i++)
+                {
+                    pipeline.Enqueue(new TestRequest(i), out _, out _);
+                    Assert.True(
+                        SpinWait.SpinUntil(() => Volatile.Read(ref observed) >= i, TimeSpan.FromSeconds(5)),
+                        "The throwing worker must report every encode failure.");
+                }
+
+                Assert.Equal(2, GetEncodeErrorCount(pipeline));
+
+                var results = new List<int>();
+                pipeline.Drain(results, out var dropped, out var encodeErrors);
+                Assert.Empty(results);
+                Assert.Equal(0, dropped);
+                Assert.Equal(2, encodeErrors);
+            }
+            finally
+            {
+                pipeline.Dispose();
+            }
+        }
+
+        [Fact]
+        public void DroppedCompletedResultsAreCountedForTheDrainingConsumer()
+        {
+            var pipeline = new BackgroundEncodePipeline<TestRequest, int>(
+                "mseries-m3-b2-dropped-results",
+                completedCapacity: 2,
+                stopWaitMs: 5000,
+                encode: request => request.Id);
+            try
+            {
+                for (var i = 1; i <= 5; i++)
+                {
+                    var expectedDropped = Math.Max(0, i - 2);
+                    pipeline.Enqueue(new TestRequest(i), out _, out _);
+                    Assert.True(
+                        SpinWait.SpinUntil(
+                            () => GetCompletedCount(pipeline) == Math.Min(i, 2)
+                                  && GetDroppedCompletedCount(pipeline) == expectedDropped,
+                            TimeSpan.FromSeconds(5)),
+                        "The worker must complete each request before the next one is admitted.");
+                }
+
+                var results = new List<int>();
+                pipeline.Drain(results, out var dropped, out var encodeErrors);
+                Assert.Equal(new[] { 4, 5 }, results);
+                Assert.Equal(3, dropped);
+                Assert.Equal(0, encodeErrors);
+            }
+            finally
+            {
+                pipeline.Dispose();
+            }
+        }
+
+        [Fact]
+        public void EncodeFailuresAfterStopAreNotReportedToTheNextDrain()
+        {
+            using var encodeEntered = new ManualResetEventSlim(false);
+            using var releaseEncode = new ManualResetEventSlim(false);
+            var pipeline = new BackgroundEncodePipeline<TestRequest, int>(
+                "mseries-m3-b5-stop-guard",
+                completedCapacity: 2,
+                stopWaitMs: 0,
+                encode: _ =>
+                {
+                    encodeEntered.Set();
+                    releaseEncode.Wait();
+                    throw new InvalidOperationException("teardown boom");
+                });
+            try
+            {
+                Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
+                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(5)));
+
+                var stop = Task.Run(() => pipeline.Stop(clearCompleted: true, out _));
+                Assert.True(
+                    SpinWait.SpinUntil(() => stop.IsCompleted, TimeSpan.FromSeconds(5)),
+                    "Stop must not wait for the abandoned worker when stopWaitMs is zero.");
+
+                releaseEncode.Set();
+                Assert.True(
+                    SpinWait.SpinUntil(() => GetActiveWorkerCount(pipeline) == 0, TimeSpan.FromSeconds(5)),
+                    "The abandoned worker must exit after its encode throws.");
+                Assert.Equal(0, GetEncodeErrorCount(pipeline));
+            }
+            finally
+            {
+                releaseEncode.Set();
+                pipeline.Dispose();
+            }
+        }
+
         private static async Task<T> AwaitTask<T>(Task<T> task)
         {
             var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5)));
@@ -288,6 +395,16 @@ namespace Unity.FoxgloveSDK.UnitTests
             => ((System.Collections.Generic.Queue<string>)typeof(BackgroundEncodePipeline<TestRequest, int>)
                 .GetField("_encodeErrors", BindingFlags.Instance | BindingFlags.NonPublic)
                 .GetValue(pipeline)).Count;
+
+        private static int GetCompletedCount(BackgroundEncodePipeline<TestRequest, int> pipeline)
+            => ((System.Collections.Generic.Queue<int>)typeof(BackgroundEncodePipeline<TestRequest, int>)
+                .GetField("_completed", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(pipeline)).Count;
+
+        private static int GetDroppedCompletedCount(BackgroundEncodePipeline<TestRequest, int> pipeline)
+            => (int)typeof(BackgroundEncodePipeline<TestRequest, int>)
+                .GetField("_droppedCompletedCount", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(pipeline);
 
         private static bool IsDisposed(WaitHandle handle)
             => Record.Exception(() => handle.WaitOne(0)) is ObjectDisposedException;
