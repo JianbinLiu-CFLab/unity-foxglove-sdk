@@ -436,7 +436,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 var transform = message.Transforms[0];
                 transform.Header.Stamp.Sec = ClampRosTimeSeconds(sec);
-                transform.Header.Stamp.Nanosec = nsec;
+                transform.Header.Stamp.Nanosec = Ros2ForUnityRosTime.ClampNanoseconds(sec, nsec);
                 transform.Header.Frame_id = frame.ParentFrameId;
                 transform.Child_frame_id = frame.ChildFrameId;
                 transform.Transform.Translation.X = translation == null ? 0.0 : translation.X;

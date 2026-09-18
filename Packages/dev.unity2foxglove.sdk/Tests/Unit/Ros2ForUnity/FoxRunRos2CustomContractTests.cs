@@ -50,6 +50,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void TransformBridgeClampsNanosecondsWithAnUnrepresentableSecond()
+        {
+            Assert.Equal(
+                999_999_999U,
+                Ros2ForUnityRosTime.ClampNanoseconds((ulong)int.MaxValue + 1UL, 100_000_000U));
+            Assert.Equal(
+                100_000_000U,
+                Ros2ForUnityRosTime.ClampNanoseconds((ulong)int.MaxValue, 100_000_000U));
+            var bridge = File.ReadAllText(Path.Combine(
+                FindRepositoryRoot(),
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityTransformNativeBridge.cs"));
+            Assert.Contains(
+                "Ros2ForUnityRosTime.ClampNanoseconds(sec, nsec)",
+                bridge,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CustomPublisherContractCarriesTheLockedIdentityAndDirectionalMode()
         {
             var contract = new FoxRunRos2CustomPublisherContract(

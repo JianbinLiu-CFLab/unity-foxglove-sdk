@@ -31,6 +31,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 (uint)(unixNanoseconds % NanosecondsPerSecond));
         }
 
+        internal static uint ClampNanoseconds(ulong seconds, uint nanoseconds)
+            => seconds > int.MaxValue
+                ? (uint)(NanosecondsPerSecond - 1UL)
+                : nanoseconds;
+
         internal static builtin_interfaces.msg.Time ToBuiltinTime(ulong unixNanoseconds)
         {
             var timestamp = SplitUnixNanoseconds(unixNanoseconds);
