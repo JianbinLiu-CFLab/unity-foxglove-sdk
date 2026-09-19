@@ -107,7 +107,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         public void CompatibilityVectorFixtureIsExecutableAndComplete()
         {
             var root = new DirectoryInfo(AppContext.BaseDirectory);
-            while (root != null && !File.Exists(Path.Combine(root.FullName, "AGENTS.md")))
+            while (root != null && !Directory.Exists(Path.Combine(root.FullName, ".git")))
                 root = root.Parent;
             Assert.NotNull(root);
             var path = Path.Combine(root.FullName, "Packages", "dev.unity2foxglove.sdk", "Tests", "Unit", "FoxRun", "Fixtures", "Phase191CompatibilityVectors.json");
