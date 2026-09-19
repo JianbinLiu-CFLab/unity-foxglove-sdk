@@ -192,6 +192,7 @@ _VERBATIM_PROVIDER_COPIES = (
     ("Emission type name formatter", "Editor/Shared/FoxRunDescriptor/FoxRunEmissionTypeNameFormatter.cs", True),
     ("Generation descriptor constants", "Editor/Shared/FoxRunDescriptor/FoxRunGenerationDescriptorConstants.cs", True),
     ("Generation model validator", "Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs", True),
+    ("Generation member decomposition", "Editor/Shared/FoxRunDescriptor/FoxRunGenerationMemberContracts.cs", True),
     ("Protobuf field number", "Editor/Shared/FoxRunDescriptor/FoxRunProtobufFieldNumber.cs", True),
     ("Roslyn generation model lowerer", "Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs", True),
     ("Service DTO rules", "Editor/Shared/FoxServiceDtoValidation/FoxServiceDtoRules.cs", True),

@@ -33,6 +33,8 @@ namespace Unity.FoxgloveSDK.Components
         private FoxRunTransportSessionSnapshot _activeFoxRunTransportSession;
         private FoxRunTransportSessionCaptureError?
             _lastFoxRunTransportSessionCaptureError;
+        private readonly FoxRunTransportCoordinator _foxRunTransportCoordinator =
+            new FoxRunTransportCoordinator();
         private bool _startServerAfterTransportCapture;
 
         /// <summary>Frozen neutral Provider sessions for the current Manager lifetime.</summary>
@@ -175,6 +177,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _lastFoxRunTransportSessionCaptureError = null;
+            _foxRunTransportCoordinator.SetSession(_activeFoxRunTransportSession);
             return true;
         }
 
@@ -182,6 +185,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             var snapshot = _activeFoxRunTransportSession;
             _activeFoxRunTransportSession = null;
+            _foxRunTransportCoordinator.ClearSession();
             snapshot?.Dispose();
         }
 
@@ -213,6 +217,12 @@ namespace Unity.FoxgloveSDK.Components
             }
             catch (Exception ex)
             {
+                FoxRunProviderDiagnostics.Record(
+                    session.Id.Value,
+                    "Publish",
+                    ex,
+                    session.Generation,
+                    route.Topic);
                 return FoxRunTransportPublishResult.Failed(ex.Message);
             }
         }
@@ -272,6 +282,12 @@ namespace Unity.FoxgloveSDK.Components
             }
             catch (Exception exception)
             {
+                FoxRunProviderDiagnostics.Record(
+                    session.Id.Value,
+                    "PublishOrdinary",
+                    exception,
+                    session.Generation,
+                    request.Topic);
                 return FoxRunTransportPublishResult.Failed(exception.Message);
             }
         }
@@ -303,11 +319,7 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunOrdinaryTransportFanoutResult PublishOrdinaryTransports(
             in FoxRunOrdinaryPayloadRequest request)
         {
-            var sessions =
-                _activeFoxRunTransportSession?.PublishTransports;
-            return FoxRunOrdinaryTransportFanout.Publish(
-                sessions,
-                in request);
+            return _foxRunTransportCoordinator.PublishOrdinary(in request);
         }
 
         /// <summary>
@@ -324,17 +336,12 @@ namespace Unity.FoxgloveSDK.Components
                 string suppressedTransportId = "",
                 ulong suppressedGeneration = 0)
         {
-            var request =
-                new FoxRunGeneratedTransportPublishRequest(
-                    source,
-                    topicIndex,
-                    topic,
-                    logTimeNs);
-            return FoxRunGeneratedTransportFanout.Publish(
-                _activeFoxRunTransportSession?.PublishTransports,
+            return _foxRunTransportCoordinator.PublishGenerated(
+                source,
+                topicIndex,
+                topic,
                 explicitTransportIds,
-                _activeFoxRunTransportSession?.PublishTransportIds,
-                in request,
+                logTimeNs,
                 suppressedTransportId,
                 suppressedGeneration);
         }
@@ -693,6 +700,12 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 catch (Exception ex)
                 {
+                    FoxRunProviderDiagnostics.Record(
+                        Id.Value,
+                        "Publish",
+                        ex,
+                        Generation,
+                        route.Topic);
                     return FoxRunTransportPublishResult.Failed(ex.Message);
                 }
             }

@@ -23,6 +23,11 @@ namespace Unity.FoxgloveSDK.Core
         /// whether the recorded schema matches the current runtime.
         /// </summary>
         internal static FoxRunReplaySchemaGuardResult Evaluate(McapReplayEngine replayEngine)
+            => EvaluateWithMode(replayEngine, SchemaIdentityMode.Strict);
+
+        internal static FoxRunReplaySchemaGuardResult EvaluateWithMode(
+            McapReplayEngine replayEngine,
+            SchemaIdentityMode identityMode)
         {
             var metadata = replayEngine?.FindMetadata(FoxRunSchemaMcapMetadata.MetadataName);
             if (metadata == null)
@@ -33,7 +38,7 @@ namespace Unity.FoxgloveSDK.Core
                     "Metadata record is missing the value entry.");
 
             return FoxRunSchemaMcapMetadata.EvaluateRecordedJson(
-                value, FoxRunSchemaInfoRegistry.Current);
+                value, FoxRunSchemaInfoRegistry.Current, identityMode);
         }
     }
 }

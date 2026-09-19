@@ -32,6 +32,9 @@ namespace Unity.FoxgloveSDK.Core
         Warn = 1,
 
         /// <summary>Block operations that require complete, matching schema identity evidence.</summary>
-        Strict = 2
+        Strict = 2,
+
+        /// <summary>Allow policy-only and backward-compatible contract changes.</summary>
+        Compatible = 3
     }
 }

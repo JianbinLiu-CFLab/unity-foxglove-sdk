@@ -1,0 +1,17 @@
+{
+  "vectors": [
+    {"id":"exact","expected":"Exact"},
+    {"id":"policy-only","expected":"PolicyOnlyChange"},
+    {"id":"binding-only","expected":"BindingOnlyChange"},
+    {"id":"backward-field","expected":"BackwardCompatible"},
+    {"id":"forward-field","expected":"ForwardCompatible"},
+    {"id":"breaking-type","expected":"Breaking"},
+    {"id":"unknown-v1","expected":"Unknown"},
+    {"id":"malformed","expected":"Unknown"},
+    {"id":"duplicate-topic","expected":"Unknown"},
+    {"id":"topic-rename","expected":"BindingOnlyChange"},
+    {"id":"hz-only","expected":"PolicyOnlyChange"},
+    {"id":"encoding-only","expected":"BindingOnlyChange"},
+    {"id":"field-reorder","expected":"Breaking"}
+  ]
+}
