@@ -23,9 +23,9 @@ namespace Unity.FoxgloveSDK.Core
         /// whether the recorded schema matches the current runtime.
         /// </summary>
         internal static FoxRunReplaySchemaGuardResult Evaluate(McapReplayEngine replayEngine)
-            => Evaluate(replayEngine, SchemaIdentityMode.Strict);
+            => EvaluateWithMode(replayEngine, SchemaIdentityMode.Strict);
 
-        internal static FoxRunReplaySchemaGuardResult Evaluate(
+        internal static FoxRunReplaySchemaGuardResult EvaluateWithMode(
             McapReplayEngine replayEngine,
             SchemaIdentityMode identityMode)
         {

@@ -327,7 +327,9 @@ namespace Unity.FoxgloveSDK.Components
             return new FoxRunReplaySchemaGuardResult(
                 FoxRunReplaySchemaGuardState.Mismatch,
                 isBlocking,
-                compatibility.Message + (isBlocking ? "\nReplay blocked." : "\nReplay continued."),
+                "FoxRun replay schema mismatch.\n"
+                + compatibility.Message
+                + (isBlocking ? "\nReplay blocked." : "\nReplay continued."),
                 recorded.GlobalManifestHash,
                 current?.GlobalManifestHash ?? string.Empty);
         }

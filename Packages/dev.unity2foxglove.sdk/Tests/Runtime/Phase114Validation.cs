@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "114-A1: runtime schema info serializes to an MCAP metadata JSON value");
 
             var parsed = JObject.Parse(json);
-            Check((int)parsed["schemaMetadataVersion"] == 1
+            Check((int)parsed["schemaMetadataVersion"] == 2
                   && (int)parsed["manifestVersion"] == current.ManifestVersion
                   && (string)parsed["generatorVersion"] == "1.0.0"
                   && (int)parsed["generatorMajorVersion"] == 1,
@@ -301,7 +301,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var replay = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var loadIndex = replay.IndexOf("_replayEngine.Load(filePath)", StringComparison.Ordinal);
-            var guardIndex = replay.IndexOf("ReplaySchemaGuard.Evaluate(_replayEngine)", StringComparison.Ordinal);
+            var guardIndex = replay.IndexOf("ReplaySchemaGuard.EvaluateWithMode(_replayEngine, identityMode)", StringComparison.Ordinal);
             var playIndex = replay.IndexOf("_replayEngine.Play()", StringComparison.Ordinal);
             Check(loadIndex >= 0 && guardIndex > loadIndex && playIndex > guardIndex,
                 "114-F4: replay guard runs after Load and before Play");
