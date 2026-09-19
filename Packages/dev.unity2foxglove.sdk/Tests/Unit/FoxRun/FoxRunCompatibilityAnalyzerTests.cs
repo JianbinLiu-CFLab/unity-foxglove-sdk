@@ -76,6 +76,114 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void MultipleEncodingsOnOneTopicUseTheFullContractIdentity()
+        {
+            var recorded = ManifestWithContracts(
+                "same",
+                Contract("c-json", "b-json", "p-json", encoding: "json"),
+                Contract("c-proto", "b-proto", "p-proto", encoding: "protobuf"));
+            var current = ManifestWithContracts(
+                "same",
+                Contract("c-json", "b-json", "p-json", encoding: "json"),
+                Contract("c-proto", "b-proto", "p-proto", encoding: "protobuf"));
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(
+                FoxRunSchemaMcapMetadata.CreateRecord(recorded),
+                current);
+
+            Assert.Equal(FoxRunCompatibilityClass.Exact, result.Classification);
+            Assert.Equal(2, result.Findings.Count);
+        }
+
+        [Fact]
+        public void PolicyComparisonDoesNotCrossMatchDifferentContracts()
+        {
+            var recorded = ManifestWithContracts(
+                "recorded",
+                Contract("c-a", "b-a", "p-a", topic: "/a"),
+                Contract("c-b", "b-b", "p-b", topic: "/b"));
+            var current = ManifestWithContracts(
+                "current",
+                Contract("c-a", "b-a", "p-a", topic: "/a"),
+                Contract("c-b", "b-b", "p-b", topic: "/b"));
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(
+                FoxRunSchemaMcapMetadata.CreateRecord(recorded),
+                current);
+
+            Assert.Equal(FoxRunCompatibilityClass.Breaking, result.Classification);
+        }
+
+        [Fact]
+        public void BindingComparisonDoesNotCrossMatchDifferentContracts()
+        {
+            var recorded = ManifestWithContracts(
+                "recorded",
+                Contract("c-a", "b-a", "p-a", topic: "/a"),
+                Contract("c-b", "b-b", "p-b", topic: "/b"));
+            var current = ManifestWithContracts(
+                "current",
+                Contract("c-a", "b-a", "p-a", topic: "/a"),
+                Contract("c-b", "b-b", "p-b", topic: "/b"));
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(
+                FoxRunSchemaMcapMetadata.CreateRecord(recorded),
+                current);
+
+            Assert.Equal(FoxRunCompatibilityClass.Breaking, result.Classification);
+        }
+
+        [Fact]
+        public void DirectionScopedContractsPersistFlowAndRemainDistinct()
+        {
+            var recorded = ManifestWithContracts(
+                "same",
+                Contract("c-publish", "b-publish", "p-publish", flow: "Publish"),
+                Contract("c-subscribe", "b-subscribe", "p-subscribe", flow: "Subscribe"));
+            var current = ManifestWithContracts(
+                "same",
+                Contract("c-publish", "b-publish", "p-publish", flow: "Publish"),
+                Contract("c-subscribe", "b-subscribe", "p-subscribe", flow: "Subscribe"));
+            var record = FoxRunSchemaMcapMetadata.CreateRecord(recorded);
+
+            Assert.All(record.Contracts, contract => Assert.False(string.IsNullOrEmpty(contract.Flow)));
+            var result = FoxRunCompatibilityAnalyzer.Analyze(record, current);
+
+            Assert.Equal(FoxRunCompatibilityClass.Exact, result.Classification);
+            Assert.Equal(2, result.Findings.Count);
+        }
+
+        [Fact]
+        public void LegacyVersionTwoWithoutFlowUsesAnUnambiguousCurrentContract()
+        {
+            var manifest = Manifest("same", "c", "b", "p");
+            Assert.True(FoxRunSchemaMcapMetadata.TryCreateJson(manifest, out var json));
+            var legacyJson = json.Replace(",\"flow\":\"Publish\"", string.Empty, StringComparison.Ordinal);
+            Assert.True(FoxRunSchemaMcapMetadata.TryParseJson(legacyJson, out var record, out var error), error);
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(record, manifest);
+
+            Assert.Equal(FoxRunCompatibilityClass.Exact, result.Classification);
+        }
+
+        [Fact]
+        public void DuplicateFullContractIdentityRemainsUnknown()
+        {
+            var recorded = ManifestWithContracts(
+                "recorded",
+                Contract("c-a", "b-a", "p-a"),
+                Contract("c-b", "b-b", "p-b"));
+            var current = Manifest("current", "c-a", "b-a", "p-a");
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(
+                FoxRunSchemaMcapMetadata.CreateRecord(recorded),
+                current);
+
+            Assert.Equal(FoxRunCompatibilityClass.Unknown, result.Classification);
+            Assert.Contains("duplicate contract identities", result.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void WritersEmitVersionTwoAndReadersAcceptLegacyVersionOne()
         {
             var current = Manifest("g", "c", "b", "p", "int32");
@@ -145,14 +253,38 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             string policyHash,
             params string[] fieldTypes)
         {
-            var fields = new List<FoxRunSchemaFieldInfo>();
-            for (var index = 0; index < fieldTypes.Length; index++)
-                fields.Add(new FoxRunSchemaFieldInfo("field" + index, "field" + index, "field", fieldTypes[index], false, false));
-            var contract = new FoxRunSchemaContractInfo(
-                "Demo.State", "/state", "Demo.State", "json", contractHash, bindingHash, policyHash,
-                "Publish", 1f, 0f, fields);
+            return ManifestWithContracts(global, Contract(
+                contractHash,
+                bindingHash,
+                policyHash,
+                fieldTypes: fieldTypes));
+        }
+
+        private static FoxRunSchemaManifestInfo ManifestWithContracts(
+            string global,
+            params FoxRunSchemaContractInfo[] contracts)
+        {
             return new FoxRunSchemaManifestInfo(
-                4, "unit", "unit", 1, global, "manifest", new[] { new FoxRunSchemaTypeInfo("Demo.State", new[] { contract }) });
+                4, "unit", "unit", 1, global, "manifest", new[] { new FoxRunSchemaTypeInfo("Demo.State", contracts) });
+        }
+
+        private static FoxRunSchemaContractInfo Contract(
+            string contractHash,
+            string bindingHash,
+            string policyHash,
+            string topic = "/state",
+            string schemaName = "Demo.State",
+            string encoding = "json",
+            string flow = "Publish",
+            params string[] fieldTypes)
+        {
+            var fields = new List<FoxRunSchemaFieldInfo>();
+            var types = fieldTypes == null || fieldTypes.Length == 0 ? new[] { "int32" } : fieldTypes;
+            for (var index = 0; index < types.Length; index++)
+                fields.Add(new FoxRunSchemaFieldInfo("field" + index, "field" + index, "field", types[index], false, false));
+            return new FoxRunSchemaContractInfo(
+                "Demo.State", topic, schemaName, encoding, contractHash, bindingHash, policyHash,
+                "Publish", 1f, 0f, fields, flow: flow);
         }
     }
 }

@@ -79,6 +79,9 @@ namespace Unity.FoxgloveSDK.Components
 
         [JsonProperty("fields", Order = 6)]
         public List<FoxRunSchemaMcapFieldMetadata> Fields { get; set; }
+
+        [JsonProperty("flow", Order = 7)]
+        public string Flow { get; set; }
     }
 
     /// <summary>Stable field digest data emitted by schema metadata version 2.</summary>
@@ -175,6 +178,7 @@ namespace Unity.FoxgloveSDK.Components
                         ContractHash = contract.ContractHash ?? string.Empty,
                         BindingHash = contract.BindingHash ?? string.Empty,
                         PolicyHash = contract.PolicyHash ?? string.Empty,
+                        Flow = contract.Flow ?? string.Empty,
                         Fields = contract.Fields == null
                             ? new List<FoxRunSchemaMcapFieldMetadata>()
                             : contract.Fields.Select((field, ordinal) => new FoxRunSchemaMcapFieldMetadata
@@ -403,7 +407,12 @@ namespace Unity.FoxgloveSDK.Components
             if (compare != 0)
                 return compare;
 
-            return string.Compare(left?.Encoding, right?.Encoding, StringComparison.Ordinal);
+            compare = string.Compare(left?.Encoding, right?.Encoding, StringComparison.Ordinal);
+            if (compare != 0)
+                return compare;
+
+            compare = string.Compare(left?.Flow, right?.Flow, StringComparison.Ordinal);
+            return compare;
         }
 
         private static bool IsRecoverableJsonParseException(Exception ex)
