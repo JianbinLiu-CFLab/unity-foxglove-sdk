@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -208,6 +209,117 @@ namespace FoxgloveSdk.UnitTests.Mcap
             Assert.Throws<OperationCanceledException>(() => source.GetDataStream(
                 new RemoteMcapRequest { SourceId = "r4" },
                 cancellation.Token));
+        }
+
+        [Fact]
+        public void ConcurrentDisposeClaimsShutdownExactlyOnce()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "dispose-race-" + Guid.NewGuid().ToString("N") + ".mcap");
+            File.WriteAllBytes(path, new byte[] { 0x89, (byte)'M', (byte)'C', (byte)'A', (byte)'P' });
+            RemoteMcapHttpServer server = null;
+            try
+            {
+                server = StartLoopbackServerWithRetry(new RemoteMcapHttpOptions
+                {
+                    Host = "127.0.0.1",
+                    McapPath = path,
+                    SourceId = "dispose-race"
+                });
+
+                // The hook fires inside the first Dispose, before the shutdown is claimed, and runs a
+                // second Dispose to completion on another thread. A non-atomic claim lets both calls
+                // pass the check, so the first one then cancels a source the second already disposed.
+                var armed = 0;
+                Exception concurrentError = null;
+                var target = server;
+                target.TestHook = point =>
+                {
+                    if (point != "DisposeBeforeClaim" || Interlocked.Exchange(ref armed, 1) != 0)
+                        return;
+                    var concurrent = Task.Run(() =>
+                    {
+                        try
+                        {
+                            target.Dispose();
+                        }
+                        catch (Exception error)
+                        {
+                            Volatile.Write(ref concurrentError, error);
+                        }
+                    });
+                    Assert.True(concurrent.Wait(TimeSpan.FromSeconds(10)), "the concurrent dispose must finish");
+                };
+
+                var firstError = Record.Exception(() => target.Dispose());
+
+                Assert.Null(firstError);
+                Assert.Null(Volatile.Read(ref concurrentError));
+                Assert.False(target.IsRunning);
+                Assert.Equal(1, target.StopDisposeCountForTests);
+
+                // A later dispose stays a no-op.
+                Assert.Null(Record.Exception(() => target.Dispose()));
+                Assert.Equal(1, target.StopDisposeCountForTests);
+                server = null;
+            }
+            finally
+            {
+                server?.Dispose();
+                try { File.Delete(path); } catch { /* best effort */ }
+            }
+        }
+
+        [Fact]
+        public void DisposeStormFromManyThreadsDisposesExactlyOnce()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "dispose-storm-" + Guid.NewGuid().ToString("N") + ".mcap");
+            File.WriteAllBytes(path, new byte[] { 0x89, (byte)'M', (byte)'C', (byte)'A', (byte)'P' });
+            RemoteMcapHttpServer server = null;
+            try
+            {
+                server = StartLoopbackServerWithRetry(new RemoteMcapHttpOptions
+                {
+                    Host = "127.0.0.1",
+                    McapPath = path,
+                    SourceId = "dispose-storm"
+                });
+
+                const int threads = 16;
+                var target = server;
+                using var start = new ManualResetEventSlim(false);
+                var errors = new ConcurrentBag<Exception>();
+                var workers = new Task[threads];
+                for (var index = 0; index < threads; index++)
+                {
+                    workers[index] = Task.Factory.StartNew(
+                        () =>
+                        {
+                            start.Wait();
+                            try
+                            {
+                                target.Dispose();
+                            }
+                            catch (Exception error)
+                            {
+                                errors.Add(error);
+                            }
+                        },
+                        TaskCreationOptions.LongRunning);
+                }
+
+                start.Set();
+                Assert.True(Task.WaitAll(workers, TimeSpan.FromSeconds(30)), "every dispose must finish");
+
+                Assert.Empty(errors);
+                Assert.False(target.IsRunning);
+                Assert.Equal(1, target.StopDisposeCountForTests);
+                server = null;
+            }
+            finally
+            {
+                server?.Dispose();
+                try { File.Delete(path); } catch { /* best effort */ }
+            }
         }
 
         private static RemoteMcapHttpServer StartLoopbackServerWithRetry(

@@ -25,7 +25,14 @@ namespace Unity.FoxgloveSDK.IO
         private readonly HttpListener _listener;
         private readonly CancellationTokenSource _stop;
         private readonly Task _loop;
-        private bool _disposed;
+        private int _disposed;
+        private int _stopDisposeCount;
+
+        /// <summary>Test-only hook invoked at named points inside <see cref="Dispose"/>.</summary>
+        internal Action<string> TestHook { get; set; }
+
+        /// <summary>Test-only count of cancellation-source disposals performed by this server.</summary>
+        internal int StopDisposeCountForTests => Volatile.Read(ref _stopDisposeCount);
 
         private RemoteMcapHttpServer(RemoteMcapHttpOptions options)
         {
@@ -83,7 +90,7 @@ namespace Unity.FoxgloveSDK.IO
         public string BaseUrl { get; }
 
         /// <summary>True while the listener has not been disposed and is still accepting connections.</summary>
-        public bool IsRunning => !_disposed && _listener.IsListening;
+        public bool IsRunning => Volatile.Read(ref _disposed) == 0 && _listener.IsListening;
 
         /// <summary>Starts a disposable Remote Data Loader server.</summary>
         public static RemoteMcapHttpServer Start(RemoteMcapHttpOptions options)
@@ -145,27 +152,52 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Stops the listener and waits briefly for the request loop to exit.</summary>
         public void Dispose()
         {
-            if (_disposed)
+            InvokeTestHook("DisposeBeforeClaim");
+
+            // Claim the shutdown atomically: two callers racing on a plain flag could both pass the
+            // check, and the loser would then cancel or dispose a cancellation source the winner had
+            // already disposed.
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
 
-            _disposed = true;
             _stop.Cancel();
             try { _listener.Close(); } catch { /* best effort during shutdown */ }
             try
             {
                 if (_loop.Wait(DisposeWaitTimeout))
                 {
-                    _stop.Dispose();
+                    DisposeStopSource();
                 }
                 else
                 {
-                    _loop.ContinueWith(_ => _stop.Dispose(), TaskScheduler.Default);
+                    _loop.ContinueWith(_ => DisposeStopSource(), TaskScheduler.Default);
                 }
             }
             catch
             {
                 // Listener close wakes the loop with an exception; keep shutdown best-effort.
-                _loop.ContinueWith(_ => _stop.Dispose(), TaskScheduler.Default);
+                _loop.ContinueWith(_ => DisposeStopSource(), TaskScheduler.Default);
+            }
+        }
+
+        private void DisposeStopSource()
+        {
+            Interlocked.Increment(ref _stopDisposeCount);
+            _stop.Dispose();
+        }
+
+        private void InvokeTestHook(string point)
+        {
+            var hook = TestHook;
+            if (hook == null)
+                return;
+            try
+            {
+                hook(point);
+            }
+            catch
+            {
+                // Test hooks must not change shutdown behaviour.
             }
         }
 
