@@ -215,6 +215,27 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void ContractsThatDifferOnlyByFlowGetADeterministicCanonicalOrder()
+        {
+            // Topic, schema name and encoding are identical here, so Flow is the only tiebreaker the
+            // comparer has left. Without it the comparison returns 0 and the canonical order follows
+            // whatever order the manifest happened to enumerate, which would make the recorded
+            // identity - and therefore every hash comparison built on it - non-deterministic.
+            var manifest = ManifestWithContracts(
+                "same",
+                Contract("c-subscribe", "b-subscribe", "p-subscribe", flow: "Subscribe"),
+                Contract("c-publish", "b-publish", "p-publish", flow: "Publish"));
+
+            var record = FoxRunSchemaMcapMetadata.CreateRecord(manifest);
+
+            Assert.Equal(2, record.Contracts.Count);
+            Assert.Equal("Publish", record.Contracts[0].Flow);
+            Assert.Equal("Subscribe", record.Contracts[1].Flow);
+            Assert.Equal("c-publish", record.Contracts[0].ContractHash);
+            Assert.Equal("c-subscribe", record.Contracts[1].ContractHash);
+        }
+
+        [Fact]
         public void LegacyVersionTwoWithoutFlowUsesAnUnambiguousCurrentContract()
         {
             var manifest = Manifest("same", "c", "b", "p");

@@ -227,8 +227,12 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 });
 
                 // The hook fires inside the first Dispose, before the shutdown is claimed, and runs a
-                // second Dispose to completion on another thread. A non-atomic claim lets both calls
-                // pass the check, so the first one then cancels a source the second already disposed.
+                // second Dispose to completion on another thread. That pins the contract callers rely
+                // on: a concurrent Dispose must not throw, and exactly one disposal must happen.
+                // It does NOT prove the claim is atomic. The hook runs before the read, so a
+                // non-atomic claim would observe the second call's write here and return just as the
+                // atomic one does. The unsafe window is two instructions wide and has no
+                // deterministic oracle - see build/phase191-followup-20260921/RESIDUAL_FINDINGS.md.
                 var armed = 0;
                 Exception concurrentError = null;
                 var target = server;

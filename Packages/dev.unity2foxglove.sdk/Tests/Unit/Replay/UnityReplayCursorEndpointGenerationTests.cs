@@ -678,6 +678,43 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public void CursorParserRejectsOversizedNumbersAndKeepsOptionalTokenFailuresLocal()
+        {
+            // time.sec does not fit in Int64. The token reader raises OverflowException, which is a
+            // malformed payload and not a runtime fault, so the client must get a rejected request
+            // rather than a server error escaping out of the parser.
+            Assert.False(ReplayCursorRequest.TryParseJson(
+                "{\"source\":\"phase187\",\"sequence\":1,\"mode\":\"seek\","
+                + "\"time\":{\"sec\":99999999999999999999,\"nsec\":3}}",
+                out _,
+                out var overflowError));
+            Assert.Contains("time.sec", overflowError, StringComparison.Ordinal);
+
+            // A float literal far outside Int64 range parses fine as JSON and only fails when the
+            // token reader converts it, which is where OverflowException actually comes from.
+            Assert.False(ReplayCursorRequest.TryParseJson(
+                "{\"source\":\"phase187\",\"mode\":\"seek\",\"time\":{\"sec\":1e300,\"nsec\":3}}",
+                out _,
+                out var convertError));
+            Assert.Contains("time.sec", convertError, StringComparison.Ordinal);
+
+            // sequence and didSeek fail inside their own readers. Those readers own the failure and
+            // fall back - sequence to 0, didSeek to the mode default - instead of rejecting a payload
+            // whose required fields are all well formed.
+            Assert.True(
+                ReplayCursorRequest.TryParseJson(
+                    "{\"source\":\"phase187\",\"sequence\":\"seven\",\"mode\":\"seek\","
+                    + "\"didSeek\":\"maybe\",\"time\":{\"sec\":1,\"nsec\":2}}",
+                    out var lenient,
+                    out var lenientError),
+                lenientError);
+            Assert.Equal(string.Empty, lenientError);
+            Assert.Equal(0, lenient.Sequence);
+            Assert.True(lenient.DidSeek);
+            Assert.Equal(1_000_000_002UL, lenient.TimeNs);
+        }
+
+        [Fact]
         public async Task StartRetriesWhenTheReservedPortIsTakenBeforeTheBind()
         {
             using var endpoint = new UnityReplayCursorEndpoint();
