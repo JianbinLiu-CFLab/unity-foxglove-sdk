@@ -1,10 +1,11 @@
-// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Unit/Replay
 // Purpose: Locks replay cursor endpoint worker generations across restart.
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -33,9 +34,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         public async Task DuplicateCursorResultUsesConflictStatus()
         {
             using var endpoint = new UnityReplayCursorEndpoint();
-            var port = ReserveFreeLoopbackPort();
-            endpoint.Start(
-                Options(port, "/duplicate", "duplicate-token"),
+            var port = StartEndpointWithRetry(
+                endpoint,
+                "/duplicate",
+                "duplicate-token",
                 _ => new UnityReplayCursorEndpointQueueResult(true, "Duplicate cursor ignored."));
 
             Assert.Equal(
@@ -51,11 +53,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             using var releaseOldQueue = new ManualResetEventSlim();
             var oldQueueCalls = 0;
             var newQueueCalls = 0;
-            var oldPort = ReserveFreeLoopbackPort();
-            var newPort = ReserveFreeLoopbackPort();
+            var newPort = 0;
 
-            endpoint.Start(
-                Options(oldPort, "/old", "old-token"),
+            var oldPort = StartEndpointWithRetry(
+                endpoint,
+                "/old",
+                "old-token",
                 _ =>
                 {
                     Interlocked.Increment(ref oldQueueCalls);
@@ -67,8 +70,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             var oldRequest = PostCursorAsync(oldPort, "/old", "old-token");
             Assert.True(oldQueueEntered.Wait(TimeSpan.FromSeconds(5)), "Old worker never entered its queue callback.");
 
-            var restart = Task.Run(() => endpoint.Start(
-                Options(newPort, "/new", "new-token"),
+            var restart = Task.Run(() => newPort = StartEndpointWithRetry(
+                endpoint,
+                "/new",
+                "new-token",
                 _ =>
                 {
                     Interlocked.Increment(ref newQueueCalls);
@@ -102,14 +107,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             using var releaseOldQueue = new ManualResetEventSlim();
             var oldQueueCalls = 0;
             var newQueueCalls = 0;
-            var oldPort = ReserveFreeLoopbackPort();
-            var newPort = ReserveFreeLoopbackPort();
+            var newPort = 0;
             Task<HttpStatusCode> oldRequest = null;
 
             try
             {
-                endpoint.Start(
-                    Options(oldPort, "/old-timeout", "old-timeout-token"),
+                var oldPort = StartEndpointWithRetry(
+                    endpoint,
+                    "/old-timeout",
+                    "old-timeout-token",
                     _ =>
                     {
                         Interlocked.Increment(ref oldQueueCalls);
@@ -123,8 +129,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     oldQueueEntered.Wait(TimeSpan.FromSeconds(5)),
                     "Old worker never entered its queue callback.");
 
-                var restart = Task.Run(() => endpoint.Start(
-                    Options(newPort, "/new-timeout", "new-timeout-token"),
+                var restart = Task.Run(() => newPort = StartEndpointWithRetry(
+                    endpoint,
+                    "/new-timeout",
+                    "new-timeout-token",
                     _ =>
                     {
                         Interlocked.Increment(ref newQueueCalls);
@@ -167,16 +175,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             using var releaseFirstQueue = new ManualResetEventSlim();
             using var secondQueueEntered = new ManualResetEventSlim();
             using var releaseSecondQueue = new ManualResetEventSlim();
-            var firstPort = ReserveFreeLoopbackPort();
-            var secondPort = ReserveFreeLoopbackPort();
-            var thirdPort = ReserveFreeLoopbackPort();
             Task<HttpStatusCode> firstRequest = null;
             Task<HttpStatusCode> secondRequest = null;
 
             try
             {
-                endpoint.Start(
-                    Options(firstPort, "/retire-first", "retire-first-token"),
+                var firstPort = StartEndpointWithRetry(
+                    endpoint,
+                    "/retire-first",
+                    "retire-first-token",
                     _ =>
                     {
                         firstQueueEntered.Set();
@@ -188,8 +195,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     firstQueueEntered.Wait(TimeSpan.FromSeconds(5)),
                     "First worker never entered its queue callback.");
 
-                endpoint.Start(
-                    Options(secondPort, "/retire-second", "retire-second-token"),
+                var secondPort = StartEndpointWithRetry(
+                    endpoint,
+                    "/retire-second",
+                    "retire-second-token",
                     _ =>
                     {
                         secondQueueEntered.Set();
@@ -201,8 +210,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     secondQueueEntered.Wait(TimeSpan.FromSeconds(5)),
                     "Second worker never entered its queue callback.");
 
-                endpoint.Start(
-                    Options(thirdPort, "/retire-third", "retire-third-token"),
+                var thirdPort = StartEndpointWithRetry(
+                    endpoint,
+                    "/retire-third",
+                    "retire-third-token",
                     _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
 
                 Assert.Equal(1, endpoint.RetiringGenerationCount);
@@ -244,14 +255,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             using var oldQueueEntered = new ManualResetEventSlim();
             using var releaseOldQueue = new ManualResetEventSlim();
             using var newQueueEntered = new ManualResetEventSlim();
-            var oldPort = ReserveFreeLoopbackPort();
-            var newPort = ReserveFreeLoopbackPort();
             Task<HttpStatusCode> oldRequest = null;
 
             try
             {
-                endpoint.Start(
-                    Options(oldPort, "/authority-old", "authority-old-token"),
+                var oldPort = StartEndpointWithRetry(
+                    endpoint,
+                    "/authority-old",
+                    "authority-old-token",
                     request =>
                     {
                         oldQueueEntered.Set();
@@ -274,8 +285,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     CursorJsonFor(sequence: 1, sec: 2, nsec: 3));
                 Assert.True(oldQueueEntered.Wait(TimeSpan.FromSeconds(5)), "Old worker never entered its queue callback.");
 
-                endpoint.Start(
-                    Options(newPort, "/authority-new", "authority-new-token"),
+                var newPort = StartEndpointWithRetry(
+                    endpoint,
+                    "/authority-new",
+                    "authority-new-token",
                     request =>
                     {
                         var result = controller.TryEnqueue(
@@ -665,15 +678,43 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public async Task StartRetriesWhenTheReservedPortIsTakenBeforeTheBind()
+        {
+            using var endpoint = new UnityReplayCursorEndpoint();
+            var squattedPort = ReserveFreeLoopbackPort();
+            var squatter = new TcpListener(IPAddress.Loopback, squattedPort);
+            squatter.Start();
+            try
+            {
+                var bound = StartEndpointWithRetry(
+                    endpoint,
+                    "/retry",
+                    "retry-token",
+                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."),
+                    PortsStartingWith(squattedPort));
+
+                Assert.NotEqual(squattedPort, bound);
+                Assert.True(endpoint.IsRunning);
+                Assert.Equal(
+                    HttpStatusCode.Accepted,
+                    await PostCursorAsync(bound, "/retry", "retry-token"));
+            }
+            finally
+            {
+                squatter.Stop();
+            }
+        }
+
+        [Fact]
         public async Task AbortedResponseDoesNotRetireTheListenerWorker()
         {
             using var endpoint = new UnityReplayCursorEndpoint();
             using var queueEntered = new ManualResetEventSlim();
             using var releaseQueue = new ManualResetEventSlim();
-            var port = ReserveFreeLoopbackPort();
-
-            endpoint.Start(
-                Options(port, "/abort", "abort-token"),
+            var port = StartEndpointWithRetry(
+                endpoint,
+                "/abort",
+                "abort-token",
                 _ =>
                 {
                     queueEntered.Set();
@@ -759,6 +800,61 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             catch (TaskCanceledException)
             {
                 // A closed listener can surface as a bounded client timeout.
+            }
+        }
+
+        /// <summary>
+        /// Starts the endpoint on a free loopback port, retrying when the reserved port was taken
+        /// between the reservation probe and the listener bind. Returns the port actually bound.
+        /// </summary>
+        private static int StartEndpointWithRetry(
+            UnityReplayCursorEndpoint endpoint,
+            string path,
+            string bearerToken,
+            Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> queue,
+            IEnumerable<int> candidatePorts = null)
+        {
+            Exception lastError = null;
+            var attempts = 0;
+            foreach (var port in candidatePorts ?? FreeLoopbackPorts(5))
+            {
+                attempts++;
+                try
+                {
+                    endpoint.Start(Options(port, path, bearerToken), queue);
+                    return port;
+                }
+                catch (Exception error) when (IsBindContention(error))
+                {
+                    lastError = error;
+                }
+            }
+
+            throw new InvalidOperationException(
+                "Could not bind a loopback replay cursor endpoint after " + attempts + " attempts.",
+                lastError);
+        }
+
+        // Losing the port between the probe and the bind surfaces as an HttpListenerException whose
+        // code depends on the winner: 183 when another HTTP prefix owns it, 32 when a raw socket does.
+        private static bool IsBindContention(Exception error)
+            => error is HttpListenerException
+               || error is SocketException socket && socket.SocketErrorCode == SocketError.AddressAlreadyInUse;
+
+        private static IEnumerable<int> FreeLoopbackPorts(int count)
+        {
+            for (var attempt = 0; attempt < count; attempt++)
+            {
+                yield return ReserveFreeLoopbackPort();
+            }
+        }
+
+        private static IEnumerable<int> PortsStartingWith(int firstPort)
+        {
+            yield return firstPort;
+            foreach (var port in FreeLoopbackPorts(4))
+            {
+                yield return port;
             }
         }
 
