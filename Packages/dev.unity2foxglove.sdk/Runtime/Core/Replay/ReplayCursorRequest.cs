@@ -285,6 +285,17 @@ namespace Unity.FoxgloveSDK.Core
         /// <param name="error">Human-readable failure reason when parsing fails.</param>
         /// <returns>True when the payload is valid.</returns>
         public static bool TryParseJson(string json, out ReplayCursorRequest request, out string error)
+            => TryParseJson(json, JObject.Parse, out request, out error);
+
+        /// <summary>
+        /// Parses with an injected document reader so a test can prove that a runtime failure inside
+        /// the reader escapes instead of being reported as an invalid payload.
+        /// </summary>
+        internal static bool TryParseJson(
+            string json,
+            Func<string, JObject> parse,
+            out ReplayCursorRequest request,
+            out string error)
         {
             request = default;
             error = string.Empty;
@@ -297,7 +308,7 @@ namespace Unity.FoxgloveSDK.Core
 
             try
             {
-                var root = JObject.Parse(json);
+                var root = (parse ?? JObject.Parse)(json);
                 if (root["timeNs"] != null)
                 {
                     error = "Use split time.sec/time.nsec fields; timeNs number payloads are rejected.";
@@ -347,12 +358,25 @@ namespace Unity.FoxgloveSDK.Core
                     didSeek);
                 return true;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (IsMalformedPayload(ex))
             {
                 error = "Cursor request JSON is invalid: " + ex.Message;
                 return false;
             }
         }
+
+        /// <summary>
+        /// True for the exceptions a malformed cursor payload can raise. Anything else - an aborted
+        /// thread, an exhausted process - is a runtime failure, not a rejected request, and must not
+        /// be reported to the client as invalid JSON.
+        /// </summary>
+        private static bool IsMalformedPayload(Exception exception)
+            => exception is JsonException
+               || exception is FormatException
+               || exception is OverflowException
+               || exception is InvalidCastException
+               || exception is ArgumentException
+               || exception is NullReferenceException;
 
         /// <summary>Read a JSON integer token without throwing parser exceptions to callers.</summary>
         private static bool TryReadInt64(JToken token, out long value)
@@ -368,7 +392,7 @@ namespace Unity.FoxgloveSDK.Core
                 value = token.Value<long>();
                 return true;
             }
-            catch
+            catch (Exception ex) when (IsMalformedPayload(ex))
             {
                 return false;
             }
@@ -388,7 +412,7 @@ namespace Unity.FoxgloveSDK.Core
                 value = token.Value<bool>();
                 return true;
             }
-            catch
+            catch (Exception ex) when (IsMalformedPayload(ex))
             {
                 return false;
             }
