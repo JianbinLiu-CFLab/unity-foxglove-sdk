@@ -31,9 +31,21 @@ namespace Unity.FoxgloveSDK.Components
         Silent
     }
 
+    /// <summary>Presence of a contract identity on each side of the comparison.</summary>
+    public enum FoxRunCompatibilityPresence
+    {
+        Both,
+        AddedInCurrent,
+        RemovedFromCurrent
+    }
+
     public sealed class FoxRunCompatibilityTopicFinding
     {
         public string Topic { get; }
+        public string SchemaName { get; }
+        public string Encoding { get; }
+        public string Flow { get; }
+        public FoxRunCompatibilityPresence Presence { get; }
         public bool ContractChanged { get; }
         public bool BindingChanged { get; }
         public bool PolicyChanged { get; }
@@ -43,17 +55,51 @@ namespace Unity.FoxgloveSDK.Components
             bool contractChanged,
             bool bindingChanged,
             bool policyChanged)
+            : this(topic, string.Empty, string.Empty, string.Empty,
+                   FoxRunCompatibilityPresence.Both, contractChanged, bindingChanged, policyChanged)
+        {
+        }
+
+        public FoxRunCompatibilityTopicFinding(
+            string topic,
+            string schemaName,
+            string encoding,
+            string flow,
+            FoxRunCompatibilityPresence presence,
+            bool contractChanged,
+            bool bindingChanged,
+            bool policyChanged)
         {
             Topic = topic ?? string.Empty;
+            SchemaName = schemaName ?? string.Empty;
+            Encoding = encoding ?? string.Empty;
+            Flow = flow ?? string.Empty;
+            Presence = presence;
             ContractChanged = contractChanged;
             BindingChanged = bindingChanged;
             PolicyChanged = policyChanged;
         }
 
-        public string Describe()
-            => Topic + ": contract " + (ContractChanged ? "changed" : "same")
-               + " / binding " + (BindingChanged ? "changed" : "same")
-               + " / policy " + (PolicyChanged ? "changed" : "same");
+        public string Describe() => Describe(qualifyIdentity: false);
+
+        /// <summary>
+        /// Describes one contract. A topic can carry several contracts, one per encoding and flow,
+        /// so the caller qualifies the line with the rest of the identity whenever the topic alone
+        /// would name more than one row.
+        /// </summary>
+        public string Describe(bool qualifyIdentity)
+        {
+            var label = qualifyIdentity
+                ? Topic + " [" + Encoding + "/" + Flow + "]"
+                : Topic;
+            if (Presence == FoxRunCompatibilityPresence.AddedInCurrent)
+                return label + ": added";
+            if (Presence == FoxRunCompatibilityPresence.RemovedFromCurrent)
+                return label + ": removed";
+            return label + ": contract " + (ContractChanged ? "changed" : "same")
+                   + " / binding " + (BindingChanged ? "changed" : "same")
+                   + " / policy " + (PolicyChanged ? "changed" : "same");
+        }
     }
 
     public sealed class FoxRunCompatibilityResult
@@ -106,10 +152,20 @@ namespace Unity.FoxgloveSDK.Components
                 return Unknown("metadata version is unsupported");
             if (recorded.Contracts.Any(contract => contract == null || string.IsNullOrWhiteSpace(contract.Topic)))
                 return Unknown("metadata contains an invalid contract");
+            // Field digests only enable field-level reasoning. An equal global manifest hash already
+            // proves the contract universe is identical, so a recording made before metadata v2 is
+            // still Exact; it is Unknown only when the hashes differ and no digests exist to explain
+            // the difference.
+            var globalHashesEqual = !string.IsNullOrWhiteSpace(recorded.GlobalManifestHash)
+                && StringEquals(recorded.GlobalManifestHash, current.GlobalManifestHash);
             if (recorded.SchemaMetadataVersion == 1)
-                return Unknown("schema metadata version 1 has no field digests");
+                return globalHashesEqual
+                    ? Result(FoxRunCompatibilityClass.Exact, Array.Empty<FoxRunCompatibilityTopicFinding>())
+                    : Unknown("schema metadata version 1 has no field digests");
             if (recorded.Contracts.Any(contract => contract.Fields == null))
-                return Unknown("schema metadata field digest is missing");
+                return globalHashesEqual
+                    ? Result(FoxRunCompatibilityClass.Exact, Array.Empty<FoxRunCompatibilityTopicFinding>())
+                    : Unknown("schema metadata field digest is missing");
 
             var currentContracts = current.Types
                 .Where(type => type != null)
@@ -129,8 +185,17 @@ namespace Unity.FoxgloveSDK.Components
             {
                 recordedByKey.TryGetValue(key, out var oldContract);
                 currentByKey.TryGetValue(key, out var newContract);
+                var presence = oldContract == null
+                    ? FoxRunCompatibilityPresence.AddedInCurrent
+                    : newContract == null
+                        ? FoxRunCompatibilityPresence.RemovedFromCurrent
+                        : FoxRunCompatibilityPresence.Both;
                 findings.Add(new FoxRunCompatibilityTopicFinding(
                     key.Topic,
+                    key.SchemaName,
+                    key.Encoding,
+                    key.Flow,
+                    presence,
                     oldContract == null || newContract == null || !StringEquals(oldContract.ContractHash, newContract.ContractHash),
                     oldContract == null || newContract == null || !StringEquals(oldContract.BindingHash, newContract.BindingHash),
                     oldContract == null || newContract == null || !StringEquals(oldContract.PolicyHash, newContract.PolicyHash)));
@@ -243,8 +308,18 @@ namespace Unity.FoxgloveSDK.Components
             var builder = new StringBuilder(classification.ToString());
             if (!string.IsNullOrWhiteSpace(reason))
                 builder.Append(": ").Append(reason);
-            foreach (var finding in findings.OrderBy(item => item.Topic, StringComparer.Ordinal))
-                builder.Append('\n').Append(finding.Describe());
+            var ambiguousTopics = findings
+                .GroupBy(item => item.Topic, StringComparer.Ordinal)
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
+                .ToList();
+            foreach (var finding in findings
+                         .OrderBy(item => item.Topic, StringComparer.Ordinal)
+                         .ThenBy(item => item.Encoding, StringComparer.Ordinal)
+                         .ThenBy(item => item.Flow, StringComparer.Ordinal))
+            {
+                builder.Append('\n').Append(finding.Describe(ambiguousTopics.Contains(finding.Topic, StringComparer.Ordinal)));
+            }
             return new FoxRunCompatibilityResult(classification, findings, builder.ToString());
         }
 

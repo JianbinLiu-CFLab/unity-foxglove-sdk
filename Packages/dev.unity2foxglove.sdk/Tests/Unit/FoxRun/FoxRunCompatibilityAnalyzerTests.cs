@@ -41,8 +41,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         [Fact]
         public void VersionOneWithoutFieldDigestsIsUnknownAndCompatiblePolicyIsExplicit()
         {
-            var current = Manifest("g", "c", "b", "p", "int32");
-            var legacy = FoxRunSchemaMcapMetadata.CreateRecord(current);
+            var recorded = Manifest("g", "c", "b", "p", "int32");
+            var current = Manifest("g2", "c2", "b2", "p2", "int32", "string");
+            var legacy = FoxRunSchemaMcapMetadata.CreateRecord(recorded);
             legacy.SchemaMetadataVersion = 1;
             legacy.Contracts[0].Fields = null;
 
@@ -51,6 +52,66 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.Equal(FoxRunCompatibilityDecision.Block, result.Decide(SchemaIdentityMode.Strict));
             Assert.Equal(FoxRunCompatibilityDecision.Block, result.Decide(SchemaIdentityMode.Compatible));
             Assert.Equal(FoxRunCompatibilityDecision.Warn, result.Decide(SchemaIdentityMode.Warn));
+        }
+
+        [Fact]
+        public void LegacyRecordingWithTheSameGlobalHashStaysExact()
+        {
+            var current = Manifest("g", "c", "b", "p", "int32");
+
+            var legacyVersion = FoxRunSchemaMcapMetadata.CreateRecord(current);
+            legacyVersion.SchemaMetadataVersion = 1;
+            legacyVersion.Contracts[0].Fields = null;
+            var versionResult = FoxRunCompatibilityAnalyzer.Analyze(legacyVersion, current);
+
+            var missingDigests = FoxRunSchemaMcapMetadata.CreateRecord(current);
+            missingDigests.Contracts[0].Fields = null;
+            var digestResult = FoxRunCompatibilityAnalyzer.Analyze(missingDigests, current);
+
+            // The global manifest hash already proves the contract universe is identical; field
+            // digests only enable field-level reasoning, so their absence must not block a replay
+            // of a recording that matches the current build exactly.
+            Assert.Equal(FoxRunCompatibilityClass.Exact, versionResult.Classification);
+            Assert.Equal(FoxRunCompatibilityClass.Exact, digestResult.Classification);
+            Assert.Equal(FoxRunCompatibilityDecision.Proceed, versionResult.Decide(SchemaIdentityMode.Strict));
+            Assert.Equal(FoxRunCompatibilityDecision.Proceed, digestResult.Decide(SchemaIdentityMode.Strict));
+
+            var guard = FoxRunSchemaMcapMetadata.Evaluate(legacyVersion, current, SchemaIdentityMode.Strict);
+            Assert.Equal(FoxRunReplaySchemaGuardState.Match, guard.State);
+            Assert.False(guard.IsBlocking);
+        }
+
+        [Fact]
+        public void FindingsQualifyRepeatedTopicsAndNameAddedOrRemovedContracts()
+        {
+            var recorded = ManifestWithContracts(
+                "old",
+                Contract("c-json", "b-json", "p-json", encoding: "json"),
+                Contract("c-proto", "b-proto", "p-proto", encoding: "protobuf"));
+            var current = ManifestWithContracts(
+                "new",
+                Contract("c-json", "b-json", "p-json", encoding: "json"),
+                Contract("c-proto2", "b-proto", "p-proto", encoding: "protobuf"));
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(
+                FoxRunSchemaMcapMetadata.CreateRecord(recorded), current);
+
+            // Two contracts share the topic, so each line has to carry the rest of the identity.
+            Assert.Contains("/state [json/Publish]: contract same / binding same / policy same", result.Message, StringComparison.Ordinal);
+            Assert.Contains("/state [protobuf/Publish]: contract changed / binding same / policy same", result.Message, StringComparison.Ordinal);
+
+            var added = ManifestWithContracts(
+                "newer",
+                Contract("c-json", "b-json", "p-json", encoding: "json"),
+                Contract("c-proto", "b-proto", "p-proto", encoding: "protobuf"),
+                Contract("c-extra", "b-extra", "p-extra", topic: "/extra", encoding: "json"));
+            var addedResult = FoxRunCompatibilityAnalyzer.Analyze(
+                FoxRunSchemaMcapMetadata.CreateRecord(recorded), added);
+            Assert.Contains("/extra: added", addedResult.Message, StringComparison.Ordinal);
+
+            var removedResult = FoxRunCompatibilityAnalyzer.Analyze(
+                FoxRunSchemaMcapMetadata.CreateRecord(added), recorded);
+            Assert.Contains("/extra: removed", removedResult.Message, StringComparison.Ordinal);
         }
 
         [Fact]
