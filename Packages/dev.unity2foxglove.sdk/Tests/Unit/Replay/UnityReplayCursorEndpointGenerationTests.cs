@@ -637,6 +637,34 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public void CursorParserRejectsMalformedPayloadsAndLetsRuntimeFailuresEscape()
+        {
+            const string body = "{\"time\":{\"sec\":1,\"nsec\":2}}";
+
+            Assert.False(ReplayCursorRequest.TryParseJson("{ not json", out _, out var malformedError));
+            Assert.Contains("Cursor request JSON is invalid", malformedError, StringComparison.Ordinal);
+
+            Assert.False(ReplayCursorRequest.TryParseJson(
+                body,
+                _ => throw new Newtonsoft.Json.JsonReaderException("bad token"),
+                out _,
+                out var readerError));
+            Assert.Contains("Cursor request JSON is invalid", readerError, StringComparison.Ordinal);
+
+            // A runtime failure is not a rejected request: it must not be reported to the client as
+            // invalid JSON, and it must not be swallowed.
+            Assert.Throws<OutOfMemoryException>(() => ReplayCursorRequest.TryParseJson(
+                body,
+                _ => throw new OutOfMemoryException("parser exhausted the process"),
+                out _,
+                out _));
+
+            Assert.True(ReplayCursorRequest.TryParseJson(body, out var parsed, out var noError));
+            Assert.Equal(string.Empty, noError);
+            Assert.Equal(1_000_000_002UL, parsed.TimeNs);
+        }
+
+        [Fact]
         public async Task AbortedResponseDoesNotRetireTheListenerWorker()
         {
             using var endpoint = new UnityReplayCursorEndpoint();
