@@ -1,7 +1,0 @@
-<linker>
-  <!-- Project-level preservation authority consumed by UnityLinker. -->
-  <assembly fullname="Newtonsoft.Json" preserve="all" />
-  <assembly fullname="Unity.FoxgloveSDK" preserve="all" />
-  <assembly fullname="Google.Protobuf" preserve="all" />
-  <assembly fullname="Unity.FoxgloveSDK.Proto" preserve="all" />
-</linker>
