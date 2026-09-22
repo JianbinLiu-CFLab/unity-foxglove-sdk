@@ -106,7 +106,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 requestedAddOnPackage,
                 () =>
                 {
-                    
+                    resolve();
                     return true;
                 });
         }
