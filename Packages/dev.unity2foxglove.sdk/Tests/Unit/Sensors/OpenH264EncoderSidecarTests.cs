@@ -259,17 +259,27 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
-        public void MediaFoundationWorkerStopsAndReportsNativeFailure()
+        public void WorkerConvergesToStoppedStateOnSubmissionFailure()
         {
             using var sidecar = new MediaFoundationH264EncoderSidecar();
             SetProperty(sidecar, "IsRunning", true);
-            SetField(sidecar, "_options", new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
+            SetField(sidecar, "_options", new MediaFoundationH264EncoderOptions { Width = 3, Height = 2 });
             var worker = new Thread(() => Invoke(sidecar, "EncoderWorkerLoop"));
             worker.Start();
-            Assert.True(sidecar.TrySubmitFrame(new byte[12], 123UL));
+            Assert.True(sidecar.TrySubmitFrame(new byte[18], 123UL));
             Assert.True(worker.Join(TimeSpan.FromSeconds(2)));
             Assert.False(sidecar.IsRunning);
             Assert.False(string.IsNullOrWhiteSpace(sidecar.LastError));
+        }
+
+        [Fact]
+        public void StartRejectsWindowsOnlyEncoderOutsideWindows()
+        {
+            if (OperatingSystem.IsWindows())
+                return;
+            using var sidecar = new MediaFoundationH264EncoderSidecar();
+            Assert.False(sidecar.Start(new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 }));
+            Assert.Contains("only available on Windows", sidecar.LastError, StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]
