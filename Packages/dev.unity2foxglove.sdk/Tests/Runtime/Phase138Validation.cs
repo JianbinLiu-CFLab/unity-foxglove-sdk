@@ -263,7 +263,7 @@ namespace Unity.FoxgloveSDK.Tests
             var sourceMazeDir = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
                 "Samples~", "Virtual LiDAR Maze Demo");
             var importedMazeDir = Path.Combine(repoRoot, "Unity2Foxglove", "Assets", "Samples",
-                "Unity2Foxglove SDK", "1.9.4", "Virtual LiDAR Maze Demo");
+                "Unity2Foxglove SDK", "1.9.6", "Virtual LiDAR Maze Demo");
             var mazeDir = Directory.Exists(sourceMazeDir) ? sourceMazeDir : importedMazeDir;
             var readmePath = Path.Combine(mazeDir, "README.md");
 
