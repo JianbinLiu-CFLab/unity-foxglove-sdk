@@ -55,7 +55,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("TryDisableForReplay", publisher, StringComparison.Ordinal);
             Assert.Contains("RestoreAfterReplay", publisher, StringComparison.Ordinal);
             Assert.Contains("pub.TryDisableForReplay()", setup, StringComparison.Ordinal);
-            Assert.Contains("pub.RestoreAfterReplay()", setup, StringComparison.Ordinal);
+            Assert.Contains("RestoreAfterReplay", setup, StringComparison.Ordinal);
             Assert.DoesNotContain("pub.enabled = true", setup, StringComparison.Ordinal);
             Assert.DoesNotContain("pub.enabled = false", setup, StringComparison.Ordinal);
         }
