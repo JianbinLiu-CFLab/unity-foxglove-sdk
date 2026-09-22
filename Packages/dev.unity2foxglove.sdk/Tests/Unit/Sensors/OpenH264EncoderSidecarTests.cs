@@ -241,21 +241,49 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
-        public void MediaFoundationSubmissionQueuesValidFrameWithoutBlocking()
+        public void MediaFoundationSubmissionRejectsFrameWhenStopped()
+        {
+            if (!OperatingSystem.IsWindows())
+                return;
+            using var sidecar = new MediaFoundationH264EncoderSidecar();
+            Assert.False(sidecar.TrySubmitFrame(new byte[12], 123UL));
+            Assert.Contains("not running", sidecar.LastError, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void MediaFoundationSubmissionRejectsInvalidFrameSize()
         {
             if (!OperatingSystem.IsWindows())
                 return;
             using var sidecar = new MediaFoundationH264EncoderSidecar();
             SetProperty(sidecar, "IsRunning", true);
-            SetField(
-                sidecar,
-                "_options",
-                new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
+            SetField(sidecar, "_options", new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
+            Assert.False(sidecar.TrySubmitFrame(new byte[11], 123UL));
+            Assert.Contains("byte count", sidecar.LastError, StringComparison.OrdinalIgnoreCase);
+        }
 
+        [Fact]
+        public void MediaFoundationWorkerStopsAndReportsNativeFailure()
+        {
+            if (!OperatingSystem.IsWindows())
+                return;
+            using var sidecar = new MediaFoundationH264EncoderSidecar();
+            SetProperty(sidecar, "IsRunning", true);
+            SetField(sidecar, "_options", new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
+            var worker = new Thread(() => Invoke(sidecar, "EncoderWorkerLoop"));
+            worker.Start();
             Assert.True(sidecar.TrySubmitFrame(new byte[12], 123UL));
-            Assert.True(sidecar.IsRunning);
-            Assert.True(string.IsNullOrWhiteSpace(sidecar.LastError));
-            sidecar.Dispose();
+            Assert.True(worker.Join(TimeSpan.FromSeconds(2)));
+            Assert.False(sidecar.IsRunning);
+            Assert.False(string.IsNullOrWhiteSpace(sidecar.LastError));
+        }
+
+        [Fact]
+        public void MediaFoundationInputQueueReportsBoundedCapacity()
+        {
+            using var sidecar = new MediaFoundationH264EncoderSidecar();
+            Assert.Equal(2, sidecar.MaxInputQueue);
+            Assert.Equal(0, sidecar.InputQueueDepth);
         }
 
         private static string QuoteArgument(string value)
@@ -384,6 +412,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var property = target.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public);
             Assert.NotNull(property);
             property.SetValue(target, value);
+        }
+
+        private static void Invoke(object target, string name)
+        {
+            target.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, null);
         }
     }
 }
