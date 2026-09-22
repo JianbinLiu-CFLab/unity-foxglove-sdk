@@ -119,7 +119,7 @@ namespace Unity.FoxgloveSDK.Tests
             var demoSetup = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs");
             Check(demoSetup.Contains("private void OnDestroy()", StringComparison.Ordinal)
                   && demoSetup.Contains("ClearRuntimeWiring()", StringComparison.Ordinal)
-                  && demoSetup.Contains("_wiredRuntime.Parameters.OnParameterChanged -= OnParameterChanged", StringComparison.Ordinal)
+                  && demoSetup.Contains("_wiredRuntime.Parameters.OnParameterChanged -= _parameterChangedHandler", StringComparison.Ordinal)
                   && demoSetup.Contains("_wiredManager.OnClientMessage -= OnClientMessageReceived", StringComparison.Ordinal)
                   && demoSetup.Contains("[FoxService(", StringComparison.Ordinal)
                   && !demoSetup.Contains("_resetSvcId", StringComparison.Ordinal),

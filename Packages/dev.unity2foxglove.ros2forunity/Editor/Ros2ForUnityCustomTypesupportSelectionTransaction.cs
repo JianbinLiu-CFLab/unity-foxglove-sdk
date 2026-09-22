@@ -25,6 +25,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         InvalidManifest,
         RequestedCandidateNotReady,
         ResolveFailed,
+        ResolvePending,
     }
 
     /// <summary>
@@ -97,9 +98,28 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             string requestedAddOnPackage,
             Action resolve)
         {
+            if (resolve == null)
+                return Failure(Ros2ForUnityCustomTypesupportSelectionCode.InvalidProject);
+            return Apply(
+                projectDirectory,
+                selectedBaseRuntimePackage,
+                requestedAddOnPackage,
+                () =>
+                {
+                    resolve();
+                    return true;
+                });
+        }
+
+        public static Ros2ForUnityCustomTypesupportSelectionResult Apply(
+            string projectDirectory,
+            string selectedBaseRuntimePackage,
+            string requestedAddOnPackage,
+            Func<bool> resolveAndConfirm)
+        {
             if (string.IsNullOrWhiteSpace(projectDirectory)
                 || string.IsNullOrWhiteSpace(selectedBaseRuntimePackage)
-                || resolve == null)
+                || resolveAndConfirm == null)
             {
                 return Failure(Ros2ForUnityCustomTypesupportSelectionCode.InvalidProject);
             }
@@ -166,7 +186,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 ParseManifestJson(rendered);
                 WriteAtomically(manifestPath, rendered);
                 ParseManifestJson(File.ReadAllText(manifestPath));
-                resolve();
+                var resolved = resolveAndConfirm();
+                if (!resolved)
+                    return BuildSelectionResult(
+                        Ros2ForUnityCustomTypesupportSelectionCode.ResolvePending,
+                        selected,
+                        baseRuntime);
             }
             catch (Exception)
             {
@@ -182,20 +207,26 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return Failure(Ros2ForUnityCustomTypesupportSelectionCode.ResolveFailed);
             }
 
-            return selected == null
+            return BuildSelectionResult(
+                selected == null
+                    ? Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly
+                    : Ros2ForUnityCustomTypesupportSelectionCode.Ready,
+                selected,
+                baseRuntime);
+        }
+
+        private static Ros2ForUnityCustomTypesupportSelectionResult BuildSelectionResult(
+            Ros2ForUnityCustomTypesupportSelectionCode code,
+            Candidate selected,
+            BaseRuntime baseRuntime)
+            => selected == null
                 ? new Ros2ForUnityCustomTypesupportSelectionResult(
-                    Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly,
-                    string.Empty,
-                    string.Empty,
-                    baseRuntime.ManifestDigest,
-                    string.Empty)
+                    code, string.Empty, string.Empty,
+                    baseRuntime.ManifestDigest, string.Empty)
                 : new Ros2ForUnityCustomTypesupportSelectionResult(
-                    Ros2ForUnityCustomTypesupportSelectionCode.Ready,
-                    selected.PackageId,
-                    selected.InterfaceDigest,
+                    code, selected.PackageId, selected.InterfaceDigest,
                     baseRuntime.ManifestDigest,
                     selected.NativePluginDirectory);
-        }
 
         /// <summary>
         /// Re-evaluates the add-on which Unity has already resolved in the

@@ -37,7 +37,11 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     private FoxgloveManager _wiredManager;
     private FoxgloveRuntime _wiredRuntime;
     private FoxgloveSceneCubePublisher _scenePublisher;
+    private FoxgloveParameterStore.ParameterRegistration _colorRegistration;
+    private FoxgloveParameterStore.ParameterRegistration _scaleRegistration;
     private GameObject _cachedCube;
+    private int _wiringGeneration;
+    private System.Action<string, JToken, string> _parameterChangedHandler;
 
     /// <summary>
     /// Initializes parameters <c>/cube/color</c> and <c>/cube/scale</c>,
@@ -79,8 +83,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
 
         var rt = runtime;
 
-        rt.RegisterParameter("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true);
-        rt.RegisterParameter("/cube/scale", 1.0, "number", true);
+        _colorRegistration = rt.Parameters.RegisterOwned("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true);
+        _scaleRegistration = rt.Parameters.RegisterOwned("/cube/scale", 1.0, "number", true);
 
         // Phase 8: log client-published messages to Unity Console.
         _manager.OnClientMessage += OnClientMessageReceived;
@@ -88,7 +92,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         // Advertise /unity/client_log so Foxglove sees foxglove.Log in the schema picker.
         _manager.GetOrRegisterSchemaChannel("/unity/client_log", FoxgloveSchemaDefinitions.LogSchemaName);
 
-        rt.Parameters.OnParameterChanged += OnParameterChanged;
+        _parameterChangedHandler = (name, value, type) => OnParameterChangedForRuntime(rt, name, value, type);
+        rt.Parameters.OnParameterChanged += _parameterChangedHandler;
         _wiredManager = _manager;
         _wiredRuntime = rt;
 
@@ -115,6 +120,11 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     /// Unsubscribes parameter-change and color-change callbacks to
     /// prevent leaks after destruction.
     /// </summary>
+    private void OnDisable()
+    {
+        ClearRuntimeWiring();
+    }
+
     private void OnDestroy()
     {
         ClearRuntimeWiring();
@@ -122,8 +132,15 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
 
     private void ClearRuntimeWiring()
     {
+        System.Threading.Interlocked.Increment(ref _wiringGeneration);
         if (_wiredRuntime != null)
-            _wiredRuntime.Parameters.OnParameterChanged -= OnParameterChanged;
+            if (_parameterChangedHandler != null)
+                _wiredRuntime.Parameters.OnParameterChanged -= _parameterChangedHandler;
+
+        _colorRegistration?.Dispose();
+        _scaleRegistration?.Dispose();
+        _colorRegistration = null;
+        _scaleRegistration = null;
 
         if (!ReferenceEquals(_wiredManager, null))
             _wiredManager.OnClientMessage -= OnClientMessageReceived;
@@ -138,6 +155,7 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         _warnedInvalidScale = false;
         _wiredManager = null;
         _wiredRuntime = null;
+        _parameterChangedHandler = null;
     }
 
     [FoxService(
@@ -212,12 +230,21 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     /// Handles Foxglove parameter changes by delegating Unity-object updates to
     /// the main thread via <c>SynchronizationContext</c>.
     /// </summary>
-    private void OnParameterChanged(string name, JToken value, string type)
+    private void OnParameterChangedForRuntime(FoxgloveRuntime runtime, string name, JToken value, string type)
     {
+        if (!ReferenceEquals(runtime, _wiredRuntime) || !_initialized || !isActiveAndEnabled)
+            return;
         if (name == "/cube/color" && TryReadColor(value, out var color))
         {
             if (_unityContext != null && SynchronizationContext.Current != _unityContext)
-                _unityContext.Post(_ => ApplySceneColorFromParameter(color), null);
+            {
+                var generation = System.Threading.Volatile.Read(ref _wiringGeneration);
+                _unityContext.Post(_ =>
+                {
+                    if (generation == System.Threading.Volatile.Read(ref _wiringGeneration) && isActiveAndEnabled)
+                        ApplySceneColorFromParameter(color);
+                }, null);
+            }
             else
                 ApplySceneColorFromParameter(color);
             return;
@@ -227,7 +254,14 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         {
             var scaleValue = value?.DeepClone();
             if (_unityContext != null && SynchronizationContext.Current != _unityContext)
-                _unityContext.Post(_ => ApplyScaleFromParameter(scaleValue), null);
+            {
+                var generation = System.Threading.Volatile.Read(ref _wiringGeneration);
+                _unityContext.Post(_ =>
+                {
+                    if (generation == System.Threading.Volatile.Read(ref _wiringGeneration) && isActiveAndEnabled)
+                        ApplyScaleFromParameter(scaleValue);
+                }, null);
+            }
             else
                 ApplyScaleFromParameter(scaleValue);
         }

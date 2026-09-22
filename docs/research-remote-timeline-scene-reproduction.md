@@ -1,6 +1,7 @@
 # Foxglove-Owned Timeline and Deterministic Unity Scene Reproduction
 
-Updated: 2026-07-20
+Original architecture review: 2026-07-20
+Last code-alignment review: 2026-09-21
 
 ## Abstract
 
@@ -134,7 +135,8 @@ The production claim is therefore the simpler path: keep Follow off, use Foxglov
 
 `ExternalReplayCursorController` is a thread-safe mailbox, not a second replay engine. It:
 
-- rejects malformed or duplicate requests;
+- the cursor admission path rejects malformed requests before the controller receives a typed request;
+- rejects duplicate or stale validated requests;
 - clamps accepted time to the replay range;
 - keeps one latest pending cursor rather than an unbounded command history;
 - exposes the last applied sequence/time for acknowledgements;
@@ -211,7 +213,7 @@ The bounded server-push history path is implemented; it is not the recommended w
 
 Explicit replay mode separates recorded state from live production:
 
-- live output is suppressed so old recorded samples are not advertised as current telemetry;
+- when **Disable Live Publishers** is enabled during replay, live output is suppressed so old recorded samples are not advertised as current telemetry; normal replay leaves this option off by default;
 - replay scene application does not fan out to WebSocket or the native ROS2 typed bus;
 - the cursor endpoint accepts only the owned loopback/token contract;
 - range and snapshot work occurs through the replay engine, not arbitrary file reads from the extension;
@@ -285,7 +287,7 @@ That separation lowers user complexity and removes an entire class of feedback p
 
 ## Evidence Scope
 
-This document reflects the current replay, cursor, extension, Manager Inspector, decoder, cache, and pose-arbitration code reviewed on 2026-07-20, plus scoped local Unity/Foxglove acceptance reports. Official Foxglove references support API and player behavior; they do not certify Unity2Foxglove. Experimental follow behavior and unmeasured performance are labeled accordingly.
+This document reflects the current replay, cursor, extension, Manager Inspector, decoder, cache, and pose-arbitration code reviewed through 2026-09-21, plus scoped local Unity/Foxglove acceptance reports. Official Foxglove references support API and player behavior; they do not certify Unity2Foxglove. Experimental follow behavior and unmeasured performance are labeled accordingly.
 
 ## Phase188 deterministic replay performance (2026-09-14)
 

@@ -19,6 +19,8 @@ namespace Foxglove.Schemas.Video
         bool IsRunning { get; }
         int OutputQueueDepth { get; }
         int MaxOutputQueue { get; }
+        int InputQueueDepth { get; }
+        int MaxInputQueue { get; }
         string LastDiagnosticLine { get; }
         string LastError { get; }
         /// <summary>
@@ -26,7 +28,9 @@ namespace Foxglove.Schemas.Video
         /// and documented by each sidecar options type, such as RGB24 for FFmpeg and
         /// Media Foundation or I420 for the OpenH264 helper.
         /// This method must be non-blocking and safe to call while background
-        /// encoder threads are producing output.
+        /// encoder threads are producing output. Implementations must copy the
+        /// submitted bytes before returning and must not retain the caller's
+        /// array, because callers may reuse it immediately after submission.
         /// </summary>
         bool TrySubmitFrame(byte[] frame);
         /// <summary>
@@ -48,7 +52,8 @@ namespace Foxglove.Schemas.Video
         /// Submit one raw camera frame with its render timestamp. The input pixel
         /// format follows the same implementation-specific contract as TrySubmitFrame.
         /// This method follows the same thread-safety and non-blocking contract
-        /// as <see cref="ICameraVideoEncoderSidecar.TrySubmitFrame(byte[])"/>.
+        /// as <see cref="ICameraVideoEncoderSidecar.TrySubmitFrame(byte[])"/>,
+        /// including the requirement to copy the caller's buffer before return.
         /// </summary>
         bool TrySubmitFrame(byte[] frame, ulong timestampNs);
         /// <summary>

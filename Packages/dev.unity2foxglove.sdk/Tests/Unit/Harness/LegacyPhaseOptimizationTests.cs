@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             });
 
             var conflictDiagnostics = FoxRunGenerationModelValidator.Validate(conflicts);
-            Assert.Contains(conflictDiagnostics, d => d.Id == "FOXRUN002");
+            Assert.Contains(conflictDiagnostics, d => d.Id == "FOXRUN002" && d.Severity == "Error");
             Assert.Contains(conflictDiagnostics, d => d.Id == "FOXRUN003");
             Assert.Contains(conflictDiagnostics, d => d.Id == "FOXRUN005");
 

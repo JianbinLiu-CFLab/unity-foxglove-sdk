@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Text;
 using Google.Protobuf;
 using Unity.FoxgloveSDK.IO;
 using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
@@ -31,9 +32,25 @@ namespace Unity2Foxglove.Ros2Bridge
                 return null;
             if (!Ros2CdrDeserializerRegistry.TryGetBySchemaName(schema?.Name ?? string.Empty, out var entry))
                 return null;
+            if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schema.Name, out var catalogEntry)
+                || schema.Data == null
+                || (schema.Data.Length > 0
+                    && !SchemaContentEqual(schema.Data, catalogEntry.Content)))
+                return null;
 
             return new Decoder(schema.Name, channel.Topic, entry);
         }
+
+        private static bool SchemaContentEqual(byte[] recorded, string bundled)
+        {
+            if (recorded == null || string.IsNullOrEmpty(bundled))
+                return false;
+            var recordedText = NormalizeSchema(Encoding.UTF8.GetString(recorded));
+            return string.Equals(recordedText, NormalizeSchema(bundled), StringComparison.Ordinal);
+        }
+
+        private static string NormalizeSchema(string value)
+            => (value ?? string.Empty).TrimStart('\uFEFF').Replace("\r\n", "\n").Replace('\r', '\n');
 
         private sealed class Decoder :
             IMcapMessageDecoder,

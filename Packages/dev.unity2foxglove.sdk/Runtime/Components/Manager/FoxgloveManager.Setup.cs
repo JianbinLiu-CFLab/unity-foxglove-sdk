@@ -346,9 +346,9 @@ namespace Unity.FoxgloveSDK.Components
             _disabledPublishers.Clear();
             foreach (var pub in pubs)
             {
-                if (pub.enabled && ShouldDisableLivePublisherForReplay(pub, hasSingleLoadedManager))
+                if (ShouldDisableLivePublisherForReplay(pub, hasSingleLoadedManager)
+                    && pub.TryDisableForReplay())
                 {
-                    pub.enabled = false;
                     _disabledPublishers.Add(pub);
                 }
             }
@@ -393,9 +393,9 @@ namespace Unity.FoxgloveSDK.Components
 
             foreach (var pub in _disabledPublishers)
             {
-                if (pub != null)
+                if (pub is FoxglovePublisherBase publisher)
                 {
-                    pub.enabled = true;
+                    publisher.RestoreAfterReplay();
                 }
             }
 

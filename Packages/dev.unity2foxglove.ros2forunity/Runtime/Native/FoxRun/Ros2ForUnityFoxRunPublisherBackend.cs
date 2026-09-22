@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;
 
@@ -107,6 +108,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             catch (Exception exception)
             {
                 TryRollbackPublisher(pendingToken, pendingPublisher);
+                if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                    ExceptionDispatchInfo.Capture(exception).Throw();
                 return FoxRunRos2NativePublisherRegistration.Failure(
                     FoxRunRos2RegistrationError.PublisherBackendFailure,
                     Describe(exception));
@@ -172,6 +175,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             where T : ROS2.Message, new()
         {
             private readonly IFoxRunRos2R2fuNodeDriver _driver;
+            private readonly object _removeGate = new object();
             private object _publisher;
 
             internal PublisherToken(IFoxRunRos2R2fuNodeDriver driver, object publisher)
@@ -199,8 +203,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             public bool TryRemove()
             {
-                var publisher = Interlocked.Exchange(ref _publisher, null);
-                return publisher == null || _driver.RemovePublisher<T>(publisher);
+                lock (_removeGate)
+                {
+                    var publisher = Volatile.Read(ref _publisher);
+                    if (publisher == null)
+                        return true;
+                    if (!_driver.RemovePublisher<T>(publisher))
+                        return false;
+                    Interlocked.CompareExchange(ref _publisher, null, publisher);
+                    return true;
+                }
             }
         }
     }

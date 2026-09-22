@@ -78,9 +78,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(InvokeHasSubscribers(method, registry, 43),
                 "73A-8: removing one client preserves other client demand");
 
-            registry.AddSubscription(clientId: 11, subscriptionId: 21, channelId: 44);
-            Check(!InvokeHasSubscribers(method, registry, 43) && InvokeHasSubscribers(method, registry, 44),
-                "73A-9: replacing a subscription id moves demand between channels");
+            var rebound = registry.TryAddSubscription(11, 21, 44, out _);
+            Check(!rebound && InvokeHasSubscribers(method, registry, 43) && !InvokeHasSubscribers(method, registry, 44),
+                "73A-9: rebinding an active subscription id is rejected");
 
             var copyMethod = typeof(SubscriptionRegistry).GetMethod(
                 "CopySubscribersForChannel",
@@ -92,12 +92,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "73A-10: CopySubscribersForChannel is available for caller-owned snapshots");
 
             var copied = new List<(uint clientId, uint subscriptionId)>();
-            copyMethod?.Invoke(registry, new object[] { 44u, copied });
+            copyMethod?.Invoke(registry, new object[] { 43u, copied });
             Check(copied.Count == 1 && copied[0].clientId == 11 && copied[0].subscriptionId == 21,
                 "73A-11: CopySubscribersForChannel writes the channel snapshot into a caller-owned list");
 
-            var removed = registry.RemoveChannel(44);
-            Check(removed.Count == 1 && !InvokeHasSubscribers(method, registry, 44),
+            var removed = registry.RemoveChannel(43);
+            Check(removed.Count == 1 && !InvokeHasSubscribers(method, registry, 43),
                 "73A-12: removing a channel clears reverse-index demand");
 
             var hasDemandBody = ExtractMethodBody(source, "HasSubscribersForChannel");

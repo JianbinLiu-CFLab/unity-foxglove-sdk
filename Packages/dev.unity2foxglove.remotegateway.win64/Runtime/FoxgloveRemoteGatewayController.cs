@@ -35,6 +35,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private RemoteGatewayCallbacks _callbacks;
         private RemoteGatewayHandle _handle;
         private RemoteGatewayMirrorSink _mirrorSink;
+        private FoxgloveManager _mirrorBoundManager;
         private IntPtr _context;
         private string _connectionStatus = "Shutdown";
         private bool _warnedMissingToken;
@@ -122,11 +123,25 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         private void TryStartGateway()
         {
-            if (_handle != null || _starting || _startupFaulted)
+            if (!EnsureManager())
+                return;
+
+            if (_handle != null)
+            {
+                if (_manager.IsRunning
+                    && !ReferenceEquals(_mirrorBoundManager, _manager)
+                    && _mirrorSink != null)
+                {
+                    _manager.SetMirrorSink(_mirrorSink);
+                    _mirrorBoundManager = _manager;
+                }
+                return;
+            }
+            if (_starting || _startupFaulted)
                 return;
             if (!RemoteGatewayLifecycleGate.CanStartNativeGateway())
                 return;
-            if (!EnsureManager() || !_manager.IsRunning)
+            if (!_manager.IsRunning)
                 return;
 
             var token = ResolveDeviceToken();
@@ -221,6 +236,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                 var connectionStatus = handle.ConnectionStatus.ToString();
                 mirrorSink.Enable();
                 _manager.SetMirrorSink(mirrorSink);
+                _mirrorBoundManager = _manager;
                 mirrorAttached = true;
 
                 _events = events;
@@ -240,7 +256,8 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                     try
                     {
                         if (mirrorAttached)
-                            _manager?.SetMirrorSink(null);
+                            _mirrorBoundManager?.SetMirrorSink(null);
+                        _mirrorBoundManager = null;
                     }
                     finally
                     {
@@ -273,7 +290,8 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             {
                 try
                 {
-                    _manager?.SetMirrorSink(null);
+                    _mirrorBoundManager?.SetMirrorSink(null);
+                    _mirrorBoundManager = null;
                 }
                 finally
                 {

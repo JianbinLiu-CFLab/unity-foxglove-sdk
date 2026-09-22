@@ -273,8 +273,8 @@ namespace Unity.FoxgloveSDK.IO
             amended.AttachmentIndexes.AddRange(newAttachmentIndexes);
 
             amended.Statistics = CreateAmendedStatistics(
-                (uint)amended.MetadataIndexes.Count,
-                (uint)amended.AttachmentIndexes.Count);
+                checked((uint)_metadata.Count),
+                checked((uint)_attachments.Count));
             return amended;
         }
 
@@ -289,8 +289,8 @@ namespace Unity.FoxgloveSDK.IO
                 MessageCount = statistics.MessageCount,
                 SchemaCount = statistics.SchemaCount,
                 ChannelCount = statistics.ChannelCount,
-                AttachmentCount = attachmentCount,
-                MetadataCount = metadataCount,
+                AttachmentCount = checked(statistics.AttachmentCount + attachmentCount),
+                MetadataCount = checked(statistics.MetadataCount + metadataCount),
                 ChunkCount = statistics.ChunkCount,
                 MessageStartTime = statistics.MessageStartTime,
                 MessageEndTime = statistics.MessageEndTime,

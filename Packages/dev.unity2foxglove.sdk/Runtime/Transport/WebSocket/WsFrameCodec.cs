@@ -35,8 +35,8 @@ namespace Unity.FoxgloveSDK.Transport
         private const byte Payload16BitLengthMarker = 126;
         /// <summary>RFC 6455 marker for the 64-bit extended payload-length field.</summary>
         private const byte Payload64BitLengthMarker = 127;
-        /// <summary>Maximum allowable payload size in bytes (64 MiB).</summary>
-        internal const int MaxPayloadBytes = 64 * 1024 * 1024;
+        /// <summary>Maximum allowable payload size in bytes (4 MiB).</summary>
+        internal const int MaxPayloadBytes = 4 * 1024 * 1024;
         private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
 
         internal static int WriteFrameHeader(byte opcode, int payloadLength, Span<byte> destination)
@@ -97,7 +97,11 @@ namespace Unity.FoxgloveSDK.Transport
             => ReadFrame(stream, out frame) == WsFrameReadResult.Success;
 
         internal static WsFrameReadResult ReadFrame(Stream stream, out WsFrame frame)
+            => ReadFrame(stream, out frame, MaxPayloadBytes);
+
+        internal static WsFrameReadResult ReadFrame(Stream stream, out WsFrame frame, int maxPayloadBytes)
         {
+            maxPayloadBytes = Math.Min(MaxPayloadBytes, Math.Max(1, maxPayloadBytes));
             frame = null;
 
             Span<byte> header = stackalloc byte[2];
@@ -131,7 +135,7 @@ namespace Unity.FoxgloveSDK.Transport
                     len64 = (len64 << 8) | ext[i];
                 if ((len64 & (1UL << 63)) != 0 || len64 <= ushort.MaxValue)
                     return WsFrameReadResult.ProtocolError;
-                if (len64 > MaxPayloadBytes)
+                if (len64 > (ulong)maxPayloadBytes)
                     return WsFrameReadResult.MessageTooBig;
                 payloadLen = (int)len64;
             }
@@ -149,7 +153,7 @@ namespace Unity.FoxgloveSDK.Transport
             if (opcode == WsOpcode.Close && payloadLen == 1)
                 return WsFrameReadResult.ProtocolError;
 
-            if (payloadLen > MaxPayloadBytes)
+            if (payloadLen > maxPayloadBytes)
                 return WsFrameReadResult.MessageTooBig;
 
             Span<byte> mask = stackalloc byte[4];

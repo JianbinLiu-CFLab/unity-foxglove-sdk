@@ -203,13 +203,17 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         static void TestOpaqueFileOriginAllowed()
         {
-            var backend = new ManagedWsBackend();
+            var backend = new ManagedWsBackend(new ManagedWebSocketOptions
+            {
+                AllowOpaqueOrigin = true,
+                SharedToken = "phase28-token"
+            });
             var port = GetFreeTcpPort();
             backend.Start("127.0.0.1", port);
 
             try
             {
-                var response = SendRawHandshake(port, "null");
+                var response = SendRawHandshake(port, "null", "phase28-token");
                 Assert(response.StartsWith("HTTP/1.1 101", StringComparison.Ordinal),
                     "Opaque file Origin: raw handshake upgrades");
             }
@@ -228,7 +232,7 @@ namespace Unity.FoxgloveSDK.Tests
             return port;
         }
 
-        private static string SendRawHandshake(int port, string origin)
+        private static string SendRawHandshake(int port, string origin, string token = null)
         {
             using var tcp = new TcpClient();
             tcp.ReceiveTimeout = 5000;
@@ -243,8 +247,9 @@ namespace Unity.FoxgloveSDK.Tests
                 0x39, 0x30, 0x31, 0x32,
                 0x33, 0x34, 0x35, 0x36
             });
+            var requestTarget = token == null ? "/" : "/?token=" + token;
             var request =
-                "GET / HTTP/1.1\r\n" +
+                $"GET {requestTarget} HTTP/1.1\r\n" +
                 $"Host: 127.0.0.1:{port}\r\n" +
                 "Upgrade: websocket\r\n" +
                 "Connection: Upgrade\r\n" +

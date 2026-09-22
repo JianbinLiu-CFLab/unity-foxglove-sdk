@@ -16,6 +16,12 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         [SerializeField] private Vector3 _offset = new Vector3(0, 15, 0);
         [SerializeField] private bool _chaseMode;
 
+        private bool _hasLastTargetPose;
+        private Vector3 _lastTargetPosition;
+        private Quaternion _lastTargetRotation;
+        private bool _lastChaseMode;
+        private Vector3 _lastOffset;
+
         private void Start()
         {
             if (_target == null)
@@ -26,6 +32,19 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         {
             if (_target == null)
                 return;
+
+            if (_hasLastTargetPose
+                && _target.position == _lastTargetPosition
+                && _target.rotation == _lastTargetRotation
+                && _chaseMode == _lastChaseMode
+                && _offset == _lastOffset)
+                return;
+
+            _lastTargetPosition = _target.position;
+            _lastTargetRotation = _target.rotation;
+            _lastChaseMode = _chaseMode;
+            _lastOffset = _offset;
+            _hasLastTargetPose = true;
 
             if (_chaseMode)
             {

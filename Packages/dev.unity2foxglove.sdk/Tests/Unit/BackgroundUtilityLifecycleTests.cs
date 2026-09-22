@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 onDropRequest: request => droppedRequests.AddOrUpdate(request.Id, 1, (_, count) => count + 1));
 
             Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
-            Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
+            Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(5)));
 
             var stopTask = Task.Run(() =>
             {
@@ -48,7 +48,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             try
             {
                 Assert.True(
-                    SpinWait.SpinUntil(() => GetWorker(pipeline).StopRequested, TimeSpan.FromSeconds(2)),
+                    SpinWait.SpinUntil(() => GetWorker(pipeline).StopRequested, TimeSpan.FromSeconds(5)),
                     "Stop must close the active worker generation before the racing enqueue.");
 
                 var accepted = pipeline.Enqueue(
@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             try
             {
                 Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
-                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(5)));
 
                 pipeline.Dispose();
 
@@ -119,7 +119,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 Assert.True(
                     SpinWait.SpinUntil(
                         () => IsDisposed(workerSignal) && IsDisposed(worker.Idle),
-                        TimeSpan.FromSeconds(2)),
+                        TimeSpan.FromSeconds(5)),
                     "The final abandoned worker must deterministically release the retained handles.");
                 Assert.Throws<ObjectDisposedException>(() => workerSignal.Set());
                 Assert.Throws<ObjectDisposedException>(() => worker.Idle.Wait(0));

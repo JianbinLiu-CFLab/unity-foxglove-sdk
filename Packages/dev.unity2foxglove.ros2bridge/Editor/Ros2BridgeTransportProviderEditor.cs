@@ -52,13 +52,16 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                 + " transport to the FoxgloveManager on the same GameObject.",
                 MessageType.Info);
 
-            Draw("_available", "Available");
-            Draw("_autoConnect", "Auto Connect");
-            Draw("_host", "Host");
-            Draw("_port", "Port");
-            Draw("_queueCapacity", "Queue Capacity");
-            Draw("_reconnectIntervalMs", "Reconnect Interval (ms)");
-            Draw("_sendTimeoutMs", "Send Timeout (ms)");
+            using (new EditorGUI.DisabledScope(Application.isPlaying))
+            {
+                Draw("_available", "Available");
+                Draw("_autoConnect", "Auto Connect");
+                Draw("_host", "Host");
+                Draw("_port", "Port");
+                Draw("_queueCapacity", "Queue Capacity");
+                Draw("_reconnectIntervalMs", "Reconnect Interval (ms)");
+                Draw("_sendTimeoutMs", "Send Timeout (ms)");
+            }
             serializedObject.ApplyModifiedProperties();
 
             if (!Application.isPlaying)

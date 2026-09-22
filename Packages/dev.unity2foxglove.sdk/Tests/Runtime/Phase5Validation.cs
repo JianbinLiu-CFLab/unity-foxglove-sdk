@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestRuntimeDisposeDisposesTransport();
             TestSessionDisposeUnbindsEvents();
             TestPackageLinkXmlTemplateExists();
-            TestAssetsLinkXmlDuplicateAbsent();
+            TestAssetsLinkXmlProjectGuard();
 
             Console.WriteLine($"Phase 5: {_passCount} checks passed.\n");
         }
@@ -208,15 +208,15 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
-        /// Verifies the demo project does not carry a duplicate Assets link.xml;
-        /// the package Runtime/link.xml is the authoritative stripping guard.
+        /// Verifies the demo project carries the project-level stripping guard.
         /// </summary>
-        private static void TestAssetsLinkXmlDuplicateAbsent()
+        private static void TestAssetsLinkXmlProjectGuard()
         {
             var root = FindRepoRoot();
-            Assert(root != null, "Repo root found for duplicate Assets link.xml check");
+            Assert(root != null, "Repo root found for package-owned link.xml guard");
             var path = Path.Combine(root, "Unity2Foxglove", "Assets", "link.xml");
-            Assert(!File.Exists(path), $"Duplicate Assets link.xml absent at {path}");
+            Assert(!File.Exists(path),
+                "Project Assets link.xml is absent because package Runtime/link.xml is the single stripping authority");
         }
     }
 }

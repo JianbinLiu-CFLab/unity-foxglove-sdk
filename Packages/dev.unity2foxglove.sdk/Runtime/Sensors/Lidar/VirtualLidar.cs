@@ -198,6 +198,7 @@ namespace Unity.FoxgloveSDK.Components
         private float _scanPeriod;
 
         private readonly VirtualLidarScanClock _scanClock = new VirtualLidarScanClock();
+        private int _sharedClockGeneration = -1;
         private readonly VirtualLidarScanBuffers _scanBuffers = new VirtualLidarScanBuffers();
         private readonly VirtualLidarScanFramePublisher _scanFramePublisher = new VirtualLidarScanFramePublisher();
         private LidarScanBoundaryHandler _onScanBoundary;
@@ -245,27 +246,6 @@ namespace Unity.FoxgloveSDK.Components
 
             WarnIfOwnLayerIncludedInRaycastMask();
 
-            if (_sensorUnitProfile != null)
-            {
-                _scanPattern = _sensorUnitProfile.CreateScanPattern(_columnStep);
-            }
-            else if (_profileSource == ProfileSource.BuiltInPreset)
-            {
-                if (Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
-                    _scanPattern = Sensors.Lidar.LidarScanPatternFactory.Create(spec, _mode, _columnStep);
-                else
-                    Debug.LogWarning($"[VirtualLidar] Unknown built-in LiDAR model '{_model}', using OS-1-32 fallback.");
-            }
-
-            if (_scanPattern == null)
-            {
-                // Fallback: metadata JSON or custom params via old profile path
-                var profile = LoadProfile();
-                if (profile == null)
-                    profile = Sensors.Lidar.LidarProfileLoader.CreateOs132Default();
-                _scanPattern = Sensors.Lidar.LidarScanPatternFactory.FromProfile(profile, _columnStep);
-            }
-
             // Resolve publisher if unassigned
             if (_pointCloudPublisher == null)
             {
@@ -281,16 +261,7 @@ namespace Unity.FoxgloveSDK.Components
                     _pointCloudPublisher = GetComponentInChildren<FoxglovePointCloudPublisher>();
             }
             _pointCloudPublisher?.MarkSourceDrivenPointCloud();
-
-            var rateHz = _scanRateSource == ScanRateSource.Override
-                && IsFinite(_scanRateHzOverride) && _scanRateHzOverride > 0f
-                ? _scanRateHzOverride
-                : _scanPattern.ScanRateHz;
-            _scanPeriod = IsFinite(rateHz) && rateHz > 0d ? (1f / (float)rateHz) : 0.1f;
-
-            AllocateScanBuffers();
-            _scanClock.Reset();
-            ResetScanState(Time.fixedTimeAsDouble);
+            RebuildScanConfiguration();
         }
 
         private SensorUnitProfile ResolveSensorUnitProfile()
@@ -324,9 +295,41 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnEnable()
         {
-            AllocateScanBuffers();
+            NormalizeSerializedNumericConfiguration();
+            ResolveSensorUnitProfile();
             if (_scanPattern != null)
-                ResetScanState(Time.fixedTimeAsDouble);
+                RebuildScanConfiguration();
+        }
+
+        private void RebuildScanConfiguration()
+        {
+            _scanPattern = null;
+            if (_sensorUnitProfile != null)
+                _scanPattern = _sensorUnitProfile.CreateScanPattern(_columnStep);
+            else if (_profileSource == ProfileSource.BuiltInPreset)
+            {
+                if (Sensors.Lidar.LidarModelRegistry.TryGet(_vendor, _model, out var spec))
+                    _scanPattern = Sensors.Lidar.LidarScanPatternFactory.Create(spec, _mode, _columnStep);
+                else
+                    Debug.LogWarning($"[VirtualLidar] Unknown built-in LiDAR model '{_model}', using OS-1-32 fallback.");
+            }
+
+            if (_scanPattern == null)
+            {
+                var profile = LoadProfile() ?? Sensors.Lidar.LidarProfileLoader.CreateOs132Default();
+                _scanPattern = Sensors.Lidar.LidarScanPatternFactory.FromProfile(profile, _columnStep);
+            }
+
+            var rateHz = _scanRateSource == ScanRateSource.Override
+                && IsFinite(_scanRateHzOverride) && _scanRateHzOverride > 0f
+                ? _scanRateHzOverride
+                : _scanPattern.ScanRateHz;
+            _scanPeriod = IsFinite(rateHz) && rateHz > 0d ? (1f / (float)rateHz) : 0.1f;
+            AllocateScanBuffers();
+            _scanClock.Reset();
+            _sharedClockGeneration = _manager != null ? _manager.SharedSensorClockGeneration : -1;
+            ResetScanState(Time.fixedTimeAsDouble);
+            _pointCloudPublisher?.SetMotionCompensationTransform(transform);
         }
 
         private void OnDisable()
@@ -376,6 +379,14 @@ namespace Unity.FoxgloveSDK.Components
 
                 if (_scanPeriod <= 0f || _scanBuffers.ScanColumnCount <= 0)
                     return;
+
+                if (_manager != null
+                    && _sharedClockGeneration != _manager.SharedSensorClockGeneration)
+                {
+                    _sharedClockGeneration = _manager.SharedSensorClockGeneration;
+                    _scanClock.Reset();
+                    ResetScanState(Time.fixedTimeAsDouble);
+                }
 
                 EnsureScanClock(Time.fixedTimeAsDouble);
 
@@ -441,6 +452,8 @@ namespace Unity.FoxgloveSDK.Components
                     _maxRaycastCommandsPerFixedUpdate,
                     _logPerformanceDiagnostics,
                     Time.fixedDeltaTime,
+                    Time.fixedTimeAsDouble,
+                    _activeScanStartPhysSeconds,
                     _frameCounter,
                     ref _scanColumnCursor,
                     ref _scanColumnRayCursor,
@@ -597,7 +610,10 @@ namespace Unity.FoxgloveSDK.Components
                 ? null
                 : _manager.GetSharedSensorClockUnixTime;
             if (_scanClock.EnsureInitialized(physNow, resolveUnixNs))
+            {
+                _sharedClockGeneration = _manager == null ? -1 : _manager.SharedSensorClockGeneration;
                 _scanColumnProgress = 0d;
+            }
         }
 
         private void ResetScanState(double physNow)

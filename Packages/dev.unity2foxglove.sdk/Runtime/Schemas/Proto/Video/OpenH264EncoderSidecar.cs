@@ -5,6 +5,7 @@
 // Purpose: External OpenH264 helper process wrapper with bounded queues.
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -67,6 +68,8 @@ namespace Foxglove.Schemas.Video
         public long DroppedOutputFrames => Interlocked.Read(ref _droppedOutputFrames);
         public int OutputQueueDepth => Volatile.Read(ref _outputCount);
         public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
+        public int InputQueueDepth => Volatile.Read(ref _inputCount);
+        public int MaxInputQueue => Volatile.Read(ref _maxInputQueue);
         internal int PendingTimestampCountForTests => _encodedFrameTimestamps.Count;
         public string LastDiagnosticLine
         {
@@ -162,17 +165,21 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            var copy = new byte[frame.Length];
+            var copy = ArrayPool<byte>.Shared.Rent(frame.Length);
             Buffer.BlockCopy(frame, 0, copy, 0, frame.Length);
 
             lock (_inputLock)
             {
                 if (!ReferenceEquals(submittingProcess, Volatile.Read(ref _process))
                     || !IsProcessRunning(submittingProcess))
-                    return false;
-
-                while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out _))
                 {
+                    ArrayPool<byte>.Shared.Return(copy);
+                    return false;
+                }
+
+                while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out var dropped))
+                {
+                    ReturnInputFrameBuffer(dropped);
                     _inputCount--;
                     Interlocked.Increment(ref _droppedInputFrames);
                 }
@@ -180,10 +187,11 @@ namespace Foxglove.Schemas.Video
                 // Pending raw frames and written-but-unpaired frames share one finite budget.
                 if ((long)_inputCount + _encodedFrameTimestamps.Count >= (long)_maxInputQueue + _maxOutputQueue)
                 {
+                    ArrayPool<byte>.Shared.Return(copy);
                     return false;
                 }
 
-                _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
+                _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs, pooled: true, length: frame.Length));
                 _inputCount++;
             }
 
@@ -297,8 +305,15 @@ namespace Foxglove.Schemas.Video
                 {
                     if (TryDequeueInputFrame(process, token, out var frame))
                     {
-                        await stream.WriteAsync(frame.Data, 0, frame.Data.Length, token).ConfigureAwait(false);
-                        await stream.FlushAsync(token).ConfigureAwait(false);
+                        try
+                        {
+                            await stream.WriteAsync(frame.Data, 0, frame.Length, token).ConfigureAwait(false);
+                            await stream.FlushAsync(token).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            ReturnInputFrameBuffer(frame);
+                        }
                     }
                     else
                     {
@@ -530,11 +545,17 @@ namespace Foxglove.Schemas.Video
         {
             lock (_inputLock)
             {
-                while (_inputFrames.TryDequeue(out _)) { }
+                while (_inputFrames.TryDequeue(out var frame)) ReturnInputFrameBuffer(frame);
                 _inputCount = 0;
             }
 
             while (_encodedFrameTimestamps.TryDequeue(out _)) { }
+        }
+
+        private static void ReturnInputFrameBuffer(QueuedVideoFrame frame)
+        {
+            if (frame.Pooled && frame.Data != null)
+                ArrayPool<byte>.Shared.Return(frame.Data);
         }
 
         private bool TryDequeueInputFrame(Process process, CancellationToken token, out QueuedVideoFrame frame)

@@ -241,6 +241,13 @@ namespace Unity.FoxgloveSDK.Core
             if (recorder == null || !FoxRunSchemaInfoRegistry.HasGeneratedSchemaInfo)
                 return;
 
+            if (FoxRunSchemaInfoRegistry.HasConflict)
+            {
+                _logger.LogWarning(
+                    "Skipping FoxRun schema metadata for MCAP recording because generated schema authority is conflicted.");
+                return;
+            }
+
             try
             {
                 if (FoxRunSchemaMcapMetadata.TryCreateJson(FoxRunSchemaInfoRegistry.Current, out var json))

@@ -104,6 +104,7 @@ namespace Unity.FoxgloveSDK.Components
         private ulong _cachedDeskewedPackedPointCloudPublishIntervalNs;
         private int _unityThreadId;
         private int _motionCompensationWarningCount;
+        private Transform _motionCompensationTransformOverride;
 
         private PointCloudOutputProfile ActiveProfile => PointCloudOutputProfile.ForMode(_outputMode);
         protected override string SchemaName => SchemaNameOverride;
@@ -242,8 +243,11 @@ namespace Unity.FoxgloveSDK.Components
             var unixNs = _manager == null
                 ? CurrentLogTimeNs
                 : _manager.GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble);
-            var foxglovePosition = CoordinateConverter.UnityToFoxglovePosition(transform.position);
-            var foxgloveRotation = CoordinateConverter.UnityToFoxgloveRotation(transform.rotation);
+            var motionTransform = _motionCompensationTransformOverride != null
+                ? _motionCompensationTransformOverride
+                : transform;
+            var foxglovePosition = CoordinateConverter.UnityToFoxglovePosition(motionTransform.position);
+            var foxgloveRotation = CoordinateConverter.UnityToFoxgloveRotation(motionTransform.rotation);
 
             _motionPoseHistory.Add(
                 unixNs,
@@ -437,6 +441,12 @@ namespace Unity.FoxgloveSDK.Components
         internal void MarkSourceDrivenPointCloud()
         {
             _publishState.MarkSourceDriven();
+        }
+
+        /// <summary>Bind deskew pose sampling to the actual sensor transform.</summary>
+        internal void SetMotionCompensationTransform(Transform sensorTransform)
+        {
+            _motionCompensationTransformOverride = sensorTransform;
         }
 
         private bool ShouldSuppressTransformFallback()

@@ -116,5 +116,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 expected,
                 WarningDebouncer.ShouldEmitKeyedCooldown(key, lastKey, lastTicks, nowTicks, intervalTicks));
         }
+
     }
 }

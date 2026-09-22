@@ -39,7 +39,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var members = new List<ComponentMessagePackMemberModel>();
             foreach (var member in type.GetMembers().Where(m => m.Kind == SymbolKind.Field || m.Kind == SymbolKind.Property).OrderBy(m => m.Name, StringComparer.Ordinal))
             {
-                if (member.IsStatic || member.IsImplicitlyDeclared) continue;
+                if (!IsWireMember(member)) continue;
                 var field = member as IFieldSymbol;
                 var property = member as IPropertySymbol;
                 if (property != null && property.IsIndexer) continue;
@@ -117,7 +117,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 var fields = new List<FoxRunTypeField>();
                 foreach (var member in named.GetMembers().Where(m => m.Kind == SymbolKind.Field || m.Kind == SymbolKind.Property).OrderBy(m => m.Name, StringComparer.Ordinal))
                 {
-                    if (member.IsStatic || member.IsImplicitlyDeclared) continue;
+                    if (!IsWireMember(member)) continue;
                     var field = member as IFieldSymbol; var property = member as IPropertySymbol;
                     if (property != null && property.IsIndexer) continue;
                     var memberType = field?.Type ?? property?.Type;
@@ -133,6 +133,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 return fields.Count == 0 ? null : FoxRunTypeShape.Object(named.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), fields, isValueType: named.IsValueType);
             }
             return null;
+        }
+
+        private static bool IsWireMember(ISymbol member)
+        {
+            if (member == null || member.IsStatic || member.IsImplicitlyDeclared)
+                return false;
+            if (member.DeclaredAccessibility != Accessibility.Public)
+                return false;
+            return !(member is IPropertySymbol property) || !property.IsIndexer;
         }
 
         private static void Emit(SourceProductionContext context, Compilation compilation, ImmutableArray<ComponentMessagePackTypeModel> items)

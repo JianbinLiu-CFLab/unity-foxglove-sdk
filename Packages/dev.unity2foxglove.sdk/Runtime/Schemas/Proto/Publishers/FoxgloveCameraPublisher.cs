@@ -322,7 +322,7 @@ namespace Unity.FoxgloveSDK.Components
                     if (publishRawFrame)
                     {
                         var rawBytes = req.GetData<byte>().ToArray();
-                        PublishRawFrame(rawBytes, renderUnixNs, captureWidth, captureHeight);
+                        PublishRawFrame(rawBytes, renderUnixNs, captureWidth, captureHeight, takeOwnership: true);
                     }
                     return;
                 }
@@ -339,7 +339,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (!publishJpegFrame)
                 {
                     if (frameBytes != null)
-                        PublishRawFrame(frameBytes, renderUnixNs, captureWidth, captureHeight);
+                        PublishRawFrame(frameBytes, renderUnixNs, captureWidth, captureHeight, takeOwnership: true);
                     return;
                 }
 
@@ -478,7 +478,15 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void EnsureCaptureResources()
         {
-            _captureResources.Ensure(this, transform, Math.Max(1, _width), Math.Max(1, _height));
+            var width = Math.Max(1, _width);
+            var height = Math.Max(1, _height);
+            if (_captureResources.CaptureRenderTexture != null
+                && (_captureResources.CaptureRenderTexture.width != width
+                    || _captureResources.CaptureRenderTexture.height != height))
+            {
+                Interlocked.Increment(ref _captureGeneration);
+            }
+            _captureResources.Ensure(this, transform, width, height);
         }
 
         /// <summary>

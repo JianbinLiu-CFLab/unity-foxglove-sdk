@@ -8,6 +8,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Core;
 
@@ -84,7 +86,7 @@ namespace Unity.FoxgloveSDK.Components
         public string Flow { get; set; }
     }
 
-    /// <summary>Stable field digest data emitted by schema metadata version 2.</summary>
+    /// <summary>Stable field digest data emitted by schema metadata version 3.</summary>
     public sealed class FoxRunSchemaMcapFieldMetadata
     {
         [JsonProperty("name", Order = 0)]
@@ -98,6 +100,21 @@ namespace Unity.FoxgloveSDK.Components
 
         [JsonProperty("encoding", Order = 3)]
         public string Encoding { get; set; }
+
+        [JsonProperty("nullable", Order = 4)]
+        public bool Nullable { get; set; }
+
+        [JsonProperty("array", Order = 5)]
+        public bool Array { get; set; }
+
+        [JsonProperty("aggregate", Order = 6)]
+        public bool Aggregate { get; set; }
+
+        [JsonProperty("protobufFieldNumber", Order = 7)]
+        public int ProtobufFieldNumber { get; set; }
+
+        [JsonProperty("typeShapeDigest", Order = 8)]
+        public string TypeShapeDigest { get; set; }
     }
 
     /// <summary>Deterministic JSON payload stored in the FoxRun MCAP metadata record.</summary>
@@ -141,7 +158,7 @@ namespace Unity.FoxgloveSDK.Components
     public static class FoxRunSchemaMcapMetadata
     {
         public const string MetadataName = "unity2foxglove.foxrun.schema";
-        public const int SchemaMetadataVersion = 2;
+        public const int SchemaMetadataVersion = 3;
 
         public static bool TryCreateJson(FoxRunSchemaManifestInfo manifest, out string json)
         {
@@ -181,13 +198,7 @@ namespace Unity.FoxgloveSDK.Components
                         Flow = contract.Flow ?? string.Empty,
                         Fields = contract.Fields == null
                             ? new List<FoxRunSchemaMcapFieldMetadata>()
-                            : contract.Fields.Select((field, ordinal) => new FoxRunSchemaMcapFieldMetadata
-                            {
-                                Name = field?.JsonName ?? string.Empty,
-                                CanonicalType = field?.Type ?? string.Empty,
-                                Ordinal = ordinal,
-                                Encoding = contract.Encoding ?? string.Empty
-                            }).ToList()
+                            : contract.Fields.Select((field, ordinal) => CreateFieldMetadata(field, contract.Encoding, ordinal)).ToList()
                     });
                 }
             }
@@ -240,6 +251,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             if (record.SchemaMetadataVersion != 1
+                && record.SchemaMetadataVersion != 2
                 && record.SchemaMetadataVersion != SchemaMetadataVersion)
             {
                 error = "unsupported schema metadata version: " + record.SchemaMetadataVersion.ToString(CultureInfo.InvariantCulture);
@@ -264,14 +276,81 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if (record.SchemaMetadataVersion == 2
+            // Version 2 introduced field arrays; every later version retains that contract.
+            if (record.SchemaMetadataVersion >= 2
                 && record.Contracts.Any(contract => contract?.Fields == null))
             {
-                error = "version 2 contract fields are missing";
+                error = "schema metadata contract fields are missing";
                 return false;
             }
 
             return true;
+        }
+
+        internal static FoxRunSchemaMcapFieldMetadata CreateFieldMetadata(
+            FoxRunSchemaFieldInfo field,
+            string encoding,
+            int ordinal)
+        {
+            return new FoxRunSchemaMcapFieldMetadata
+            {
+                Name = field?.JsonName ?? string.Empty,
+                CanonicalType = field?.Type ?? string.Empty,
+                Ordinal = ordinal,
+                Encoding = encoding ?? string.Empty,
+                Nullable = field?.Nullable ?? false,
+                Array = field?.Array ?? false,
+                Aggregate = field?.Aggregate ?? false,
+                ProtobufFieldNumber = field?.ProtobufFieldNumber ?? 0,
+                TypeShapeDigest = ComputeTypeShapeDigest(field?.TypeShape)
+            };
+        }
+
+        internal static string ComputeTypeShapeDigest(FoxRunTypeShapeInfo shape)
+        {
+            if (shape == null)
+                return string.Empty;
+
+            var builder = new StringBuilder();
+            AppendTypeShape(builder, shape);
+            using var sha = SHA256.Create();
+            var digest = sha.ComputeHash(Encoding.UTF8.GetBytes(builder.ToString()));
+            var result = new char[digest.Length * 2];
+            const string alphabet = "0123456789abcdef";
+            for (var i = 0; i < digest.Length; i++)
+            {
+                result[i * 2] = alphabet[digest[i] >> 4];
+                result[i * 2 + 1] = alphabet[digest[i] & 0x0f];
+            }
+            return new string(result);
+        }
+
+        private static void AppendTypeShape(StringBuilder builder, FoxRunTypeShapeInfo shape)
+        {
+            builder.Append((int)shape.Kind).Append('|')
+                .Append(shape.TypeName).Append('|')
+                .Append(shape.CanonicalType).Append('|')
+                .Append(shape.Nullable ? '1' : '0').Append('|')
+                .Append((int)shape.CollectionKind).Append('|')
+                .Append(shape.CanConstruct ? '1' : '0').Append('|')
+                .Append(shape.IsValueType ? '1' : '0');
+            if (shape.ElementShape != null)
+            {
+                builder.Append("<element>");
+                AppendTypeShape(builder, shape.ElementShape);
+            }
+            foreach (var field in shape.Fields ?? Array.Empty<FoxRunTypeFieldInfo>())
+            {
+                builder.Append("<field>").Append(field.JsonName).Append('|')
+                    .Append(field.MemberName).Append('|')
+                    .Append(field.Repeated ? '1' : '0').Append('|')
+                    .Append((int)field.RepeatedCollectionKind).Append('|')
+                    .Append(field.CanAssign ? '1' : '0').Append('|')
+                    .Append(field.Nullable ? '1' : '0');
+                AppendTypeShape(builder, field.TypeShape);
+            }
+            foreach (var value in shape.EnumValues ?? Array.Empty<FoxRunEnumValueInfo>())
+                builder.Append("<enum>").Append(value.Name).Append('|').Append(value.Number);
         }
 
         public static FoxRunReplaySchemaGuardResult CreateMissingRecordedResult()
@@ -307,7 +386,17 @@ namespace Unity.FoxgloveSDK.Components
             SchemaIdentityMode identityMode)
         {
             if (!TryParseJson(recordedJson, out var recorded, out var error))
-                return CreateMalformedRecordedResult(error);
+            {
+                var malformed = CreateMalformedRecordedResult(error);
+                if (identityMode != SchemaIdentityMode.Strict)
+                    return malformed;
+                return new FoxRunReplaySchemaGuardResult(
+                    malformed.State,
+                    true,
+                    malformed.Message + " Replay blocked by strict schema identity policy.",
+                    malformed.RecordedGlobalManifestHash,
+                    malformed.CurrentGlobalManifestHash);
+            }
             return Evaluate(recorded, current, identityMode);
         }
 
@@ -318,6 +407,17 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (recorded == null)
                 return CreateMissingRecordedResult();
+
+            if (FoxRunSchemaInfoRegistry.HasConflict)
+            {
+                return new FoxRunReplaySchemaGuardResult(
+                    FoxRunReplaySchemaGuardState.Mismatch,
+                    true,
+                    "Current FoxRun schema authority is conflicted; replay schema identity is not authoritative. Replay blocked.",
+                    recorded.GlobalManifestHash,
+                    current?.GlobalManifestHash ?? string.Empty);
+            }
+
             var compatibility = FoxRunCompatibilityAnalyzer.Analyze(recorded, current);
             var decision = compatibility.Decide(identityMode);
             var isBlocking = decision == FoxRunCompatibilityDecision.Block;
@@ -344,6 +444,16 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (recorded == null)
                 return CreateMissingRecordedResult();
+
+            if (FoxRunSchemaInfoRegistry.HasConflict)
+            {
+                return new FoxRunReplaySchemaGuardResult(
+                    FoxRunReplaySchemaGuardState.Mismatch,
+                    true,
+                    "Current FoxRun schema authority is conflicted; replay schema identity is not authoritative. Replay blocked.",
+                    recorded.GlobalManifestHash,
+                    current?.GlobalManifestHash ?? string.Empty);
+            }
 
             var recordedHash = recorded.GlobalManifestHash ?? string.Empty;
             if (string.IsNullOrWhiteSpace(recordedHash))

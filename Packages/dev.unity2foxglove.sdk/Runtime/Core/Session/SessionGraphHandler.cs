@@ -147,6 +147,7 @@ namespace Unity.FoxgloveSDK.Core
                 }
 
                 string json;
+                List<uint> subscribers;
                 lock (_subscriberScratchLock)
                 {
                     _graph.CopySubscribersTo(_subscriberScratch);
@@ -154,16 +155,26 @@ namespace Unity.FoxgloveSDK.Core
                         return;
 
                     json = JsonConvert.SerializeObject(_graph.GetSnapshot());
+                    subscribers = new List<uint>(_subscriberScratch);
+                    _subscriberScratch.Clear();
+                }
+
+                Exception firstSendFailure = null;
+                foreach (var subId in subscribers)
+                {
                     try
                     {
-                        foreach (var subId in _subscriberScratch)
-                            _transport.SendText(subId, json);
+                        _transport.SendText(subId, json);
                     }
-                    finally
+                    catch (Exception ex)
                     {
-                        _subscriberScratch.Clear();
+                        firstSendFailure ??= ex;
+                        _logger.LogWarning($"Connection graph update failed for client {subId}: {ex.Message}");
                     }
                 }
+
+                if (firstSendFailure != null)
+                    throw firstSendFailure;
 
                 if (metadataClaimed)
                     FlushClaimedMetadataSnapshot(recorder, json);

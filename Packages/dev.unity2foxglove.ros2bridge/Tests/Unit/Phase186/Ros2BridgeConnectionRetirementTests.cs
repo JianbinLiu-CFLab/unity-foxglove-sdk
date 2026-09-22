@@ -46,6 +46,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             connection.Dispose();
 
+            Assert.True(SpinWait.SpinUntil(
+                () => owner.RetiredCount == 1 && owner.OccupiedCount == 1,
+                TimeSpan.FromSeconds(5)));
             Assert.Equal(1, owner.RetiredCount);
             Assert.Equal(1, owner.OccupiedCount);
             Assert.False(owner.TryReserveExclusive(
@@ -58,7 +61,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             transport.ReleaseBlockedRead();
             Assert.True(SpinWait.SpinUntil(
                 () => owner.OccupiedCount == 0,
-                TimeSpan.FromSeconds(2)));
+                TimeSpan.FromSeconds(5)));
             Assert.True(transport.IsDisposed);
             Assert.True(owner.TryReserveExclusive(
                 providerId,

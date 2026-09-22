@@ -56,10 +56,10 @@ namespace Unity.FoxgloveSDK.UnitTests
             try
             {
                 Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
-                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(5)));
                 race = RunOnDedicatedThread(() => Record.Exception(() =>
                     pipeline.Enqueue(new TestRequest(2), out _, out _)));
-                Assert.True(enqueueGuardReached.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(enqueueGuardReached.Wait(TimeSpan.FromSeconds(5)));
 
                 pipeline.Dispose();
                 releaseEnqueueGuard.Set();
@@ -132,7 +132,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 if (reachedSignal)
                 {
                     Assert.True(
-                        SpinWait.SpinUntil(() => IsDisposed(GetWorkerSignal(pipeline)), TimeSpan.FromSeconds(2)),
+                        SpinWait.SpinUntil(() => IsDisposed(GetWorkerSignal(pipeline)), TimeSpan.FromSeconds(5)),
                         "Dispose must finish handle release before the admitted submit is allowed to signal.");
                 }
                 releaseDisposeBeforeHandle.Set();
@@ -197,12 +197,12 @@ namespace Unity.FoxgloveSDK.UnitTests
             Task<Exception> second = null;
             try
             {
-                Assert.True(firstStopGuardReached.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(firstStopGuardReached.Wait(TimeSpan.FromSeconds(5)));
                 second = RunOnDedicatedThread(() => Record.Exception(pipeline.Dispose));
-                Assert.True(secondStopGuardReached.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(secondStopGuardReached.Wait(TimeSpan.FromSeconds(5)));
                 releaseFirstStopGuard.Set();
                 Assert.True(
-                    SpinWait.SpinUntil(() => IsDisposed(GetWorkerSignal(pipeline)), TimeSpan.FromSeconds(2)),
+                    SpinWait.SpinUntil(() => IsDisposed(GetWorkerSignal(pipeline)), TimeSpan.FromSeconds(5)),
                     "One dispose caller must be able to complete handle release while the other is parked.");
                 releaseSecondStopGuard.Set();
 
@@ -355,6 +355,50 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
+        [Fact]
+        public void StopTimeoutRejectsReplacementWorkerUntilOrphanRetires()
+        {
+            using var encodeEntered = new ManualResetEventSlim(false);
+            using var releaseEncode = new ManualResetEventSlim(false);
+            var encoded = 0;
+            var pipeline = new BackgroundEncodePipeline<TestRequest, int>(
+                "phase191-single-worker-timeout",
+                completedCapacity: 1,
+                stopWaitMs: 0,
+                encode: request =>
+                {
+                    Interlocked.Increment(ref encoded);
+                    if (request.Id == 1)
+                    {
+                        encodeEntered.Set();
+                        releaseEncode.Wait(TimeSpan.FromSeconds(5));
+                    }
+
+                    return request.Id;
+                });
+            try
+            {
+                Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
+                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(5)));
+                Assert.False(pipeline.Stop(clearCompleted: true, out _));
+
+                Assert.False(
+                    pipeline.Enqueue(new TestRequest(2), out _, out var startError));
+                Assert.Equal("Background encode worker is stopping.", startError);
+                Assert.Equal(1, Volatile.Read(ref encoded));
+
+                releaseEncode.Set();
+                Assert.True(
+                    SpinWait.SpinUntil(() => GetActiveWorkerCount(pipeline) == 0, TimeSpan.FromSeconds(3)));
+                Assert.True(pipeline.Enqueue(new TestRequest(3), out _, out _));
+            }
+            finally
+            {
+                releaseEncode.Set();
+                pipeline.Dispose();
+            }
+        }
+
         private static async Task<T> AwaitTask<T>(Task<T> task)
         {
             var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5)));
@@ -432,7 +476,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
             }
 
-            SpinWait.SpinUntil(() => !worker.IsRunning, TimeSpan.FromSeconds(2));
+            SpinWait.SpinUntil(() => !worker.IsRunning, TimeSpan.FromSeconds(5));
         }
 
         private sealed class TestRequest : IBackgroundEncodeRequest

@@ -73,7 +73,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var changed = false;
             changed |= RemoveStaleRuntimePackageSymbols(parts);
 
-            if (status.HasSelection)
+            var isWindowsStandalone = EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneWindows64
+                || EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneWindows;
+            var enableRuntime = status.HasSelection && isWindowsStandalone;
+
+            if (enableRuntime)
             {
                 changed |= EnsureSymbol(parts, Ros2ForUnityRuntimeSelection.BaseCompileSymbol);
             }
@@ -82,7 +86,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 changed |= RemoveSymbol(parts, Ros2ForUnityRuntimeSelection.BaseCompileSymbol);
             }
 
-            var customTypesupport = status.HasSelection
+            var customTypesupport = enableRuntime
                 ? Ros2ForUnityRuntimeSelection.GetActiveCustomTypesupportSelection(
                     Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication())
                 : null;

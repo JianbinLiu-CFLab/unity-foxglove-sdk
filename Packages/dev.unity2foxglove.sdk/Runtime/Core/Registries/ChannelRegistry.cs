@@ -23,26 +23,32 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Raised when a channel id is reused with a different descriptor.</summary>
         public event Action<AdvertiseChannel, AdvertiseChannel> ChannelOverwritten;
 
-        /// <summary>Register a new channel. Overwrites if channelId already exists.</summary>
+        /// <summary>Register a new channel. Re-registering an active ID with a conflicting descriptor is rejected.</summary>
         public void Register(AdvertiseChannel channel)
         {
             if (channel == null) throw new ArgumentNullException(nameof(channel));
 
             var snapshot = channel.CreateImmutableSnapshot();
-            AdvertiseChannel overwritten = null;
             lock (_lock)
             {
                 if (_channels.TryGetValue(snapshot.Id, out var existing)
                     && IsConflictingDescriptor(existing, snapshot))
                 {
-                    overwritten = existing;
+                    throw new InvalidOperationException(
+                        $"Channel id {snapshot.Id} is already registered with a conflicting descriptor.");
                 }
 
                 _channels[snapshot.Id] = snapshot;
             }
+        }
 
-            if (overwritten != null)
-                ChannelOverwritten?.Invoke(overwritten, snapshot);
+        internal void Replace(AdvertiseChannel channel)
+        {
+            if (channel == null) throw new ArgumentNullException(nameof(channel));
+
+            var snapshot = channel.CreateImmutableSnapshot();
+            lock (_lock)
+                _channels[snapshot.Id] = snapshot;
         }
 
         /// <summary>Remove a channel by ID.</summary>

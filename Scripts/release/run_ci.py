@@ -27,12 +27,19 @@ import uuid
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from Scripts.unity_build.unity_il2cpp import start_owned_process, await_tree_quiescence
 CI_ONLY_CHOICES = (
     "dotnet",
     "dotnet-runtime",
     "xunit",
     "xunit-adapter",
     "xunit-native",
+    "ros2bridge-xunit",
+    "performance-regression",
+    "phase188-replay-regression",
     "analyzer",
     "foxrun-publish-panel",
     "phase179-ros2-regression",
@@ -88,6 +95,8 @@ SKIP = "[SKIP]"
 IGNORE_FAILED_SOURCES_OPTION: list[str] = []
 RUNTIME_TESTS_PROJ = "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj"
 UNIT_TESTS_PROJ = "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj"
+ROS2_BRIDGE_UNIT_TESTS_PROJ = "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Unity2Foxglove.Ros2Bridge.UnitTests.csproj"
+PERFORMANCE_REGRESSION_TESTS_PROJ = "Packages/dev.unity2foxglove.sdk/Tests/Performance/Regression/FoxgloveSdk.PerformanceRegressionTests.csproj"
 SOURCE_GENERATOR_PROJ = (
     "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj"
 )
@@ -187,8 +196,13 @@ PACKAGE_LANE_REGRESSION_MODULES = (
     "Scripts.phase190.regression_checks.test_phase190_validators",
     "Scripts.phase190.regression_checks.test_phase190_script_documentation",
     "Scripts.phase190.regression_checks.test_run_conformance",
+    "Scripts.performance.regression_checks.test_phase188_replay",
+    "Scripts.smoke.replay.regression_checks.test_phase188_deterministic_replay_acceptance",
 )
 PHASE181_TYPESUPPORT_VALIDATOR = "Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py"
+PHASE188_REPLAY_TOOLING_REGRESSION = (
+    "Scripts.smoke.replay.regression_checks.test_phase188_deterministic_replay_acceptance"
+)
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 DEFAULT_JOB_TIMEOUT_SECONDS = 1800
 DEFAULT_PARALLEL_JOBS = 2
@@ -379,6 +393,7 @@ ANALYZER_OUTPUT_DIR = ISOLATED_DOTNET_ROOT / "analyzer-output"
 UNIT_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit"
 UNIT_ADAPTER_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-adapter"
 UNIT_NATIVE_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-native"
+ROS2_BRIDGE_TEST_PROPS = dotnet_msbuild_props("ros2bridge-unit-tests")
 
 
 def green(msg: str) -> str:
@@ -543,6 +558,16 @@ def build_dotnet_ci_jobs() -> list[CiJob]:
             [sys.executable, script, "--only", "xunit-native"],
             exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
         ),
+        CiJob(
+            "ros2bridge-xunit",
+            [sys.executable, script, "--only", "ros2bridge-xunit"],
+            exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+        ),
+        CiJob(
+            "performance-regression",
+            [sys.executable, script, "--only", "performance-regression"],
+            exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+        ),
     ]
 
 
@@ -616,35 +641,63 @@ def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
     env.setdefault("PYTHONUNBUFFERED", "1")
     start = time.monotonic()
     effective_timeout = None if job.disable_timeout else job_timeout_seconds()
+    tree = None
     try:
-        result = subprocess.run(
+        # subprocess.run(timeout=...) only waits for the root process and can
+        # strand a compiler/test descendant. Keep the whole lane in the same
+        # owned job/process group so timeout cleanup is bounded and explicit.
+        tree = start_owned_process(
             job.command,
-            cwd=REPO_ROOT,
+            REPO_ROOT,
             env=env,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            errors="replace",
-            timeout=effective_timeout,
         )
+        try:
+            # communicate() drains stdout/stderr concurrently with process
+            # completion. Waiting first can deadlock once a noisy lane fills
+            # the OS pipe buffer before it exits.
+            stdout, _ = tree.process.communicate(timeout=effective_timeout)
+        except subprocess.TimeoutExpired:
+            residual = tree.terminate()
+            try:
+                stdout, _ = tree.process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                stdout = ""
+            elapsed = time.monotonic() - start
+            timeout_description = (
+                "without a configured wall-clock deadline"
+                if effective_timeout is None else f"after {effective_timeout}s"
+            )
+            timeout_message = f"\n{FAIL} {job.name} timed out {timeout_description} ({elapsed:.1f}s elapsed)\n"
+            if residual:
+                timeout_message += f"{FAIL} owned descendants remain: {residual}\n"
+            log_path.write_text(_bound_captured_output((stdout or "") + timeout_message), encoding="utf-8")
+            return CiJobResult(job.name, False, 124, elapsed, log_path)
+        residual = await_tree_quiescence(tree, 30)
+        if residual:
+            residual = tree.terminate()
+            if residual:
+                elapsed = time.monotonic() - start
+                log_path.write_text(
+                    _bound_captured_output(
+                        f"{FAIL} {job.name} exited with owned descendants: {residual}\n"
+                    ), encoding="utf-8")
+                return CiJobResult(job.name, False, 124, elapsed, log_path)
         elapsed = time.monotonic() - start
-        log_path.write_text(_bound_captured_output(result.stdout or ""), encoding="utf-8")
-        return CiJobResult(job.name, result.returncode == 0, result.returncode, elapsed, log_path)
-    except subprocess.TimeoutExpired as ex:
-        elapsed = time.monotonic() - start
-        stdout = ex.stdout.decode(errors="replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
-        timeout_description = (
-            "without a configured wall-clock deadline"
-            if effective_timeout is None
-            else f"after {effective_timeout}s"
-        )
-        timeout_message = f"\n{FAIL} {job.name} timed out {timeout_description} ({elapsed:.1f}s elapsed)\n"
-        log_path.write_text(_bound_captured_output(stdout) + timeout_message, encoding="utf-8")
-        return CiJobResult(job.name, False, 124, elapsed, log_path)
+        returncode = tree.process.returncode
+        log_path.write_text(_bound_captured_output(stdout or ""), encoding="utf-8")
+        return CiJobResult(job.name, returncode == 0, returncode, elapsed, log_path)
     except OSError as ex:
         elapsed = time.monotonic() - start
         log_path.write_text(f"{FAIL} {job.name} could not start: {ex}\n", encoding="utf-8")
         return CiJobResult(job.name, False, 125, elapsed, log_path)
+    finally:
+        if tree is not None:
+            tree.close()
 
 
 def run_ci_jobs(jobs: list[CiJob], max_workers: int) -> dict[str, bool]:
@@ -885,8 +938,8 @@ def main() -> int:
         help=(
             "Run only one suite: dotnet, dotnet-runtime, xunit, xunit-adapter, xunit-native, "
             "analyzer, foxrun-publish-panel, phase179-ros2-regression, "
-            "phase181-ros2-regression, phase184-acceptance-tooling, "
-            "phase186-bridge-tooling, phase186-bridge-windows-live, "
+            "phase181-ros2-regression, phase188-replay-regression, phase184-acceptance-tooling, "
+            "ros2bridge-xunit, performance-regression, phase186-bridge-tooling, phase186-bridge-windows-live, "
             "mcap-conformance, packages, boundary"
         ),
     )
@@ -1045,6 +1098,53 @@ def main() -> int:
             )
             if results["xunit-adapter-restore"]
             else False
+        )
+
+    if args.only == "ros2bridge-xunit":
+        results["ros2bridge-xunit-restore"] = restore_with_ignoring_failed_sources(
+            ROS2_BRIDGE_UNIT_TESTS_PROJ,
+            "Restore ROS2 Bridge behavioral xUnit lane",
+            ROS2_BRIDGE_TEST_PROPS,
+            fatal=False,
+        )
+        results["ros2bridge-xunit"] = (
+            run(
+                ["dotnet", "test", "--no-restore", ROS2_BRIDGE_UNIT_TESTS_PROJ,
+                 *ROS2_BRIDGE_TEST_PROPS,
+                 "--logger", "trx;LogFileName=unit-tests-ros2bridge.trx",
+                 "--results-directory", str(CI_ROOT / "TestResults" / "Ros2Bridge")],
+                "ROS2 Bridge behavioral xUnit tests",
+            )
+            if results["ros2bridge-xunit-restore"] else False
+        )
+
+    if args.only == "performance-regression":
+        results["performance-regression-restore"] = restore_with_ignoring_failed_sources(
+            PERFORMANCE_REGRESSION_TESTS_PROJ,
+            "Restore deterministic performance regression xUnit lane",
+            (),
+            fatal=False,
+        )
+        results["performance-regression-xunit"] = (
+            run(
+                ["dotnet", "test", "--no-restore", PERFORMANCE_REGRESSION_TESTS_PROJ,
+                 "--logger", "trx;LogFileName=performance-regression.trx",
+                 "--results-directory", str(CI_ROOT / "TestResults" / "PerformanceRegression")],
+                "Deterministic performance regression xUnit tests",
+            )
+            if results["performance-regression-restore"] else False
+        )
+        results["performance-regression-python"] = run(
+            [sys.executable, "-m", "unittest",
+             "Scripts.performance.regression_checks.test_performance_tooling",
+             "Scripts.performance.regression_checks.test_phase188_replay"],
+            "Performance harness regression tests",
+        )
+
+    if args.only == "phase188-replay-regression":
+        results["phase188-replay-regression"] = run(
+            [sys.executable, "-m", "unittest", PHASE188_REPLAY_TOOLING_REGRESSION],
+            "Phase188 Unity compile/import and Win64 acceptance harness regressions",
         )
 
     if args.only == "xunit-native":
@@ -1312,6 +1412,8 @@ def main() -> int:
                     "--dry-run",
                 ],
             ),
+            ("sync_maze_demo.py", [sys.executable, "Scripts/samples/sync_maze_demo.py", "--dry-run"]),
+            ("sync_ros2_samples.py", [sys.executable, "Scripts/samples/sync_ros2_samples.py", "--dry-run"]),
             ("validate_schema_generated_outputs.py", [sys.executable, SCHEMA_GENERATED_OUTPUT_VALIDATOR]),
             *(
                 (label, [sys.executable, path])
@@ -1334,6 +1436,8 @@ def main() -> int:
         results["validate-ros2-bridge-sample-sync"] = package_results[
             "sync_ros2_bridge_sample.py"
         ]
+        results["validate-maze-demo-sync"] = package_results["sync_maze_demo.py"]
+        results["validate-ros2-samples-sync"] = package_results["sync_ros2_samples.py"]
         results["validate-schema-generated"] = package_results["validate_schema_generated_outputs.py"]
         for label, _path in R2FU_PACKAGE_VALIDATORS:
             results[label] = package_results[label]

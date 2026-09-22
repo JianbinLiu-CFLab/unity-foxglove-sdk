@@ -404,6 +404,7 @@ def check_required_files(results: list[CheckResult]) -> None:
         RUNTIME_ROOT / "metadata_ros2cs.xml",
         RUNTIME_ROOT / "Plugins" / "metadata_ros2cs.xml",
         PLUGIN_ROOT / "metadata_ros2cs.xml",
+        RUNTIME_ROOT / "StreamingAssets" / "Ros2ForUnity" / "share" / "ament_index" / "resource_index" / "packages" / "rmw",
         RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs",
         RUNTIME_ROOT / "Scripts" / "ROS2UnityComponent.cs",
         RUNTIME_ROOT / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef",
@@ -581,6 +582,24 @@ def inventory_category_counts_match(categories: object, files: object) -> bool:
     return actual == declared
 
 
+def fresh_project_acceptance_status(manifest: dict) -> str:
+    """Return the normalized fresh-project acceptance status."""
+    acceptance = manifest.get("freshProjectAcceptance")
+    if isinstance(acceptance, dict):
+        return str(acceptance.get("status", ""))
+    return str(acceptance or "")
+
+
+def published_runtime_is_not_prototype(manifest: dict) -> bool:
+    """Return whether the manifest is not marked as a Prototype release."""
+    return str(manifest.get("distributionLevel", "")) != "Prototype"
+
+
+def fresh_project_acceptance_passed(manifest: dict) -> bool:
+    """Return whether fresh-project acceptance passed."""
+    return fresh_project_acceptance_status(manifest) == "passed"
+
+
 def check_inventory(results: list[CheckResult], release_gate: bool = False, skip_dll_hash: bool = False) -> None:
     """Validate the copied runtime inventory."""
     data = load_json(INVENTORY, results, "runtime inventory parses")
@@ -640,6 +659,19 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
             "release gate: runtime redistributionStatus is published",
             redistribution_status == "published",
             f"redistributionStatus={redistribution_status!r}",
+        )
+        fresh_status = fresh_project_acceptance_status(manifest)
+        add(
+            results,
+            "release gate: fresh-project acceptance is passed",
+            fresh_project_acceptance_passed(manifest),
+            f"freshProjectAcceptance.status={fresh_status!r}",
+        )
+        add(
+            results,
+            "release gate: published runtime is not Prototype",
+            published_runtime_is_not_prototype(manifest),
+            f"distributionLevel={manifest.get('distributionLevel')!r}",
         )
 
     categories = data.get("categoryCounts", {})

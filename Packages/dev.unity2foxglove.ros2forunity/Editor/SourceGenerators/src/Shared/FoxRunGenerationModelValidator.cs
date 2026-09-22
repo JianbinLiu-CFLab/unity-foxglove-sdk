@@ -645,7 +645,7 @@ namespace Unity.FoxgloveSDK.Editor
                     .Count() > 1)
                 {
                     diagnostics.Add(
-                        FoxRunGenerationDiagnostic.Warning(
+                        FoxRunGenerationDiagnostic.Error(
                             "FOXRUN002",
                             group.Key,
                             string.Empty,

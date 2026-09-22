@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string DemoVehicleRelativePath =
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138LidarVehicleController.cs";
         private const string ImportedDemoBootstrapRelativePath =
-            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
+            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
         private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>(StringComparer.Ordinal);
 
         /// <summary>Run all Phase 138H checks.</summary>

@@ -37,6 +37,8 @@ namespace Unity.FoxgloveSDK.Transport
         private CancellationTokenSource _sendCts;
         private Task _sendTask;
         private int _disposed;
+        private readonly int _maxInboundFrameBytes;
+        private int _sendLoopThreadId;
 
         /// <summary>RFC 6455 opcode for text frames.</summary>
         private const byte OpText = 0x1;
@@ -55,11 +57,12 @@ namespace Unity.FoxgloveSDK.Transport
         private long _sentBytes;
 
         /// <summary>Create a connection on the given network stream.</summary>
-        public WsConnection(TcpClient tcpClient, Stream stream, int maxQueuedFrames, int maxQueuedBytes)
+        public WsConnection(TcpClient tcpClient, Stream stream, int maxQueuedFrames, int maxQueuedBytes, int maxInboundFrameBytes = WsFrameCodec.MaxPayloadBytes)
         {
             _tcpClient = tcpClient;
             _stream = stream;
             _sendQueue = new WsSendQueue(maxQueuedFrames, maxQueuedBytes);
+            _maxInboundFrameBytes = ManagedWebSocketOptions.NormalizeMaxInboundFrameBytes(maxInboundFrameBytes);
             _connectedAtMs = MonotonicMilliseconds();
             _lastActivityMs = _connectedAtMs;
         }
@@ -118,7 +121,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Send raw bytes in a binary frame.</summary>
         public EnqueueResult SendBinary(byte[] data, FramePriority priority)
         {
-            return _sendQueue.Enqueue(new QueuedFrame(OpBinary, data, priority));
+            return _sendQueue.Enqueue(new QueuedFrame(OpBinary, data == null ? Array.Empty<byte>() : (byte[])data.Clone(), priority));
         }
 
         public int ClearDataFrames()
@@ -156,7 +159,7 @@ namespace Unity.FoxgloveSDK.Transport
         public bool WaitForSendLoop(TimeSpan timeout)
         {
             var task = _sendTask;
-            if (task == null)
+            if (task == null || IsCurrentSendLoop)
                 return true;
 
             try
@@ -173,8 +176,11 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
+        private bool IsCurrentSendLoop => Environment.CurrentManagedThreadId == Volatile.Read(ref _sendLoopThreadId);
+
         private void SendLoop(Action onSendFailed, CancellationToken ct)
         {
+            Interlocked.Exchange(ref _sendLoopThreadId, Environment.CurrentManagedThreadId);
             try
             {
                 while (_sendQueue.WaitToDequeue(ct, out var frame))
@@ -196,6 +202,10 @@ namespace Unity.FoxgloveSDK.Transport
             catch
             {
                 onSendFailed?.Invoke();
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _sendLoopThreadId, 0);
             }
         }
 
@@ -227,7 +237,7 @@ namespace Unity.FoxgloveSDK.Transport
 
         public WsFrame ReadFrame(out WsFrameReadResult result)
         {
-            result = WsFrameCodec.ReadFrame(_stream, out var frame);
+            result = WsFrameCodec.ReadFrame(_stream, out var frame, _maxInboundFrameBytes);
             return result == WsFrameReadResult.Success ? frame : null;
         }
 

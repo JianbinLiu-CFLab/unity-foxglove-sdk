@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void SessionLogsChannelDescriptorOverwrite()
+        public void SessionRejectsChannelDescriptorOverwrite()
         {
             var logger = new RecordingLogger();
             using var session = new FoxgloveSession(
@@ -59,12 +59,8 @@ namespace Unity.FoxgloveSDK.UnitTests
                 logger: logger);
 
             session.RegisterChannel(Channel(7, "/old", "Old.Schema"));
-            session.RegisterChannel(Channel(7, "/new", "New.Schema"));
-
-            var warning = Assert.Single(logger.Warnings);
-            Assert.Contains("Channel id 7 overwritten", warning, StringComparison.Ordinal);
-            Assert.Contains("/old", warning, StringComparison.Ordinal);
-            Assert.Contains("/new", warning, StringComparison.Ordinal);
+            Assert.Throws<InvalidOperationException>(() => session.RegisterChannel(Channel(7, "/new", "New.Schema")));
+            Assert.Empty(logger.Warnings);
         }
 
         [Fact]

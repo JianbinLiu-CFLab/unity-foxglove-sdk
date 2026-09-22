@@ -3,14 +3,8 @@ name: dotnet tests
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "Plan/**"
-      - "**.md"
   pull_request:
     branches: [main]
-    paths-ignore:
-      - "Plan/**"
-      - "**.md"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -62,6 +56,30 @@ jobs:
       - name: Run xUnit unit tests
         if: always()
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
+
+      - name: Restore ROS2 Bridge behavioral xUnit tests
+        if: always()
+        run: dotnet restore Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Unity2Foxglove.Ros2Bridge.UnitTests.csproj
+
+      - name: Run ROS2 Bridge behavioral xUnit tests
+        if: always()
+        run: dotnet test --no-restore Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Unity2Foxglove.Ros2Bridge.UnitTests.csproj --logger "trx;LogFileName=unit-tests-ros2bridge.trx" --results-directory build/TestResults/Ros2Bridge
+
+      - name: Remove generated ROS2 Bridge test intermediates
+        if: always()
+        run: rm -rf Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/bin Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/obj
+
+      - name: Restore deterministic performance regression tests
+        if: always()
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Performance/Regression/FoxgloveSdk.PerformanceRegressionTests.csproj
+
+      - name: Run deterministic performance regression tests
+        if: always()
+        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Performance/Regression/FoxgloveSdk.PerformanceRegressionTests.csproj --logger "trx;LogFileName=performance-regression.trx" --results-directory build/TestResults/PerformanceRegression
+
+      - name: Run performance harness regression tests
+        if: always()
+        run: python3 -m unittest Scripts.performance.regression_checks.test_performance_tooling Scripts.performance.regression_checks.test_phase188_replay
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -177,7 +195,9 @@ jobs:
           if-no-files-found: error
 
   optional-ros2-native:
-    name: optional ROS2 Native gate
+    # This lane validates managed compile-surface contracts only. Win64 native
+    # loading and ROS/RMW runtime certification remain in phase186 live workflow.
+    name: optional ROS2 Native compile-surface gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -188,10 +208,10 @@ jobs:
         with:
           dotnet-version: "10.0"
 
-      - name: Restore optional ROS2 Native xUnit lane
+      - name: Restore optional ROS2 Native compile-surface xUnit lane
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityNative=true
 
-      - name: Run optional ROS2 Native xUnit gate
+      - name: Run optional ROS2 Native compile-surface xUnit gate
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityNative=true --logger "trx;LogFileName=unit-tests-native.trx" --results-directory build/TestResults/OptionalRos2Native
 
       - name: Upload optional ROS2 Native test results

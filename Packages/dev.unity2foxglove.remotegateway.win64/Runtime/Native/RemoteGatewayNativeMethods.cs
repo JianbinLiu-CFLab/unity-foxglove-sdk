@@ -179,9 +179,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
         [StructLayout(LayoutKind.Sequential)]
         internal struct FoxgloveQosProfile
         {
-            public FoxgloveString Reliability;
-            public FoxgloveString Durability;
-            public FoxgloveString Profile;
+            public FoxgloveReliability Reliability;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -196,6 +194,12 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
             Connected = 1,
             ShuttingDown = 2,
             Shutdown = 3
+        }
+
+        internal enum FoxgloveReliability : byte
+        {
+            Lossy = 0,
+            Reliable = 1
         }
 
         internal enum FoxgloveError : byte

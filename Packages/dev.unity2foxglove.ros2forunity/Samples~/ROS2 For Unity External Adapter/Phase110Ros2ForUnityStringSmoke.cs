@@ -16,6 +16,7 @@ using ROS2;
 [AddComponentMenu("Foxglove/ROS2 For Unity/String Smoke")]
 public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 {
+    // Acceptance samples keep Unity active while ROS2 CLI windows have focus.
     private const string OutTopic = "/unity2foxglove/ros2forunity/string/out";
     private const string InTopic = "/unity2foxglove/ros2forunity/string/in";
     private const string NodeName = "unity2foxglove_ros2forunity_string_smoke";
@@ -39,6 +40,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private float _nextPublishTime;
     private bool _warnedMissingDefine;
+    private bool _adapterCleanupPending;
     private bool _loggedFirstPublish;
     private Phase110Ros2ForUnityContext _context;
     private IUnity2FoxgloveRos2Node _node;
@@ -64,8 +66,8 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void OnEnable()
     {
-        // Acceptance samples keep Unity active while RViz2 and ROS2 CLI windows have focus.
-        Application.runInBackground = true;
+        if (_adapterCleanupPending && !TryDisposeAdapter())
+            return;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         _nextPublishTime = 0f;
         _publishedCount = 0;
@@ -95,6 +97,8 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void Update()
     {
+        if (_adapterCleanupPending && !TryDisposeAdapter())
+            return;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         if (_useDirectRuntime)
         {
@@ -127,24 +131,43 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void OnDisable()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
-        DisposeDirectEndpoints();
-        _subscription?.Dispose();
-        _subscription = null;
-        _publisher?.Dispose();
-        _publisher = null;
-#endif
-        _node?.Dispose();
-        _node = null;
-        _context?.Dispose();
-        _context = null;
+        _adapterCleanupPending = true;
+        TryDisposeAdapter();
     }
 
     private void OnDestroy()
     {
+        OnDisable();
+    }
+
+    private bool TryDisposeAdapter()
+    {
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
-        DisposeDirectEndpoints();
+        if (_useDirectRuntime)
+        {
+            DisposeDirectEndpoints();
+            if (_directRos2Node != null || _directPublisher != null || _directSubscription != null)
+            {
+                _statusMessage = "Direct ROS2 cleanup pending; retaining native handles for retry.";
+                return false;
+            }
+        }
 #endif
+        _context?.Dispose();
+        if (_context != null && _context.Status != Unity2FoxgloveRos2Status.Disposed)
+        {
+            _statusMessage = "ROS2 adapter cleanup pending; retaining owner for retry.";
+            return false;
+        }
+
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        _subscription = null;
+        _publisher = null;
+#endif
+        _node = null;
+        _context = null;
+        _adapterCleanupPending = false;
+        return true;
     }
 
     private void OnValidate()

@@ -79,6 +79,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly IFoxRunTransportSession[] _allSessions;
         private readonly IReadOnlyList<FoxRunTransportId> _publishIdView;
         private readonly IReadOnlyList<IFoxRunTransportSession> _publishView;
+        private readonly IReadOnlyList<IFoxRunTransportSession> _allView;
         private int _disposed;
 
         internal FoxRunTransportSessionSnapshot(
@@ -96,12 +97,14 @@ namespace Unity.FoxgloveSDK.Components
             _publishIdView = Array.AsReadOnly(publishIds);
             SubscribeTransport = subscribeTransport;
             _allSessions = (IFoxRunTransportSession[])allSessions.Clone();
+            _allView = Array.AsReadOnly(_allSessions);
         }
 
         public ulong Generation { get; }
         public IReadOnlyList<FoxRunTransportId> PublishTransportIds =>
             _publishIdView;
         public IReadOnlyList<IFoxRunTransportSession> PublishTransports => _publishView;
+        public IReadOnlyList<IFoxRunTransportSession> AllTransports => _allView;
         public IFoxRunTransportSession SubscribeTransport { get; }
 
         public bool TryGetPublishTransport(
@@ -116,6 +119,22 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
             }
 
+            session = null;
+            return false;
+        }
+
+        public bool TryGetSession(
+            FoxRunTransportId id,
+            out IFoxRunTransportSession session)
+        {
+            if (TryGetPublishTransport(id, out session))
+                return true;
+            if (SubscribeTransport != null
+                && SubscribeTransport.Id == id)
+            {
+                session = SubscribeTransport;
+                return true;
+            }
             session = null;
             return false;
         }

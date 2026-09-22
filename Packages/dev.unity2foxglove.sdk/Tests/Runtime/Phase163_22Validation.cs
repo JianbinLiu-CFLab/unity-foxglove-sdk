@@ -238,10 +238,18 @@ namespace Unity.FoxgloveSDK.Tests
 
             registry.Register(Channel(7, "/phase163/a", "foxglove.A"));
             registry.Register(Channel(7, "/phase163/a", "foxglove.A"));
-            registry.Register(Channel(7, "/phase163/b", "foxglove.B"));
+            var rejected = false;
+            try
+            {
+                registry.Register(Channel(7, "/phase163/b", "foxglove.B"));
+            }
+            catch (InvalidOperationException)
+            {
+                rejected = true;
+            }
 
-            Check(warnings == 1, "163-22D-2: identical channel re-registration is quiet but conflicting overwrite is reported");
-            Check(registry.Get(7).Topic == "/phase163/b", "163-22D-3: channel registry preserves replacement descriptor compatibility");
+            Check(rejected && warnings == 0, "163-22D-2: conflicting channel re-registration is rejected without overwrite event");
+            Check(registry.Get(7).Topic == "/phase163/a", "163-22D-3: channel registry preserves the original descriptor after rejection");
         }
 
         private static void ArrayTopicFingerprintUsesCanonicalElementType()

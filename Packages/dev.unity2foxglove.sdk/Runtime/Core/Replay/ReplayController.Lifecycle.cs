@@ -15,8 +15,9 @@ namespace Unity.FoxgloveSDK.Core
     {
         /// <summary>
         /// Load an MCAP file for replay with the selected schema identity mode.
-        /// Strict blocks schema mismatches, Warn reports them and continues, and Off
-        /// skips schema identity comparison. The default mode is Strict.
+        /// Strict blocks every non-Exact classification, Compatible permits only
+        /// explicitly compatible changes, Warn reports mismatches and continues,
+        /// and Off skips schema identity comparison. The default mode is Strict.
         /// Recording-state and coordinate-mode values are read from the injected
         /// <see cref="IRecordingStateReader"/>.
         /// </summary>
@@ -169,7 +170,8 @@ namespace Unity.FoxgloveSDK.Core
                     _replaySessionId = NextReplaySessionId(_replaySessionId);
                     _replayEngine.Play();
                     Volatile.Write(ref _replayEnabled, true);
-                    _panelHistory.ResetDebounce();
+                    lock (_panelHistoryLock)
+                        _panelHistory.ResetDebounce();
                 }
             }
             catch (Exception ex)
@@ -222,7 +224,8 @@ namespace Unity.FoxgloveSDK.Core
                 _channelTopicMap = null;
                 _channelContextMap = null;
                 _channelBehaviorMap = null;
-                _panelHistory.ResetDebounce();
+                lock (_panelHistoryLock)
+                    _panelHistory.ResetDebounce();
                 _pendingReplayCallbacks.Clear();
                 _replayTickBuffer.Clear();
                 _replaySnapshotBuffer.Clear();

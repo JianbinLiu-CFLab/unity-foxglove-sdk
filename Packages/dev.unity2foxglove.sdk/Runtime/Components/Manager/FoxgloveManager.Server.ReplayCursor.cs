@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Components
         private string _replayCursorEndpointKnownHost;
         private int _replayCursorEndpointKnownPort;
         private string _replayCursorEndpointKnownToken;
+        private double _replayCursorEndpointRetryAt;
 
         private void StartReplayCursorEndpointIfNeeded()
         {
@@ -47,6 +48,7 @@ namespace Unity.FoxgloveSDK.Components
                 _replayCursorEndpointLoggedFirstCursor = false;
                 _replayCursorEndpointLoggedUnavailable = false;
                 _replayCursorEndpoint.Start(options, QueueExternalReplayCursor, GetExternalReplayCursorState);
+                _replayCursorEndpointRetryAt = 0d;
                 Debug.Log("[Foxglove] Replay cursor endpoint ready: http://"
                           + options.Host
                           + ":"
@@ -59,6 +61,7 @@ namespace Unity.FoxgloveSDK.Components
                 _runtime.SetExternalReplayCursorEnabled(false);
                 _replayCursorEndpoint.Stop();
                 ClearReplayCursorEndpointConfig();
+                _replayCursorEndpointRetryAt = Time.realtimeSinceStartupAsDouble + 1d;
                 Debug.LogWarning("[Foxglove] Replay cursor bridge disabled: " + ex.Message);
             }
         }
@@ -78,6 +81,9 @@ namespace Unity.FoxgloveSDK.Components
 
                 return;
             }
+
+            if (Time.realtimeSinceStartupAsDouble < _replayCursorEndpointRetryAt)
+                return;
 
             var shouldRunEndpoint = ShouldRunReplayCursorEndpoint();
             var token = ResolveReplayCursorBridgeToken();

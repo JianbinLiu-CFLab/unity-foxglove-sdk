@@ -88,6 +88,7 @@ namespace Unity.FoxgloveSDK.Components
         private long _lastReportedDroppedSamples;
         private double _nextDroppedSamplesLogTime;
         private ISchemaRegistry _schemaRegisteredRegistry;
+        private int _sharedClockGeneration = -1;
 
         private bool PublishEnabled => _publishing;
 
@@ -160,6 +161,7 @@ namespace Unity.FoxgloveSDK.Components
             _lastBodyRotation = _rigidbody.rotation;
             _hasLastVelocity = false;
             _hasEpoch = false;
+            _sharedClockGeneration = _manager != null ? _manager.SharedSensorClockGeneration : -1;
             _nextSampleIndex = 0;
             _publishing = true;
             EnsureSchemaRegistered();
@@ -198,6 +200,13 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             if (_rigidbody == null || Time.fixedDeltaTime <= 0f)
                 return;
+
+            if (_manager != null && _sharedClockGeneration != _manager.SharedSensorClockGeneration)
+            {
+                _hasEpoch = false;
+                _sharedClockGeneration = _manager.SharedSensorClockGeneration;
+                _nextSampleIndex = 0;
+            }
 
             var worldVelocity = _rigidbody.linearVelocity;
             if (!_hasLastVelocity)
@@ -463,7 +472,11 @@ namespace Unity.FoxgloveSDK.Components
             if (_fixedDeltaOverrideUsers > 0)
                 _fixedDeltaOverrideUsers--;
 
+            // Restore only while the lease still owns the global value. Another
+            // physics system may have intentionally changed fixedDeltaTime while
+            // this component was enabled; never overwrite that external change.
             if (_fixedDeltaOverrideUsers == 0
+                && Math.Abs(Time.fixedDeltaTime - _fixedDeltaOverrideTarget) <= 1e-6f
                 && Math.Abs(Time.fixedDeltaTime - _fixedDeltaOverrideOriginal) > 1e-6f)
             {
                 Time.fixedDeltaTime = _fixedDeltaOverrideOriginal;
@@ -511,7 +524,11 @@ namespace Unity.FoxgloveSDK.Components
 
             // Idempotent against the live registry: re-registers automatically if the
             // runtime (and its schema registry) is recreated, unlike a global flag.
-            if (schemas.TryGetSchema(ImuSchema.SchemaName, out _))
+            if (schemas is IEncodingAwareSchemaRegistry encodingAware
+                && encodingAware.TryGetSchema(
+                    ImuSchema.SchemaName,
+                    ProtobufSchemaRegistry.SchemaEncoding,
+                    out _))
             {
                 _schemaRegisteredRegistry = schemas;
                 return;

@@ -232,7 +232,20 @@ class RemoteGatewayToolingTests(unittest.TestCase):
             payload = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual("x86_64-pc-windows-msvc", payload["target"])
         self.assertEqual("stable-msvc", payload["environment"]["RUSTUP_TOOLCHAIN"])
-        self.assertEqual("absent", payload["environment"]["cargoLock"])
+        self.assertEqual("present", payload["environment"]["cargoLock"])
+        self.assertEqual(self.build.EXPECTED_FOXGLOVE_COMMIT, payload["sourceCommit"])
+        self.assertEqual(64, len(payload["cHeaderSha256"]))
+        self.assertEqual(64, len(payload["cargoLockSha256"]))
+
+    def test_build_rejects_an_unpinned_foxglove_revision(self) -> None:
+        """Native builds must not consume an ABI-incompatible SDK checkout."""
+        with mock.patch.object(
+            self.build.subprocess,
+            "run",
+            return_value=SimpleNamespace(stdout="deadbeef\n"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "revision mismatch"):
+                self.build.foxglove_source_revision()
 
     def test_token_is_trimmed_before_it_is_inherited(self) -> None:
         """Whitespace used for validation cannot survive into Unity's token."""

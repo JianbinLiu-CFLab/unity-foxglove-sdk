@@ -15,6 +15,9 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public static partial class FoxrunCodeGenerator
     {
+        private static string _scanAssemblyFingerprint;
+        private static FoxRunScanResult _cachedFoxRunScan;
+
         private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices(bool ignoreReflectionTypeLoadExceptions)
         {
             var byClass = new Dictionary<(string Ns, string ClassName), List<MemberData>>();
@@ -23,6 +26,7 @@ namespace Unity.FoxgloveSDK.Editor
             var serviceEntries = new List<FoxServiceScanEntry>();
             var foxRunTypes = new List<(string AsmName, string Ns, string ClassName)>();
 
+            var complete = true;
             VisitLoadedFoxRunComponentTypes(ignoreReflectionTypeLoadExceptions, (asm, type) =>
             {
                 var ns = type.Namespace ?? "";
@@ -53,19 +57,26 @@ namespace Unity.FoxgloveSDK.Editor
                     foreach (var method in methods)
                         serviceEntries.Add(new FoxServiceScanEntry(key, owner, method));
                 }
-            });
+            }, out complete);
 
             return new FoxRunAndServiceScanResult(
-                new FoxRunScanResult(byClass, manifestMembers, reflectionMembers),
+                new FoxRunScanResult(byClass, manifestMembers, reflectionMembers, complete),
                 BuildFoxServiceScanResult(serviceEntries),
                 foxRunTypes);
         }
 
         private static FoxRunScanResult ScanFoxRunMembers(bool ignoreReflectionTypeLoadExceptions)
         {
+            var fingerprint = GetLoadedAssemblyFingerprint();
+            if (ignoreReflectionTypeLoadExceptions
+                && _cachedFoxRunScan != null
+                && string.Equals(_scanAssemblyFingerprint, fingerprint, StringComparison.Ordinal))
+                return _cachedFoxRunScan;
+
             var byClass = new Dictionary<(string Ns, string ClassName), List<MemberData>>();
             var manifestMembers = new List<FoxRunManifestMember>();
             var reflectionMembers = new List<FoxRunReflectionGenerationMember>();
+            var complete = true;
 
             VisitLoadedFoxRunComponentTypes(ignoreReflectionTypeLoadExceptions, (asm, type) =>
             {
@@ -86,9 +97,15 @@ namespace Unity.FoxgloveSDK.Editor
                     byClass,
                     manifestMembers,
                     reflectionMembers);
-            });
+            }, out complete);
 
-            return new FoxRunScanResult(byClass, manifestMembers, reflectionMembers);
+            var result = new FoxRunScanResult(byClass, manifestMembers, reflectionMembers, complete);
+            if (ignoreReflectionTypeLoadExceptions)
+            {
+                _scanAssemblyFingerprint = fingerprint;
+                _cachedFoxRunScan = result;
+            }
+            return result;
         }
 
         private static void AddFoxRunMembers(
@@ -114,8 +131,10 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void VisitLoadedFoxRunComponentTypes(
             bool ignoreReflectionTypeLoadExceptions,
-            Action<Assembly, Type> visitor)
+            Action<Assembly, Type> visitor,
+            out bool complete)
         {
+            complete = true;
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
                 try
@@ -134,12 +153,20 @@ namespace Unity.FoxgloveSDK.Editor
                     if (!ignoreReflectionTypeLoadExceptions)
                         throw;
                     WarnSkippedAssembly(asm, ex);
+                    complete = false;
                     // Non-build Editor refreshes may remain best-effort. The
                     // Player generation boundary calls this traversal with
                     // ignoreReflectionTypeLoadExceptions: false and therefore
                     // propagates the incomplete discovery as a terminal error.
                 }
             }
+        }
+
+        private static string GetLoadedAssemblyFingerprint()
+        {
+            return string.Join("\u001f", AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.FullName ?? assembly.GetName().Name)
+                .OrderBy(name => name, StringComparer.Ordinal));
         }
 
         /// <summary>
@@ -428,15 +455,18 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly Dictionary<(string Ns, string ClassName), List<MemberData>> ByClass;
             public readonly List<FoxRunManifestMember> ManifestMembers;
             public readonly List<FoxRunReflectionGenerationMember> ReflectionMembers;
+            public readonly bool IsComplete;
 
             public FoxRunScanResult(
                 Dictionary<(string Ns, string ClassName), List<MemberData>> byClass,
                 List<FoxRunManifestMember> manifestMembers,
-                List<FoxRunReflectionGenerationMember> reflectionMembers)
+                List<FoxRunReflectionGenerationMember> reflectionMembers,
+                bool isComplete = true)
             {
                 ByClass = byClass;
                 ManifestMembers = manifestMembers;
                 ReflectionMembers = reflectionMembers;
+                IsComplete = isComplete;
             }
         }
 

@@ -526,6 +526,30 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         /// <summary>
+        /// Finds a metadata record by name, falling back to a bounded data-section
+        /// scan when the optional Metadata Index records are absent.
+        /// </summary>
+        public McapMetadata FindMetadata(string name)
+        {
+            ThrowIfDisposed();
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            var indexes = _summary.MetadataIndexes;
+            for (var i = 0; indexes != null && i < indexes.Count; i++)
+            {
+                var index = indexes[i];
+                if (index != null && string.Equals(index.Name, name, StringComparison.Ordinal))
+                    return _reader.ReadMetadataAt(index.Offset);
+            }
+
+            if (indexes != null && indexes.Count > 0)
+                return null;
+
+            return _reader.FindMetadataInDataSection(name, _summary.DataSectionEndOffset);
+        }
+
+        /// <summary>
         /// Releases the owned stream when this reader owns it.
         /// </summary>
         public void Dispose()

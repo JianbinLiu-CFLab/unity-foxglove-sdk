@@ -152,15 +152,23 @@ namespace Unity.FoxgloveSDK.Tests
             transport.ClearTexts(3);
 
             session.RegisterChannel(new AdvertiseChannel { Id = 77, Topic = "/phase134/old", Encoding = "json" });
-            transport.ClearTexts(3);
-            session.RegisterChannel(new AdvertiseChannel { Id = 77, Topic = "/phase134/new", Encoding = "json" });
+            var rejected = false;
+            try
+            {
+                session.RegisterChannel(new AdvertiseChannel { Id = 77, Topic = "/phase134/new", Encoding = "json" });
+            }
+            catch (InvalidOperationException)
+            {
+                rejected = true;
+            }
+            Check(rejected, "134-2D-0: conflicting channel re-register is rejected");
 
             var graph = LastGraphUpdate(transport, 3);
             Check(graph != null, "134-2D-1: channel re-register broadcasts a graph update");
-            Check(!GraphHasPublishedTopic(graph, "/phase134/old"),
-                "134-2D-2: channel id re-register removes the stale published graph topic");
-            Check(GraphHasPublishedTopic(graph, "/phase134/new"),
-                "134-2D-3: channel id re-register advertises the replacement graph topic");
+            Check(GraphHasPublishedTopic(graph, "/phase134/old"),
+                "134-2D-2: rejected channel re-register preserves the original graph topic");
+            Check(!GraphHasPublishedTopic(graph, "/phase134/new"),
+                "134-2D-3: rejected channel re-register does not advertise a replacement graph topic");
         }
 
         private static void VerifyAssetReadsFailClosedAndStayBounded()

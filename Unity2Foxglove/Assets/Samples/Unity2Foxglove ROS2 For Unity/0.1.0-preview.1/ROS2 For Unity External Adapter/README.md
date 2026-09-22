@@ -27,7 +27,7 @@ $env:RMW_IMPLEMENTATION = "rmw_zenoh_cpp"
 
 Selecting `Zenoh (rmw_zenoh_cpp)` in the Inspector only chooses Unity's RMW implementation. It does not start `rmw_zenohd` and does not bridge FastDDS traffic.
 
-When one runtime package is active, the adapter package enables the sample compile symbol automatically for the Standalone build target:
+When one runtime package is active on the Windows Standalone target, the adapter package enables the sample compile symbol automatically. The Editor build preprocessor stages the selected runtime metadata and `share` tree into Player `StreamingAssets/Ros2ForUnity` and removes only its marked staging directory after the build:
 
 ```text
 UNITY2FOXGLOVE_ROS2_FOR_UNITY

@@ -82,6 +82,17 @@ namespace Unity.FoxgloveSDK.Util
             }
         }
 
+        /// <summary>Removes and returns the current contents in FIFO order.</summary>
+        public T[] DrainSnapshot()
+        {
+            lock (_gate)
+            {
+                var snapshot = _queue.ToArray();
+                _queue.Clear();
+                return snapshot;
+            }
+        }
+
         /// <summary>
         /// Clears all queued items.
         /// </summary>

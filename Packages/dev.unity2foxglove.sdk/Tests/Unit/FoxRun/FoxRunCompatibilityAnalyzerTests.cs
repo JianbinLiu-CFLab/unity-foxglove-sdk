@@ -128,6 +128,70 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void ReplacingEveryContractIsNotBackwardCompatible()
+        {
+            var recorded = ManifestWithContracts(
+                "recorded",
+                Contract("old-contract", "old-binding", "old-policy", topic: "/old"));
+            var current = ManifestWithContracts(
+                "current",
+                Contract("new-contract", "new-binding", "new-policy", topic: "/new"));
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(
+                FoxRunSchemaMcapMetadata.CreateRecord(recorded),
+                current);
+
+            Assert.Equal(FoxRunCompatibilityClass.Breaking, result.Classification);
+        }
+
+        [Fact]
+        public void JsonFieldAddedBeforeExistingNamesRemainsBackwardCompatible()
+        {
+            var recorded = ManifestWithContracts(
+                "recorded",
+                ContractWithFields(
+                    "old-contract", "old-binding", "old-policy", "json",
+                    new FoxRunSchemaFieldInfo("b", "b", "field", "int32", false, false),
+                    new FoxRunSchemaFieldInfo("c", "c", "field", "string", false, false)));
+            var current = ManifestWithContracts(
+                "current",
+                ContractWithFields(
+                    "new-contract", "new-binding", "new-policy", "json",
+                    new FoxRunSchemaFieldInfo("a", "a", "field", "bool", false, false),
+                    new FoxRunSchemaFieldInfo("b", "b", "field", "int32", false, false),
+                    new FoxRunSchemaFieldInfo("c", "c", "field", "string", false, false)));
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(
+                FoxRunSchemaMcapMetadata.CreateRecord(recorded),
+                current);
+
+            Assert.Equal(FoxRunCompatibilityClass.BackwardCompatible, result.Classification);
+        }
+
+        [Fact]
+        public void ProtobufFieldDigestWithoutFieldNumbersDoesNotClaimBackwardCompatibility()
+        {
+            var recorded = ManifestWithContracts(
+                "recorded",
+                ContractWithFields(
+                    "old-contract", "old-binding", "old-policy", "protobuf",
+                    new FoxRunSchemaFieldInfo("a", "a", "field", "int32", false, false)));
+            var current = ManifestWithContracts(
+                "current",
+                ContractWithFields(
+                    "new-contract", "new-binding", "new-policy", "protobuf",
+                    new FoxRunSchemaFieldInfo("a", "a", "field", "int32", false, false),
+                    new FoxRunSchemaFieldInfo("b", "b", "field", "string", false, false)));
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(
+                FoxRunSchemaMcapMetadata.CreateRecord(recorded),
+                current);
+
+            Assert.Equal(FoxRunCompatibilityClass.Unknown, result.Classification);
+            Assert.Contains("protobuf field metadata", result.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CompatiblePolicyAcceptsOnlyPolicyAndBackwardClasses()
         {
             var policy = Analyze("g", "c", "b", "p", "g2", "c", "b", "p2");
@@ -266,17 +330,53 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void WritersEmitVersionTwoAndReadersAcceptLegacyVersionOne()
+        public void WritersEmitVersionThreeAndReadersAcceptLegacyVersionOne()
         {
             var current = Manifest("g", "c", "b", "p", "int32");
             Assert.True(FoxRunSchemaMcapMetadata.TryCreateJson(current, out var json));
-            Assert.Contains("\"schemaMetadataVersion\":2", json, StringComparison.Ordinal);
+            Assert.Contains("\"schemaMetadataVersion\":3", json, StringComparison.Ordinal);
             Assert.Contains("\"fields\":[", json, StringComparison.Ordinal);
 
-            var legacy = json.Replace("\"schemaMetadataVersion\":2", "\"schemaMetadataVersion\":1", StringComparison.Ordinal)
-                .Replace(",\"fields\":[{\"name\":\"field0\",\"canonicalType\":\"int32\",\"ordinal\":0,\"encoding\":\"json\"}]", string.Empty, StringComparison.Ordinal);
+            var legacy = json.Replace("\"schemaMetadataVersion\":3", "\"schemaMetadataVersion\":1", StringComparison.Ordinal)
+                .Replace(",\"fields\":[{\"name\":\"field0\",\"canonicalType\":\"int32\",\"ordinal\":0,\"encoding\":\"json\",\"nullable\":false,\"array\":false,\"aggregate\":false,\"protobufFieldNumber\":0,\"typeShapeDigest\":\"\"}]", string.Empty, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"fields\"", legacy, StringComparison.Ordinal);
             Assert.True(FoxRunSchemaMcapMetadata.TryParseJson(legacy, out var record, out var error), error);
             Assert.Equal(1, record.SchemaMetadataVersion);
+        }
+
+        [Fact]
+        public void VersionTwoRecordsUseLegacyFieldProjectionWhenMetadataGainsFields()
+        {
+            var recordedManifest = ManifestWithContracts(
+                "recorded",
+                ContractWithFields(
+                    "contract", "binding", "policy", "json",
+                    new FoxRunSchemaFieldInfo("field0", "field0", "field", "int32", true, true, aggregate: true)));
+            var currentManifest = ManifestWithContracts(
+                    "current",
+                ContractWithFields(
+                    "contract", "binding", "policy", "json",
+                    new FoxRunSchemaFieldInfo("field0", "field0", "field", "int32", true, true, aggregate: true),
+                    new FoxRunSchemaFieldInfo("field1", "field1", "field", "string", false, false)));
+            Assert.True(FoxRunSchemaMcapMetadata.TryCreateJson(recordedManifest, out var json));
+            var legacyJson = json.Replace("\"schemaMetadataVersion\":3", "\"schemaMetadataVersion\":2", StringComparison.Ordinal)
+                .Replace(",\"nullable\":true,\"array\":true,\"aggregate\":true,\"protobufFieldNumber\":0,\"typeShapeDigest\":\"\"", string.Empty, StringComparison.Ordinal);
+            Assert.True(FoxRunSchemaMcapMetadata.TryParseJson(legacyJson, out var record, out var error), error);
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(record, currentManifest);
+
+            Assert.Equal(FoxRunCompatibilityClass.BackwardCompatible, result.Classification);
+        }
+
+        [Fact]
+        public void CurrentVersionRequiresFieldArraysDuringParsing()
+        {
+            var current = Manifest("g", "c", "b", "p", "int32");
+            Assert.True(FoxRunSchemaMcapMetadata.TryCreateJson(current, out var json));
+            var malformed = json.Replace(",\"fields\":[{\"name\":\"field0\",\"canonicalType\":\"int32\",\"ordinal\":0,\"encoding\":\"json\",\"nullable\":false,\"array\":false,\"aggregate\":false,\"protobufFieldNumber\":0,\"typeShapeDigest\":\"\"}]", string.Empty, StringComparison.Ordinal);
+
+            Assert.False(FoxRunSchemaMcapMetadata.TryParseJson(malformed, out _, out var error));
+            Assert.Contains("contract fields are missing", error, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -294,7 +394,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void CompatibilityVectorFixtureIsExecutableAndComplete()
+        public void CompatibilityVectorFixtureIsDeclarativeAndComplete()
         {
             var root = new DirectoryInfo(AppContext.BaseDirectory);
             while (root != null && !Directory.Exists(Path.Combine(root.FullName, ".git")))
@@ -309,6 +409,55 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 Assert.False(string.IsNullOrWhiteSpace((string)vector["id"]));
                 Assert.True(Enum.TryParse((string)vector["expected"], out FoxRunCompatibilityClass _));
             }
+        }
+
+        [Fact]
+        public void ConflictedGeneratedAuthorityBlocksReplayIdentityEvaluation()
+        {
+            var first = Manifest("first", "c", "b", "p");
+            var second = Manifest("second", "c", "b", "p");
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            try
+            {
+                FoxRunSchemaInfoRegistry.RegisterGenerated(first);
+                FoxRunSchemaInfoRegistry.RegisterGenerated(second);
+
+                var result = FoxRunSchemaMcapMetadata.Evaluate(
+                    FoxRunSchemaMcapMetadata.CreateRecord(first),
+                    first,
+                    SchemaIdentityMode.Strict);
+
+                Assert.True(FoxRunSchemaInfoRegistry.HasConflict);
+                Assert.Equal(FoxRunReplaySchemaGuardState.Mismatch, result.State);
+                Assert.True(result.IsBlocking);
+                Assert.Contains("authority is conflicted", result.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        [Fact]
+        public void RecordingControllerSkipsSchemaEvidenceWhenAuthorityIsConflicted()
+        {
+            var path = Path.Combine(
+                FindRepositoryRoot(),
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs");
+            var source = File.ReadAllText(path);
+            var conflict = source.IndexOf("FoxRunSchemaInfoRegistry.HasConflict", StringComparison.Ordinal);
+            var write = source.IndexOf("TryCreateJson(FoxRunSchemaInfoRegistry.Current", StringComparison.Ordinal);
+            Assert.True(conflict >= 0);
+            Assert.True(write > conflict);
+        }
+
+        private static string FindRepositoryRoot()
+        {
+            var root = new DirectoryInfo(AppContext.BaseDirectory);
+            while (root != null && !Directory.Exists(Path.Combine(root.FullName, ".git")))
+                root = root.Parent;
+            Assert.NotNull(root);
+            return root.FullName;
         }
 
         private static FoxRunCompatibilityResult Analyze(
@@ -367,6 +516,19 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             return new FoxRunSchemaContractInfo(
                 "Demo.State", topic, schemaName, encoding, contractHash, bindingHash, policyHash,
                 "Publish", 1f, 0f, fields, flow: flow);
+        }
+
+        private static FoxRunSchemaContractInfo ContractWithFields(
+            string contractHash,
+            string bindingHash,
+            string policyHash,
+            string encoding,
+            params FoxRunSchemaFieldInfo[] fields)
+        {
+            return new FoxRunSchemaContractInfo(
+                "Demo.State", "/state", "Demo.State", encoding,
+                contractHash, bindingHash, policyHash,
+                "Publish", 1f, 0f, fields, flow: "Publish");
         }
     }
 }

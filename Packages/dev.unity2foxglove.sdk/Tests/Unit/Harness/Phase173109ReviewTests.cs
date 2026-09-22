@@ -186,7 +186,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("private void AddSequentialFallbackProblems", diagnostics, StringComparison.Ordinal);
             Assert.Contains("private void AddSchemaReferenceProblems", diagnostics, StringComparison.Ordinal);
             Assert.Contains("private void AddFoxRunSchemaMetadataProblems", diagnostics, StringComparison.Ordinal);
-            Assert.Contains("private McapMetadataIndex FindMetadataIndex", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("public static void AddMetadataIndexes", initialization, StringComparison.Ordinal);
             Assert.Contains("ReadMcapDataLoaderSources", sourceHelpers, StringComparison.Ordinal);
             Assert.Contains("\"McapDataLoader.cs\"", sourceHelpers, StringComparison.Ordinal);
             Assert.Contains("\"McapDataLoader.*.cs\"", sourceHelpers, StringComparison.Ordinal);

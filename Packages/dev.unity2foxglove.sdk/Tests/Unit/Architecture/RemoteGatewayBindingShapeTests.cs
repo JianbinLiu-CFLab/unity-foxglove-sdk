@@ -50,6 +50,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("internal struct FoxgloveGatewayCallbacks", source, StringComparison.Ordinal);
             Assert.Contains("internal enum FoxgloveConnectionStatus", source, StringComparison.Ordinal);
             Assert.Contains("internal enum FoxgloveError", source, StringComparison.Ordinal);
+            Assert.Contains("internal enum FoxgloveReliability : byte", source, StringComparison.Ordinal);
+            Assert.Contains("internal struct FoxgloveQosProfile", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("public FoxgloveString Durability", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("public FoxgloveString Profile", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void QosProfileDeclaresExactlyOneByteReliabilityField()
+        {
+            var source = Text(RuntimeRoot + "/Native/RemoteGatewayNativeMethods.cs");
+            var root = CSharpSyntaxTree.ParseText(source).GetRoot();
+            var qos = root.DescendantNodes()
+                .OfType<StructDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == "FoxgloveQosProfile");
+
+            var fields = qos.Members.OfType<FieldDeclarationSyntax>().ToArray();
+            Assert.Single(fields);
+            Assert.Equal("FoxgloveReliability", fields[0].Declaration.Type.ToString());
+            Assert.Equal("Reliability", fields[0].Declaration.Variables.Single().Identifier.ValueText);
+
+            var reliability = root.DescendantNodes()
+                .OfType<EnumDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == "FoxgloveReliability");
+            Assert.Equal("byte", reliability.BaseList.Types.Single().Type.ToString());
         }
 
         [Fact]

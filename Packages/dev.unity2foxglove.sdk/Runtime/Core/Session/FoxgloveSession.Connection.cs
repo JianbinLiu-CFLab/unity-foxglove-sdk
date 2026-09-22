@@ -26,10 +26,11 @@ namespace Unity.FoxgloveSDK.Core
         {
             try
             {
+                var graphChanged = false;
+                var replayBackfillRequested = false;
                 lock (_channelLifecycleLock)
                 {
                     var msg = JsonConvert.DeserializeObject<SubscribeMessage>(json);
-                    var graphChanged = false;
                     if (msg?.Subscriptions != null)
                     {
                         var requested = new List<(uint subscriptionId, uint channelId)>();
@@ -64,11 +65,14 @@ namespace Unity.FoxgloveSDK.Core
                         }
 
                         if (changes.Count > 0)
-                            Volatile.Read(ref _runtime)?.RequestReplaySubscriberBackfill();
+                            replayBackfillRequested = true;
                     }
-                    if (graphChanged)
-                        _graph.BroadcastUpdate();
                 }
+
+                if (graphChanged)
+                    _graph.BroadcastUpdate();
+                if (replayBackfillRequested)
+                    Volatile.Read(ref _runtime)?.RequestReplaySubscriberBackfill();
             }
             catch (Exception ex) { _logger.LogWarning("subscribe error: " + ex); }
         }
@@ -93,10 +97,10 @@ namespace Unity.FoxgloveSDK.Core
         {
             try
             {
+                var graphChanged = false;
                 lock (_channelLifecycleLock)
                 {
                     var msg = JsonConvert.DeserializeObject<UnsubscribeMessage>(json);
-                    var graphChanged = false;
                     if (msg?.SubscriptionIds != null)
                     {
                         var removed = _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
@@ -113,9 +117,9 @@ namespace Unity.FoxgloveSDK.Core
                             }
                         }
                     }
-                    if (graphChanged)
-                        _graph.BroadcastUpdate();
                 }
+                if (graphChanged)
+                    _graph.BroadcastUpdate();
             }
             catch (Exception ex) { _logger.LogWarning("unsubscribe error: " + ex); }
         }

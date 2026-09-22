@@ -809,6 +809,10 @@ class RunCiTests(unittest.TestCase):
             ],
             calls,
         )
+        self.assertIn(
+            [sys.executable, "Scripts/samples/sync_maze_demo.py", "--dry-run"],
+            calls,
+        )
 
     def test_packages_lane_executes_all_maintained_python_regression_modules(self) -> None:
         """Default package CI must execute maintained regression modules, not only validators."""
@@ -826,6 +830,8 @@ class RunCiTests(unittest.TestCase):
             "Scripts.phase190.regression_checks.test_phase190_validators",
             "Scripts.phase190.regression_checks.test_phase190_script_documentation",
             "Scripts.phase190.regression_checks.test_run_conformance",
+            "Scripts.performance.regression_checks.test_phase188_replay",
+            "Scripts.smoke.replay.regression_checks.test_phase188_deterministic_replay_acceptance",
         )
         calls: list[list[str]] = []
 
@@ -1136,6 +1142,8 @@ class RunCiTests(unittest.TestCase):
                 "xunit",
                 "xunit-adapter",
                 "xunit-native",
+                "ros2bridge-xunit",
+                "performance-regression",
                 "foxrun-publish-panel",
                 "phase179-ros2-regression",
                 "phase181-ros2-regression",
@@ -1620,6 +1628,8 @@ class RunCiTests(unittest.TestCase):
                 "xunit": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "xunit-adapter": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "xunit-native": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                "ros2bridge-xunit": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                "performance-regression": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "foxrun-publish-panel": None,
                 "phase179-ros2-regression": None,
                 "phase181-ros2-regression": None,
@@ -1649,7 +1659,7 @@ class RunCiTests(unittest.TestCase):
                         self.assertEqual(0, self.run_ci.main())
 
         self.assertEqual(
-            ["dotnet-runtime", "xunit", "xunit-adapter", "xunit-native"],
+            ["dotnet-runtime", "xunit", "xunit-adapter", "xunit-native", "ros2bridge-xunit", "performance-regression"],
             observed.get("names"),
         )
         self.assertEqual(2, observed.get("max_workers"))
@@ -2087,15 +2097,33 @@ class RunCiTests(unittest.TestCase):
 
     def test_parallel_mcap_job_disables_wall_clock_timeout(self) -> None:
         """The parent CI process must not reintroduce a deadline around the MCAP child."""
-        completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout="", stderr="")
-
+        command = [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write('x' * 1048576); sys.stdout.flush()",
+        ]
         with tempfile.TemporaryDirectory() as temp:
-            job = self.run_ci.CiJob("mcap-conformance", ["tool"], disable_timeout=True)
-            with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed) as run_process:
+            job = self.run_ci.CiJob("mcap-conformance", command, disable_timeout=True)
+            result = self.run_ci._run_ci_job(job, Path(temp))
+
+        self.assertTrue(result.ok)
+        self.assertEqual(0, result.returncode)
+
+    def test_parallel_job_drains_noisy_child_before_wait_deadlock(self) -> None:
+        """A noisy child must complete instead of filling the redirected pipe."""
+        command = [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write('x' * 1048576); sys.stdout.flush()",
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            job = self.run_ci.CiJob("pipe-drain", command)
+            with mock.patch.object(self.run_ci, "job_timeout_seconds", return_value=20):
                 result = self.run_ci._run_ci_job(job, Path(temp))
 
         self.assertTrue(result.ok)
-        self.assertIsNone(run_process.call_args.kwargs["timeout"])
+        self.assertEqual(0, result.returncode)
+        self.assertLess(result.elapsed_seconds, 10)
 
     def test_main_dispatches_default_ci_through_parallel_jobs(self) -> None:
         """Without --only, CI should use the parallel job runner and aggregate job results."""
@@ -2118,6 +2146,8 @@ class RunCiTests(unittest.TestCase):
                 "xunit",
                 "xunit-adapter",
                 "xunit-native",
+                "ros2bridge-xunit",
+                "performance-regression",
                 "foxrun-publish-panel",
                 "phase179-ros2-regression",
                 "phase181-ros2-regression",

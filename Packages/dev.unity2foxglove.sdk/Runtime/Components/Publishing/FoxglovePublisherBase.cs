@@ -57,6 +57,8 @@ namespace Unity.FoxgloveSDK.Components
         private string _lastOrdinaryTransportWarningKey;
         private string _supportedEncodingSummaryCache;
         private bool _managerWasResolved;
+        private bool _replayDisableOwned;
+        private bool _replayDisableInProgress;
         private double _nextManagerResolveTime;
         private ulong _ordinaryTransportSequence;
 
@@ -160,6 +162,12 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public FoxgloveManager ConfiguredManager => _manager;
 
+        internal FoxgloveManager ResolveManagerForComponentSession()
+        {
+            ResolveManager();
+            return _manager;
+        }
+
         /// <summary>
         /// Human-readable capability summary for custom Inspectors.
         /// </summary>
@@ -175,6 +183,8 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual void OnEnable()
         {
+            if (!_replayDisableInProgress)
+                _replayDisableOwned = false;
             // Re-enable starts a fresh cadence window, so the first scheduled
             // tick can publish immediately instead of waiting one full period.
             _publishRateState = default;
@@ -189,7 +199,43 @@ namespace Unity.FoxgloveSDK.Components
             ResolveManager();
         }
 
-        protected virtual void OnDisable() { }
+        /// <remarks>
+        /// Derived publishers overriding this callback must call the base implementation
+        /// so replay-disable ownership is cleared when a publisher is disabled manually.
+        /// </remarks>
+        protected virtual void OnDisable()
+        {
+            if (!_replayDisableInProgress)
+                _replayDisableOwned = false;
+        }
+
+        internal bool TryDisableForReplay()
+        {
+            if (!enabled)
+                return false;
+
+            _replayDisableInProgress = true;
+            try
+            {
+                enabled = false;
+                _replayDisableOwned = true;
+                return true;
+            }
+            finally
+            {
+                _replayDisableInProgress = false;
+            }
+        }
+
+        internal void RestoreAfterReplay()
+        {
+            if (!_replayDisableOwned)
+                return;
+
+            _replayDisableOwned = false;
+            if (!enabled)
+                enabled = true;
+        }
 
         protected virtual void OnValidate()
         {

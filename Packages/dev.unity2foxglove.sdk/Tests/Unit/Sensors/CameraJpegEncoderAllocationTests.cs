@@ -73,6 +73,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             }
         }
 
+        [Fact]
+        public void ResizingBoundedQueueRetainsNewestItemsForMigration()
+        {
+            var queue = new DropOldestBoundedQueue<int>(3);
+            queue.Enqueue(1);
+            queue.Enqueue(2);
+            queue.Enqueue(3);
+
+            var snapshot = queue.DrainSnapshot();
+            var resized = new DropOldestBoundedQueue<int>(2);
+            for (var index = Math.Max(0, snapshot.Length - resized.Capacity); index < snapshot.Length; index++)
+                resized.Enqueue(snapshot[index]);
+
+            Assert.Equal(new[] { 2, 3 }, new[]
+            {
+                Dequeue(resized),
+                Dequeue(resized)
+            });
+            Assert.Equal(0, queue.Count);
+        }
+
+        private static int Dequeue(DropOldestBoundedQueue<int> queue)
+        {
+            Assert.True(queue.TryDequeue(out var value));
+            return value;
+        }
+
         private static byte[] FlipRows(byte[] source, int width, int height)
         {
             var stride = checked(width * 3);

@@ -64,7 +64,20 @@ namespace Unity.FoxgloveSDK.Core
                 if (subscriptions != null)
                 {
                     foreach (var (subscriptionId, channelId) in subscriptions)
-                        deduped[subscriptionId] = channelId;
+                    {
+                        if (deduped.TryGetValue(subscriptionId, out var duplicateChannelId))
+                        {
+                            if (duplicateChannelId != channelId)
+                            {
+                                error = $"Subscription id {subscriptionId} is duplicated with conflicting channels";
+                                return false;
+                            }
+
+                            continue;
+                        }
+
+                        deduped.Add(subscriptionId, channelId);
+                    }
                 }
 
                 if (!_clients.TryGetValue(clientId, out var subs))
@@ -76,6 +89,34 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     if (subs == null || !subs.ContainsKey(subscriptionId))
                         newUniqueCount++;
+                }
+
+                foreach (var (subscriptionId, channelId) in deduped)
+                {
+                    if (subs != null
+                        && subs.TryGetValue(subscriptionId, out var previousChannelId)
+                        && previousChannelId != channelId)
+                    {
+                        error = $"Active subscription id {subscriptionId} cannot be rebound";
+                        return false;
+                    }
+
+                    if (subs != null
+                        && FindExistingChannelSubscriptionLocked(subs, channelId, subscriptionId))
+                    {
+                        error = $"Client {clientId} is already subscribed to channel {channelId}";
+                        return false;
+                    }
+                }
+
+                var requestedChannels = new HashSet<uint>();
+                foreach (var (subscriptionId, channelId) in deduped)
+                {
+                    if (!requestedChannels.Add(channelId))
+                    {
+                        error = $"Client {clientId} is already subscribed to channel {channelId}";
+                        return false;
+                    }
                 }
 
                 var resultingCount = currentClientCount + newUniqueCount;
@@ -104,8 +145,11 @@ namespace Unity.FoxgloveSDK.Core
                 foreach (var (subscriptionId, channelId) in deduped)
                 {
                     var hadPrevious = subs.TryGetValue(subscriptionId, out var previousChannelId);
-                    if (hadPrevious)
-                        RemoveReverseIndex(previousChannelId, clientId, subscriptionId);
+                    if (hadPrevious && previousChannelId == channelId)
+                    {
+                        changes.Add(new SubscriptionRegistryChange(subscriptionId, channelId, true, previousChannelId));
+                        continue;
+                    }
 
                     subs[subscriptionId] = channelId;
                     AddReverseIndex(channelId, clientId, subscriptionId);
@@ -144,6 +188,25 @@ namespace Unity.FoxgloveSDK.Core
             if (isNewSubscription && TotalSubscriptionCountLocked() + 1 > MaxTotalSubscriptions)
             {
                 error = "Too many total subscriptions";
+                return false;
+            }
+
+            if (subs != null
+                && subs.TryGetValue(subscriptionId, out var activeChannelId))
+            {
+                if (activeChannelId != channelId)
+                {
+                    error = $"Active subscription id {subscriptionId} cannot be rebound";
+                    return false;
+                }
+
+                change = new SubscriptionRegistryChange(subscriptionId, channelId, true, activeChannelId);
+                return true;
+            }
+
+            if (subs != null && FindExistingChannelSubscriptionLocked(subs, channelId, subscriptionId))
+            {
+                error = $"Client {clientId} is already subscribed to channel {channelId}";
                 return false;
             }
 
@@ -320,6 +383,18 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Copies active channel ids into a caller-owned set.</summary>
+        public void CopySubscribedChannelIds(HashSet<uint> destination)
+        {
+            if (destination == null) return;
+            lock (_lock)
+            {
+                destination.Clear();
+                foreach (var channelId in _byChannel.Keys)
+                    destination.Add(channelId);
+            }
+        }
+
         /// <summary>Remove all state.</summary>
         public void Clear()
         {
@@ -369,6 +444,20 @@ namespace Unity.FoxgloveSDK.Core
 
             if (subscribers.Count == 0)
                 _byChannel.Remove(channelId);
+        }
+
+        private static bool FindExistingChannelSubscriptionLocked(
+            Dictionary<uint, uint> subscriptions,
+            uint channelId,
+            uint exceptSubscriptionId)
+        {
+            foreach (var pair in subscriptions)
+            {
+                if (pair.Key != exceptSubscriptionId && pair.Value == channelId)
+                    return true;
+            }
+
+            return false;
         }
     }
     public readonly struct SubscriptionRegistryChange

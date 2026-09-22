@@ -226,12 +226,14 @@ namespace Unity.FoxgloveSDK.Core
             Dictionary<string, HashSet<string>> source,
             List<PublishedTopic> destination)
         {
-            foreach (var kv in source)
+            var names = new List<string>(source.Keys);
+            names.Sort(StringComparer.Ordinal);
+            foreach (var name in names)
             {
                 destination.Add(new PublishedTopic
                 {
-                    Name = kv.Key,
-                    PublisherIds = CopyIds(kv.Value)
+                    Name = name,
+                    PublisherIds = CopyIds(source[name])
                 });
             }
         }
@@ -240,12 +242,14 @@ namespace Unity.FoxgloveSDK.Core
             Dictionary<string, HashSet<string>> source,
             List<SubscribedTopic> destination)
         {
-            foreach (var kv in source)
+            var names = new List<string>(source.Keys);
+            names.Sort(StringComparer.Ordinal);
+            foreach (var name in names)
             {
                 destination.Add(new SubscribedTopic
                 {
-                    Name = kv.Key,
-                    SubscriberIds = CopyIds(kv.Value)
+                    Name = name,
+                    SubscriberIds = CopyIds(source[name])
                 });
             }
         }
@@ -254,12 +258,14 @@ namespace Unity.FoxgloveSDK.Core
             Dictionary<string, HashSet<string>> source,
             List<AdvertisedService> destination)
         {
-            foreach (var kv in source)
+            var names = new List<string>(source.Keys);
+            names.Sort(StringComparer.Ordinal);
+            foreach (var name in names)
             {
                 destination.Add(new AdvertisedService
                 {
-                    Name = kv.Key,
-                    ProviderIds = CopyIds(kv.Value)
+                    Name = name,
+                    ProviderIds = CopyIds(source[name])
                 });
             }
         }
@@ -269,6 +275,7 @@ namespace Unity.FoxgloveSDK.Core
             var result = new List<string>(ids.Count);
             foreach (var id in ids)
                 result.Add(id);
+            result.Sort(StringComparer.Ordinal);
             return result;
         }
 

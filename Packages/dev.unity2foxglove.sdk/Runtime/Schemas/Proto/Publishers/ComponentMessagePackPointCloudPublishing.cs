@@ -7,6 +7,37 @@ namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxglovePointCloudPublisher
     {
+        private bool TryPublishComponentMessagePackDraco(
+            Foxglove.CompressedPointCloud message,
+            ulong unixNs)
+        {
+            if (message == null || message.Data == null || message.Data.Length == 0)
+                return false;
+
+            var view = new ComponentMessagePackCompressedPointCloudView
+            {
+                Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(unixNs),
+                FrameId = message.FrameId ?? string.Empty,
+                Pose = new FoxglovePose
+                {
+                    Position = new FoxgloveVector3(),
+                    Orientation = new FoxgloveQuaternion { W = 1d }
+                },
+                Data = message.Data.ToByteArray(),
+                Format = message.Format ?? string.Empty
+            };
+            if (!ComponentMessagePackCodecRegistry.TryGet(
+                    typeof(ComponentMessagePackCompressedPointCloudView),
+                    out var entry)
+                || !entry.IsAvailable)
+            {
+                return false;
+            }
+
+            PublishMsgPack(entry.Serialize(view), unixNs);
+            return true;
+        }
+
         private bool TryPublishComponentMessagePackRaw(PointCloudFrame frame, ulong unixNs, PointCloudPackedDataBuilder.PointCloudLayout layout)
         {
             if (EffectiveEncoding != PublisherEffectiveEncoding.MsgPack) return false;

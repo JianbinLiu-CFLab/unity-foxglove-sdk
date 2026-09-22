@@ -67,6 +67,8 @@ namespace Unity.FoxgloveSDK.Components
         public bool IsOpenH264Mode => _videoSidecarSession.IsOpenH264Mode;
         public int OutputQueueDepth => _videoSidecarSession.OutputQueueDepth;
         public int MaxOutputQueue => _videoSidecarSession.MaxOutputQueue;
+        public int InputQueueDepth => _videoSidecarSession.InputQueueDepth;
+        public int MaxInputQueue => _videoSidecarSession.MaxInputQueue;
 
         public void ResetState()
         {
@@ -151,8 +153,10 @@ namespace Unity.FoxgloveSDK.Components
                 return result;
             }
 
-            var ownedFrameBytes = EnsureRgbScratch(frameBytes.Length);
-            frameBytes.CopyTo(ownedFrameBytes);
+            if (_rgbScratch == null || _rgbScratch.Length != frameBytes.Length)
+                _rgbScratch = new byte[frameBytes.Length];
+            frameBytes.CopyTo(_rgbScratch);
+            var ownedFrameBytes = _rgbScratch;
 
             if (_videoSidecarSession.IsOpenH264Mode)
             {
@@ -203,14 +207,6 @@ namespace Unity.FoxgloveSDK.Components
             return _i420Scratch;
         }
 
-        private byte[] EnsureRgbScratch(int length)
-        {
-            if (_rgbScratch == null || _rgbScratch.Length != length)
-                _rgbScratch = new byte[length];
-
-            return _rgbScratch;
-        }
-
         public bool TryDrainEncodedAccessUnits(
             Func<ulong> fallbackTimestampNs,
             Action<byte[], ulong, string> publishAccessUnit,
@@ -239,6 +235,8 @@ namespace Unity.FoxgloveSDK.Components
         public void Dispose()
         {
             _videoSidecarSession.Dispose();
+            _rgbScratch = null;
+            _i420Scratch = null;
         }
 
         public CameraVideoSidecarMatchResult EnsureSidecarMatchesMode(

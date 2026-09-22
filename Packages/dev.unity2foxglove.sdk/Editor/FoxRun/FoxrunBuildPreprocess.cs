@@ -106,14 +106,18 @@ namespace Unity.FoxgloveSDK.Editor
             // changed on disk. Discovery happens in the Editor build step; the
             // generated Player code still publishes without runtime reflection.
             var linkPath = FoxRunLinkAbsolutePath();
-            EnsureFoxRunLinkXml(linkPath, foxRunTypes);
-
             try
             {
+                EnsureFoxRunLinkXml(linkPath, foxRunTypes);
                 AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             }
             catch (Exception ex)
             {
+                // A cancelled or failed Player build does not reliably invoke
+                // IPostprocessBuildWithReport. Remove transient link.xml here.
+                RemoveGeneratedLinkXmlAfterBuild();
+                if (ex is BuildFailedException)
+                    throw;
                 throw new BuildFailedException(
                     "[FoxRun] generated asset refresh failed.\n" +
                     "The build was stopped because Unity could not synchronously\n" +

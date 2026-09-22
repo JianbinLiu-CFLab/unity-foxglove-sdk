@@ -64,8 +64,8 @@ namespace Unity.FoxgloveSDK.IO
 
         private void AddFoxRunSchemaMetadataProblems(McapDataLoaderInitialization initialization)
         {
-            var metadataIndex = FindMetadataIndex(FoxRunSchemaMcapMetadata.MetadataName);
-            if (metadataIndex == null)
+            var metadata = _reader.FindMetadata(FoxRunSchemaMcapMetadata.MetadataName);
+            if (metadata == null)
             {
                 initialization.Problems.Add(new McapDataLoaderProblem(
                     McapDataLoaderProblemSeverity.Warning,
@@ -74,7 +74,6 @@ namespace Unity.FoxgloveSDK.IO
                 return;
             }
 
-            var metadata = _reader.ReadMetadata(metadataIndex);
             if (metadata?.Metadata == null || !metadata.Metadata.TryGetValue("value", out var value))
             {
                 initialization.Problems.Add(new McapDataLoaderProblem(
@@ -86,22 +85,6 @@ namespace Unity.FoxgloveSDK.IO
 
             var result = FoxRunSchemaMcapMetadata.EvaluateRecordedJson(value, FoxRunSchemaInfoRegistry.Current);
             initialization.Problems.Add(ToProblem(result));
-        }
-
-        private McapMetadataIndex FindMetadataIndex(string name)
-        {
-            var indexes = _reader.MetadataIndexes;
-            if (indexes == null || string.IsNullOrEmpty(name))
-                return null;
-
-            for (var i = 0; i < indexes.Count; i++)
-            {
-                var index = indexes[i];
-                if (index != null && string.Equals(index.Name, name, StringComparison.Ordinal))
-                    return index;
-            }
-
-            return null;
         }
 
         private static McapDataLoaderProblem ToProblem(FoxRunReplaySchemaGuardResult result)

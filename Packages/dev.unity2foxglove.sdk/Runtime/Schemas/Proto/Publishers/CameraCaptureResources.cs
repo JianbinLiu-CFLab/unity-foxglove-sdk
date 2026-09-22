@@ -20,6 +20,8 @@ namespace Unity.FoxgloveSDK.Components
         private Camera _captureCamera;
         private RenderTexture _captureRenderTexture;
         private Texture2D _texture2D;
+        private byte[] _rgbScratch;
+        private byte[] _rowScratch;
         private Camera _lastCopiedSourceCamera;
         private int _lastCaptureWidth;
         private int _lastCaptureHeight;
@@ -84,7 +86,10 @@ namespace Unity.FoxgloveSDK.Components
                 return null;
 
             var data = req.GetData<byte>();
-            _texture2D.LoadRawTextureData(data);
+            var flipped = EnsureRgbScratch(data.Length);
+            data.CopyTo(flipped);
+            FlipRgb24RowsInPlace(flipped, width, height, ref _rowScratch);
+            _texture2D.LoadRawTextureData(flipped);
             _texture2D.Apply(false);
             return _texture2D.EncodeToJPG(quality);
         }
@@ -97,7 +102,10 @@ namespace Unity.FoxgloveSDK.Components
             if (rgb24Readback == null || rgb24Readback.Length < expectedBytes || !EnsureTexture(width, height))
                 return null;
 
-            _texture2D.LoadRawTextureData(rgb24Readback);
+            var flipped = EnsureRgbScratch(expectedBytes);
+            Buffer.BlockCopy(rgb24Readback, 0, flipped, 0, expectedBytes);
+            FlipRgb24RowsInPlace(flipped, width, height, ref _rowScratch);
+            _texture2D.LoadRawTextureData(flipped);
             _texture2D.Apply(false);
             return _texture2D.EncodeToJPG(quality);
         }
@@ -111,6 +119,27 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return _texture2D != null;
+        }
+
+        private byte[] EnsureRgbScratch(int length)
+        {
+            if (_rgbScratch == null || _rgbScratch.Length != length)
+                _rgbScratch = new byte[length];
+            return _rgbScratch;
+        }
+
+        private static void FlipRgb24RowsInPlace(byte[] data, int width, int height, ref byte[] rowScratch)
+        {
+            var rowBytes = width * 3;
+            if (rowScratch == null || rowScratch.Length != rowBytes)
+                rowScratch = new byte[rowBytes];
+            for (var top = 0; top < height / 2; top++)
+            {
+                var bottom = height - 1 - top;
+                Buffer.BlockCopy(data, top * rowBytes, rowScratch, 0, rowBytes);
+                Buffer.BlockCopy(data, bottom * rowBytes, data, top * rowBytes, rowBytes);
+                Buffer.BlockCopy(rowScratch, 0, data, bottom * rowBytes, rowBytes);
+            }
         }
 
         public void Cleanup()
@@ -128,6 +157,8 @@ namespace Unity.FoxgloveSDK.Components
 
             DestroyUnityObject(_texture2D);
             _texture2D = null;
+            _rgbScratch = null;
+            _rowScratch = null;
             _sourceCamera = null;
             _sourceCameraResolved = false;
             _lastCopiedSourceCamera = null;

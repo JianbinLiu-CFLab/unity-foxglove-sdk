@@ -31,6 +31,8 @@ namespace Foxglove.Schemas.Video
         public bool IsOpenH264Mode => _mode == CameraOutputMode.H264OpenH264;
         public int OutputQueueDepth => _sidecar?.OutputQueueDepth ?? 0;
         public int MaxOutputQueue => _sidecar?.MaxOutputQueue ?? 1;
+        public int InputQueueDepth => _sidecar?.InputQueueDepth ?? 0;
+        public int MaxInputQueue => _sidecar?.MaxInputQueue ?? 1;
 
         public bool EnsureStarted(
             CameraVideoOutputProfile profile,
@@ -173,7 +175,8 @@ namespace Foxglove.Schemas.Video
         public bool TryDrain(
             Func<ulong> fallbackTimestampNs,
             Action<byte[], ulong, string> publishAccessUnit,
-            Action<ICameraVideoEncoderSidecar> observeSidecar)
+            Action<ICameraVideoEncoderSidecar> observeSidecar,
+            int maxAccessUnits = 4)
         {
             var sidecar = _sidecar;
             if (sidecar == null)
@@ -182,18 +185,25 @@ namespace Foxglove.Schemas.Video
             var videoFormat = ResolveVideoFormat(_mode);
             if (sidecar is ITimestampedCameraVideoEncoderSidecar timestampedSidecar)
             {
-                while (timestampedSidecar.TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit))
+                var drained = 0;
+                while (drained < Math.Max(1, maxAccessUnits)
+                    && timestampedSidecar.TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit))
                 {
                     if (accessUnit.TimestampNs == 0UL)
                         continue;
 
                     publishAccessUnit(accessUnit.Data, accessUnit.TimestampNs, videoFormat);
+                    drained++;
                 }
             }
             else
             {
-                while (sidecar.TryDequeueAccessUnit(out var accessUnit))
+                var drained = 0;
+                while (drained < Math.Max(1, maxAccessUnits) && sidecar.TryDequeueAccessUnit(out var accessUnit))
+                {
                     publishAccessUnit(accessUnit, fallbackTimestampNs(), videoFormat);
+                    drained++;
+                }
             }
 
             observeSidecar?.Invoke(sidecar);

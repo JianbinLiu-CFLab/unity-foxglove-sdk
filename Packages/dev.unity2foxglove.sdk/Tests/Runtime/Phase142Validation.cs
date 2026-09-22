@@ -255,7 +255,7 @@ namespace Unity.FoxgloveSDK.Tests
             var expected = new Dictionary<string, (string title, string severity)>
             {
                 { "FOXRUN001", ("Class not partial", "Error") },
-                { "FOXRUN002", ("Topic schema conflict", "Warning") },
+                { "FOXRUN002", ("Topic schema conflict", "Error") },
                 { "FOXRUN003", ("Field name collision", "Warning") },
                 { "FOXRUN004", ("Multi-variable field declaration", "Error") },
                 { "FOXRUN005", ("Mixed same-topic Policy policy", "Warning") },
