@@ -57,6 +57,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
+        public void QosProfileMatchesNativeOneByteLayout()
+        {
+            Assert.Equal(1, Marshal.SizeOf<RemoteGatewayNativeMethods.FoxgloveQosProfile>());
+            Assert.Equal(1, Marshal.SizeOf<RemoteGatewayNativeMethods.FoxgloveReliability>());
+        }
+
+        [Fact]
         public void RuntimeSourcesCompileWithMinimalUnitySurface()
         {
             var compilation = CreateRuntimeCompilation("RemoteGatewayRuntimeProbe");
