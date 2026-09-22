@@ -1470,4 +1470,4 @@ namespace Unity.FoxgloveSDK.IO
             internal ulong PublishTime;
         }
     }
-}`r`n
+}

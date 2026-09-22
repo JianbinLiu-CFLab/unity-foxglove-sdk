@@ -13,7 +13,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 {
  public sealed class McapReplayBehaviorTests
  {
-  [Fact] public void BoundedHistoryKeepsLatestMessagesWhenRecordsArriveOutOfOrder()
+ [Fact] public void BoundedHistoryKeepsLatestMessagesWhenRecordsArriveOutOfOrder()
   {
    var engineType=typeof(McapReplayEngine); var candidateType=engineType.GetNestedType("HistoryCandidate",BindingFlags.NonPublic);
    var ctor=candidateType.GetConstructor(BindingFlags.Instance|BindingFlags.NonPublic,null,new[]{typeof(int),typeof(int),typeof(int),typeof(ushort),typeof(uint),typeof(ulong),typeof(ulong)},null);
@@ -22,6 +22,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
    foreach(var time in new ulong[]{50,10,20,30}) insert.Invoke(null,new[]{bounded,ctor.Invoke(new object[]{0,0,1,(ushort)1,(uint)0,time,time}),2});
    var times=bounded.Cast<object>().Select(x=>(ulong)candidateType.GetProperty("LogTime",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(x)).ToArray();
    Assert.Equal(new ulong[]{30,50},times);
+  }
+  [Fact] public void HistoryKeepsLatestMessagesAcrossOverlappingChunks()
+  {
+   var path=Path.Combine(Path.GetTempPath(),"history-overlap-"+Guid.NewGuid().ToString("N")+".mcap");
+   try
+   {
+    using(var stream=File.Create(path)) using(var recorder=new McapRecorder(stream,null,new McapWriterOptions{UseChunking=true,ChunkSizeBytes=64,IndexTypes=McapIndexTypes.Chunk,UseStatistics=true},leaveOpen:true))
+    { recorder.AddChannel(1,"/history","json","schema","jsonschema","{}"); recorder.WriteMessage(1,50,new byte[20]); recorder.WriteMessage(1,10,new byte[20]); recorder.WriteMessage(1,20,new byte[20]); recorder.WriteMessage(1,30,new byte[20]); recorder.Close(); }
+    using var engine=new McapReplayEngine(); engine.Load(path); var result=engine.History(0,100,new List<McapMessage>(),2,null);
+    Assert.Equal(new ulong[]{30,50},result.Select(x=>x.LogTime).ToArray());
+   }
+   finally { if(File.Exists(path)) File.Delete(path); }
   }
   [Fact] public void ReplayHistoryDrainAdvancesOffsetAndCompletesAfterFanout()
   {
