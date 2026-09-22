@@ -1,4 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using Unity.FoxgloveSDK.Components.Publishing;
+using Unity.FoxgloveSDK.Components.Publishing.MessagePack;
+using Unity.FoxgloveSDK.Components.Publishing.Session;
+using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Core;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -6,58 +14,102 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
     public sealed class Module1ReviewRemediationTests
     {
         [Fact]
-        public void ComponentSessionCaptureUsesActiveRuntimeGeneration()
+        public void ReplayForwardersInvokeEverySubscriberAfterOneThrows()
         {
-            var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            Assert.True(server.IndexOf("_runtime.StartWithSessionSetup(", StringComparison.Ordinal)
-                        < server.IndexOf("CaptureComponentPublisherSession();", StringComparison.Ordinal));
+            var logger = new RecordingLogger();
+            var orchestrator = new ReplayOrchestrator(logger);
+            var messages = new List<string>();
+            orchestrator.OnReplayMessage += (_, _) => throw new InvalidOperationException("first");
+            orchestrator.OnReplayMessage += (topic, _) => messages.Add(topic);
+            Invoke(orchestrator, "SafeInvokeReplayMessage", "topic", new byte[] { 1 });
+            Assert.Equal(new[] { "topic" }, messages);
+            Assert.Single(logger.Warnings);
         }
 
         [Fact]
-        public void ComponentSessionResolvesAutoManagerPublishers()
+        public void ReplayContextAndBatchForwardersPreservePayloadAndMetadata()
         {
-            var contracts = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ComponentPublishContracts.cs");
-            Assert.Contains("ResolveManagerForComponentSession", contracts, StringComparison.Ordinal);
+            var orchestrator = new ReplayOrchestrator(new RecordingLogger());
+            ReplayMessageContext receivedMessage = default;
+            ReplayBatchContext receivedBatch = default;
+            orchestrator.OnReplayMessageContext += context => receivedMessage = context;
+            orchestrator.OnReplayBatchCompleted += context => receivedBatch = context;
+            var payload = new byte[] { 4, 5 };
+            var message = new ReplayMessageContext(7, "/topic", "json", "schema", "ros", 11, 12, payload, 13);
+            var batch = new ReplayBatchContext(21, 22, 3, "mcap", 23);
+            Invoke(orchestrator, "SafeInvokeReplayMessageContext", message);
+            Invoke(orchestrator, "SafeInvokeReplayBatchCompleted", batch);
+            Assert.Equal(message.Topic, receivedMessage.Topic);
+            Assert.Same(payload, receivedMessage.Payload);
+            Assert.Equal(23UL, receivedBatch.ReplaySessionId);
+            Assert.Equal(3, receivedBatch.MessageCount);
         }
 
         [Fact]
-        public void ComponentSessionIsClearedDuringManagerStop()
+        public void ComponentSessionBuilderCapturesGenerationAndReferenceOwnership()
         {
-            var contracts = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ComponentPublishContracts.cs");
-            var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            Assert.Contains("ClearActiveComponentPublisherSession", contracts, StringComparison.Ordinal);
-            Assert.Contains("ClearActiveComponentPublisherSession", server, StringComparison.Ordinal);
+            var publisher = new object();
+            var snapshot = new ComponentPublisherSessionBuilder().Build(
+                42,
+                new[] { new ComponentPublisherContractDraft(
+                    publisher, "scene/A", typeof(object), "mode", "/a", "schema.a",
+                    PublisherEffectiveEncoding.Json, PublisherEffectiveEncoding.Json) });
+            Assert.Equal(42UL, snapshot.Generation);
+            Assert.True(snapshot.TryGetEntry(publisher, out var entry));
+            Assert.Same(publisher, entry.Publisher);
+            Assert.False(snapshot.TryGetEntry(new object(), out _));
         }
 
         [Fact]
-        public void ManagerReplayForwardersIsolatePublicSubscribers()
+        public void ComponentSessionBuilderRejectsUnsupportedAndOverBudgetEntries()
         {
-            var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            Assert.Contains("InvokeReplayMessageSubscribers", server, StringComparison.Ordinal);
-            Assert.Contains("InvokeReplayMessageContextSubscribers", server, StringComparison.Ordinal);
-            Assert.Contains("InvokeReplayBatchSubscribers", server, StringComparison.Ordinal);
+            var unsupported = new ComponentPublisherContractDraft(
+                new object(), "scene/A", typeof(object), "mode", "/a", "schema",
+                PublisherEffectiveEncoding.MsgPack, PublisherEffectiveEncoding.Unsupported);
+            var oversized = new ComponentPublisherContractDraft(
+                new object(), "scene/B", typeof(object), "mode", new string('x', 600), "schema",
+                PublisherEffectiveEncoding.Json, PublisherEffectiveEncoding.Json);
+            var builder = new ComponentPublisherSessionBuilder();
+            Assert.False(builder.Build(1, new[] { unsupported }).Entries.Single().IsAvailable);
+            Assert.False(builder.Build(1, new[] { oversized }).Entries.Single().IsAvailable);
         }
 
         [Fact]
-        public void EndpointStartFailuresUseRetryBackoff()
+        public void ManagerTeardownRunsAllStepsAndRethrowsFirstFailure()
         {
-            var remote = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.RemoteMcap.cs");
-            var cursor = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.ReplayCursor.cs");
-            Assert.Contains("_remoteMcapFileServerRetryAt", remote, StringComparison.Ordinal);
-            Assert.Contains("_replayCursorEndpointRetryAt", cursor, StringComparison.Ordinal);
+            var calls = new List<string>();
+            var error = Assert.Throws<InvalidOperationException>(() => FoxgloveManagerTeardownState.RunStopServer(
+                () => { calls.Add("runtime"); throw new InvalidOperationException("first"); },
+                () => calls.Add("clock"), () => calls.Add("remote"), () => calls.Add("cursor"),
+                () => calls.Add("cert"), () => calls.Add("channels"), () => calls.Add("clients"),
+                () => calls.Add("ids"), () => calls.Add("publishers")));
+            Assert.Equal("first", error.Message);
+            Assert.Equal(9, calls.Count);
+            Assert.Equal("publishers", calls[^1]);
         }
 
         [Fact]
-        public void ReplaySuppressionTracksPublisherOwnership()
+        public void RuntimeDisposeRetriesBeforeReleasingRuntimeReference()
         {
-            var publisher = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
-            var setup = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
-            Assert.Contains("TryDisableForReplay", publisher, StringComparison.Ordinal);
-            Assert.Contains("RestoreAfterReplay", publisher, StringComparison.Ordinal);
-            Assert.Contains("pub.TryDisableForReplay()", setup, StringComparison.Ordinal);
-            Assert.Contains("RestoreAfterReplay", setup, StringComparison.Ordinal);
-            Assert.DoesNotContain("pub.enabled = true", setup, StringComparison.Ordinal);
-            Assert.DoesNotContain("pub.enabled = false", setup, StringComparison.Ordinal);
+            var attempts = 0;
+            var releases = 0;
+            var reports = 0;
+            FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(
+                () => { attempts++; if (attempts == 1) throw new InvalidOperationException("partial"); },
+                () => releases++, _ => reports++);
+            Assert.Equal(2, attempts);
+            Assert.Equal(1, releases);
+            Assert.Equal(1, reports);
+        }
+
+        private static void Invoke(object target, string method, params object[] args)
+            => target.GetType().GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args);
+
+        private sealed class RecordingLogger : IFoxgloveLogger
+        {
+            public List<string> Warnings { get; } = new();
+            public void LogWarning(string message) => Warnings.Add(message);
+            public void LogError(string message) { }
         }
     }
 }
