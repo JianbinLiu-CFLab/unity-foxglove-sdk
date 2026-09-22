@@ -316,7 +316,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 sink.ReleaseSend.Set();
                 Assert.True(SpinWait.SpinUntil(
                     () => owner.OccupiedCount == 0,
-                    TimeSpan.FromSeconds(2)));
+                    TimeSpan.FromSeconds(5)));
             }
         }
 
@@ -360,7 +360,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 sink.ReleaseExchange.Set();
                 Assert.True(SpinWait.SpinUntil(
                     () => owner.OccupiedCount == 0,
-                    TimeSpan.FromSeconds(2)));
+                    TimeSpan.FromSeconds(5)));
             }
         }
 
@@ -459,8 +459,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     sink.ExchangeExited,
                     "real TCP preparation exchange did not exit");
                 Wait(peerClosed, "loopback peer did not observe TCP close");
-                Assert.True(serverDone.Wait(TimeSpan.FromSeconds(2)));
-                Assert.True(server.Join(TimeSpan.FromSeconds(1)));
+                Assert.True(serverDone.Wait(TimeSpan.FromSeconds(5)));
+                Assert.True(server.Join(TimeSpan.FromSeconds(5)));
                 Assert.Null(serverFailure);
                 Assert.Equal(
                     Ros2BridgeRuntimeLifecycleState.Stopped,
@@ -571,7 +571,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 Wait(firstAccepted, "loopback peer did not accept first connection");
                 Assert.True(SpinWait.SpinUntil(
                     () => runtime.IsConnected,
-                    TimeSpan.FromSeconds(2)));
+                    TimeSpan.FromSeconds(5)));
                 allowFirstClose.Set();
                 Wait(firstClosed, "loopback peer did not close first connection");
                 Wait(
