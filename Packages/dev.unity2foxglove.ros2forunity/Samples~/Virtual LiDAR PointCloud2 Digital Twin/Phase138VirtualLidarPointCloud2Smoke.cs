@@ -25,13 +25,10 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
 
     [Header("ROS2")]
     [SerializeField] private string _nodeName = "phase138_virtual_lidar";
-    [SerializeField] private string _topic = "/points";
+    [SerializeField] private string _topic = "/diagnostics/phase138/points";
     [SerializeField] private string _fallbackFrameId = "os_lidar";
     [SerializeField, Min(0.016f)] private float _publishIntervalSeconds = 0.1f;
     [SerializeField] private bool _copyDataBeforePublish;
-
-    [Header("TF")]
-    [SerializeField] private string _parentFrame = "map";
 
     [Header("Source")]
     [SerializeField] private VirtualLidar _virtualLidar;
@@ -42,7 +39,6 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     [SerializeField] private string _lastError = string.Empty;
     [SerializeField] private string _effectiveNodeName = string.Empty;
     [SerializeField] private int _publishedPointCloudCount;
-    [SerializeField] private int _publishedTfCount;
     [SerializeField] private int _droppedFrameCount;
     [SerializeField] private int _validPointCount;
     [SerializeField] private int _payloadBytes;
@@ -54,7 +50,6 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     private ROS2UnityComponent _ros2Unity;
     private ROS2Node _node;
     private IPublisher<sensor_msgs.msg.PointCloud2> _publisher;
-    private IPublisher<tf2_msgs.msg.TFMessage> _tfPublisher;
     private bool _ownsRos2UnityComponent;
 #endif
 
@@ -68,7 +63,6 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
 
     private void OnEnable()
     {
-        Application.runInBackground = true;
         ResetStatus();
         ResolveComponents();
         SubscribeToNativeFrames();
@@ -117,7 +111,6 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
         _statusMessage = "Waiting for PointCloud2 Native frames.";
         _lastError = string.Empty;
         _publishedPointCloudCount = 0;
-        _publishedTfCount = 0;
         _droppedFrameCount = 0;
         _validPointCount = 0;
         _payloadBytes = 0;
@@ -226,8 +219,6 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
             var childFrame = string.IsNullOrWhiteSpace(frame.FrameId) ? _fallbackFrameId : frame.FrameId;
             var sec = (int)(frame.UnixNs / 1_000_000_000UL);
             var nsec = (uint)(frame.UnixNs % 1_000_000_000UL);
-            PublishTf(childFrame, sec, nsec);
-
             var message = Phase138CPointCloud2MessageBuilder.Build(frame, _copyDataBeforePublish);
             var publishStart = Stopwatch.GetTimestamp();
             _publisher.Publish(message);
@@ -296,7 +287,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
         if (_node == null && !TryCreateRos2Node())
             return false;
 
-        if ((_publisher == null || _tfPublisher == null) && !TryCreateRos2Publishers())
+        if ((_publisher == null) && !TryCreateRos2Publishers())
             return false;
 
         if (!_endpointsLogged)
@@ -305,7 +296,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
             Debug.Log(LogPrefix + " publishing " + _topic + " as sensor_msgs/msg/PointCloud2 from node " + _effectiveNodeName);
         }
 
-        return _publisher != null && _tfPublisher != null;
+        return _publisher != null;
     }
 
     private bool TryCreateRos2Node()
@@ -343,9 +334,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
         try
         {
             if (_publisher == null)
-                _publisher = _node.CreatePublisher<sensor_msgs.msg.PointCloud2>(_topic);
-            if (_tfPublisher == null)
-                _tfPublisher = _node.CreatePublisher<tf2_msgs.msg.TFMessage>("/tf");
+                _publisher = _node.CreateSensorPublisher<sensor_msgs.msg.PointCloud2>(_topic);
 
             _warnedRos2SetupFailure = false;
             _lastError = string.Empty;
@@ -408,48 +397,9 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
         return IsRosNodeNameStart(c) || (c >= '0' && c <= '9');
     }
 
-    private void PublishTf(string childFrame, int sec, uint nsec)
-    {
-        _tfPublisher.Publish(new tf2_msgs.msg.TFMessage
-        {
-            Transforms = new[]
-            {
-                new geometry_msgs.msg.TransformStamped
-                {
-                    Header = new std_msgs.msg.Header
-                    {
-                        Stamp = new builtin_interfaces.msg.Time { Sec = sec, Nanosec = nsec },
-                        Frame_id = _parentFrame
-                    },
-                    Child_frame_id = childFrame,
-                    Transform = new geometry_msgs.msg.Transform
-                    {
-                        Translation = new geometry_msgs.msg.Vector3 { X = 0.0, Y = 0.0, Z = 0.0 },
-                        Rotation = new geometry_msgs.msg.Quaternion { X = 0.0, Y = 0.0, Z = 0.0, W = 1.0 }
-                    }
-                }
-            }
-        });
-        _publishedTfCount++;
-    }
-
     private void CleanupRuntime()
     {
         var cleanupFailed = false;
-        if (_node != null && _tfPublisher != null)
-        {
-            try
-            {
-                _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfPublisher);
-                _tfPublisher = null;
-            }
-            catch (Exception ex)
-            {
-                cleanupFailed = true;
-                RecordCleanupFailure("removing TF publisher", ex);
-            }
-        }
-
         if (_node != null && _publisher != null)
         {
             try

@@ -113,6 +113,24 @@ namespace Unity.FoxgloveSDK.Transport
 
                     var dropped = 0;
                     var droppedBefore = _droppedDataFrames;
+                    if (frame.SizeBytes > _maxQueuedBytes)
+                    {
+                        if (frame.Priority == FramePriority.Control)
+                            return new EnqueueResult(false, true, 0, _droppedDataFrames, false);
+
+                        while (_dataFrames.Count > 0)
+                        {
+                            var stale = _dataFrames.Dequeue();
+                            _queuedBytes -= stale.SizeBytes;
+                            _dataQueuedBytes -= stale.SizeBytes;
+                            dropped++;
+                            _droppedDataFrames++;
+                        }
+                        dropped++;
+                        _droppedDataFrames++;
+                        return new EnqueueResult(false, false, dropped, _droppedDataFrames, ShouldLogDrop(droppedBefore, _droppedDataFrames));
+                    }
+
                     // Preserve control frames by discarding stale data first.
                     // If a control frame still cannot fit, the caller disconnects
                     // the slow client so one socket cannot block protocol traffic.

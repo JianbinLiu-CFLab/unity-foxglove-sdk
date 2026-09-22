@@ -110,7 +110,19 @@ namespace Unity.FoxgloveSDK.Components
                 PublishOrdinaryTransport(frame, SchemaName, unixNs);
 
             if (publishNativeFrame)
-                SensorCameraInfoReady?.Invoke(frame);
+                InvokeCameraInfoSubscribers(frame);
+        }
+
+        private void InvokeCameraInfoSubscribers(SensorCameraInfoFrame frame)
+        {
+            var handlers = SensorCameraInfoReady;
+            if (handlers == null)
+                return;
+            foreach (var subscriber in handlers.GetInvocationList())
+            {
+                try { ((Action<SensorCameraInfoFrame>)subscriber)(frame); }
+                catch (Exception ex) { Debug.LogWarning("[Foxglove] CameraInfo subscriber failed: " + ex.Message); }
+            }
         }
 
         private SensorCameraInfoFrame BuildSensorCameraInfoFrame(ulong unixNs)
@@ -120,13 +132,33 @@ namespace Unity.FoxgloveSDK.Components
             var width = _widthOverride != 0 ? _widthOverride : ResolveWidth(cam, imagePublisher);
             var height = _heightOverride != 0 ? _heightOverride : ResolveHeight(cam, imagePublisher);
 
-            var verticalFov = cam != null ? cam.fieldOfView : 60.0;
-            var fovRad = Math.Max(0.001, verticalFov) * Math.PI / 180.0;
-            var fy = height / (2.0 * Math.Tan(fovRad / 2.0));
-            var fx = fy * ((double)width / Math.Max(1.0, height));
+            var fx = 0.0;
+            var fy = 0.0;
             var cx = width / 2.0;
             var cy = height / 2.0;
-
+            if (cam != null && cam.orthographic)
+            {
+                fy = height / Math.Max(0.001, 2.0 * cam.orthographicSize);
+                fx = fy * ((double)width / Math.Max(1.0, height));
+            }
+            else
+            {
+                var verticalFov = cam != null ? cam.fieldOfView : 60.0;
+                var fovRad = Math.Max(0.001, verticalFov) * Math.PI / 180.0;
+                fy = height / (2.0 * Math.Tan(fovRad / 2.0));
+                fx = fy * ((double)width / Math.Max(1.0, height));
+            }
+            if (cam != null && _fxOverride == 0 && _fyOverride == 0 && _cxOverride == 0 && _cyOverride == 0)
+            {
+                var projection = cam.projectionMatrix;
+                if (Math.Abs(projection.m00) > 1e-6f && Math.Abs(projection.m11) > 1e-6f)
+                {
+                    fx = projection.m00 * width * 0.5;
+                    fy = projection.m11 * height * 0.5;
+                    cx = (1.0 + projection.m02) * width * 0.5;
+                    cy = (1.0 + projection.m12) * height * 0.5;
+                }
+            }
             fx = _fxOverride != 0 ? _fxOverride : fx;
             fy = _fyOverride != 0 ? _fyOverride : fy;
             cx = _cxOverride != 0 ? _cxOverride : cx;

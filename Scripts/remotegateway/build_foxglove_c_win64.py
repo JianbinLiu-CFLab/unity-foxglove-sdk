@@ -39,6 +39,9 @@ PDB_ARTIFACT = "foxglove.pdb"
 ALLOWED_ARTIFACTS = frozenset((*APPROVED_ARTIFACTS, PDB_ARTIFACT))
 TARGET_TRIPLE = "x86_64-pc-windows-msvc"
 NATIVE_LOCK_WAIT_SECONDS = 30.0
+EXPECTED_FOXGLOVE_COMMIT = "b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba"
+FOXGLOVE_ROOT = CRATE.parent
+FOXGLOVE_HEADER = CRATE / "include" / "foxglove-c" / "foxglove-c.h"
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,6 +96,23 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest().upper()
+
+
+def foxglove_source_revision() -> str:
+    """Return the pinned Foxglove SDK revision or fail closed."""
+    completed = subprocess.run(
+        ["git", "-C", str(FOXGLOVE_ROOT), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    revision = completed.stdout.strip()
+    if revision != EXPECTED_FOXGLOVE_COMMIT:
+        raise RuntimeError(
+            "Foxglove SDK revision mismatch: "
+            f"expected {EXPECTED_FOXGLOVE_COMMIT}, got {revision or '<missing>'}"
+        )
+    return revision
 
 
 def build_environment(args: argparse.Namespace) -> dict[str, str]:
@@ -192,6 +212,12 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
     dll = target_dir / "release" / "foxglove.dll"
     if not dll.is_file():
         raise FileNotFoundError(dll)
+    source_commit = foxglove_source_revision()
+    cargo_lock = FOXGLOVE_ROOT / "Cargo.lock"
+    if not cargo_lock.is_file():
+        raise FileNotFoundError(cargo_lock)
+    if not FOXGLOVE_HEADER.is_file():
+        raise FileNotFoundError(FOXGLOVE_HEADER)
     artifacts = {}
     for name in artifact_names:
         artifact = target_dir / "release" / name
@@ -207,6 +233,9 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
         "platform": "windows-x64",
         "target": env.get("CARGO_BUILD_TARGET", TARGET_TRIPLE),
         "source": "third-party/foxglove-sdk/c",
+        "sourceCommit": source_commit,
+        "cHeaderSha256": sha256(FOXGLOVE_HEADER),
+        "cargoLockSha256": sha256(cargo_lock),
         "features": "remote-access",
         "rustflags": env["RUSTFLAGS"],
         "cflags": env["CFLAGS_x86_64_pc_windows_msvc"],
@@ -215,7 +244,7 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
             "AWS_LC_SYS_PREBUILT_NASM": env["AWS_LC_SYS_PREBUILT_NASM"],
             "CARGO_TARGET_DIR": Path(env["CARGO_TARGET_DIR"]).name or "target",
             "RUSTUP_TOOLCHAIN": env.get("RUSTUP_TOOLCHAIN", "default"),
-            "cargoLock": "present" if (CRATE / "Cargo.lock").is_file() else "absent",
+            "cargoLock": "present",
         },
         "sha256": sha256(dll),
         "sizeBytes": dll.stat().st_size,
@@ -301,6 +330,7 @@ def main() -> int:
 
     with native_build_lock():
         build_started = time.time()
+        foxglove_source_revision()
         run(["cargo", "build", "--release", "--features", "remote-access"], cwd=CRATE, env=env)
         ensure_fresh_artifacts(target_dir, artifact_names, build_started)
         manifest_path = write_manifest(target_dir, env, artifact_names)

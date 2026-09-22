@@ -22,7 +22,7 @@ You will enable recording, choose an output location, open the result in Foxglov
 
 The generated file name uses:
 
-`<prefix>_<yyyyMMdd_HHmmss>.mcap`
+`<prefix>_<yyyyMMdd_HHmmss_fffffffZ>.mcap`
 
 ## 4. Recorded Data
 
@@ -83,9 +83,9 @@ Unity2Foxglove treats recording and replay as separate modes. If both are enable
 
 If generated FoxRun runtime schema info is present, MCAP recording writes a metadata record named `unity2foxglove.foxrun.schema`. Its `value` is compact JSON containing `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes.
 
-Unity replay reads this metadata after the MCAP file is loaded and before playback starts. If the recorded `globalManifestHash` does not match the current runtime `globalManifestHash`, replay is blocked with a short-hash mismatch diagnostic. In explicit replay mode, a confirmed mismatch fails closed: the Manager aborts startup and does not restore live publishers as a fallback. Missing recorded metadata, missing current schema info, or malformed recorded metadata only produces a warning so older MCAP files remain usable.
+Unity replay reads this metadata after the MCAP file is loaded and before playback starts. A differing `globalManifestHash` is first classified by the FoxRun compatibility analyzer as `Exact`, `PolicyOnlyChange`, `BindingOnlyChange`, `BackwardCompatible`, `ForwardCompatible`, `Breaking`, or `Unknown`. The configured schema identity mode then decides whether that classification proceeds, warns, or blocks replay. Missing recorded metadata, missing current schema info, or malformed recorded metadata only produces a warning so older MCAP files remain usable.
 
-The SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/` is separate release evidence. It records the core FoxRun summary, protobuf registry, and typed publisher catalog, but Unity replay does not use its aggregate or protobuf hash as a replay guard key. Optional transport Providers own their additional schema evidence. Replay compatibility remains governed only by the FoxRun `globalManifestHash` recorded in MCAP metadata.
+The SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/` is separate release evidence. It records the core FoxRun summary, protobuf registry, and typed publisher catalog, but Unity replay does not use its aggregate or protobuf hash as a replay guard key. Optional transport Providers own their additional schema evidence. Replay compatibility is governed by the FoxRun metadata and analyzer classification; the `globalManifestHash` remains the fast exact-match signal, while field-level metadata explains compatible changes.
 
 ## 10. Schema Evidence Identity Modes
 
@@ -93,13 +93,14 @@ The **Schema Evidence** controls in `FoxgloveManager > MCAP Record & Replay` dec
 
 - `Off`: skip schema identity checks. This is the lightest default for demos and early debugging.
 - `Warn`: report mismatches, but continue recording or replay. If live publishers stay enabled during replay, Foxglove may show mixed replay/live data.
-- `Strict`: require complete evidence for recording sidecars and block replay when the recorded FoxRun `globalManifestHash` does not match the current one.
+- `Compatible`: proceed only for `Exact`, `PolicyOnlyChange`, and `BackwardCompatible`; block `BindingOnlyChange`, `ForwardCompatible`, `Breaking`, and `Unknown` classifications.
+- `Strict`: require complete evidence for recording sidecars and block replay for every non-`Exact` classification.
 
-The current evidence root defaults to `Assets/Generated`. It contains `FoxRun/` and `Unity2Foxglove/` groups. When recording is enabled and identity mode is `Warn` or `Strict`, Unity writes a sidecar next to the MCAP:
+The current evidence root defaults to `Assets/Generated`. It contains `FoxRun/` and `Unity2Foxglove/` groups. When recording is enabled and identity mode is `Warn`, `Compatible`, or `Strict`, Unity writes a sidecar next to the MCAP:
 
 ```text
-Recordings/session_20260521_135001.mcap
-Recordings/session_20260521_135001.schema/
+Recordings/session_20260521_135001_1234567Z.mcap
+Recordings/session_20260521_135001_1234567Z.schema/
   schema-evidence.json
   FoxRun/
   Unity2Foxglove/

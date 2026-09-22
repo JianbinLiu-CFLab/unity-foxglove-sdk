@@ -138,13 +138,7 @@ namespace Foxglove.Schemas
             {
                 foreach (var message in file.MessageType)
                 {
-                    var fullName = GetFullMessageName(file, message);
-                    if (messageOwners.TryGetValue(fullName, out var firstOwner))
-                    {
-                        throw new InvalidDataException(
-                            $"Protobuf message '{fullName}' is declared by both '{firstOwner}' and '{file.Name}'.");
-                    }
-                    messageOwners.Add(fullName, file.Name);
+                    RegisterMessageOwners(file, message, GetFullMessageName(file, message), messageOwners);
                 }
             }
 
@@ -165,13 +159,38 @@ namespace Foxglove.Schemas
 
                 var subsetBytes = subset.ToByteArray();
 
-                // Map each top-level message to this FileDescriptorSet.
+                // Map each message, including nested messages, to this FileDescriptorSet.
                 foreach (var msg in file.MessageType)
                 {
-                    var fullName = GetFullMessageName(file, msg);
-                    _descriptors.Add(fullName, new DescriptorEntry(subsetBytes));
+                    AddMessageDescriptors(msg, GetFullMessageName(file, msg), subsetBytes);
                 }
             }
+        }
+
+        private static void RegisterMessageOwners(
+            FileDescriptorProto file,
+            DescriptorProto message,
+            string fullName,
+            Dictionary<string, string> owners)
+        {
+            if (owners.TryGetValue(fullName, out var firstOwner))
+            {
+                throw new InvalidDataException(
+                    $"Protobuf message '{fullName}' is declared by both '{firstOwner}' and '{file.Name}'.");
+            }
+            owners.Add(fullName, file.Name);
+            foreach (var nested in message.NestedType)
+                RegisterMessageOwners(file, nested, fullName + "." + nested.Name, owners);
+        }
+
+        private void AddMessageDescriptors(
+            DescriptorProto message,
+            string fullName,
+            byte[] descriptorSet)
+        {
+            _descriptors.Add(fullName, new DescriptorEntry(descriptorSet));
+            foreach (var nested in message.NestedType)
+                AddMessageDescriptors(nested, fullName + "." + nested.Name, descriptorSet);
         }
 
         private static string GetFullMessageName(FileDescriptorProto file, DescriptorProto message)

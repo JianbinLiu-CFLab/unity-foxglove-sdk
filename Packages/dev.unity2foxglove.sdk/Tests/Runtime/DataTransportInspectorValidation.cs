@@ -784,12 +784,11 @@ namespace Unity.FoxgloveSDK.Tests
                 FindMethod(managerRuntime, "FoxgloveToUnityRotation");
             var recorderWrite =
                 sessionClientPublishHandler.IndexOf(
-                    "recorder?.WriteClientMessage",
+                    "WriteClientMessageSafely(recorder",
                     StringComparison.Ordinal);
             var callbackWrite =
-                sessionClientPublishHandler.IndexOf(
+                sessionClientPublishHandler.LastIndexOf(
                     "_messageCallback",
-                    recorderWrite < 0 ? 0 : recorderWrite,
                     StringComparison.Ordinal);
 
             Check(fields.Count(field => field == "_coordinateMode") == 1

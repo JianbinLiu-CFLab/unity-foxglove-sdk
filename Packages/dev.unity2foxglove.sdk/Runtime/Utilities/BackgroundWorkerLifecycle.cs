@@ -59,10 +59,10 @@ namespace Unity.FoxgloveSDK.Util
 
         public void InvalidateTimedOutWorkerLocked()
         {
-            Generation = unchecked(Generation + 1);
-            IsRunning = false;
-            StopRequested = false;
-            Idle.Set();
+            // Keep the worker logically running until its thread actually exits.
+            // A timed-out stop must not open a second encode generation while the
+            // previous delegate can still be executing.
+            StopRequested = true;
         }
 
         public void Dispose()

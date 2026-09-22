@@ -25,6 +25,9 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Default active WebSocket client cap.</summary>
         public const int DefaultMaxClients = 64;
 
+        /// <summary>Default maximum inbound WebSocket frame payload (4 MiB).</summary>
+        public const int DefaultMaxInboundFrameBytes = 4 * 1024 * 1024;
+
         private string _sharedToken = string.Empty;
         private byte[] _sharedTokenBytes = Array.Empty<byte>();
         private static readonly Regex TokenRedactRegex = new Regex(
@@ -40,6 +43,12 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Maximum queued payload bytes per client before drop/disconnect policy applies.</summary>
         public int MaxQueuedBytesPerClient { get; set; } = DefaultMaxQueuedBytes;
 
+        /// <summary>Maximum inbound WebSocket frame payload accepted before allocation.</summary>
+        public int MaxInboundFrameBytes { get; set; } = DefaultMaxInboundFrameBytes;
+
+        /// <summary>Allow the opaque browser Origin value <c>null</c>.</summary>
+        public bool AllowOpaqueOrigin { get; set; }
+
         /// <summary>Normalize frame capacity so a misconfigured value cannot disable protocol traffic.</summary>
         internal static int NormalizeMaxQueuedFrames(int value) => Math.Max(1, value);
 
@@ -50,6 +59,10 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Normalize byte capacity so zero/negative values fall back to the usable default.</summary>
         internal static int NormalizeMaxQueuedBytes(int value) =>
             value > 0 ? value : DefaultMaxQueuedBytes;
+
+        /// <summary>Normalize inbound frame capacity to a bounded usable default.</summary>
+        internal static int NormalizeMaxInboundFrameBytes(int value) =>
+            value > 0 ? value : DefaultMaxInboundFrameBytes;
 
         /// <summary>
         /// Whether client disconnects before the WebSocket handshake should be logged.

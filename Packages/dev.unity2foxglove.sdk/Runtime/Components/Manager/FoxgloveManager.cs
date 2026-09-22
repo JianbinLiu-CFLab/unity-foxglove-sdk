@@ -160,6 +160,9 @@ namespace Unity.FoxgloveSDK.Components
         public ulong GetSharedSensorClockUnixTime(double physicsTimeSeconds)
             => _sharedSensorClock.GetUnixTime(physicsTimeSeconds, NowNs);
 
+        /// <summary>Generation increments whenever the shared sensor epoch is reset.</summary>
+        internal int SharedSensorClockGeneration => _sharedSensorClock.Generation;
+
         /// <summary>Fires when a Foxglove client connects on the main thread.</summary>
         public event System.Action<uint> OnClientConnected;
 

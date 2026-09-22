@@ -33,6 +33,26 @@ namespace Unity.FoxgloveSDK.Components
             return new SensorRawImageFrame(unixNs, frameId, width, height, data, "rgb8");
         }
 
+        public static SensorRawImageFrame BuildRgb8Owned(
+            ulong unixNs,
+            string frameId,
+            int width,
+            int height,
+            byte[] ownedRgb24,
+            bool flipVertical)
+        {
+            if (ownedRgb24 == null)
+                throw new ArgumentNullException(nameof(ownedRgb24));
+            var safeWidth = Math.Max(1, width);
+            var safeHeight = Math.Max(1, height);
+            var expectedLength = CheckedRgb24ByteLength(safeWidth, safeHeight);
+            if (ownedRgb24.Length != expectedLength)
+                throw new ArgumentException("RGB24 row buffer must match width * height * 3 bytes.", nameof(ownedRgb24));
+            if (flipVertical)
+                FlipRgb24RowsInPlace(ownedRgb24, safeWidth, safeHeight);
+            return new SensorRawImageFrame(unixNs, frameId, width, height, ownedRgb24, "rgb8");
+        }
+
         public static void CopyRgb24Rows(
             byte[] source,
             byte[] destination,
@@ -60,6 +80,19 @@ namespace Unity.FoxgloveSDK.Components
                 var sourceOffset = sourceY * rowStride;
                 var destinationOffset = y * rowStride;
                 Array.Copy(source, sourceOffset, destination, destinationOffset, rowStride);
+            }
+        }
+
+        private static void FlipRgb24RowsInPlace(byte[] data, int width, int height)
+        {
+            var rowStride = checked(width * 3);
+            var row = new byte[rowStride];
+            for (var y = 0; y < height / 2; y++)
+            {
+                var opposite = height - 1 - y;
+                Buffer.BlockCopy(data, y * rowStride, row, 0, rowStride);
+                Buffer.BlockCopy(data, opposite * rowStride, data, y * rowStride, rowStride);
+                Buffer.BlockCopy(row, 0, data, opposite * rowStride, rowStride);
             }
         }
 

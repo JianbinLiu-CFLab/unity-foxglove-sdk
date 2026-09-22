@@ -28,7 +28,7 @@
     },
     {
       "displayName": "Virtual LiDAR Maze Demo",
-      "description": "Procedurally builds a maze and a WASD-driven vehicle with a Virtual LiDAR streaming to Foxglove via /unity/point_cloud.",
+      "description": "Procedurally builds a maze and a WASD-driven vehicle with a Virtual LiDAR streaming Draco-compressed point clouds to Foxglove via /unity/point_cloud_draco.",
       "path": "Samples~/Virtual LiDAR Maze Demo"
     }
   ]

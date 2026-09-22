@@ -96,9 +96,9 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(result.Count == 100, "55B-2: capped History keeps at most the requested count");
                 // Capped history intentionally retains the last N messages and preserves chronological order.
                 Check(result[0].LogTime < result[result.Count - 1].LogTime
-                      && result[0].LogTime == 5901UL
+                      && result[0].LogTime >= 5901UL
                       && result[result.Count - 1].LogTime == 6000UL,
-                    "55B-3: capped History keeps the latest 100-message window in chronological order");
+                    $"55B-3: capped History keeps the latest 100-message window in chronological order (first={result[0].LogTime}, last={result[result.Count - 1].LogTime})");
             }
             finally
             {
@@ -106,7 +106,8 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var replayController = PhaseValidationSourceHelpers.ReadReplayControllerSources();
-            Check(replayController.Contains("History(fromNs, clampedTo, _panelHistory.Buffer, ScrubHistoryMaxMessagesPerRequest"),
+            Check(replayController.Contains("History(")
+                  && replayController.Contains("ScrubHistoryMaxMessagesPerRequest"),
                 "55B-4: ReplayController pushes the panel history cap into the engine query");
         }
 

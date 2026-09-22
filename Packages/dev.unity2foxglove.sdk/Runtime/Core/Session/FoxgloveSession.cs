@@ -283,7 +283,10 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     OnClientMessage?.Invoke(clientId, chId, topic, payload);
                     OnClientMessageWithEncoding?.Invoke(clientId, chId, topic, encoding, payload);
-                });
+                },
+                encoding => string.Equals(encoding, "json", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(encoding, "protobuf", StringComparison.OrdinalIgnoreCase)
+                            || IsMessageEncodingEnabled(encoding));
             _assets = new SessionAssetHandler(() => Volatile.Read(ref _runtime), _transport);
 
             try
@@ -816,45 +819,59 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
+            AdvertiseChannel channel;
+            bool recordingOnly;
             lock (_channelLifecycleLock)
             {
-                var channel = _channels.Get(channelId);
+                channel = _channels.Get(channelId);
                 if (channel == null) return;
-                payload ??= Array.Empty<byte>();
-                var recorder = Volatile.Read(ref _recorder);
-                if (recorder != null
-                    && AllowMcapRecording(channel)
-                    && recorder.HasServerChannel(channelId))
-                    recorder.WriteMessage(channelId, logTimeNs, payload);
-                var mirrorSink = Volatile.Read(ref _mirrorSink);
-                if (!_recordingOnlyChannels.Contains(channelId) && mirrorSink != null)
-                    TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
-                if (!AllowLiveWebSocket(channel))
-                    return;
-                var subscribers = CopySubscribersForPublish(channelId);
-                try
+                recordingOnly = _recordingOnlyChannels.Contains(channelId);
+            }
+
+            payload ??= Array.Empty<byte>();
+            var recorder = Volatile.Read(ref _recorder);
+            if (recorder != null && AllowMcapRecording(channel) && recorder.HasServerChannel(channelId))
+                WriteMessageSafely(recorder, channelId, logTimeNs, payload);
+            var mirrorSink = Volatile.Read(ref _mirrorSink);
+            if (!recordingOnly && mirrorSink != null)
+                TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
+            if (!AllowLiveWebSocket(channel))
+                return;
+            var subscribers = CopySubscribersForPublish(channelId);
+            try
+            {
+                foreach (var (clientId, subscriptionId) in subscribers)
                 {
-                    foreach (var (clientId, subscriptionId) in subscribers)
+                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                    if (_prioritizedTransport != null)
                     {
-                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                        if (_prioritizedTransport != null)
-                        {
-                            if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                                _logger.LogWarning(trace);
-                            _prioritizedTransport.SendDataBinary(clientId, frame);
-                        }
-                        else
-                        {
-                            if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                                _logger.LogWarning(trace);
-                            _transport.SendBinary(clientId, frame);
-                        }
+                        if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                            _logger.LogWarning(trace);
+                        _prioritizedTransport.SendDataBinary(clientId, frame);
+                    }
+                    else
+                    {
+                        if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                            _logger.LogWarning(trace);
+                        _transport.SendBinary(clientId, frame);
                     }
                 }
-                finally
-                {
-                    subscribers.Clear();
-                }
+            }
+            finally
+            {
+                subscribers.Clear();
+            }
+        }
+
+        private void WriteMessageSafely(McapRecorder recorder, uint channelId, ulong logTimeNs, byte[] payload)
+        {
+            try
+            {
+                recorder.WriteMessage(channelId, logTimeNs, payload);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"MCAP recording failed; live publish continues: {ex.Message}");
             }
         }
 
@@ -896,36 +913,38 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         internal void PublishReplay(uint channelId, byte[] payload, ulong logTimeNs, string source = "Replay", string topic = null)
         {
+            AdvertiseChannel channel;
             lock (_channelLifecycleLock)
             {
-                var channel = _channels.Get(channelId);
+                channel = _channels.Get(channelId);
                 if (channel == null) return;
-                payload ??= Array.Empty<byte>();
-                topic ??= channel.Topic;
-                var subscribers = CopySubscribersForPublish(channelId);
-                try
+            }
+
+            payload ??= Array.Empty<byte>();
+            topic ??= channel.Topic;
+            var subscribers = CopySubscribersForPublish(channelId);
+            try
+            {
+                foreach (var (clientId, subscriptionId) in subscribers)
                 {
-                    foreach (var (clientId, subscriptionId) in subscribers)
+                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                    if (_prioritizedTransport != null)
                     {
-                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                        if (_prioritizedTransport != null)
-                        {
-                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                                _logger.LogWarning(trace);
-                            _prioritizedTransport.SendDataBinary(clientId, frame);
-                        }
-                        else
-                        {
-                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                                _logger.LogWarning(trace);
-                            _transport.SendBinary(clientId, frame);
-                        }
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                            _logger.LogWarning(trace);
+                        _prioritizedTransport.SendDataBinary(clientId, frame);
+                    }
+                    else
+                    {
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                            _logger.LogWarning(trace);
+                        _transport.SendBinary(clientId, frame);
                     }
                 }
-                finally
-                {
-                    subscribers.Clear();
-                }
+            }
+            finally
+            {
+                subscribers.Clear();
             }
         }
 
@@ -1187,10 +1206,14 @@ namespace Unity.FoxgloveSDK.Core
             int reserveFrames,
             int reserveBytes,
             out int frameHeadroom,
-            out int byteHeadroom)
+            out int byteHeadroom,
+            out int maxFrameCapacity,
+            out int maxByteCapacity)
         {
             frameHeadroom = int.MaxValue;
             byteHeadroom = int.MaxValue;
+            maxFrameCapacity = int.MaxValue;
+            maxByteCapacity = int.MaxValue;
 
             if (_transport is not IFoxgloveTransportStatsProvider provider)
                 return false;
@@ -1203,6 +1226,8 @@ namespace Unity.FoxgloveSDK.Core
             {
                 frameHeadroom = 0;
                 byteHeadroom = 0;
+                maxFrameCapacity = stats.MaxQueuedFramesPerClient;
+                maxByteCapacity = stats.MaxQueuedBytesPerClient;
                 return true;
             }
 
@@ -1213,6 +1238,8 @@ namespace Unity.FoxgloveSDK.Core
             var minBytes = int.MaxValue;
             var frameReserve = Math.Max(0, reserveFrames);
             var byteReserve = Math.Max(0, reserveBytes);
+            maxFrameCapacity = stats.MaxQueuedFramesPerClient;
+            maxByteCapacity = stats.MaxQueuedBytesPerClient;
             foreach (var client in stats.Clients)
             {
                 minFrames = Math.Min(minFrames, stats.MaxQueuedFramesPerClient - client.QueuedFrames - frameReserve);
@@ -1222,6 +1249,14 @@ namespace Unity.FoxgloveSDK.Core
             frameHeadroom = Math.Max(0, minFrames);
             byteHeadroom = Math.Max(0, minBytes);
             return true;
+        }
+
+        internal HashSet<uint> SnapshotSubscribedChannelIds()
+        {
+            var result = new HashSet<uint>();
+            lock (_channelLifecycleLock)
+                _subscriptions.CopySubscribedChannelIds(result);
+            return result;
         }
 
         /// <summary>Enable protobuf encoding support, updating supportedEncodings to include "protobuf".</summary>

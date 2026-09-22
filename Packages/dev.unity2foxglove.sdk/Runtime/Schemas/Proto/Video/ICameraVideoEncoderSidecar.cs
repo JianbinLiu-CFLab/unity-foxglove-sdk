@@ -19,6 +19,8 @@ namespace Foxglove.Schemas.Video
         bool IsRunning { get; }
         int OutputQueueDepth { get; }
         int MaxOutputQueue { get; }
+        int InputQueueDepth { get; }
+        int MaxInputQueue { get; }
         string LastDiagnosticLine { get; }
         string LastError { get; }
         /// <summary>

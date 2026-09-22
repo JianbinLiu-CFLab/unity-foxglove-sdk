@@ -84,18 +84,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native.Editor
                    new SerializedObject(provider))
             {
                 providerObject.Update();
-                DrawProperty(
-                    providerObject,
-                    "_publishQos",
-                    "Publish QoS");
-                DrawProperty(
-                    providerObject,
-                    "_subscribeQos",
-                    "Subscribe QoS");
-                DrawProperty(
-                    providerObject,
-                    "_nativeCopyBudgetBytes",
-                    "Native Copy Budget (bytes)");
+                using (new EditorGUI.DisabledScope(Application.isPlaying))
+                {
+                    DrawProperty(providerObject, "_publishQos", "Publish QoS");
+                    DrawProperty(providerObject, "_subscribeQos", "Subscribe QoS");
+                    DrawProperty(providerObject, "_nativeCopyBudgetBytes", "Native Copy Budget (bytes)");
+                }
                 providerObject.ApplyModifiedProperties();
             }
 

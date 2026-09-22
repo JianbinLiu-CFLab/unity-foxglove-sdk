@@ -25,6 +25,18 @@ def latest_result(directory: pathlib.Path) -> tuple[pathlib.Path, dict]:
     return path, json.loads(path.read_text(encoding="utf-8"))
 
 
+def _current_result(directory: pathlib.Path, started_ns: int) -> tuple[pathlib.Path, dict]:
+    """Select a result written by this invocation, never a stale prior run."""
+    results = [
+        path for path in directory.glob("phase188-replay_*.json")
+        if path.stat().st_mtime_ns >= started_ns
+    ]
+    if not results:
+        raise RuntimeError("current invocation did not produce a Phase188 result JSON")
+    path = max(results, key=lambda item: item.stat().st_mtime_ns)
+    return path, json.loads(path.read_text(encoding="utf-8"))
+
+
 def result_runs(directory: pathlib.Path) -> list[tuple[pathlib.Path, dict]]:
     """Load all benchmark result runs, oldest first, excluding comparisons."""
     results = sorted(directory.glob("phase188-replay_*.json"), key=lambda p: p.stat().st_mtime_ns)
@@ -105,6 +117,11 @@ def compare_results(baseline_dir: pathlib.Path, candidate_dir: pathlib.Path, out
         "candidateRuns": len(candidate_runs),
         "noiseBand": estimate_noise_band([payload for _, payload in baseline_runs]),
     }
+    noise_band = comparison["noiseBand"]
+    comparison["performanceWithinNoiseBand"] = (
+        noise_band.get("status") == "frozen"
+        and float(candidate["p95Milliseconds"]) <= float(noise_band["upperBoundMilliseconds"])
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(comparison, indent=2, sort_keys=True), encoding="utf-8")
     return comparison
@@ -126,7 +143,7 @@ def main() -> int:
         comparison = compare_results(pathlib.Path(args.compare[0]), pathlib.Path(args.compare[1]),
                                       pathlib.Path(args.output) / "phase188-replay-comparison.json")
         print(json.dumps(comparison, indent=2, sort_keys=True))
-        return 0 if comparison["semanticParity"] else 1
+        return 0 if comparison["semanticParity"] and comparison["performanceWithinNoiseBand"] else 1
     if args.quick and args.full or not (args.quick or args.full):
         parser.error("choose exactly one of --quick or --full")
     if args.repeat < 1:
@@ -137,6 +154,7 @@ def main() -> int:
     mode_arg = "--full" if args.full else "--quick"
     hashes: list[str] = []
     for _ in range(args.repeat):
+        invocation_started_ns = time.time_ns()
         command = [
             "dotnet", "run", "--project", str(PROJECT), "--",
             "--phase188", mode_arg, "--output", str(output),
@@ -149,11 +167,11 @@ def main() -> int:
         sys.stderr.write(completed.stderr)
         if completed.returncode != 0:
             return completed.returncode
-        results = sorted(output.glob("phase188-replay_*.json"), key=lambda p: p.stat().st_mtime_ns)
-        if not results:
-            print("Phase188 result JSON was not produced.", file=sys.stderr)
+        try:
+            _, data = _current_result(output, invocation_started_ns)
+        except (OSError, RuntimeError, json.JSONDecodeError) as exc:
+            print(f"Phase188 result JSON was not produced by this invocation: {exc}.", file=sys.stderr)
             return 1
-        data = json.loads(results[-1].read_text(encoding="utf-8"))
         required = ("fixtureHashSha256", "fixtureSeed", "resultDigestSha256", "p50Milliseconds", "p95Milliseconds", "p99Milliseconds", "payloadBytesCopied")
         if any(key not in data for key in required):
             print("Phase188 result is missing required deterministic fields.", file=sys.stderr)

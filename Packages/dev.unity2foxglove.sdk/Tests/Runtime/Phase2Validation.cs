@@ -296,8 +296,17 @@ namespace Unity.FoxgloveSDK.Tests
             // Client subscribes
             fake.SimulateText(1, "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":1}]}");
 
-            // Re-register same channel (e.g. updated schema)
-            session.RegisterChannel(new AdvertiseChannel { Id = 1, Topic = "/t2", Encoding = "json" });
+            // Conflicting re-registration is rejected and leaves the original descriptor active.
+            var rejected = false;
+            try
+            {
+                session.RegisterChannel(new AdvertiseChannel { Id = 1, Topic = "/t2", Encoding = "json" });
+            }
+            catch (InvalidOperationException)
+            {
+                rejected = true;
+            }
+            Assert(rejected, "Conflicting channel re-register is rejected");
 
             // Publish should still reach the subscription via original subscriptionId
             session.Publish(1, Encoding.UTF8.GetBytes("{}"));

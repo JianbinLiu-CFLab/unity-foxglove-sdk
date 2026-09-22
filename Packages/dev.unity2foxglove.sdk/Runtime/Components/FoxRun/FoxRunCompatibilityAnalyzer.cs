@@ -148,7 +148,9 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (recorded == null || current == null || recorded.Contracts == null)
                 return Unknown("metadata is missing or malformed");
-            if (recorded.SchemaMetadataVersion != 1 && recorded.SchemaMetadataVersion != 2)
+            if (recorded.SchemaMetadataVersion != 1
+                && recorded.SchemaMetadataVersion != 2
+                && recorded.SchemaMetadataVersion != FoxRunSchemaMcapMetadata.SchemaMetadataVersion)
                 return Unknown("metadata version is unsupported");
             if (recorded.Contracts.Any(contract => contract == null || string.IsNullOrWhiteSpace(contract.Topic)))
                 return Unknown("metadata contains an invalid contract");
@@ -225,13 +227,27 @@ namespace Unity.FoxgloveSDK.Components
                 || FieldsPreserved(currentByKey[key].Fields, recordedByKey[key].Fields));
             var backwardFields = shared.All(key => FieldSetSubset(recordedByKey[key].Fields, currentByKey[key].Fields));
             var forwardFields = shared.All(key => FieldSetSubset(currentByKey[key].Fields, recordedByKey[key].Fields));
+            var currentAddsContractsOrFields = currentByKey.Keys.Any(key => !recordedByKey.ContainsKey(key))
+                || shared.Any(key => currentByKey[key].Fields.Count > recordedByKey[key].Fields.Count);
+            var recordedAddsContractsOrFields = recordedByKey.Keys.Any(key => !currentByKey.ContainsKey(key))
+                || shared.Any(key => recordedByKey[key].Fields.Count > currentByKey[key].Fields.Count);
+            if (allSharedFieldsPreserved
+                && shared.Any(key => IsProtobufEncoding(key.Encoding)
+                                     && !StringEquals(
+                                         recordedByKey[key].ContractHash,
+                                         currentByKey[key].ContractHash))
+                && (currentAddsContractsOrFields || recordedAddsContractsOrFields))
+            {
+                return Unknown("protobuf field metadata does not include field numbers");
+            }
+
             if (allSharedFieldsPreserved && backwardFields
-                && (currentByKey.Keys.Any(key => !recordedByKey.ContainsKey(key))
-                    || shared.Any(key => currentByKey[key].Fields.Count > recordedByKey[key].Fields.Count)))
+                && recordedByKey.Keys.All(currentByKey.ContainsKey)
+                && currentAddsContractsOrFields)
                 return Result(FoxRunCompatibilityClass.BackwardCompatible, findings);
             if (allSharedFieldsPreserved && forwardFields
-                && (recordedByKey.Keys.Any(key => !currentByKey.ContainsKey(key))
-                    || shared.Any(key => recordedByKey[key].Fields.Count > currentByKey[key].Fields.Count)))
+                && currentByKey.Keys.All(recordedByKey.ContainsKey)
+                && recordedAddsContractsOrFields)
                 return Result(FoxRunCompatibilityClass.ForwardCompatible, findings);
 
             return Result(FoxRunCompatibilityClass.Breaking, findings);
@@ -329,11 +345,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (recorded == null || current == null)
                 return false;
-            return recorded.All(oldField => current.Any(newField =>
-                oldField.Ordinal == newField.Ordinal
-                && StringEquals(oldField.Name, newField.Name)
-                && StringEquals(oldField.CanonicalType, newField.CanonicalType)
-                && StringEquals(oldField.Encoding, newField.Encoding)));
+            return recorded.All(oldField => current.Any(newField => FieldsEquivalent(oldField, newField)));
         }
 
         private static bool FieldSetSubset(
@@ -342,11 +354,34 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (subset == null || superset == null)
                 return false;
-            return subset.All(oldField => superset.Any(newField =>
-                oldField.Ordinal == newField.Ordinal
-                && StringEquals(oldField.Name, newField.Name)
-                && StringEquals(oldField.CanonicalType, newField.CanonicalType)
-                && StringEquals(oldField.Encoding, newField.Encoding)));
+            return subset.All(oldField => superset.Any(newField => FieldsEquivalent(oldField, newField)));
+        }
+
+        private static bool FieldsEquivalent(
+            FoxRunSchemaMcapFieldMetadata left,
+            FoxRunSchemaMcapFieldMetadata right)
+        {
+            if (left == null || right == null
+                || !StringEquals(left.Name, right.Name)
+                || !StringEquals(left.CanonicalType, right.CanonicalType)
+                || !StringEquals(left.Encoding, right.Encoding))
+                return false;
+
+            if (left.Nullable != right.Nullable
+                || left.Array != right.Array
+                || left.Aggregate != right.Aggregate)
+                return false;
+            if (left.ProtobufFieldNumber != right.ProtobufFieldNumber)
+                return false;
+            if (!string.IsNullOrEmpty(left.TypeShapeDigest)
+                && !string.IsNullOrEmpty(right.TypeShapeDigest)
+                && !StringEquals(left.TypeShapeDigest, right.TypeShapeDigest))
+                return false;
+
+            // JSON and MessagePack identify object members by name. The manifest
+            // canonicalizes field order by JsonName, so an added earlier name
+            // must not renumber unchanged fields in those encodings.
+            return !IsProtobufEncoding(left.Encoding) || left.Ordinal == right.Ordinal;
         }
 
         private static FoxRunSchemaMcapContractMetadata ToRecordedContract(FoxRunSchemaContractInfo contract)
@@ -366,13 +401,22 @@ namespace Unity.FoxgloveSDK.Components
                         Name = field?.JsonName ?? string.Empty,
                         CanonicalType = field?.Type ?? string.Empty,
                         Ordinal = ordinal,
-                        Encoding = contract.Encoding ?? string.Empty
+                        Encoding = contract.Encoding ?? string.Empty,
+                        Nullable = field?.Nullable ?? false,
+                        Array = field?.Array ?? false,
+                        Aggregate = field?.Aggregate ?? false,
+                        ProtobufFieldNumber = field?.ProtobufFieldNumber ?? 0,
+                        TypeShapeDigest = FoxRunSchemaMcapMetadata.ComputeTypeShapeDigest(field?.TypeShape)
                     }).ToList()
             };
         }
 
         private static bool StringEquals(string left, string right)
             => string.Equals(left ?? string.Empty, right ?? string.Empty, StringComparison.Ordinal);
+
+        private static bool IsProtobufEncoding(string encoding)
+            => !string.IsNullOrEmpty(encoding)
+               && encoding.IndexOf("protobuf", StringComparison.OrdinalIgnoreCase) >= 0;
 
         private readonly struct ContractKey : IEquatable<ContractKey>
         {

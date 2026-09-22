@@ -126,7 +126,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void Awake() => EnsureAttached();
 
-        private void OnEnable() => EnsureAttached();
+        private void OnEnable()
+        {
+            if (!EnsureAttached())
+                return;
+            ResumeActiveSessionIfPresent();
+        }
 
         private void OnDisable() => Detach();
 
@@ -168,6 +173,29 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (Interlocked.Exchange(ref _registered, 1) == 0)
                 _manager.RegisterFoxRunTransportProvider(this);
             return true;
+        }
+
+        private void ResumeActiveSessionIfPresent()
+        {
+            var snapshot = _manager?.ActiveFoxRunTransportSession;
+            if (snapshot == null
+                || !snapshot.TryGetSession(Id, out var session)
+                || session == null)
+            {
+                return;
+            }
+
+            try
+            {
+                Activate(session.Generation);
+            }
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+            {
+                Debug.LogWarning(
+                    "[Foxglove] R2FU Provider could not resume its active frozen session: "
+                    + exception.Message);
+            }
         }
 
         private T GetOrAddOwnedHub<T>()

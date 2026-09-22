@@ -36,10 +36,21 @@ namespace Unity.FoxgloveSDK.Core
             if (descriptor == null) throw new ArgumentNullException(nameof(descriptor));
             if (string.IsNullOrWhiteSpace(descriptor.Name))
                 throw new ArgumentException("Service name is required.", nameof(descriptor));
+            ValidateDescriptor(descriptor);
 
             lock (_lock)
             {
-                var id = _nextServiceId++;
+                foreach (var existing in _services.Values)
+                {
+                    if (string.Equals(existing.Name, descriptor.Name, StringComparison.Ordinal))
+                        throw new InvalidOperationException($"Service name '{descriptor.Name}' is already registered.");
+                }
+
+                if (_nextServiceId == 0 || (_nextServiceId == uint.MaxValue && _services.ContainsKey(uint.MaxValue)))
+                    throw new InvalidOperationException("Service id space is exhausted.");
+
+                var id = _nextServiceId;
+                _nextServiceId = id == uint.MaxValue ? 0 : id + 1;
                 _services[id] = CloneDescriptorWithId(descriptor, id);
                 if (handler != null)
                     _handlers[id] = handler;
@@ -99,11 +110,18 @@ namespace Unity.FoxgloveSDK.Core
                 throw new ArgumentNullException(nameof(descriptor));
             if (string.IsNullOrWhiteSpace(descriptor.Name))
                 throw new ArgumentException("Service name is required.", nameof(descriptor));
+            ValidateDescriptor(descriptor);
 
             lock (_lock)
             {
                 if (_services.ContainsKey(serviceId))
                     throw new InvalidOperationException($"Service {serviceId} is already registered.");
+
+                foreach (var existing in _services.Values)
+                {
+                    if (string.Equals(existing.Name, descriptor.Name, StringComparison.Ordinal))
+                        throw new InvalidOperationException($"Service name '{descriptor.Name}' is already registered.");
+                }
 
                 _services[serviceId] = CloneDescriptorWithId(descriptor, serviceId);
                 if (handler != null)
@@ -442,6 +460,21 @@ namespace Unity.FoxgloveSDK.Core
                 SchemaName = descriptor.SchemaName,
                 Schema = descriptor.Schema
             };
+        }
+
+        private static void ValidateDescriptor(ServiceDescriptor descriptor)
+        {
+            ValidateSchemaEncoding(descriptor.Request, "request");
+            ValidateSchemaEncoding(descriptor.Response, "response");
+        }
+
+        private static void ValidateSchemaEncoding(ServiceSchemaDescriptor schema, string side)
+        {
+            if (schema == null || string.IsNullOrWhiteSpace(schema.Encoding))
+                return;
+
+            if (!string.Equals(schema.Encoding, "json", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException($"Service {side} encoding '{schema.Encoding}' is unsupported; only json is accepted.");
         }
     }
 }

@@ -64,6 +64,8 @@ namespace Unity.FoxgloveSDK.Components
             int maxRaycastCommandsPerFixedUpdate,
             bool logPerformanceDiagnostics,
             float fixedDeltaTimeSeconds,
+            double acquisitionPhysSeconds,
+            double activeScanStartPhysSeconds,
             int frameCounter,
             ref int scanColumnCursor,
             ref int scanColumnRayCursor,
@@ -132,7 +134,11 @@ namespace Unity.FoxgloveSDK.Components
                         {
                             var worldDir = worldRot * new Vector3(localDir.X, localDir.Y, localDir.Z);
                             commands[batchCount] = new RaycastCommand(worldPos, worldDir, queryParams, maxRangeMeters);
-                            rayTimeOffsets[batchCount] = LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, scanPattern.ScanRateHz);
+                            rayTimeOffsets[batchCount] = LidarScanTiming.AcquisitionOffsetSeconds(
+                                acquisitionPhysSeconds,
+                                activeScanStartPhysSeconds,
+                                timeOffset,
+                                fixedDeltaTimeSeconds);
                             rayRings[batchCount] = scanBuffers.SpinEffectiveColumns > 0
                                 ? (ushort)(index / scanBuffers.SpinEffectiveColumns)
                                 : (ushort)0;

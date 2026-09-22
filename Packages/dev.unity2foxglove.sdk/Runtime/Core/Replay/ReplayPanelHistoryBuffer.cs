@@ -69,11 +69,15 @@ namespace Unity.FoxgloveSDK.Core
 
             var frameBudget = maxMessagesPerTick;
             var byteBudget = int.MaxValue;
+            var maxFrameCapacity = int.MaxValue;
+            var maxByteCapacity = int.MaxValue;
             if (session.TryGetReplayQueueHeadroom(
                 queueReserveFrames,
                 queueReserveBytes,
                 out var queueFrameHeadroom,
-                out var queueByteHeadroom))
+                out var queueByteHeadroom,
+                out maxFrameCapacity,
+                out maxByteCapacity))
             {
                 frameBudget = Math.Min(frameBudget, queueFrameHeadroom);
                 byteBudget = queueByteHeadroom;
@@ -88,7 +92,18 @@ namespace Unity.FoxgloveSDK.Core
                 var msg = _buffer[_offset];
                 var estimatedBytes = EstimateMessageDataFrameBytes(msg);
                 if (sentBytes + estimatedBytes > byteBudget)
+                {
+                    var reservedCapacity = Math.Max(0, maxByteCapacity - Math.Max(0, queueReserveBytes));
+                    if (estimatedBytes > reservedCapacity)
+                    {
+                        logger?.LogWarning(
+                            "Replay history message skipped because its estimated frame size exceeds transport capacity.");
+                        _offset++;
+                        continue;
+                    }
+
                     break;
+                }
 
                 var replayId = (uint)(McapReplayEngine.ReplayChannelIdBase | msg.ChannelId);
                 string topic = null;

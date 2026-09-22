@@ -24,5 +24,28 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
 
             return (float)(Math.Min(normalizedOffset, 1f) / scanRateHz);
         }
+
+        /// <summary>
+        /// Returns the point acquisition offset when a scan spans multiple physics ticks.
+        /// The elapsed physics time is authoritative; normalized phase only refines the
+        /// position inside the current tick and never compresses a budget-stretched scan.
+        /// </summary>
+        public static float AcquisitionOffsetSeconds(
+            double acquisitionPhysSeconds,
+            double scanStartPhysSeconds,
+            float normalizedOffset,
+            float fixedDeltaTimeSeconds)
+        {
+            var elapsed = acquisitionPhysSeconds - scanStartPhysSeconds;
+            if (double.IsNaN(elapsed) || double.IsInfinity(elapsed) || elapsed < 0d)
+                elapsed = 0d;
+            var tick = float.IsNaN(fixedDeltaTimeSeconds) || float.IsInfinity(fixedDeltaTimeSeconds)
+                ? 0f
+                : Math.Max(0f, fixedDeltaTimeSeconds);
+            var phase = float.IsNaN(normalizedOffset) || float.IsInfinity(normalizedOffset)
+                ? 0f
+                : Math.Clamp(normalizedOffset, 0f, 1f);
+            return (float)elapsed + phase * tick;
+        }
     }
 }

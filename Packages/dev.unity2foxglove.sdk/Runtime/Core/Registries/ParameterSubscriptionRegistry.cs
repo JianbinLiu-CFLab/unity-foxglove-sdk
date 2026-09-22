@@ -5,6 +5,7 @@
 // Purpose: Tracks per-client parameter subscriptions. Null means "all";
 // empty list is also treated as "all". Used for ParametersSubscribe push.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -16,6 +17,9 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class ParameterSubscriptionRegistry
     {
+        public const int MaxParameterNamesPerClient = 1024;
+        public const int MaxTotalParameterNames = 8192;
+
         // clientId → set of subscribed parameter names (null means "all")
         private readonly Dictionary<uint, HashSet<string>> _clients = new();
         private readonly object _lock = new();
@@ -28,24 +32,59 @@ namespace Unity.FoxgloveSDK.Core
         /// </remarks>
         public void Subscribe(uint clientId, IEnumerable<string> parameterNames)
         {
+            if (!TrySubscribe(clientId, parameterNames, out var error))
+                throw new InvalidOperationException(error);
+        }
+
+        public bool TrySubscribe(uint clientId, IEnumerable<string> parameterNames, out string error)
+        {
             lock (_lock)
             {
+                error = null;
                 var names = parameterNames?.ToList();
                 if (names == null || names.Count == 0)
                 {
+                    if (!_clients.ContainsKey(clientId) && TotalNameCountLocked() + 1 > MaxTotalParameterNames)
+                    {
+                        error = "Too many parameter subscriptions";
+                        return false;
+                    }
+
                     _clients[clientId] = null; // "all"
-                    return;
+                    return true;
+                }
+
+                var distinct = new HashSet<string>(names);
+                if (distinct.Count > MaxParameterNamesPerClient)
+                {
+                    error = "Too many parameter names for client";
+                    return false;
                 }
 
                 if (_clients.TryGetValue(clientId, out var subs) && subs == null)
-                    return; // already subscribed to all; named subscribe cannot narrow it
+                    return true; // already subscribed to all; named subscribe cannot narrow it
                 if (subs == null)
                     subs = new HashSet<string>();
 
-                foreach (var n in names)
+                var added = 0;
+                foreach (var n in distinct)
+                {
+                    if (!subs.Contains(n))
+                        added++;
+                }
+
+                if (subs.Count + added > MaxParameterNamesPerClient
+                    || TotalNameCountLocked() - subs.Count + subs.Count + added > MaxTotalParameterNames)
+                {
+                    error = "Parameter subscription budget exceeded";
+                    return false;
+                }
+
+                foreach (var n in distinct)
                     subs.Add(n);
 
                 _clients[clientId] = subs;
+                return true;
             }
         }
 
@@ -116,6 +155,14 @@ namespace Unity.FoxgloveSDK.Core
         public void Clear()
         {
             lock (_lock) { _clients.Clear(); }
+        }
+
+        private int TotalNameCountLocked()
+        {
+            var count = 0;
+            foreach (var names in _clients.Values)
+                count += names == null ? 1 : names.Count;
+            return count;
         }
     }
 }

@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "114-A1: runtime schema info serializes to an MCAP metadata JSON value");
 
             var parsed = JObject.Parse(json);
-            Check((int)parsed["schemaMetadataVersion"] == 2
+            Check((int)parsed["schemaMetadataVersion"] == 3
                   && (int)parsed["manifestVersion"] == current.ManifestVersion
                   && (string)parsed["generatorVersion"] == "1.0.0"
                   && (int)parsed["generatorMajorVersion"] == 1,

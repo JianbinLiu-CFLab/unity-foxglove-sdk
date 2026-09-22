@@ -76,6 +76,8 @@ namespace Foxglove.Schemas.Video
         public long TimestampQueueUnderflows => Interlocked.Read(ref _timestampQueueUnderflows);
         public int OutputQueueDepth => Volatile.Read(ref _outputCount);
         public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
+        public int InputQueueDepth => Volatile.Read(ref _inputCount);
+        public int MaxInputQueue => Volatile.Read(ref _maxInputQueue);
         internal int PendingTimestampCountForTests => _encodedFrameTimestamps.Count;
         public string LastStderrLine
         {

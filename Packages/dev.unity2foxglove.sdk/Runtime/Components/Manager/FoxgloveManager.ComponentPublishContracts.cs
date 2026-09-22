@@ -20,6 +20,9 @@ namespace Unity.FoxgloveSDK.Components
         internal void SetActiveComponentPublisherSession(ComponentPublisherSessionSnapshot snapshot)
             => _activeComponentPublisherSession = snapshot;
 
+        internal void ClearActiveComponentPublisherSession()
+            => _activeComponentPublisherSession = null;
+
         internal bool TryGetActiveComponentPublisherSessionEntry(
             object publisher,
             out ComponentPublisherSessionEntry entry)
@@ -34,7 +37,7 @@ namespace Unity.FoxgloveSDK.Components
             var drafts = new List<ComponentPublisherContractDraft>();
             foreach (var publisher in FindObjectsByType<FoxglovePublisherBase>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
             {
-                if (publisher == null || publisher.ConfiguredManager != this || !publisher.HasValidTopic)
+                if (publisher == null || publisher.ResolveManagerForComponentSession() != this || !publisher.HasValidTopic)
                     continue;
                 var resolution = publisher.EncodingResolution;
                 var messagePackEntry = ComponentPublisherMessagePackEntryResolver.Resolve(

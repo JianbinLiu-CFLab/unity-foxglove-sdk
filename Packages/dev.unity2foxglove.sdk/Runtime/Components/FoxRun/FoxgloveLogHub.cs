@@ -584,6 +584,8 @@ namespace Unity.FoxgloveSDK.Components
 
                 var published = false;
                 var recorded = false;
+                var suppressExternalOutputs =
+                    _manager?.SuppressLivePublishersForReplay == true;
                 try
                 {
                     var nowNs = _manager != null
@@ -603,7 +605,8 @@ namespace Unity.FoxgloveSDK.Components
                         published = true;
                     }
 
-                    if (_manager != null
+                    if (!suppressExternalOutputs
+                        && _manager != null
                         && source
                             is IFoxRunGeneratedTransportSource
                                 generatedSource)
@@ -633,7 +636,8 @@ namespace Unity.FoxgloveSDK.Components
                         }
                     }
 
-                    if (source
+                    if (!suppressExternalOutputs
+                        && source
                         is IFoxgloveTopicBusSource busSource)
                     {
                         var demanded =
@@ -655,7 +659,8 @@ namespace Unity.FoxgloveSDK.Components
                         }
                     }
 
-                    if (source
+                    if (!suppressExternalOutputs
+                        && source
                             is IFoxgloveTopicObserverSource
                                 observers
                         && observers.FoxgloveLog_HasObservers(
@@ -670,7 +675,8 @@ namespace Unity.FoxgloveSDK.Components
                         published = true;
                     }
 
-                    if (_sinkRouter.HasSinks
+                    if (!suppressExternalOutputs
+                        && _sinkRouter.HasSinks
                         && source
                             is IFoxgloveTopicSinkSource
                                 sinks)
@@ -682,7 +688,7 @@ namespace Unity.FoxgloveSDK.Components
                         published = true;
                     }
 
-                    if (recordingReady)
+                    if (recordingReady && !suppressExternalOutputs)
                     {
                         try
                         {

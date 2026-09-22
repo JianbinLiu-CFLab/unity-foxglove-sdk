@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Unity.FoxgloveSDK.Components.Publishing.MessagePack
 {
@@ -54,7 +56,9 @@ namespace Unity.FoxgloveSDK.Components.Publishing.MessagePack
                 }
                 Contributions.Add(contributionKey);
                 _contributionCount++;
-                _aggregateHash = string.Join(";", ByType.Values.OrderBy(e => e.ClrType.FullName, StringComparer.Ordinal).Select(e => e.ClrType.FullName + "|" + e.LogicalSchemaName + "|" + e.ShapeIdentity + "|" + e.IsAvailable));
+                var canonical = string.Join(";", ByType.Values.OrderBy(e => e.ClrType.FullName, StringComparer.Ordinal).Select(e => e.ClrType.FullName + "|" + e.LogicalSchemaName + "|" + e.ShapeIdentity + "|" + e.IsAvailable));
+                using (var sha = SHA256.Create())
+                    _aggregateHash = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(canonical))).Replace("-", string.Empty).ToLowerInvariant();
             }
         }
 

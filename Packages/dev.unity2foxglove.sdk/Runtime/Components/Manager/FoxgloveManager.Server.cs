@@ -79,7 +79,6 @@ namespace Unity.FoxgloveSDK.Components
 
                 SetupAllowedOrigins();
                 StartCertificateDistributorIfNeeded();
-                CaptureComponentPublisherSession();
                 RegisterFoxRunSubscriptionCatalogService();
                 RegisterComponentPublishContractsService();
                 _runtime.StartWithSessionSetup(
@@ -133,6 +132,7 @@ namespace Unity.FoxgloveSDK.Components
             TryCleanupStartupStep(() => _runtime?.Stop(), "stop runtime after failed startup");
             TryCleanupStartupStep(() => _runtime?.DisableReplay(), "disable replay after failed startup");
             TryCleanupStartupStep(() => _runtime?.DisableRecording(), "disable recording after failed startup");
+            TryCleanupStartupStep(ClearActiveComponentPublisherSession, "clear Component publisher session after failed startup");
             TryCleanupStartupStep(RestoreLivePublishers, "restore live publishers after failed startup");
             TryCleanupStartupStep(FlushClientEventRetirementDrops, "flush retired client-event diagnostics after failed startup");
         }
@@ -155,9 +155,9 @@ namespace Unity.FoxgloveSDK.Components
                 throw new ArgumentNullException(nameof(session));
 
             _runtimeForwarderSession = session;
-            _replayForwarder = (topic, data) => OnReplayMessage?.Invoke(topic, data);
-            _replayContextForwarder = context => OnReplayMessageContext?.Invoke(context);
-            _replayBatchForwarder = context => OnReplayBatchCompleted?.Invoke(context);
+            _replayForwarder = InvokeReplayMessageSubscribers;
+            _replayContextForwarder = InvokeReplayMessageContextSubscribers;
+            _replayBatchForwarder = InvokeReplayBatchSubscribers;
             _runtime.OnReplayMessage += _replayForwarder;
             _runtime.OnReplayMessageContext += _replayContextForwarder;
             _runtime.OnReplayBatchCompleted += _replayBatchForwarder;
@@ -165,6 +165,7 @@ namespace Unity.FoxgloveSDK.Components
             AdvanceChannelSessionGeneration();
             var generation = _connectionState.ChannelSessionGeneration;
             _clientEventAdmission.Activate(generation);
+            CaptureComponentPublisherSession();
             var transport = session.Transport;
             if (transport == null)
                 return;
@@ -182,6 +183,33 @@ namespace Unity.FoxgloveSDK.Components
             // returns. Subscribe to the freshly-created session directly so
             // the callback can run before the transport listener starts.
             session.OnClientMessageWithEncoding += _clientMessageForwarder;
+        }
+
+        private void InvokeReplayMessageSubscribers(string topic, byte[] data)
+        {
+            foreach (var handler in OnReplayMessage?.GetInvocationList() ?? Array.Empty<Delegate>())
+            {
+                try { ((Action<string, byte[]>)handler)(topic, data); }
+                catch (Exception ex) { Debug.LogWarning("[Foxglove] Replay message listener failed: " + ex.Message); }
+            }
+        }
+
+        private void InvokeReplayMessageContextSubscribers(ReplayMessageContext context)
+        {
+            foreach (var handler in OnReplayMessageContext?.GetInvocationList() ?? Array.Empty<Delegate>())
+            {
+                try { ((Action<ReplayMessageContext>)handler)(context); }
+                catch (Exception ex) { Debug.LogWarning("[Foxglove] Replay message context listener failed: " + ex.Message); }
+            }
+        }
+
+        private void InvokeReplayBatchSubscribers(ReplayBatchContext context)
+        {
+            foreach (var handler in OnReplayBatchCompleted?.GetInvocationList() ?? Array.Empty<Delegate>())
+            {
+                try { ((Action<ReplayBatchContext>)handler)(context); }
+                catch (Exception ex) { Debug.LogWarning("[Foxglove] Replay batch listener failed: " + ex.Message); }
+            }
         }
 
         /// <summary>
@@ -335,7 +363,12 @@ namespace Unity.FoxgloveSDK.Components
                     },
                     ClearClientEvents,
                     () => _connectionState.ResetChannelIds(FirstAutoChannelId),
-                    restoreLivePublishers ? RestoreLivePublishers : null);
+                    () =>
+                    {
+                        ClearActiveComponentPublisherSession();
+                        if (restoreLivePublishers)
+                            RestoreLivePublishers();
+                    });
                 FlushClientEventRetirementDrops();
             }
             catch (Exception exception)

@@ -60,7 +60,7 @@ namespace Unity.FoxgloveSDK.Transport
                 return (false, null);
 
             var parts = requestLine.Split(' ');
-            if (parts.Length < 3 || parts[0] != "GET")
+            if (parts.Length != 3 || parts[0] != "GET" || !string.Equals(parts[2], "HTTP/1.1", StringComparison.Ordinal))
                 return (false, null);
             var requestTarget = parts[1];
 
@@ -79,7 +79,18 @@ namespace Unity.FoxgloveSDK.Transport
 
                 var colon = line.IndexOf(':');
                 if (colon > 0)
-                    headers[line.Substring(0, colon).Trim()] = line.Substring(colon + 1).Trim();
+                {
+                    var headerName = line.Substring(0, colon).Trim();
+                    if (headers.ContainsKey(headerName))
+                        return (false, null);
+                    headers.Add(headerName, line.Substring(colon + 1).Trim());
+                }
+            }
+
+            if (!headers.ContainsKey("Host"))
+            {
+                WriteResponse(stream, BadRequestResponse);
+                return (false, null);
             }
 
             if (!headers.TryGetValue("Connection", out var conn) ||
@@ -119,6 +130,9 @@ namespace Unity.FoxgloveSDK.Transport
             // such as Foxglove Desktop and saved local HTML tools.
             if (headers.TryGetValue("Origin", out var origin) && !string.IsNullOrEmpty(origin)
                 && !IsAllowedFileOrigin(origin)
+                && !(string.Equals(origin, "null", StringComparison.Ordinal)
+                    && _options.AllowOpaqueOrigin
+                    && _options.RequireToken)
                 && !IsOriginAllowed(origin))
             {
                 _logger.LogWarning(
@@ -186,7 +200,7 @@ namespace Unity.FoxgloveSDK.Transport
                 foreach (var accepted in Subprotocol.Accepted)
                 {
                     if (length == accepted.Length
-                        && string.Compare(clientProtocols, start, accepted, 0, length, StringComparison.OrdinalIgnoreCase) == 0)
+                        && string.Compare(clientProtocols, start, accepted, 0, length, StringComparison.Ordinal) == 0)
                         return accepted;
                 }
 
@@ -206,7 +220,7 @@ namespace Unity.FoxgloveSDK.Transport
         private static bool IsAllowedFileOrigin(string origin)
         {
             return string.Equals(origin, "file://", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(origin, "null", StringComparison.OrdinalIgnoreCase);
+                ;
         }
 
         /// <summary>Compute the Sec-WebSocket-Accept response value per RFC 6455 section 4.2.2.</summary>

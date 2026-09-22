@@ -41,6 +41,7 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             Registering = 1,
             Ready = 2,
+            Unregistering = 3,
         }
 
         private sealed class Entry
@@ -323,6 +324,7 @@ namespace Unity2Foxglove.Ros2Bridge
             }
 
             Ros2BridgeSessionContract unregister = null;
+            Entry unregisteringEntry = null;
             lock (_gate)
             {
                 if (owned.IsReleased)
@@ -337,24 +339,35 @@ namespace Unity2Foxglove.Ros2Bridge
                     || !ReferenceEquals(
                         entry.Contract,
                         owned.Contract)
-                    || !entry.Leases.Remove(
+                    || !entry.Leases.ContainsKey(
                         owned.LeaseIdentity))
                 {
                     reason =
                         "The Bridge lease registry has no matching active lease.";
                     return false;
                 }
-                if (!owned.TryMarkReleased())
+                if (entry.State == EntryState.Unregistering)
                 {
                     reason =
-                        "The Bridge lease is already released.";
+                        "The Bridge lease cleanup is already in progress.";
                     return false;
                 }
-                _activeLeaseCount--;
-                if (entry.Leases.Count == 0)
+                if (entry.Leases.Count == 1)
                 {
                     unregister = entry.Contract;
-                    RemoveEntryLocked(entry);
+                    unregisteringEntry = entry;
+                    entry.State = EntryState.Unregistering;
+                }
+                else
+                {
+                    entry.Leases.Remove(owned.LeaseIdentity);
+                    if (!owned.TryMarkReleased())
+                    {
+                        reason =
+                            "The Bridge lease is already released.";
+                        return false;
+                    }
+                    _activeLeaseCount--;
                 }
             }
 
@@ -368,6 +381,17 @@ namespace Unity2Foxglove.Ros2Bridge
                     unregister,
                     out var revokeReason))
             {
+                lock (_gate)
+                {
+                    if (_byBinding.TryGetValue(
+                            unregisteringEntry.Contract.BindingId,
+                            out var current)
+                        && ReferenceEquals(current, unregisteringEntry)
+                        && current.State == EntryState.Unregistering)
+                    {
+                        current.State = EntryState.Ready;
+                    }
+                }
                 reason = revokeReason;
                 return false;
             }
@@ -387,7 +411,44 @@ namespace Unity2Foxglove.Ros2Bridge
                 : string.IsNullOrWhiteSpace(result.Reason)
                     ? "The Bridge wire unregister was rejected."
                     : result.Reason;
-            return result.IsAccepted;
+            if (!result.IsAccepted)
+            {
+                // The local admission was revoked before the wire call. Restore
+                // it when the wire cleanup is rejected so the retained lease can
+                // be retried without losing the contract from session state.
+                _sessionState.TryActivateLocal(
+                    unregister,
+                    out _);
+                lock (_gate)
+                {
+                    if (_byBinding.TryGetValue(
+                            unregisteringEntry.Contract.BindingId,
+                            out var current)
+                        && ReferenceEquals(current, unregisteringEntry)
+                        && current.State == EntryState.Unregistering)
+                    {
+                        current.State = EntryState.Ready;
+                    }
+                }
+                return false;
+            }
+
+            lock (_gate)
+            {
+                if (_byBinding.TryGetValue(
+                        unregisteringEntry.Contract.BindingId,
+                        out var current)
+                    && ReferenceEquals(current, unregisteringEntry))
+                {
+                    if (current.Leases.Remove(owned.LeaseIdentity))
+                    {
+                        owned.TryMarkReleased();
+                        _activeLeaseCount--;
+                    }
+                    RemoveEntryLocked(current);
+                }
+            }
+            return true;
         }
 
         internal Ros2BridgeSessionContractSnapshot

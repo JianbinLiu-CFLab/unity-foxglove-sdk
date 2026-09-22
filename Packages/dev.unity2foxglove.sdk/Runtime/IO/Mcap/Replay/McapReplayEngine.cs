@@ -220,20 +220,23 @@ namespace Unity.FoxgloveSDK.IO
         public McapMetadata FindMetadata(string name)
         {
             ThrowIfDisposed();
-            if (!IsLoaded || _reader == null || _summary?.MetadataIndexes == null || string.IsNullOrEmpty(name))
+            if (!IsLoaded || _reader == null || _summary == null || string.IsNullOrEmpty(name))
                 return null;
 
-            foreach (var index in _summary.MetadataIndexes)
+            if (_summary.MetadataIndexes != null)
             {
-                if (!string.Equals(index?.Name, name, StringComparison.Ordinal))
-                    continue;
+                foreach (var index in _summary.MetadataIndexes)
+                {
+                    if (!string.Equals(index?.Name, name, StringComparison.Ordinal))
+                        continue;
 
-                var metadata = _reader.ReadMetadataAt(index.Offset);
-                if (metadata != null && string.Equals(metadata.Name, name, StringComparison.Ordinal))
-                    return metadata;
+                    var metadata = _reader.ReadMetadataAt(index.Offset);
+                    if (metadata != null && string.Equals(metadata.Name, name, StringComparison.Ordinal))
+                        return metadata;
+                }
             }
 
-            return null;
+            return _reader.FindMetadataInDataSection(name, _summary.DataSectionEndOffset);
         }
 
         /// <summary>
@@ -595,6 +598,15 @@ namespace Unity.FoxgloveSDK.IO
         /// <paramref name="maxMessages"/> when a positive cap is supplied.
         /// </summary>
         public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result, int maxMessages)
+            => History(fromTimeNs, toTimeNs, result, maxMessages, null);
+
+        /// <summary>Reads bounded history, optionally retaining only subscribed replay channels.</summary>
+        public List<McapMessage> History(
+            ulong fromTimeNs,
+            ulong toTimeNs,
+            List<McapMessage> result,
+            int maxMessages,
+            ISet<ushort> channelFilter)
         {
             if (result == null) throw new ArgumentNullException(nameof(result));
             ThrowIfDisposed();
@@ -608,8 +620,12 @@ namespace Unity.FoxgloveSDK.IO
             if (clampedTo < clampedFrom)
                 return result;
 
-            foreach (var chunkIndex in _summary.ChunkIndexes)
+            var boundedCandidates = maxMessages > 0
+                ? new List<HistoryCandidate>(maxMessages)
+                : null;
+            for (var chunkNumber = 0; chunkNumber < _summary.ChunkIndexes.Count; chunkNumber++)
             {
+                var chunkIndex = _summary.ChunkIndexes[chunkNumber];
                 if (chunkIndex.MessageStartTime > clampedTo)
                     break;
                 if (chunkIndex.MessageEndTime < clampedFrom)
@@ -630,10 +646,25 @@ namespace Unity.FoxgloveSDK.IO
                     var dataLen = record.DataLength;
                     if (logNs < clampedFrom || logNs > clampedTo)
                         continue;
+                    if (channelFilter != null && !channelFilter.Contains(record.ChannelId))
+                        continue;
+
+                    if (boundedCandidates != null)
+                    {
+                        var candidate = new HistoryCandidate(
+                            chunkNumber,
+                            record.DataOffset,
+                            dataLen,
+                            record.ChannelId,
+                            record.Sequence,
+                            logNs,
+                            record.PublishTime);
+                        InsertBoundedHistoryCandidate(boundedCandidates, candidate, maxMessages);
+                        continue;
+                    }
 
                     var data = new byte[dataLen];
                     Buffer.BlockCopy(uncompressed, record.DataOffset, data, 0, dataLen);
-
                     result.Add(new McapMessage
                     {
                         ChannelId = record.ChannelId,
@@ -645,11 +676,106 @@ namespace Unity.FoxgloveSDK.IO
                 }
             }
 
+            if (boundedCandidates != null)
+            {
+                foreach (var candidate in boundedCandidates)
+                {
+                    var chunkIndex = _summary.ChunkIndexes[candidate.ChunkNumber];
+                    var uncompressed = _reader.ReadChunkRecords(
+                        chunkIndex.ChunkStartOffset,
+                        chunkIndex.ChunkLength,
+                        out var crcValid);
+                    if (!ShouldUseChunkRecords("History payload chunk", crcValid))
+                        continue;
+                    var data = new byte[candidate.DataLength];
+                    Buffer.BlockCopy(
+                        uncompressed,
+                        candidate.DataOffset,
+                        data,
+                        0,
+                        candidate.DataLength);
+                    result.Add(new McapMessage
+                    {
+                        ChannelId = candidate.ChannelId,
+                        Sequence = candidate.Sequence,
+                        LogTime = candidate.LogTime,
+                        PublishTime = candidate.PublishTime,
+                        Data = data
+                    });
+                }
+            }
+
             if (result.Count > 1)
                 result.Sort(CompareMessages);
 
             TrimHistoryToLatestMessages(result, maxMessages);
             return result;
+        }
+
+        private readonly struct HistoryCandidate
+        {
+            internal HistoryCandidate(
+                int chunkNumber,
+                int dataOffset,
+                int dataLength,
+                ushort channelId,
+                uint sequence,
+                ulong logTime,
+                ulong publishTime)
+            {
+                ChunkNumber = chunkNumber;
+                DataOffset = dataOffset;
+                DataLength = dataLength;
+                ChannelId = channelId;
+                Sequence = sequence;
+                LogTime = logTime;
+                PublishTime = publishTime;
+            }
+
+            internal int ChunkNumber { get; }
+            internal int DataOffset { get; }
+            internal int DataLength { get; }
+            internal ushort ChannelId { get; }
+            internal uint Sequence { get; }
+            internal ulong LogTime { get; }
+            internal ulong PublishTime { get; }
+        }
+
+        private static void InsertBoundedHistoryCandidate(
+            List<HistoryCandidate> candidates,
+            HistoryCandidate candidate,
+            int maxMessages)
+        {
+            var insertAt = candidates.Count;
+            while (insertAt > 0
+                   && CompareHistoryCandidates(candidates[insertAt - 1], candidate) > 0)
+                insertAt--;
+            if (insertAt >= maxMessages)
+            {
+                if (candidates.Count < maxMessages)
+                    insertAt = candidates.Count;
+                else
+                {
+                    candidates.RemoveAt(0);
+                    insertAt = candidates.Count;
+                }
+            }
+            candidates.Insert(insertAt, candidate);
+            if (candidates.Count > maxMessages)
+                candidates.RemoveAt(maxMessages);
+        }
+
+        private static int CompareHistoryCandidates(
+            HistoryCandidate left,
+            HistoryCandidate right)
+        {
+            var compare = left.LogTime.CompareTo(right.LogTime);
+            if (compare != 0) return compare;
+            compare = left.ChannelId.CompareTo(right.ChannelId);
+            if (compare != 0) return compare;
+            compare = left.Sequence.CompareTo(right.Sequence);
+            if (compare != 0) return compare;
+            return left.PublishTime.CompareTo(right.PublishTime);
         }
 
         /// <summary>
@@ -1278,6 +1404,22 @@ namespace Unity.FoxgloveSDK.IO
             cmp = a.Sequence.CompareTo(b.Sequence);
             if (cmp != 0) return cmp;
             return a.PublishTime.CompareTo(b.PublishTime);
+        }
+
+        private static int CompareMessageFields(
+            ushort channelId,
+            uint sequence,
+            ulong logTime,
+            ulong publishTime,
+            McapMessage other)
+        {
+            var cmp = logTime.CompareTo(other.LogTime);
+            if (cmp != 0) return cmp;
+            cmp = channelId.CompareTo(other.ChannelId);
+            if (cmp != 0) return cmp;
+            cmp = sequence.CompareTo(other.Sequence);
+            if (cmp != 0) return cmp;
+            return publishTime.CompareTo(other.PublishTime);
         }
 
         private static void SortChunkIndexes(List<McapChunkIndex> chunkIndexes)

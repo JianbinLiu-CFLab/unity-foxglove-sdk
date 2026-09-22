@@ -809,6 +809,10 @@ class RunCiTests(unittest.TestCase):
             ],
             calls,
         )
+        self.assertIn(
+            [sys.executable, "Scripts/samples/sync_maze_demo.py", "--dry-run"],
+            calls,
+        )
 
     def test_packages_lane_executes_all_maintained_python_regression_modules(self) -> None:
         """Default package CI must execute maintained regression modules, not only validators."""
@@ -826,6 +830,8 @@ class RunCiTests(unittest.TestCase):
             "Scripts.phase190.regression_checks.test_phase190_validators",
             "Scripts.phase190.regression_checks.test_phase190_script_documentation",
             "Scripts.phase190.regression_checks.test_run_conformance",
+            "Scripts.performance.regression_checks.test_phase188_replay",
+            "Scripts.smoke.replay.regression_checks.test_phase188_deterministic_replay_acceptance",
         )
         calls: list[list[str]] = []
 

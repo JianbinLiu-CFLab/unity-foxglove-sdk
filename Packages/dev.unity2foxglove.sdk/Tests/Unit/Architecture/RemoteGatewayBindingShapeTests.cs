@@ -50,6 +50,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("internal struct FoxgloveGatewayCallbacks", source, StringComparison.Ordinal);
             Assert.Contains("internal enum FoxgloveConnectionStatus", source, StringComparison.Ordinal);
             Assert.Contains("internal enum FoxgloveError", source, StringComparison.Ordinal);
+            Assert.Contains("internal enum FoxgloveReliability : byte", source, StringComparison.Ordinal);
+            Assert.Contains("internal struct FoxgloveQosProfile", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("public FoxgloveString Durability", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("public FoxgloveString Profile", source, StringComparison.Ordinal);
         }
 
         [Fact]

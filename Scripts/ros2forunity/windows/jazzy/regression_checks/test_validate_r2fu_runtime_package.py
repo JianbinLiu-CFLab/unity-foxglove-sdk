@@ -81,6 +81,12 @@ class RuntimePackageValidatorTests(unittest.TestCase):
 
         self.assertEqual(self.validator.EXIT_FAILURE, exit_code)
 
+    def test_release_gate_requires_fresh_project_acceptance(self) -> None:
+        """Published runtime cannot pass while fresh-project acceptance is deferred."""
+        self.assertFalse(self.validator.fresh_project_acceptance_passed({"freshProjectAcceptance": {"status": "deferred"}}))
+        self.assertTrue(self.validator.fresh_project_acceptance_passed({"freshProjectAcceptance": {"status": "passed"}}))
+        self.assertTrue(self.validator.fresh_project_acceptance_passed({"freshProjectAcceptance": "passed"}))
+
     def test_public_docs_must_include_artifact_hash(self) -> None:
         """Public docs validation rejects README/notices that omit the artifact hash."""
         with tempfile.TemporaryDirectory() as temp:

@@ -355,6 +355,50 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
+        [Fact]
+        public void StopTimeoutRejectsReplacementWorkerUntilOrphanRetires()
+        {
+            using var encodeEntered = new ManualResetEventSlim(false);
+            using var releaseEncode = new ManualResetEventSlim(false);
+            var encoded = 0;
+            var pipeline = new BackgroundEncodePipeline<TestRequest, int>(
+                "phase191-single-worker-timeout",
+                completedCapacity: 1,
+                stopWaitMs: 0,
+                encode: request =>
+                {
+                    Interlocked.Increment(ref encoded);
+                    if (request.Id == 1)
+                    {
+                        encodeEntered.Set();
+                        releaseEncode.Wait(TimeSpan.FromSeconds(5));
+                    }
+
+                    return request.Id;
+                });
+            try
+            {
+                Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
+                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
+                Assert.False(pipeline.Stop(clearCompleted: true, out _));
+
+                Assert.False(
+                    pipeline.Enqueue(new TestRequest(2), out _, out var startError));
+                Assert.Equal("Background encode worker is stopping.", startError);
+                Assert.Equal(1, Volatile.Read(ref encoded));
+
+                releaseEncode.Set();
+                Assert.True(
+                    SpinWait.SpinUntil(() => GetActiveWorkerCount(pipeline) == 0, TimeSpan.FromSeconds(3)));
+                Assert.True(pipeline.Enqueue(new TestRequest(3), out _, out _));
+            }
+            finally
+            {
+                releaseEncode.Set();
+                pipeline.Dispose();
+            }
+        }
+
         private static async Task<T> AwaitTask<T>(Task<T> task)
         {
             var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(5)));

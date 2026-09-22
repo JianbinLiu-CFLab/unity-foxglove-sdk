@@ -86,8 +86,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _params[name] = new ParameterEntry { Value = normalizedValue, Type = normalizedType, Writable = writable };
             }
-            var handler = OnParameterChanged;
-            handler?.Invoke(name, CloneValue(normalizedValue), normalizedType);
+            InvokeChangedHandlers(name, normalizedValue, normalizedType);
         }
 
         /// <summary>
@@ -121,8 +120,7 @@ namespace Unity.FoxgloveSDK.Core
                 };
             }
 
-            var handler = OnParameterChanged;
-            handler?.Invoke(name, CloneValue(normalizedValue), normalizedType);
+            InvokeChangedHandlers(name, normalizedValue, normalizedType);
             return registration;
         }
 
@@ -171,8 +169,7 @@ namespace Unity.FoxgloveSDK.Core
                 entry.Value = normalizedValue;
                 type = entry.Type;
             }
-            var handler = OnParameterChanged;
-            handler?.Invoke(name, CloneValue(normalizedValue), type);
+            InvokeChangedHandlers(name, normalizedValue, type);
             return true;
         }
 
@@ -361,5 +358,24 @@ namespace Unity.FoxgloveSDK.Core
             => new Parameter { Name = name, Value = CloneValue(entry.Value), Type = entry.Type };
 
         private static JToken CloneValue(JToken value) => value?.DeepClone();
+
+        private void InvokeChangedHandlers(string name, JToken value, string type)
+        {
+            var handlers = OnParameterChanged;
+            if (handlers == null)
+                return;
+
+            foreach (Action<string, JToken, string> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(name, CloneValue(value), type);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning($"Parameter change observer failed: {ex.Message}");
+                }
+            }
+        }
     }
 }

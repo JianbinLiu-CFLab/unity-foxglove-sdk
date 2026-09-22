@@ -42,6 +42,31 @@ class Phase188ReplayRunnerTests(unittest.TestCase):
             path.write_text(json.dumps({"fixtureHashSha256": "B" * 64}), encoding="utf-8")
             self.assertTrue(path.is_file())
 
+    def test_runner_selects_only_results_written_by_current_invocation(self):
+        """A stale result with a newer lexical name cannot satisfy the run."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            stale = root / "phase188-replay_zzzz.json"
+            stale.write_text(json.dumps({"fixtureHashSha256": "A" * 64}), encoding="utf-8")
+            started = stale.stat().st_mtime_ns + 1
+            with self.assertRaises(RuntimeError):
+                run_phase188_replay._current_result(root, started)
+
+    def test_comparison_exposes_and_enforces_noise_band(self):
+        """A candidate outside the frozen p95 noise band must fail the gate."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            (root / "baseline").mkdir(); (root / "candidate").mkdir()
+            for index, p95 in enumerate((10.0, 12.0, 11.0)):
+                base = {"fixtureHashSha256": "A" * 64, "p50Milliseconds": 1.0,
+                        "p95Milliseconds": p95, "p99Milliseconds": p95,
+                        "returnedMessages": 1, "resultDigestSha256": "B" * 64}
+                (root / "baseline" / f"phase188-replay_{index}.json").write_text(json.dumps(base), encoding="utf-8")
+                candidate = {**base, "p95Milliseconds": 15.0}
+                (root / "candidate" / f"phase188-replay_{index}.json").write_text(json.dumps(candidate), encoding="utf-8")
+            result = run_phase188_replay.compare_results(root / "baseline", root / "candidate", root / "comparison.json")
+            self.assertFalse(result["performanceWithinNoiseBand"])
+
     def test_comparison_does_not_call_count_only_semantic_parity(self):
         """Equal counts with different output digests must not be called semantic parity."""
         with tempfile.TemporaryDirectory() as directory:

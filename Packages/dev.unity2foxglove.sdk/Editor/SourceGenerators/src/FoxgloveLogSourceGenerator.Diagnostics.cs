@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public static readonly DiagnosticDescriptor TopicConflict = new DiagnosticDescriptor(
             "FOXRUN002", "Topic schema conflict",
             "Topic '{0}' has conflicting SchemaName values across fields",
-            "FoxRun", DiagnosticSeverity.Warning, true);
+            "FoxRun", DiagnosticSeverity.Error, true);
 
         /// <summary>FOXRUN003: field names collide after stripping leading underscores.</summary>
         public static readonly DiagnosticDescriptor NameConflict = new DiagnosticDescriptor(

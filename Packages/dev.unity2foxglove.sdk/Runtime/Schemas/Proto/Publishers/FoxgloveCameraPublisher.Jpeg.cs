@@ -201,7 +201,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (result.Request.PublishNativeFrame && result.SensorFrame != null)
             {
-                SensorCompressedImageReady?.Invoke(result.SensorFrame);
+                InvokeCompressedSubscribers(result.SensorFrame);
                 _lastPublishedCaptureUnixNs = captureUnixNs;
                 _backpressureGate.ResetSkipLogCount();
             }
@@ -319,9 +319,21 @@ namespace Unity.FoxgloveSDK.Components
             if (publishNativeFrame)
             {
                 sensorFrame ??= new SensorCompressedImageFrame(unixNs, frameId, jpeg, "jpeg");
-                SensorCompressedImageReady?.Invoke(sensorFrame);
+                InvokeCompressedSubscribers(sensorFrame);
                 _lastPublishedCaptureUnixNs = unixNs;
                 _backpressureGate.ResetSkipLogCount();
+            }
+        }
+
+        private void InvokeCompressedSubscribers(SensorCompressedImageFrame frame)
+        {
+            var handlers = SensorCompressedImageReady;
+            if (handlers == null)
+                return;
+            foreach (var subscriber in handlers.GetInvocationList())
+            {
+                try { ((Action<SensorCompressedImageFrame>)subscriber)(frame); }
+                catch (Exception ex) { Debug.LogWarning("[Foxglove] Compressed camera subscriber failed: " + ex.Message); }
             }
         }
 

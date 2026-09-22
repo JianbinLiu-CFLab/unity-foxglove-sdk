@@ -26,9 +26,9 @@ MCAP（Message Capture）是一种用于机器人数据的日志文件格式。S
 
 ### 输出文件
 
-录制文件命名格式：`{prefix}_{yyyyMMdd_HHmmss}.mcap`
+录制文件命名格式：`{prefix}_{yyyyMMdd_HHmmss_fffffffZ}.mcap`
 
-示例：`Recordings/foxglove_20260505_143021.mcap`
+示例：`Recordings/foxglove_20260505_143021_1234567Z.mcap`
 
 ### 代码配置
 
@@ -157,7 +157,7 @@ MCAP 文件包含以下数据类型：
 
 如果当前项目生成了 FoxRun runtime schema info，MCAP 录制会写入名为 `unity2foxglove.foxrun.schema` 的 metadata。它的 `value` 是紧凑 JSON，包含 `globalManifestHash`、FoxRun section 的 `manifestHash`、manifest/generator 版本、计数和每个 contract 的诊断 hash。
 
-Unity replay 会在 MCAP 文件 load 完成后、正式 playback 前读取这条 metadata。recorded `globalManifestHash` 和当前 runtime `globalManifestHash` 不一致时，replay 会因为 schema mismatch 被阻断，并在日志里显示短 hash。显式 replay 模式下，confirmed mismatch 会 fail closed：Manager 会中止启动，不会恢复 live publishers 作为 fallback。缺少 recorded metadata、缺少当前 schema info、或 recorded metadata malformed 只会 warning，以便旧 MCAP 文件还能回放。
+Unity replay 会在 MCAP 文件 load 完成后、正式 playback 前读取这条 metadata。recorded `globalManifestHash` 和当前 runtime `globalManifestHash` 不一致时，先由 FoxRun compatibility analyzer 分类为 `Exact`、`PolicyOnlyChange`、`BindingOnlyChange`、`BackwardCompatible`、`ForwardCompatible`、`Breaking` 或 `Unknown`，再由 schema identity mode 决定继续、告警或阻断。缺少 recorded metadata、缺少当前 schema info、或 recorded metadata malformed 只会 warning，以便旧 MCAP 文件还能回放。
 
 ## 严格验证与互操作门禁
 
@@ -192,13 +192,13 @@ python Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking
 
 ## Schema Evidence identity modes
 
-FoxgloveManager 的 MCAP Record & Replay 区域包含 **Schema Evidence** 设置。`Off` 会跳过 schema identity 检查，适合演示和早期调试；`Warn` 会报告 mismatch 但继续 replay 或 recording；`Strict` 会在 FoxRun `globalManifestHash` mismatch 时阻断 replay，并要求 recording evidence 完整。
+FoxgloveManager 的 MCAP Record & Replay 区域包含 **Schema Evidence** 设置。`Off` 会跳过 schema identity 检查，适合演示和早期调试；`Warn` 会报告 mismatch 但继续 replay 或 recording；`Compatible` 只允许 `Exact`、`PolicyOnlyChange` 和 `BackwardCompatible` 继续，其他分类阻断；`Strict` 要求 evidence 完整，并对所有非 `Exact` 分类阻断。
 
-默认 current evidence root 是 `Assets/Generated`，里面有 `FoxRun/` 和 `Unity2Foxglove/` 两组文件。启用 recording 且 identity mode 为 `Warn` 或 `Strict` 时，SDK 会在 `.mcap` 旁边写入配对的 `.schema` 文件夹：
+默认 current evidence root 是 `Assets/Generated`，里面有 `FoxRun/` 和 `Unity2Foxglove/` 两组文件。启用 recording 且 identity mode 为 `Warn`、`Compatible` 或 `Strict` 时，SDK 会在 `.mcap` 旁边写入配对的 `.schema` 文件夹：
 
 ```text
-Recordings/session_20260521_135001.mcap
-Recordings/session_20260521_135001.schema/
+Recordings/session_20260521_135001_1234567Z.mcap
+Recordings/session_20260521_135001_1234567Z.schema/
   schema-evidence.json
   FoxRun/
   Unity2Foxglove/

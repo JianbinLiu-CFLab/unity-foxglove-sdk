@@ -94,8 +94,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     PersistPendingSelection();
                     Client.Resolve();
                 });
-            if (!selection.IsReady
-                || !string.Equals(selection.ActiveAddOnPackage, _addOnPackage, StringComparison.Ordinal))
+            if ((selection.Code != Ros2ForUnityCustomTypesupportSelectionCode.ResolvePending
+                 && !selection.IsReady)
+                || !string.Equals(
+                    selection.ActiveAddOnPackage,
+                    _addOnPackage,
+                    StringComparison.Ordinal))
             {
                 DetachCallbacks();
                 ClearPendingSelection();

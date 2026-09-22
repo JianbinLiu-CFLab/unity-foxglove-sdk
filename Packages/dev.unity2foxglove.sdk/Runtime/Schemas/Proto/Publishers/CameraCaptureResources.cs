@@ -84,7 +84,10 @@ namespace Unity.FoxgloveSDK.Components
                 return null;
 
             var data = req.GetData<byte>();
-            _texture2D.LoadRawTextureData(data);
+            var flipped = new byte[data.Length];
+            data.CopyTo(flipped);
+            FlipRgb24RowsInPlace(flipped, width, height);
+            _texture2D.LoadRawTextureData(flipped);
             _texture2D.Apply(false);
             return _texture2D.EncodeToJPG(quality);
         }
@@ -97,7 +100,10 @@ namespace Unity.FoxgloveSDK.Components
             if (rgb24Readback == null || rgb24Readback.Length < expectedBytes || !EnsureTexture(width, height))
                 return null;
 
-            _texture2D.LoadRawTextureData(rgb24Readback);
+            var flipped = new byte[expectedBytes];
+            Buffer.BlockCopy(rgb24Readback, 0, flipped, 0, expectedBytes);
+            FlipRgb24RowsInPlace(flipped, width, height);
+            _texture2D.LoadRawTextureData(flipped);
             _texture2D.Apply(false);
             return _texture2D.EncodeToJPG(quality);
         }
@@ -111,6 +117,19 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return _texture2D != null;
+        }
+
+        private static void FlipRgb24RowsInPlace(byte[] data, int width, int height)
+        {
+            var rowBytes = width * 3;
+            var temp = new byte[rowBytes];
+            for (var top = 0; top < height / 2; top++)
+            {
+                var bottom = height - 1 - top;
+                Buffer.BlockCopy(data, top * rowBytes, temp, 0, rowBytes);
+                Buffer.BlockCopy(data, bottom * rowBytes, data, top * rowBytes, rowBytes);
+                Buffer.BlockCopy(temp, 0, data, bottom * rowBytes, rowBytes);
+            }
         }
 
         public void Cleanup()

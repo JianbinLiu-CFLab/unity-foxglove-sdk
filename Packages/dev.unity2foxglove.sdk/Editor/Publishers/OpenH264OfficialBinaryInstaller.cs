@@ -41,6 +41,9 @@ namespace Unity.FoxgloveSDK.Editor
 
         internal static OpenH264InstallResult Install(string installRoot, string packageRoot)
         {
+            if (!IsWindowsEditor)
+                return Fail("Automatic OpenH264 installation is supported only in the Windows Unity Editor.");
+
             if (!OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out var reason))
                 return Fail(reason);
 

@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Util
         EncodeQueueFull,
         CompletedQueueFull,
         VideoOutputQueueFull,
+        VideoInputQueueFull,
         PixelBudgetExceeded,
         RenderPressureCooldown
     }
@@ -45,6 +46,8 @@ namespace Unity.FoxgloveSDK.Util
         public int MaxCompletedQueueDepth;
         public int VideoOutputQueueDepth;
         public int MaxVideoOutputQueueDepth;
+        public int VideoInputQueueDepth;
+        public int MaxVideoInputQueueDepth;
         public int Width;
         public int Height;
         public int MaxPixelsPerFrame;
@@ -93,6 +96,9 @@ namespace Unity.FoxgloveSDK.Util
 
             if (QueueHasPressure(input.VideoOutputQueueDepth, input.MaxVideoOutputQueueDepth, input.Mode))
                 return Skip(CameraPipelineHealthSkipReason.VideoOutputQueueFull);
+
+            if (QueueHasPressure(input.VideoInputQueueDepth, input.MaxVideoInputQueueDepth, input.Mode))
+                return Skip(CameraPipelineHealthSkipReason.VideoInputQueueFull);
 
             return Allow();
         }

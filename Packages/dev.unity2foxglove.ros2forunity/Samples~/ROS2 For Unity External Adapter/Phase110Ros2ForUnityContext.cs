@@ -14,6 +14,7 @@ using ROS2;
 
 public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 {
+    // Acceptance samples keep Unity active while ROS2 CLI windows have focus.
     private const string UnavailableMessage =
         "ROS2 For Unity sample adapter is unavailable. Install a ROS2 For Unity runtime package or add UNITY2FOXGLOVE_ROS2_FOR_UNITY for an external runtime.";
 
@@ -265,6 +266,8 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         private readonly ROS2Node _ros2Node;
         private readonly List<IPhase110DrainableSubscription> _subscriptions =
             new List<IPhase110DrainableSubscription>();
+        private readonly List<IPhase110DrainablePublisher> _publishers =
+            new List<IPhase110DrainablePublisher>();
 
         public Phase110Ros2ForUnityNode(ROS2UnityComponent ros2Unity, ROS2Node ros2Node, string name)
         {
@@ -287,6 +290,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
                     IPublisher<std_msgs.msg.String> publisher =
                         _ros2Node.CreatePublisher<std_msgs.msg.String>(normalizedTopic);
                     var wrapper = new StringPublisher(_ros2Node, normalizedTopic, publisher);
+                    _publishers.Add(wrapper);
                     return (IUnity2FoxgloveRos2Publisher<T>)(object)wrapper;
                 }
                 catch (Exception ex)
@@ -342,9 +346,16 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
             for (var i = 0; i < _subscriptions.Count; i++)
                 _subscriptions[i].Dispose();
+            for (var i = 0; i < _publishers.Count; i++)
+                _publishers[i].Dispose();
             for (var i = 0; i < _subscriptions.Count; i++)
             {
                 if (!_subscriptions[i].IsDisposed)
+                    return;
+            }
+            for (var i = 0; i < _publishers.Count; i++)
+            {
+                if (!_publishers[i].IsDisposed)
                     return;
             }
 
@@ -359,6 +370,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             }
             IsDisposed = true;
             _subscriptions.Clear();
+            _publishers.Clear();
         }
     }
 
@@ -368,7 +380,12 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         void Drain();
     }
 
-    private sealed class StringPublisher : IUnity2FoxgloveRos2Publisher<std_msgs.msg.String>
+    private interface IPhase110DrainablePublisher : IDisposable
+    {
+        bool IsDisposed { get; }
+    }
+
+    private sealed class StringPublisher : IUnity2FoxgloveRos2Publisher<std_msgs.msg.String>, IPhase110DrainablePublisher
     {
         private readonly IPublisher<std_msgs.msg.String> _publisher;
         private readonly ROS2Node _ros2Node;
@@ -385,6 +402,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         }
 
         public string Topic { get; }
+        public bool IsDisposed => _disposed;
 
         public bool TryPublish(std_msgs.msg.String message, out string error)
         {

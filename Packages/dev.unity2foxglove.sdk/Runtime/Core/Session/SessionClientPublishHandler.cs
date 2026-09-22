@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
         private readonly SessionGraphHandler _graph;
         private readonly Action<uint, uint, string, string, byte[]> _messageCallback;
+        private readonly Func<string, bool> _encodingSupported;
         private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
         private readonly HashSet<uint> _budgetWarnedClients = new();
         private readonly List<(uint clientId, uint chId)> _clientChannelRemovalScratch = new();
@@ -40,13 +41,16 @@ namespace Unity.FoxgloveSDK.Core
             IFoxgloveClock clock,
             IFoxgloveLogger logger,
             SessionGraphHandler graph,
-            Action<uint, uint, string, string, byte[]> messageCallback)
+            Action<uint, uint, string, string, byte[]> messageCallback,
+            Func<string, bool> encodingSupported = null)
         {
             _recorderProvider = recorderProvider ?? (() => null);
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _logger = logger ?? new ConsoleLogger();
             _graph = graph ?? throw new ArgumentNullException(nameof(graph));
             _messageCallback = messageCallback ?? ((_, _, _, _, _) => { });
+            _encodingSupported = encodingSupported ?? (encoding =>
+                string.Equals(encoding, "json", StringComparison.OrdinalIgnoreCase));
         }
 
         public void Clear()
@@ -102,9 +106,24 @@ namespace Unity.FoxgloveSDK.Core
                         return;
                     }
 
+                    if (!IsSupportedClientEncoding(ch.Encoding))
+                    {
+                        _logger.LogWarning(
+                            $"Client advertise batch rejected atomically from client {clientId}; unsupported encoding '{ch.Encoding}'");
+                        return;
+                    }
+
                     if (SchemaByteCount(ch) > MaxClientPublishedSchemaBytes)
                     {
                         WarnBudgetRejected(clientId, "client-published channel schema exceeds the byte budget");
+                        return;
+                    }
+
+                    if (deduped.TryGetValue(ch.Id, out var duplicate)
+                        && !SameChannelDescriptor(duplicate, ch))
+                    {
+                        _logger.LogWarning(
+                            $"Client advertise batch rejected atomically from client {clientId}; duplicate channel id {ch.Id} has conflicting descriptors");
                         return;
                     }
 
@@ -148,12 +167,25 @@ namespace Unity.FoxgloveSDK.Core
                         {
                             var key = (clientId, ch.Id);
                             if (_clientChannels.TryGetValue(key, out var previous)
-                                && !string.Equals(previous.Topic, ch.Topic, StringComparison.Ordinal))
+                                && !SameChannelDescriptor(previous, ch))
                             {
-                                staleGraphTopics.Add((ch.Id, previous.Topic));
+                                budgetRejectionReason = $"client-published channel id {ch.Id} is already active with a conflicting descriptor";
+                                shouldLogBudgetRejection = TryMarkBudgetRejectedUnderLock(clientId);
+                                acceptedChannels = null;
+                                break;
                             }
+                        }
 
-                            _clientChannels[key] = ch;
+                        if (acceptedChannels != null)
+                        {
+                            foreach (var ch in acceptedChannels)
+                            {
+                                var key = (clientId, ch.Id);
+                                if (_clientChannels.ContainsKey(key))
+                                    continue;
+
+                                _clientChannels[key] = ch;
+                            }
                         }
                     }
                 }
@@ -244,9 +276,36 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             var recorder = _recorderProvider();
-            recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload,
-                ch.Topic, ch.Encoding, ch.SchemaName, ch.SchemaEncoding, ch.Schema);
+            WriteClientMessageSafely(recorder, clientId, chId, payload, ch);
             _messageCallback(clientId, chId, ch.Topic, ch.Encoding, payload);
         }
+
+        private void WriteClientMessageSafely(
+            McapRecorder recorder,
+            uint clientId,
+            uint channelId,
+            byte[] payload,
+            AdvertiseChannel channel)
+        {
+            try
+            {
+                recorder?.WriteClientMessage(clientId, channelId, _clock.NowNs, payload,
+                    channel.Topic, channel.Encoding, channel.SchemaName, channel.SchemaEncoding, channel.Schema);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Client publish recording failed; live callback continues: {ex.Message}");
+            }
+        }
+
+        private bool IsSupportedClientEncoding(string encoding)
+            => !string.IsNullOrWhiteSpace(encoding) && _encodingSupported(encoding.Trim());
+
+        private static bool SameChannelDescriptor(AdvertiseChannel left, AdvertiseChannel right)
+            => string.Equals(left.Topic, right.Topic, StringComparison.Ordinal)
+               && string.Equals(left.Encoding, right.Encoding, StringComparison.Ordinal)
+               && string.Equals(left.SchemaName, right.SchemaName, StringComparison.Ordinal)
+               && string.Equals(left.SchemaEncoding ?? string.Empty, right.SchemaEncoding ?? string.Empty, StringComparison.Ordinal)
+               && string.Equals(left.Schema ?? string.Empty, right.Schema ?? string.Empty, StringComparison.Ordinal);
     }
 }

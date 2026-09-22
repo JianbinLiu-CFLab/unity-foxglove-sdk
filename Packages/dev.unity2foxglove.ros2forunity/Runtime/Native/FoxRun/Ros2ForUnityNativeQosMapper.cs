@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Runtime.ExceptionServices;
 using Unity.FoxgloveSDK.Components;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
@@ -87,6 +88,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     // Preserve the mapping failure; the partial profile is no longer published.
                 }
+
+                if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                    ExceptionDispatchInfo.Capture(exception).Throw();
 
                 var unsupported = IsMissingPolicySurface(exception);
                 return FoxRunRos2RegistrationResult.Failure(

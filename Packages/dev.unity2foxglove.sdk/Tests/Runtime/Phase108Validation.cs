@@ -202,6 +202,7 @@ namespace Unity.FoxgloveSDK.Tests
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeCapabilityModel.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimePlayModeGuard.cs",
+                OptionalPackage + "/Editor/Ros2ForUnityRuntimePlayerStaging.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelectorInspector.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityZenohRouterSettings.cs",

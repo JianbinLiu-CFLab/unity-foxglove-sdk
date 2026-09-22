@@ -584,7 +584,8 @@ namespace Unity.FoxgloveSDK.Transport
                     tcpClient,
                     stream,
                     _options.MaxQueuedFramesPerClient,
-                    _options.MaxQueuedBytesPerClient);
+                    _options.MaxQueuedBytesPerClient,
+                    _options.MaxInboundFrameBytes);
                 if (!TryRegisterClient(conn, out clientId, out var stopped))
                 {
                     if (stopped)
@@ -919,13 +920,15 @@ namespace Unity.FoxgloveSDK.Transport
 
                 try
                 {
-                    OnClientConnected?.Invoke(clientId);
+                    if (InvokeClientObservers(OnClientConnected, clientId, "connected"))
+                        disconnectAfterCallback = true;
 
                     lock (_clientAdmissionLock)
                     {
                         publication.CallbackCompleted = true;
                         publication.CallbackThreadId = 0;
-                        if (publication.Cancelled
+                        if (disconnectAfterCallback
+                            || publication.Cancelled
                             || IsStopping
                             || !_clients.TryGetValue(clientId, out var current)
                             || !ReferenceEquals(current, expectedConnection))
@@ -1201,7 +1204,7 @@ namespace Unity.FoxgloveSDK.Transport
                                         return;
                                 }
                                 else
-                                    OnBinaryReceived?.Invoke(clientId, frame.Payload);
+                                    InvokeBinaryObservers(clientId, frame.Payload);
                                 break;
                             }
 
@@ -1250,7 +1253,7 @@ namespace Unity.FoxgloveSDK.Transport
                                         return;
                                 }
                                 else
-                                    OnBinaryReceived?.Invoke(clientId, payload);
+                                    InvokeBinaryObservers(clientId, payload);
                                 fragmentedOpcode = 0;
                             }
                             break;
@@ -1297,7 +1300,7 @@ namespace Unity.FoxgloveSDK.Transport
                 return false;
             }
 
-            OnTextReceived?.Invoke(clientId, text);
+            InvokeTextObservers(clientId, text);
             return true;
         }
 
@@ -1331,7 +1334,7 @@ namespace Unity.FoxgloveSDK.Transport
             try
             {
                 if (announced)
-                    OnClientDisconnected?.Invoke(clientId);
+                    InvokeClientObservers(OnClientDisconnected, clientId, "disconnected");
             }
             catch (Exception ex)
             {
@@ -1340,6 +1343,39 @@ namespace Unity.FoxgloveSDK.Transport
             finally
             {
                 try { conn.Dispose(); } catch { }
+            }
+        }
+
+
+        private bool InvokeClientObservers(Action<uint> observers, uint clientId, string eventName)
+        {
+            if (observers == null) return false;
+            var hadError = false;
+            foreach (Action<uint> observer in observers.GetInvocationList())
+            {
+                try { observer(clientId); }
+                catch (Exception ex) { hadError = true; _logger.LogError($"Client {eventName} handler error: {FormatExceptionChain(ex)}"); }
+            }
+            return hadError;
+        }
+
+        private void InvokeTextObservers(uint clientId, string text)
+        {
+            if (OnTextReceived == null) return;
+            foreach (Action<uint, string> observer in OnTextReceived.GetInvocationList())
+            {
+                try { observer(clientId, text); }
+                catch (Exception ex) { _logger.LogError($"Client text handler error: {FormatExceptionChain(ex)}"); }
+            }
+        }
+
+        private void InvokeBinaryObservers(uint clientId, byte[] payload)
+        {
+            if (OnBinaryReceived == null) return;
+            foreach (Action<uint, byte[]> observer in OnBinaryReceived.GetInvocationList())
+            {
+                try { observer(clientId, payload); }
+                catch (Exception ex) { _logger.LogError($"Client binary handler error: {FormatExceptionChain(ex)}"); }
             }
         }
 

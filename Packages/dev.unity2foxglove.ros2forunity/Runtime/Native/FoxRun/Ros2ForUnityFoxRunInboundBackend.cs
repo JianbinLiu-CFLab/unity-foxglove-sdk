@@ -262,6 +262,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private sealed class SubscriptionToken : IFoxRunRos2NativeSubscriptionToken
         {
             private readonly IFoxRunRos2R2fuNodeDriver _driver;
+            private readonly object _removeGate = new object();
             private object _subscription;
 
             internal SubscriptionToken(IFoxRunRos2R2fuNodeDriver driver, object subscription)
@@ -279,11 +280,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
             }
 
-            internal void TryRemove()
+            internal bool TryRemove()
             {
-                var subscription = Interlocked.Exchange(ref _subscription, null);
-                if (subscription != null && !_driver.RemoveSubscription(subscription))
-                    throw new InvalidOperationException("R2FU subscription was not found during removal.");
+                lock (_removeGate)
+                {
+                    var subscription = Volatile.Read(ref _subscription);
+                    if (subscription == null)
+                        return true;
+                    if (!_driver.RemoveSubscription(subscription))
+                        throw new InvalidOperationException("R2FU subscription was not found during removal.");
+                    Interlocked.CompareExchange(ref _subscription, null, subscription);
+                    return true;
+                }
             }
         }
     }

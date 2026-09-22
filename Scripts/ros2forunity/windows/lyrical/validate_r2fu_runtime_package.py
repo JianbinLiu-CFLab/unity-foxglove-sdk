@@ -404,6 +404,7 @@ def check_required_files(results: list[CheckResult]) -> None:
         RUNTIME_ROOT / "metadata_ros2cs.xml",
         RUNTIME_ROOT / "Plugins" / "metadata_ros2cs.xml",
         PLUGIN_ROOT / "metadata_ros2cs.xml",
+        RUNTIME_ROOT / "StreamingAssets" / "Ros2ForUnity" / "share" / "ament_index" / "resource_index" / "packages" / "rmw",
         RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs",
         RUNTIME_ROOT / "Scripts" / "ROS2UnityComponent.cs",
         RUNTIME_ROOT / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef",
@@ -581,6 +582,13 @@ def inventory_category_counts_match(categories: object, files: object) -> bool:
     return actual == declared
 
 
+def fresh_project_acceptance_passed(manifest: dict) -> bool:
+    acceptance = manifest.get("freshProjectAcceptance")
+    if isinstance(acceptance, dict):
+        return str(acceptance.get("status", "")) == "passed"
+    return str(acceptance or "") == "passed"
+
+
 def check_inventory(results: list[CheckResult], release_gate: bool = False, skip_dll_hash: bool = False) -> None:
     """Validate the copied runtime inventory."""
     data = load_json(INVENTORY, results, "runtime inventory parses")
@@ -640,6 +648,23 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
             "release gate: runtime redistributionStatus is published",
             redistribution_status == "published",
             f"redistributionStatus={redistribution_status!r}",
+        )
+        fresh_acceptance = manifest.get("freshProjectAcceptance")
+        if isinstance(fresh_acceptance, dict):
+            fresh_status = str(fresh_acceptance.get("status", ""))
+        else:
+            fresh_status = str(fresh_acceptance or "")
+        add(
+            results,
+            "release gate: fresh-project acceptance is passed",
+            fresh_project_acceptance_passed(manifest),
+            f"freshProjectAcceptance.status={fresh_status!r}",
+        )
+        add(
+            results,
+            "release gate: published runtime is not Prototype",
+            str(manifest.get("distributionLevel", "")) != "Prototype",
+            f"distributionLevel={manifest.get('distributionLevel')!r}",
         )
 
     categories = data.get("categoryCounts", {})

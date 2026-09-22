@@ -83,28 +83,16 @@ namespace Unity2Foxglove.Ros2Bridge.Editor
                    new SerializedObject(provider))
             {
                 providerObject.Update();
-                DrawProperty(
-                    providerObject,
-                    "_available",
-                    "Available");
-                DrawProperty(
-                    providerObject,
-                    "_autoConnect",
-                    "Auto Connect");
-                DrawProperty(providerObject, "_host", "Host");
-                DrawProperty(providerObject, "_port", "Port");
-                DrawProperty(
-                    providerObject,
-                    "_queueCapacity",
-                    "Queue Capacity");
-                DrawProperty(
-                    providerObject,
-                    "_reconnectIntervalMs",
-                    "Reconnect Interval (ms)");
-                DrawProperty(
-                    providerObject,
-                    "_sendTimeoutMs",
-                    "Send Timeout (ms)");
+                using (new EditorGUI.DisabledScope(Application.isPlaying))
+                {
+                    DrawProperty(providerObject, "_available", "Available");
+                    DrawProperty(providerObject, "_autoConnect", "Auto Connect");
+                    DrawProperty(providerObject, "_host", "Host");
+                    DrawProperty(providerObject, "_port", "Port");
+                    DrawProperty(providerObject, "_queueCapacity", "Queue Capacity");
+                    DrawProperty(providerObject, "_reconnectIntervalMs", "Reconnect Interval (ms)");
+                    DrawProperty(providerObject, "_sendTimeoutMs", "Send Timeout (ms)");
+                }
                 providerObject.ApplyModifiedProperties();
                 if (Application.isPlaying)
                     DrawStats(provider.GetStatsSnapshot());

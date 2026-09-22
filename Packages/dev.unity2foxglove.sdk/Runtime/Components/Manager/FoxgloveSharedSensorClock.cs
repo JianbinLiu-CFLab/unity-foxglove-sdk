@@ -17,6 +17,8 @@ namespace Unity.FoxgloveSDK.Components
         private bool _initialized;
         private ulong _epochUnixNs;
         private double _epochPhysSeconds;
+        private int _generation;
+        public int Generation => _generation;
 
         /// <summary>
         /// Converts a Unity physics timestamp to a monotonic Unix nanosecond timestamp.
@@ -48,6 +50,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Clears the epoch so the next sample re-anchors the clock.</summary>
         public void Reset()
         {
+            _generation++;
             _initialized = false;
             _epochUnixNs = 0UL;
             _epochPhysSeconds = 0d;

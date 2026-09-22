@@ -11,6 +11,7 @@ using System.Reflection;
 using Foxglove.Schemas;
 using Google.Protobuf;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -22,6 +23,9 @@ namespace Unity.FoxgloveSDK.IO
     {
         private static readonly ConcurrentDictionary<Type, Lazy<MessageParser>> s_parserCache =
             new ConcurrentDictionary<Type, Lazy<MessageParser>>();
+        private static readonly Lazy<ProtobufSchemaRegistry> s_bundledRegistry =
+            new Lazy<ProtobufSchemaRegistry>(() =>
+                ProtobufSchemaRegistryLoader.FromDefault(new DefaultSchemaRegistry()));
 
         /// <inheritdoc />
         public IMcapMessageDecoder TryCreate(McapSchema schema, McapChannel channel)
@@ -34,11 +38,29 @@ namespace Unity.FoxgloveSDK.IO
             if (!FoxgloveProtoSchemaCatalog.TryGet(schema?.Name ?? string.Empty, out var entry))
                 return new FailingDecoder("Packaged Foxglove protobuf schema is unknown: " + (schema?.Name ?? string.Empty) + ".");
 
+            var bundledDescriptor = s_bundledRegistry.Value.GetFileDescriptorSet(entry.SchemaName);
+            if (schema.Data == null || schema.Data.Length == 0)
+                return new FailingDecoder("MCAP protobuf schema descriptor is missing for " + entry.SchemaName + ".");
+            if (bundledDescriptor == null || !BytesEqual(schema.Data, bundledDescriptor))
+                return new FailingDecoder("MCAP protobuf schema descriptor does not match the bundled snapshot for " + entry.SchemaName + ".");
+
             var parser = ResolveParser(entry.ClrType);
             if (parser == null)
                 return new FailingDecoder("Packaged Foxglove protobuf schema does not expose a Parser: " + entry.SchemaName + ".");
 
             return new Decoder(parser);
+        }
+
+        private static bool BytesEqual(byte[] left, byte[] right)
+        {
+            if (left == null || right == null || left.Length != right.Length)
+                return false;
+            for (var i = 0; i < left.Length; i++)
+            {
+                if (left[i] != right[i])
+                    return false;
+            }
+            return true;
         }
 
         private static MessageParser ResolveParser(Type clrType)

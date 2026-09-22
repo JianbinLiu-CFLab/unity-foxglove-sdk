@@ -219,11 +219,34 @@ namespace Unity.FoxgloveSDK.Components
         {
             var encodeQueue = Volatile.Read(ref _encodeQueue);
             if (encodeQueue == null || encodeQueue.Capacity != _encodeCapacity)
-                Volatile.Write(ref _encodeQueue, new DropOldestBoundedQueue<JpegEncodeRequest>(_encodeCapacity));
+            {
+                var replacement = new DropOldestBoundedQueue<JpegEncodeRequest>(_encodeCapacity);
+                var pending = encodeQueue?.DrainSnapshot();
+                if (pending != null)
+                {
+                    var first = Math.Max(0, pending.Length - _encodeCapacity);
+                    for (var index = first; index < pending.Length; index++)
+                        replacement.Enqueue(pending[index]);
+                }
+
+                Volatile.Write(ref _encodeQueue, replacement);
+            }
 
             var completedQueue = Volatile.Read(ref _completedQueue);
             if (completedQueue == null || completedQueue.Capacity != _completedCapacity)
-                Volatile.Write(ref _completedQueue, new DropOldestBoundedQueue<JpegEncodeResult>(_completedCapacity));
+            {
+                var replacement = new DropOldestBoundedQueue<JpegEncodeResult>(_completedCapacity);
+                var completed = completedQueue?.DrainSnapshot();
+                if (completed != null)
+                {
+                    var first = Math.Max(0, completed.Length - _completedCapacity);
+                    _droppedCompletedCount += first;
+                    for (var index = first; index < completed.Length; index++)
+                        replacement.Enqueue(completed[index]);
+                }
+
+                Volatile.Write(ref _completedQueue, replacement);
+            }
         }
 
         private bool TryJoinOrphanedWorker()

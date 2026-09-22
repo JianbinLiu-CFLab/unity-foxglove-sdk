@@ -52,7 +52,6 @@ namespace Unity.FoxgloveSDK.Components
         private readonly CameraVideoSidecarSession _videoSidecarSession = new CameraVideoSidecarSession();
         private bool _warnedVideoEncoderUnavailable;
         private string _lastLoggedStderr;
-        private byte[] _rgbScratch;
         private byte[] _i420Scratch;
 
         public CameraVideoPublishPipeline(CameraPublishDiagnostics diagnostics, Action<string> logWarning = null)
@@ -67,6 +66,8 @@ namespace Unity.FoxgloveSDK.Components
         public bool IsOpenH264Mode => _videoSidecarSession.IsOpenH264Mode;
         public int OutputQueueDepth => _videoSidecarSession.OutputQueueDepth;
         public int MaxOutputQueue => _videoSidecarSession.MaxOutputQueue;
+        public int InputQueueDepth => _videoSidecarSession.InputQueueDepth;
+        public int MaxInputQueue => _videoSidecarSession.MaxInputQueue;
 
         public void ResetState()
         {
@@ -151,7 +152,9 @@ namespace Unity.FoxgloveSDK.Components
                 return result;
             }
 
-            var ownedFrameBytes = EnsureRgbScratch(frameBytes.Length);
+            // Materialize the readback source once; sidecar boundaries accept
+            // byte[] and own or synchronously consume that submitted buffer.
+            var ownedFrameBytes = new byte[frameBytes.Length];
             frameBytes.CopyTo(ownedFrameBytes);
 
             if (_videoSidecarSession.IsOpenH264Mode)
@@ -201,14 +204,6 @@ namespace Unity.FoxgloveSDK.Components
                 _i420Scratch = new byte[length];
 
             return _i420Scratch;
-        }
-
-        private byte[] EnsureRgbScratch(int length)
-        {
-            if (_rgbScratch == null || _rgbScratch.Length != length)
-                _rgbScratch = new byte[length];
-
-            return _rgbScratch;
         }
 
         public bool TryDrainEncodedAccessUnits(

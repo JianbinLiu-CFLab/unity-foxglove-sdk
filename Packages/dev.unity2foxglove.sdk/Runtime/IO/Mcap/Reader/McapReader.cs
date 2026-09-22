@@ -683,6 +683,35 @@ namespace Unity.FoxgloveSDK.IO
             return McapRecordDecoder.DecodeMetadata(content, 0, contentLength);
         }
 
+        /// <summary>
+        /// Finds a metadata record by scanning the data section when the file
+        /// omits optional Metadata Index records.
+        /// </summary>
+        internal McapMetadata FindMetadataInDataSection(
+            string name,
+            ulong dataSectionEndOffset,
+            ulong recordSizeLimit = DefaultRecordSizeLimit)
+        {
+            if (string.IsNullOrEmpty(name) || !_stream.CanSeek)
+                return null;
+
+            _stream.Seek(McapWriter.MagicLength, SeekOrigin.Begin);
+            while ((ulong)_stream.Position < dataSectionEndOffset)
+            {
+                var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
+                if ((ulong)_stream.Position > dataSectionEndOffset)
+                    throw new InvalidDataException("MCAP metadata scan crossed the data section boundary.");
+                if (opcode != McapWriter.OpcodeMetadata)
+                    continue;
+
+                var metadata = McapRecordDecoder.DecodeMetadata(content, 0, contentLength);
+                if (metadata != null && string.Equals(metadata.Name, name, StringComparison.Ordinal))
+                    return metadata;
+            }
+
+            return null;
+        }
+
         private static long ToSeekOffset(ulong offset, string context)
         {
             if (offset > long.MaxValue)

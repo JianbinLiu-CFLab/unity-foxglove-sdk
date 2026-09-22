@@ -290,7 +290,7 @@ namespace Unity.FoxgloveSDK.IO
                 return true;
 
             if (hasChannelFilter && hasTopicFilter)
-                return QueryCanMatchChannelAndTopic(channelIds, topics);
+                return QueryCanMatchChannelOrTopic(channelIds, topics);
 
             if (hasChannelFilter && _knownChannelIds != null)
             {
@@ -314,22 +314,22 @@ namespace Unity.FoxgloveSDK.IO
             return false;
         }
 
-        private bool QueryCanMatchChannelAndTopic(List<ushort> channelIds, List<string> topics)
+        private bool QueryCanMatchChannelOrTopic(List<ushort> channelIds, List<string> topics)
         {
             if (_channelMap == null)
                 return false;
 
             for (var i = 0; i < channelIds.Count; i++)
             {
-                if (!_channelMap.TryGetValue(channelIds[i], out var channel))
-                    continue;
+                if (_channelMap.ContainsKey(channelIds[i]))
+                    return true;
+            }
 
-                var channelTopic = channel.Topic ?? string.Empty;
-                for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
-                {
-                    if (string.Equals(channelTopic, topics[topicIndex] ?? string.Empty, StringComparison.Ordinal))
-                        return true;
-                }
+            for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
+            {
+                var topic = topics[topicIndex] ?? string.Empty;
+                if (_topicChannelMap.TryGetValue(topic, out var ids) && ids.Count > 0)
+                    return true;
             }
 
             return false;

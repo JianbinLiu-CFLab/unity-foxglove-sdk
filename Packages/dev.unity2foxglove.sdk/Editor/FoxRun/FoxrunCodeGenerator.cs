@@ -280,6 +280,9 @@ namespace Unity.FoxgloveSDK.Editor
         public static FoxRunManifestRefreshResult GenerateManifestAndSchemaInfoFilesOnlyWithResult()
         {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
+            if (!scan.IsComplete)
+                throw new InvalidOperationException(
+                    "FOXRUN901 Error: reflection discovery was incomplete; canonical schema evidence was not written.");
             var model = LowerReflectionMembers(scan.ReflectionMembers);
             ValidateGenerationModel(model);
             ValidateGenerationIdentities(model, null);
@@ -318,6 +321,9 @@ namespace Unity.FoxgloveSDK.Editor
         public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles()
         {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
+            if (!scan.IsComplete)
+                throw new InvalidOperationException(
+                    "FOXRUN901 Error: reflection discovery was incomplete; canonical schema evidence cannot be verified.");
             var manifest = FoxRunManifestBuilder.Build(
                 scan.ManifestMembers,
                 manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);

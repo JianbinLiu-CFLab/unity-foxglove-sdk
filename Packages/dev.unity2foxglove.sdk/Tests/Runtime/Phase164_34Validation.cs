@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMazeCameraSkipsStationaryTargetFrames()
         {
-            var source = Read("Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Phase138MazeCameraFollow.cs");
+            var source = Read("Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138MazeCameraFollow.cs");
             var update = MethodBody(source, "private void LateUpdate()");
 
             Check(source.Contains("_hasLastTargetPose", StringComparison.Ordinal)
@@ -78,7 +78,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMazeBuilderReusesNeighbourList()
         {
-            var source = Read("Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Phase138MazeBuilder.cs");
+            var source = Read("Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138MazeBuilder.cs");
             var build = MethodBody(source, "public static GameObject Build(int cellsX, int cellsZ, float cellSize,");
 
             Check(build.Contains("var neighbours = new List<(int, int, int)>(4);", StringComparison.Ordinal)

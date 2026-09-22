@@ -451,7 +451,7 @@ namespace Unity.FoxgloveSDK.Components
                 snapshot.DecoderFactories,
                 stableIds);
 
-            var sessions = _activeFoxRunTransportSession?.PublishTransports;
+            var sessions = _activeFoxRunTransportSession?.AllTransports;
             if (sessions == null)
                 return snapshot;
             for (var index = 0; index < sessions.Count; index++)

@@ -111,6 +111,8 @@ namespace Unity.FoxgloveSDK.Components
                 MaxCompletedQueueDepth = profile.IsVideo ? 1 : _maxCompletedJpegQueue,
                 VideoOutputQueueDepth = profile.IsVideo ? videoPipeline?.OutputQueueDepth ?? 0 : 0,
                 MaxVideoOutputQueueDepth = profile.IsVideo ? videoPipeline?.MaxOutputQueue ?? 1 : 1,
+                VideoInputQueueDepth = profile.IsVideo ? videoPipeline?.InputQueueDepth ?? 0 : 0,
+                MaxVideoInputQueueDepth = profile.IsVideo ? videoPipeline?.MaxInputQueue ?? 1 : 1,
                 Width = _width,
                 Height = _height,
                 MaxPixelsPerFrame = _maxPixelsPerFrame,

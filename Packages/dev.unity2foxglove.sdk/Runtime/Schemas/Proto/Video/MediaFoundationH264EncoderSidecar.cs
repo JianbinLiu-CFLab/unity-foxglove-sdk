@@ -13,10 +13,9 @@ using System.Threading;
 namespace Foxglove.Schemas.Video
 {
     /// <summary>
-    /// Experimental Media Foundation H.264 encoder sidecar. Phase 78 keeps the
-    /// boundary explicit so unsupported Windows encoder states fail clearly. The
-    /// path still converts and submits samples synchronously and should remain
-    /// marked experimental until that work is moved off the caller thread.
+    /// Experimental Media Foundation H.264 encoder sidecar. RGB frames enter a
+    /// bounded worker queue so TrySubmitFrame remains non-blocking like the
+    /// other video sidecars.
     /// </summary>
     public sealed partial class MediaFoundationH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
     {
@@ -46,6 +45,8 @@ namespace Foxglove.Schemas.Video
         private static readonly int s_mftOutputDataBufferSize = Marshal.SizeOf(typeof(MftOutputDataBuffer));
 
         private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
+        private readonly ConcurrentQueue<QueuedInputFrame> _inputFrames = new ConcurrentQueue<QueuedInputFrame>();
+        private readonly AutoResetEvent _inputSignal = new AutoResetEvent(false);
         private readonly Dictionary<long, ulong> _sampleTimestampNsByTime = new Dictionary<long, ulong>();
         private readonly Dictionary<long, LinkedListNode<long>> _sampleTimestampNodesByTime = new Dictionary<long, LinkedListNode<long>>();
         private readonly LinkedList<long> _sampleTimestampOrder = new LinkedList<long>();
@@ -59,6 +60,9 @@ namespace Foxglove.Schemas.Video
         private long _sampleDuration;
         private long _evictedTimestampCount;
         private int _outputCount;
+        private int _inputCount;
+        private Thread _encoderWorker;
+        private const int MaxInputQueueCapacity = 2;
         private int _maxOutputQueue = 4;
         private bool _mfStarted;
         private bool _comInitialized;
@@ -74,6 +78,8 @@ namespace Foxglove.Schemas.Video
         }
         public int OutputQueueDepth => Volatile.Read(ref _outputCount);
         public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
+        public int InputQueueDepth => Volatile.Read(ref _inputCount);
+        public int MaxInputQueue => MaxInputQueueCapacity;
         public string LastDiagnosticLine
         {
             get => Volatile.Read(ref _lastDiagnosticLine);
@@ -115,6 +121,12 @@ namespace Foxglove.Schemas.Video
                 InitializeMediaFoundation();
                 ConfigureEncoder(_options);
                 IsRunning = true;
+                _encoderWorker = new Thread(EncoderWorkerLoop)
+                {
+                    IsBackground = true,
+                    Name = "Foxglove-MediaFoundation-H264"
+                };
+                _encoderWorker.Start();
                 LastDiagnosticLine = AppendDiagnostic(LastDiagnosticLine, "Windows Media Foundation H.264 encoder started.");
                 return true;
             }
@@ -152,29 +164,63 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            try
-            {
-                var nv12Frame = EnsureNv12Scratch();
-                if (!Rgb24ToNv12Converter.TryConvertRgb24ToNv12(
-                    rgb24Frame,
-                    _options.Width,
-                    _options.Height,
-                    nv12Frame,
-                    flipVertical: true,
-                    out var conversionError))
-                    throw new InvalidOperationException(conversionError);
+            var copy = new byte[rgb24Frame.Length];
+            Buffer.BlockCopy(rgb24Frame, 0, copy, 0, copy.Length);
+            while (Volatile.Read(ref _inputCount) >= MaxInputQueueCapacity
+                   && _inputFrames.TryDequeue(out _))
+                Interlocked.Decrement(ref _inputCount);
+            _inputFrames.Enqueue(new QueuedInputFrame(copy, timestampNs));
+            Interlocked.Increment(ref _inputCount);
+            _inputSignal.Set();
+            return true;
+        }
 
-                ProcessInputFrame(nv12Frame, timestampNs);
-                DrainEncoderOutput();
-                return true;
-            }
-            catch (Exception ex)
+        private void EncoderWorkerLoop()
+        {
+            while (IsRunning || Volatile.Read(ref _inputCount) > 0)
             {
-                LastError = DescribeException(ex);
-                LastDiagnosticLine = LastError;
-                Stop(clearOutputQueue: false);
-                return false;
+                if (!_inputFrames.TryDequeue(out var frame))
+                {
+                    _inputSignal.WaitOne(50);
+                    continue;
+                }
+                Interlocked.Decrement(ref _inputCount);
+                try
+                {
+                    var nv12Frame = EnsureNv12Scratch();
+                    if (!Rgb24ToNv12Converter.TryConvertRgb24ToNv12(
+                        frame.Data,
+                        _options.Width,
+                        _options.Height,
+                        nv12Frame,
+                        flipVertical: true,
+                        out var conversionError))
+                        throw new InvalidOperationException(conversionError);
+                    ProcessInputFrame(nv12Frame, frame.TimestampNs);
+                    DrainEncoderOutput();
+                }
+                catch (Exception ex)
+                {
+                    LastError = DescribeException(ex);
+                    LastDiagnosticLine = LastError;
+                    IsRunning = false;
+                    while (_inputFrames.TryDequeue(out _))
+                        Interlocked.Decrement(ref _inputCount);
+                    break;
+                }
             }
+        }
+
+        private readonly struct QueuedInputFrame
+        {
+            internal QueuedInputFrame(byte[] data, ulong timestampNs)
+            {
+                Data = data;
+                TimestampNs = timestampNs;
+            }
+
+            internal byte[] Data { get; }
+            internal ulong TimestampNs { get; }
         }
 
         /// <summary>Dequeues a completed H.264 access unit, if available.</summary>
@@ -210,6 +256,12 @@ namespace Foxglove.Schemas.Video
         private void Stop(bool clearOutputQueue)
         {
             IsRunning = false;
+            _inputSignal.Set();
+            var worker = Interlocked.Exchange(ref _encoderWorker, null);
+            if (worker != null && !ReferenceEquals(worker, Thread.CurrentThread))
+                worker.Join();
+            while (_inputFrames.TryDequeue(out _))
+                Interlocked.Decrement(ref _inputCount);
             if (_transform != null)
             {
                 try
