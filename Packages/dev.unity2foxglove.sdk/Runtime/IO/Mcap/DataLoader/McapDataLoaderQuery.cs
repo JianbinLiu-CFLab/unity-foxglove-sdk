@@ -20,10 +20,10 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Inclusive upper log-time bound in nanoseconds.</summary>
         public ulong EndTimeNs = ulong.MaxValue;
 
-        /// <summary>Optional channel ID filter; empty means all channels.</summary>
+        /// <summary>Optional channel ID filter; empty means all channels. When both filters are set, a message matching either filter is included.</summary>
         public List<ushort> ChannelIds = new List<ushort>();
 
-        /// <summary>Optional topic filter; empty means all topics.</summary>
+        /// <summary>Optional topic filter; empty means all topics. When both filters are set, topics and channel IDs are combined with union semantics.</summary>
         public List<string> Topics = new List<string>();
 
         /// <summary>
