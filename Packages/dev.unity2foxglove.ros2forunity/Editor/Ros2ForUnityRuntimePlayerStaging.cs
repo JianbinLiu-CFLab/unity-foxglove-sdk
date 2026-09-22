@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #if UNITY_EDITOR
-using System;
 using System.IO;
 using UnityEditor;
 using UnityEditor.Build;
@@ -16,7 +15,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
     internal sealed class Ros2ForUnityRuntimePlayerStaging : IPreprocessBuildWithReport, IPostprocessBuildWithReport
     {
         private const string StagingRelativePath = "Assets/StreamingAssets/Ros2ForUnity";
-        private const string PackagePrefix = "dev.unity2foxglove.ros2forunity.runtime.";
         public int callbackOrder => 50;
 
         static Ros2ForUnityRuntimePlayerStaging()
@@ -28,7 +26,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             var destination = Path.Combine(Application.dataPath, "StreamingAssets", "Ros2ForUnity");
             var marker = Path.Combine(destination, ".unity2foxglove-staged");
-            if (File.Exists(marker))
+            if (Directory.Exists(destination))
             {
                 Directory.Delete(destination, true);
                 AssetDatabase.Refresh();
@@ -40,15 +38,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (report.summary.platform != BuildTarget.StandaloneWindows64)
                 return;
             var project = Directory.GetParent(Application.dataPath)?.FullName;
-            var package = FindActiveRuntimePackage(project);
-            if (package == null)
-                throw new BuildFailedException("No active Windows ROS2 For Unity runtime package was found.");
+            var status = Ros2ForUnityRuntimeSelection.GetStatus(project);
+            if (status == null || !status.HasSelection)
+                throw new BuildFailedException(
+                    status?.Diagnostic ?? "No active Windows ROS2 For Unity runtime package was found.");
+            var packageName = status.SelectedRuntime.PackageName;
+            var package = Path.Combine(project, "Packages", packageName);
             var source = Path.Combine(package, "Runtime", "Ros2ForUnity");
             var destination = Path.Combine(Application.dataPath, "StreamingAssets", "Ros2ForUnity");
             if (!Directory.Exists(source))
                 throw new BuildFailedException("Selected ROS2 For Unity runtime has no Runtime/Ros2ForUnity payload: " + package);
             CleanupStaleStaging();
             Directory.CreateDirectory(destination);
+            File.WriteAllText(Path.Combine(destination, ".unity2foxglove-staged"), packageName);
             CopyIfPresent(Path.Combine(source, "metadata_ros2_for_unity.xml"), destination);
             CopyIfPresent(Path.Combine(source, "metadata_ros2cs.xml"), destination);
             var share = Path.Combine(source, "Plugins", "Windows", "x86_64", "share");
@@ -58,7 +60,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var packagedStreamingAssets = Path.Combine(source, "StreamingAssets", "Ros2ForUnity");
             if (Directory.Exists(packagedStreamingAssets))
                 CopyDirectory(packagedStreamingAssets, destination);
-            File.WriteAllText(Path.Combine(destination, ".unity2foxglove-staged"), package);
         }
 
         public void OnPostprocessBuild(BuildReport report)
@@ -69,21 +70,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
             Directory.Delete(destination, true);
             AssetDatabase.Refresh();
-        }
-
-        private static string FindActiveRuntimePackage(string project)
-        {
-            if (string.IsNullOrWhiteSpace(project)) return null;
-            var manifest = Path.Combine(project, "Packages", "manifest.json");
-            if (!File.Exists(manifest)) return null;
-            var text = File.ReadAllText(manifest);
-            var start = text.IndexOf(PackagePrefix, StringComparison.Ordinal);
-            if (start < 0) return null;
-            var end = text.IndexOf('"', start);
-            if (end < 0) return null;
-            var packageName = text.Substring(start, end - start);
-            var path = Path.Combine(project, "Packages", packageName);
-            return Directory.Exists(path) ? path : null;
         }
 
         private static void CopyIfPresent(string source, string destination)
