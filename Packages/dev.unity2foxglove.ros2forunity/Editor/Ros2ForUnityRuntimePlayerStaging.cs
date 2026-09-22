@@ -26,7 +26,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             var destination = Path.Combine(Application.dataPath, "StreamingAssets", "Ros2ForUnity");
             var marker = Path.Combine(destination, ".unity2foxglove-staged");
-            if (Directory.Exists(destination))
+            if (File.Exists(marker))
             {
                 Directory.Delete(destination, true);
                 AssetDatabase.Refresh();
