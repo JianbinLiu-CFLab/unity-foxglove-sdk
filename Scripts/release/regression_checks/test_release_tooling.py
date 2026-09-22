@@ -2107,7 +2107,12 @@ class RunCiTests(unittest.TestCase):
             def communicate(self):
                 return "", ""
 
-        tree = types.SimpleNamespace(process=FakeProcess(), terminate=lambda: [], close=lambda: None)
+        tree = types.SimpleNamespace(
+            process=FakeProcess(),
+            active_pids=lambda: [],
+            terminate=lambda: [],
+            close=lambda: None,
+        )
 
         with tempfile.TemporaryDirectory() as temp:
             job = self.run_ci.CiJob("mcap-conformance", ["tool"], disable_timeout=True)
