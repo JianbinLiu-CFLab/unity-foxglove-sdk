@@ -339,6 +339,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
             var legacy = json.Replace("\"schemaMetadataVersion\":3", "\"schemaMetadataVersion\":1", StringComparison.Ordinal)
                 .Replace(",\"fields\":[{\"name\":\"field0\",\"canonicalType\":\"int32\",\"ordinal\":0,\"encoding\":\"json\",\"nullable\":false,\"array\":false,\"aggregate\":false,\"protobufFieldNumber\":0,\"typeShapeDigest\":\"\"}]", string.Empty, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"fields\"", legacy, StringComparison.Ordinal);
             Assert.True(FoxRunSchemaMcapMetadata.TryParseJson(legacy, out var record, out var error), error);
             Assert.Equal(1, record.SchemaMetadataVersion);
         }

@@ -276,7 +276,8 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if ((record.SchemaMetadataVersion == 2 || record.SchemaMetadataVersion == SchemaMetadataVersion)
+            // Version 2 introduced field arrays; every later version retains that contract.
+            if (record.SchemaMetadataVersion >= 2
                 && record.Contracts.Any(contract => contract?.Fields == null))
             {
                 error = "schema metadata contract fields are missing";

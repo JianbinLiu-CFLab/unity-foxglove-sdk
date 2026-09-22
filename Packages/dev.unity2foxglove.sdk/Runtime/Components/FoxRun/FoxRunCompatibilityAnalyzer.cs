@@ -374,7 +374,7 @@ namespace Unity.FoxgloveSDK.Components
                 || !StringEquals(left.Encoding, right.Encoding))
                 return false;
 
-            if (recordedSchemaVersion < FoxRunSchemaMcapMetadata.SchemaMetadataVersion)
+            if (recordedSchemaVersion == 2)
             {
                 // Version 2 recorded only the original four field properties. Compare that
                 // projection exactly and do not treat newly added version-3 properties as false.
