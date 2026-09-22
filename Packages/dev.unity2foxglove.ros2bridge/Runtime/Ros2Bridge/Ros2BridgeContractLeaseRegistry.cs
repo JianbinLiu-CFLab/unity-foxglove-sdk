@@ -42,6 +42,7 @@ namespace Unity2Foxglove.Ros2Bridge
             Registering = 1,
             Ready = 2,
             Unregistering = 3,
+            RecoveryRequired = 4,
         }
 
         private sealed class Entry
@@ -325,6 +326,7 @@ namespace Unity2Foxglove.Ros2Bridge
 
             Ros2BridgeSessionContract unregister = null;
             Entry unregisteringEntry = null;
+            var recoveryRequired = false;
             lock (_gate)
             {
                 if (owned.IsReleased)
@@ -352,7 +354,14 @@ namespace Unity2Foxglove.Ros2Bridge
                         "The Bridge lease cleanup is already in progress.";
                     return false;
                 }
-                if (entry.Leases.Count == 1)
+                if (entry.State == EntryState.RecoveryRequired)
+                {
+                    unregister = entry.Contract;
+                    unregisteringEntry = entry;
+                    recoveryRequired = true;
+                    entry.State = EntryState.Unregistering;
+                }
+                else if (entry.Leases.Count == 1)
                 {
                     unregister = entry.Contract;
                     unregisteringEntry = entry;
@@ -375,6 +384,38 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 reason = string.Empty;
                 return true;
+            }
+
+            if (recoveryRequired)
+            {
+                if (!TryActivateLocalSafely(unregister, out var recoveryReason))
+                {
+                    lock (_gate)
+                    {
+                        if (_byBinding.TryGetValue(
+                                unregisteringEntry.Contract.BindingId,
+                                out var current)
+                            && ReferenceEquals(current, unregisteringEntry)
+                            && current.State == EntryState.Unregistering)
+                        {
+                            current.State = EntryState.RecoveryRequired;
+                        }
+                    }
+                    reason = recoveryReason;
+                    return false;
+                }
+                lock (_gate)
+                {
+                    if (!_byBinding.TryGetValue(
+                            unregisteringEntry.Contract.BindingId,
+                            out var current)
+                        || !ReferenceEquals(current, unregisteringEntry)
+                        || current.State != EntryState.Unregistering)
+                    {
+                        reason = "The Bridge lease recovery state changed concurrently.";
+                        return false;
+                    }
+                }
             }
 
             if (!TryRevokeLocalSafely(unregister, out var revokeReason))
@@ -414,7 +455,24 @@ namespace Unity2Foxglove.Ros2Bridge
                 // The local admission was revoked before the wire call. Restore
                 // it when the wire cleanup is rejected so the retained lease can
                 // be retried without losing the contract from session state.
-                TryActivateLocalSafely(unregister);
+                if (!TryActivateLocalSafely(unregister, out var restoreReason))
+                {
+                    lock (_gate)
+                    {
+                        if (_byBinding.TryGetValue(
+                                unregisteringEntry.Contract.BindingId,
+                                out var current)
+                            && ReferenceEquals(current, unregisteringEntry)
+                            && current.State == EntryState.Unregistering)
+                        {
+                            current.State = EntryState.RecoveryRequired;
+                        }
+                    }
+                    reason = string.IsNullOrWhiteSpace(restoreReason)
+                        ? reason + " Local admission recovery failed."
+                        : reason + " Local admission recovery failed: " + restoreReason;
+                    return false;
+                }
                 lock (_gate)
                 {
                     if (_byBinding.TryGetValue(
@@ -463,14 +521,18 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
-        private void TryActivateLocalSafely(Ros2BridgeSessionContract contract)
+        private bool TryActivateLocalSafely(
+            Ros2BridgeSessionContract contract,
+            out string reason)
         {
             try
             {
-                _sessionState.TryActivateLocal(contract, out _);
+                return _sessionState.TryActivateLocal(contract, out reason);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                reason = exception.Message;
+                return false;
             }
         }
 

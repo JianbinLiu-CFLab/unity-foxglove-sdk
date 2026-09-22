@@ -49,6 +49,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!Directory.Exists(source))
                 throw new BuildFailedException("Selected ROS2 For Unity runtime has no Runtime/Ros2ForUnity payload: " + package);
             CleanupStaleStaging();
+            if (Directory.Exists(destination))
+            {
+                throw new BuildFailedException(
+                    "Ros2ForUnity StreamingAssets already exists and is not owned by the SDK; " +
+                    "move it before building so user files are not overwritten or deleted: " + destination);
+            }
             Directory.CreateDirectory(destination);
             File.WriteAllText(Path.Combine(destination, ".unity2foxglove-staged"), packageName);
             CopyIfPresent(Path.Combine(source, "metadata_ros2_for_unity.xml"), destination);
