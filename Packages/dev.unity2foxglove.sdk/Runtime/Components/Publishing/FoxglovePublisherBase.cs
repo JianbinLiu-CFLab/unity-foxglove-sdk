@@ -199,6 +199,10 @@ namespace Unity.FoxgloveSDK.Components
             ResolveManager();
         }
 
+        /// <remarks>
+        /// Derived publishers overriding this callback must call the base implementation
+        /// so replay-disable ownership is cleared when a publisher is disabled manually.
+        /// </remarks>
         protected virtual void OnDisable()
         {
             if (!_replayDisableInProgress)
