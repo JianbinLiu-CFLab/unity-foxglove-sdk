@@ -377,9 +377,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 return true;
             }
 
-            if (!_sessionState.TryRevokeLocal(
-                    unregister,
-                    out var revokeReason))
+            if (!TryRevokeLocalSafely(unregister, out var revokeReason))
             {
                 lock (_gate)
                 {
@@ -416,9 +414,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 // The local admission was revoked before the wire call. Restore
                 // it when the wire cleanup is rejected so the retained lease can
                 // be retried without losing the contract from session state.
-                _sessionState.TryActivateLocal(
-                    unregister,
-                    out _);
+                TryActivateLocalSafely(unregister);
                 lock (_gate)
                 {
                     if (_byBinding.TryGetValue(
@@ -449,6 +445,33 @@ namespace Unity2Foxglove.Ros2Bridge
                 }
             }
             return true;
+        }
+
+        private bool TryRevokeLocalSafely(
+            Ros2BridgeContract contract,
+            out string reason)
+        {
+            try
+            {
+                var accepted = _sessionState.TryRevokeLocal(contract, out reason);
+                return accepted;
+            }
+            catch (Exception exception)
+            {
+                reason = exception.Message;
+                return false;
+            }
+        }
+
+        private void TryActivateLocalSafely(Ros2BridgeContract contract)
+        {
+            try
+            {
+                _sessionState.TryActivateLocal(contract, out _);
+            }
+            catch (Exception)
+            {
+            }
         }
 
         internal Ros2BridgeSessionContractSnapshot
