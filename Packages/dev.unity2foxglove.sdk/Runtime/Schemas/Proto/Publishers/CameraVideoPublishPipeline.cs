@@ -52,6 +52,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly CameraVideoSidecarSession _videoSidecarSession = new CameraVideoSidecarSession();
         private bool _warnedVideoEncoderUnavailable;
         private string _lastLoggedStderr;
+        private byte[] _rgbScratch;
         private byte[] _i420Scratch;
 
         public CameraVideoPublishPipeline(CameraPublishDiagnostics diagnostics, Action<string> logWarning = null)
@@ -152,10 +153,10 @@ namespace Unity.FoxgloveSDK.Components
                 return result;
             }
 
-            // Materialize the readback source once; sidecar boundaries accept
-            // byte[] and own or synchronously consume that submitted buffer.
-            var ownedFrameBytes = new byte[frameBytes.Length];
-            frameBytes.CopyTo(ownedFrameBytes);
+            if (_rgbScratch == null || _rgbScratch.Length != frameBytes.Length)
+                _rgbScratch = new byte[frameBytes.Length];
+            frameBytes.CopyTo(_rgbScratch);
+            var ownedFrameBytes = _rgbScratch;
 
             if (_videoSidecarSession.IsOpenH264Mode)
             {
@@ -234,6 +235,8 @@ namespace Unity.FoxgloveSDK.Components
         public void Dispose()
         {
             _videoSidecarSession.Dispose();
+            _rgbScratch = null;
+            _i420Scratch = null;
         }
 
         public CameraVideoSidecarMatchResult EnsureSidecarMatchesMode(

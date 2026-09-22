@@ -219,7 +219,6 @@ namespace Unity.FoxgloveSDK.Components
         private int _activeScanValidPoints;
         private VirtualLidarScanRepresentation _activeScanRepresentation;
         private float4x4 _activeScanWorldToLocal;
-        private int _sharedSensorClockGeneration = -1;
 
         private VirtualLidarScanScheduler ScanScheduler => _scanScheduler ??= new VirtualLidarScanScheduler(this);
 
@@ -373,11 +372,6 @@ namespace Unity.FoxgloveSDK.Components
 
         private void FixedUpdate()
         {
-            if (_manager != null && _sharedClockGeneration != _manager.SharedSensorClockGeneration)
-            {
-                _scanClock.Reset();
-                _sharedClockGeneration = _manager.SharedSensorClockGeneration;
-            }
             using (FixedUpdateMarker.Auto())
             {
                 if (_scanPattern == null || !_scanBuffers.IsCreated || _scanBuffers.EffectiveRayCount <= 0)
@@ -387,9 +381,9 @@ namespace Unity.FoxgloveSDK.Components
                     return;
 
                 if (_manager != null
-                    && _sharedSensorClockGeneration != _manager.SharedSensorClockGeneration)
+                    && _sharedClockGeneration != _manager.SharedSensorClockGeneration)
                 {
-                    _sharedSensorClockGeneration = _manager.SharedSensorClockGeneration;
+                    _sharedClockGeneration = _manager.SharedSensorClockGeneration;
                     _scanClock.Reset();
                     ResetScanState(Time.fixedTimeAsDouble);
                 }
@@ -617,7 +611,7 @@ namespace Unity.FoxgloveSDK.Components
                 : _manager.GetSharedSensorClockUnixTime;
             if (_scanClock.EnsureInitialized(physNow, resolveUnixNs))
             {
-                _sharedSensorClockGeneration = _manager == null ? -1 : _manager.SharedSensorClockGeneration;
+                _sharedClockGeneration = _manager == null ? -1 : _manager.SharedSensorClockGeneration;
                 _scanColumnProgress = 0d;
             }
         }

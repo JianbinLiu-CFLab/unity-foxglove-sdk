@@ -88,7 +88,6 @@ namespace Unity.FoxgloveSDK.Components
         private long _lastReportedDroppedSamples;
         private double _nextDroppedSamplesLogTime;
         private ISchemaRegistry _schemaRegisteredRegistry;
-        private int _sharedSensorClockGeneration = -1;
         private int _sharedClockGeneration = -1;
 
         private bool PublishEnabled => _publishing;
@@ -202,18 +201,11 @@ namespace Unity.FoxgloveSDK.Components
             if (_rigidbody == null || Time.fixedDeltaTime <= 0f)
                 return;
 
-            if (_manager != null
-                && _sharedSensorClockGeneration != _manager.SharedSensorClockGeneration)
-            {
-                _sharedSensorClockGeneration = _manager.SharedSensorClockGeneration;
-                _hasEpoch = false;
-                _nextSampleIndex = 0;
-            }
-
             if (_manager != null && _sharedClockGeneration != _manager.SharedSensorClockGeneration)
             {
                 _hasEpoch = false;
                 _sharedClockGeneration = _manager.SharedSensorClockGeneration;
+                _nextSampleIndex = 0;
             }
 
             var worldVelocity = _rigidbody.linearVelocity;
