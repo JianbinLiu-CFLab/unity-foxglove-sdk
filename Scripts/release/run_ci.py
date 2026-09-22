@@ -393,6 +393,7 @@ ANALYZER_OUTPUT_DIR = ISOLATED_DOTNET_ROOT / "analyzer-output"
 UNIT_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit"
 UNIT_ADAPTER_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-adapter"
 UNIT_NATIVE_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-native"
+ROS2_BRIDGE_TEST_PROPS = dotnet_msbuild_props("ros2bridge-unit-tests")
 
 
 def green(msg: str) -> str:
@@ -1101,12 +1102,13 @@ def main() -> int:
         results["ros2bridge-xunit-restore"] = restore_with_ignoring_failed_sources(
             ROS2_BRIDGE_UNIT_TESTS_PROJ,
             "Restore ROS2 Bridge behavioral xUnit lane",
-            (),
+            ROS2_BRIDGE_TEST_PROPS,
             fatal=False,
         )
         results["ros2bridge-xunit"] = (
             run(
                 ["dotnet", "test", "--no-restore", ROS2_BRIDGE_UNIT_TESTS_PROJ,
+                 *ROS2_BRIDGE_TEST_PROPS,
                  "--logger", "trx;LogFileName=unit-tests-ros2bridge.trx",
                  "--results-directory", str(CI_ROOT / "TestResults" / "Ros2Bridge")],
                 "ROS2 Bridge behavioral xUnit tests",
