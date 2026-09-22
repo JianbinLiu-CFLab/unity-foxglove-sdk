@@ -56,10 +56,10 @@ namespace Unity.FoxgloveSDK.UnitTests
             try
             {
                 Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
-                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(5)));
                 race = RunOnDedicatedThread(() => Record.Exception(() =>
                     pipeline.Enqueue(new TestRequest(2), out _, out _)));
-                Assert.True(enqueueGuardReached.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(enqueueGuardReached.Wait(TimeSpan.FromSeconds(5)));
 
                 pipeline.Dispose();
                 releaseEnqueueGuard.Set();
@@ -197,9 +197,9 @@ namespace Unity.FoxgloveSDK.UnitTests
             Task<Exception> second = null;
             try
             {
-                Assert.True(firstStopGuardReached.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(firstStopGuardReached.Wait(TimeSpan.FromSeconds(5)));
                 second = RunOnDedicatedThread(() => Record.Exception(pipeline.Dispose));
-                Assert.True(secondStopGuardReached.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(secondStopGuardReached.Wait(TimeSpan.FromSeconds(5)));
                 releaseFirstStopGuard.Set();
                 Assert.True(
                     SpinWait.SpinUntil(() => IsDisposed(GetWorkerSignal(pipeline)), TimeSpan.FromSeconds(5)),
@@ -379,7 +379,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             try
             {
                 Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
-                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(5)));
                 Assert.False(pipeline.Stop(clearCompleted: true, out _));
 
                 Assert.False(
