@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void OversizedDataDoesNotEvictExistingData()
         {
-            var queue = new WsSendQueue(4, 4);
+            var queue = new WsSendQueue(4, 8);
             var first = queue.Enqueue(new QueuedFrame(2, new byte[] { 1, 2 }, FramePriority.Data));
             var oversized = queue.Enqueue(new QueuedFrame(2, new byte[] { 1, 2, 3, 4, 5 }, FramePriority.Data));
             Assert.True(first.Accepted);

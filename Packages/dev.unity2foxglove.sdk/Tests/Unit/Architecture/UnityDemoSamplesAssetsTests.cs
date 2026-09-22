@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
         private static readonly string[] MazeDemoRoots =
         {
-            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo",
+            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo",
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo"
         };
 

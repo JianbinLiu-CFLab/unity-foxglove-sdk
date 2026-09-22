@@ -243,6 +243,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Fact]
         public void MediaFoundationSubmissionFailureStopsTheEncoder()
         {
+            if (!OperatingSystem.IsWindows())
+                return;
             using var sidecar = new MediaFoundationH264EncoderSidecar();
             SetProperty(sidecar, "IsRunning", true);
             SetField(

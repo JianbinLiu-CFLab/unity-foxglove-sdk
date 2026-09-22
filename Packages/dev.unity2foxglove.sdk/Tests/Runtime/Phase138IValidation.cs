@@ -45,11 +45,11 @@ namespace Unity.FoxgloveSDK.Tests
         private const string DemoReadmeRelativePath =
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/README.md";
         private const string ImportedDemoEditorRelativePath =
-            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs";
+            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs";
         private const string ImportedDemoBootstrapRelativePath =
-            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
+            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
         private const string ImportedDemoVehicleRelativePath =
-            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Phase138LidarVehicleController.cs";
+            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo/Phase138LidarVehicleController.cs";
         private const string SmokeSceneRelativePath =
             "Unity2Foxglove/Assets/Scenes/Phase138_Foxglove_MCAP_Smoke.unity";
 
