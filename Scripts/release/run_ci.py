@@ -651,6 +651,8 @@ def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
             REPO_ROOT,
             env=env,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
