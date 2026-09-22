@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 
+using System;
+using System.Reflection;
 using Unity.FoxgloveSDK.Components;
 using Xunit;
 
@@ -116,5 +118,36 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 expected,
                 WarningDebouncer.ShouldEmitKeyedCooldown(key, lastKey, lastTicks, nowTicks, intervalTicks));
         }
+
+        [Fact]
+        public void ReplaySubscriberSnapshotsTrackAddAndRemoveAcrossAllForwarders()
+        {
+            var manager = new FoxgloveManager();
+            var messages = 0;
+            Action<string, byte[]> first = (_, _) => messages++;
+            Action<string, byte[]> second = (_, _) => messages++;
+            manager.OnReplayMessage += first;
+            manager.OnReplayMessage += second;
+            Invoke(manager, "InvokeReplayMessageSubscribers", "topic", Array.Empty<byte>());
+            Assert.Equal(2, messages);
+            manager.OnReplayMessage -= first;
+            Invoke(manager, "InvokeReplayMessageSubscribers", "topic", Array.Empty<byte>());
+            Assert.Equal(3, messages);
+
+            var contexts = 0;
+            manager.OnReplayMessageContext += _ => contexts++;
+            Invoke(manager, "InvokeReplayMessageContextSubscribers", default(ReplayMessageContext));
+            Assert.Equal(1, contexts);
+
+            var batches = 0;
+            manager.OnReplayBatchCompleted += _ => batches++;
+            Invoke(manager, "InvokeReplayBatchSubscribers", default(ReplayBatchContext));
+            Assert.Equal(1, batches);
+        }
+
+        private static void Invoke(FoxgloveManager manager, string method, params object[] args)
+            => typeof(FoxgloveManager)
+                .GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(manager, args);
     }
 }

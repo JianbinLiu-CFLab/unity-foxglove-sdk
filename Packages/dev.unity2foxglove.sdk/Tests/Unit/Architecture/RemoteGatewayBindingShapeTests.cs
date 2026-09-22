@@ -57,10 +57,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
-        public void QosProfileMatchesNativeOneByteLayout()
+        public void QosProfileDeclaresExactlyOneByteReliabilityField()
         {
-            Assert.Equal(1, Marshal.SizeOf<RemoteGatewayNativeMethods.FoxgloveQosProfile>());
-            Assert.Equal(1, Marshal.SizeOf<RemoteGatewayNativeMethods.FoxgloveReliability>());
+            var source = Text(RuntimeRoot + "/Native/RemoteGatewayNativeMethods.cs");
+            var root = CSharpSyntaxTree.ParseText(source).GetRoot();
+            var qos = root.DescendantNodes()
+                .OfType<StructDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == "FoxgloveQosProfile");
+
+            var fields = qos.Members.OfType<FieldDeclarationSyntax>().ToArray();
+            Assert.Single(fields);
+            Assert.Equal("FoxgloveReliability", fields[0].Declaration.Type.ToString());
+            Assert.Equal("Reliability", fields[0].Declaration.Variables.Single().Identifier.ValueText);
+
+            var reliability = root.DescendantNodes()
+                .OfType<EnumDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == "FoxgloveReliability");
+            Assert.Equal("byte", reliability.BaseList.Types.Single().Type.ToString());
         }
 
         [Fact]
