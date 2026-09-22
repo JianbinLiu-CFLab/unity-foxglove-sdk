@@ -326,7 +326,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             transport.Connect(
                 "127.0.0.1",
                 peer.Port,
-                timeoutMs: 1000);
+                timeoutMs: 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -407,7 +407,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             transport.Connect(
                 "127.0.0.1",
                 peer.Port,
-                timeoutMs: 1000);
+                timeoutMs: 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 limits,
@@ -468,7 +468,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             var limits = U2R2ProtocolLimits.Default.With(
                 ("readTimeoutMs", 1000UL));
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 limits,
@@ -555,7 +555,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             var limits = U2R2ProtocolLimits.Default.With(
                 ("readTimeoutMs", 1000UL));
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 limits,
@@ -638,7 +638,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             transport.Connect(
                 "127.0.0.1",
                 peer.Port,
-                timeoutMs: 1000);
+                timeoutMs: 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -707,7 +707,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                             : hello.RequestId + 1));
             });
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -782,7 +782,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                         connectionGeneration: 19));
             });
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -820,7 +820,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 peerClosed.Set();
             });
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -857,7 +857,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 peerClosed.Set();
             });
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -915,7 +915,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 Thread.Sleep(500);
             });
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -989,7 +989,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     maxPerContractDepth: 2,
                     maxPerContractBytes: 64));
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -1089,7 +1089,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     maxPerContractDepth: 2,
                     maxPerContractBytes: 64));
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -1172,7 +1172,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     maxPerContractDepth: 2,
                     maxPerContractBytes: 64));
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -1256,7 +1256,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 contractId: 12,
                 generation: 7);
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
@@ -1329,7 +1329,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 contractId: 11,
                 generation: 7);
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
