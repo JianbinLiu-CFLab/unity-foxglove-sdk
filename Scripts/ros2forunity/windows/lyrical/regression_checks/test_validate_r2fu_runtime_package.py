@@ -92,6 +92,11 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertTrue(self.validator.fresh_project_acceptance_passed({"freshProjectAcceptance": {"status": "passed"}}))
         self.assertTrue(self.validator.fresh_project_acceptance_passed({"freshProjectAcceptance": "passed"}))
 
+    def test_release_gate_rejects_prototype_distribution(self) -> None:
+        self.assertFalse(self.validator.published_runtime_is_not_prototype({"distributionLevel": "Prototype"}))
+        self.assertTrue(self.validator.published_runtime_is_not_prototype({"distributionLevel": "Release"}))
+        self.assertTrue(self.validator.published_runtime_is_not_prototype({}))
+
     def test_public_docs_must_include_artifact_hash(self) -> None:
         """Public docs validation rejects README/notices that omit the artifact hash."""
         with tempfile.TemporaryDirectory() as temp:

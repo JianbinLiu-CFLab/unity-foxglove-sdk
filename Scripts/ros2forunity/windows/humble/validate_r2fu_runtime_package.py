@@ -401,11 +401,22 @@ def inventory_category_counts_match(categories: object, files: object) -> bool:
     return actual == declared
 
 
-def fresh_project_acceptance_passed(manifest: dict) -> bool:
+def fresh_project_acceptance_status(manifest: dict) -> str:
+    """Return the normalized fresh-project acceptance status."""
     acceptance = manifest.get("freshProjectAcceptance")
     if isinstance(acceptance, dict):
-        return str(acceptance.get("status", "")) == "passed"
-    return str(acceptance or "") == "passed"
+        return str(acceptance.get("status", ""))
+    return str(acceptance or "")
+
+
+def published_runtime_is_not_prototype(manifest: dict) -> bool:
+    """Return whether the manifest is not marked as a Prototype release."""
+    return str(manifest.get("distributionLevel", "")) != "Prototype"
+
+
+def fresh_project_acceptance_passed(manifest: dict) -> bool:
+    """Return whether fresh-project acceptance passed."""
+    return fresh_project_acceptance_status(manifest) == "passed"
 
 
 def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bool = False, skip_dll_hash: bool = False) -> None:
@@ -465,12 +476,7 @@ def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bo
             redistribution_status == "published",
             f"redistributionStatus={redistribution_status!r}",
         )
-        fresh_acceptance = manifest.get("freshProjectAcceptance")
-        fresh_status = (
-            str(fresh_acceptance.get("status", ""))
-            if isinstance(fresh_acceptance, dict)
-            else str(fresh_acceptance or "")
-        )
+        fresh_status = fresh_project_acceptance_status(manifest)
         add(
             results,
             "release gate: fresh-project acceptance is passed",
@@ -480,7 +486,7 @@ def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bo
         add(
             results,
             "release gate: published runtime is not Prototype",
-            str(manifest.get("distributionLevel", "")) != "Prototype",
+            published_runtime_is_not_prototype(manifest),
             f"distributionLevel={manifest.get('distributionLevel')!r}",
         )
 
