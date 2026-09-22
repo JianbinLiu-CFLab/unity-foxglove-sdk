@@ -750,19 +750,9 @@ namespace Unity.FoxgloveSDK.IO
             while (insertAt > 0
                    && CompareHistoryCandidates(candidates[insertAt - 1], candidate) > 0)
                 insertAt--;
-            if (insertAt >= maxMessages)
-            {
-                if (candidates.Count < maxMessages)
-                    insertAt = candidates.Count;
-                else
-                {
-                    candidates.RemoveAt(0);
-                    insertAt = candidates.Count;
-                }
-            }
             candidates.Insert(insertAt, candidate);
             if (candidates.Count > maxMessages)
-                candidates.RemoveAt(maxMessages);
+                candidates.RemoveAt(0);
         }
 
         private static int CompareHistoryCandidates(
@@ -1406,22 +1396,6 @@ namespace Unity.FoxgloveSDK.IO
             return a.PublishTime.CompareTo(b.PublishTime);
         }
 
-        private static int CompareMessageFields(
-            ushort channelId,
-            uint sequence,
-            ulong logTime,
-            ulong publishTime,
-            McapMessage other)
-        {
-            var cmp = logTime.CompareTo(other.LogTime);
-            if (cmp != 0) return cmp;
-            cmp = channelId.CompareTo(other.ChannelId);
-            if (cmp != 0) return cmp;
-            cmp = sequence.CompareTo(other.Sequence);
-            if (cmp != 0) return cmp;
-            return publishTime.CompareTo(other.PublishTime);
-        }
-
         private static void SortChunkIndexes(List<McapChunkIndex> chunkIndexes)
         {
             chunkIndexes?.Sort(CompareChunkIndexes);
@@ -1496,4 +1470,4 @@ namespace Unity.FoxgloveSDK.IO
             internal ulong PublishTime;
         }
     }
-}
+}`r`n

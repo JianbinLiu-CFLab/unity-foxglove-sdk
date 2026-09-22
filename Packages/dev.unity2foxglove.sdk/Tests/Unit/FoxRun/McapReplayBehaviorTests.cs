@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
@@ -12,6 +13,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 {
  public sealed class McapReplayBehaviorTests
  {
+  [Fact] public void BoundedHistoryKeepsLatestMessagesWhenRecordsArriveOutOfOrder()
+  {
+   var engineType=typeof(McapReplayEngine); var candidateType=engineType.GetNestedType("HistoryCandidate",BindingFlags.NonPublic);
+   var ctor=candidateType.GetConstructor(BindingFlags.Instance|BindingFlags.NonPublic,null,new[]{typeof(int),typeof(int),typeof(int),typeof(ushort),typeof(uint),typeof(ulong),typeof(ulong)},null);
+   var insert=engineType.GetMethod("InsertBoundedHistoryCandidate",BindingFlags.Static|BindingFlags.NonPublic);
+   var bounded=(System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(candidateType));
+   foreach(var time in new ulong[]{50,10,20,30}) insert.Invoke(null,new[]{bounded,ctor.Invoke(new object[]{0,0,1,(ushort)1,(uint)0,time,time}),2});
+   var times=bounded.Cast<object>().Select(x=>(ulong)candidateType.GetProperty("LogTime",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(x)).ToArray();
+   Assert.Equal(new ulong[]{30,50},times);
+  }
   [Fact] public void ReplayHistoryDrainAdvancesOffsetAndCompletesAfterFanout()
   {
    var b=new ReplayPanelHistoryBuffer(); b.Buffer.Add(new McapMessage{ChannelId=1,LogTime=10,Data=new byte[]{1}}); b.Buffer.Add(new McapMessage{ChannelId=1,LogTime=20,Data=new byte[]{2}}); b.BeginDrain(20);

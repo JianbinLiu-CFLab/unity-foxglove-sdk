@@ -54,6 +54,7 @@ namespace Unity.FoxgloveSDK.Core
         private Dictionary<ushort, ReplayChannelBehavior> _channelBehaviorMap;
         /// <summary>Reusable replay tick output buffer to avoid per-frame list allocations.</summary>
         private readonly List<McapMessage> _replayTickBuffer = new();
+        private readonly object _panelHistoryLock = new();
         /// <summary>Reusable paused-seek snapshot buffer to avoid per-request list allocations.</summary>
         private readonly List<McapMessage> _replaySnapshotBuffer = new();
         private readonly ReplayPanelHistoryBuffer _panelHistory = new();
@@ -263,7 +264,10 @@ namespace Unity.FoxgloveSDK.Core
             lock (_replayEngineLock)
             {
                 if (!Volatile.Read(ref _replayEnabled) || _replayEngine == null) return;
-                messages = _replayEngine.Tick(nowNs, _replayTickBuffer);
+                var tickMessages = _replayEngine.Tick(nowNs, _replayTickBuffer);
+                messages = tickMessages == null || tickMessages.Count == 0
+                    ? Array.Empty<McapMessage>()
+                    : new List<McapMessage>(tickMessages);
             }
 
             // Engine state is captured under its lock; transport/session fanout
@@ -346,24 +350,27 @@ namespace Unity.FoxgloveSDK.Core
                 var clampedTo = timeNs > _replayEngine.EndTimeNs ? _replayEngine.EndTimeNs : timeNs;
                 if (clampedTo < startNs) clampedTo = startNs;
 
-                var fromNs = _panelHistory.GetHistoryFromTime(startNs, clampedTo, ScrubHistoryWindowNs);
-                var subscribed = session.SnapshotSubscribedChannelIds();
-                var replayChannels = new HashSet<ushort>();
-                foreach (var channelId in subscribed)
+                lock (_panelHistoryLock)
                 {
-                    if ((channelId & (uint)McapReplayEngine.ReplayChannelIdBase) != 0)
-                        replayChannels.Add((ushort)(channelId & 0xFFFF));
+                    var fromNs = _panelHistory.GetHistoryFromTime(startNs, clampedTo, ScrubHistoryWindowNs);
+                    var subscribed = session.SnapshotSubscribedChannelIds();
+                    var replayChannels = new HashSet<ushort>();
+                    foreach (var channelId in subscribed)
+                    {
+                        if ((channelId & (uint)McapReplayEngine.ReplayChannelIdBase) != 0)
+                            replayChannels.Add((ushort)(channelId & 0xFFFF));
+                    }
+                    _replayEngine.History(
+                        fromNs,
+                        clampedTo,
+                        _panelHistory.Buffer,
+                        ScrubHistoryMaxMessagesPerRequest,
+                        replayChannels);
+                    _panelHistory.BeginDrain(clampedTo);
                 }
-                _replayEngine.History(
-                    fromNs,
-                    clampedTo,
-                    _panelHistory.Buffer,
-                    ScrubHistoryMaxMessagesPerRequest,
-                    replayChannels);
-                _panelHistory.BeginDrain(clampedTo);
             }
 
-            DrainPanelHistoryLocked(session);
+            DrainPanelHistory(session);
         }
 
         /// <summary>
@@ -373,7 +380,8 @@ namespace Unity.FoxgloveSDK.Core
         /// <param name="session">Session that receives replay history frames.</param>
         public void DrainPanelHistory(FoxgloveSession session)
         {
-            DrainPanelHistoryLocked(session);
+            lock (_panelHistoryLock)
+                DrainPanelHistoryLocked(session);
         }
 
         /// <summary>
@@ -382,10 +390,8 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void CancelPanelHistory()
         {
-            lock (_replayEngineLock)
-            {
+            lock (_panelHistoryLock)
                 _panelHistory.CancelDrain();
-            }
         }
 
         /// <summary>
@@ -394,10 +400,8 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void ResetPanelHistoryProgress()
         {
-            lock (_replayEngineLock)
-            {
+            lock (_panelHistoryLock)
                 _panelHistory.ResetDebounce();
-            }
         }
 
         private void DrainPanelHistoryLocked(FoxgloveSession session)
