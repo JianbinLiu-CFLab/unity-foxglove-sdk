@@ -65,6 +65,10 @@ jobs:
         if: always()
         run: dotnet test --no-restore Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Unity2Foxglove.Ros2Bridge.UnitTests.csproj --logger "trx;LogFileName=unit-tests-ros2bridge.trx" --results-directory build/TestResults/Ros2Bridge
 
+      - name: Remove generated ROS2 Bridge test intermediates
+        if: always()
+        run: rm -rf Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/bin Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/obj
+
       - name: Restore deterministic performance regression tests
         if: always()
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Performance/Regression/FoxgloveSdk.PerformanceRegressionTests.csproj
