@@ -243,8 +243,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Fact]
         public void MediaFoundationSubmissionRejectsFrameWhenStopped()
         {
-            if (!OperatingSystem.IsWindows())
-                return;
             using var sidecar = new MediaFoundationH264EncoderSidecar();
             Assert.False(sidecar.TrySubmitFrame(new byte[12], 123UL));
             Assert.Contains("not running", sidecar.LastError, StringComparison.OrdinalIgnoreCase);
@@ -253,8 +251,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Fact]
         public void MediaFoundationSubmissionRejectsInvalidFrameSize()
         {
-            if (!OperatingSystem.IsWindows())
-                return;
             using var sidecar = new MediaFoundationH264EncoderSidecar();
             SetProperty(sidecar, "IsRunning", true);
             SetField(sidecar, "_options", new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
@@ -265,8 +261,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Fact]
         public void MediaFoundationWorkerStopsAndReportsNativeFailure()
         {
-            if (!OperatingSystem.IsWindows())
-                return;
             using var sidecar = new MediaFoundationH264EncoderSidecar();
             SetProperty(sidecar, "IsRunning", true);
             SetField(sidecar, "_options", new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
