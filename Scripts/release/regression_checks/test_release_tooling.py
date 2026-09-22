@@ -2104,7 +2104,7 @@ class RunCiTests(unittest.TestCase):
                 return None
             def poll(self):
                 return 0
-            def communicate(self):
+            def communicate(self, timeout=None):
                 return "", ""
 
         tree = types.SimpleNamespace(
@@ -2120,6 +2120,22 @@ class RunCiTests(unittest.TestCase):
                 result = self.run_ci._run_ci_job(job, Path(temp))
 
         self.assertTrue(result.ok)
+
+    def test_parallel_job_drains_noisy_child_before_wait_deadlock(self) -> None:
+        """A noisy child must complete instead of filling the redirected pipe."""
+        command = [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write('x' * 1048576); sys.stdout.flush()",
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            job = self.run_ci.CiJob("pipe-drain", command)
+            with mock.patch.object(self.run_ci, "job_timeout_seconds", return_value=20):
+                result = self.run_ci._run_ci_job(job, Path(temp))
+
+        self.assertTrue(result.ok)
+        self.assertEqual(0, result.returncode)
+        self.assertLess(result.elapsed_seconds, 10)
 
     def test_main_dispatches_default_ci_through_parallel_jobs(self) -> None:
         """Without --only, CI should use the parallel job runner and aggregate job results."""

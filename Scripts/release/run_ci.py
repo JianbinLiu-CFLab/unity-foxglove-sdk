@@ -654,8 +654,11 @@ def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
             stderr=subprocess.STDOUT,
         )
         try:
-            tree.process.wait(timeout=effective_timeout)
-        except subprocess.TimeoutExpired as ex:
+            # communicate() drains stdout/stderr concurrently with process
+            # completion. Waiting first can deadlock once a noisy lane fills
+            # the OS pipe buffer before it exits.
+            stdout, _ = tree.process.communicate(timeout=effective_timeout)
+        except subprocess.TimeoutExpired:
             residual = tree.terminate()
             try:
                 stdout, _ = tree.process.communicate(timeout=5)
@@ -681,10 +684,6 @@ def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
                         f"{FAIL} {job.name} exited with owned descendants: {residual}\n"
                     ), encoding="utf-8")
                 return CiJobResult(job.name, False, 124, elapsed, log_path)
-        # communicate() drains the redirected pipe after the owned tree has
-        # quiesced; reading only after wait() can deadlock when a lane emits
-        # more than the OS pipe buffer.
-        stdout, _ = tree.process.communicate()
         elapsed = time.monotonic() - start
         returncode = tree.process.returncode
         log_path.write_text(_bound_captured_output(stdout or ""), encoding="utf-8")
