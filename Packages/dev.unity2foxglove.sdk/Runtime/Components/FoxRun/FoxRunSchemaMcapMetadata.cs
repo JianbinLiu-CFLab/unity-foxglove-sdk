@@ -198,18 +198,7 @@ namespace Unity.FoxgloveSDK.Components
                         Flow = contract.Flow ?? string.Empty,
                         Fields = contract.Fields == null
                             ? new List<FoxRunSchemaMcapFieldMetadata>()
-                            : contract.Fields.Select((field, ordinal) => new FoxRunSchemaMcapFieldMetadata
-                            {
-                                Name = field?.JsonName ?? string.Empty,
-                                CanonicalType = field?.Type ?? string.Empty,
-                                Ordinal = ordinal,
-                                Encoding = contract.Encoding ?? string.Empty,
-                                Nullable = field?.Nullable ?? false,
-                                Array = field?.Array ?? false,
-                                Aggregate = field?.Aggregate ?? false,
-                                ProtobufFieldNumber = field?.ProtobufFieldNumber ?? 0,
-                                TypeShapeDigest = ComputeTypeShapeDigest(field?.TypeShape)
-                            }).ToList()
+                            : contract.Fields.Select((field, ordinal) => CreateFieldMetadata(field, contract.Encoding, ordinal)).ToList()
                     });
                 }
             }
@@ -287,14 +276,33 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if (record.SchemaMetadataVersion == 2
+            if ((record.SchemaMetadataVersion == 2 || record.SchemaMetadataVersion == SchemaMetadataVersion)
                 && record.Contracts.Any(contract => contract?.Fields == null))
             {
-                error = "version 2 contract fields are missing";
+                error = "schema metadata contract fields are missing";
                 return false;
             }
 
             return true;
+        }
+
+        internal static FoxRunSchemaMcapFieldMetadata CreateFieldMetadata(
+            FoxRunSchemaFieldInfo field,
+            string encoding,
+            int ordinal)
+        {
+            return new FoxRunSchemaMcapFieldMetadata
+            {
+                Name = field?.JsonName ?? string.Empty,
+                CanonicalType = field?.Type ?? string.Empty,
+                Ordinal = ordinal,
+                Encoding = encoding ?? string.Empty,
+                Nullable = field?.Nullable ?? false,
+                Array = field?.Array ?? false,
+                Aggregate = field?.Aggregate ?? false,
+                ProtobufFieldNumber = field?.ProtobufFieldNumber ?? 0,
+                TypeShapeDigest = ComputeTypeShapeDigest(field?.TypeShape)
+            };
         }
 
         internal static string ComputeTypeShapeDigest(FoxRunTypeShapeInfo shape)

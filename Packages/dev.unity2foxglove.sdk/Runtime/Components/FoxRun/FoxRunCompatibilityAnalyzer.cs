@@ -223,10 +223,12 @@ namespace Unity.FoxgloveSDK.Components
 
             var shared = recordedByKey.Keys.Intersect(currentByKey.Keys).ToArray();
             var allSharedFieldsPreserved = shared.All(key =>
-                FieldsPreserved(recordedByKey[key].Fields, currentByKey[key].Fields)
-                || FieldsPreserved(currentByKey[key].Fields, recordedByKey[key].Fields));
-            var backwardFields = shared.All(key => FieldSetSubset(recordedByKey[key].Fields, currentByKey[key].Fields));
-            var forwardFields = shared.All(key => FieldSetSubset(currentByKey[key].Fields, recordedByKey[key].Fields));
+                FieldsPreserved(recordedByKey[key].Fields, currentByKey[key].Fields, recorded.SchemaMetadataVersion)
+                || FieldsPreserved(currentByKey[key].Fields, recordedByKey[key].Fields, recorded.SchemaMetadataVersion));
+            var backwardFields = shared.All(key => FieldSetSubset(
+                recordedByKey[key].Fields, currentByKey[key].Fields, recorded.SchemaMetadataVersion));
+            var forwardFields = shared.All(key => FieldSetSubset(
+                currentByKey[key].Fields, recordedByKey[key].Fields, recorded.SchemaMetadataVersion));
             var currentAddsContractsOrFields = currentByKey.Keys.Any(key => !recordedByKey.ContainsKey(key))
                 || shared.Any(key => currentByKey[key].Fields.Count > recordedByKey[key].Fields.Count);
             var recordedAddsContractsOrFields = recordedByKey.Keys.Any(key => !currentByKey.ContainsKey(key))
@@ -341,31 +343,43 @@ namespace Unity.FoxgloveSDK.Components
 
         private static bool FieldsPreserved(
             IReadOnlyList<FoxRunSchemaMcapFieldMetadata> recorded,
-            IReadOnlyList<FoxRunSchemaMcapFieldMetadata> current)
+            IReadOnlyList<FoxRunSchemaMcapFieldMetadata> current,
+            int recordedSchemaVersion)
         {
             if (recorded == null || current == null)
                 return false;
-            return recorded.All(oldField => current.Any(newField => FieldsEquivalent(oldField, newField)));
+            return recorded.All(oldField => current.Any(newField =>
+                FieldsEquivalent(oldField, newField, recordedSchemaVersion)));
         }
 
         private static bool FieldSetSubset(
             IReadOnlyList<FoxRunSchemaMcapFieldMetadata> subset,
-            IReadOnlyList<FoxRunSchemaMcapFieldMetadata> superset)
+            IReadOnlyList<FoxRunSchemaMcapFieldMetadata> superset,
+            int recordedSchemaVersion)
         {
             if (subset == null || superset == null)
                 return false;
-            return subset.All(oldField => superset.Any(newField => FieldsEquivalent(oldField, newField)));
+            return subset.All(oldField => superset.Any(newField =>
+                FieldsEquivalent(oldField, newField, recordedSchemaVersion)));
         }
 
         private static bool FieldsEquivalent(
             FoxRunSchemaMcapFieldMetadata left,
-            FoxRunSchemaMcapFieldMetadata right)
+            FoxRunSchemaMcapFieldMetadata right,
+            int recordedSchemaVersion)
         {
             if (left == null || right == null
                 || !StringEquals(left.Name, right.Name)
                 || !StringEquals(left.CanonicalType, right.CanonicalType)
                 || !StringEquals(left.Encoding, right.Encoding))
                 return false;
+
+            if (recordedSchemaVersion < FoxRunSchemaMcapMetadata.SchemaMetadataVersion)
+            {
+                // Version 2 recorded only the original four field properties. Compare that
+                // projection exactly and do not treat newly added version-3 properties as false.
+                return left.Ordinal == right.Ordinal;
+            }
 
             if (left.Nullable != right.Nullable
                 || left.Array != right.Array
@@ -396,18 +410,8 @@ namespace Unity.FoxgloveSDK.Components
                 BindingHash = contract.BindingHash,
                 PolicyHash = contract.PolicyHash,
                 Fields = (contract.Fields ?? Array.Empty<FoxRunSchemaFieldInfo>())
-                    .Select((field, ordinal) => new FoxRunSchemaMcapFieldMetadata
-                    {
-                        Name = field?.JsonName ?? string.Empty,
-                        CanonicalType = field?.Type ?? string.Empty,
-                        Ordinal = ordinal,
-                        Encoding = contract.Encoding ?? string.Empty,
-                        Nullable = field?.Nullable ?? false,
-                        Array = field?.Array ?? false,
-                        Aggregate = field?.Aggregate ?? false,
-                        ProtobufFieldNumber = field?.ProtobufFieldNumber ?? 0,
-                        TypeShapeDigest = FoxRunSchemaMcapMetadata.ComputeTypeShapeDigest(field?.TypeShape)
-                    }).ToList()
+                    .Select((field, ordinal) => FoxRunSchemaMcapMetadata.CreateFieldMetadata(
+                        field, contract.Encoding, ordinal)).ToList()
             };
         }
 

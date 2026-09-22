@@ -330,17 +330,52 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void WritersEmitVersionTwoAndReadersAcceptLegacyVersionOne()
+        public void WritersEmitVersionThreeAndReadersAcceptLegacyVersionOne()
         {
             var current = Manifest("g", "c", "b", "p", "int32");
             Assert.True(FoxRunSchemaMcapMetadata.TryCreateJson(current, out var json));
-            Assert.Contains("\"schemaMetadataVersion\":2", json, StringComparison.Ordinal);
+            Assert.Contains("\"schemaMetadataVersion\":3", json, StringComparison.Ordinal);
             Assert.Contains("\"fields\":[", json, StringComparison.Ordinal);
 
-            var legacy = json.Replace("\"schemaMetadataVersion\":2", "\"schemaMetadataVersion\":1", StringComparison.Ordinal)
-                .Replace(",\"fields\":[{\"name\":\"field0\",\"canonicalType\":\"int32\",\"ordinal\":0,\"encoding\":\"json\"}]", string.Empty, StringComparison.Ordinal);
+            var legacy = json.Replace("\"schemaMetadataVersion\":3", "\"schemaMetadataVersion\":1", StringComparison.Ordinal)
+                .Replace(",\"fields\":[{\"name\":\"field0\",\"canonicalType\":\"int32\",\"ordinal\":0,\"encoding\":\"json\",\"nullable\":false,\"array\":false,\"aggregate\":false,\"protobufFieldNumber\":0,\"typeShapeDigest\":\"\"}]", string.Empty, StringComparison.Ordinal);
             Assert.True(FoxRunSchemaMcapMetadata.TryParseJson(legacy, out var record, out var error), error);
             Assert.Equal(1, record.SchemaMetadataVersion);
+        }
+
+        [Fact]
+        public void VersionTwoRecordsUseLegacyFieldProjectionWhenMetadataGainsFields()
+        {
+            var recordedManifest = ManifestWithContracts(
+                "recorded",
+                ContractWithFields(
+                    "contract", "binding", "policy", "json",
+                    new FoxRunSchemaFieldInfo("field0", "field0", "field", "int32", true, true, aggregate: true)));
+            var currentManifest = ManifestWithContracts(
+                    "current",
+                ContractWithFields(
+                    "contract", "binding", "policy", "json",
+                    new FoxRunSchemaFieldInfo("field0", "field0", "field", "int32", true, true, aggregate: true),
+                    new FoxRunSchemaFieldInfo("field1", "field1", "field", "string", false, false)));
+            Assert.True(FoxRunSchemaMcapMetadata.TryCreateJson(recordedManifest, out var json));
+            var legacyJson = json.Replace("\"schemaMetadataVersion\":3", "\"schemaMetadataVersion\":2", StringComparison.Ordinal)
+                .Replace(",\"nullable\":true,\"array\":true,\"aggregate\":true,\"protobufFieldNumber\":0,\"typeShapeDigest\":\"\"", string.Empty, StringComparison.Ordinal);
+            Assert.True(FoxRunSchemaMcapMetadata.TryParseJson(legacyJson, out var record, out var error), error);
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(record, currentManifest);
+
+            Assert.Equal(FoxRunCompatibilityClass.BackwardCompatible, result.Classification);
+        }
+
+        [Fact]
+        public void CurrentVersionRequiresFieldArraysDuringParsing()
+        {
+            var current = Manifest("g", "c", "b", "p", "int32");
+            Assert.True(FoxRunSchemaMcapMetadata.TryCreateJson(current, out var json));
+            var malformed = json.Replace(",\"fields\":[{\"name\":\"field0\",\"canonicalType\":\"int32\",\"ordinal\":0,\"encoding\":\"json\",\"nullable\":false,\"array\":false,\"aggregate\":false,\"protobufFieldNumber\":0,\"typeShapeDigest\":\"\"}]", string.Empty, StringComparison.Ordinal);
+
+            Assert.False(FoxRunSchemaMcapMetadata.TryParseJson(malformed, out _, out var error));
+            Assert.Contains("contract fields are missing", error, StringComparison.Ordinal);
         }
 
         [Fact]
