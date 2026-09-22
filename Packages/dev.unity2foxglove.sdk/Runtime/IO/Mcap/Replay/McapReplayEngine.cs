@@ -680,15 +680,20 @@ namespace Unity.FoxgloveSDK.IO
 
             if (boundedCandidates != null)
             {
+                var payloadChunks = new Dictionary<int, byte[]>();
                 foreach (var candidate in boundedCandidates)
                 {
-                    var chunkIndex = _summary.ChunkIndexes[candidate.ChunkNumber];
-                    var uncompressed = _reader.ReadChunkRecords(
-                        chunkIndex.ChunkStartOffset,
-                        chunkIndex.ChunkLength,
-                        out var crcValid);
-                    if (!ShouldUseChunkRecords("History payload chunk", crcValid))
-                        continue;
+                    if (!payloadChunks.TryGetValue(candidate.ChunkNumber, out var uncompressed))
+                    {
+                        var chunkIndex = _summary.ChunkIndexes[candidate.ChunkNumber];
+                        uncompressed = _reader.ReadChunkRecords(
+                            chunkIndex.ChunkStartOffset,
+                            chunkIndex.ChunkLength,
+                            out var crcValid);
+                        if (!ShouldUseChunkRecords("History payload chunk", crcValid))
+                            continue;
+                        payloadChunks[candidate.ChunkNumber] = uncompressed;
+                    }
                     var data = new byte[candidate.DataLength];
                     Buffer.BlockCopy(
                         uncompressed,
