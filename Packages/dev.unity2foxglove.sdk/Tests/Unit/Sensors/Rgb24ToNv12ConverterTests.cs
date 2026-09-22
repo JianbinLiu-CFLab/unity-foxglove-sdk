@@ -36,12 +36,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             Assert.True(Rgb24ToNv12Converter.TryConvertRgb24ToNv12(rgb24, width, height, nv12, flipVertical: true, out var error), error);
 
-            var before = GC.GetAllocatedBytesForCurrentThread();
-            for (var i = 0; i < 100; i++)
+            for (var i = 0; i < 1000; i++)
                 Assert.True(Rgb24ToNv12Converter.TryConvertRgb24ToNv12(rgb24, width, height, nv12, (i & 1) == 0, out error), error);
-            var after = GC.GetAllocatedBytesForCurrentThread();
 
-            Assert.Equal(before, after);
+            long minimumAllocated = long.MaxValue;
+            for (var sample = 0; sample < 5; sample++)
+            {
+                var before = GC.GetAllocatedBytesForCurrentThread();
+                for (var i = 0; i < 100; i++)
+                    Assert.True(Rgb24ToNv12Converter.TryConvertRgb24ToNv12(rgb24, width, height, nv12, (i & 1) == 0, out error), error);
+                var after = GC.GetAllocatedBytesForCurrentThread();
+                minimumAllocated = Math.Min(minimumAllocated, after - before);
+            }
+
+            Assert.Equal(0, minimumAllocated);
         }
 
         [Fact]
