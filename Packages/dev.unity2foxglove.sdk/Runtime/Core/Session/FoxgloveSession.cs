@@ -587,7 +587,10 @@ namespace Unity.FoxgloveSDK.Core
             if (previousLiveAllowed && (topicChanged || !liveAllowed))
                 _graph.RemoveUnityPublishedTopic(previous.Topic);
 
-            _channels.Register(channel);
+            if (previous != null && wasRecordingOnly != recordingOnly)
+                _channels.Replace(channel);
+            else
+                _channels.Register(channel);
 
             var mirrorSink = Volatile.Read(ref _mirrorSink);
             if (mirrorSink != null)

@@ -42,6 +42,15 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        internal void Replace(AdvertiseChannel channel)
+        {
+            if (channel == null) throw new ArgumentNullException(nameof(channel));
+
+            var snapshot = channel.CreateImmutableSnapshot();
+            lock (_lock)
+                _channels[snapshot.Id] = snapshot;
+        }
+
         /// <summary>Remove a channel by ID.</summary>
         public bool Remove(uint channelId)
         {

@@ -34,7 +34,8 @@ namespace Unity2Foxglove.Ros2Bridge
                 return null;
             if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schema.Name, out var catalogEntry)
                 || schema.Data == null
-                || !SchemaContentEqual(schema.Data, catalogEntry.Content))
+                || (schema.Data.Length > 0
+                    && !SchemaContentEqual(schema.Data, catalogEntry.Content)))
                 return null;
 
             return new Decoder(schema.Name, channel.Topic, entry);
