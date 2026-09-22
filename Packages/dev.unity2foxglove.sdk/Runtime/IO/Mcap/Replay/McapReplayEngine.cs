@@ -223,7 +223,7 @@ namespace Unity.FoxgloveSDK.IO
             if (!IsLoaded || _reader == null || _summary == null || string.IsNullOrEmpty(name))
                 return null;
 
-            if (_summary.MetadataIndexes != null)
+            if (_summary.MetadataIndexes != null && _summary.MetadataIndexes.Count > 0)
             {
                 foreach (var index in _summary.MetadataIndexes)
                 {
@@ -234,6 +234,8 @@ namespace Unity.FoxgloveSDK.IO
                     if (metadata != null && string.Equals(metadata.Name, name, StringComparison.Ordinal))
                         return metadata;
                 }
+
+                return null;
             }
 
             return _reader.FindMetadataInDataSection(name, _summary.DataSectionEndOffset);

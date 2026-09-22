@@ -543,6 +543,9 @@ namespace Unity.FoxgloveSDK.IO
                     return _reader.ReadMetadataAt(index.Offset);
             }
 
+            if (indexes != null && indexes.Count > 0)
+                return null;
+
             return _reader.FindMetadataInDataSection(name, _summary.DataSectionEndOffset);
         }
 
