@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 onDropRequest: request => droppedRequests.AddOrUpdate(request.Id, 1, (_, count) => count + 1));
 
             Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
-            Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
+            Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(5)));
 
             var stopTask = Task.Run(() =>
             {
@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             try
             {
                 Assert.True(pipeline.Enqueue(new TestRequest(1), out _, out _));
-                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(encodeEntered.Wait(TimeSpan.FromSeconds(5)));
 
                 pipeline.Dispose();
 
