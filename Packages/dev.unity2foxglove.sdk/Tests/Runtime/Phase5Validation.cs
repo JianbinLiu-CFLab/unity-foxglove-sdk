@@ -213,10 +213,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestAssetsLinkXmlProjectGuard()
         {
             var root = FindRepoRoot();
-            Assert(root != null, "Repo root found for duplicate Assets link.xml check");
+            Assert(root != null, "Repo root found for package-owned link.xml guard");
             var path = Path.Combine(root, "Unity2Foxglove", "Assets", "link.xml");
-            Assert(File.Exists(path), $"Project Assets link.xml exists at {path}");
-            AssertLinkXml(path, "Project Assets link.xml");
+            Assert(!File.Exists(path),
+                "Project Assets link.xml is absent because package Runtime/link.xml is the single stripping authority");
         }
     }
 }

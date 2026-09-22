@@ -93,6 +93,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertTrue(self.validator.fresh_project_acceptance_passed({"freshProjectAcceptance": "passed"}))
 
     def test_release_gate_rejects_prototype_distribution(self) -> None:
+        """Release gate rejects Prototype and records missing-field behavior."""
         self.assertFalse(self.validator.published_runtime_is_not_prototype({"distributionLevel": "Prototype"}))
         self.assertTrue(self.validator.published_runtime_is_not_prototype({"distributionLevel": "Release"}))
         self.assertTrue(self.validator.published_runtime_is_not_prototype({}))
