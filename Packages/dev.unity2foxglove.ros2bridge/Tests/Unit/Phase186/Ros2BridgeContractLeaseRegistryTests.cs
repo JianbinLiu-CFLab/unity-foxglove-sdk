@@ -160,6 +160,33 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void UnregisterFailureRestoresLocalAdmissionForRetry()
+        {
+            var state = SessionState();
+            var wire = new RecordingWireController
+            {
+                RejectUnregister = true,
+            };
+            using var registry = new Ros2BridgeContractLeaseRegistry(
+                generation: 7,
+                capacity: 1,
+                state,
+                wire);
+            var contract = Contract(11, "binding-a");
+
+            Assert.True(registry.TryAcquire(contract, out var lease, out _));
+            Assert.False(registry.TryRelease(lease, out var reason));
+            Assert.Contains("rejected", reason);
+            Assert.True(state.IsLocallyActive(contract));
+            Assert.Equal(1, registry.ActiveLeaseCount);
+
+            wire.RejectUnregister = false;
+            Assert.True(registry.TryRelease(lease, out _));
+            Assert.False(state.IsLocallyActive(contract));
+            Assert.Equal(0, registry.ActiveLeaseCount);
+        }
+
+        [Fact]
         public void ConcurrentAcquireReportsPendingRegistrationAsUnavailable()
         {
             var state = SessionState();
@@ -231,6 +258,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             internal bool RejectRegister { get; set; }
 
+            internal bool RejectUnregister { get; set; }
+
             public Ros2BridgeSessionResult Register(
                 Ros2BridgeSessionContract contract)
             {
@@ -247,6 +276,11 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 Ros2BridgeSessionContract contract)
             {
                 Unregistered.Add(contract);
+                if (RejectUnregister)
+                {
+                    return Ros2BridgeSessionResult.Reject(
+                        "wire unregister rejected");
+                }
                 return Ros2BridgeSessionResult.Accepted();
             }
         }
