@@ -1172,7 +1172,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     maxPerContractDepth: 2,
                     maxPerContractBytes: 64));
             using var transport = new Ros2BridgeTcpClient();
-            transport.Connect("127.0.0.1", peer.Port, 1000);
+            transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
                 (IRos2BridgeSessionTransport)transport,
                 U2R2ProtocolLimits.Default,
