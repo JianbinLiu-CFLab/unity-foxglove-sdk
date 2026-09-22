@@ -2097,29 +2097,17 @@ class RunCiTests(unittest.TestCase):
 
     def test_parallel_mcap_job_disables_wall_clock_timeout(self) -> None:
         """The parent CI process must not reintroduce a deadline around the MCAP child."""
-        class FakeProcess:
-            returncode = 0
-            stdout = None
-            def wait(self, timeout=None):
-                return None
-            def poll(self):
-                return 0
-            def communicate(self, timeout=None):
-                return "", ""
-
-        tree = types.SimpleNamespace(
-            process=FakeProcess(),
-            active_pids=lambda: [],
-            terminate=lambda: [],
-            close=lambda: None,
-        )
-
+        command = [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write('x' * 1048576); sys.stdout.flush()",
+        ]
         with tempfile.TemporaryDirectory() as temp:
-            job = self.run_ci.CiJob("mcap-conformance", ["tool"], disable_timeout=True)
-            with mock.patch.object(self.run_ci, "start_owned_process", return_value=tree):
-                result = self.run_ci._run_ci_job(job, Path(temp))
+            job = self.run_ci.CiJob("mcap-conformance", command, disable_timeout=True)
+            result = self.run_ci._run_ci_job(job, Path(temp))
 
         self.assertTrue(result.ok)
+        self.assertEqual(0, result.returncode)
 
     def test_parallel_job_drains_noisy_child_before_wait_deadlock(self) -> None:
         """A noisy child must complete instead of filling the redirected pipe."""
