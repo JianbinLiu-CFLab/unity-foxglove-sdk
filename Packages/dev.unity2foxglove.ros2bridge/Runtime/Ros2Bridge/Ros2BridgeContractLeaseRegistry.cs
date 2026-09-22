@@ -448,7 +448,7 @@ namespace Unity2Foxglove.Ros2Bridge
         }
 
         private bool TryRevokeLocalSafely(
-            Ros2BridgeContract contract,
+            Ros2BridgeSessionContract contract,
             out string reason)
         {
             try
@@ -463,7 +463,7 @@ namespace Unity2Foxglove.Ros2Bridge
             }
         }
 
-        private void TryActivateLocalSafely(Ros2BridgeContract contract)
+        private void TryActivateLocalSafely(Ros2BridgeSessionContract contract)
         {
             try
             {

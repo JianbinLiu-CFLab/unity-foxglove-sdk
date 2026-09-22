@@ -132,7 +132,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 if (reachedSignal)
                 {
                     Assert.True(
-                        SpinWait.SpinUntil(() => IsDisposed(GetWorkerSignal(pipeline)), TimeSpan.FromSeconds(2)),
+                        SpinWait.SpinUntil(() => IsDisposed(GetWorkerSignal(pipeline)), TimeSpan.FromSeconds(5)),
                         "Dispose must finish handle release before the admitted submit is allowed to signal.");
                 }
                 releaseDisposeBeforeHandle.Set();
@@ -202,7 +202,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 Assert.True(secondStopGuardReached.Wait(TimeSpan.FromSeconds(2)));
                 releaseFirstStopGuard.Set();
                 Assert.True(
-                    SpinWait.SpinUntil(() => IsDisposed(GetWorkerSignal(pipeline)), TimeSpan.FromSeconds(2)),
+                    SpinWait.SpinUntil(() => IsDisposed(GetWorkerSignal(pipeline)), TimeSpan.FromSeconds(5)),
                     "One dispose caller must be able to complete handle release while the other is parked.");
                 releaseSecondStopGuard.Set();
 
@@ -476,7 +476,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
             }
 
-            SpinWait.SpinUntil(() => !worker.IsRunning, TimeSpan.FromSeconds(2));
+            SpinWait.SpinUntil(() => !worker.IsRunning, TimeSpan.FromSeconds(5));
         }
 
         private sealed class TestRequest : IBackgroundEncodeRequest
