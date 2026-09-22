@@ -13,7 +13,7 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
 {
-    public sealed class Module3ReviewRemediationTests
+    public sealed class WebSocketProtocolBehaviorTests
     {
         [Theory]
         [InlineData(0)]
@@ -226,3 +226,4 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
     }
 }
+

@@ -10,7 +10,7 @@ using Unity.FoxgloveSDK.Transport;
 using Xunit;
 namespace Unity.FoxgloveSDK.UnitTests.Harness
 {
- public sealed class Module4ReviewRemediationTests
+ public sealed class McapReplayBehaviorTests
  {
   [Fact] public void ReplayHistoryDrainAdvancesOffsetAndCompletesAfterFanout()
   {
@@ -27,3 +27,4 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
   sealed class NullTransport:IFoxgloveTransport{public bool IsRunning=>false;public event Action<uint> OnClientConnected;public event Action<uint> OnClientDisconnected;public event Action<uint,string> OnTextReceived;public event Action<uint,byte[]> OnBinaryReceived;public void Start(string h,int p){}public void Stop(){}public void BroadcastText(string j){}public void BroadcastBinary(byte[] d){}public void SendText(uint c,string j){}public void SendBinary(uint c,byte[]d){}public void Dispose(){} }
  }
 }
+

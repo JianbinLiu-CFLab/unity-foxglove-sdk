@@ -241,7 +241,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
-        public void MediaFoundationSubmissionFailureStopsTheEncoder()
+        public void MediaFoundationSubmissionQueuesValidFrameWithoutBlocking()
         {
             if (!OperatingSystem.IsWindows())
                 return;
@@ -252,9 +252,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 "_options",
                 new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
 
-            Assert.False(sidecar.TrySubmitFrame(new byte[12], 123UL));
-            Assert.False(sidecar.IsRunning);
-            Assert.False(string.IsNullOrWhiteSpace(sidecar.LastError));
+            Assert.True(sidecar.TrySubmitFrame(new byte[12], 123UL));
+            Assert.True(sidecar.IsRunning);
+            Assert.True(string.IsNullOrWhiteSpace(sidecar.LastError));
+            sidecar.Dispose();
         }
 
         private static string QuoteArgument(string value)

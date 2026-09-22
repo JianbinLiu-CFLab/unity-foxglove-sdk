@@ -11,7 +11,7 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
 {
-    public sealed class Module1ReviewRemediationTests
+    public sealed class ReplayManagerBehaviorTests
     {
         [Fact]
         public void ReplayForwardersInvokeEverySubscriberAfterOneThrows()
@@ -113,3 +113,4 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
     }
 }
+

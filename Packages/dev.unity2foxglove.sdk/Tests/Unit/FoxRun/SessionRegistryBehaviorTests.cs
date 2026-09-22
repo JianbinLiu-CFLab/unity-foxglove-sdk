@@ -14,7 +14,7 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
 {
-    public sealed class Module2ReviewRemediationTests
+    public sealed class SessionRegistryBehaviorTests
     {
         [Fact]
         public void ChannelRegistryRejectsConflictingActiveDescriptor()
@@ -246,3 +246,4 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
     }
 }
+
