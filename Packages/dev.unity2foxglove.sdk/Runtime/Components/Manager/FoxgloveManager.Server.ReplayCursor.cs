@@ -43,27 +43,31 @@ namespace Unity.FoxgloveSDK.Components
                 path: "/v1/replay-cursor",
                 bearerToken: ResolveReplayCursorBridgeToken(),
                 maxBodyBytes: UnityReplayCursorEndpointOptions.Default.MaxBodyBytes);
-            try
-            {
-                _replayCursorEndpointLoggedFirstCursor = false;
-                _replayCursorEndpointLoggedUnavailable = false;
-                _replayCursorEndpoint.Start(options, QueueExternalReplayCursor, GetExternalReplayCursorState);
-                _replayCursorEndpointRetry.RecordSuccess();
-                Debug.Log("[Foxglove] Replay cursor endpoint ready: http://"
-                          + options.Host
-                          + ":"
-                          + options.Port.ToString(CultureInfo.InvariantCulture)
-                          + options.Path);
-                RememberReplayCursorEndpointConfig();
-            }
-            catch (System.Exception ex)
-            {
-                _runtime.SetExternalReplayCursorEnabled(false);
-                _replayCursorEndpoint.Stop();
-                ClearReplayCursorEndpointConfig();
-                _replayCursorEndpointRetry.RecordFailure(Time.realtimeSinceStartupAsDouble, 1d);
-                Debug.LogWarning("[Foxglove] Replay cursor bridge disabled: " + ex.Message);
-            }
+            var attempt = _replayCursorEndpointRetry.TryExecute(
+                Time.realtimeSinceStartupAsDouble,
+                1d,
+                () =>
+                {
+                    _replayCursorEndpointLoggedFirstCursor = false;
+                    _replayCursorEndpointLoggedUnavailable = false;
+                    _replayCursorEndpoint.Start(options, QueueExternalReplayCursor, GetExternalReplayCursorState);
+                },
+                ex =>
+                {
+                    _runtime.SetExternalReplayCursorEnabled(false);
+                    _replayCursorEndpoint.Stop();
+                    ClearReplayCursorEndpointConfig();
+                    Debug.LogWarning("[Foxglove] Replay cursor bridge disabled: " + ex.Message);
+                });
+            if (attempt != RetryExecutionResult.Succeeded)
+                return;
+
+            Debug.Log("[Foxglove] Replay cursor endpoint ready: http://"
+                      + options.Host
+                      + ":"
+                      + options.Port.ToString(CultureInfo.InvariantCulture)
+                      + options.Path);
+            RememberReplayCursorEndpointConfig();
         }
 
         /// <summary>

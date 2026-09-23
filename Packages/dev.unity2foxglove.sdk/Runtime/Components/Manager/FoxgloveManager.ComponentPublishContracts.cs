@@ -38,10 +38,12 @@ namespace Unity.FoxgloveSDK.Components
         internal ComponentPublisherSessionSnapshot CaptureComponentPublisherSession(ulong generation)
         {
             var drafts = new List<ComponentPublisherContractDraft>();
-            foreach (var publisher in FindObjectsByType<FoxglovePublisherBase>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            var publishers = ComponentPublisherSessionCaptureState.SelectOwned(
+                FindObjectsByType<FoxglovePublisherBase>(FindObjectsInactive.Exclude, FindObjectsSortMode.None),
+                publisher => publisher != null && publisher.ResolveManagerForComponentSession() == this,
+                publisher => publisher != null && publisher.HasValidTopic);
+            foreach (var publisher in publishers)
             {
-                if (publisher == null || publisher.ResolveManagerForComponentSession() != this || !publisher.HasValidTopic)
-                    continue;
                 var resolution = publisher.EncodingResolution;
                 var messagePackEntry = ComponentPublisherMessagePackEntryResolver.Resolve(
                     publisher.ComponentMessagePackMessageType,

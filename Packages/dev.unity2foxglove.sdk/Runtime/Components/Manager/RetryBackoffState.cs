@@ -7,6 +7,13 @@ using System;
 
 namespace Unity.FoxgloveSDK.Components
 {
+    internal enum RetryExecutionResult
+    {
+        Blocked,
+        Succeeded,
+        Failed
+    }
+
     /// <summary>Provides deterministic retry deadlines for Manager-owned endpoints.</summary>
     internal sealed class RetryBackoffState
     {
@@ -26,6 +33,38 @@ namespace Unity.FoxgloveSDK.Components
         {
             HasSuccessfulConfiguration = true;
             RetryAt = 0d;
+        }
+
+        internal RetryExecutionResult TryExecute(
+            double now,
+            double delaySeconds,
+            Action operation,
+            Action<Exception> onFailure)
+        {
+            if (operation == null) throw new ArgumentNullException(nameof(operation));
+            if (onFailure == null) throw new ArgumentNullException(nameof(onFailure));
+            if (IsBlocked(now))
+                return RetryExecutionResult.Blocked;
+
+            try
+            {
+                operation();
+                RecordSuccess();
+                return RetryExecutionResult.Succeeded;
+            }
+            catch (Exception exception)
+            {
+                try
+                {
+                    onFailure(exception);
+                }
+                finally
+                {
+                    RecordFailure(now, delaySeconds);
+                }
+
+                return RetryExecutionResult.Failed;
+            }
         }
     }
 }
