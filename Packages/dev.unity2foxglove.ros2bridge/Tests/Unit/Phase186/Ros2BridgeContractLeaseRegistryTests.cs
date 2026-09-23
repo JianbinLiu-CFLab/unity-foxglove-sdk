@@ -187,6 +187,115 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         }
 
         [Fact]
+        public void UnregisterFailureWithLocalRecoveryFailureRemainsExplicitlyRecoverable()
+        {
+            var state = SessionState();
+            var wire = new RecordingWireController
+            {
+                RejectUnregister = true,
+            };
+            using var registry = new Ros2BridgeContractLeaseRegistry(
+                generation: 7,
+                capacity: 1,
+                state,
+                wire);
+            var contract = Contract(11, "binding-a");
+
+            Assert.True(registry.TryAcquire(contract, out var lease, out _));
+            wire.OnUnregister = state.Stop;
+
+            Assert.False(registry.TryRelease(lease, out var reason));
+            Assert.Contains("recovery failed", reason);
+            Assert.Equal(1, registry.ActiveLeaseCount);
+            Assert.False(state.IsLocallyActive(contract));
+
+            Assert.False(registry.TryRelease(lease, out var retryReason));
+            Assert.Contains("stopped", retryReason);
+            Assert.Equal(1, registry.ActiveLeaseCount);
+            wire.RejectUnregister = false;
+        }
+
+        [Fact]
+        public void RecoveryRetryRevokesLocalAdmissionBeforeSuccessfulUnregister()
+        {
+            var state = SessionState();
+            var wire = new RecordingWireController
+            {
+                RejectUnregister = true,
+            };
+            using var registry = new Ros2BridgeContractLeaseRegistry(
+                generation: 7,
+                capacity: 1,
+                state,
+                wire);
+            var contract = Contract(11, "binding-a");
+            var blocker = Contract(12, "binding-a");
+
+            Assert.True(registry.TryAcquire(contract, out var lease, out _));
+            wire.OnUnregister = () => state.TryActivateLocal(blocker);
+
+            Assert.False(registry.TryRelease(lease, out var reason));
+            Assert.Contains("recovery failed", reason);
+            Assert.True(state.TryRevokeLocal(blocker, out _));
+
+            wire.RejectUnregister = false;
+            wire.OnUnregister = null;
+            Assert.True(registry.TryRelease(lease, out _));
+            Assert.False(state.IsLocallyActive(contract));
+            Assert.Equal(0, registry.ActiveLeaseCount);
+        }
+
+        [Fact]
+        public void RecoveryRetrySerializesConcurrentReleaseAttempts()
+        {
+            var state = SessionState();
+            var wire = new RecordingWireController
+            {
+                RejectUnregister = true,
+            };
+            using var registry = new Ros2BridgeContractLeaseRegistry(
+                generation: 7,
+                capacity: 1,
+                state,
+                wire);
+            var contract = Contract(11, "binding-a");
+            var blocker = Contract(12, "binding-a");
+            var unregisterEntered = new ManualResetEventSlim(false);
+            var allowUnregister = new ManualResetEventSlim(false);
+            var call = 0;
+
+            Assert.True(registry.TryAcquire(contract, out var lease, out _));
+            wire.OnUnregister = () =>
+            {
+                if (Interlocked.Increment(ref call) == 1)
+                {
+                    state.TryActivateLocal(blocker);
+                    return;
+                }
+                unregisterEntered.Set();
+                allowUnregister.Wait(TimeSpan.FromSeconds(3));
+            };
+            Assert.False(registry.TryRelease(lease, out _));
+            Assert.True(state.TryRevokeLocal(blocker, out _));
+            wire.RejectUnregister = false;
+
+            var firstResult = false;
+            var first = new Thread(() =>
+            {
+                firstResult = registry.TryRelease(lease, out _);
+            });
+            first.Start();
+            Assert.True(unregisterEntered.Wait(TimeSpan.FromSeconds(3)));
+
+            Assert.False(registry.TryRelease(lease, out var concurrentReason));
+            Assert.Contains("already in progress", concurrentReason);
+            allowUnregister.Set();
+            Assert.True(first.Join(TimeSpan.FromSeconds(3)));
+            Assert.True(firstResult);
+            Assert.False(state.IsLocallyActive(contract));
+        }
+
+        [Fact]
         public void ConcurrentAcquireReportsPendingRegistrationAsUnavailable()
         {
             var state = SessionState();
@@ -260,6 +369,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             internal bool RejectUnregister { get; set; }
 
+            internal Action OnUnregister { get; set; }
+
             public Ros2BridgeSessionResult Register(
                 Ros2BridgeSessionContract contract)
             {
@@ -276,6 +387,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 Ros2BridgeSessionContract contract)
             {
                 Unregistered.Add(contract);
+                OnUnregister?.Invoke();
                 if (RejectUnregister)
                 {
                     return Ros2BridgeSessionResult.Reject(
