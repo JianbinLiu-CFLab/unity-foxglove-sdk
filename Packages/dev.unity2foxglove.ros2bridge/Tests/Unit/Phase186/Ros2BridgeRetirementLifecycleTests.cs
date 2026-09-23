@@ -1287,7 +1287,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     }
                 }
 
-                _inner.Connect(host, port, timeoutMs);
+                _inner.Connect(host, port, Math.Max(timeoutMs, 5000));
             }
 
             public void Send(Ros2BridgeFrame frame, int timeoutMs)
