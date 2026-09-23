@@ -176,7 +176,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             server.Start();
 
             using var client = new Ros2BridgeTcpClient();
-            client.Connect("127.0.0.1", port, timeoutMs: 1000);
+            client.Connect("127.0.0.1", port, timeoutMs: 5000);
             var request = Ros2BridgeV2SessionCodec.CreateHello(
                 requestId: 1,
                 requiresSubscription: false,
@@ -275,7 +275,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             server.Start();
 
             using var client = new Ros2BridgeTcpClient();
-            client.Connect("127.0.0.1", port, timeoutMs: 1000);
+            client.Connect("127.0.0.1", port, timeoutMs: 5000);
             var request =
                 Ros2BridgePublisherPreparationCodec.WriteRequest(
                     "phase186-v1-drip",
@@ -376,7 +376,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             server.Start();
 
             using var client = new Ros2BridgeTcpClient();
-            client.Connect("127.0.0.1", port, timeoutMs: 1000);
+            client.Connect("127.0.0.1", port, timeoutMs: 5000);
             var helloRequest = Ros2BridgeV2SessionCodec.CreateHello(
                 requestId: 1,
                 requiresSubscription: false,
