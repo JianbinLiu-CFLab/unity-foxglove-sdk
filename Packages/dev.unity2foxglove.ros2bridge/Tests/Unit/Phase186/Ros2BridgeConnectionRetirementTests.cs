@@ -44,6 +44,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 retirementIdentity: "phase186/duplex");
             connection.Start();
 
+            Assert.True(transport.BlockedReadEntered.Wait(TimeSpan.FromSeconds(5)));
             connection.Dispose();
 
             Assert.True(SpinWait.SpinUntil(
@@ -79,6 +80,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 new BlockingCollection<byte[]>();
             private readonly ManualResetEventSlim _releaseRead =
                 new ManualResetEventSlim(false);
+            internal ManualResetEventSlim BlockedReadEntered { get; }
+                = new ManualResetEventSlim(false);
             private int _readCount;
 
             public bool IsConnected => true;
@@ -130,6 +133,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 {
                     return _responses.Take();
                 }
+                BlockedReadEntered.Set();
                 _releaseRead.Wait();
                 throw new ObjectDisposedException(
                     nameof(BlockingReadTransport));
