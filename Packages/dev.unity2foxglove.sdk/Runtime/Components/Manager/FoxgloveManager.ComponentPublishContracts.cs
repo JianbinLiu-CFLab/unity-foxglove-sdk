@@ -11,28 +11,31 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const string ComponentPublishContractsServiceName = "/foxglove/component-publish-contracts";
         private uint _componentPublishContractsServiceId;
-        private ComponentPublisherSessionSnapshot _activeComponentPublisherSession;
+        private readonly ComponentPublisherSessionLifecycleState<ComponentPublisherSessionSnapshot>
+            _componentPublisherSessionState =
+                new ComponentPublisherSessionLifecycleState<ComponentPublisherSessionSnapshot>();
 
         /// <summary>Current immutable Component session used by observability clients.</summary>
-        public ComponentPublisherSessionSnapshot ActiveComponentPublisherSession => _activeComponentPublisherSession;
+        public ComponentPublisherSessionSnapshot ActiveComponentPublisherSession
+            => _componentPublisherSessionState.ActiveSession;
 
         /// <summary>Publishes a newly frozen Component snapshot to the read-only service.</summary>
         internal void SetActiveComponentPublisherSession(ComponentPublisherSessionSnapshot snapshot)
-            => _activeComponentPublisherSession = snapshot;
+            => _componentPublisherSessionState.Set(snapshot);
 
         internal void ClearActiveComponentPublisherSession()
-            => _activeComponentPublisherSession = null;
+            => _componentPublisherSessionState.Clear();
 
         internal bool TryGetActiveComponentPublisherSessionEntry(
             object publisher,
             out ComponentPublisherSessionEntry entry)
         {
             entry = null;
-            return _activeComponentPublisherSession != null
-                   && _activeComponentPublisherSession.TryGetEntry(publisher, out entry);
+            return _componentPublisherSessionState.ActiveSession != null
+                   && _componentPublisherSessionState.ActiveSession.TryGetEntry(publisher, out entry);
         }
 
-        internal void CaptureComponentPublisherSession()
+        internal ComponentPublisherSessionSnapshot CaptureComponentPublisherSession(ulong generation)
         {
             var drafts = new List<ComponentPublisherContractDraft>();
             foreach (var publisher in FindObjectsByType<FoxglovePublisherBase>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
@@ -54,9 +57,7 @@ namespace Unity.FoxgloveSDK.Components
                     resolution.Effective,
                     messagePackEntry));
             }
-            SetActiveComponentPublisherSession(new ComponentPublisherSessionBuilder().Build(
-                _connectionState.ChannelSessionGeneration,
-                drafts));
+            return new ComponentPublisherSessionBuilder().Build(generation, drafts);
         }
 
         private void RegisterComponentPublishContractsService()
@@ -94,7 +95,10 @@ namespace Unity.FoxgloveSDK.Components
             var objectRequest = request as JObject;
             var topic = objectRequest?.Value<string>("topic");
             var includeTypeShape = objectRequest?.Value<bool?>("includeTypeShape") == true;
-            return ComponentPublisherContractCatalog.BuildResponse(_activeComponentPublisherSession, topic, includeTypeShape);
+            return ComponentPublisherContractCatalog.BuildResponse(
+                _componentPublisherSessionState.ActiveSession,
+                topic,
+                includeTypeShape);
         }
     }
 }

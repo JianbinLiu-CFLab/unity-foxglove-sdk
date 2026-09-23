@@ -162,10 +162,14 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.OnReplayMessageContext += _replayContextForwarder;
             _runtime.OnReplayBatchCompleted += _replayBatchForwarder;
 
-            AdvanceChannelSessionGeneration();
-            var generation = _connectionState.ChannelSessionGeneration;
-            _clientEventAdmission.Activate(generation);
-            CaptureComponentPublisherSession();
+            var generation = _componentPublisherSessionState.AdvanceActivateAndCapture(
+                () =>
+                {
+                    AdvanceChannelSessionGeneration();
+                    return _connectionState.ChannelSessionGeneration;
+                },
+                _clientEventAdmission.Activate,
+                CaptureComponentPublisherSession);
             var transport = session.Transport;
             if (transport == null)
                 return;
@@ -187,29 +191,23 @@ namespace Unity.FoxgloveSDK.Components
 
         private void InvokeReplayMessageSubscribers(string topic, byte[] data)
         {
-            foreach (var handler in _replayMessageSubscribers)
-            {
-                try { ((Action<string, byte[]>)handler)(topic, data); }
-                catch (Exception ex) { Debug.LogWarning("[Foxglove] Replay message listener failed: " + ex.Message); }
-            }
+            _replayMessageSubscribers.Invoke(
+                handler => handler(topic, data),
+                ex => Debug.LogWarning("[Foxglove] Replay message listener failed: " + ex.Message));
         }
 
         private void InvokeReplayMessageContextSubscribers(ReplayMessageContext context)
         {
-            foreach (var handler in _replayMessageContextSubscribers)
-            {
-                try { ((Action<ReplayMessageContext>)handler)(context); }
-                catch (Exception ex) { Debug.LogWarning("[Foxglove] Replay message context listener failed: " + ex.Message); }
-            }
+            _replayMessageContextSubscribers.Invoke(
+                handler => handler(context),
+                ex => Debug.LogWarning("[Foxglove] Replay message context listener failed: " + ex.Message));
         }
 
         private void InvokeReplayBatchSubscribers(ReplayBatchContext context)
         {
-            foreach (var handler in _replayBatchSubscribers)
-            {
-                try { ((Action<ReplayBatchContext>)handler)(context); }
-                catch (Exception ex) { Debug.LogWarning("[Foxglove] Replay batch listener failed: " + ex.Message); }
-            }
+            _replayBatchSubscribers.Invoke(
+                handler => handler(context),
+                ex => Debug.LogWarning("[Foxglove] Replay batch listener failed: " + ex.Message));
         }
 
         /// <summary>

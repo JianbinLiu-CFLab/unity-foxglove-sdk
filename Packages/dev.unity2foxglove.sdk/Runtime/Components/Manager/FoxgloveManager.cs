@@ -179,48 +179,32 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public event System.Action<uint, uint, string, string, byte[]> OnClientMessageWithEncoding;
 
-        private readonly object _replaySubscriberLock = new object();
-        private System.Action<string, byte[]> _onReplayMessage;
-        private System.Action<ReplayMessageContext> _onReplayMessageContext;
-        private System.Action<ReplayBatchContext> _onReplayBatchCompleted;
-        private Delegate[] _replayMessageSubscribers = Array.Empty<Delegate>();
-        private Delegate[] _replayMessageContextSubscribers = Array.Empty<Delegate>();
-        private Delegate[] _replayBatchSubscribers = Array.Empty<Delegate>();
+        private readonly ReplaySubscriberFanoutState<System.Action<string, byte[]>> _replayMessageSubscribers =
+            new ReplaySubscriberFanoutState<System.Action<string, byte[]>>();
+        private readonly ReplaySubscriberFanoutState<System.Action<ReplayMessageContext>> _replayMessageContextSubscribers =
+            new ReplaySubscriberFanoutState<System.Action<ReplayMessageContext>>();
+        private readonly ReplaySubscriberFanoutState<System.Action<ReplayBatchContext>> _replayBatchSubscribers =
+            new ReplaySubscriberFanoutState<System.Action<ReplayBatchContext>>();
 
         /// <summary>Fires when a replay message is forwarded on the main thread.</summary>
         public event System.Action<string, byte[]> OnReplayMessage
         {
-            add => UpdateReplaySubscribers(ref _onReplayMessage, ref _replayMessageSubscribers, value, true);
-            remove => UpdateReplaySubscribers(ref _onReplayMessage, ref _replayMessageSubscribers, value, false);
+            add => _replayMessageSubscribers.Add(value);
+            remove => _replayMessageSubscribers.Remove(value);
         }
 
         /// <summary>Fires when replay data is forwarded with channel, schema, and log-time context.</summary>
         public event System.Action<ReplayMessageContext> OnReplayMessageContext
         {
-            add => UpdateReplaySubscribers(ref _onReplayMessageContext, ref _replayMessageContextSubscribers, value, true);
-            remove => UpdateReplaySubscribers(ref _onReplayMessageContext, ref _replayMessageContextSubscribers, value, false);
+            add => _replayMessageContextSubscribers.Add(value);
+            remove => _replayMessageContextSubscribers.Remove(value);
         }
 
         /// <summary>Fires after a replay batch has been forwarded to scene listeners.</summary>
         public event System.Action<ReplayBatchContext> OnReplayBatchCompleted
         {
-            add => UpdateReplaySubscribers(ref _onReplayBatchCompleted, ref _replayBatchSubscribers, value, true);
-            remove => UpdateReplaySubscribers(ref _onReplayBatchCompleted, ref _replayBatchSubscribers, value, false);
-        }
-
-        private void UpdateReplaySubscribers<T>(
-            ref T handlers,
-            ref Delegate[] snapshot,
-            T subscriber,
-            bool add) where T : Delegate
-        {
-            lock (_replaySubscriberLock)
-            {
-                handlers = (T)(add
-                    ? Delegate.Combine(handlers, subscriber)
-                    : Delegate.Remove(handlers, subscriber));
-                snapshot = handlers?.GetInvocationList() ?? Array.Empty<Delegate>();
-            }
+            add => _replayBatchSubscribers.Add(value);
+            remove => _replayBatchSubscribers.Remove(value);
         }
 
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding, string schemaEncoding), uint> _channelCache
