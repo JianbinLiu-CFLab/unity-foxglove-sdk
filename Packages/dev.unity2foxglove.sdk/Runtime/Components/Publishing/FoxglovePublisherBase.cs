@@ -202,8 +202,8 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <remarks>
         /// Derived publishers overriding this callback must call the base implementation
-        /// for the normal lifecycle contract. Replay suppression is cleared only by the
-        /// Manager's RestoreAfterReplay path.
+        /// so future base lifecycle hooks remain composable. Replay suppression is owned
+        /// by the Manager and is cleared only by its RestoreAfterReplay path.
         /// </remarks>
         protected virtual void OnDisable()
         {

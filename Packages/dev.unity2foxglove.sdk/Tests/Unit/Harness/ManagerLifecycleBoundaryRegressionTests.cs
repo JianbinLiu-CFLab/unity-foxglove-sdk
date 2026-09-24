@@ -130,26 +130,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void PublisherReplayRestoreDoesNotOverrideExternalLifecycleOwnership()
-        {
-            var boundary = new ReplayPublisherBoundary(enabled: true);
-
-            Assert.True(boundary.TryDisableForReplay());
-            Assert.True(boundary.Enabled);
-            Assert.True(boundary.ReplaySuppressed);
-            boundary.ExternalDisable();
-            Assert.False(boundary.RestoreAfterReplay());
-            Assert.False(boundary.Enabled);
-
-            boundary.ExternalEnable();
-            Assert.True(boundary.Enabled);
-            Assert.True(boundary.TryDisableForReplay());
-            boundary.ExternalEnable();
-            Assert.True(boundary.RestoreAfterReplay());
-            Assert.True(boundary.Enabled);
-        }
-
-        [Fact]
         public void RemoteMcapManagerRetryClearsFailureAndRetriesAfterOneSecond()
         {
             AssertEndpointRetryBehavior();
@@ -256,45 +236,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             public void Dispatch(int value, Action<Exception> onError)
                 => _state.Invoke(handler => handler(value), onError);
-        }
-
-        private sealed class ReplayPublisherBoundary
-        {
-            private readonly ReplayDisableOwnershipState _state = new ReplayDisableOwnershipState();
-
-            public ReplayPublisherBoundary(bool enabled)
-            {
-                Enabled = enabled;
-            }
-
-            public bool Enabled { get; private set; }
-            public bool ReplaySuppressed { get; private set; }
-
-            public bool TryDisableForReplay()
-                => _state.TryAcquire(() => Enabled, () => ReplaySuppressed = true);
-
-            public bool RestoreAfterReplay()
-                => _state.TryRestoreOwned(() => ReplaySuppressed = false);
-
-            public void ExternalEnable()
-            {
-                SetEnabledLikeUnity(true);
-            }
-
-            public void ExternalDisable()
-            {
-                SetEnabledLikeUnity(false);
-            }
-
-            private void SetEnabledLikeUnity(bool value)
-            {
-                if (Enabled == value)
-                    return;
-
-                Enabled = value;
-                if (_state.NotifyExternalLifecycleTransition())
-                    ReplaySuppressed = false;
-            }
         }
 
         private sealed class ManagerEndpointBoundary

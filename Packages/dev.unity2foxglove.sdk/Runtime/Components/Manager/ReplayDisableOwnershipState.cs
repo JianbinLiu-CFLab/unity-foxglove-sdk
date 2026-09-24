@@ -11,19 +11,6 @@ namespace Unity.FoxgloveSDK.Components
     internal sealed class ReplayDisableOwnershipState
     {
         private bool _owned;
-        private bool _transitionInProgress;
-
-        internal bool HasOwnership => _owned;
-
-        internal bool NotifyExternalLifecycleTransition()
-        {
-            if (_transitionInProgress)
-                return false;
-
-            var wasOwned = _owned;
-            _owned = false;
-            return wasOwned;
-        }
 
         internal bool TryAcquire(Func<bool> isEnabled, Action acquire)
         {
@@ -32,29 +19,8 @@ namespace Unity.FoxgloveSDK.Components
             if (!isEnabled())
                 return false;
 
-            _transitionInProgress = true;
-            try
-            {
-                acquire();
-                _owned = true;
-                return true;
-            }
-            finally
-            {
-                _transitionInProgress = false;
-            }
-        }
-
-        internal bool TryRestore(Func<bool> isEnabled, Action enable)
-        {
-            if (isEnabled == null) throw new ArgumentNullException(nameof(isEnabled));
-            if (enable == null) throw new ArgumentNullException(nameof(enable));
-            if (!_owned)
-                return false;
-
-            _owned = false;
-            if (!isEnabled())
-                enable();
+            acquire();
+            _owned = true;
             return true;
         }
 
