@@ -4,6 +4,7 @@
 // Module: Runtime/Components/Manager
 // Purpose: Owns FoxgloveManager Remote MCAP resource lifecycle.
 
+using System;
 using System.IO;
 using Unity.FoxgloveSDK.IO;
 using UnityEngine;
@@ -20,8 +21,17 @@ namespace Unity.FoxgloveSDK.Components
         private string _remoteMcapFileServerKnownPath;
         private string _remoteMcapFileServerKnownSourceId;
         private string _remoteMcapFileServerKnownToken;
-        private double _remoteMcapFileServerRetryAt;
+        private readonly RetryBackoffState _remoteMcapFileServerRetry = new RetryBackoffState();
+        private Func<RemoteMcapHttpOptions, RemoteMcapHttpServer> _remoteMcapFileServerStart =
+            RemoteMcapHttpServer.Start;
         private bool _warnedRemoteMcapFileServerWithoutToken;
+
+        /// <summary>Test seam for injecting one bounded Remote MCAP startup failure.</summary>
+        internal Func<RemoteMcapHttpOptions, RemoteMcapHttpServer> RemoteMcapFileServerStartForTests
+        {
+            get => _remoteMcapFileServerStart;
+            set => _remoteMcapFileServerStart = value ?? RemoteMcapHttpServer.Start;
+        }
 
         private void StartRemoteMcapFileServerIfNeeded()
         {
@@ -41,22 +51,25 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var options = BuildRemoteMcapFileServerOptions(path);
-            try
-            {
-                _remoteMcapFileServer?.Dispose();
-                _remoteMcapFileServer = RemoteMcapHttpServer.Start(options);
-                _remoteMcapFileServerRetryAt = 0d;
-                Debug.Log("[Foxglove] Remote MCAP file URL ready: " + BuildRemoteMcapFileUrl(options));
-                WarnIfRemoteMcapFileServerHasNoToken(options);
-            }
-            catch (System.Exception ex)
-            {
-                StopRemoteMcapFileServer();
-                ClearRemoteMcapFileServerConfig();
-                _remoteMcapFileServerRetryAt = Time.realtimeSinceStartupAsDouble + 1d;
-                Debug.LogWarning("[Foxglove] Remote MCAP file URL disabled: " + ex.Message);
+            var attempt = _remoteMcapFileServerRetry.TryExecute(
+                Time.realtimeSinceStartupAsDouble,
+                1d,
+                () =>
+                {
+                    _remoteMcapFileServer?.Dispose();
+                    _remoteMcapFileServer = _remoteMcapFileServerStart(options);
+                },
+                ex =>
+                {
+                    StopRemoteMcapFileServer();
+                    ClearRemoteMcapFileServerConfig();
+                    Debug.LogWarning("[Foxglove] Remote MCAP file URL disabled: " + ex.Message);
+                });
+            if (attempt != RetryExecutionResult.Succeeded)
                 return;
-            }
+
+            Debug.Log("[Foxglove] Remote MCAP file URL ready: " + BuildRemoteMcapFileUrl(options));
+            WarnIfRemoteMcapFileServerHasNoToken(options);
 
             RememberRemoteMcapFileServerConfig(path);
         }
@@ -74,7 +87,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            if (Time.realtimeSinceStartupAsDouble < _remoteMcapFileServerRetryAt)
+            if (_remoteMcapFileServerRetry.IsBlocked(Time.realtimeSinceStartupAsDouble))
                 return;
 
             var path = _enableReplay && !string.IsNullOrWhiteSpace(_replayFilePath)

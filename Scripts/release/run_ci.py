@@ -37,6 +37,7 @@ CI_ONLY_CHOICES = (
     "xunit",
     "xunit-adapter",
     "xunit-native",
+    "xunit-manager-boundary",
     "ros2bridge-xunit",
     "performance-regression",
     "phase188-replay-regression",
@@ -389,10 +390,15 @@ UNIT_NATIVE_TEST_PROPS = [
     *dotnet_msbuild_props("unit-tests-native"),
     "-p:IncludeRos2ForUnityNative=true",
 ]
+UNIT_MANAGER_BOUNDARY_TEST_PROPS = [
+    *dotnet_msbuild_props("unit-tests-manager-boundary"),
+    "-p:IncludeManagerProductionBoundary=true",
+]
 ANALYZER_OUTPUT_DIR = ISOLATED_DOTNET_ROOT / "analyzer-output"
 UNIT_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit"
 UNIT_ADAPTER_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-adapter"
 UNIT_NATIVE_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-native"
+UNIT_MANAGER_BOUNDARY_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-manager-boundary"
 ROS2_BRIDGE_TEST_PROPS = dotnet_msbuild_props("ros2bridge-unit-tests")
 
 
@@ -556,6 +562,11 @@ def build_dotnet_ci_jobs() -> list[CiJob]:
         CiJob(
             "xunit-native",
             [sys.executable, script, "--only", "xunit-native"],
+            exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+        ),
+        CiJob(
+            "xunit-manager-boundary",
+            [sys.executable, script, "--only", "xunit-manager-boundary"],
             exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
         ),
         CiJob(
@@ -939,7 +950,7 @@ def main() -> int:
             "Run only one suite: dotnet, dotnet-runtime, xunit, xunit-adapter, xunit-native, "
             "analyzer, foxrun-publish-panel, phase179-ros2-regression, "
             "phase181-ros2-regression, phase188-replay-regression, phase184-acceptance-tooling, "
-            "ros2bridge-xunit, performance-regression, phase186-bridge-tooling, phase186-bridge-windows-live, "
+            "ros2bridge-xunit, xunit-manager-boundary, performance-regression, phase186-bridge-tooling, phase186-bridge-windows-live, "
             "mcap-conformance, packages, boundary"
         ),
     )
@@ -1170,6 +1181,32 @@ def main() -> int:
                 "xUnit Native ROS2 compilation unit tests",
             )
             if results["xunit-native-restore"]
+            else False
+        )
+
+    if args.only == "xunit-manager-boundary":
+        results["xunit-manager-boundary-restore"] = restore_with_ignoring_failed_sources(
+            UNIT_TESTS_PROJ,
+            "Restore Manager production-boundary xUnit lane",
+            UNIT_MANAGER_BOUNDARY_TEST_PROPS,
+            fatal=False,
+        )
+        results["xunit-manager-boundary"] = (
+            run(
+                [
+                    "dotnet",
+                    "test",
+                    "--no-restore",
+                    UNIT_TESTS_PROJ,
+                    *UNIT_MANAGER_BOUNDARY_TEST_PROPS,
+                    "--logger",
+                    "trx;LogFileName=unit-tests-manager-boundary.trx",
+                    "--results-directory",
+                    str(UNIT_MANAGER_BOUNDARY_TEST_RESULTS_DIR),
+                ],
+                "xUnit Manager production-boundary tests",
+            )
+            if results["xunit-manager-boundary-restore"]
             else False
         )
 

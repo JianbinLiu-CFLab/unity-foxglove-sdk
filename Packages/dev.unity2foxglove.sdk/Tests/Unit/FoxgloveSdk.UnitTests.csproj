@@ -10,6 +10,7 @@
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityNative)' == 'true' and '$(IncludeRos2ForUnityAdapter)' == ''">true</IncludeRos2ForUnityAdapter>
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityAdapter)' == ''">false</IncludeRos2ForUnityAdapter>
     <IncludeRos2Bridge Condition="'$(IncludeRos2Bridge)' == ''">false</IncludeRos2Bridge>
+    <IncludeManagerProductionBoundary Condition="'$(IncludeManagerProductionBoundary)' == ''">false</IncludeManagerProductionBoundary>
     <!-- Compile the reflection discovery boundary in the default focused lane;
          optional analyzer lanes use a different Unity compile-stub surface. -->
     <IncludeFoxRunEditorDiscoverySurface
@@ -20,10 +21,13 @@
     <IncludeClientEventManagerSurface
       Condition="'$(IncludeClientEventManagerSurface)' == '' and '$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true' and '$(IncludeRos2Bridge)' != 'true'">true</IncludeClientEventManagerSurface>
     <IncludeClientEventManagerSurface Condition="'$(IncludeClientEventManagerSurface)' == ''">false</IncludeClientEventManagerSurface>
+    <IncludeClientEventManagerSurface Condition="'$(IncludeManagerProductionBoundary)' == 'true'">false</IncludeClientEventManagerSurface>
     <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY</DefineConstants>
+    <DefineConstants Condition="'$(IncludeManagerProductionBoundary)' == 'true'">$(DefineConstants);MANAGER_PRODUCTION_BOUNDARY</DefineConstants>
     <Phase179OptionalCompilationLane>default</Phase179OptionalCompilationLane>
     <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityAdapter)' == 'true'">adapter</Phase179OptionalCompilationLane>
     <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityNative)' == 'true'">native</Phase179OptionalCompilationLane>
+    <Phase179OptionalCompilationLane Condition="'$(IncludeManagerProductionBoundary)' == 'true'">manager-production-boundary</Phase179OptionalCompilationLane>
     <AssemblyName Condition="'$(IncludeRos2ForUnityNative)' == 'true'">Unity2Foxglove.Ros2ForUnity.Native</AssemblyName>
     <OutputPath>$(BaseOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\</OutputPath>
     <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
@@ -42,10 +46,20 @@
     <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs;../NativeCompileStubs/**/*.cs" />
     <Compile Remove="Fixtures/CertificateGeneratorUnityStubs.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Remove="Fixtures/CertificateGeneratorUnityStubs.cs;Fixtures/FoxgloveManagerClientEventsCompileStubs.cs;Manager/ClientEventAdmissionStateTests.cs"
+             Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Remove="Fixtures/FoxRunEditorDiscoveryCompileStubs.cs;FoxRun/FoxrunAssemblyScannerTests.cs"
              Condition="'$(IncludeFoxRunEditorDiscoverySurface)' != 'true'" />
     <Compile Remove="Fixtures/FoxgloveManagerClientEventsCompileStubs.cs;Manager/ClientEventAdmissionStateTests.cs"
              Condition="'$(IncludeClientEventManagerSurface)' != 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Publishing/FoxglovePublisherBase.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.ComponentPublishContracts.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.ComponentSessionWiring.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.ReplayForwarders.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.RuntimeForwarders.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.Server.RemoteMcap.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.Server.ReplayCursor.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Logging/FoxgloveLogger.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Remove="Ros2ForUnity/**/*.cs;Architecture/FoxRunRos2NativeBoundaryTests.cs;Manager/FoxRunRos2CustomTypesupportInspectorPresentationTests.cs;FoxRun/FoxRunRos2*.cs;FoxRun/FoxRunCustomNativeContractDemandPolicyTests.cs;FoxRun/Fixtures/Phase181CustomInterfaceFixture.cs;Harness/R2fuGuardHelperOptimizationTests.cs;Harness/SensorRos2OptimizationTests.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true'" />
     <Compile Remove="Ros2ForUnity/FoxRunAnalyzerCompositionContractTests.cs"

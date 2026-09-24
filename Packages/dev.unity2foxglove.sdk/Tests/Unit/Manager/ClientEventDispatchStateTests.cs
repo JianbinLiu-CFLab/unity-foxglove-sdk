@@ -123,7 +123,9 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
             var serverSource = TestSources.Text(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs")
+                + TestSources.Text(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.RuntimeForwarders.cs");
 
             Assert.Contains(
                 "ClientEventGenerationGate.IsCurrent(evt.Generation, generation)",
@@ -171,6 +173,28 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             Assert.Contains(
                 "private void CleanupStartupAfterFailure()\n        {\n            RetireClientEventIngress();",
                 serverSource,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ServerStopTailInvokesProductionSessionClearHelper()
+        {
+            var server = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var stopStart = server.IndexOf(
+                "FoxgloveManagerTeardownState.RunStopServer(",
+                StringComparison.Ordinal);
+            var stopEnd = server.IndexOf(
+                "FlushClientEventRetirementDrops();",
+                stopStart,
+                StringComparison.Ordinal);
+            Assert.True(stopStart >= 0);
+            Assert.True(stopEnd > stopStart);
+            var stopTail = server.Substring(stopStart, stopEnd - stopStart);
+
+            Assert.Contains(
+                "ClearClientEvents,\n                    () => _connectionState.ResetChannelIds(FirstAutoChannelId),\n                    () =>\n                    {\n                        ClearActiveComponentPublisherSessionAtStop(\n                            restoreLivePublishers ? RestoreLivePublishers : null);\n                    });",
+                stopTail,
                 StringComparison.Ordinal);
         }
     }
