@@ -294,6 +294,26 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void ReplaySuppressionSurvivesExternalLifecycleToggle()
+        {
+            var publisher = new BoundaryPublisher { TopicForTest = "/boundary" };
+            publisher.ManagerForTest = new FoxgloveManager();
+            publisher.ExternalEnableForTest();
+
+            Assert.True(publisher.TryDisableForReplayForTest());
+            publisher.ExternalDisableForTest();
+            publisher.ExternalEnableForTest();
+
+            Assert.True(publisher.enabled);
+            Assert.True(publisher.ReplaySuppressedForTest);
+            Assert.False(publisher.PreparePublishForTest());
+
+            publisher.RestoreAfterReplayForTest();
+            Assert.False(publisher.ReplaySuppressedForTest);
+            Assert.True(publisher.PreparePublishForTest());
+        }
+
+        [Fact]
         public void ReplayRestoreDoesNotOverrideExternalPublisherEnable()
         {
             var publisher = new BoundaryPublisher();

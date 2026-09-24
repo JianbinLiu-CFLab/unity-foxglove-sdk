@@ -186,8 +186,6 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual void OnEnable()
         {
-            if (_replayDisableOwnership.NotifyExternalLifecycleTransition())
-                _replaySuppressed = false;
             // Re-enable starts a fresh cadence window, so the first scheduled
             // tick can publish immediately instead of waiting one full period.
             _publishRateState = default;
@@ -204,12 +202,11 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <remarks>
         /// Derived publishers overriding this callback must call the base implementation
-        /// so replay-disable ownership is cleared when a publisher is disabled manually.
+        /// for the normal lifecycle contract. Replay suppression is cleared only by the
+        /// Manager's RestoreAfterReplay path.
         /// </remarks>
         protected virtual void OnDisable()
         {
-            if (_replayDisableOwnership.NotifyExternalLifecycleTransition())
-                _replaySuppressed = false;
         }
 
         internal bool TryDisableForReplay()

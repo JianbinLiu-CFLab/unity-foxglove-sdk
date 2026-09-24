@@ -49,8 +49,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var shouldPublish = SourceMethod(source, "protected bool ShouldPublishNow");
             var shouldPublishFixed = SourceMethod(source, "protected bool ShouldPublishNowFixed");
 
-            Assert.Contains("if (!_publishOnEnable)", shouldPublish, StringComparison.Ordinal);
-            Assert.Contains("if (!_publishOnEnable)", shouldPublishFixed, StringComparison.Ordinal);
+            Assert.Contains("_publishOnEnable", shouldPublish, StringComparison.Ordinal);
+            Assert.Contains("_replaySuppressed", shouldPublish, StringComparison.Ordinal);
+            Assert.Contains("_publishOnEnable", shouldPublishFixed, StringComparison.Ordinal);
+            Assert.Contains("_replaySuppressed", shouldPublishFixed, StringComparison.Ordinal);
             Assert.Contains("_supportedEncodingSummaryCache", source, StringComparison.Ordinal);
             Assert.Contains("get { return _supportedEncodingSummaryCache ??= BuildSupportedEncodingSummary(); }", source, StringComparison.Ordinal);
             Assert.Contains("InvalidateSupportedEncodingSummaryCache();", source, StringComparison.Ordinal);
