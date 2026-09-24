@@ -4,6 +4,7 @@
 // Module: Runtime/Components/Manager
 // Purpose: Owns FoxgloveManager replay cursor endpoint lifecycle.
 
+using System;
 using System.Globalization;
 using Unity.FoxgloveSDK.Core;
 using UnityEngine;
@@ -18,6 +19,34 @@ namespace Unity.FoxgloveSDK.Components
         private int _replayCursorEndpointKnownPort;
         private string _replayCursorEndpointKnownToken;
         private readonly RetryBackoffState _replayCursorEndpointRetry = new RetryBackoffState();
+        private Func<UnityReplayCursorEndpoint> _replayCursorEndpointFactory =
+            () => new UnityReplayCursorEndpoint(new UnityLogger());
+        private Action<
+            UnityReplayCursorEndpoint,
+            UnityReplayCursorEndpointOptions,
+            Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult>,
+            Func<ReplayCursorState>> _replayCursorEndpointStart =
+            (endpoint, options, queue, getState) => endpoint.Start(options, queue, getState);
+
+        /// <summary>Test seam for injecting one bounded replay cursor startup failure.</summary>
+        internal Func<UnityReplayCursorEndpoint> ReplayCursorEndpointFactoryForTests
+        {
+            get => _replayCursorEndpointFactory;
+            set => _replayCursorEndpointFactory = value
+                ?? new Func<UnityReplayCursorEndpoint>(() => new UnityReplayCursorEndpoint(new UnityLogger()));
+        }
+
+        /// <summary>Test seam for fault-injecting replay cursor endpoint startup.</summary>
+        internal Action<
+            UnityReplayCursorEndpoint,
+            UnityReplayCursorEndpointOptions,
+            Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult>,
+            Func<ReplayCursorState>> ReplayCursorEndpointStartForTests
+        {
+            get => _replayCursorEndpointStart;
+            set => _replayCursorEndpointStart = value
+                ?? ((endpoint, options, queue, getState) => endpoint.Start(options, queue, getState));
+        }
 
         private void StartReplayCursorEndpointIfNeeded()
         {
@@ -35,7 +64,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            _replayCursorEndpoint ??= new UnityReplayCursorEndpoint(new UnityLogger());
+            _replayCursorEndpoint ??= _replayCursorEndpointFactory();
             var options = new UnityReplayCursorEndpointOptions(
                 enabled: true,
                 host: _replayCursorBridgeHost,
@@ -50,7 +79,11 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     _replayCursorEndpointLoggedFirstCursor = false;
                     _replayCursorEndpointLoggedUnavailable = false;
-                    _replayCursorEndpoint.Start(options, QueueExternalReplayCursor, GetExternalReplayCursorState);
+                    _replayCursorEndpointStart(
+                        _replayCursorEndpoint,
+                        options,
+                        QueueExternalReplayCursor,
+                        GetExternalReplayCursorState);
                 },
                 ex =>
                 {

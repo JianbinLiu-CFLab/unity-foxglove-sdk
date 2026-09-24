@@ -4,6 +4,7 @@
 // Module: Runtime/Components/Manager
 // Purpose: Owns FoxgloveManager Remote MCAP resource lifecycle.
 
+using System;
 using System.IO;
 using Unity.FoxgloveSDK.IO;
 using UnityEngine;
@@ -21,7 +22,16 @@ namespace Unity.FoxgloveSDK.Components
         private string _remoteMcapFileServerKnownSourceId;
         private string _remoteMcapFileServerKnownToken;
         private readonly RetryBackoffState _remoteMcapFileServerRetry = new RetryBackoffState();
+        private Func<RemoteMcapHttpOptions, RemoteMcapHttpServer> _remoteMcapFileServerStart =
+            RemoteMcapHttpServer.Start;
         private bool _warnedRemoteMcapFileServerWithoutToken;
+
+        /// <summary>Test seam for injecting one bounded Remote MCAP startup failure.</summary>
+        internal Func<RemoteMcapHttpOptions, RemoteMcapHttpServer> RemoteMcapFileServerStartForTests
+        {
+            get => _remoteMcapFileServerStart;
+            set => _remoteMcapFileServerStart = value ?? RemoteMcapHttpServer.Start;
+        }
 
         private void StartRemoteMcapFileServerIfNeeded()
         {
@@ -47,7 +57,7 @@ namespace Unity.FoxgloveSDK.Components
                 () =>
                 {
                     _remoteMcapFileServer?.Dispose();
-                    _remoteMcapFileServer = RemoteMcapHttpServer.Start(options);
+                    _remoteMcapFileServer = _remoteMcapFileServerStart(options);
                 },
                 ex =>
                 {
