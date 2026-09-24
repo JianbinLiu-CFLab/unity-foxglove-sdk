@@ -135,7 +135,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var boundary = new ReplayPublisherBoundary(enabled: true);
 
             Assert.True(boundary.TryDisableForReplay());
-            Assert.False(boundary.Enabled);
+            Assert.True(boundary.Enabled);
+            Assert.True(boundary.ReplaySuppressed);
             boundary.ExternalDisable();
             Assert.False(boundary.RestoreAfterReplay());
             Assert.False(boundary.Enabled);
@@ -144,7 +145,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.True(boundary.Enabled);
             Assert.True(boundary.TryDisableForReplay());
             boundary.ExternalEnable();
-            Assert.False(boundary.RestoreAfterReplay());
+            Assert.True(boundary.RestoreAfterReplay());
             Assert.True(boundary.Enabled);
         }
 
@@ -267,23 +268,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
 
             public bool Enabled { get; private set; }
+            public bool ReplaySuppressed { get; private set; }
 
             public bool TryDisableForReplay()
-                => _state.TryAcquire(() => Enabled, () => Enabled = false);
+                => _state.TryAcquire(() => Enabled, () => ReplaySuppressed = true);
 
             public bool RestoreAfterReplay()
-                => _state.TryRestore(() => Enabled, () => Enabled = true);
+                => _state.TryRestoreOwned(() => ReplaySuppressed = false);
 
             public void ExternalEnable()
             {
-                Enabled = true;
-                _state.NotifyExternalLifecycleTransition();
+                SetEnabledLikeUnity(true);
             }
 
             public void ExternalDisable()
             {
-                Enabled = false;
-                _state.NotifyExternalLifecycleTransition();
+                SetEnabledLikeUnity(false);
+            }
+
+            private void SetEnabledLikeUnity(bool value)
+            {
+                if (Enabled == value)
+                    return;
+
+                Enabled = value;
+                if (_state.NotifyExternalLifecycleTransition())
+                    ReplaySuppressed = false;
             }
         }
 

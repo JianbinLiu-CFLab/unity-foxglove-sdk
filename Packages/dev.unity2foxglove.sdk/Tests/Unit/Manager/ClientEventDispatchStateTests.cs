@@ -193,7 +193,7 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             var stopTail = server.Substring(stopStart, stopEnd - stopStart);
 
             Assert.Contains(
-                "ClearClientEvents,\n                    () => _connectionState.ResetChannelIds(FirstAutoChannelId),\n                    () =>\n                    {\n                        ClearActiveComponentPublisherSessionAtStop(\n                            restoreLivePublishers ? RestoreLivePublishers : null);\n                    });",
+                "ClearClientEvents,\n                    () => _connectionState.ResetChannelIds(FirstAutoChannelId),\n                    () =>\n                    {\n                        RunComponentPublisherSessionStopTail(\n                            restoreLivePublishers,\n                            RestoreLivePublishers);\n                    });",
                 stopTail,
                 StringComparison.Ordinal);
         }

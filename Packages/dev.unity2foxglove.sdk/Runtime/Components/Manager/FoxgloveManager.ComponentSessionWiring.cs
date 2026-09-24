@@ -30,5 +30,13 @@ namespace Unity.FoxgloveSDK.Components
             ClearActiveComponentPublisherSession();
             restoreLivePublishers?.Invoke();
         }
+
+        internal void RunComponentPublisherSessionStopTail(
+            bool restoreLivePublishers,
+            Action restoreLivePublishersAction)
+        {
+            ClearActiveComponentPublisherSessionAtStop(
+                restoreLivePublishers ? restoreLivePublishersAction : null);
+        }
     }
 }

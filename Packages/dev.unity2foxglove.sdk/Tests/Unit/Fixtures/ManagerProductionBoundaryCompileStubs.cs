@@ -296,7 +296,7 @@ namespace Unity.FoxgloveSDK.Components
             => SetActiveComponentPublisherSession(snapshot);
 
         internal void ClearActiveSessionForTest()
-            => ClearActiveComponentPublisherSessionAtStop(null);
+            => RunComponentPublisherSessionStopTail(false, null);
 
         internal void ConfigureRemoteForTest(string path, int port)
         {

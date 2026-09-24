@@ -7,7 +7,7 @@ using System;
 
 namespace Unity.FoxgloveSDK.Components
 {
-    /// <summary>Tracks whether replay owns a publisher disable/restore transition.</summary>
+    /// <summary>Tracks whether replay owns a publisher suppression/restore transition.</summary>
     internal sealed class ReplayDisableOwnershipState
     {
         private bool _owned;
@@ -15,23 +15,27 @@ namespace Unity.FoxgloveSDK.Components
 
         internal bool HasOwnership => _owned;
 
-        internal void NotifyExternalLifecycleTransition()
+        internal bool NotifyExternalLifecycleTransition()
         {
-            if (!_transitionInProgress)
-                _owned = false;
+            if (_transitionInProgress)
+                return false;
+
+            var wasOwned = _owned;
+            _owned = false;
+            return wasOwned;
         }
 
-        internal bool TryAcquire(Func<bool> isEnabled, Action disable)
+        internal bool TryAcquire(Func<bool> isEnabled, Action acquire)
         {
             if (isEnabled == null) throw new ArgumentNullException(nameof(isEnabled));
-            if (disable == null) throw new ArgumentNullException(nameof(disable));
+            if (acquire == null) throw new ArgumentNullException(nameof(acquire));
             if (!isEnabled())
                 return false;
 
             _transitionInProgress = true;
             try
             {
-                disable();
+                acquire();
                 _owned = true;
                 return true;
             }
@@ -51,6 +55,17 @@ namespace Unity.FoxgloveSDK.Components
             _owned = false;
             if (!isEnabled())
                 enable();
+            return true;
+        }
+
+        internal bool TryRestoreOwned(Action restore)
+        {
+            if (restore == null) throw new ArgumentNullException(nameof(restore));
+            if (!_owned)
+                return false;
+
+            _owned = false;
+            restore();
             return true;
         }
     }
