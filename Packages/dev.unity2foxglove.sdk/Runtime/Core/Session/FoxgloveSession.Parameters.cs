@@ -43,6 +43,7 @@ namespace Unity.FoxgloveSDK.Core
             catch { _logger.LogWarning($"setParameters parse error from client {clientId}"); return; }
 
             var changedNames = new List<string>();
+            var unsetNames = new HashSet<string>(StringComparer.Ordinal);
             List<string> requestedNames = null;
             if (msg.Parameters != null)
             {
@@ -53,18 +54,25 @@ namespace Unity.FoxgloveSDK.Core
                         continue;
 
                     requestedNames.Add(p.Name);
-                    if (_parameters.TrySetFromClient(p.Name, p.Value))
+                    if (_parameters.TrySetFromClientAllowUnset(p.Name, p.Value))
+                    {
                         changedNames.Add(p.Name);
+                        if (p.Value == null || p.Value.Type == Newtonsoft.Json.Linq.JTokenType.Null)
+                            unsetNames.Add(p.Name);
+                    }
                 }
             }
 
-            var current = _parameters.GetWireParameters(requestedNames);
+            var current = _parameters.GetWireParametersIncludingUnset(requestedNames, unsetNames);
             var resp = new ParameterValues { Parameters = current, Id = msg.Id };
             _transport.SendText(clientId, JsonConvert.SerializeObject(resp));
 
             if (changedNames.Count > 0)
             {
-                var broadcast = new ParameterValues { Parameters = _parameters.GetWireParameters(changedNames) };
+                var broadcast = new ParameterValues
+                {
+                    Parameters = _parameters.GetWireParametersIncludingUnset(changedNames, unsetNames)
+                };
                 var broadcastJson = JsonConvert.SerializeObject(broadcast);
                 foreach (var subscribedClientId in GetParamSubscribersForChanged(changedNames, clientId))
                     _transport.SendText(subscribedClientId, broadcastJson);

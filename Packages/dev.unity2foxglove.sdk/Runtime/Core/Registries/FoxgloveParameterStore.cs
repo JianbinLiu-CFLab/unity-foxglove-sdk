@@ -154,8 +154,15 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        /// <summary>Set a parameter's value from a client request. Silently no-ops for unknown/read-only params.</summary>
+        /// <summary>Set a parameter's value from a runtime/client value. Null is not an unset operation.</summary>
         public bool TrySetFromClient(string name, JToken value)
+            => TrySetFromClientCore(name, value, allowUnset: false);
+
+        /// <summary>Apply a client setParameters value, including the protocol's null-as-unset form.</summary>
+        internal bool TrySetFromClientAllowUnset(string name, JToken value)
+            => TrySetFromClientCore(name, value, allowUnset: true);
+
+        private bool TrySetFromClientCore(string name, JToken value, bool allowUnset)
         {
             ThrowIfMutationBlocked();
             string type;
@@ -167,6 +174,8 @@ namespace Unity.FoxgloveSDK.Core
 
                 if (value == null || value.Type == JTokenType.Null)
                 {
+                    if (!allowUnset)
+                        return false;
                     type = entry.Type;
                     _params.Remove(name);
                     normalizedValue = null;
@@ -429,6 +438,27 @@ namespace Unity.FoxgloveSDK.Core
                 }
                 return result;
             }
+        }
+
+        /// <summary>Return current values and explicit name-only markers for client-unset parameters.</summary>
+        internal List<Parameter> GetWireParametersIncludingUnset(
+            IReadOnlyList<string> names,
+            ISet<string> unsetNames)
+        {
+            var result = GetWireParameters(names);
+            if (unsetNames == null || unsetNames.Count == 0)
+                return result;
+
+            var present = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var parameter in result)
+                present.Add(parameter.Name);
+            foreach (var name in unsetNames)
+            {
+                if (!string.IsNullOrEmpty(name) && present.Add(name))
+                    result.Add(new Parameter { Name = name });
+            }
+
+            return result;
         }
 
         /// <summary>Remove all parameters.</summary>

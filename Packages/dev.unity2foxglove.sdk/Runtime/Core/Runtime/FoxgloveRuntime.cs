@@ -252,6 +252,8 @@ namespace Unity.FoxgloveSDK.Core
         public bool TrySetParameter(string name, JToken value)
         {
             ThrowIfSessionCleanupPending();
+            if (value == null || value.Type == JTokenType.Null)
+                return false;
             if (!_parameters.TrySetFromClient(name, value))
                 return false;
             _singleParameterBroadcastName[0] = name;

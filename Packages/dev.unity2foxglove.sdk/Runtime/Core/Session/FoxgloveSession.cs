@@ -577,7 +577,10 @@ namespace Unity.FoxgloveSDK.Core
                 EnsureRecorderChannel(recorder, channel);
 
             var liveAllowed = !recordingOnly && _channelFilter.AllowLiveWebSocket(channel);
-            _channels.Register(channel);
+            if (previous != null && wasRecordingOnly != recordingOnly)
+                _channels.Replace(channel);
+            else
+                _channels.Register(channel);
 
             var removedSubscriptions = new List<(uint clientId, uint subscriptionId, uint channelId)>();
             var graphChanged = false;
@@ -609,9 +612,6 @@ namespace Unity.FoxgloveSDK.Core
                     graphChanged = true;
                 }
 
-                if (graphChanged)
-                    _graph.BroadcastUpdate();
-
                 if (liveAllowed)
                 {
                     advertiseAttempted = true;
@@ -622,6 +622,9 @@ namespace Unity.FoxgloveSDK.Core
                     unadvertiseAttempted = true;
                     _transport.BroadcastText(SerializeSingleUnadvertise(channel.Id));
                 }
+
+                if (graphChanged)
+                    _graph.BroadcastUpdate();
 
                 var mirrorSink = Volatile.Read(ref _mirrorSink);
                 if (mirrorSink != null)
