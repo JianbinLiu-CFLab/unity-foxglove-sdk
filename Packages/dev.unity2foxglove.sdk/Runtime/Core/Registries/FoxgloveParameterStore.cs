@@ -164,10 +164,20 @@ namespace Unity.FoxgloveSDK.Core
             {
                 if (!_params.TryGetValue(name, out var entry) || !entry.Writable)
                     return false;
-                if (!TryNormalizeValueForType(entry.Type, value, out normalizedValue))
-                    return false;
-                entry.Value = normalizedValue;
-                type = entry.Type;
+
+                if (value == null || value.Type == JTokenType.Null)
+                {
+                    type = entry.Type;
+                    _params.Remove(name);
+                    normalizedValue = null;
+                }
+                else
+                {
+                    if (!TryNormalizeValueForType(entry.Type, value, out normalizedValue))
+                        return false;
+                    entry.Value = normalizedValue;
+                    type = entry.Type;
+                }
             }
             InvokeChangedHandlers(name, normalizedValue, type);
             return true;
@@ -192,6 +202,11 @@ namespace Unity.FoxgloveSDK.Core
                 case "string":
                 case "boolean":
                 case "number[]":
+                case "boolean[]":
+                case "string[]":
+                case "byte_array":
+                case "float64":
+                case "float64_array":
                     return true;
                 default:
                     return false;
@@ -207,7 +222,14 @@ namespace Unity.FoxgloveSDK.Core
                 case "boolean":
                     return new JValue(false);
                 case "number[]":
+                case "float64_array":
+                case "boolean[]":
+                case "string[]":
                     return new JArray();
+                case "byte_array":
+                    return JValue.CreateString(string.Empty);
+                case "float64":
+                    return new JValue(0d);
                 case "number":
                     return new JValue(0);
                 default:
@@ -257,8 +279,91 @@ namespace Unity.FoxgloveSDK.Core
                         return true;
                     }
                     return false;
+                case "boolean[]":
+                    if (value is JArray booleanArray)
+                    {
+                        var copy = new JArray();
+                        foreach (var item in booleanArray)
+                        {
+                            if (item.Type != JTokenType.Boolean)
+                                return false;
+                            copy.Add(item.DeepClone());
+                        }
+
+                        normalized = copy;
+                        return true;
+                    }
+                    return false;
+                case "string[]":
+                    if (value is JArray stringArray)
+                    {
+                        var copy = new JArray();
+                        foreach (var item in stringArray)
+                        {
+                            if (item.Type != JTokenType.String)
+                                return false;
+                            copy.Add(item.DeepClone());
+                        }
+
+                        normalized = copy;
+                        return true;
+                    }
+                    return false;
+                case "byte_array":
+                    if (value.Type != JTokenType.String)
+                        return false;
+                    try
+                    {
+                        var bytes = Convert.FromBase64String(value.Value<string>() ?? string.Empty);
+                        normalized = JValue.CreateString(Convert.ToBase64String(bytes));
+                        return true;
+                    }
+                    catch (FormatException)
+                    {
+                        return false;
+                    }
+                case "float64":
+                    if (TryReadFloat64(value, out var float64))
+                    {
+                        normalized = new JValue(float64);
+                        return true;
+                    }
+                    return false;
+                case "float64_array":
+                    if (value is JArray floatArray)
+                    {
+                        var copy = new JArray();
+                        foreach (var item in floatArray)
+                        {
+                            if (!TryReadFloat64(item, out var itemValue))
+                                return false;
+                            copy.Add(new JValue(itemValue));
+                        }
+
+                        normalized = copy;
+                        return true;
+                    }
+                    return false;
                 default:
                     return false;
+            }
+        }
+
+        private static bool TryReadFloat64(JToken value, out double result)
+        {
+            result = 0d;
+            if (value == null
+                || (value.Type != JTokenType.Integer && value.Type != JTokenType.Float))
+                return false;
+
+            try
+            {
+                result = value.Value<double>();
+                return !double.IsNaN(result) && !double.IsInfinity(result);
+            }
+            catch (Exception ex) when (ex is FormatException || ex is InvalidCastException || ex is OverflowException)
+            {
+                return false;
             }
         }
 
