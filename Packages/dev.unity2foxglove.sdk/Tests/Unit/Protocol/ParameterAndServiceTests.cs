@@ -248,6 +248,16 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal("/unset", removed["name"]?.ToString());
             Assert.False(removed.ContainsKey("value"));
             Assert.Null(session.Parameters.GetWireParameter("/unset"));
+
+            fake.SentTexts(1).Clear();
+            fake.SimulateText(1,
+                "{\"op\":\"setParameters\",\"parameters\":[{\"name\":\"/unset\",\"value\":null}],\"id\":\"unset-again\"}");
+
+            var repeatedResponse = JObject.Parse(fake.SentTexts(1).Last());
+            Assert.Equal("unset-again", repeatedResponse["id"]?.ToString());
+            var repeated = Assert.IsType<JObject>(Assert.Single((JArray)repeatedResponse["parameters"]));
+            Assert.Equal("/unset", repeated["name"]?.ToString());
+            Assert.False(repeated.ContainsKey("value"));
         }
 
         [Fact]
@@ -512,6 +522,46 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal(
                 new[] { "advertise", "connectionGraphUpdate" },
                 fake.OrderedTexts.Select(text => JObject.Parse(text)["op"]?.ToString()));
+        }
+
+        [Fact]
+        public void LiveChannelCanSwitchToRecordingOnlyAndUnadvertiseBeforeGraphUpdate()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 12,
+                Topic = "/live-before-recording",
+                Encoding = "json",
+                SchemaName = "old"
+            });
+
+            fake.SimulateConnect(1);
+            fake.SimulateText(1,
+                "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":3,\"channelId\":12}]}");
+            fake.SimulateText(1, "{\"op\":\"subscribeConnectionGraph\"}");
+            fake.OrderedTexts.Clear();
+            fake.SentTexts(1).Clear();
+            fake.SentBinaries(1).Clear();
+
+            session.RegisterRecordingOnlyChannel(new AdvertiseChannel
+            {
+                Id = 12,
+                Topic = "/recording-after-live",
+                Encoding = "json",
+                SchemaName = "new"
+            });
+
+            Assert.Equal("/recording-after-live", session.Channels.Get(12).Topic);
+            Assert.Equal(
+                new[] { "unadvertise", "connectionGraphUpdate" },
+                fake.OrderedTexts.Select(text => JObject.Parse(text)["op"]?.ToString()));
+
+            session.Publish(12, new byte[] { 1, 2, 3 }, 10);
+            Assert.True(
+                fake.SentBinaries(1).Count == 0,
+                "recording-only switch removes the live subscription");
         }
 
         [Fact]

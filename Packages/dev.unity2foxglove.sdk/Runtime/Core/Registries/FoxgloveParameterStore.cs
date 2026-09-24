@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Core
     public class FoxgloveParameterStore
     {
         private readonly Dictionary<string, ParameterEntry> _params = new();
+        private readonly HashSet<string> _clientUnsetNames = new(StringComparer.Ordinal);
         private readonly object _lock = new();
         private readonly IFoxgloveLogger _logger;
         private readonly Func<bool> _mutationAllowed;
@@ -84,6 +85,7 @@ namespace Unity.FoxgloveSDK.Core
 
             lock (_lock)
             {
+                _clientUnsetNames.Remove(name);
                 _params[name] = new ParameterEntry { Value = normalizedValue, Type = normalizedType, Writable = writable };
             }
             InvokeChangedHandlers(name, normalizedValue, normalizedType);
@@ -111,6 +113,7 @@ namespace Unity.FoxgloveSDK.Core
             var registration = new ParameterRegistration(this, name);
             lock (_lock)
             {
+                _clientUnsetNames.Remove(name);
                 _params[name] = new ParameterEntry
                 {
                     Value = normalizedValue,
@@ -128,7 +131,11 @@ namespace Unity.FoxgloveSDK.Core
         public bool Unregister(string name)
         {
             ThrowIfMutationBlocked();
-            lock (_lock) { return _params.Remove(name); }
+            lock (_lock)
+            {
+                _clientUnsetNames.Remove(name);
+                return _params.Remove(name);
+            }
         }
 
         /// <summary>Remove an entry only when it is still owned by the supplied lease.</summary>
@@ -150,17 +157,29 @@ namespace Unity.FoxgloveSDK.Core
                 if (!_params.TryGetValue(registration.Name, out var entry)
                     || !ReferenceEquals(entry.Owner, registration))
                     return false;
+                _clientUnsetNames.Remove(registration.Name);
                 return _params.Remove(registration.Name);
             }
         }
 
-        /// <summary>Set a parameter's value from a runtime/client value. Null is not an unset operation.</summary>
+        /// <summary>
+        /// Set a parameter's value from a runtime/client value. Null is not an
+        /// unset operation; protocol client unsets use the internal allow-unset
+        /// path owned by FoxgloveSession.
+        /// </summary>
         public bool TrySetFromClient(string name, JToken value)
             => TrySetFromClientCore(name, value, allowUnset: false);
 
         /// <summary>Apply a client setParameters value, including the protocol's null-as-unset form.</summary>
         internal bool TrySetFromClientAllowUnset(string name, JToken value)
             => TrySetFromClientCore(name, value, allowUnset: true);
+
+        /// <summary>Return whether the named parameter was previously unset by a client.</summary>
+        internal bool WasUnsetByClient(string name)
+        {
+            lock (_lock)
+                return _clientUnsetNames.Contains(name);
+        }
 
         private bool TrySetFromClientCore(string name, JToken value, bool allowUnset)
         {
@@ -178,6 +197,7 @@ namespace Unity.FoxgloveSDK.Core
                         return false;
                     type = entry.Type;
                     _params.Remove(name);
+                    _clientUnsetNames.Add(name);
                     normalizedValue = null;
                 }
                 else
@@ -185,6 +205,7 @@ namespace Unity.FoxgloveSDK.Core
                     if (!TryNormalizeValueForType(entry.Type, value, out normalizedValue))
                         return false;
                     entry.Value = normalizedValue;
+                    _clientUnsetNames.Remove(name);
                     type = entry.Type;
                 }
             }
@@ -465,13 +486,21 @@ namespace Unity.FoxgloveSDK.Core
         public void Clear()
         {
             ThrowIfMutationBlocked();
-            lock (_lock) { _params.Clear(); }
+            lock (_lock)
+            {
+                _params.Clear();
+                _clientUnsetNames.Clear();
+            }
         }
 
         /// <summary>Clear runtime-owned entries while the owning session is being retired.</summary>
         internal void ClearDuringCleanup()
         {
-            lock (_lock) { _params.Clear(); }
+            lock (_lock)
+            {
+                _params.Clear();
+                _clientUnsetNames.Clear();
+            }
         }
 
         private void ThrowIfMutationBlocked()

@@ -54,11 +54,17 @@ namespace Unity.FoxgloveSDK.Core
                         continue;
 
                     requestedNames.Add(p.Name);
+                    var isUnsetRequest = p.Value == null
+                                         || p.Value.Type == Newtonsoft.Json.Linq.JTokenType.Null;
                     if (_parameters.TrySetFromClientAllowUnset(p.Name, p.Value))
                     {
                         changedNames.Add(p.Name);
-                        if (p.Value == null || p.Value.Type == Newtonsoft.Json.Linq.JTokenType.Null)
+                        if (isUnsetRequest)
                             unsetNames.Add(p.Name);
+                    }
+                    else if (isUnsetRequest && _parameters.WasUnsetByClient(p.Name))
+                    {
+                        unsetNames.Add(p.Name);
                     }
                 }
             }
