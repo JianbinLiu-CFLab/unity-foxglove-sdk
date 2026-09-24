@@ -397,7 +397,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         public void CompatibilityVectorFixtureIsDeclarativeAndComplete()
         {
             var root = new DirectoryInfo(AppContext.BaseDirectory);
-            while (root != null && !Directory.Exists(Path.Combine(root.FullName, ".git")))
+            while (root != null
+                   && !Directory.Exists(Path.Combine(root.FullName, ".git"))
+                   && !File.Exists(Path.Combine(root.FullName, ".git")))
                 root = root.Parent;
             Assert.NotNull(root);
             var path = Path.Combine(root.FullName, "Packages", "dev.unity2foxglove.sdk", "Tests", "Unit", "FoxRun", "Fixtures", "Phase191CompatibilityVectors.json");
@@ -454,7 +456,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         private static string FindRepositoryRoot()
         {
             var root = new DirectoryInfo(AppContext.BaseDirectory);
-            while (root != null && !Directory.Exists(Path.Combine(root.FullName, ".git")))
+            while (root != null
+                   && !Directory.Exists(Path.Combine(root.FullName, ".git"))
+                   && !File.Exists(Path.Combine(root.FullName, ".git")))
                 root = root.Parent;
             Assert.NotNull(root);
             return root.FullName;

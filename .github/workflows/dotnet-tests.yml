@@ -57,6 +57,14 @@ jobs:
         if: always()
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
 
+      - name: Restore Manager production-boundary xUnit lane
+        if: always()
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeManagerProductionBoundary=true
+
+      - name: Run Manager production-boundary xUnit lane
+        if: always()
+        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeManagerProductionBoundary=true --logger "trx;LogFileName=unit-tests-manager-boundary.trx" --results-directory build/TestResults/ManagerProductionBoundary
+
       - name: Restore ROS2 Bridge behavioral xUnit tests
         if: always()
         run: dotnet restore Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Unity2Foxglove.Ros2Bridge.UnitTests.csproj
@@ -158,6 +166,14 @@ jobs:
         with:
           name: unit-test-results
           path: build/TestResults/Unit
+          if-no-files-found: error
+
+      - name: Upload Manager production-boundary test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: manager-production-boundary-test-results
+          path: build/TestResults/ManagerProductionBoundary
           if-no-files-found: error
 
       - name: Upload MCAP differential report

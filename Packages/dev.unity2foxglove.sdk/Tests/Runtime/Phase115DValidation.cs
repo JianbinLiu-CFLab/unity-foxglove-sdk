@@ -172,8 +172,10 @@ namespace Unity.FoxgloveSDK.Tests
             var controller = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var orchestrator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayOrchestrator.cs");
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs")
+                          + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ReplayForwarders.cs");
+            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs")
+                         + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.RuntimeForwarders.cs");
 
             Check(controller.Contains("event Action<ReplayMessageContext> OnReplayMessageContext", StringComparison.Ordinal)
                   && runtime.Contains("event Action<ReplayMessageContext> OnReplayMessageContext", StringComparison.Ordinal)

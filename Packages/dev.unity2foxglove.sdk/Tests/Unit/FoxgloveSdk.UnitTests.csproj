@@ -27,6 +27,7 @@
     <Phase179OptionalCompilationLane>default</Phase179OptionalCompilationLane>
     <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityAdapter)' == 'true'">adapter</Phase179OptionalCompilationLane>
     <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityNative)' == 'true'">native</Phase179OptionalCompilationLane>
+    <Phase179OptionalCompilationLane Condition="'$(IncludeManagerProductionBoundary)' == 'true'">manager-production-boundary</Phase179OptionalCompilationLane>
     <AssemblyName Condition="'$(IncludeRos2ForUnityNative)' == 'true'">Unity2Foxglove.Ros2ForUnity.Native</AssemblyName>
     <OutputPath>$(BaseOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\</OutputPath>
     <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
@@ -53,6 +54,9 @@
              Condition="'$(IncludeClientEventManagerSurface)' != 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Publishing/FoxglovePublisherBase.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.ComponentPublishContracts.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.ComponentSessionWiring.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.ReplayForwarders.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.RuntimeForwarders.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.Server.RemoteMcap.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.Server.ReplayCursor.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Logging/FoxgloveLogger.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />

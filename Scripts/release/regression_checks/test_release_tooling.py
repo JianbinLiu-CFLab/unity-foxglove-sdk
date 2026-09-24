@@ -1142,6 +1142,7 @@ class RunCiTests(unittest.TestCase):
                 "xunit",
                 "xunit-adapter",
                 "xunit-native",
+                "xunit-manager-boundary",
                 "ros2bridge-xunit",
                 "performance-regression",
                 "foxrun-publish-panel",
@@ -1519,7 +1520,7 @@ class RunCiTests(unittest.TestCase):
                     self.run_ci.main()
 
         self.assertEqual(0, context.exception.code)
-        for selector in ("dotnet-runtime", "xunit", "xunit-adapter", "xunit-native"):
+        for selector in ("dotnet-runtime", "xunit", "xunit-adapter", "xunit-native", "xunit-manager-boundary"):
             help_pattern = re.escape(selector).replace(r"\-", r"-\s*")
             self.assertRegex(stdout.getvalue(), help_pattern)
 
@@ -1628,6 +1629,7 @@ class RunCiTests(unittest.TestCase):
                 "xunit": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "xunit-adapter": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "xunit-native": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                "xunit-manager-boundary": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "ros2bridge-xunit": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "performance-regression": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "foxrun-publish-panel": None,
@@ -1659,7 +1661,15 @@ class RunCiTests(unittest.TestCase):
                         self.assertEqual(0, self.run_ci.main())
 
         self.assertEqual(
-            ["dotnet-runtime", "xunit", "xunit-adapter", "xunit-native", "ros2bridge-xunit", "performance-regression"],
+            [
+                "dotnet-runtime",
+                "xunit",
+                "xunit-adapter",
+                "xunit-native",
+                "xunit-manager-boundary",
+                "ros2bridge-xunit",
+                "performance-regression",
+            ],
             observed.get("names"),
         )
         self.assertEqual(2, observed.get("max_workers"))
@@ -1744,6 +1754,26 @@ class RunCiTests(unittest.TestCase):
                 "unit-tests-native.trx",
                 self.run_ci.CI_ROOT / "test-results" / "unit-native",
             ),
+            (
+                "xunit-manager-boundary",
+                self.run_ci.UNIT_TESTS_PROJ,
+                self.run_ci.UNIT_MANAGER_BOUNDARY_TEST_PROPS,
+                "Restore Manager production-boundary xUnit lane",
+                [
+                    "dotnet",
+                    "test",
+                    "--no-restore",
+                    self.run_ci.UNIT_TESTS_PROJ,
+                    *self.run_ci.UNIT_MANAGER_BOUNDARY_TEST_PROPS,
+                    "--logger",
+                    "trx;LogFileName=unit-tests-manager-boundary.trx",
+                    "--results-directory",
+                    str(self.run_ci.UNIT_MANAGER_BOUNDARY_TEST_RESULTS_DIR),
+                ],
+                "xUnit Manager production-boundary tests",
+                "unit-tests-manager-boundary.trx",
+                self.run_ci.UNIT_MANAGER_BOUNDARY_TEST_RESULTS_DIR,
+            ),
         ]
 
     def test_flat_dotnet_selectors_restore_and_run_isolated_lanes(self) -> None:
@@ -1800,16 +1830,18 @@ class RunCiTests(unittest.TestCase):
                     self.assertIn("-p:IncludeRos2ForUnityAdapter=true", props)
                 if selector == "xunit-native":
                     self.assertIn("-p:IncludeRos2ForUnityNative=true", props)
+                if selector == "xunit-manager-boundary":
+                    self.assertIn("-p:IncludeManagerProductionBoundary=true", props)
                 if trx_name is not None:
                     self.assertIsNotNone(results_dir)
                     self.assertIn(f"trx;LogFileName={trx_name}", command)
                     self.assertIn(str(results_dir), command)
                     xunit_artifacts.append((trx_name, str(results_dir)))
 
-        self.assertEqual(3, len({trx_name for trx_name, _ in xunit_artifacts}))
-        self.assertEqual(3, len({results_dir for _, results_dir in xunit_artifacts}))
-        self.assertEqual(4, len(lane_msbuild_roots))
-        self.assertEqual(4, len(set(lane_msbuild_roots)))
+        self.assertEqual(4, len({trx_name for trx_name, _ in xunit_artifacts}))
+        self.assertEqual(4, len({results_dir for _, results_dir in xunit_artifacts}))
+        self.assertEqual(5, len(lane_msbuild_roots))
+        self.assertEqual(5, len(set(lane_msbuild_roots)))
 
     def test_flat_dotnet_lane_failure_does_not_retry_with_restore(self) -> None:
         """Every failed lane should report failure after one no-restore command."""
@@ -2146,6 +2178,7 @@ class RunCiTests(unittest.TestCase):
                 "xunit",
                 "xunit-adapter",
                 "xunit-native",
+                "xunit-manager-boundary",
                 "ros2bridge-xunit",
                 "performance-regression",
                 "foxrun-publish-panel",

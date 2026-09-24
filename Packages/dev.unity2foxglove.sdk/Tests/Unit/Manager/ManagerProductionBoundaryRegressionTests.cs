@@ -9,11 +9,13 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Components.Publishing;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using UnityEngine;
 using Xunit;
 
@@ -79,6 +81,104 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void ManagerAttachStampsClientEventsAndActivatesAdmissionForTheSameGeneration()
+        {
+            UnityEngine.Object.ResetRegistry();
+            var manager = new FoxgloveManager();
+            var publisher = new BoundaryPublisher { TopicForTest = "/boundary" };
+            publisher.gameObject = manager.gameObject;
+            UnityEngine.Object.Register(manager);
+            UnityEngine.Object.Register(publisher);
+
+            var generation = manager.AttachComponentSessionForTest(keepSessionAlive: true);
+            try
+            {
+                manager.EmitBoundaryClientEventsForTest();
+
+                Assert.True(manager.BoundaryAdmissionAcceptsForTest(generation));
+                Assert.Equal(2, manager.BoundaryEnqueuedEventsForTest.Count);
+                Assert.All(
+                    manager.BoundaryEnqueuedEventsForTest,
+                    evt => Assert.Equal(generation, evt.Generation));
+                Assert.Contains(manager.BoundaryEnqueuedEventsForTest, evt => evt.IsConnect);
+                Assert.Contains(manager.BoundaryEnqueuedEventsForTest, evt => evt.IsMessage);
+            }
+            finally
+            {
+                manager.DisposeBoundarySessionForTest();
+            }
+        }
+
+        [Fact]
+        public void BoundaryFoxRunContractsMatchProductionInterfaceSignatures()
+        {
+            var production = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
+            var fixture = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Fixtures/ManagerProductionBoundaryFoxRunContracts.cs");
+            var interfaceNames = new[]
+            {
+                "IFoxgloveLogSource",
+                "IFoxgloveTopicContractSource",
+                "IFoxgloveTopicBusSource",
+                "IFoxgloveTopicBusDemandSource",
+                "IFoxgloveTopicObserverSource",
+                "IFoxgloveTopicSinkSource",
+                "IFoxglovePublishCaptureSource",
+                "IFoxglovePublishRecordingSource",
+                "IFoxglovePublishRecordingPolicySource",
+                "IFoxRunWebSocketCaptureSource",
+                "IFoxglovePublishOriginSource",
+                "IFoxgloveLogPolicySource",
+            };
+
+            foreach (var interfaceName in interfaceNames)
+            {
+                Assert.Equal(
+                    NormalizeInterfaceDeclaration(production, interfaceName),
+                    NormalizeInterfaceDeclaration(fixture, interfaceName));
+                Assert.Equal(
+                    NormalizeInterfaceBody(production, interfaceName),
+                    NormalizeInterfaceBody(fixture, interfaceName));
+            }
+        }
+
+        [Fact]
+        public void BoundaryClientEventFixtureMatchesProductionShape()
+        {
+            var production = NormalizeSource(TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs"));
+            var fixture = NormalizeSource(TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Fixtures/ManagerProductionBoundaryCompileStubs.cs"));
+            var declarations = new[]
+            {
+                "internal readonly struct ClientEvent",
+                "private ClientEvent(ulong generation, uint clientId, uint channelId, string topic, string encoding, byte[] payload, bool isConnect, bool isMessage)",
+                "public static ClientEvent Connect(uint clientId)",
+                "public static ClientEvent Connect(ulong generation, uint clientId)",
+                "public static ClientEvent Disconnect(uint clientId)",
+                "public static ClientEvent Disconnect(ulong generation, uint clientId)",
+                "public static ClientEvent Message(uint clientId, uint channelId, string topic, string encoding, byte[] payload)",
+                "public static ClientEvent Message(ulong generation, uint clientId, uint channelId, string topic, string encoding, byte[] payload)",
+                "public readonly ulong Generation",
+                "public readonly uint ClientId",
+                "public readonly uint ChannelId",
+                "public readonly string Topic",
+                "public readonly string Encoding",
+                "public readonly byte[] Payload",
+                "public readonly bool IsConnect",
+                "public readonly bool IsMessage",
+            };
+
+            foreach (var declaration in declarations)
+            {
+                var normalized = NormalizeSource(declaration);
+                Assert.Contains(normalized, production, StringComparison.Ordinal);
+                Assert.Contains(normalized, fixture, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
         public void PublicReplayEventsContinueAfterThrowingSubscriber()
         {
             Debug.Reset();
@@ -102,6 +202,49 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             Assert.Equal(1, contextCalls);
             Assert.Equal(1, batchCalls);
             Assert.Equal(3, Debug.WarningCount);
+        }
+
+        private static string NormalizeInterfaceBody(string source, string interfaceName)
+        {
+            var marker = "public interface " + interfaceName;
+            var markerIndex = source.IndexOf(marker, StringComparison.Ordinal);
+            Assert.True(markerIndex >= 0, "Missing interface " + interfaceName);
+            var openBrace = source.IndexOf('{', markerIndex);
+            Assert.True(openBrace >= 0, "Missing interface body " + interfaceName);
+            var depth = 0;
+            for (var index = openBrace; index < source.Length; index++)
+            {
+                if (source[index] == '{')
+                    depth++;
+                else if (source[index] == '}' && --depth == 0)
+                {
+                    var body = source.Substring(openBrace + 1, index - openBrace - 1);
+                    body = Regex.Replace(body, @"//[^\r\n]*", string.Empty);
+                    body = Regex.Replace(body, @"/\*.*?\*/", string.Empty, RegexOptions.Singleline);
+                    body = Regex.Replace(body, @"\s+", " ").Trim();
+                    return Regex.Replace(body, @"\s*([(),;{}])\s*", "$1");
+                }
+            }
+
+            throw new InvalidOperationException("Unclosed interface " + interfaceName);
+        }
+
+        private static string NormalizeInterfaceDeclaration(string source, string interfaceName)
+        {
+            var marker = "public interface " + interfaceName;
+            var markerIndex = source.IndexOf(marker, StringComparison.Ordinal);
+            Assert.True(markerIndex >= 0, "Missing interface " + interfaceName);
+            var openBrace = source.IndexOf('{', markerIndex);
+            Assert.True(openBrace >= 0, "Missing interface declaration " + interfaceName);
+            return NormalizeSource(source.Substring(markerIndex, openBrace - markerIndex));
+        }
+
+        private static string NormalizeSource(string source)
+        {
+            source = Regex.Replace(source, @"//[^\r\n]*", string.Empty);
+            source = Regex.Replace(source, @"/\*.*?\*/", string.Empty, RegexOptions.Singleline);
+            source = Regex.Replace(source, @"\s+", " ").Trim();
+            return Regex.Replace(source, @"\s*([(),;{}])\s*", "$1");
         }
 
         [Fact]

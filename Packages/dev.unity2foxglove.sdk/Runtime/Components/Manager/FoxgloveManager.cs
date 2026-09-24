@@ -179,34 +179,6 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public event System.Action<uint, uint, string, string, byte[]> OnClientMessageWithEncoding;
 
-        private readonly ReplaySubscriberFanoutState<System.Action<string, byte[]>> _replayMessageSubscribers =
-            new ReplaySubscriberFanoutState<System.Action<string, byte[]>>();
-        private readonly ReplaySubscriberFanoutState<System.Action<ReplayMessageContext>> _replayMessageContextSubscribers =
-            new ReplaySubscriberFanoutState<System.Action<ReplayMessageContext>>();
-        private readonly ReplaySubscriberFanoutState<System.Action<ReplayBatchContext>> _replayBatchSubscribers =
-            new ReplaySubscriberFanoutState<System.Action<ReplayBatchContext>>();
-
-        /// <summary>Fires when a replay message is forwarded on the main thread.</summary>
-        public event System.Action<string, byte[]> OnReplayMessage
-        {
-            add => _replayMessageSubscribers.Add(value);
-            remove => _replayMessageSubscribers.Remove(value);
-        }
-
-        /// <summary>Fires when replay data is forwarded with channel, schema, and log-time context.</summary>
-        public event System.Action<ReplayMessageContext> OnReplayMessageContext
-        {
-            add => _replayMessageContextSubscribers.Add(value);
-            remove => _replayMessageContextSubscribers.Remove(value);
-        }
-
-        /// <summary>Fires after a replay batch has been forwarded to scene listeners.</summary>
-        public event System.Action<ReplayBatchContext> OnReplayBatchCompleted
-        {
-            add => _replayBatchSubscribers.Add(value);
-            remove => _replayBatchSubscribers.Remove(value);
-        }
-
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding, string schemaEncoding), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string, string, string), uint>();
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName), uint>

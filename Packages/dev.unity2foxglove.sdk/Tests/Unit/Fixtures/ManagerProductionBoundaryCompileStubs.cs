@@ -13,6 +13,7 @@ using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 
 namespace UnityEngine
@@ -155,7 +156,7 @@ namespace UnityEngine
         public MinAttribute(float value) { }
     }
 
-    public sealed class DisallowMultipleComponent : Attribute { }
+    public sealed class DisallowMultipleComponentAttribute : Attribute { }
 }
 
 namespace UnityEngine.Scripting
@@ -183,7 +184,17 @@ namespace Unity.FoxgloveSDK.Components
         private string _replayCursorBridgeToken = string.Empty;
         private bool _replayCursorEndpointLoggedFirstCursor;
         private bool _replayCursorEndpointLoggedUnavailable;
-        private ulong _boundaryGeneration;
+        private readonly ConnectionRuntimeState _connectionState = new ConnectionRuntimeState(1);
+        private readonly ClientEventAdmissionState _clientEventAdmission = new ClientEventAdmissionState();
+        private readonly List<ClientEvent> _boundaryEnqueuedEvents = new List<ClientEvent>();
+        private BoundaryTransport _boundaryTransport;
+        private FoxgloveSession _runtimeForwarderSession;
+        private Action<string, byte[]> _replayForwarder;
+        private Action<ReplayMessageContext> _replayContextForwarder;
+        private Action<ReplayBatchContext> _replayBatchForwarder;
+        private Action<uint, uint, string, string, byte[]> _clientMessageForwarder;
+        private Action<uint> _clientConnectedForwarder;
+        private Action<uint> _clientDisconnectedForwarder;
 
         public bool IsRunning { get; set; } = true;
         public ulong NowNs { get; set; } = 1UL;
@@ -191,6 +202,7 @@ namespace Unity.FoxgloveSDK.Components
         public bool AllowPublisherOverride { get; set; } = true;
         public float DefaultPublishRateHz { get; set; } = 10f;
         public bool HasOrdinaryTransportDemand { get; set; }
+        public bool SuppressLivePublishersForReplay { get; set; }
 
         internal bool TryPrepareMsgPackPublish(string topic, out uint channelId, bool requireDemand)
         {
@@ -209,13 +221,35 @@ namespace Unity.FoxgloveSDK.Components
             return true;
         }
 
-        internal void PublishJson<T>(string topic, string schemaName, T payload, ulong logTimeNs) { }
-        internal void PublishProto(string topic, string schemaName, byte[] payload, ulong logTimeNs) { }
+        public void PublishJson<T>(string topic, string schemaName, T payload, ulong logTimeNs) { }
+        public void PublishProto<T>(string topic, string schemaName, T payload, ulong logTimeNs) { }
+        public void PublishFoxRunJsonBytes(string topic, string schemaName, byte[] payload, ulong logTimeNs) { }
+        public void PublishFoxRunMessagePackBytes(string topic, byte[] payload, ulong logTimeNs) { }
         internal void PublishMsgPack(string topic, byte[] payload, ulong logTimeNs) { }
 
         internal FoxRunOrdinaryTransportFanoutResult PublishOrdinaryTransports(
             in FoxRunOrdinaryPayloadRequest request)
             => default;
+
+        public bool TryPrepareFoxRunMessagePackRecording(
+            string topic,
+            out uint channelId,
+            out string reason)
+        {
+            channelId = 0U;
+            reason = string.Empty;
+            return false;
+        }
+
+        public bool TryPublishFoxRunMessagePackRecording(
+            string topic,
+            byte[] payload,
+            ulong logTimeNs,
+            out string reason)
+        {
+            reason = string.Empty;
+            return false;
+        }
 
         internal uint RegisterService(
             ServiceDescriptor descriptor,
@@ -227,17 +261,42 @@ namespace Unity.FoxgloveSDK.Components
         internal ComponentPublisherSessionSnapshot CaptureForTest(ulong generation)
             => CaptureComponentPublisherSession(generation);
 
-        internal ulong AttachComponentSessionForTest()
-            => _componentPublisherSessionState.AdvanceActivateAndCapture(
-                () => ++_boundaryGeneration,
-                _ => { },
-                CaptureComponentPublisherSession);
+        internal ulong AttachComponentSessionForTest(bool keepSessionAlive = false)
+        {
+            _boundaryTransport = new BoundaryTransport();
+            var session = new FoxgloveSession("manager-boundary", _boundaryTransport);
+            AttachRuntimeForwarders(session);
+            var generation = _connectionState.ChannelSessionGeneration;
+            if (!keepSessionAlive)
+                session.Dispose();
+            return generation;
+        }
+
+        internal void DisposeBoundarySessionForTest()
+            => _runtimeForwarderSession?.Dispose();
+
+        internal void EmitBoundaryClientEventsForTest()
+        {
+            _boundaryTransport?.RaiseClientConnected(17U);
+            _clientMessageForwarder?.Invoke(
+                17U,
+                23U,
+                "/boundary",
+                "json",
+                Array.Empty<byte>());
+        }
+
+        internal IReadOnlyList<ClientEvent> BoundaryEnqueuedEventsForTest
+            => _boundaryEnqueuedEvents;
+
+        internal bool BoundaryAdmissionAcceptsForTest(ulong generation)
+            => _clientEventAdmission.IsAccepting(generation);
 
         internal void SetActiveSessionForTest(ComponentPublisherSessionSnapshot snapshot)
             => SetActiveComponentPublisherSession(snapshot);
 
         internal void ClearActiveSessionForTest()
-            => ClearActiveComponentPublisherSession();
+            => ClearActiveComponentPublisherSessionAtStop(null);
 
         internal void ConfigureRemoteForTest(string path, int port)
         {
@@ -274,46 +333,6 @@ namespace Unity.FoxgloveSDK.Components
         private string ResolveRemoteMcapFileServerToken() => string.Empty;
         private string ResolveReplayCursorBridgeToken() => _replayCursorBridgeToken;
 
-        private readonly ReplaySubscriberFanoutState<Action<string, byte[]>> _replayMessageSubscribers =
-            new ReplaySubscriberFanoutState<Action<string, byte[]>>();
-        private readonly ReplaySubscriberFanoutState<Action<ReplayMessageContext>> _replayMessageContextSubscribers =
-            new ReplaySubscriberFanoutState<Action<ReplayMessageContext>>();
-        private readonly ReplaySubscriberFanoutState<Action<ReplayBatchContext>> _replayBatchSubscribers =
-            new ReplaySubscriberFanoutState<Action<ReplayBatchContext>>();
-
-        public event Action<string, byte[]> OnReplayMessage
-        {
-            add => _replayMessageSubscribers.Add(value);
-            remove => _replayMessageSubscribers.Remove(value);
-        }
-
-        public event Action<ReplayMessageContext> OnReplayMessageContext
-        {
-            add => _replayMessageContextSubscribers.Add(value);
-            remove => _replayMessageContextSubscribers.Remove(value);
-        }
-
-        public event Action<ReplayBatchContext> OnReplayBatchCompleted
-        {
-            add => _replayBatchSubscribers.Add(value);
-            remove => _replayBatchSubscribers.Remove(value);
-        }
-
-        private void InvokeReplayMessageSubscribers(string topic, byte[] payload)
-            => _replayMessageSubscribers.Invoke(
-                handler => handler(topic, payload),
-                exception => Debug.LogWarning("[Foxglove] Replay message listener failed: " + exception.Message));
-
-        private void InvokeReplayMessageContextSubscribers(ReplayMessageContext context)
-            => _replayMessageContextSubscribers.Invoke(
-                handler => handler(context),
-                exception => Debug.LogWarning("[Foxglove] Replay message context listener failed: " + exception.Message));
-
-        private void InvokeReplayBatchSubscribers(ReplayBatchContext context)
-            => _replayBatchSubscribers.Invoke(
-                handler => handler(context),
-                exception => Debug.LogWarning("[Foxglove] Replay batch listener failed: " + exception.Message));
-
         internal void InvokeReplayMessageForTest(string topic, byte[] payload)
             => InvokeReplayMessageSubscribers(topic, payload);
 
@@ -322,10 +341,83 @@ namespace Unity.FoxgloveSDK.Components
 
         internal void InvokeReplayBatchForTest(ReplayBatchContext context)
             => InvokeReplayBatchSubscribers(context);
+
+        private void AdvanceChannelSessionGeneration()
+            => _connectionState.AdvanceChannelSessionGeneration();
+
+        private void EnqueueClientLifecycleEvent(ClientEvent evt)
+            => _boundaryEnqueuedEvents.Add(evt);
+
+        private void EnqueueClientMessageEvent(ClientEvent evt)
+            => _boundaryEnqueuedEvents.Add(evt);
+    }
+
+    internal readonly struct ClientEvent
+    {
+        private ClientEvent(
+            ulong generation,
+            uint clientId,
+            uint channelId,
+            string topic,
+            string encoding,
+            byte[] payload,
+            bool isConnect,
+            bool isMessage)
+        {
+            Generation = generation;
+            ClientId = clientId;
+            ChannelId = channelId;
+            Topic = topic;
+            Encoding = encoding;
+            Payload = payload;
+            IsConnect = isConnect;
+            IsMessage = isMessage;
+        }
+
+        public static ClientEvent Connect(uint clientId)
+            => Connect(0UL, clientId);
+
+        public static ClientEvent Connect(ulong generation, uint clientId)
+            => new ClientEvent(generation, clientId, 0U, null, null, null, true, false);
+
+        public static ClientEvent Disconnect(uint clientId)
+            => Disconnect(0UL, clientId);
+
+        public static ClientEvent Disconnect(ulong generation, uint clientId)
+            => new ClientEvent(generation, clientId, 0U, null, null, null, false, false);
+
+        public static ClientEvent Message(
+            uint clientId,
+            uint channelId,
+            string topic,
+            string encoding,
+            byte[] payload)
+            => Message(0UL, clientId, channelId, topic, encoding, payload);
+
+        public static ClientEvent Message(
+            ulong generation,
+            uint clientId,
+            uint channelId,
+            string topic,
+            string encoding,
+            byte[] payload)
+            => new ClientEvent(generation, clientId, channelId, topic, encoding, payload, false, true);
+
+        public readonly ulong Generation;
+        public readonly uint ClientId;
+        public readonly uint ChannelId;
+        public readonly string Topic;
+        public readonly string Encoding;
+        public readonly byte[] Payload;
+        public readonly bool IsConnect;
+        public readonly bool IsMessage;
     }
 
     internal sealed class BoundaryRuntime
     {
+        internal event Action<string, byte[]> OnReplayMessage;
+        internal event Action<ReplayMessageContext> OnReplayMessageContext;
+        internal event Action<ReplayBatchContext> OnReplayBatchCompleted;
         internal bool UnregisterServiceDuringCleanup(uint serviceId) => true;
         internal void SetExternalReplayCursorEnabled(bool enabled) { }
 
@@ -339,6 +431,25 @@ namespace Unity.FoxgloveSDK.Components
 
         internal ReplayCursorState GetExternalReplayCursorState()
             => default;
+    }
+
+    internal sealed class BoundaryTransport : IFoxgloveTransport
+    {
+        public bool IsRunning => false;
+        public event Action<uint> OnClientConnected;
+        public event Action<uint> OnClientDisconnected;
+        public event Action<uint, string> OnTextReceived;
+        public event Action<uint, byte[]> OnBinaryReceived;
+        public void Start(string host, int port) { }
+        public void Stop() { }
+        public void BroadcastText(string json) { }
+        public void BroadcastBinary(byte[] data) { }
+        public void SendText(uint clientId, string json) { }
+        public void SendBinary(uint clientId, byte[] data) { }
+        public void Dispose() { }
+
+        internal void RaiseClientConnected(uint clientId)
+            => OnClientConnected?.Invoke(clientId);
     }
 }
 #endif
