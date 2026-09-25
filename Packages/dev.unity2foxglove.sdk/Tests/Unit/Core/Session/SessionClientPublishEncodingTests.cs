@@ -80,6 +80,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
         {
             var transport = new ClientPublishTransport();
             using var session = new FoxgloveSession("session-encoding-freeze", transport);
+            session.EnableMessageEncoding("protobuf");
+            Assert.True(session.IsProtobufEnabled);
+            Assert.True(session.IsMessageEncodingEnabled("protobuf"));
             session.EnableProtobuf();
             session.EnableMessageEncoding("cdr");
 

@@ -1449,11 +1449,15 @@ namespace Unity.FoxgloveSDK.Core
                 throw new ArgumentException("Message encoding cannot be empty.", nameof(encoding));
 
             var normalizedEncoding = encoding.Trim().ToLowerInvariant();
+            if (string.Equals(normalizedEncoding, "protobuf", StringComparison.Ordinal))
+            {
+                EnableProtobuf();
+                return;
+            }
+
             lock (_encodingConfigurationLock)
             {
                 if (string.Equals(normalizedEncoding, "json", StringComparison.Ordinal)
-                    || (string.Equals(normalizedEncoding, "protobuf", StringComparison.Ordinal)
-                        && _protobufEnabled)
                     || _additionalMessageEncodings.Contains(normalizedEncoding))
                     return;
                 ThrowIfEncodingConfigurationFrozen();
