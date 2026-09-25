@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Tests/Unit/Protocol
+// Module: Tests/Unit/FoxRun
 // Purpose: Verifies post-start ROS 2 channel registration reuses enabled CDR.
 
 using System;
@@ -9,7 +9,7 @@ using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
-namespace Unity2Foxglove.Ros2Bridge.UnitTests.Protocol
+namespace Unity2Foxglove.Ros2Bridge.UnitTests.FoxRun
 {
     public sealed class Ros2BridgeMcapCodecsBehaviorTests
     {
