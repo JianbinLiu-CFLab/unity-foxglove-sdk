@@ -49,12 +49,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var shouldPublish = SourceMethod(source, "protected bool ShouldPublishNow");
             var shouldPublishFixed = SourceMethod(source, "protected bool ShouldPublishNowFixed");
 
-            Assert.Contains("if (!_publishOnEnable || _replaySuppressed)", shouldPublish, StringComparison.Ordinal);
-            Assert.Contains("if (!_publishOnEnable || _replaySuppressed)", shouldPublishFixed, StringComparison.Ordinal);
+            Assert.Contains("if (!_publishOnEnable || IsReplaySuppressed)", shouldPublish, StringComparison.Ordinal);
+            Assert.Contains("if (!_publishOnEnable || IsReplaySuppressed)", shouldPublishFixed, StringComparison.Ordinal);
             Assert.Contains("_supportedEncodingSummaryCache", source, StringComparison.Ordinal);
             Assert.Contains("get { return _supportedEncodingSummaryCache ??= BuildSupportedEncodingSummary(); }", source, StringComparison.Ordinal);
             Assert.Contains("InvalidateSupportedEncodingSummaryCache();", source, StringComparison.Ordinal);
             Assert.Contains("cache the value locally before", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PublisherBaseUsesEffectiveReplaySuppressionForEveryOutputPath()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
+            var guardedMethods = new[]
+            {
+                "private bool ShouldPreparePublishPayload(",
+                "protected bool ShouldPrepareOrdinaryTransportPayload()",
+                "protected void Publish(object message, ulong logTimeNs, PublisherEncodingResolution resolution)",
+                "protected void PublishProto(byte[] payload, ulong logTimeNs, PublisherEncodingResolution resolution)",
+                "protected void PublishMsgPack(byte[] payload, ulong logTimeNs, PublisherEncodingResolution resolution)",
+                "protected FoxRunOrdinaryTransportFanoutResult PublishOrdinaryTransport("
+            };
+
+            foreach (var signature in guardedMethods)
+            {
+                var method = SourceMethod(source, signature);
+                Assert.Contains("IsReplaySuppressed", method, StringComparison.Ordinal);
+                Assert.DoesNotContain("_replaySuppressed", method, StringComparison.Ordinal);
+            }
         }
 
         private static string SourceMethod(string source, string signature)

@@ -173,6 +173,9 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void PublishCompletedJpegFrame(JpegEncodeResult result)
         {
+            if (IsReplaySuppressed)
+                return;
+
             if (result.Request.Generation != Volatile.Read(ref _captureGeneration))
                 return;
 
@@ -327,6 +330,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private void InvokeCompressedSubscribers(SensorCompressedImageFrame frame)
         {
+            if (IsReplaySuppressed)
+                return;
+
             var handlers = SensorCompressedImageReady;
             if (handlers == null)
                 return;

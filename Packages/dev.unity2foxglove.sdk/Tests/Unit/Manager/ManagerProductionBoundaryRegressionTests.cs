@@ -314,6 +314,27 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void ManagerReplaySuppressionBlocksOrdinaryTransportPublicationForEnabledPublisher()
+        {
+            var manager = new FoxgloveManager { HasOrdinaryTransportDemand = true };
+            var publisher = new BoundaryPublisher { TopicForTest = "/boundary" };
+            publisher.ManagerForTest = manager;
+            publisher.ExternalEnableForTest();
+
+            manager.SuppressLivePublishersForReplay = true;
+
+            var result = publisher.PublishOrdinaryTransportForTest();
+
+            Assert.True(publisher.enabled);
+            Assert.Equal(0, manager.OrdinaryTransportPublishCalls);
+            Assert.Equal(0, result.Matched);
+            Assert.Equal(0, result.Accepted);
+            Assert.Equal(0, result.Rejected);
+            Assert.Equal(0, result.Unavailable);
+            Assert.Equal(0, result.Failed);
+        }
+
+        [Fact]
         public void ReplayRestoreDoesNotOverrideExternalPublisherEnable()
         {
             var publisher = new BoundaryPublisher();
@@ -443,6 +464,9 @@ namespace Unity.FoxgloveSDK.Tests.Manager
 
             public bool PreparePublishForTest()
                 => ShouldPreparePublishPayload();
+
+            public FoxRunOrdinaryTransportFanoutResult PublishOrdinaryTransportForTest()
+                => PublishOrdinaryTransport(new object(), "manager.boundary", 1UL);
 
             private void SetEnabledLikeUnityForTest(bool value)
             {
