@@ -60,6 +60,23 @@ namespace Unity.FoxgloveSDK.IO
             public long ReturnedMessages { get; }
         }
 
+        /// <summary>Structural counters collected by the most recent <see cref="History"/> call.</summary>
+        public readonly struct HistoryMetrics
+        {
+            public HistoryMetrics(long candidateCount, long payloadCopies, long payloadBytesCopied, long filteredRecords)
+            {
+                CandidateCount = candidateCount;
+                PayloadCopies = payloadCopies;
+                PayloadBytesCopied = payloadBytesCopied;
+                FilteredRecords = filteredRecords;
+            }
+
+            public long CandidateCount { get; }
+            public long PayloadCopies { get; }
+            public long PayloadBytesCopied { get; }
+            public long FilteredRecords { get; }
+        }
+
         /// <summary>
         /// Underlying MCAP binary reader.
         /// </summary>
@@ -93,7 +110,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly List<McapMessage> _scanBoundaryCandidates = new();
         private static readonly IComparer<McapMessage> MessageComparer =
             Comparer<McapMessage>.Create(CompareMessages);
-        private readonly Dictionary<ushort, McapMessage> _snapshotLatestByChannel = new();
+        private readonly Dictionary<ushort, SnapshotCandidate> _snapshotLatestByChannel = new();
         private List<McapChunkIndex> _snapshotChunkIndexesByDescendingEndTime;
         private readonly IFoxgloveLogger _logger;
 
@@ -101,6 +118,8 @@ namespace Unity.FoxgloveSDK.IO
         /// Counters from the most recent <see cref="Snapshot"/> call.
         /// </summary>
         public SnapshotMetrics LastSnapshotMetrics { get; private set; }
+        /// <summary>Counters from the most recent <see cref="History"/> call.</summary>
+        public HistoryMetrics LastHistoryMetrics { get; private set; }
 
         // Per-chunk state
         /// <summary>
@@ -550,28 +569,51 @@ namespace Unity.FoxgloveSDK.IO
                     if (expectedChannelCount > 0 && !declaredChannelIds.Contains(record.ChannelId))
                         continue;
 
-                    var candidate = new McapMessage
-                    {
-                        ChannelId = record.ChannelId,
-                        Sequence = record.Sequence,
-                        LogTime = logNs,
-                        PublishTime = record.PublishTime
-                    };
+                    var candidate = new SnapshotCandidate(
+                        chunkIndex.ChunkStartOffset,
+                        chunkIndex.ChunkLength,
+                        record.DataOffset,
+                        dataLen,
+                        record.ChannelId,
+                        record.Sequence,
+                        logNs,
+                        record.PublishTime);
                     if (latestByChannel.TryGetValue(record.ChannelId, out var current)
-                        && McapLatestAtQuery.CompareLatestCandidate(candidate, current) <= 0)
+                        && CompareSnapshotCandidates(candidate, current) <= 0)
                         continue;
-
-                    var data = new byte[dataLen];
-                    Buffer.BlockCopy(uncompressed, record.DataOffset, data, 0, dataLen);
-                    candidate.Data = data;
                     latestByChannel[record.ChannelId] = candidate;
                     candidateUpdates++;
-                    payloadCopies++;
-                    payloadBytesCopied += dataLen;
                 }
             }
 
-            result.AddRange(latestByChannel.Values);
+            var snapshotPayloadChunks = new Dictionary<ulong, byte[]>();
+            foreach (var candidate in latestByChannel.Values)
+            {
+                if (!snapshotPayloadChunks.TryGetValue(candidate.ChunkStartOffset, out var payloadChunk))
+                {
+                    payloadChunk = _reader.ReadChunkRecords(
+                        candidate.ChunkStartOffset,
+                        candidate.ChunkLength,
+                        out var crcValid);
+                    if (!ShouldUseChunkRecords("Snapshot payload chunk", crcValid, emitWarning: false))
+                        continue;
+                    snapshotPayloadChunks[candidate.ChunkStartOffset] = payloadChunk;
+                }
+
+                var data = new byte[candidate.DataLength];
+                Buffer.BlockCopy(payloadChunk, candidate.DataOffset, data, 0, candidate.DataLength);
+                result.Add(new McapMessage
+                {
+                    ChannelId = candidate.ChannelId,
+                    Sequence = candidate.Sequence,
+                    LogTime = candidate.LogTime,
+                    PublishTime = candidate.PublishTime,
+                    Data = data
+                });
+                payloadCopies++;
+                payloadBytesCopied += candidate.DataLength;
+            }
+
             if (result.Count > 1)
                 result.Sort(CompareMessages);
             LastSnapshotMetrics = new SnapshotMetrics(
@@ -615,16 +657,26 @@ namespace Unity.FoxgloveSDK.IO
             result.Clear();
 
             if (!IsLoaded || !CanSeek)
+            {
+                LastHistoryMetrics = new HistoryMetrics(0, 0, 0, 0);
                 return result;
+            }
 
             var clampedFrom = fromTimeNs < StartTimeNs ? StartTimeNs : fromTimeNs;
             var clampedTo = toTimeNs > EndTimeNs ? EndTimeNs : toTimeNs;
             if (clampedTo < clampedFrom)
+            {
+                LastHistoryMetrics = new HistoryMetrics(0, 0, 0, 0);
                 return result;
+            }
 
             var boundedCandidates = maxMessages > 0
                 ? new List<HistoryCandidate>(maxMessages)
                 : null;
+            long filteredRecords = 0;
+            long candidateCount = 0;
+            long payloadCopies = 0;
+            long payloadBytesCopied = 0;
             for (var chunkNumber = 0; chunkNumber < _summary.ChunkIndexes.Count; chunkNumber++)
             {
                 var chunkIndex = _summary.ChunkIndexes[chunkNumber];
@@ -649,7 +701,12 @@ namespace Unity.FoxgloveSDK.IO
                     if (logNs < clampedFrom || logNs > clampedTo)
                         continue;
                     if (channelFilter != null && !channelFilter.Contains(record.ChannelId))
+                    {
+                        filteredRecords++;
                         continue;
+                    }
+
+                    candidateCount++;
 
                     if (boundedCandidates != null)
                     {
@@ -675,6 +732,8 @@ namespace Unity.FoxgloveSDK.IO
                         PublishTime = record.PublishTime,
                         Data = data
                     });
+                    payloadCopies++;
+                    payloadBytesCopied += dataLen;
                 }
             }
 
@@ -709,6 +768,8 @@ namespace Unity.FoxgloveSDK.IO
                         PublishTime = candidate.PublishTime,
                         Data = data
                     });
+                    payloadCopies++;
+                    payloadBytesCopied += candidate.DataLength;
                 }
             }
 
@@ -716,7 +777,44 @@ namespace Unity.FoxgloveSDK.IO
                 result.Sort(CompareMessages);
 
             TrimHistoryToLatestMessages(result, maxMessages);
+            LastHistoryMetrics = new HistoryMetrics(
+                candidateCount,
+                payloadCopies,
+                payloadBytesCopied,
+                filteredRecords);
             return result;
+        }
+
+        private readonly struct SnapshotCandidate
+        {
+            internal SnapshotCandidate(
+                ulong chunkStartOffset,
+                ulong chunkLength,
+                int dataOffset,
+                int dataLength,
+                ushort channelId,
+                uint sequence,
+                ulong logTime,
+                ulong publishTime)
+            {
+                ChunkStartOffset = chunkStartOffset;
+                ChunkLength = chunkLength;
+                DataOffset = dataOffset;
+                DataLength = dataLength;
+                ChannelId = channelId;
+                Sequence = sequence;
+                LogTime = logTime;
+                PublishTime = publishTime;
+            }
+
+            internal ulong ChunkStartOffset { get; }
+            internal ulong ChunkLength { get; }
+            internal int DataOffset { get; }
+            internal int DataLength { get; }
+            internal ushort ChannelId { get; }
+            internal uint Sequence { get; }
+            internal ulong LogTime { get; }
+            internal ulong PublishTime { get; }
         }
 
         private readonly struct HistoryCandidate
@@ -1310,13 +1408,14 @@ namespace Unity.FoxgloveSDK.IO
             return left.PublishTime.CompareTo(right.PublishTime);
         }
 
-        private bool ShouldUseChunkRecords(string scope, bool crcValid)
+        private bool ShouldUseChunkRecords(string scope, bool crcValid, bool emitWarning = true)
         {
             if (crcValid)
                 return true;
 
             var message = $"[McapReplayEngine] {scope} CRC mismatch; data may be corrupted.";
-            _logger.LogWarning(message);
+            if (emitWarning)
+                _logger.LogWarning(message);
 
             if (CrcMismatchPolicy == CorruptChunkPolicy.Throw)
                 throw new InvalidDataException(message);
@@ -1419,16 +1518,27 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         private static bool CanStopSnapshotScan(
-            Dictionary<ushort, McapMessage> latestByChannel,
+            Dictionary<ushort, SnapshotCandidate> latestByChannel,
             ulong nextOlderChunkEndTime)
         {
             var oldestSelected = ulong.MaxValue;
-            foreach (var message in latestByChannel.Values)
+            foreach (var candidate in latestByChannel.Values)
             {
-                if (message.LogTime < oldestSelected)
-                    oldestSelected = message.LogTime;
+                if (candidate.LogTime < oldestSelected)
+                    oldestSelected = candidate.LogTime;
             }
             return nextOlderChunkEndTime < oldestSelected;
+        }
+
+        private static int CompareSnapshotCandidates(SnapshotCandidate left, SnapshotCandidate right)
+        {
+            var compare = left.LogTime.CompareTo(right.LogTime);
+            if (compare != 0) return compare;
+            compare = left.ChannelId.CompareTo(right.ChannelId);
+            if (compare != 0) return compare;
+            compare = left.Sequence.CompareTo(right.Sequence);
+            if (compare != 0) return compare;
+            return left.PublishTime.CompareTo(right.PublishTime);
         }
 
         private static int CompareChunkIndexes(McapChunkIndex a, McapChunkIndex b)

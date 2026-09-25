@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections;
+using System.Reflection;
 using Foxglove;
 using Google.Protobuf;
 using Unity.FoxgloveSDK.Core;
@@ -46,6 +48,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.Contains("ParseFromArguments = new object[1];", source, StringComparison.Ordinal);
             Assert.Contains("return binding.Parse(payload);", source, StringComparison.Ordinal);
             Assert.DoesNotContain("new object[] { payload }", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ReplayProtobufParserCachesUnsupportedTypeFailures()
+        {
+            const string typeName = "Missing.ReplayTypeForNegativeCache";
+            var first = Assert.Throws<InvalidOperationException>(() =>
+                ReplayProtobufParser.Parse(typeName, Array.Empty<byte>()));
+            var second = Assert.Throws<InvalidOperationException>(() =>
+                ReplayProtobufParser.Parse(typeName, Array.Empty<byte>()));
+
+            Assert.Equal(first.Message, second.Message);
+            var cache = typeof(ReplayProtobufParser).GetField(
+                "ProtobufParserCache",
+                BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null) as IDictionary;
+            Assert.NotNull(cache);
+            Assert.True(cache.Contains(typeName));
+            var entry = cache[typeName];
+            Assert.NotNull(entry);
+            Assert.Null(entry.GetType().GetProperty("Binding")?.GetValue(entry));
         }
     }
 }

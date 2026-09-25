@@ -168,7 +168,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
             var snapshot = Slice(source, "public List<McapMessage> Snapshot", "/// <summary>");
-            Check(source.Contains("private readonly Dictionary<ushort, McapMessage> _snapshotLatestByChannel = new();", StringComparison.Ordinal)
+            Check(source.Contains("private readonly Dictionary<ushort, SnapshotCandidate> _snapshotLatestByChannel = new();", StringComparison.Ordinal)
                   && snapshot.Contains("var latestByChannel = _snapshotLatestByChannel;", StringComparison.Ordinal)
                   && snapshot.Contains("latestByChannel.Clear();", StringComparison.Ordinal)
                   && !snapshot.Contains("new Dictionary<ushort, McapMessage>()", StringComparison.Ordinal),

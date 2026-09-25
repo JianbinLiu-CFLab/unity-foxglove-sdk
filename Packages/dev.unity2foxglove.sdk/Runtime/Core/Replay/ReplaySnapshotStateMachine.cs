@@ -19,29 +19,36 @@ namespace Unity.FoxgloveSDK.Core
         private bool _panelSnapshotPending;
         private ulong _panelSnapshotTimeNs;
         private ulong _panelSnapshotReadyWallNs;
+        private uint? _panelSnapshotClientId;
         private bool _sceneSnapshotPending;
         private ulong _sceneSnapshotTimeNs;
 
-        public void RequestPanelSnapshot(ulong timeNs, ulong readyWallNs)
+        public void RequestPanelSnapshot(ulong timeNs, ulong readyWallNs, uint? clientId = null)
         {
             lock (_panelSnapshotLock)
             {
                 _panelSnapshotTimeNs = timeNs;
                 _panelSnapshotReadyWallNs = readyWallNs;
+                _panelSnapshotClientId = clientId;
                 _panelSnapshotPending = true;
             }
         }
 
-        public bool TryConsumePanelSnapshot(ulong wallNowNs, out ulong timeNs)
+        public bool TryConsumePanelSnapshot(
+            ulong wallNowNs,
+            out ulong timeNs,
+            out uint? clientId)
         {
             lock (_panelSnapshotLock)
             {
                 timeNs = _panelSnapshotTimeNs;
+                clientId = _panelSnapshotClientId;
                 if (!_panelSnapshotPending)
                     return false;
                 if (wallNowNs < _panelSnapshotReadyWallNs)
                     return false;
                 _panelSnapshotPending = false;
+                _panelSnapshotClientId = null;
                 return true;
             }
         }
@@ -74,6 +81,7 @@ namespace Unity.FoxgloveSDK.Core
                 _panelSnapshotPending = false;
                 _panelSnapshotTimeNs = 0;
                 _panelSnapshotReadyWallNs = 0;
+                _panelSnapshotClientId = null;
             }
         }
 

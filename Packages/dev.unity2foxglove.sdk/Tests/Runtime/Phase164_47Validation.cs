@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && tick.Contains("return Tick(nowNs, _defaultTickBuffer);", StringComparison.Ordinal)
                   && !tick.Contains("new List<McapMessage>()", StringComparison.Ordinal),
                 "164-47A-1: no-argument Tick reuses an engine-owned result buffer");
-            Check(engine.Contains("private readonly Dictionary<ushort, McapMessage> _snapshotLatestByChannel = new();", StringComparison.Ordinal)
+            Check(engine.Contains("private readonly Dictionary<ushort, SnapshotCandidate> _snapshotLatestByChannel = new();", StringComparison.Ordinal)
                   && snapshot.Contains("var latestByChannel = _snapshotLatestByChannel;", StringComparison.Ordinal)
                   && snapshot.Contains("latestByChannel.Clear();", StringComparison.Ordinal)
                   && !snapshot.Contains("new Dictionary<ushort, McapMessage>()", StringComparison.Ordinal),

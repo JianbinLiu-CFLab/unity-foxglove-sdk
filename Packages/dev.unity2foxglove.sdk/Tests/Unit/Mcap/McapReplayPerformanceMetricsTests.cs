@@ -50,6 +50,85 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 Assert.True(metrics.PayloadCopies >= metrics.ReturnedMessages);
                 Assert.True(metrics.PayloadBytesCopied >= metrics.ReturnedMessages);
                 Assert.Equal(1, metrics.ReturnedMessages);
+                Assert.True(
+                    metrics.CandidateUpdates > metrics.PayloadCopies,
+                    $"snapshot candidate updates should exceed final payload copies; updates={metrics.CandidateUpdates}; copies={metrics.PayloadCopies}");
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void HistoryMaterializesOnlyBoundedFinalCandidates()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-history-metrics-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(
+                    stream,
+                    null,
+                    new McapWriterOptions
+                    {
+                        UseChunking = true,
+                        ChunkSizeBytes = 256,
+                        IndexTypes = McapIndexTypes.Chunk | McapIndexTypes.Message
+                    },
+                    leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/history-metrics", "json", "phase188.History", "jsonschema", "{}");
+                    for (ulong time = 1; time <= 200; time++)
+                        recorder.WriteMessage(1, time, new byte[] { (byte)time });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = engine.History(1, 200, new List<McapMessage>(), 10, new HashSet<ushort> { 1 });
+                var metrics = engine.LastHistoryMetrics;
+
+                Assert.Equal(10, result.Count);
+                Assert.Equal(200, metrics.CandidateCount);
+                Assert.Equal(10, metrics.PayloadCopies);
+                Assert.True(metrics.FilteredRecords == 0);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void HistoryFiltersIrrelevantHighRateChannelsBeforeAdmission()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-history-filter-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(stream, null, chunkSizeBytes: 256, compression: "", leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/history-target", "json", "phase188.Target", "jsonschema", "{}");
+                    recorder.AddChannel(2, "/phase188/history-noise", "json", "phase188.Noise", "jsonschema", "{}");
+                    for (ulong time = 1; time <= 200; time++)
+                        recorder.WriteMessage(2, time, new byte[] { (byte)time });
+                    for (ulong time = 1; time <= 5; time++)
+                        recorder.WriteMessage(1, 10_000 + time, new byte[] { (byte)time });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = engine.History(0, 20_000, new List<McapMessage>(), 5, new HashSet<ushort> { 1 });
+                var metrics = engine.LastHistoryMetrics;
+
+                Assert.Equal(5, result.Count);
+                Assert.All(result, message => Assert.Equal((ushort)1, message.ChannelId));
+                Assert.True(metrics.FilteredRecords >= 200);
+                Assert.Equal(5, metrics.CandidateCount);
             }
             finally
             {

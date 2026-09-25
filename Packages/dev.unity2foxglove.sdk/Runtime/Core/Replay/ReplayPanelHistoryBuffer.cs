@@ -19,10 +19,22 @@ namespace Unity.FoxgloveSDK.Core
         private ulong _parkTimeNs;
         private bool _hasHistoryTime;
         private ulong _lastHistoryTimeNs;
+        private readonly Dictionary<uint, ClientDrainState> _clientDrains = new();
 
         internal List<McapMessage> Buffer => _buffer;
         internal bool DebugActive => _active;
         internal int DebugBufferedCount => _buffer.Count;
+        internal int DebugClientDrainCount => _clientDrains.Count;
+
+        private sealed class ClientDrainState
+        {
+            internal readonly List<McapMessage> Buffer = new();
+            internal int Offset;
+            internal ulong ParkTimeNs;
+            internal bool Active;
+            internal bool HasHistoryTime;
+            internal ulong LastHistoryTimeNs;
+        }
 
         internal ulong GetHistoryFromTime(ulong startNs, ulong clampedToNs, ulong windowNs)
         {
@@ -48,6 +60,12 @@ namespace Unity.FoxgloveSDK.Core
             _active = false;
             _offset = 0;
             _parkTimeNs = 0;
+            _clientDrains.Clear();
+        }
+
+        internal void CancelDrain(uint clientId)
+        {
+            _clientDrains.Remove(clientId);
         }
 
         internal void ResetDebounce()
@@ -55,6 +73,52 @@ namespace Unity.FoxgloveSDK.Core
             CancelDrain();
             _hasHistoryTime = false;
             _lastHistoryTimeNs = 0;
+        }
+
+        internal void ResetDebounce(uint clientId)
+        {
+            CancelDrain(clientId);
+        }
+
+        internal ulong GetHistoryFromTime(
+            uint clientId,
+            ulong startNs,
+            ulong clampedToNs,
+            ulong windowNs)
+        {
+            if (!_clientDrains.TryGetValue(clientId, out var state))
+                return clampedToNs > windowNs ? Math.Max(startNs, clampedToNs - windowNs) : startNs;
+
+            ulong fromNs;
+            if (state.HasHistoryTime && clampedToNs >= state.LastHistoryTimeNs)
+                fromNs = state.LastHistoryTimeNs < ulong.MaxValue ? state.LastHistoryTimeNs + 1UL : ulong.MaxValue;
+            else
+                fromNs = clampedToNs > windowNs ? clampedToNs - windowNs : startNs;
+
+            return fromNs < startNs ? startNs : fromNs;
+        }
+
+        internal void BeginClientDrains(
+            ulong parkTimeNs,
+            IReadOnlyDictionary<uint, List<McapMessage>> clientBuffers,
+            bool replaceExisting = true)
+        {
+            if (replaceExisting)
+                _clientDrains.Clear();
+            if (clientBuffers == null)
+                return;
+
+            foreach (var pair in clientBuffers)
+            {
+                var state = new ClientDrainState
+                {
+                    ParkTimeNs = parkTimeNs,
+                    Active = true
+                };
+                if (pair.Value != null)
+                    state.Buffer.AddRange(pair.Value);
+                _clientDrains[pair.Key] = state;
+            }
         }
 
         internal void DrainLocked(
@@ -124,6 +188,92 @@ namespace Unity.FoxgloveSDK.Core
                 }
 
                 MarkDrainComplete();
+            }
+        }
+
+        internal void DrainClientsLocked(
+            FoxgloveSession session,
+            IReadOnlyDictionary<ushort, string> channelTopicMap,
+            IFoxgloveLogger logger,
+            int maxMessagesPerTick,
+            int queueReserveFrames,
+            int queueReserveBytes)
+        {
+            if (session == null || _clientDrains.Count == 0)
+                return;
+
+            foreach (var pair in _clientDrains)
+            {
+                var clientId = pair.Key;
+                var state = pair.Value;
+                if (!state.Active)
+                    continue;
+
+                var frameBudget = maxMessagesPerTick;
+                var byteBudget = int.MaxValue;
+                var maxFrameCapacity = int.MaxValue;
+                var maxByteCapacity = int.MaxValue;
+                if (session.TryGetReplayQueueHeadroom(
+                    clientId,
+                    queueReserveFrames,
+                    queueReserveBytes,
+                    out var queueFrameHeadroom,
+                    out var queueByteHeadroom,
+                    out maxFrameCapacity,
+                    out maxByteCapacity))
+                {
+                    frameBudget = Math.Min(frameBudget, queueFrameHeadroom);
+                    byteBudget = queueByteHeadroom;
+                }
+
+                if (frameBudget <= 0 || byteBudget <= 0)
+                    continue;
+
+                var sentFrames = 0;
+                var sentBytes = 0;
+                while (state.Offset < state.Buffer.Count && sentFrames < frameBudget)
+                {
+                    var msg = state.Buffer[state.Offset];
+                    var estimatedBytes = EstimateMessageDataFrameBytes(msg);
+                    if (sentBytes + estimatedBytes > byteBudget)
+                    {
+                        var reservedCapacity = Math.Max(0, maxByteCapacity - Math.Max(0, queueReserveBytes));
+                        if (estimatedBytes > reservedCapacity)
+                        {
+                            logger?.LogWarning(
+                                "Replay history message skipped because its estimated frame size exceeds transport capacity.");
+                            state.Offset++;
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    var replayId = (uint)(McapReplayEngine.ReplayChannelIdBase | msg.ChannelId);
+                    string topic = null;
+                    channelTopicMap?.TryGetValue(msg.ChannelId, out topic);
+                    session.PublishReplayToClient(clientId, replayId, msg.Data, msg.LogTime, "History", topic);
+                    state.Offset++;
+                    sentFrames++;
+                    sentBytes += estimatedBytes;
+                }
+
+                if (state.Offset >= state.Buffer.Count)
+                {
+                    if (state.ParkTimeNs > 0)
+                    {
+                        if (FoxgloveReplayTrace.TryTime("History", state.ParkTimeNs, "data", out var trace))
+                            logger?.LogWarning(trace);
+                        session.SendReplayTimeToClient(clientId, state.ParkTimeNs);
+                    }
+
+                    state.LastHistoryTimeNs = state.ParkTimeNs;
+                    state.HasHistoryTime = true;
+                    state.Buffer.Clear();
+                    state.Offset = 0;
+                    state.ParkTimeNs = 0;
+                    state.Active = false;
+                }
             }
         }
 

@@ -62,6 +62,8 @@ namespace Unity.FoxgloveSDK.Core
         [ThreadStatic]
         private static List<(uint clientId, uint subscriptionId)> s_publishSubscriberScratch;
         [ThreadStatic]
+        private static List<(uint subscriptionId, uint channelId)> s_clientReplaySubscriptionScratch;
+        [ThreadStatic]
         private static List<AdvertiseChannel> s_singleAdvertiseChannels;
         [ThreadStatic]
         private static List<uint> s_singleUnadvertiseChannelIds;
@@ -1109,6 +1111,67 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>
+        /// Publish replay data to one client without allowing another client's
+        /// queue headroom to throttle this client's history drain.
+        /// </summary>
+        internal void PublishReplayToClient(
+            uint clientId,
+            uint channelId,
+            byte[] payload,
+            ulong logTimeNs,
+            string source = "Replay",
+            string topic = null)
+        {
+            AdvertiseChannel channel;
+            lock (_channelLifecycleLock)
+            {
+                channel = _channels.Get(channelId);
+                if (channel == null) return;
+            }
+
+            var subscriptions = s_clientReplaySubscriptionScratch;
+            if (subscriptions == null)
+            {
+                subscriptions = new List<(uint subscriptionId, uint channelId)>();
+                s_clientReplaySubscriptionScratch = subscriptions;
+            }
+
+            lock (_subscriberScratchLock)
+            {
+                _subscriptions.CopySubscriptionsForClient(clientId, subscriptions);
+            }
+
+            payload ??= Array.Empty<byte>();
+            topic ??= channel.Topic;
+            try
+            {
+                foreach (var (subscriptionId, subscribedChannelId) in subscriptions)
+                {
+                    if (subscribedChannelId != channelId)
+                        continue;
+
+                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                    if (_prioritizedTransport != null)
+                    {
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                            _logger.LogWarning(trace);
+                        _prioritizedTransport.SendDataBinary(clientId, frame);
+                    }
+                    else
+                    {
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                            _logger.LogWarning(trace);
+                        _transport.SendBinary(clientId, frame);
+                    }
+                }
+            }
+            finally
+            {
+                subscriptions.Clear();
+            }
+        }
+
         /// <summary>Serialize an object to JSON and publish to the channel at the current clock time.</summary>
         public void PublishJson(uint channelId, object message) => PublishJson(channelId, message, _clock.NowNs);
 
@@ -1359,11 +1422,42 @@ namespace Unity.FoxgloveSDK.Core
             BroadcastDataBinary(data);
         }
 
+        /// <summary>Send a replay time frame to one client.</summary>
+        internal void SendReplayTimeToClient(uint clientId, ulong timeNs)
+        {
+            var frame = BinaryEncoding.EncodeTime(timeNs);
+            if (_prioritizedTransport != null)
+                _prioritizedTransport.SendDataBinary(clientId, frame);
+            else
+                _transport.SendBinary(clientId, frame);
+        }
+
         /// <summary>
         /// Return per-client queue headroom for replay history pacing when the
         /// transport exposes managed queue statistics.
         /// </summary>
         internal bool TryGetReplayQueueHeadroom(
+            int reserveFrames,
+            int reserveBytes,
+            out int frameHeadroom,
+            out int byteHeadroom,
+            out int maxFrameCapacity,
+            out int maxByteCapacity)
+            => TryGetReplayQueueHeadroom(
+                clientId: null,
+                reserveFrames,
+                reserveBytes,
+                out frameHeadroom,
+                out byteHeadroom,
+                out maxFrameCapacity,
+                out maxByteCapacity);
+
+        /// <summary>
+        /// Return queue headroom for one client, or the minimum across all
+        /// clients when <paramref name="clientId"/> is null.
+        /// </summary>
+        internal bool TryGetReplayQueueHeadroom(
+            uint? clientId,
             int reserveFrames,
             int reserveBytes,
             out int frameHeadroom,
@@ -1401,10 +1495,22 @@ namespace Unity.FoxgloveSDK.Core
             var byteReserve = Math.Max(0, reserveBytes);
             maxFrameCapacity = stats.MaxQueuedFramesPerClient;
             maxByteCapacity = stats.MaxQueuedBytesPerClient;
+            var foundClient = false;
             foreach (var client in stats.Clients)
             {
+                if (clientId.HasValue && client.ClientId != clientId.Value)
+                    continue;
+
+                foundClient = true;
                 minFrames = Math.Min(minFrames, stats.MaxQueuedFramesPerClient - client.QueuedFrames - frameReserve);
                 minBytes = Math.Min(minBytes, stats.MaxQueuedBytesPerClient - client.QueuedBytes - byteReserve);
+            }
+
+            if (clientId.HasValue && !foundClient)
+            {
+                frameHeadroom = 0;
+                byteHeadroom = 0;
+                return true;
             }
 
             frameHeadroom = Math.Max(0, minFrames);
@@ -1417,6 +1523,22 @@ namespace Unity.FoxgloveSDK.Core
             var result = new HashSet<uint>();
             lock (_channelLifecycleLock)
                 _subscriptions.CopySubscribedChannelIds(result);
+            return result;
+        }
+
+        internal HashSet<uint> SnapshotSubscribedChannelIds(uint clientId)
+        {
+            var result = new HashSet<uint>();
+            lock (_channelLifecycleLock)
+                _subscriptions.CopySubscribedChannelIds(clientId, result);
+            return result;
+        }
+
+        internal HashSet<uint> SnapshotSubscribedClientIds()
+        {
+            var result = new HashSet<uint>();
+            lock (_channelLifecycleLock)
+                _subscriptions.CopyClientIds(result);
             return result;
         }
 

@@ -14,7 +14,7 @@ namespace Unity.FoxgloveSDK.Core
     internal static class ReplayProtobufParser
     {
         private static readonly object ReflectionCacheGate = new();
-        private static readonly Dictionary<string, ProtobufParserBinding> ProtobufParserCache = new();
+        private static readonly Dictionary<string, ProtobufParserCacheEntry> ProtobufParserCache = new();
         private static readonly string[] PreferredAssemblyNames =
         {
             "Unity.FoxgloveSDK.Proto",
@@ -40,29 +40,41 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (ReflectionCacheGate)
             {
-                if (ProtobufParserCache.TryGetValue(typeName, out var binding))
+                if (ProtobufParserCache.TryGetValue(typeName, out var entry))
+                {
+                    if (entry.Binding != null)
+                        return entry.Binding;
+                    throw new InvalidOperationException(entry.FailureMessage);
+                }
+
+                try
+                {
+                    var type = ResolveType(typeName);
+                    if (type == null)
+                        throw new InvalidOperationException($"Optional protobuf type '{typeName}' is not available.");
+
+                    var parser = ReplayPropertyCache.Resolve(type, "Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+                    if (parser == null)
+                        throw new InvalidOperationException($"Optional protobuf type '{typeName}' does not expose a Parser.");
+
+                    var parseFrom = parser.GetType().GetMethod(
+                        "ParseFrom",
+                        BindingFlags.Public | BindingFlags.Instance,
+                        null,
+                        new[] { typeof(byte[]) },
+                        null);
+                    if (parseFrom == null)
+                        throw new InvalidOperationException($"Optional protobuf parser for '{typeName}' does not support ParseFrom(byte[]).");
+
+                    var binding = new ProtobufParserBinding(parser, parseFrom);
+                    ProtobufParserCache[typeName] = new ProtobufParserCacheEntry(binding, null);
                     return binding;
-
-                var type = ResolveType(typeName);
-                if (type == null)
-                    throw new InvalidOperationException($"Optional protobuf type '{typeName}' is not available.");
-
-                var parser = ReplayPropertyCache.Resolve(type, "Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-                if (parser == null)
-                    throw new InvalidOperationException($"Optional protobuf type '{typeName}' does not expose a Parser.");
-
-                var parseFrom = parser.GetType().GetMethod(
-                    "ParseFrom",
-                    BindingFlags.Public | BindingFlags.Instance,
-                    null,
-                    new[] { typeof(byte[]) },
-                    null);
-                if (parseFrom == null)
-                    throw new InvalidOperationException($"Optional protobuf parser for '{typeName}' does not support ParseFrom(byte[]).");
-
-                binding = new ProtobufParserBinding(parser, parseFrom);
-                ProtobufParserCache[typeName] = binding;
-                return binding;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    ProtobufParserCache[typeName] = new ProtobufParserCacheEntry(null, ex.Message);
+                    throw;
+                }
             }
         }
 
@@ -114,6 +126,18 @@ namespace Unity.FoxgloveSDK.Core
                     }
                 }
             }
+        }
+
+        private sealed class ProtobufParserCacheEntry
+        {
+            public ProtobufParserCacheEntry(ProtobufParserBinding binding, string failureMessage)
+            {
+                Binding = binding;
+                FailureMessage = failureMessage;
+            }
+
+            public ProtobufParserBinding Binding { get; }
+            public string FailureMessage { get; }
         }
     }
 }
