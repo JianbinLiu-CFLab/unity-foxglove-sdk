@@ -189,7 +189,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "115D-D2: replay behavior summary is keyed by channel id, not topic");
 
             Check(controller.Contains("CreateReplayMessageContext", StringComparison.Ordinal)
-                  && controller.Contains("ForwardReplayMessageToScene", StringComparison.Ordinal)
+                  && controller.Contains("QueueReplaySceneBatch", StringComparison.Ordinal)
                   && controller.Contains("logTimeNs:", StringComparison.Ordinal)
                   && controller.Contains("StartTimeNs", StringComparison.Ordinal),
                 "115D-D3: tick and snapshot forwarding share context construction using replay log time");

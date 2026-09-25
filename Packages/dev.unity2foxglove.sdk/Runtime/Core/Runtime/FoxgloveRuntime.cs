@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Core
     /// <para>Call <c>Tick</c> periodically (every frame from Unity) to
     /// drain service calls, tick replay, and broadcast time.</para>
     /// </summary>
-    public partial class FoxgloveRuntime : IDisposable, IRuntimeContext
+    public partial class FoxgloveRuntime : IDisposable, IRuntimeContext, IClientReplayBackfillContext
     {
         /// <summary>
         /// Active session; null before Start or after Stop. Runtime lifecycle APIs
@@ -859,6 +859,12 @@ namespace Unity.FoxgloveSDK.Core
         {
             ThrowIfSessionCleanupPending();
             _tickCoordinator.RequestReplaySubscriberBackfill(_replay, _playbackClock, _wallClock);
+        }
+
+        void IClientReplayBackfillContext.RequestReplaySubscriberBackfill(uint clientId)
+        {
+            ThrowIfSessionCleanupPending();
+            _tickCoordinator.RequestReplaySubscriberBackfill(_replay, _playbackClock, _wallClock, clientId);
         }
 
         /// <summary>Internal: get the list of replay channels for test/runtime introspection.</summary>

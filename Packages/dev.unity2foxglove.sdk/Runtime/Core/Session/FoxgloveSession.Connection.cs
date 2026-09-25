@@ -72,7 +72,13 @@ namespace Unity.FoxgloveSDK.Core
                 if (graphChanged)
                     _graph.BroadcastUpdate();
                 if (replayBackfillRequested)
-                    Volatile.Read(ref _runtime)?.RequestReplaySubscriberBackfill();
+                {
+                    var runtime = Volatile.Read(ref _runtime);
+                    if (runtime is IClientReplayBackfillContext clientBackfill)
+                        clientBackfill.RequestReplaySubscriberBackfill(clientId);
+                    else
+                        Volatile.Read(ref _runtime)?.RequestReplaySubscriberBackfill();
+                }
             }
             catch (Exception ex) { _logger.LogWarning("subscribe error: " + ex); }
         }
