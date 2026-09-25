@@ -76,6 +76,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
         }
 
         [Fact]
+        public void EncodingConfigurationFreezesNewValuesWhenSessionStarts()
+        {
+            var transport = new ClientPublishTransport();
+            using var session = new FoxgloveSession("session-encoding-freeze", transport);
+            session.EnableProtobuf();
+            session.EnableMessageEncoding("cdr");
+
+            session.Start("127.0.0.1", 8765);
+
+            session.EnableProtobuf();
+            session.EnableMessageEncoding("CDR");
+            Assert.True(session.IsProtobufEnabled);
+            Assert.True(session.IsMessageEncodingEnabled("json"));
+            Assert.True(session.IsMessageEncodingEnabled("protobuf"));
+            Assert.True(session.IsMessageEncodingEnabled("cdr"));
+            Assert.False(session.IsMessageEncodingEnabled("mcap"));
+            Assert.Throws<InvalidOperationException>(() => session.EnableMessageEncoding("mcap"));
+
+            var newTransport = new ClientPublishTransport();
+            using var newSession = new FoxgloveSession("session-encoding-new-value", newTransport);
+            newSession.Start("127.0.0.1", 8766);
+            Assert.Throws<InvalidOperationException>(() => newSession.EnableProtobuf());
+        }
+
+        [Fact]
         public void RecorderPersistsOriginalInboundPayloadBeforeSubscriberMutation()
         {
             var transport = new ClientPublishTransport();
