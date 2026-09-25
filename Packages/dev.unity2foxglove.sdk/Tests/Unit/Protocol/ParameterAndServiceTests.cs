@@ -145,6 +145,18 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ParameterOwnedReleaseClearsClientUnsetMarker()
+        {
+            var store = new FoxgloveParameterStore();
+            var lease = store.RegisterOwned("/owned", new JValue(1), "number", true);
+
+            Assert.True(store.TrySetFromClientAllowUnset("/owned", JValue.CreateNull()));
+            Assert.True(store.WasUnsetByClient("/owned"));
+            Assert.False(store.UnregisterOwned(lease));
+            Assert.False(store.WasUnsetByClient("/owned"));
+        }
+
+        [Fact]
         public void ParameterRegistrationSnapshotsScalarValues()
         {
             var store = new FoxgloveParameterStore();

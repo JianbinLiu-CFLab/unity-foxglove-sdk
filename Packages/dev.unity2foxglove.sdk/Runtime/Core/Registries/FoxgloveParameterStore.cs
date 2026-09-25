@@ -154,10 +154,10 @@ namespace Unity.FoxgloveSDK.Core
                 return false;
             lock (_lock)
             {
+                _clientUnsetNames.Remove(registration.Name);
                 if (!_params.TryGetValue(registration.Name, out var entry)
                     || !ReferenceEquals(entry.Owner, registration))
                     return false;
-                _clientUnsetNames.Remove(registration.Name);
                 return _params.Remove(registration.Name);
             }
         }
