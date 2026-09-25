@@ -28,6 +28,9 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Default maximum inbound WebSocket frame payload (4 MiB).</summary>
         public const int DefaultMaxInboundFrameBytes = 4 * 1024 * 1024;
 
+        /// <summary>Default established-connection peer-liveness/frame-progress deadline.</summary>
+        public const int DefaultEstablishedIdleTimeoutMs = 30_000;
+
         private string _sharedToken = string.Empty;
         private byte[] _sharedTokenBytes = Array.Empty<byte>();
         private static readonly Regex TokenRedactRegex = new Regex(
@@ -46,6 +49,9 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Maximum inbound WebSocket frame payload accepted before allocation.</summary>
         public int MaxInboundFrameBytes { get; set; } = DefaultMaxInboundFrameBytes;
 
+        /// <summary>Maximum peer-liveness and partial-frame progress interval on an established connection.</summary>
+        public int EstablishedIdleTimeoutMs { get; set; } = DefaultEstablishedIdleTimeoutMs;
+
         /// <summary>Allow the opaque browser Origin value <c>null</c>.</summary>
         public bool AllowOpaqueOrigin { get; set; }
 
@@ -63,6 +69,10 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Normalize inbound frame capacity to a bounded usable default.</summary>
         internal static int NormalizeMaxInboundFrameBytes(int value) =>
             value > 0 ? value : DefaultMaxInboundFrameBytes;
+
+        /// <summary>Normalize the established connection liveness/frame-progress interval to a bounded usable default.</summary>
+        internal static int NormalizeEstablishedIdleTimeoutMs(int value) =>
+            value > 0 ? value : DefaultEstablishedIdleTimeoutMs;
 
         /// <summary>
         /// Whether client disconnects before the WebSocket handshake should be logged.

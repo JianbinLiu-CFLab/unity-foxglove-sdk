@@ -118,14 +118,10 @@ namespace Unity.FoxgloveSDK.Transport
                         if (frame.Priority == FramePriority.Control)
                             return new EnqueueResult(false, true, 0, _droppedDataFrames, false);
 
-                        while (_dataFrames.Count > 0)
-                        {
-                            var stale = _dataFrames.Dequeue();
-                            _queuedBytes -= stale.SizeBytes;
-                            _dataQueuedBytes -= stale.SizeBytes;
-                            dropped++;
-                            _droppedDataFrames++;
-                        }
+                        // An impossible data frame cannot be made admissible by
+                        // evicting valid backlog. Reject only the incoming frame
+                        // so a transient producer-size spike cannot erase useful
+                        // queued data.
                         dropped++;
                         _droppedDataFrames++;
                         return new EnqueueResult(false, false, dropped, _droppedDataFrames, ShouldLogDrop(droppedBefore, _droppedDataFrames));

@@ -108,13 +108,51 @@ namespace Unity.FoxgloveSDK.Transport
             if (!ReadExact(stream, header))
                 return WsFrameReadResult.EndOfStream;
 
-            if ((header[0] & ReservedBitsMask) != 0)
+            return ReadFrameAfterHeader(stream, header[0], header[1], out frame, maxPayloadBytes);
+        }
+
+        /// <summary>
+        /// Continue decoding a frame after the first header byte has already
+        /// been read. The connection uses this split to apply a progress
+        /// deadline only after a peer has started sending a frame.
+        /// </summary>
+        internal static WsFrameReadResult ReadFrameAfterFirstHeaderByte(
+            Stream stream,
+            byte firstHeaderByte,
+            out WsFrame frame,
+            int maxPayloadBytes)
+        {
+            maxPayloadBytes = Math.Min(MaxPayloadBytes, Math.Max(1, maxPayloadBytes));
+            frame = null;
+
+            Span<byte> secondHeaderByte = stackalloc byte[1];
+            if (!ReadExact(stream, secondHeaderByte))
+                return WsFrameReadResult.EndOfStream;
+
+            return ReadFrameAfterHeader(
+                stream,
+                firstHeaderByte,
+                secondHeaderByte[0],
+                out frame,
+                maxPayloadBytes);
+        }
+
+        private static WsFrameReadResult ReadFrameAfterHeader(
+            Stream stream,
+            byte firstHeaderByte,
+            byte secondHeaderByte,
+            out WsFrame frame,
+            int maxPayloadBytes)
+        {
+            frame = null;
+
+            if ((firstHeaderByte & ReservedBitsMask) != 0)
                 return WsFrameReadResult.ProtocolError;
 
-            var fin = (header[0] & FinBit) != 0;
-            var opcode = header[0] & OpcodeMask;
-            var masked = (header[1] & MaskBit) != 0;
-            var payloadLen = (int)(header[1] & PayloadLengthMask);
+            var fin = (firstHeaderByte & FinBit) != 0;
+            var opcode = firstHeaderByte & OpcodeMask;
+            var masked = (secondHeaderByte & MaskBit) != 0;
+            var payloadLen = (int)(secondHeaderByte & PayloadLengthMask);
 
             if (payloadLen == Payload16BitLengthMarker)
             {

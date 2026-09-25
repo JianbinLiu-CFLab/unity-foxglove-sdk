@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const int StopDisconnectWaitMs = 2000;
         private const int StopForcedCloseWaitMs = 1000;
         private const int StopPendingHandshakeWaitMs = 1000;
+        private const int StopClientHandlersWaitMs = 5000;
         private const int HandshakeTimeoutMs = 5000;
         private const int MaxQueuedCapacityResponses = 64;
         private const int MaxFragmentedMessageBytes = 4 * 1024 * 1024;
@@ -56,6 +57,8 @@ namespace Unity.FoxgloveSDK.Transport
         /// </summary>
         private readonly ConcurrentDictionary<TcpClient, TaskCompletionSource<bool>> _pendingClients =
             new ConcurrentDictionary<TcpClient, TaskCompletionSource<bool>>();
+        private readonly ConcurrentDictionary<TcpClient, ClientHandler> _clientHandlers =
+            new ConcurrentDictionary<TcpClient, ClientHandler>();
         /// <summary>Shared managed WebSocket options for queue capacity and token gate.</summary>
         private readonly ManagedWebSocketOptions _options;
         private readonly WsHandshakeHandler _handshakeHandler;
@@ -92,6 +95,19 @@ namespace Unity.FoxgloveSDK.Transport
             internal bool Cancelled;
             internal readonly TaskCompletionSource<bool> Completion =
                 new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        private sealed class ClientHandler
+        {
+            internal readonly TcpClient TcpClient;
+            internal readonly TaskCompletionSource<bool> Completion =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            internal int ThreadId;
+
+            internal ClientHandler(TcpClient tcpClient)
+            {
+                TcpClient = tcpClient;
+            }
         }
 
         // Aggregate health counters
@@ -157,6 +173,7 @@ namespace Unity.FoxgloveSDK.Transport
                 {
                     if (_clients.Count != 0
                         || _pendingClients.Count != 0
+                        || _clientHandlers.Count != 0
                         || _clientPublications.Count != 0)
                         throw new InvalidOperationException(
                             "Server shutdown is still retaining client resources.");
@@ -204,6 +221,7 @@ namespace Unity.FoxgloveSDK.Transport
             TcpListener listener = null;
             Task[] publicationTasks = null;
             KeyValuePair<uint, WsConnection>[] clients = null;
+            ClientHandler[] clientHandlers = null;
 
             // Claim the lifecycle handles under the same gate used by Start,
             // then release that gate before running user callbacks or waiting
@@ -233,6 +251,7 @@ namespace Unity.FoxgloveSDK.Transport
                     // Keep the source contract literal while taking the
                     // snapshot under the admission gate.
                     clients = _clients.ToArray();
+                    clientHandlers = SnapshotClientHandlers();
                     publicationTasks = SnapshotPublicationTasks();
                 }
             }
@@ -297,6 +316,7 @@ namespace Unity.FoxgloveSDK.Transport
                 }
 
                 DrainCapacityResponseWorkers();
+                WaitForClientHandlers(clientHandlers);
             }
             finally
             {
@@ -494,7 +514,7 @@ namespace Unity.FoxgloveSDK.Transport
                         break;
                     }
 
-                    if (!TryReservePendingClient(tcpClient))
+                    if (!TryReservePendingClient(tcpClient, out var handler))
                     {
                         QueueRejectedClient(tcpClient);
                         continue;
@@ -502,10 +522,12 @@ namespace Unity.FoxgloveSDK.Transport
 
                     try
                     {
-                        _ = Task.Run(() => HandleClient(tcpClient, ct));
+                        _ = Task.Run(() => RunClientHandler(handler, ct));
                     }
                     catch
                     {
+                        _clientHandlers.TryRemove(tcpClient, out _);
+                        handler.Completion.TrySetResult(true);
                         ReleasePendingClient(tcpClient);
                         CloseUnregisteredClient(tcpClient, null);
                         throw;
@@ -574,11 +596,11 @@ namespace Unity.FoxgloveSDK.Transport
                     return;
                 }
 
-                if (stream.CanTimeout)
-                {
-                    stream.ReadTimeout = Timeout.Infinite;
-                    stream.WriteTimeout = Timeout.Infinite;
-                }
+                // Established connections must not inherit the handshake's
+                // inactivity deadline. Frame progress is bounded by
+                // WsConnection after the first frame byte arrives, while the
+                // liveness monitor sends pings and waits for peer activity.
+                ConfigureStreamTimeouts(stream, Timeout.Infinite, Timeout.Infinite);
 
                 conn = new WsConnection(
                     tcpClient,
@@ -619,6 +641,10 @@ namespace Unity.FoxgloveSDK.Transport
                     // after user notification. Stop takes that same gate before
                     // snapshotting clients, so it cannot publish a canceled
                     // connection or resurrect one after shutdown.
+                    conn.StartLivenessMonitor(
+                        ManagedWebSocketOptions.NormalizeEstablishedIdleTimeoutMs(_options.EstablishedIdleTimeoutMs),
+                        () => DisconnectClient(clientId, conn),
+                        ct);
                     ReceiveLoop(clientId, conn, ct);
                 }
                 finally
@@ -688,8 +714,9 @@ namespace Unity.FoxgloveSDK.Transport
             return false;
         }
 
-        private bool TryReservePendingClient(TcpClient tcpClient)
+        private bool TryReservePendingClient(TcpClient tcpClient, out ClientHandler handler)
         {
+            handler = null;
             if (tcpClient == null)
                 return false;
 
@@ -699,9 +726,32 @@ namespace Unity.FoxgloveSDK.Transport
                 if (IsStopping || _clients.Count + _pendingClients.Count >= maxClients)
                     return false;
 
-                return _pendingClients.TryAdd(
+                if (!_pendingClients.TryAdd(
                     tcpClient,
-                    new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously));
+                    new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)))
+                    return false;
+
+                handler = new ClientHandler(tcpClient);
+                _clientHandlers[tcpClient] = handler;
+                return true;
+            }
+        }
+
+        private void RunClientHandler(ClientHandler handler, CancellationToken ct)
+        {
+            Volatile.Write(ref handler.ThreadId, Environment.CurrentManagedThreadId);
+            try
+            {
+                HandleClient(handler.TcpClient, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"WebSocket client handler failed: {FormatExceptionChain(ex)}");
+            }
+            finally
+            {
+                _clientHandlers.TryRemove(handler.TcpClient, out _);
+                handler.Completion.TrySetResult(true);
             }
         }
 
@@ -1009,6 +1059,41 @@ namespace Unity.FoxgloveSDK.Transport
             return tasks.ToArray();
         }
 
+        private ClientHandler[] SnapshotClientHandlers()
+        {
+            return _clientHandlers.Values.ToArray();
+        }
+
+        private void WaitForClientHandlers(ClientHandler[] handlers)
+        {
+            if (handlers == null || handlers.Length == 0)
+                return;
+
+            var currentThreadId = Environment.CurrentManagedThreadId;
+            var tasks = handlers
+                .Where(handler => Volatile.Read(ref handler.ThreadId) != currentThreadId)
+                .Select(handler => handler.Completion.Task)
+                .ToArray();
+            if (tasks.Length == 0)
+            {
+                _logger.LogWarning("Client handler stop wait is reentrant; current handler will complete after Stop returns.");
+                return;
+            }
+
+            try
+            {
+                if (!Task.WaitAll(tasks, StopClientHandlersWaitMs))
+                {
+                    _logger.LogWarning(
+                        $"Client handlers did not finish within {StopClientHandlersWaitMs}ms during stop; retaining them until completion.");
+                }
+            }
+            catch (AggregateException ex)
+            {
+                _logger.LogError($"Client handler stop error: {FormatExceptionChain(ex)}");
+            }
+        }
+
         private void WaitForPublicationTasks(Task[] tasks)
         {
             if (tasks == null || tasks.Length == 0)
@@ -1173,7 +1258,9 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 while (!ct.IsCancellationRequested)
                 {
-                    var frame = conn.ReadFrame(out var readResult);
+                    var frame = conn.ReadFrame(
+                        out var readResult,
+                        ManagedWebSocketOptions.NormalizeEstablishedIdleTimeoutMs(_options.EstablishedIdleTimeoutMs));
                     if (frame == null)
                     {
                         if (readResult == WsFrameReadResult.ProtocolError)
@@ -1185,7 +1272,7 @@ namespace Unity.FoxgloveSDK.Transport
                         break;
                     }
 
-                    conn.TouchActivity();
+                    conn.TouchInboundActivity();
                     switch (frame.Opcode)
                     {
                         case WsOpcode.Text:

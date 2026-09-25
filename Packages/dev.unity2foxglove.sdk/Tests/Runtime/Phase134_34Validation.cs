@@ -40,8 +40,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-34B: disallowed Origin test asserts the HTTP 403 response");
             Check(phase33.Contains("TestByteLimitOverflowDropsAndRejectsOversizedData", StringComparison.Ordinal)
                   && phase33.Contains("maxQueuedBytes: 4", StringComparison.Ordinal)
-                  && phase33.Contains("DroppedDataFrames == 2", StringComparison.Ordinal),
-                "134-34C: send queue validation covers byte-limit overflow");
+                  && phase33.Contains("DroppedDataFrames == 1", StringComparison.Ordinal)
+                  && phase33.Contains("preserves existing queued data", StringComparison.Ordinal),
+                "134-34C: send queue validation rejects impossible frames without clearing valid backlog");
             Check(phase34.Contains("McapWriter.MagicLength", StringComparison.Ordinal)
                   && phase34.Contains("McapWriter.RecordHeaderLength", StringComparison.Ordinal)
                   && phase34.Contains("McapWriter.FooterContentLength", StringComparison.Ordinal)
