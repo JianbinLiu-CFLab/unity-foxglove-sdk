@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Components
             int captureHeight,
             bool takeOwnership = false)
         {
-            if (!HasSensorRawImageDemand() || rgb24Readback == null || rgb24Readback.Length == 0)
+            if (IsReplaySuppressed || !HasSensorRawImageDemand() || rgb24Readback == null || rgb24Readback.Length == 0)
                 return;
 
             try
@@ -71,6 +71,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private void InvokeRawSubscribers(SensorRawImageFrame frame)
         {
+            if (IsReplaySuppressed)
+                return;
+
             var handlers = SensorRawImageReady;
             if (handlers == null)
                 return;

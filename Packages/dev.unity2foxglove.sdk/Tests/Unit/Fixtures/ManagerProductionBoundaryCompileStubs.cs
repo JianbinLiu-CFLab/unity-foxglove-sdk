@@ -203,6 +203,7 @@ namespace Unity.FoxgloveSDK.Components
         public float DefaultPublishRateHz { get; set; } = 10f;
         public bool HasOrdinaryTransportDemand { get; set; }
         public bool SuppressLivePublishersForReplay { get; set; }
+        public int OrdinaryTransportPublishCalls { get; private set; }
 
         internal bool TryPrepareMsgPackPublish(string topic, out uint channelId, bool requireDemand)
         {
@@ -229,7 +230,10 @@ namespace Unity.FoxgloveSDK.Components
 
         internal FoxRunOrdinaryTransportFanoutResult PublishOrdinaryTransports(
             in FoxRunOrdinaryPayloadRequest request)
-            => default;
+        {
+            OrdinaryTransportPublishCalls++;
+            return default;
+        }
 
         public bool TryPrepareFoxRunMessagePackRecording(
             string topic,
