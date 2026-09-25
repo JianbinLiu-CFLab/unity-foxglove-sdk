@@ -130,25 +130,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void PublisherReplayRestoreDoesNotOverrideExternalLifecycleOwnership()
-        {
-            var boundary = new ReplayPublisherBoundary(enabled: true);
-
-            Assert.True(boundary.TryDisableForReplay());
-            Assert.False(boundary.Enabled);
-            boundary.ExternalDisable();
-            Assert.False(boundary.RestoreAfterReplay());
-            Assert.False(boundary.Enabled);
-
-            boundary.ExternalEnable();
-            Assert.True(boundary.Enabled);
-            Assert.True(boundary.TryDisableForReplay());
-            boundary.ExternalEnable();
-            Assert.False(boundary.RestoreAfterReplay());
-            Assert.True(boundary.Enabled);
-        }
-
-        [Fact]
         public void RemoteMcapManagerRetryClearsFailureAndRetriesAfterOneSecond()
         {
             AssertEndpointRetryBehavior();
@@ -255,36 +236,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             public void Dispatch(int value, Action<Exception> onError)
                 => _state.Invoke(handler => handler(value), onError);
-        }
-
-        private sealed class ReplayPublisherBoundary
-        {
-            private readonly ReplayDisableOwnershipState _state = new ReplayDisableOwnershipState();
-
-            public ReplayPublisherBoundary(bool enabled)
-            {
-                Enabled = enabled;
-            }
-
-            public bool Enabled { get; private set; }
-
-            public bool TryDisableForReplay()
-                => _state.TryAcquire(() => Enabled, () => Enabled = false);
-
-            public bool RestoreAfterReplay()
-                => _state.TryRestore(() => Enabled, () => Enabled = true);
-
-            public void ExternalEnable()
-            {
-                Enabled = true;
-                _state.NotifyExternalLifecycleTransition();
-            }
-
-            public void ExternalDisable()
-            {
-                Enabled = false;
-                _state.NotifyExternalLifecycleTransition();
-            }
         }
 
         private sealed class ManagerEndpointBoundary

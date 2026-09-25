@@ -167,7 +167,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 disableCalls++;
                 enabled = false;
             }));
-            Assert.False(ownership.TryRestore(() => enabled, () =>
+            Assert.False(ownership.TryRestoreOwned(() =>
             {
                 enableCalls++;
                 enabled = true;
@@ -190,35 +190,25 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 enabled = false;
             }));
             Assert.False(enabled);
-            Assert.True(ownership.HasOwnership);
-            Assert.True(ownership.TryRestore(() => enabled, () =>
+            Assert.True(ownership.TryRestoreOwned(() =>
             {
                 enableCalls++;
                 enabled = true;
             }));
             Assert.True(enabled);
-            Assert.False(ownership.HasOwnership);
             Assert.Equal(1, disableCalls);
             Assert.Equal(1, enableCalls);
 
             enabled = true;
             Assert.True(ownership.TryAcquire(() => enabled, () => enabled = false));
-            enabled = true;
-            ownership.NotifyExternalLifecycleTransition();
-            Assert.False(ownership.TryRestore(() => enabled, () => enableCalls++));
-            Assert.Equal(1, enableCalls);
-
-            enabled = true;
-            Assert.True(ownership.TryAcquire(() => enabled, () => enabled = false));
-            enabled = false;
-            ownership.NotifyExternalLifecycleTransition();
-            Assert.False(ownership.TryRestore(() => enabled, () =>
+            Assert.True(ownership.TryRestoreOwned(() =>
             {
                 enableCalls++;
                 enabled = true;
             }));
-            Assert.False(enabled);
-            Assert.Equal(1, enableCalls);
+            Assert.True(enabled);
+            Assert.False(ownership.TryRestoreOwned(() => enableCalls++));
+            Assert.Equal(2, enableCalls);
         }
 
         [Fact]

@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             manager.SetActiveSessionForTest(manager.CaptureForTest(7UL));
             Assert.NotNull(manager.ActiveComponentPublisherSession);
 
-            // This calls the same production clear method used by the
+            // This calls the same production stop-tail method used by the
             // FoxgloveManager.StopServer cleanup tail.
             manager.ClearActiveSessionForTest();
 
@@ -254,12 +254,63 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             publisher.ExternalEnableForTest();
 
             Assert.True(publisher.TryDisableForReplayForTest());
-            Assert.False(publisher.enabled);
+            Assert.True(publisher.enabled);
+            Assert.True(publisher.ReplaySuppressedForTest);
 
             publisher.ExternalDisableForTest();
 
             publisher.RestoreAfterReplayForTest();
             Assert.False(publisher.enabled);
+            Assert.False(publisher.ReplaySuppressedForTest);
+        }
+
+        [Fact]
+        public void ReplayDoesNotAcquireOwnershipForAlreadyDisabledPublisher()
+        {
+            var publisher = new BoundaryPublisher();
+            publisher.ExternalDisableForTest();
+
+            Assert.False(publisher.TryDisableForReplayForTest());
+            Assert.False(publisher.ReplaySuppressedForTest);
+
+            publisher.RestoreAfterReplayForTest();
+            Assert.False(publisher.enabled);
+        }
+
+        [Fact]
+        public void ReplaySuppressionBlocksProductionPublishPreparationWithoutChangingEnabled()
+        {
+            var publisher = new BoundaryPublisher { TopicForTest = "/boundary" };
+            publisher.ManagerForTest = new FoxgloveManager();
+            publisher.ExternalEnableForTest();
+
+            Assert.True(publisher.PreparePublishForTest());
+            Assert.True(publisher.TryDisableForReplayForTest());
+            Assert.True(publisher.enabled);
+            Assert.False(publisher.PreparePublishForTest());
+
+            publisher.RestoreAfterReplayForTest();
+            Assert.True(publisher.PreparePublishForTest());
+        }
+
+        [Fact]
+        public void ReplaySuppressionSurvivesExternalLifecycleToggle()
+        {
+            var publisher = new BoundaryPublisher { TopicForTest = "/boundary" };
+            publisher.ManagerForTest = new FoxgloveManager();
+            publisher.ExternalEnableForTest();
+
+            Assert.True(publisher.TryDisableForReplayForTest());
+            publisher.ExternalDisableForTest();
+            publisher.ExternalEnableForTest();
+
+            Assert.True(publisher.enabled);
+            Assert.True(publisher.ReplaySuppressedForTest);
+            Assert.False(publisher.PreparePublishForTest());
+
+            publisher.RestoreAfterReplayForTest();
+            Assert.False(publisher.ReplaySuppressedForTest);
+            Assert.True(publisher.PreparePublishForTest());
         }
 
         [Fact]
@@ -371,18 +422,38 @@ namespace Unity.FoxgloveSDK.Tests.Manager
                 set => _topic = value;
             }
 
+            public FoxgloveManager ManagerForTest
+            {
+                set => _manager = value;
+            }
+
             protected override string SchemaName => "manager.boundary";
 
             public void ExternalEnableForTest()
             {
-                enabled = true;
-                OnEnable();
+                SetEnabledLikeUnityForTest(true);
             }
 
             public void ExternalDisableForTest()
             {
-                enabled = false;
-                OnDisable();
+                SetEnabledLikeUnityForTest(false);
+            }
+
+            public bool ReplaySuppressedForTest => IsReplaySuppressed;
+
+            public bool PreparePublishForTest()
+                => ShouldPreparePublishPayload();
+
+            private void SetEnabledLikeUnityForTest(bool value)
+            {
+                if (enabled == value)
+                    return;
+
+                enabled = value;
+                if (value)
+                    OnEnable();
+                else
+                    OnDisable();
             }
 
             public bool TryDisableForReplayForTest()

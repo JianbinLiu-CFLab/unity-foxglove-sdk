@@ -18,6 +18,7 @@ using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
@@ -144,6 +145,18 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ParameterOwnedReleaseClearsClientUnsetMarker()
+        {
+            var store = new FoxgloveParameterStore();
+            var lease = store.RegisterOwned("/owned", new JValue(1), "number", true);
+
+            Assert.True(store.TrySetFromClientAllowUnset("/owned", JValue.CreateNull()));
+            Assert.True(store.WasUnsetByClient("/owned"));
+            Assert.False(store.UnregisterOwned(lease));
+            Assert.False(store.WasUnsetByClient("/owned"));
+        }
+
+        [Fact]
         public void ParameterRegistrationSnapshotsScalarValues()
         {
             var store = new FoxgloveParameterStore();
@@ -185,6 +198,32 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ParameterStoreSupportsExtendedTypesAndUnset()
+        {
+            var store = new FoxgloveParameterStore();
+            store.Register("/bytes", "AQID", "byte_array", true);
+            store.Register("/double", 1.25, "float64", true);
+            store.Register("/doubles", new JArray(1, 2.5), "float64_array", true);
+            store.Register("/flags", new JArray(true, false), "boolean[]", true);
+            store.Register("/names", new JArray("left", "right"), "string[]", true);
+
+            Assert.Equal("AQID", store.GetWireParameter("/bytes").Value.Value<string>());
+            Assert.Equal(1.25d, store.GetWireParameter("/double").Value.Value<double>());
+            Assert.Equal("float64_array", store.GetWireParameter("/doubles").Type);
+            Assert.Equal(new JArray(1d, 2.5d), store.GetWireParameter("/doubles").Value);
+            Assert.Equal(new JArray(true, false), store.GetWireParameter("/flags").Value);
+            Assert.Equal(new JArray("left", "right"), store.GetWireParameter("/names").Value);
+
+            Assert.True(store.TrySetFromClient("/double", new JValue(3.5)));
+            Assert.Equal(3.5d, store.GetWireParameter("/double").Value.Value<double>());
+            Assert.True(store.TrySetFromClientAllowUnset("/bytes", JValue.CreateNull()));
+            Assert.Null(store.GetWireParameter("/bytes"));
+            store.Register("/bytes", "AQID", "byte_array", true);
+            Assert.False(store.TrySetFromClient("/bytes", JValue.CreateNull()));
+            Assert.Equal("AQID", store.GetWireParameter("/bytes").Value.Value<string>());
+        }
+
+        [Fact]
         public void ParameterSubscribeUnsubscribe()
         {
             var fake = new Phase6FakeTransport();
@@ -203,6 +242,76 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             fake.SimulateText(1, "{\"op\":\"unsubscribeParameterUpdates\",\"parameterNames\":[]}");
             Assert.True(true, "unsubscribeParameterUpdates does not throw");
+        }
+
+        [Fact]
+        public void SetParametersNullUnsetsWritableEntry()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            session.Parameters.Register("/unset", 7, "number", true);
+            fake.SimulateConnect(1);
+            fake.SimulateText(1,
+                "{\"op\":\"setParameters\",\"parameters\":[{\"name\":\"/unset\",\"value\":null}],\"id\":\"unset\"}");
+
+            var response = JObject.Parse(fake.SentTexts(1).Last());
+            Assert.Equal("unset", response["id"]?.ToString());
+            var removed = Assert.IsType<JObject>(Assert.Single((JArray)response["parameters"]));
+            Assert.Equal("/unset", removed["name"]?.ToString());
+            Assert.False(removed.ContainsKey("value"));
+            Assert.Null(session.Parameters.GetWireParameter("/unset"));
+
+            fake.SentTexts(1).Clear();
+            fake.SimulateText(1,
+                "{\"op\":\"setParameters\",\"parameters\":[{\"name\":\"/unset\",\"value\":null}],\"id\":\"unset-again\"}");
+
+            var repeatedResponse = JObject.Parse(fake.SentTexts(1).Last());
+            Assert.Equal("unset-again", repeatedResponse["id"]?.ToString());
+            var repeated = Assert.IsType<JObject>(Assert.Single((JArray)repeatedResponse["parameters"]));
+            Assert.Equal("/unset", repeated["name"]?.ToString());
+            Assert.False(repeated.ContainsKey("value"));
+        }
+
+        [Fact]
+        public void SetParametersNullBroadcastsNameOnlyRemovalToSubscribers()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            session.Parameters.Register("/unset", 7, "number", true);
+            fake.SimulateConnect(1);
+            fake.SimulateConnect(2);
+            fake.SimulateText(2,
+                "{\"op\":\"subscribeParameterUpdates\",\"parameterNames\":[\"/unset\"]}");
+            fake.SentTexts(1).Clear();
+            fake.SentTexts(2).Clear();
+
+            fake.SimulateText(1,
+                "{\"op\":\"setParameters\",\"parameters\":[{\"name\":\"/unset\",\"value\":null}],\"id\":\"unset\"}");
+
+            var response = JObject.Parse(fake.SentTexts(1).Last());
+            var responseParameter = Assert.IsType<JObject>(Assert.Single((JArray)response["parameters"]));
+            Assert.Equal("/unset", responseParameter["name"]?.ToString());
+            Assert.False(responseParameter.ContainsKey("value"));
+
+            var broadcast = JObject.Parse(fake.SentTexts(2).Last());
+            var broadcastParameter = Assert.IsType<JObject>(Assert.Single((JArray)broadcast["parameters"]));
+            Assert.Equal("/unset", broadcastParameter["name"]?.ToString());
+            Assert.False(broadcastParameter.ContainsKey("value"));
+        }
+
+        [Fact]
+        public void RuntimeTrySetParameterNullDoesNotUnsetWritableEntry()
+        {
+            using var runtime = new FoxgloveRuntime(
+                new Phase6FakeTransport(),
+                new SystemClock(),
+                new DefaultSchemaRegistry());
+            runtime.RegisterParameter("/runtime-unset", 7, "number", true);
+
+            Assert.False(runtime.TrySetParameter("/runtime-unset", null));
+            Assert.Equal(7, runtime.Parameters.GetWireParameter("/runtime-unset").Value.Value<int>());
+            Assert.False(runtime.TrySetParameter("/runtime-unset", JValue.CreateNull()));
+            Assert.Equal(7, runtime.Parameters.GetWireParameter("/runtime-unset").Value.Value<int>());
         }
 
         [Fact]
@@ -365,6 +474,176 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             Assert.True(session.UnregisterService(serviceId));
             Assert.Null(session.Services.GetById(serviceId));
+        }
+
+        [Fact]
+        public void ChannelPublicationFailureLeavesRegistryRetryable()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            var channel = new AdvertiseChannel
+            {
+                Id = 7,
+                Topic = "/atomic-channel",
+                Encoding = "json",
+                SchemaName = "std_msgs/String"
+            };
+
+            fake.ThrowBroadcastCount = 1;
+            Assert.Throws<InvalidOperationException>(() => session.RegisterChannel(channel));
+            Assert.Null(session.Channels.Get(channel.Id));
+
+            session.RegisterChannel(channel);
+            Assert.NotNull(session.Channels.Get(channel.Id));
+
+            fake.ThrowBroadcastCount = 1;
+            Assert.Throws<InvalidOperationException>(() => session.UnregisterChannel(channel.Id));
+            Assert.NotNull(session.Channels.Get(channel.Id));
+
+            session.UnregisterChannel(channel.Id);
+            Assert.Null(session.Channels.Get(channel.Id));
+        }
+
+        [Fact]
+        public void RecordingOnlyChannelCanSwitchDescriptorAndAdvertiseBeforeGraphUpdate()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            session.RegisterRecordingOnlyChannel(new AdvertiseChannel
+            {
+                Id = 11,
+                Topic = "/recording-only",
+                Encoding = "json",
+                SchemaName = "old"
+            });
+
+            fake.SimulateConnect(1);
+            fake.SimulateText(1, "{\"op\":\"subscribeConnectionGraph\"}");
+            fake.OrderedTexts.Clear();
+            fake.SentTexts(1).Clear();
+
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 11,
+                Topic = "/live-after-recording",
+                Encoding = "json",
+                SchemaName = "new"
+            });
+
+            Assert.Equal("/live-after-recording", session.Channels.Get(11).Topic);
+            Assert.Equal(
+                new[] { "advertise", "connectionGraphUpdate" },
+                fake.OrderedTexts.Select(text => JObject.Parse(text)["op"]?.ToString()));
+        }
+
+        [Fact]
+        public void LiveChannelCanSwitchToRecordingOnlyAndUnadvertiseBeforeGraphUpdate()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 12,
+                Topic = "/live-before-recording",
+                Encoding = "json",
+                SchemaName = "old"
+            });
+
+            fake.SimulateConnect(1);
+            fake.SimulateText(1,
+                "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":3,\"channelId\":12}]}");
+            fake.SimulateText(1, "{\"op\":\"subscribeConnectionGraph\"}");
+            fake.OrderedTexts.Clear();
+            fake.SentTexts(1).Clear();
+            fake.SentBinaries(1).Clear();
+
+            session.RegisterRecordingOnlyChannel(new AdvertiseChannel
+            {
+                Id = 12,
+                Topic = "/recording-after-live",
+                Encoding = "json",
+                SchemaName = "new"
+            });
+
+            Assert.Equal("/recording-after-live", session.Channels.Get(12).Topic);
+            Assert.Equal(
+                new[] { "unadvertise", "connectionGraphUpdate" },
+                fake.OrderedTexts.Select(text => JObject.Parse(text)["op"]?.ToString()));
+
+            session.Publish(12, new byte[] { 1, 2, 3 }, 10);
+            Assert.True(
+                fake.SentBinaries(1).Count == 0,
+                "recording-only switch removes the live subscription");
+        }
+
+        [Fact]
+        public void ChannelPublicationFailureRetractsPartiallyBroadcastAdvertisement()
+        {
+            var fake = new Phase6FakeTransport
+            {
+                ThrowBroadcastCount = 1,
+                RecordBroadcastBeforeThrow = true
+            };
+            var session = new FoxgloveSession("Test", fake);
+            var channel = new AdvertiseChannel { Id = 8, Topic = "/partial-channel", Encoding = "json" };
+
+            Assert.Throws<InvalidOperationException>(() => session.RegisterChannel(channel));
+
+            var operations = fake.BroadcastTexts
+                .Select(text => JObject.Parse(text)["op"]?.ToString())
+                .ToList();
+            Assert.Equal(new[] { "advertise", "unadvertise" }, operations);
+            Assert.Null(session.Channels.Get(channel.Id));
+        }
+
+        [Fact]
+        public void ChannelGraphPublicationFailureLeavesRegistryRetryable()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            fake.SimulateConnect(7);
+            fake.SimulateText(7, "{\"op\":\"subscribeConnectionGraph\"}");
+            fake.SentTexts(7).Clear();
+            var channel = new AdvertiseChannel { Id = 9, Topic = "/graph-channel", Encoding = "json" };
+
+            fake.ThrowSendTextCount = 1;
+            Assert.Throws<InvalidOperationException>(() => session.RegisterChannel(channel));
+            Assert.Null(session.Channels.Get(channel.Id));
+            var restoredGraph = fake.SentTexts(7)
+                .Select(text => JObject.Parse(text))
+                .Last(obj => obj["op"]?.ToString() == "connectionGraphUpdate");
+            Assert.DoesNotContain(
+                (JArray)restoredGraph["publishedTopics"],
+                topic => topic["name"]?.ToString() == channel.Topic);
+
+            session.RegisterChannel(channel);
+            Assert.NotNull(session.Channels.Get(channel.Id));
+        }
+
+        [Fact]
+        public void ChannelUnregisterGraphFailureRestoresChannelForRetry()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            var channel = new AdvertiseChannel { Id = 10, Topic = "/unregister-graph-channel", Encoding = "json" };
+            session.RegisterChannel(channel);
+
+            fake.SimulateConnect(7);
+            fake.SimulateText(7, "{\"op\":\"subscribeConnectionGraph\"}");
+            fake.SentTexts(7).Clear();
+            fake.ThrowSendTextCount = 1;
+
+            Assert.Throws<InvalidOperationException>(() => session.UnregisterChannel(channel.Id));
+            Assert.NotNull(session.Channels.Get(channel.Id));
+            var restoredGraph = fake.SentTexts(7)
+                .Select(text => JObject.Parse(text))
+                .Last(obj => obj["op"]?.ToString() == "connectionGraphUpdate");
+            Assert.Contains(
+                (JArray)restoredGraph["publishedTopics"],
+                topic => topic["name"]?.ToString() == channel.Topic);
+
+            session.UnregisterChannel(channel.Id);
+            Assert.Null(session.Channels.Get(channel.Id));
         }
 
         [Fact]
@@ -798,6 +1077,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             private readonly Dictionary<uint, List<string>> _sentTexts = new();
             private readonly Dictionary<uint, List<byte[]>> _sentBinaries = new();
             public readonly List<string> BroadcastTexts = new();
+            public readonly List<string> OrderedTexts = new();
             public uint? ThrowBinaryForClientId { get; set; }
             public int ThrowBroadcastCount { get; set; }
             public bool RecordBroadcastBeforeThrow { get; set; }
@@ -815,6 +1095,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 }
                 if (!_sentTexts.ContainsKey(clientId)) _sentTexts[clientId] = new();
                 _sentTexts[clientId].Add(json);
+                OrderedTexts.Add(json);
             }
             public void SendBinary(uint clientId, byte[] data)
             {
@@ -833,6 +1114,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                     throw new InvalidOperationException("Injected broadcast failure.");
                 }
                 BroadcastTexts.Add(json);
+                OrderedTexts.Add(json);
             }
             public void BroadcastBinary(byte[] data) { }
             public List<string> SentTexts(uint clientId) => _sentTexts.TryGetValue(clientId, out var l) ? l : new();

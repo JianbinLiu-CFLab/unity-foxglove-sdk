@@ -302,8 +302,9 @@ namespace Unity.FoxgloveSDK.Components
                     () => _connectionState.ResetChannelIds(FirstAutoChannelId),
                     () =>
                     {
-                        ClearActiveComponentPublisherSessionAtStop(
-                            restoreLivePublishers ? RestoreLivePublishers : null);
+                        RunComponentPublisherSessionStopTail(
+                            restoreLivePublishers,
+                            RestoreLivePublishers);
                     });
                 FlushClientEventRetirementDrops();
             }

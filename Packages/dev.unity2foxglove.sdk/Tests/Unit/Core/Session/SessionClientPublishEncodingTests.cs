@@ -12,6 +12,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
@@ -28,6 +29,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
             var transport = new ClientPublishTransport();
             var received = new List<(string topic, string encoding, string payload)>();
             using var session = new FoxgloveSession("session-client-encoding", transport);
+            session.EnableProtobuf();
             session.OnClientMessageWithEncoding += (_, _, topic, encoding, payload) =>
                 received.Add((topic, encoding, Encoding.UTF8.GetString(payload)));
 
@@ -51,6 +53,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
                     Assert.Equal("protobuf", message.encoding);
                     Assert.Equal("protobuf-payload", message.payload);
                 });
+        }
+
+        [Fact]
+        public void ProtobufClientAdvertiseIsRejectedWhenEncodingIsDisabled()
+        {
+            var transport = new ClientPublishTransport();
+            var received = new List<string>();
+            using var session = new FoxgloveSession("session-client-protobuf-disabled", transport);
+            session.OnClientMessageWithEncoding += (_, _, _, encoding, _) => received.Add(encoding);
+            transport.Connect(11);
+            var serverInfo = JObject.Parse(transport.SentTexts[0]);
+            Assert.DoesNotContain(
+                serverInfo["supportedEncodings"]?.Values<string>() ?? Array.Empty<string>(),
+                encoding => string.Equals(encoding, "protobuf", StringComparison.Ordinal));
+
+            transport.ReceiveText(11,
+                "{\"op\":\"advertise\",\"channels\":[{\"id\":1,\"topic\":\"/phase192/protobuf-disabled\",\"encoding\":\"protobuf\"}]}");
+            transport.ReceiveBinary(11, ClientMessageFrame(1, "must-not-dispatch"));
+
+            Assert.Empty(received);
         }
 
         [Fact]
@@ -151,13 +173,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
             public event Action<uint> OnClientDisconnected;
             public event Action<uint, string> OnTextReceived;
             public event Action<uint, byte[]> OnBinaryReceived;
+            public readonly List<string> SentTexts = new();
 
             public void Start(string host, int port) => IsRunning = true;
             public void Stop() => IsRunning = false;
             public void Dispose() { }
             public void BroadcastText(string json) { }
             public void BroadcastBinary(byte[] data) { }
-            public void SendText(uint clientId, string json) { }
+            public void SendText(uint clientId, string json) => SentTexts.Add(json);
             public void SendBinary(uint clientId, byte[] data) { }
             public void Connect(uint clientId) => OnClientConnected?.Invoke(clientId);
             public void Disconnect(uint clientId) => OnClientDisconnected?.Invoke(clientId);
