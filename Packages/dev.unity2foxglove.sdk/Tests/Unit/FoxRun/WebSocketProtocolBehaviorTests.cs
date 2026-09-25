@@ -57,6 +57,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void EstablishedIdleTimeoutHasABoundedDefault()
+        {
+            Assert.Equal(
+                ManagedWebSocketOptions.DefaultEstablishedIdleTimeoutMs,
+                new ManagedWebSocketOptions().EstablishedIdleTimeoutMs);
+            Assert.Equal(
+                ManagedWebSocketOptions.DefaultEstablishedIdleTimeoutMs,
+                ManagedWebSocketOptions.NormalizeEstablishedIdleTimeoutMs(0));
+            Assert.Equal(
+                125,
+                ManagedWebSocketOptions.NormalizeEstablishedIdleTimeoutMs(125));
+        }
+
+        [Fact]
         public void DeclaredOversizedFrameIsRejectedBeforePayloadRead()
         {
             var bytes = new byte[2 + 8 + 4];
@@ -104,7 +118,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void OversizedDataDropsStaleDataWithoutDisconnecting()
+        public void OversizedDataPreservesExistingQueueWithoutDisconnecting()
         {
             var queue = new WsSendQueue(4, 8);
             var first = queue.Enqueue(new QueuedFrame(2, new byte[] { 1, 2 }, FramePriority.Data));
@@ -112,9 +126,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.True(first.Accepted);
             Assert.False(oversized.Accepted);
             Assert.False(oversized.ShouldDisconnect);
-            Assert.Equal(0, queue.GetSnapshot().QueuedDataFrames);
-            Assert.Equal(0, queue.QueuedBytes);
-            Assert.Equal(2, oversized.DroppedDataFrames);
+            Assert.Equal(1, queue.GetSnapshot().QueuedDataFrames);
+            Assert.Equal(2, queue.QueuedBytes);
+            Assert.Equal(1, oversized.DroppedDataFrames);
         }
 
         [Fact]
@@ -226,4 +240,3 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
     }
 }
-

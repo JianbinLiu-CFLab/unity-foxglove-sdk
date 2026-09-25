@@ -139,8 +139,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-6C-4: certificate distributor bounds HTTP header count");
             Check(backendSource.Contains("StopDisconnectWaitMs", StringComparison.Ordinal)
                   && backendSource.Contains("StopForcedCloseWaitMs", StringComparison.Ordinal)
-                  && backendSource.Contains("forcing network close", StringComparison.Ordinal),
-                "134-6C-5: managed WebSocket Stop bounds disconnect wait and forces network close on timeout");
+                  && backendSource.Contains("forcing network close", StringComparison.Ordinal)
+                  && backendSource.Contains("WaitForClientHandlers(clientHandlers)", StringComparison.Ordinal),
+                "134-6C-5: managed WebSocket Stop forces network close and joins tracked handlers");
             Check(connectionSource.Contains("_connectedAtMs", StringComparison.Ordinal)
                   && connectionSource.Contains("nowMs - _connectedAtMs", StringComparison.Ordinal),
                 "134-6C-6: connection duration uses monotonic time instead of wall-clock deltas");

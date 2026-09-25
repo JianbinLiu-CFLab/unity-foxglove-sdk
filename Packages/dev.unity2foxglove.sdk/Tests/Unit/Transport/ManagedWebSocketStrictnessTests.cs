@@ -304,7 +304,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             {
                 order.Enqueue("connect");
                 connectEntered.Set();
-                releaseConnect.Wait(TimeSpan.FromSeconds(5));
+                releaseConnect.Wait();
             };
             backend.OnClientDisconnected += _ =>
             {
@@ -328,11 +328,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                     disconnectObserved.Wait(TimeSpan.FromMilliseconds(300)),
                     "Disconnect must not overtake an in-flight connect callback.");
 
+                Assert.True(
+                    stopTask.Wait(TimeSpan.FromSeconds(9)),
+                    "Stop must return after the bounded client-handler wait even when the callback is still blocked.");
+                Assert.Throws<InvalidOperationException>(
+                    () => backend.Start("127.0.0.1", port));
+
                 releaseConnect.Set();
                 Assert.True(
                     await Task.WhenAny(stopTask, Task.Delay(TimeSpan.FromSeconds(4))) == stopTask,
                     "Stop did not complete after the connect callback was released.");
                 await stopTask;
+                Assert.True(
+                    SpinWait.SpinUntil(() => ClientHandlerCount(backend) == 0, TimeSpan.FromSeconds(4)),
+                    "The retained client handler did not leave the tracking set after its callback returned.");
                 Assert.Equal(new[] { "connect", "disconnect" }, order.ToArray());
             }
             finally
@@ -416,6 +425,128 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                 completed,
                 $"A handshake that never produces a byte must be closed by the absolute deadline (elapsed={stopwatch.ElapsedMilliseconds}ms).");
             Assert.True(backend.HandshakeStream.IsDisposed);
+        }
+
+        [Fact]
+        public void EstablishedConnectionClosesWhenFrameProgressStalls()
+        {
+            using var backend = new ManagedWsBackend(new ManagedWebSocketOptions
+            {
+                EstablishedIdleTimeoutMs = 150
+            });
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+            using var client = ConnectAndWriteHandshake(port);
+
+            try
+            {
+                Assert.StartsWith("HTTP/1.1 101", ReadHttpHeaders(client.GetStream()));
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => backend.GetStatsSnapshot().ActiveClientCount == 1,
+                        TimeSpan.FromSeconds(2)),
+                    "The established client did not enter the active set.");
+
+                var partialFrame = new byte[] { 0x82, 0x84, 1, 2, 3, 4, 0xAA };
+                client.GetStream().Write(partialFrame, 0, partialFrame.Length);
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => backend.GetStatsSnapshot().ActiveClientCount == 0,
+                        TimeSpan.FromSeconds(3)),
+                    "A client that never completes a frame must be retired by the established deadline.");
+            }
+            finally
+            {
+                if (backend.IsRunning)
+                    backend.Stop();
+            }
+        }
+
+        [Fact]
+        public void EstablishedIdleConnectionReceivesServerDataAndPongStaysAlive()
+        {
+            using var backend = new ManagedWsBackend(new ManagedWebSocketOptions
+            {
+                EstablishedIdleTimeoutMs = 120
+            });
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+            using var client = ConnectAndWriteHandshake(port);
+
+            try
+            {
+                var stream = client.GetStream();
+                Assert.StartsWith("HTTP/1.1 101", ReadHttpHeaders(stream));
+                Assert.True(SpinWait.SpinUntil(
+                    () => backend.GetStatsSnapshot().ActiveClientCount == 1,
+                    TimeSpan.FromSeconds(2)));
+
+                backend.SendText(1, "{\"op\":\"serverData\"}");
+                var dataReceived = false;
+                while (!dataReceived)
+                {
+                    var frame = ReadServerFrame(stream);
+                    if (frame.Opcode == WsOpcode.Ping)
+                        WriteClientFrame(stream, WsOpcode.Pong, frame.Payload);
+                    else
+                    {
+                        Assert.Equal(WsOpcode.Text, frame.Opcode);
+                        dataReceived = true;
+                    }
+                }
+
+                for (var i = 0; i < 2; i++)
+                {
+                    var ping = ReadServerFrame(stream);
+                    Assert.Equal(WsOpcode.Ping, ping.Opcode);
+                    WriteClientFrame(stream, WsOpcode.Pong, ping.Payload);
+                }
+
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => backend.GetStatsSnapshot().ActiveClientCount == 1,
+                        TimeSpan.FromMilliseconds(350)),
+                    "A peer that responds to server pings must remain connected while idle.");
+            }
+            finally
+            {
+                if (backend.IsRunning)
+                    backend.Stop();
+            }
+        }
+
+        [Fact]
+        public void EstablishedIdleConnectionWithoutPongIsRetired()
+        {
+            using var backend = new ManagedWsBackend(new ManagedWebSocketOptions
+            {
+                EstablishedIdleTimeoutMs = 120
+            });
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+            using var client = ConnectAndWriteHandshake(port);
+
+            try
+            {
+                var stream = client.GetStream();
+                Assert.StartsWith("HTTP/1.1 101", ReadHttpHeaders(stream));
+                Assert.True(SpinWait.SpinUntil(
+                    () => backend.GetStatsSnapshot().ActiveClientCount == 1,
+                    TimeSpan.FromSeconds(2)));
+
+                var ping = ReadServerFrame(stream);
+                Assert.Equal(WsOpcode.Ping, ping.Opcode);
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => backend.GetStatsSnapshot().ActiveClientCount == 0,
+                        TimeSpan.FromSeconds(2)),
+                    "A peer that does not answer server pings must be retired.");
+            }
+            finally
+            {
+                if (backend.IsRunning)
+                    backend.Stop();
+            }
         }
 
         [Fact]
@@ -636,6 +767,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             return value?.Count ?? 0;
         }
 
+        private static int ClientHandlerCount(ManagedWsBackend backend)
+        {
+            var field = typeof(ManagedWsBackend).GetField(
+                "_clientHandlers",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field == null)
+                return 0;
+
+            var value = field.GetValue(backend) as System.Collections.ICollection;
+            return value?.Count ?? 0;
+        }
+
         private static int GetFreeTcpPort()
         {
             using var listener = new TcpListener(System.Net.IPAddress.Loopback, 0);
@@ -672,6 +815,56 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             }
 
             return Encoding.ASCII.GetString(bytes.ToArray());
+        }
+
+        private static (byte Opcode, byte[] Payload) ReadServerFrame(NetworkStream stream)
+        {
+            var first = stream.ReadByte();
+            var second = stream.ReadByte();
+            if (first < 0 || second < 0)
+                throw new IOException("The server closed the WebSocket before sending a frame.");
+
+            var payloadLength = second & 0x7F;
+            if (payloadLength == 126)
+            {
+                var extended = new byte[2];
+                ReadExact(stream, extended);
+                payloadLength = (extended[0] << 8) | extended[1];
+            }
+            else if (payloadLength == 127)
+            {
+                var extended = new byte[8];
+                ReadExact(stream, extended);
+                ulong length = 0;
+                foreach (var value in extended)
+                    length = (length << 8) | value;
+                if (length > int.MaxValue)
+                    throw new InvalidOperationException("The test frame is too large.");
+                payloadLength = (int)length;
+            }
+
+            var payload = new byte[payloadLength];
+            if (payload.Length > 0)
+                ReadExact(stream, payload);
+            return ((byte)(first & 0x0F), payload);
+        }
+
+        private static void WriteClientFrame(NetworkStream stream, byte opcode, byte[] payload)
+        {
+            var frame = BuildMaskedFrame(opcode, payload);
+            stream.Write(frame, 0, frame.Length);
+        }
+
+        private static void ReadExact(NetworkStream stream, byte[] buffer)
+        {
+            var offset = 0;
+            while (offset < buffer.Length)
+            {
+                var read = stream.Read(buffer, offset, buffer.Length - offset);
+                if (read == 0)
+                    throw new IOException("The server closed the WebSocket while sending a frame.");
+                offset += read;
+            }
         }
 
         private static TcpClient ConnectAndWriteHandshake(int port)
