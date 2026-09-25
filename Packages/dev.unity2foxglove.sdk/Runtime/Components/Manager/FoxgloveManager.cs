@@ -7,6 +7,7 @@
 // WebSocket server, coordinate mode, asset roots, playback control, MCAP
 // recording, and MCAP replay.
 
+using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Core;
@@ -183,9 +184,9 @@ namespace Unity.FoxgloveSDK.Components
         private System.Action<string, byte[]> _onReplayMessage;
         private System.Action<ReplayMessageContext> _onReplayMessageContext;
         private System.Action<ReplayBatchContext> _onReplayBatchCompleted;
-        private Delegate[] _replayMessageSubscribers = Array.Empty<Delegate>();
-        private Delegate[] _replayMessageContextSubscribers = Array.Empty<Delegate>();
-        private Delegate[] _replayBatchSubscribers = Array.Empty<Delegate>();
+        private System.Delegate[] _replayMessageSubscribers = Array.Empty<System.Delegate>();
+        private System.Delegate[] _replayMessageContextSubscribers = Array.Empty<System.Delegate>();
+        private System.Delegate[] _replayBatchSubscribers = Array.Empty<System.Delegate>();
 
         /// <summary>Fires when a replay message is forwarded on the main thread.</summary>
         public event System.Action<string, byte[]> OnReplayMessage
@@ -210,16 +211,16 @@ namespace Unity.FoxgloveSDK.Components
 
         private void UpdateReplaySubscribers<T>(
             ref T handlers,
-            ref Delegate[] snapshot,
+            ref System.Delegate[] snapshot,
             T subscriber,
-            bool add) where T : Delegate
+            bool add) where T : System.Delegate
         {
             lock (_replaySubscriberLock)
             {
                 handlers = (T)(add
-                    ? Delegate.Combine(handlers, subscriber)
-                    : Delegate.Remove(handlers, subscriber));
-                snapshot = handlers?.GetInvocationList() ?? Array.Empty<Delegate>();
+                    ? System.Delegate.Combine(handlers, subscriber)
+                    : System.Delegate.Remove(handlers, subscriber));
+                snapshot = handlers?.GetInvocationList() ?? Array.Empty<System.Delegate>();
             }
         }
 
