@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<uint, AdvertiseChannel> _channels = new Dictionary<uint, AdvertiseChannel>();
         private readonly object _lock = new object();
 
-        /// <summary>Raised when a channel id is reused with a different descriptor.</summary>
+        /// <summary>Reserved for API compatibility; conflicting channel re-registration throws <see cref="InvalidOperationException"/> instead.</summary>
 #pragma warning disable CS0067
         public event Action<AdvertiseChannel, AdvertiseChannel> ChannelOverwritten;
 #pragma warning restore CS0067
