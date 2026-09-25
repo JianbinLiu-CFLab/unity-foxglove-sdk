@@ -92,6 +92,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
             Assert.True(session.IsMessageEncodingEnabled("protobuf"));
             Assert.True(session.IsMessageEncodingEnabled("cdr"));
             Assert.False(session.IsMessageEncodingEnabled("mcap"));
+            session.EnableMessageEncoding("json");
+            session.EnableMessageEncoding("PROTOBUF");
             Assert.Throws<InvalidOperationException>(() => session.EnableMessageEncoding("mcap"));
 
             var newTransport = new ClientPublishTransport();

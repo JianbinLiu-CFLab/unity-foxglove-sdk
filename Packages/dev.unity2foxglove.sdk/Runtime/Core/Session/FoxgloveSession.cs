@@ -1451,7 +1451,10 @@ namespace Unity.FoxgloveSDK.Core
             var normalizedEncoding = encoding.Trim().ToLowerInvariant();
             lock (_encodingConfigurationLock)
             {
-                if (_additionalMessageEncodings.Contains(normalizedEncoding))
+                if (string.Equals(normalizedEncoding, "json", StringComparison.Ordinal)
+                    || (string.Equals(normalizedEncoding, "protobuf", StringComparison.Ordinal)
+                        && _protobufEnabled)
+                    || _additionalMessageEncodings.Contains(normalizedEncoding))
                     return;
                 ThrowIfEncodingConfigurationFrozen();
                 _additionalMessageEncodings.Add(normalizedEncoding);
