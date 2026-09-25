@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)..\..\..\..\build\Tests\Ros2Bridge\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(BaseOutputPath)obj\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+    <RestoreOutputPath>$(BaseIntermediateOutputPath)</RestoreOutputPath>
+  </PropertyGroup>
+</Project>

@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -154,6 +155,23 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.True(store.WasUnsetByClient("/owned"));
             Assert.False(store.UnregisterOwned(lease));
             Assert.False(store.WasUnsetByClient("/owned"));
+        }
+
+        [Fact]
+        public void StaleOwnedReleaseDoesNotClearReplacementClientUnsetMarker()
+        {
+            var store = new FoxgloveParameterStore();
+            var first = store.RegisterOwned("/replacement", new JValue(1), "number", true);
+            Assert.True(store.TrySetFromClientAllowUnset("/replacement", JValue.CreateNull()));
+
+            var second = store.RegisterOwned("/replacement", new JValue(2), "number", true);
+            Assert.True(store.TrySetFromClientAllowUnset("/replacement", JValue.CreateNull()));
+
+            Assert.False(store.UnregisterOwned(first));
+            Assert.True(store.WasUnsetByClient("/replacement"));
+
+            Assert.False(store.UnregisterOwned(second));
+            Assert.False(store.WasUnsetByClient("/replacement"));
         }
 
         [Fact]
@@ -594,6 +612,69 @@ namespace Unity.FoxgloveSDK.UnitTests
                 .ToList();
             Assert.Equal(new[] { "advertise", "unadvertise" }, operations);
             Assert.Null(session.Channels.Get(channel.Id));
+        }
+
+        [Fact]
+        public void IdempotentLiveChannelFailureDoesNotRetractExistingAdvertisement()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            var channel = new AdvertiseChannel
+            {
+                Id = 13,
+                Topic = "/idempotent-live-channel",
+                Encoding = "json"
+            };
+            session.RegisterChannel(channel);
+            fake.SimulateConnect(1);
+            fake.BroadcastTexts.Clear();
+
+            fake.ThrowBroadcastCount = 1;
+            fake.RecordBroadcastBeforeThrow = true;
+            Assert.Throws<InvalidOperationException>(() => session.RegisterChannel(channel));
+
+            Assert.Equal(new[] { "advertise" },
+                fake.BroadcastTexts.Select(text => JObject.Parse(text)["op"]?.ToString()));
+            Assert.NotNull(session.Channels.Get(channel.Id));
+        }
+
+        [Fact]
+        public void IdempotentLiveChannelFailureTreatsNullAndEmptySchemaAsEquivalent()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 14,
+                Topic = "/null-schema",
+                Encoding = "json",
+                Schema = string.Empty
+            });
+            fake.SimulateConnect(1);
+            fake.BroadcastTexts.Clear();
+
+            var previous = session.Channels.Get(14);
+            var schemaField = typeof(AdvertiseChannel).GetField(
+                "_schema",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(previous);
+            Assert.NotNull(schemaField);
+            schemaField.SetValue(previous, null);
+
+            fake.ThrowBroadcastCount = 1;
+            fake.RecordBroadcastBeforeThrow = true;
+            Assert.Throws<InvalidOperationException>(() => session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 14,
+                Topic = "/null-schema",
+                Encoding = "json",
+                Schema = string.Empty
+            }));
+
+            Assert.Equal(
+                new[] { "advertise" },
+                fake.BroadcastTexts.Select(text => JObject.Parse(text)["op"]?.ToString()));
+            Assert.NotNull(session.Channels.Get(14));
         }
 
         [Fact]

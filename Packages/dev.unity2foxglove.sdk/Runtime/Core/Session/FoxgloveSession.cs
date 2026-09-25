@@ -74,6 +74,8 @@ namespace Unity.FoxgloveSDK.Core
         private bool _protobufEnabled;
         private readonly HashSet<string> _additionalMessageEncodings =
             new HashSet<string>(StringComparer.Ordinal);
+        private readonly object _encodingConfigurationLock = new object();
+        private bool _encodingConfigurationFrozen;
 
         // Session holds references via interface
         /// <summary>Runtime context for playback, assets, and lifecycle control.</summary>
@@ -313,7 +315,15 @@ namespace Unity.FoxgloveSDK.Core
         // ── Lifecycle ──
 
         /// <summary>Start the WebSocket transport on the given host and port.</summary>
-        public void Start(string host, int port) => _transport.Start(host, port);
+        public void Start(string host, int port)
+        {
+            lock (_encodingConfigurationLock)
+            {
+                // Freeze before transport start so synchronous callbacks observe final encoding authority.
+                _encodingConfigurationFrozen = true;
+            }
+            _transport.Start(host, port);
+        }
         /// <summary>Stop the WebSocket transport.</summary>
         public void Stop() => _transport.Stop();
 
@@ -586,6 +596,8 @@ namespace Unity.FoxgloveSDK.Core
             var graphChanged = false;
             var advertiseAttempted = false;
             var unadvertiseAttempted = false;
+            var preexistingLiveAdvertisement = previousLiveAllowed
+                                                && liveAllowed;
             try
             {
                 if (recordingOnly)
@@ -637,7 +649,7 @@ namespace Unity.FoxgloveSDK.Core
             }
             catch
             {
-                if (advertiseAttempted)
+                if (advertiseAttempted && !preexistingLiveAdvertisement)
                     TryBroadcastChannelCompensation(
                         SerializeSingleUnadvertise(channel.Id),
                         "unadvertise");
@@ -1408,8 +1420,20 @@ namespace Unity.FoxgloveSDK.Core
             return result;
         }
 
-        /// <summary>Enable protobuf encoding support, updating supportedEncodings to include "protobuf".</summary>
-        public void EnableProtobuf() => _protobufEnabled = true;
+        /// <summary>
+        /// Enable protobuf encoding support. Repeating an already enabled value
+        /// after the session starts is an idempotent no-op.
+        /// </summary>
+        public void EnableProtobuf()
+        {
+            lock (_encodingConfigurationLock)
+            {
+                if (_protobufEnabled)
+                    return;
+                ThrowIfEncodingConfigurationFrozen();
+                _protobufEnabled = true;
+            }
+        }
 
         /// <summary>Whether protobuf encoding support is enabled.</summary>
         public bool IsProtobufEnabled => _protobufEnabled;
@@ -1423,12 +1447,48 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (string.IsNullOrWhiteSpace(encoding))
                 throw new ArgumentException("Message encoding cannot be empty.", nameof(encoding));
-            _additionalMessageEncodings.Add(encoding.Trim().ToLowerInvariant());
+
+            var normalizedEncoding = encoding.Trim().ToLowerInvariant();
+            if (string.Equals(normalizedEncoding, "protobuf", StringComparison.Ordinal))
+            {
+                EnableProtobuf();
+                return;
+            }
+
+            lock (_encodingConfigurationLock)
+            {
+                if (string.Equals(normalizedEncoding, "json", StringComparison.Ordinal)
+                    || _additionalMessageEncodings.Contains(normalizedEncoding))
+                    return;
+                ThrowIfEncodingConfigurationFrozen();
+                _additionalMessageEncodings.Add(normalizedEncoding);
+            }
+        }
+
+        private void ThrowIfEncodingConfigurationFrozen()
+        {
+            if (_encodingConfigurationFrozen)
+                throw new InvalidOperationException(
+                    "Message encodings must be configured before the session starts.");
         }
 
         public bool IsMessageEncodingEnabled(string encoding)
-            => !string.IsNullOrWhiteSpace(encoding)
-               && _additionalMessageEncodings.Contains(encoding.Trim().ToLowerInvariant());
+        {
+            if (string.IsNullOrWhiteSpace(encoding))
+                return false;
+
+            var normalizedEncoding = encoding.Trim().ToLowerInvariant();
+            lock (_encodingConfigurationLock)
+            {
+                if (string.Equals(normalizedEncoding, "json", StringComparison.Ordinal))
+                    return true;
+
+                if (string.Equals(normalizedEncoding, "protobuf", StringComparison.Ordinal))
+                    return _protobufEnabled;
+
+                return _additionalMessageEncodings.Contains(normalizedEncoding);
+            }
+        }
 
         private bool IsClientPublishEncodingSupported(string encoding)
         {

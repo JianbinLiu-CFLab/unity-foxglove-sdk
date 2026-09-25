@@ -20,7 +20,8 @@ namespace Unity.FoxgloveSDK.Core
     public class FoxgloveParameterStore
     {
         private readonly Dictionary<string, ParameterEntry> _params = new();
-        private readonly HashSet<string> _clientUnsetNames = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, ParameterRegistration> _clientUnsetRegistrations =
+            new(StringComparer.Ordinal);
         private readonly object _lock = new();
         private readonly IFoxgloveLogger _logger;
         private readonly Func<bool> _mutationAllowed;
@@ -85,7 +86,7 @@ namespace Unity.FoxgloveSDK.Core
 
             lock (_lock)
             {
-                _clientUnsetNames.Remove(name);
+                _clientUnsetRegistrations.Remove(name);
                 _params[name] = new ParameterEntry { Value = normalizedValue, Type = normalizedType, Writable = writable };
             }
             InvokeChangedHandlers(name, normalizedValue, normalizedType);
@@ -113,7 +114,7 @@ namespace Unity.FoxgloveSDK.Core
             var registration = new ParameterRegistration(this, name);
             lock (_lock)
             {
-                _clientUnsetNames.Remove(name);
+                _clientUnsetRegistrations.Remove(name);
                 _params[name] = new ParameterEntry
                 {
                     Value = normalizedValue,
@@ -133,7 +134,7 @@ namespace Unity.FoxgloveSDK.Core
             ThrowIfMutationBlocked();
             lock (_lock)
             {
-                _clientUnsetNames.Remove(name);
+                _clientUnsetRegistrations.Remove(name);
                 return _params.Remove(name);
             }
         }
@@ -154,10 +155,20 @@ namespace Unity.FoxgloveSDK.Core
                 return false;
             lock (_lock)
             {
-                _clientUnsetNames.Remove(registration.Name);
-                if (!_params.TryGetValue(registration.Name, out var entry)
-                    || !ReferenceEquals(entry.Owner, registration))
+                if (!_params.TryGetValue(registration.Name, out var entry))
+                {
+                    if (_clientUnsetRegistrations.TryGetValue(
+                            registration.Name,
+                            out var unsetRegistration)
+                        && ReferenceEquals(unsetRegistration, registration))
+                    {
+                        _clientUnsetRegistrations.Remove(registration.Name);
+                    }
                     return false;
+                }
+                if (!ReferenceEquals(entry.Owner, registration))
+                    return false;
+                _clientUnsetRegistrations.Remove(registration.Name);
                 return _params.Remove(registration.Name);
             }
         }
@@ -178,7 +189,7 @@ namespace Unity.FoxgloveSDK.Core
         internal bool WasUnsetByClient(string name)
         {
             lock (_lock)
-                return _clientUnsetNames.Contains(name);
+                return _clientUnsetRegistrations.ContainsKey(name);
         }
 
         private bool TrySetFromClientCore(string name, JToken value, bool allowUnset)
@@ -197,7 +208,7 @@ namespace Unity.FoxgloveSDK.Core
                         return false;
                     type = entry.Type;
                     _params.Remove(name);
-                    _clientUnsetNames.Add(name);
+                    _clientUnsetRegistrations[name] = entry.Owner;
                     normalizedValue = null;
                 }
                 else
@@ -205,7 +216,7 @@ namespace Unity.FoxgloveSDK.Core
                     if (!TryNormalizeValueForType(entry.Type, value, out normalizedValue))
                         return false;
                     entry.Value = normalizedValue;
-                    _clientUnsetNames.Remove(name);
+                    _clientUnsetRegistrations.Remove(name);
                     type = entry.Type;
                 }
             }
@@ -489,7 +500,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 _params.Clear();
-                _clientUnsetNames.Clear();
+                _clientUnsetRegistrations.Clear();
             }
         }
 
@@ -499,7 +510,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 _params.Clear();
-                _clientUnsetNames.Clear();
+                _clientUnsetRegistrations.Clear();
             }
         }
 
