@@ -102,7 +102,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(dataSource.Contains("ReadAllBytesWithinCap", StringComparison.Ordinal)
                   && dataSource.Contains("!SameStamp(loadStamp, storeStamp)", StringComparison.Ordinal),
                 "163-11E-1: remote data source guards cap and manifest cache fingerprint");
-            Check(server.Contains("ContinueWith(_ => _stop.Dispose()", StringComparison.Ordinal),
+            Check(server.Contains("ContinueWith(_ => DisposeStopSource(), TaskScheduler.Default", StringComparison.Ordinal)
+                  && server.Contains("private void DisposeStopSource()", StringComparison.Ordinal),
                 "163-11E-2: remote HTTP dispose defers CTS disposal until loop completion when needed");
             Check(registry.Contains("BuiltInFactories = CreateBuiltInFactoriesLazy()", StringComparison.Ordinal)
                   && registry.Contains("GetBuiltInFactories()", StringComparison.Ordinal),

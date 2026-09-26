@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Globalization;
 using System.Text;
 using System.Threading;
 using Unity.FoxgloveSDK.Transport;
@@ -19,7 +20,10 @@ namespace Unity.FoxgloveSDK.IO
         public const long DefaultMaxInMemoryDataBytes = 16L * 1024L * 1024L;
 
         private readonly string _mcapPath;
-        private readonly string _sourceId;
+        private readonly string _baseSourceId;
+        private string _generationSourceId;
+        private FileStamp _identityStamp;
+        private bool _hasIdentityStamp;
         private readonly string _manifestName;
         private readonly string _requiredBearerToken;
         private readonly byte[] _requiredBearerTokenBytes;
@@ -50,17 +54,17 @@ namespace Unity.FoxgloveSDK.IO
             string directFileRoute = null)
         {
             _mcapPath = mcapPath ?? throw new ArgumentNullException(nameof(mcapPath));
-            _sourceId = string.IsNullOrEmpty(sourceId) ? "local-mcap" : sourceId;
-            _manifestName = string.IsNullOrEmpty(manifestName) ? _sourceId : manifestName;
+            _baseSourceId = string.IsNullOrEmpty(sourceId) ? "local-mcap" : sourceId;
+            _manifestName = string.IsNullOrEmpty(manifestName) ? _baseSourceId : manifestName;
             _requiredBearerToken = requiredBearerToken ?? string.Empty;
             _requiredBearerTokenBytes = string.IsNullOrEmpty(_requiredBearerToken)
                 ? Array.Empty<byte>()
                 : Encoding.UTF8.GetBytes(_requiredBearerToken);
             _dataRoute = string.IsNullOrEmpty(dataRoute)
-                ? "/data?sourceId=" + Uri.EscapeDataString(_sourceId)
+                ? "/data"
                 : dataRoute;
             _directFileRoute = string.IsNullOrEmpty(directFileRoute)
-                ? "/v1/files/" + Uri.EscapeDataString(_sourceId) + ".mcap"
+                ? "/v1/files/" + Uri.EscapeDataString(_baseSourceId) + ".mcap"
                 : directFileRoute;
             _maxInMemoryDataBytes = maxInMemoryDataBytes;
         }
@@ -133,7 +137,7 @@ namespace Unity.FoxgloveSDK.IO
                 return DataProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
                     "Phase 119 prototype supports one local MCAP source only.");
 
-            if (!string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
+            if (!string.Equals(request.SourceId, GetCurrentSourceId(), StringComparison.Ordinal))
                 return DataProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
                     "Requested MCAP source id is not available in this prototype.");
 
@@ -161,7 +165,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
-                SourceId = _sourceId,
+                SourceId = GetCurrentSourceId(),
                 Data = data
             };
         }
@@ -190,7 +194,7 @@ namespace Unity.FoxgloveSDK.IO
                 return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
                     "Phase 119 prototype supports one local MCAP source only.");
 
-            if (!string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
+            if (!string.Equals(request.SourceId, GetCurrentSourceId(), StringComparison.Ordinal))
                 return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
                     "Requested MCAP source id is not available in this prototype.");
 
@@ -234,7 +238,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
-                SourceId = _sourceId,
+                SourceId = GetCurrentSourceId(),
                 Length = slice.Length,
                 DataStream = slice
             };
@@ -258,7 +262,7 @@ namespace Unity.FoxgloveSDK.IO
                     "Phase 119 prototype supports one local MCAP source only.");
 
             if (!string.IsNullOrEmpty(request.SourceId)
-                && !string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
+                && !string.Equals(request.SourceId, GetCurrentSourceId(), StringComparison.Ordinal))
                 return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
                     "Requested MCAP source id is not available in this prototype.");
 
@@ -271,7 +275,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
-                SourceId = _sourceId,
+                SourceId = GetCurrentSourceId(),
                 Length = info.Length,
                 ContentType = "application/octet-stream",
                 DataStream = new FileStream(
@@ -324,8 +328,8 @@ namespace Unity.FoxgloveSDK.IO
                 manifest = RemoteMcapManifestMapper.FromInitialization(
                     loader.Initialize(),
                     _manifestName,
-                    _sourceId,
-                    _dataRoute);
+                    GetCurrentSourceId(loadStamp),
+                    BuildDataRoute(GetCurrentSourceId(loadStamp)));
             }
             catch (IOException)
             {
@@ -387,6 +391,69 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
+        private string GetCurrentSourceId()
+            => GetCurrentSourceId(ReadFileStamp());
+
+        private string GetCurrentSourceId(FileStamp stamp)
+        {
+            if (!stamp.Exists)
+                return _baseSourceId;
+
+            lock (_manifestCacheGate)
+            {
+                if (!_hasIdentityStamp)
+                {
+                    _identityStamp = stamp;
+                    _generationSourceId = _baseSourceId;
+                    _hasIdentityStamp = true;
+                }
+                else if (!SameStamp(_identityStamp, stamp))
+                {
+                    _identityStamp = stamp;
+                    _generationSourceId = _baseSourceId
+                        + "@"
+                        + stamp.Length.ToString(CultureInfo.InvariantCulture)
+                        + "-"
+                        + stamp.LastWriteUtc.Ticks.ToString(CultureInfo.InvariantCulture);
+                }
+
+                return _generationSourceId;
+            }
+        }
+
+        private string BuildDataRoute(string sourceId)
+        {
+            var effectiveSourceId = Uri.EscapeDataString(sourceId ?? _baseSourceId);
+            var queryStart = _dataRoute.IndexOf('?');
+            if (queryStart < 0)
+                return _dataRoute + "?sourceId=" + effectiveSourceId;
+
+            var path = _dataRoute.Substring(0, queryStart);
+            var query = _dataRoute.Substring(queryStart + 1);
+            var parts = query.Split('&');
+            var replaced = false;
+            for (var i = 0; i < parts.Length; i++)
+            {
+                var equals = parts[i].IndexOf('=');
+                var key = equals >= 0 ? parts[i].Substring(0, equals) : parts[i];
+                if (!string.Equals(key, "recordingId", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(key, "sourceId", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                parts[i] = key + "=" + effectiveSourceId;
+                replaced = true;
+            }
+
+            if (!replaced)
+                query = query.Length == 0
+                    ? "sourceId=" + effectiveSourceId
+                    : query + "&sourceId=" + effectiveSourceId;
+            else
+                query = string.Join("&", parts);
+
+            return path + "?" + query;
+        }
+
         private FileStamp ReadFileStamp()
         {
             var info = new FileInfo(_mcapPath);
@@ -436,11 +503,12 @@ namespace Unity.FoxgloveSDK.IO
         private RemoteMcapManifest CreateMissingManifest()
         {
             var missing = new RemoteMcapManifest { Name = _manifestName };
+            var sourceId = GetCurrentSourceId(ReadFileStamp());
             var source = new RemoteMcapSource
             {
-                Id = _sourceId,
+                Id = sourceId,
                 Name = _manifestName,
-                DataUrl = _dataRoute
+                DataUrl = BuildDataRoute(sourceId)
             };
             source.Problems.Add(new RemoteMcapProblem(
                 RemoteMcapProblemSeverity.Error,

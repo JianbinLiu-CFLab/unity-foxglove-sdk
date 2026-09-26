@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapSequentialReadLimits _sequentialReadLimits;
         private readonly object _chunkIndexCacheGate = new object();
         private List<McapChunkIndex> _chunkIndexesByDescendingEndTime;
-        private Dictionary<string, McapMetadata> _metadataFallbackCache;
+        private Dictionary<string, McapReader.McapMetadataRecordIndex> _metadataFallbackCache;
         private bool _metadataFallbackScanComplete;
         private int _disposed;
 
@@ -351,7 +351,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (!crcValid && options.ValidateCrcs)
                     throw new InvalidDataException("MCAP chunk CRC mismatch.");
 
-                foreach (var message in _reader.EnumerateChunkMessages(uncompressed))
+                foreach (var message in _reader.EnumerateChunkMessages(uncompressed, chunkStartOffset: chunkIndex.ChunkStartOffset))
                 {
                     ThrowIfDisposed();
                     if (!McapLatestAtQuery.IsInTimeRange(message.LogTime, options))
@@ -444,7 +444,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (!crcValid && options.ValidateCrcs)
                     throw new InvalidDataException("MCAP chunk CRC mismatch.");
 
-                foreach (var message in _reader.EnumerateChunkMessages(uncompressed))
+                foreach (var message in _reader.EnumerateChunkMessages(uncompressed, chunkStartOffset: chunkIndex.ChunkStartOffset))
                     McapLatestAtQuery.ConsiderLatestCandidate(message, options, selectedChannelIds, latestByChannel);
             }
         }
@@ -549,16 +549,24 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (!_metadataFallbackScanComplete)
                 {
-                    _metadataFallbackCache = _reader.ReadMetadataInDataSection(_summary.DataSectionEndOffset);
+                    _metadataFallbackCache = _reader.BuildMetadataIndexInDataSection(_summary.DataSectionEndOffset);
                     _metadataFallbackScanComplete = true;
                 }
 
                 return _metadataFallbackCache.TryGetValue(name, out var fallback)
-                    ? fallback
+                    ? _reader.ReadMetadataAt(fallback.Offset)
                     : null;
             }
 
-            return _reader.FindMetadataInDataSection(name, _summary.DataSectionEndOffset);
+            if (!_metadataFallbackScanComplete)
+            {
+                _metadataFallbackCache = _reader.BuildMetadataIndexInDataSection(_summary.DataSectionEndOffset);
+                _metadataFallbackScanComplete = true;
+            }
+
+            return _metadataFallbackCache.TryGetValue(name, out var fallbackIndex)
+                ? _reader.ReadMetadataAt(fallbackIndex.Offset)
+                : null;
         }
 
         /// <summary>

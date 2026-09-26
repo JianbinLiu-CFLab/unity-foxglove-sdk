@@ -88,7 +88,11 @@ namespace Unity.FoxgloveSDK.IO
             if (cmp != 0)
                 return cmp;
 
-            return left.PublishTime.CompareTo(right.PublishTime);
+            cmp = left.PublishTime.CompareTo(right.PublishTime);
+            if (cmp != 0)
+                return cmp;
+
+            return CompareSourcePosition(left, right);
         }
 
         internal static int CompareLatestCandidate(McapMessage left, McapMessage right)
@@ -101,7 +105,17 @@ namespace Unity.FoxgloveSDK.IO
             if (cmp != 0)
                 return cmp;
 
-            return left.PublishTime.CompareTo(right.PublishTime);
+            cmp = left.PublishTime.CompareTo(right.PublishTime);
+            if (cmp != 0)
+                return cmp;
+
+            return CompareSourcePosition(left, right);
+        }
+
+        internal static int CompareSourcePosition(McapMessage left, McapMessage right)
+        {
+            var cmp = left.SourceOffset.CompareTo(right.SourceOffset);
+            return cmp != 0 ? cmp : left.SourceRecordOffset.CompareTo(right.SourceRecordOffset);
         }
 
         internal static int CompareLatestOutput(McapMessage left, McapMessage right)

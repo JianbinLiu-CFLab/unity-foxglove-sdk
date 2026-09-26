@@ -36,7 +36,10 @@ namespace FoxgloveSdk.UnitTests.Mcap
                     recorder.Close();
                 }
 
-                using var engine = new McapReplayEngine();
+                using var engine = new McapReplayEngine
+                {
+                    CrcMismatchPolicy = McapReplayEngine.CorruptChunkPolicy.UseWithWarning
+                };
                 engine.Load(path);
                 var result = engine.Snapshot(50, new List<McapMessage>());
                 var metrics = engine.LastSnapshotMetrics;
@@ -87,6 +90,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
 
                 using var engine = new McapReplayEngine();
                 engine.Load(path);
+                Assert.True(engine.Summary.ChunkIndexes.Count > 1);
                 var result = engine.History(1, 200, new List<McapMessage>(), 10, new HashSet<ushort> { 1 });
                 var metrics = engine.LastHistoryMetrics;
 
@@ -101,6 +105,14 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 Assert.True(
                     metrics.PeakDecompressedChunkBytes <= maxChunkBytes,
                     $"history retained more than one decompressed chunk: peak={metrics.PeakDecompressedChunkBytes}; maxChunk={maxChunkBytes}");
+                Assert.Equal(1, metrics.PeakDecompressedChunkCount);
+                var unbounded = engine.History(1, 200, new List<McapMessage>(), 0, new HashSet<ushort> { 1 });
+                Assert.Equal(200, unbounded.Count);
+                Assert.Equal(1, engine.LastHistoryMetrics.PeakDecompressedChunkCount);
+                var replaySource = File.ReadAllText(
+                    RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs"));
+                Assert.DoesNotContain("Dictionary<int, byte[]> payloadChunks", replaySource, StringComparison.Ordinal);
+                Assert.DoesNotContain("payloadChunks = new Dictionary", replaySource, StringComparison.Ordinal);
             }
             finally
             {
@@ -290,7 +302,10 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 Assert.True(mutated > 0, $"newest chunk contained no message records (records={records}, end={end})");
                 File.WriteAllBytes(path, bytes);
 
-                using var engine = new McapReplayEngine();
+                using var engine = new McapReplayEngine
+                {
+                    CrcMismatchPolicy = McapReplayEngine.CorruptChunkPolicy.UseWithWarning
+                };
                 engine.Load(path);
                 var result = engine.Snapshot(engine.EndTimeNs, new List<McapMessage>());
 
@@ -333,6 +348,20 @@ namespace FoxgloveSdk.UnitTests.Mcap
                     return start;
             }
             return -1;
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, ".git"))
+                    || Directory.Exists(Path.Combine(directory.FullName, ".git")))
+                    return Path.Combine(directory.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate repository root.");
         }
     }
 }

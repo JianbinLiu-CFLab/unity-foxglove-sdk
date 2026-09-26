@@ -106,17 +106,36 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void AttachmentCrcMismatch()
         {
-            var allBytes = Array.Empty<byte>();
-            McapAttachmentIndex index;
+            var allBytes = CreateCorruptAttachmentFile(out var index);
+            using var ms2 = new MemoryStream(allBytes);
+            var reader = new McapReader(ms2);
+            var attachment = reader.ReadAttachmentAt(index.Offset, validateCrcs: false);
+
+            Assert.True(!attachment.CrcValid, "34A-3: corrupted attachment CRC is detected as invalid");
+        }
+
+        [Fact]
+        public void AttachmentCrcMismatchIsRejectedByDefault()
+        {
+            var bytes = CreateCorruptAttachmentFile(out var index);
+            using var stream = new MemoryStream(bytes, writable: false);
+            Assert.Throws<InvalidDataException>(() => new McapReader(stream).ReadAttachmentAt(index.Offset));
+        }
+
+        private static byte[] CreateCorruptAttachmentFile(out McapAttachmentIndex index)
+        {
+            byte[] allBytes;
             using (var ms = new MemoryStream())
             {
                 var writer = new McapWriter(ms, leaveOpen: true);
                 writer.WriteMagic();
                 writer.WriteHeader("", "test");
-
-                var data = Encoding.UTF8.GetBytes("corrupt me");
-                index = writer.WriteAttachment(100, 200, "x.bin", "application/octet-stream", data);
-
+                index = writer.WriteAttachment(
+                    100,
+                    200,
+                    "x.bin",
+                    "application/octet-stream",
+                    Encoding.UTF8.GetBytes("corrupt me"));
                 writer.WriteDataEnd();
                 writer.WriteFooter((ulong)ms.Position, (ulong)ms.Position, 0);
                 writer.WriteMagic();
@@ -126,18 +145,13 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             using (var cleanMs = new MemoryStream(allBytes))
             {
-                var cleanReader = new McapReader(cleanMs);
-                var cleanAttachment = cleanReader.ReadAttachmentAt(index.Offset);
+                var cleanAttachment = new McapReader(cleanMs).ReadAttachmentAt(index.Offset);
                 var payloadOffset = IndexOf(allBytes, cleanAttachment.Data);
                 Assert.True(payloadOffset >= 0, "34A-3 precondition: attachment payload bytes are present in the MCAP file");
                 allBytes[payloadOffset + 1] ^= 0xFF;
             }
 
-            using var ms2 = new MemoryStream(allBytes);
-            var reader = new McapReader(ms2);
-            var attachment = reader.ReadAttachmentAt(index.Offset);
-
-            Assert.True(!attachment.CrcValid, "34A-3: corrupted attachment CRC is detected as invalid");
+            return allBytes;
         }
 
         [Fact]
@@ -372,6 +386,21 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
                 Assert.True(true, "34C-2: corrupted summary is rejected");
             }
+        }
+
+        [Fact]
+        public void SummaryAllocationHonorsCumulativeLimit()
+        {
+            using var stream = new MemoryStream();
+            using (var recorder = new McapRecorder(stream, new ConsoleLogger()))
+            {
+                recorder.AddChannel(1, "/summary-limit", "json", "summary.Limit", "jsonschema", "{}");
+                recorder.Close();
+            }
+
+            stream.Position = 0;
+            Assert.Throws<InvalidDataException>(() =>
+                new McapReader(stream).ReadSummary(summarySizeLimit: 1));
         }
 
         [Fact]

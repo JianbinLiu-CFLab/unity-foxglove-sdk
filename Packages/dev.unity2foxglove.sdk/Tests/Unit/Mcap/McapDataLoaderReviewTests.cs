@@ -101,6 +101,51 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
+        [Fact]
+        public void MetadataFallbackReturnsFreshValuesAndHonorsCumulativeBounds()
+        {
+            using (var stream = BuildMetadataWithoutIndexMcap())
+            using (var reader = new McapIndexedReader(stream, leaveOpen: true))
+            {
+                var first = reader.FindMetadata("review");
+                first.Metadata["k"] = "caller mutation";
+
+                var second = reader.FindMetadata("review");
+                Assert.Equal("v", second.Metadata["k"]);
+            }
+
+            using (var stream = BuildPartiallyIndexedMetadataMcap())
+            using (var reader = new McapReader(stream))
+            {
+                var summary = reader.ReadSummary();
+                Assert.Throws<InvalidOperationException>(() =>
+                    reader.BuildMetadataIndexInDataSection(
+                        summary.DataSectionEndOffset,
+                        maxRecords: 1,
+                        maxBytes: 0));
+            }
+        }
+
+        [Fact]
+        public void LatestTieUsesStableSourcePositionAcrossSequentialCandidates()
+        {
+            using var stream = BuildTieMcap();
+            using var reader = new McapReader(stream);
+            var summary = reader.ReadSummary();
+            var latest = new Dictionary<ushort, McapMessage>();
+            reader.VisitSequentialMessages(
+                summary.DataSectionEndOffset,
+                message => McapLatestAtQuery.ConsiderLatestCandidate(
+                    message,
+                    new McapReadOptions { EndTimeNs = 100 },
+                    null,
+                    latest));
+
+            Assert.Single(latest);
+            Assert.Equal(new byte[] { 2 }, latest[1].Data);
+            Assert.True(latest[1].SourceOffset > 0);
+        }
+
         private static MemoryStream BuildTwoChannelMcap()
         {
             var stream = new MemoryStream();
@@ -205,6 +250,38 @@ namespace Unity.FoxgloveSDK.UnitTests
                     Length = indexedLength,
                     Name = "indexed"
                 });
+                McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
+                writer.WriteMagic();
+                writer.Flush();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream BuildTieMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "tie");
+                writer.WriteChannel(1, 0, "/tie", "json", new Dictionary<string, string>());
+                writer.WriteMessage(1, 7, 100, 100, new byte[] { 1 });
+                writer.WriteMessage(1, 7, 100, 100, new byte[] { 2 });
+                writer.WriteDataEnd();
+                var summary = new McapFileSummary
+                {
+                    Statistics = new McapStatistics
+                    {
+                        MessageCount = 2,
+                        ChannelCount = 1,
+                        MessageStartTime = 100,
+                        MessageEndTime = 100,
+                        ChannelMessageCounts = new Dictionary<ushort, ulong> { [1] = 2 }
+                    }
+                };
+                summary.Channels.Add(new McapChannel { Id = 1, Topic = "/tie", MessageEncoding = "json" });
                 McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
                 writer.WriteMagic();
                 writer.Flush();
