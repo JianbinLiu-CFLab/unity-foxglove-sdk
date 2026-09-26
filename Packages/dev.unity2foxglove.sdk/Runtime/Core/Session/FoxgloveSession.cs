@@ -1859,6 +1859,10 @@ namespace Unity.FoxgloveSDK.Core
             }
             lock (_subscriptionBudgetWarnedClientsLock)
                 _subscriptionBudgetWarnedClients.Remove(clientId);
+
+            var runtime = Volatile.Read(ref _runtime);
+            if (runtime is IClientReplayDisconnectContext replayDisconnect)
+                replayDisconnect.CancelReplayForClient(clientId);
         }
 
         private void OnChannelOverwritten(AdvertiseChannel previous, AdvertiseChannel replacement)

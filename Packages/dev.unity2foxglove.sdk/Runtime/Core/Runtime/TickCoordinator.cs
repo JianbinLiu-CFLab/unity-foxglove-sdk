@@ -314,6 +314,19 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Cancel pending and active replay history for one disconnected client.</summary>
+        public void CancelReplayForClient(ReplayController replay, uint clientId)
+        {
+            if (replay == null)
+                return;
+
+            lock (_playbackControlLock)
+            {
+                replay.CancelPanelHistory(clientId);
+                _replaySnapshots.ClearPanelSnapshot(clientId);
+            }
+        }
+
         /// <summary>
         /// Disable replay: clears pending snapshots and disposes the replay engine.
         /// </summary>

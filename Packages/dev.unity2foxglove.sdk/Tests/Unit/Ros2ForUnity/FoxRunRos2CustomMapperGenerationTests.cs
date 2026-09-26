@@ -529,7 +529,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 "throw new global::System.InvalidOperationException(\"FoxRunStream field is null",
                 generated,
                 StringComparison.Ordinal);
-            Assert.Contains(".TryEnqueueDeferredOwned(", generated, StringComparison.Ordinal);
+            Assert.Contains(".TryEnqueueDeferredOwnedAfterAdmission(", generated, StringComparison.Ordinal);
 
             var parseOptions = new CSharpParseOptions(
                 LanguageVersion.CSharp9,

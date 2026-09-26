@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
@@ -175,6 +176,34 @@ namespace Unity.FoxgloveSDK.Tests.Replay
         }
 
         [Fact]
+        public void DisconnectedClientHistoryDrainCanBeRetiredWithoutAffectingOthers()
+        {
+            using var controller = new ReplayController(new ConsoleLogger(), null, null);
+            var panelHistory = (ReplayPanelHistoryBuffer)typeof(ReplayController)
+                .GetField("_panelHistory", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(controller);
+            panelHistory.BeginClientDrains(
+                10,
+                new Dictionary<uint, List<McapMessage>>
+                {
+                    [1] = new List<McapMessage>
+                    {
+                        new McapMessage { ChannelId = 1, LogTime = 10, Data = new byte[] { 1 } }
+                    },
+                    [2] = new List<McapMessage>
+                    {
+                        new McapMessage { ChannelId = 1, LogTime = 10, Data = new byte[] { 2 } }
+                    }
+                });
+
+            controller.CancelPanelHistory(1);
+
+            Assert.Equal(1, panelHistory.DebugClientDrainCount);
+            controller.CancelPanelHistory(2);
+            Assert.Equal(0, panelHistory.DebugClientDrainCount);
+        }
+
+        [Fact]
         public void ReplaySnapshotHistoryIsFilteredPerClientSubscription()
         {
             var path = Path.Combine(
@@ -229,6 +258,71 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                 Assert.Equal(new byte[] { 2 }, decoded.Find(item => item.clientId == 2).payload);
                 Assert.Equal((uint)11, decoded.Find(item => item.clientId == 1).subscriptionId);
                 Assert.Equal((uint)21, decoded.Find(item => item.clientId == 2).subscriptionId);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void ReplaySnapshotHistoryCapIsAppliedPerClientSubscription()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "phase192-replay-history-per-client-cap-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = File.Create(path))
+                using (var recorder = new McapRecorder(stream))
+                {
+                    recorder.AddChannel(1, "/history-cap/a", "json", "", "", "");
+                    recorder.AddChannel(2, "/history-cap/b", "json", "", "", "");
+                    recorder.WriteMessage(2, 1, new byte[] { 0xB });
+                    for (ulong timeNs = 2; timeNs <= 5002; timeNs++)
+                        recorder.WriteMessage(1, timeNs, new byte[] { 0xA });
+                    recorder.Close();
+                }
+
+                using var transport = new StatsTransport();
+                using var session = new FoxgloveSession("history-cap", transport);
+                using var controller = new ReplayController(new ConsoleLogger(), null, null);
+                controller.Enable(path, SchemaIdentityMode.Off);
+                Assert.True(controller.IsEnabled, controller.LastEnableFailureMessage);
+                controller.RegisterChannels(session);
+                var channelAId = (uint)McapReplayEngine.ReplayChannelIdBase | 1u;
+                var channelBId = (uint)McapReplayEngine.ReplayChannelIdBase | 2u;
+                transport.ReceiveText(
+                    1,
+                    string.Format(
+                        "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":11,\"channelId\":{0}}}]}}",
+                        channelAId));
+                transport.ReceiveText(
+                    2,
+                    string.Format(
+                        "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":21,\"channelId\":{0}}}]}}",
+                        channelBId));
+
+                controller.PublishSnapshot(session, 5002);
+
+                var clientBData = new List<byte[]>();
+                foreach (var frame in transport.SentFrames)
+                {
+                    if (frame.clientId == 2
+                        && BinaryEncoding.TryDecodeServerMessageData(
+                            frame.data,
+                            out var subscriptionId,
+                            out _,
+                            out var payload))
+                    {
+                        Assert.Equal((uint)21, subscriptionId);
+                        clientBData.Add(payload);
+                    }
+                }
+
+                Assert.Single(clientBData);
+                Assert.Equal(new byte[] { 0xB }, clientBData[0]);
             }
             finally
             {

@@ -104,7 +104,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
             AdmitAndEnqueue(stream, 1, disposed.Add);
             Assert.True(stream.TryAdmitInput());
-            Assert.False(stream.TryEnqueueOwned(2, disposed.Add));
+            Assert.False(stream.TryEnqueueOwnedAfterAdmission(2, disposed.Add));
 
             Assert.Equal(new[] { 2 }, disposed);
             Assert.Equal(1, stream.Count);
@@ -127,6 +127,22 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.True(stream.TryAdmitInput());
             Assert.False(stream.TryAdmitInput());
             Assert.Equal(2, stream.Stats.Received);
+            Assert.Equal(1, stream.Stats.Admitted);
+            Assert.Equal(1, stream.Stats.RateDropped);
+        }
+
+        [Fact]
+        public void PublicOwnedEnqueueHonorsInputRateAdmission()
+        {
+            var disposed = new List<int>();
+            using var stream = new FoxRunStream<int>(
+                new FoxRunStreamOptions(2, 1d, 2),
+                () => 0L,
+                1L);
+
+            Assert.True(stream.TryEnqueueOwned(1, disposed.Add));
+            Assert.False(stream.TryEnqueueOwned(2, disposed.Add));
+            Assert.Equal(new[] { 2 }, disposed);
             Assert.Equal(1, stream.Stats.Admitted);
             Assert.Equal(1, stream.Stats.RateDropped);
         }
@@ -184,10 +200,11 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         {
             var materialized = 0;
             var disposed = new List<int>();
-            using var stream = new FoxRunStream<string>(
-                new FoxRunStreamOptions(1, 1000d, 1, FoxRunStreamOverflowPolicy.DropOldest));
+            using var stream = CreateDeterministicallyAdmittedStream<string>(
+                new FoxRunStreamOptions(1, 1d, 1, FoxRunStreamOverflowPolicy.DropOldest));
 
-            Assert.True(stream.TryEnqueueDeferredOwned(
+            Assert.True(stream.TryAdmitInput());
+            Assert.True(stream.TryEnqueueDeferredOwnedAfterAdmission(
                 1,
                 state =>
                 {
@@ -196,7 +213,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 },
                 disposed.Add,
                 static _ => { }));
-            Assert.True(stream.TryEnqueueDeferredOwned(
+            Assert.True(stream.TryAdmitInput());
+            Assert.True(stream.TryEnqueueDeferredOwnedAfterAdmission(
                 2,
                 state =>
                 {
@@ -326,10 +344,12 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         public void DisposalDiagnosticsCannotAbortRemainingOwnedCleanup()
         {
             var attempts = new List<int>();
-            using var stream = new FoxRunStream<int>();
+            using var stream = CreateDeterministicallyAdmittedStream<int>(
+                new FoxRunStreamOptions(4, 1d, 4, FoxRunStreamOverflowPolicy.DropOldest));
             for (var value = 1; value <= 3; value++)
             {
-                stream.TryEnqueueOwned(
+                AdmitAndEnqueue(
+                    stream,
                     value,
                     item =>
                     {
@@ -366,22 +386,22 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         [Fact]
         public void ReplacementQueuesPreserveTheConfiguredInitialCapacity()
         {
-            var stream = new FoxRunStream<int>(
-                new FoxRunStreamOptions(257, 1000d, 128));
+            var stream = CreateDeterministicallyAdmittedStream<int>(
+                new FoxRunStreamOptions(257, 1d, 128));
             var configuredCapacity = GetQueueCapacity(stream);
             Assert.True(configuredCapacity > 0);
 
-            Assert.True(stream.TryEnqueueOwned(1, static _ => { }));
+            AdmitAndEnqueue(stream, 1, static _ => { });
             Assert.Equal(1, stream.Clear());
             Assert.Equal(configuredCapacity, GetQueueCapacity(stream));
 
-            Assert.True(stream.TryEnqueueOwned(2, static _ => { }));
-            Assert.True(stream.TryEnqueueOwned(3, static _ => { }));
+            AdmitAndEnqueue(stream, 2, static _ => { });
+            AdmitAndEnqueue(stream, 3, static _ => { });
             Assert.True(stream.TryTakeLatest(out var latest));
             latest.Dispose();
             Assert.Equal(configuredCapacity, GetQueueCapacity(stream));
 
-            Assert.True(stream.TryEnqueueOwned(4, static _ => { }));
+            AdmitAndEnqueue(stream, 4, static _ => { });
             stream.Dispose();
             Assert.Equal(configuredCapacity, GetQueueCapacity(stream));
         }
@@ -398,7 +418,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.Equal(1, disposed);
             Assert.True(stream.IsDisposed);
             Assert.Equal(0, stream.Count);
-            Assert.Equal(1, stream.Stats.Received);
+            Assert.Equal(2, stream.Stats.Received);
             Assert.Equal(0, stream.Stats.Admitted);
             Assert.Equal(0, stream.Stats.RateDropped);
         }
@@ -454,8 +474,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 SetCounter(stream, fieldName, long.MaxValue);
 
             stream.TryAdmitInput();
-            stream.TryEnqueueOwned(1, _ => throw new InvalidOperationException("bounded"));
-            stream.TryEnqueueOwned(2, _ => throw new InvalidOperationException("bounded"));
+            stream.TryEnqueueOwnedAfterAdmission(1, _ => throw new InvalidOperationException("bounded"));
+            stream.TryAdmitInput();
+            stream.TryEnqueueOwnedAfterAdmission(2, _ => throw new InvalidOperationException("bounded"));
             stream.Drain(_ => { });
             stream.Clear();
 
@@ -478,7 +499,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Action<T> disposer)
         {
             Assert.True(stream.TryAdmitInput());
-            Assert.True(stream.TryEnqueueOwned(value, disposer));
+            Assert.True(stream.TryEnqueueOwnedAfterAdmission(value, disposer));
         }
 
         private static FoxRunStream<T> CreateDeterministicallyAdmittedStream<T>(

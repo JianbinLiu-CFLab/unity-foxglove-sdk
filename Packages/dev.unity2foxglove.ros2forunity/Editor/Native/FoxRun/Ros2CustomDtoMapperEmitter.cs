@@ -209,7 +209,7 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2CustomCopyEnvelope_" + index + "(source, budget),");
                 sb.AppendLine(pad + "            owned =>");
                 sb.AppendLine(pad + "            {");
-                sb.AppendLine(pad + "                __foxRunRos2CustomStream_" + index + ".TryEnqueueDeferredOwned(");
+                sb.AppendLine(pad + "                __foxRunRos2CustomStream_" + index + ".TryEnqueueDeferredOwnedAfterAdmission(");
                 sb.AppendLine(pad + "                    owned,");
                 sb.AppendLine(pad + "                    static value => __FoxRunRos2CustomMaterialize_" + index + "(value),");
                 sb.AppendLine(pad + "                    static value => __FoxRunRos2CustomDisposeEnvelope_" + index + "(value),");

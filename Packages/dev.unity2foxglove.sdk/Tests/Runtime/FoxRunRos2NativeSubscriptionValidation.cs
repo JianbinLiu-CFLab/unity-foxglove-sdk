@@ -289,7 +289,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !emitter.Contains("Activator", StringComparison.Ordinal)
                   && !emitter.Contains("dynamic", StringComparison.Ordinal)
                   && !emitter.Contains("EnqueueRaw", StringComparison.Ordinal)
-                  && emitter.Contains(".TryEnqueueOwned(", StringComparison.Ordinal),
+                  && emitter.Contains(".TryEnqueueOwnedAfterAdmission(", StringComparison.Ordinal),
                 "generated native registration is closed-generic and supplies owned copy before apply without raw enqueue");
 
             Check(router.Contains("info.SubscribeTransportId", StringComparison.Ordinal)
