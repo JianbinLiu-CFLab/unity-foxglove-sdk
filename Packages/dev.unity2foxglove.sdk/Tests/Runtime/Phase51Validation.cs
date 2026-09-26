@@ -175,7 +175,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && duplicate == null && duplicateError.Contains("Duplicate", StringComparison.OrdinalIgnoreCase),
                 "51B-6b: duplicate service call id for the same client is rejected");
 
-            first.Complete("json", Encoding.UTF8.GetBytes("{}"));
+            registry.CompleteResponse(7, 10, "json", Encoding.UTF8.GetBytes("{}"));
             var drained = registry.DrainCompleted();
             Check(drained.Count == 1
                   && drained[0].ServiceId == 1

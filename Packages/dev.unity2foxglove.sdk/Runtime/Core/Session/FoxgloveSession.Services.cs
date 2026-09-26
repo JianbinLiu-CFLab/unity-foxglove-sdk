@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Core
             _services.SweepTimeouts(FoxgloveServiceRegistry.DefaultTimeout);
 
             _pendingServiceCallsScratch.Clear();
-            _services.CopyPendingCallsTo(_pendingServiceCallsScratch);
+            _services.CopyPendingCallsToInternal(_pendingServiceCallsScratch);
             try
             {
                 foreach (var call in _pendingServiceCallsScratch)
@@ -74,7 +74,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             _completedServiceCallsScratch.Clear();
-            _services.DrainCompletedTo(_completedServiceCallsScratch);
+            _services.DrainCompletedToInternal(_completedServiceCallsScratch);
             try
             {
                 foreach (var call in _completedServiceCallsScratch)

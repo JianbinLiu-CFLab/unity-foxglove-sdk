@@ -104,7 +104,6 @@ namespace Unity.FoxgloveSDK.Core
 
         private McapRecorder _recorder;
         private IFoxgloveMirrorSink _mirrorSink;
-        private bool _channelOverwrittenSubscribed;
         private bool _clientConnectedSubscribed;
         private bool _clientDisconnectedSubscribed;
         private bool _textReceivedSubscribed;
@@ -114,7 +113,6 @@ namespace Unity.FoxgloveSDK.Core
         private bool _disposeClientDisconnectedComplete;
         private bool _disposeTextReceivedComplete;
         private bool _disposeBinaryReceivedComplete;
-        private bool _disposeChannelOverwrittenComplete;
         private int _disposed;
 
         /// <summary>Server name sent in serverInfo.</summary>
@@ -296,8 +294,6 @@ namespace Unity.FoxgloveSDK.Core
                 // Mark ownership before each add. A custom event accessor may add
                 // the delegate and then throw, in which case constructor rollback
                 // must still attempt to detach it.
-                _channelOverwrittenSubscribed = true;
-                _channels.ChannelOverwritten += OnChannelOverwritten;
                 _clientConnectedSubscribed = true;
                 _transport.OnClientConnected += OnClientConnected;
                 _clientDisconnectedSubscribed = true;
@@ -360,7 +356,6 @@ namespace Unity.FoxgloveSDK.Core
             TryCleanup(DetachClientDisconnected, ref _disposeClientDisconnectedComplete, ref firstFailure);
             TryCleanup(DetachTextReceived, ref _disposeTextReceivedComplete, ref firstFailure);
             TryCleanup(DetachBinaryReceived, ref _disposeBinaryReceivedComplete, ref firstFailure);
-            TryCleanup(DetachChannelOverwritten, ref _disposeChannelOverwrittenComplete, ref firstFailure);
 
             // Make the session's downstream callback graph inert even when a
             // custom event accessor refused one of the detach attempts. The
@@ -375,8 +370,7 @@ namespace Unity.FoxgloveSDK.Core
                 && _disposeClientConnectedComplete
                 && _disposeClientDisconnectedComplete
                 && _disposeTextReceivedComplete
-                && _disposeBinaryReceivedComplete
-                && _disposeChannelOverwrittenComplete)
+                && _disposeBinaryReceivedComplete)
             {
                 Volatile.Write(ref _disposed, 1);
             }
@@ -435,21 +429,12 @@ namespace Unity.FoxgloveSDK.Core
             _binaryReceivedSubscribed = false;
         }
 
-        private void DetachChannelOverwritten()
-        {
-            if (!_channelOverwrittenSubscribed)
-                return;
-            _channels.ChannelOverwritten -= OnChannelOverwritten;
-            _channelOverwrittenSubscribed = false;
-        }
-
         private void RollBackConstructorSubscriptions()
         {
             TryRollback(DetachBinaryReceived);
             TryRollback(DetachTextReceived);
             TryRollback(DetachClientDisconnected);
             TryRollback(DetachClientConnected);
-            TryRollback(DetachChannelOverwritten);
         }
 
         private static void TryRollback(Action rollback)
@@ -1863,14 +1848,6 @@ namespace Unity.FoxgloveSDK.Core
             var runtime = Volatile.Read(ref _runtime);
             if (runtime is IClientReplayDisconnectContext replayDisconnect)
                 replayDisconnect.CancelReplayForClient(clientId);
-        }
-
-        private void OnChannelOverwritten(AdvertiseChannel previous, AdvertiseChannel replacement)
-        {
-            _logger.LogWarning(
-                $"Channel id {replacement?.Id ?? previous?.Id ?? 0} overwritten: " +
-                $"'{previous?.Topic ?? string.Empty}'/{previous?.SchemaName ?? string.Empty} -> " +
-                $"'{replacement?.Topic ?? string.Empty}'/{replacement?.SchemaName ?? string.Empty}.");
         }
 
         /// <summary>
