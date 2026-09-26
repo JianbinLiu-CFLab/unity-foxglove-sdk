@@ -13,13 +13,20 @@ namespace Unity.FoxgloveSDK.Core
 {
     internal static class ReplayProtobufParser
     {
+        private const int MaxNegativeCacheEntries = 256;
         private static readonly object ReflectionCacheGate = new();
         private static readonly Dictionary<string, ProtobufParserCacheEntry> ProtobufParserCache = new();
+        private static readonly Queue<string> NegativeCacheOrder = new();
         private static readonly string[] PreferredAssemblyNames =
         {
             "Unity.FoxgloveSDK.Proto",
             "Unity.FoxgloveSDK.Proto.Generated"
         };
+
+        static ReplayProtobufParser()
+        {
+            AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
+        }
 
         public static object Parse(string typeName, byte[] payload)
         {
@@ -72,10 +79,39 @@ namespace Unity.FoxgloveSDK.Core
                 }
                 catch (InvalidOperationException ex)
                 {
-                    ProtobufParserCache[typeName] = new ProtobufParserCacheEntry(null, ex.Message);
+                    CacheNegativeResult(typeName, ex.Message);
                     throw;
                 }
             }
+        }
+
+        private static void OnAssemblyLoad(object sender, AssemblyLoadEventArgs args)
+        {
+            lock (ReflectionCacheGate)
+            {
+                var negativeKeys = new List<string>();
+                foreach (var pair in ProtobufParserCache)
+                {
+                    if (pair.Value.Binding == null)
+                        negativeKeys.Add(pair.Key);
+                }
+
+                foreach (var key in negativeKeys)
+                    ProtobufParserCache.Remove(key);
+                NegativeCacheOrder.Clear();
+            }
+        }
+
+        private static void CacheNegativeResult(string typeName, string failureMessage)
+        {
+            while (NegativeCacheOrder.Count >= MaxNegativeCacheEntries)
+            {
+                var oldest = NegativeCacheOrder.Dequeue();
+                ProtobufParserCache.Remove(oldest);
+            }
+
+            ProtobufParserCache[typeName] = new ProtobufParserCacheEntry(null, failureMessage);
+            NegativeCacheOrder.Enqueue(typeName);
         }
 
         private static Type ResolveType(string typeName)
