@@ -153,7 +153,7 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             Assert.True(store.TrySetFromClientAllowUnset("/owned", JValue.CreateNull()));
             Assert.True(store.WasUnsetByClient("/owned"));
-            Assert.False(store.UnregisterOwned(lease));
+            Assert.True(store.UnregisterOwned(lease));
             Assert.False(store.WasUnsetByClient("/owned"));
         }
 
@@ -170,7 +170,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.False(store.UnregisterOwned(first));
             Assert.True(store.WasUnsetByClient("/replacement"));
 
-            Assert.False(store.UnregisterOwned(second));
+            Assert.True(store.UnregisterOwned(second));
             Assert.False(store.WasUnsetByClient("/replacement"));
         }
 
@@ -315,6 +315,35 @@ namespace Unity.FoxgloveSDK.UnitTests
             var broadcastParameter = Assert.IsType<JObject>(Assert.Single((JArray)broadcast["parameters"]));
             Assert.Equal("/unset", broadcastParameter["name"]?.ToString());
             Assert.False(broadcastParameter.ContainsKey("value"));
+        }
+
+        [Fact]
+        public void SetParametersDeduplicatesNamesWhileApplyingSequentialUpdates()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            session.Parameters.Register("/duplicate", 1, "number", true);
+            fake.SimulateConnect(1);
+            fake.SimulateConnect(2);
+            fake.SimulateText(2,
+                "{\"op\":\"subscribeParameterUpdates\",\"parameterNames\":[\"/duplicate\"]}");
+            fake.SentTexts(1).Clear();
+            fake.SentTexts(2).Clear();
+
+            fake.SimulateText(1,
+                "{\"op\":\"setParameters\",\"parameters\":[" +
+                "{\"name\":\"/duplicate\",\"value\":2}," +
+                "{\"name\":\"/duplicate\",\"value\":3}],\"id\":\"duplicate\"}");
+
+            var response = JObject.Parse(fake.SentTexts(1).Last());
+            var responseParameters = Assert.IsType<JArray>(response["parameters"]);
+            var responseParameter = Assert.Single(responseParameters);
+            Assert.Equal(3, responseParameter["value"]?.Value<int>());
+
+            var broadcast = JObject.Parse(fake.SentTexts(2).Last());
+            var broadcastParameters = Assert.IsType<JArray>(broadcast["parameters"]);
+            var broadcastParameter = Assert.Single(broadcastParameters);
+            Assert.Equal(3, broadcastParameter["value"]?.Value<int>());
         }
 
         [Fact]

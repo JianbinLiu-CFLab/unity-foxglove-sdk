@@ -8,6 +8,7 @@
 //          TestHandlerDelegateSuccessAndFailure) stay in the console runner.
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
@@ -62,6 +63,35 @@ namespace Unity.FoxgloveSDK.UnitTests
             var pending = reg.GetPendingCalls();
             Assert.True(!pending.Any(c => c.ClientId == 1), "Client 1 calls removed directly from pending");
             Assert.True(pending.Any(c => c.ClientId == 2), "Client 2 calls still pending");
+        }
+
+        [Fact]
+        public void PendingCallSnapshotsProtectRegistryAuthorityAndUseMonotonicTimeouts()
+        {
+            var timestamp = Stopwatch.Frequency;
+            var reg = new FoxgloveServiceRegistry(() => timestamp);
+            reg.Register(new ServiceDescriptor { Name = "/snapshot", Type = "/snapshot" });
+            reg.Enqueue(1, 7, 11, "json", new byte[] { 1 });
+
+            var snapshot = Assert.Single(reg.GetPendingCalls());
+            snapshot.ClientId = 99;
+            snapshot.Payload[0] = 9;
+
+            var copied = new System.Collections.Generic.List<FoxgloveServiceCall>();
+            reg.CopyPendingCallsTo(copied);
+            copied[0].CallId = 88;
+
+            var authority = Assert.Single(reg.GetPendingCalls());
+            Assert.Equal(11u, authority.ClientId);
+            Assert.Equal(7u, authority.CallId);
+            Assert.Equal(1, authority.Payload[0]);
+
+            timestamp += Stopwatch.Frequency * 2;
+            reg.SweepTimeouts(TimeSpan.FromSeconds(1));
+
+            var completed = Assert.Single(reg.DrainCompleted());
+            Assert.Equal(11u, completed.ClientId);
+            Assert.Contains("timed out", completed.FailureMessage, StringComparison.Ordinal);
         }
 
         [Fact]

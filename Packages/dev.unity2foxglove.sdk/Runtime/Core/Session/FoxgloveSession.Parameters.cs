@@ -43,22 +43,26 @@ namespace Unity.FoxgloveSDK.Core
             catch { _logger.LogWarning($"setParameters parse error from client {clientId}"); return; }
 
             var changedNames = new List<string>();
+            var changedNameSet = new HashSet<string>(StringComparer.Ordinal);
             var unsetNames = new HashSet<string>(StringComparer.Ordinal);
             List<string> requestedNames = null;
             if (msg.Parameters != null)
             {
                 requestedNames = new List<string>(msg.Parameters.Count);
+                var requestedNameSet = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var p in msg.Parameters)
                 {
                     if (p?.Name == null)
                         continue;
 
-                    requestedNames.Add(p.Name);
+                    if (requestedNameSet.Add(p.Name))
+                        requestedNames.Add(p.Name);
                     var isUnsetRequest = p.Value == null
                                          || p.Value.Type == Newtonsoft.Json.Linq.JTokenType.Null;
                     if (_parameters.TrySetFromClientAllowUnset(p.Name, p.Value))
                     {
-                        changedNames.Add(p.Name);
+                        if (changedNameSet.Add(p.Name))
+                            changedNames.Add(p.Name);
                         if (isUnsetRequest)
                             unsetNames.Add(p.Name);
                     }

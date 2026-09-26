@@ -163,6 +163,7 @@ namespace Unity.FoxgloveSDK.Core
                         && ReferenceEquals(unsetRegistration, registration))
                     {
                         _clientUnsetRegistrations.Remove(registration.Name);
+                        return true;
                     }
                     return false;
                 }
