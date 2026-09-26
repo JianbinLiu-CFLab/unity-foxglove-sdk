@@ -91,7 +91,8 @@ namespace Unity.FoxgloveSDK.IO
 
         internal McapTrailerInfo ReadTrailerInfo(
             ulong recordSizeLimit = DefaultRecordSizeLimit,
-            bool validateCrcs = true)
+            bool validateCrcs = true,
+            ulong summarySizeLimit = DefaultSummarySizeLimit)
         {
             if (!_stream.CanSeek)
                 throw new NotSupportedException("McapReader.ReadTrailerInfo requires a seekable stream.");
@@ -100,7 +101,7 @@ namespace Unity.FoxgloveSDK.IO
             if (footer.SummaryStart == 0)
                 throw new InvalidDataException("MCAP amendment requires a summary section.");
 
-            var summaryBytes = ReadSummaryBytes(footer.SummaryStart, footerOffset, DefaultSummarySizeLimit);
+            var summaryBytes = ReadSummaryBytes(footer.SummaryStart, footerOffset, summarySizeLimit);
             ValidateSummaryCrc(
                 summaryBytes,
                 footer.SummaryStart,

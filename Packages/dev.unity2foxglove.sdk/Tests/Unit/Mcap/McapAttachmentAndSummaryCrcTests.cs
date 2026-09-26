@@ -401,6 +401,20 @@ namespace Unity.FoxgloveSDK.UnitTests
             stream.Position = 0;
             Assert.Throws<InvalidDataException>(() =>
                 new McapReader(stream).ReadSummary(summarySizeLimit: 1));
+
+            stream.Position = 0;
+            Assert.Throws<InvalidDataException>(() =>
+                new McapIndexedReader(
+                    stream,
+                    leaveOpen: true,
+                    sequentialReadLimits: null,
+                    readOptions: new McapReadOptions { SummarySizeLimit = 1 }));
+
+            stream.Position = 0;
+            Assert.Throws<InvalidDataException>(() =>
+                McapStrictValidator.Validate(
+                    stream,
+                    new McapStrictValidationOptions { SummarySizeLimit = 1 }));
         }
 
         [Fact]

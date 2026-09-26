@@ -730,7 +730,8 @@ namespace Unity.FoxgloveSDK.UnitTests
                 AllowLinearFallback = false,
                 UseOfficialEndTimeSemantics = true,
                 ValidateCrcs = false,
-                ChunkUncompressedSizeLimit = 123
+                ChunkUncompressedSizeLimit = 123,
+                SummarySizeLimit = 456
             };
 
             var copy = McapIndexedReaderHelpers.CreateLazyReadOptions(source);
@@ -750,6 +751,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.True(copy.UseOfficialEndTimeSemantics);
             Assert.False(copy.ValidateCrcs);
             Assert.Equal(123UL, copy.ChunkUncompressedSizeLimit);
+            Assert.Equal(456UL, copy.SummarySizeLimit);
 
             Assert.Throws<NotSupportedException>(() =>
                 McapIndexedReaderHelpers.CreateLazyReadOptions(new McapReadOptions

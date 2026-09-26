@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using Unity.FoxgloveSDK.Transport;
@@ -35,12 +36,14 @@ namespace Unity.FoxgloveSDK.IO
         private byte[] _cachedManifestBytes;
         private DateTime _cachedManifestLastWriteUtc;
         private long _cachedManifestLength = -1L;
+        private string _cachedManifestContentHash = string.Empty;
 
         private struct FileStamp
         {
             public bool Exists;
             public long Length;
             public DateTime LastWriteUtc;
+            public string ContentHash;
         }
 
         /// <summary>Creates a single-file Remote Data Loader prototype around one local MCAP path.</summary>
@@ -354,6 +357,7 @@ namespace Unity.FoxgloveSDK.IO
                 _cachedManifestBytes = null;
                 _cachedManifestLength = loadStamp.Length;
                 _cachedManifestLastWriteUtc = loadStamp.LastWriteUtc;
+                _cachedManifestContentHash = loadStamp.ContentHash;
                 return _cachedManifest;
             }
         }
@@ -381,12 +385,13 @@ namespace Unity.FoxgloveSDK.IO
                     return _cachedManifestBytes;
                 }
 
-                if (!storeStamp.Equals(stamp))
+                if (!SameStamp(storeStamp, stamp))
                     return bytes;
 
                 _cachedManifestBytes = bytes;
                 _cachedManifestLength = storeStamp.Length;
                 _cachedManifestLastWriteUtc = storeStamp.LastWriteUtc;
+                _cachedManifestContentHash = storeStamp.ContentHash;
                 return _cachedManifestBytes;
             }
         }
@@ -412,9 +417,7 @@ namespace Unity.FoxgloveSDK.IO
                     _identityStamp = stamp;
                     _generationSourceId = _baseSourceId
                         + "@"
-                        + stamp.Length.ToString(CultureInfo.InvariantCulture)
-                        + "-"
-                        + stamp.LastWriteUtc.Ticks.ToString(CultureInfo.InvariantCulture);
+                        + stamp.ContentHash;
                 }
 
                 return _generationSourceId;
@@ -457,21 +460,51 @@ namespace Unity.FoxgloveSDK.IO
         private FileStamp ReadFileStamp()
         {
             var info = new FileInfo(_mcapPath);
+            if (!info.Exists)
+            {
+                return new FileStamp
+                {
+                    Exists = false,
+                    Length = 0L,
+                    LastWriteUtc = DateTime.MinValue,
+                    ContentHash = string.Empty
+                };
+            }
+
+            using var input = new FileStream(
+                _mcapPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            using var sha = SHA256.Create();
+            var hash = sha.ComputeHash(input);
             return new FileStamp
             {
-                Exists = info.Exists,
-                Length = info.Exists ? info.Length : 0L,
-                LastWriteUtc = info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue
+                Exists = true,
+                Length = info.Length,
+                LastWriteUtc = info.LastWriteTimeUtc,
+                ContentHash = ToHex(hash)
             };
         }
 
         private bool MatchesCachedStamp(FileStamp stamp)
-            => _cachedManifestLength == stamp.Length && _cachedManifestLastWriteUtc == stamp.LastWriteUtc;
+            => _cachedManifestLength == stamp.Length
+               && _cachedManifestLastWriteUtc == stamp.LastWriteUtc
+               && string.Equals(_cachedManifestContentHash, stamp.ContentHash, StringComparison.Ordinal);
 
         private static bool SameStamp(FileStamp left, FileStamp right)
             => left.Exists == right.Exists
                && left.Length == right.Length
-               && left.LastWriteUtc == right.LastWriteUtc;
+               && left.LastWriteUtc == right.LastWriteUtc
+               && string.Equals(left.ContentHash, right.ContentHash, StringComparison.Ordinal);
+
+        private static string ToHex(byte[] bytes)
+        {
+            var builder = new StringBuilder(bytes.Length * 2);
+            foreach (var value in bytes)
+                builder.Append(value.ToString("x2", CultureInfo.InvariantCulture));
+            return builder.ToString();
+        }
 
         private static byte[] ReadAllBytesWithinCap(string path, long maxBytes)
         {

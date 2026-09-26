@@ -69,24 +69,34 @@ namespace Unity.FoxgloveSDK.IO
                 long payloadBytesCopied,
                 long filteredRecords,
                 long peakDecompressedChunkBytes = 0,
-                long peakDecompressedChunkCount = 0)
+                long peakDecompressedChunkCount = 0,
+                long peakRetainedDecompressedBytes = 0,
+                long candidatePayloadCopies = 0)
             {
                 CandidateCount = candidateCount;
                 PayloadCopies = payloadCopies;
                 PayloadBytesCopied = payloadBytesCopied;
                 FilteredRecords = filteredRecords;
-                PeakDecompressedChunkBytes = peakDecompressedChunkBytes;
+                MaxObservedDecompressedChunkBytes = peakDecompressedChunkBytes;
                 PeakDecompressedChunkCount = peakDecompressedChunkCount;
+                PeakRetainedDecompressedBytes = peakRetainedDecompressedBytes;
+                CandidatePayloadCopies = candidatePayloadCopies;
             }
 
             public long CandidateCount { get; }
             public long PayloadCopies { get; }
             public long PayloadBytesCopied { get; }
             public long FilteredRecords { get; }
-            /// <summary>Largest decompressed History chunk retained at one time.</summary>
-            public long PeakDecompressedChunkBytes { get; }
+            /// <summary>Largest single decompressed History chunk observed during the query.</summary>
+            public long MaxObservedDecompressedChunkBytes { get; }
+            /// <summary>Compatibility alias for the historical metric name.</summary>
+            public long PeakDecompressedChunkBytes => MaxObservedDecompressedChunkBytes;
             /// <summary>Maximum number of decompressed History chunks retained concurrently.</summary>
             public long PeakDecompressedChunkCount { get; }
+            /// <summary>Peak bytes retained by decompressed History chunks at one time.</summary>
+            public long PeakRetainedDecompressedBytes { get; }
+            /// <summary>Number of candidate payload copies made before final bounded selection.</summary>
+            public long CandidatePayloadCopies { get; }
         }
 
         /// <summary>
@@ -713,6 +723,8 @@ namespace Unity.FoxgloveSDK.IO
             long payloadBytesCopied = 0;
             long peakDecompressedChunkBytes = 0;
             long peakDecompressedChunkCount = 0;
+            long peakRetainedDecompressedBytes = 0;
+            long candidatePayloadCopies = 0;
             for (var chunkNumber = 0; chunkNumber < _summary.ChunkIndexes.Count; chunkNumber++)
             {
                 var chunkIndex = _summary.ChunkIndexes[chunkNumber];
@@ -726,6 +738,7 @@ namespace Unity.FoxgloveSDK.IO
                     continue;
                 peakDecompressedChunkBytes = Math.Max(peakDecompressedChunkBytes, uncompressed.LongLength);
                 peakDecompressedChunkCount = Math.Max(peakDecompressedChunkCount, 1);
+                peakRetainedDecompressedBytes = Math.Max(peakRetainedDecompressedBytes, uncompressed.LongLength);
 
                 var offset = 0;
                 while (offset + 9 <= uncompressed.Length)
@@ -758,7 +771,11 @@ namespace Unity.FoxgloveSDK.IO
                             record.PublishTime,
                             chunkIndex.ChunkStartOffset,
                             (ulong)record.RecordOffset);
-                        InsertBoundedHistoryCandidate(boundedCandidates, candidate, maxMessages);
+                        if (InsertBoundedHistoryCandidate(boundedCandidates, candidate, maxMessages))
+                        {
+                            candidate.Data = CopyPayload(uncompressed, record.DataOffset, dataLen);
+                            candidatePayloadCopies++;
+                        }
                         continue;
                     }
 
@@ -781,51 +798,20 @@ namespace Unity.FoxgloveSDK.IO
 
             if (boundedCandidates != null)
             {
-                var candidatesByChunk = new Dictionary<int, List<HistoryCandidate>>();
                 foreach (var candidate in boundedCandidates)
                 {
-                    if (!candidatesByChunk.TryGetValue(candidate.ChunkNumber, out var chunkCandidates))
+                    result.Add(new McapMessage
                     {
-                        chunkCandidates = new List<HistoryCandidate>();
-                        candidatesByChunk.Add(candidate.ChunkNumber, chunkCandidates);
-                    }
-                    chunkCandidates.Add(candidate);
-                }
-
-                foreach (var chunkCandidates in candidatesByChunk.Values)
-                {
-                    var chunkIndex = _summary.ChunkIndexes[chunkCandidates[0].ChunkNumber];
-                    var uncompressed = _reader.ReadChunkRecords(
-                        chunkIndex.ChunkStartOffset,
-                        chunkIndex.ChunkLength,
-                        out var crcValid);
-                    if (!ShouldUseChunkRecords("History payload chunk", crcValid))
-                        continue;
-                    peakDecompressedChunkBytes = Math.Max(peakDecompressedChunkBytes, uncompressed.LongLength);
-                    peakDecompressedChunkCount = Math.Max(peakDecompressedChunkCount, 1);
-
-                    foreach (var candidate in chunkCandidates)
-                    {
-                        var data = new byte[candidate.DataLength];
-                        Buffer.BlockCopy(
-                            uncompressed,
-                            candidate.DataOffset,
-                            data,
-                            0,
-                            candidate.DataLength);
-                        result.Add(new McapMessage
-                        {
-                            ChannelId = candidate.ChannelId,
-                            Sequence = candidate.Sequence,
-                            LogTime = candidate.LogTime,
-                            PublishTime = candidate.PublishTime,
-                            SourceOffset = candidate.SourceOffset,
-                            SourceRecordOffset = candidate.SourceRecordOffset,
-                            Data = data
-                        });
-                        payloadCopies++;
-                        payloadBytesCopied += candidate.DataLength;
-                    }
+                        ChannelId = candidate.ChannelId,
+                        Sequence = candidate.Sequence,
+                        LogTime = candidate.LogTime,
+                        PublishTime = candidate.PublishTime,
+                        SourceOffset = candidate.SourceOffset,
+                        SourceRecordOffset = candidate.SourceRecordOffset,
+                        Data = candidate.Data
+                    });
+                    payloadCopies++;
+                    payloadBytesCopied += candidate.DataLength;
                 }
             }
 
@@ -839,8 +825,17 @@ namespace Unity.FoxgloveSDK.IO
                 payloadBytesCopied,
                 filteredRecords,
                 peakDecompressedChunkBytes,
-                peakDecompressedChunkCount);
+                peakDecompressedChunkCount,
+                peakRetainedDecompressedBytes,
+                candidatePayloadCopies);
             return result;
+        }
+
+        private static byte[] CopyPayload(byte[] source, int offset, int length)
+        {
+            var data = new byte[length];
+            Buffer.BlockCopy(source, offset, data, 0, length);
+            return data;
         }
 
         private readonly struct SnapshotCandidate
@@ -881,7 +876,7 @@ namespace Unity.FoxgloveSDK.IO
             internal ulong SourceRecordOffset { get; }
         }
 
-        private readonly struct HistoryCandidate
+        private sealed class HistoryCandidate
         {
             internal HistoryCandidate(
                 int chunkNumber,
@@ -893,6 +888,31 @@ namespace Unity.FoxgloveSDK.IO
                 ulong publishTime,
                 ulong sourceOffset,
                 ulong sourceRecordOffset)
+                : this(
+                    chunkNumber,
+                    dataOffset,
+                    dataLength,
+                    channelId,
+                    sequence,
+                    logTime,
+                    publishTime,
+                    sourceOffset,
+                    sourceRecordOffset,
+                    null)
+            {
+            }
+
+            internal HistoryCandidate(
+                int chunkNumber,
+                int dataOffset,
+                int dataLength,
+                ushort channelId,
+                uint sequence,
+                ulong logTime,
+                ulong publishTime,
+                ulong sourceOffset,
+                ulong sourceRecordOffset,
+                byte[] data)
             {
                 ChunkNumber = chunkNumber;
                 DataOffset = dataOffset;
@@ -903,6 +923,7 @@ namespace Unity.FoxgloveSDK.IO
                 PublishTime = publishTime;
                 SourceOffset = sourceOffset;
                 SourceRecordOffset = sourceRecordOffset;
+                Data = data;
             }
 
             internal int ChunkNumber { get; }
@@ -914,9 +935,10 @@ namespace Unity.FoxgloveSDK.IO
             internal ulong PublishTime { get; }
             internal ulong SourceOffset { get; }
             internal ulong SourceRecordOffset { get; }
+            internal byte[] Data { get; set; }
         }
 
-        private static void InsertBoundedHistoryCandidate(
+        private static bool InsertBoundedHistoryCandidate(
             List<HistoryCandidate> candidates,
             HistoryCandidate candidate,
             int maxMessages)
@@ -927,7 +949,13 @@ namespace Unity.FoxgloveSDK.IO
                 insertAt--;
             candidates.Insert(insertAt, candidate);
             if (candidates.Count > maxMessages)
+            {
+                var evicted = candidates[0];
                 candidates.RemoveAt(0);
+                return !ReferenceEquals(evicted, candidate);
+            }
+
+            return true;
         }
 
         private static int CompareHistoryCandidates(

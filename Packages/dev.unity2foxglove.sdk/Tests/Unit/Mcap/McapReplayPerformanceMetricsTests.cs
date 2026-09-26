@@ -98,13 +98,13 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 Assert.Equal(200, metrics.CandidateCount);
                 Assert.Equal(10, metrics.PayloadCopies);
                 Assert.True(metrics.FilteredRecords == 0);
-                Assert.True(metrics.PeakDecompressedChunkBytes > 0);
+                Assert.True(metrics.MaxObservedDecompressedChunkBytes > 0);
                 var maxChunkBytes = engine.Summary.ChunkIndexes
                     .Select(index => checked((long)index.UncompressedSize))
                     .Max();
                 Assert.True(
-                    metrics.PeakDecompressedChunkBytes <= maxChunkBytes,
-                    $"history retained more than one decompressed chunk: peak={metrics.PeakDecompressedChunkBytes}; maxChunk={maxChunkBytes}");
+                    metrics.MaxObservedDecompressedChunkBytes <= maxChunkBytes,
+                    $"history observed more than one decompressed chunk: peak={metrics.MaxObservedDecompressedChunkBytes}; maxChunk={maxChunkBytes}");
                 Assert.Equal(1, metrics.PeakDecompressedChunkCount);
                 var unbounded = engine.History(1, 200, new List<McapMessage>(), 0, new HashSet<ushort> { 1 });
                 Assert.Equal(200, unbounded.Count);
@@ -132,7 +132,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 {
                     recorder.AddChannel(1, "/phase188/history-target", "json", "phase188.Target", "jsonschema", "{}");
                     recorder.AddChannel(2, "/phase188/history-noise", "json", "phase188.Noise", "jsonschema", "{}");
-                    for (ulong time = 1; time <= 200; time++)
+                    for (ulong time = 1; time <= 6_000; time++)
                         recorder.WriteMessage(2, time, new byte[] { (byte)time });
                     for (ulong time = 1; time <= 5; time++)
                         recorder.WriteMessage(1, 10_000 + time, new byte[] { (byte)time });
@@ -146,7 +146,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
 
                 Assert.Equal(5, result.Count);
                 Assert.All(result, message => Assert.Equal((ushort)1, message.ChannelId));
-                Assert.True(metrics.FilteredRecords >= 200);
+                Assert.True(metrics.FilteredRecords >= 6_000);
                 Assert.Equal(5, metrics.CandidateCount);
             }
             finally

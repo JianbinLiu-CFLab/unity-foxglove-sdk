@@ -234,7 +234,8 @@ namespace Unity.FoxgloveSDK.IO
                 UseOfficialEndTimeSemantics = source.UseOfficialEndTimeSemantics,
                 AllowLinearFallback = source.AllowLinearFallback,
                 ValidateCrcs = source.ValidateCrcs,
-                ChunkUncompressedSizeLimit = source.ChunkUncompressedSizeLimit
+                ChunkUncompressedSizeLimit = source.ChunkUncompressedSizeLimit,
+                SummarySizeLimit = source.SummarySizeLimit
             };
         }
     }

@@ -147,6 +147,33 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
+        public void SourceIdentityChangesWhenSameLengthContentIsReplacedWithSameTimestamp()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-generation-same-stamp-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                var firstBytes = BuildRemoteMcap(1, 0);
+                var secondBytes = BuildRemoteMcap(1, 1);
+                File.WriteAllBytes(path, firstBytes);
+                var stamp = File.GetLastWriteTimeUtc(path);
+                var source = new RemoteMcapDataSourcePrototype(path, "same-stamp", "Same stamp", string.Empty);
+                var first = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                File.WriteAllBytes(path, secondBytes);
+                File.SetLastWriteTimeUtc(path, stamp);
+                var second = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                Assert.Equal(firstBytes.Length, secondBytes.Length);
+                Assert.Equal(stamp, File.GetLastWriteTimeUtc(path));
+                Assert.NotEqual(first, second);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
+        }
+
+        [Fact]
         public void ManifestDataRoutePreservesCustomQueryParameters()
         {
             var path = Path.Combine(Path.GetTempPath(), "remote-route-" + Guid.NewGuid().ToString("N") + ".mcap");
@@ -412,7 +439,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
         }
 
-        private static byte[] BuildRemoteMcap(int messageCount)
+        private static byte[] BuildRemoteMcap(int messageCount, byte payloadSeed = 0)
         {
             using var stream = new MemoryStream();
             using (var writer = new McapWriter(stream, leaveOpen: true))
@@ -421,7 +448,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 writer.WriteHeader("", "remote-generation");
                 writer.WriteChannel(1, 0, "/generation", "json", new Dictionary<string, string>());
                 for (var i = 0; i < messageCount; i++)
-                    writer.WriteMessage(1, (uint)(i + 1), (ulong)(i + 1), (ulong)(i + 1), new byte[] { (byte)i });
+                    writer.WriteMessage(1, (uint)(i + 1), (ulong)(i + 1), (ulong)(i + 1), new byte[] { (byte)(i + payloadSeed) });
                 writer.WriteDataEnd();
                 var summary = new McapFileSummary
                 {
