@@ -266,9 +266,16 @@ namespace Unity.FoxgloveSDK.Transport
                 {
                     _sendBatch.Clear();
                     _sendBatch.Add(frame);
-                    while (_sendBatch.Count < MaxSendBatchFrames && _sendQueue.TryDequeue(out var nextFrame))
-                        _sendBatch.Add(nextFrame);
-                    WriteFrameBatch(_sendBatch);
+                    try
+                    {
+                        while (_sendBatch.Count < MaxSendBatchFrames && _sendQueue.TryDequeueForSend(out var nextFrame))
+                            _sendBatch.Add(nextFrame);
+                        WriteFrameBatch(_sendBatch);
+                    }
+                    finally
+                    {
+                        _sendQueue.CompleteSendBatch(_sendBatch.Count);
+                    }
                 }
             }
             catch (OperationCanceledException) { }

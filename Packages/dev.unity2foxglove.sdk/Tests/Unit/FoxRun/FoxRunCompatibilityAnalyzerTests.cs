@@ -426,6 +426,29 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void MalformedMetadataUsesOneConsistentPolicyDiagnostic()
+        {
+            var current = Manifest("g", "c", "b", "p", "int32");
+            var baseResult = FoxRunSchemaMcapMetadata.CreateMalformedRecordedResult("detail");
+            var warning = FoxRunSchemaMcapMetadata.EvaluateRecordedJson(
+                "{\"schemaMetadataVersion\":1}",
+                current,
+                SchemaIdentityMode.Warn);
+            var strict = FoxRunSchemaMcapMetadata.EvaluateRecordedJson(
+                "{\"schemaMetadataVersion\":1}",
+                current,
+                SchemaIdentityMode.Strict);
+
+            Assert.DoesNotContain("replay will continue", baseResult.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Replay blocked", baseResult.Message, StringComparison.Ordinal);
+            Assert.Contains("Replay will continue", warning.Message, StringComparison.Ordinal);
+            Assert.False(warning.IsBlocking);
+            Assert.Contains("Replay blocked", strict.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("Replay will continue", strict.Message, StringComparison.Ordinal);
+            Assert.True(strict.IsBlocking);
+        }
+
+        [Fact]
         public void MemberDecompositionKeepsCanonicalValues()
         {
             var member = new FoxRunGenerationMember(

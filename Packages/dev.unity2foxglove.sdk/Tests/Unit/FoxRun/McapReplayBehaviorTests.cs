@@ -16,10 +16,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
  [Fact] public void BoundedHistoryKeepsLatestMessagesWhenRecordsArriveOutOfOrder()
   {
    var engineType=typeof(McapReplayEngine); var candidateType=engineType.GetNestedType("HistoryCandidate",BindingFlags.NonPublic);
-   var ctor=candidateType.GetConstructor(BindingFlags.Instance|BindingFlags.NonPublic,null,new[]{typeof(int),typeof(int),typeof(int),typeof(ushort),typeof(uint),typeof(ulong),typeof(ulong)},null);
+   var ctor=candidateType.GetConstructor(BindingFlags.Instance|BindingFlags.NonPublic,null,new[]{typeof(int),typeof(int),typeof(int),typeof(ushort),typeof(uint),typeof(ulong),typeof(ulong),typeof(ulong),typeof(ulong)},null);
    var insert=engineType.GetMethod("InsertBoundedHistoryCandidate",BindingFlags.Static|BindingFlags.NonPublic);
    var bounded=(System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(candidateType));
-   foreach(var time in new ulong[]{50,10,20,30}) insert.Invoke(null,new[]{bounded,ctor.Invoke(new object[]{0,0,1,(ushort)1,(uint)0,time,time}),2});
+   foreach(var time in new ulong[]{50,10,20,30}) insert.Invoke(null,new[]{bounded,ctor.Invoke(new object[]{0,0,1,(ushort)1,(uint)0,time,time,0UL,0UL}),2});
    var times=bounded.Cast<object>().Select(x=>(ulong)candidateType.GetProperty("LogTime",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(x)).ToArray();
    Assert.Equal(new ulong[]{30,50},times);
   }
@@ -50,4 +50,3 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
   sealed class NullTransport:IFoxgloveTransport{public bool IsRunning=>false;public event Action<uint> OnClientConnected;public event Action<uint> OnClientDisconnected;public event Action<uint,string> OnTextReceived;public event Action<uint,byte[]> OnBinaryReceived;public void Start(string h,int p){}public void Stop(){}public void BroadcastText(string j){}public void BroadcastBinary(byte[] d){}public void SendText(uint c,string j){}public void SendBinary(uint c,byte[]d){}public void Dispose(){} }
  }
 }
-

@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapSequentialReadLimits _sequentialReadLimits;
         private readonly long _sourceLengthBytes;
         private McapDataLoaderInitialization _initialization;
+        private McapDataLoaderInitialization _publicInitialization;
         private Dictionary<ushort, McapSchema> _schemaMap;
         private Dictionary<ushort, McapChannel> _channelMap;
         private Dictionary<string, List<ushort>> _topicChannelMap;
@@ -85,7 +86,10 @@ namespace Unity.FoxgloveSDK.IO
             ThrowIfDisposed();
             ThrowIfLazyEnumerationActive();
             if (_initialization != null)
-                return _initialization;
+            {
+                CopyInitialization(CloneInitialization(_initialization), _publicInitialization);
+                return _publicInitialization;
+            }
 
             _schemaMap = BuildSchemaMap(_reader.Schemas);
             BuildChannelAndQueryMaps(_reader.Channels, out _channelMap, out _topicChannelMap, out _knownChannelIds);
@@ -99,7 +103,127 @@ namespace Unity.FoxgloveSDK.IO
             AddSequentialFallbackProblems(_initialization);
             AddSchemaReferenceProblems(_initialization);
             AddFoxRunSchemaMetadataProblems(_initialization);
-            return _initialization;
+            _publicInitialization = CloneInitialization(_initialization);
+            return _publicInitialization;
+        }
+
+        private static void CopyInitialization(
+            McapDataLoaderInitialization source,
+            McapDataLoaderInitialization target)
+        {
+            target.Channels.Clear();
+            target.Channels.AddRange(source.Channels);
+            target.Schemas.Clear();
+            target.Schemas.AddRange(source.Schemas);
+            target.MetadataIndexes.Clear();
+            target.MetadataIndexes.AddRange(source.MetadataIndexes);
+            target.AttachmentIndexes.Clear();
+            target.AttachmentIndexes.AddRange(source.AttachmentIndexes);
+            target.Problems.Clear();
+            target.Problems.AddRange(source.Problems);
+            target.TimeRange = source.TimeRange;
+            target.HasTotalMessageCount = source.HasTotalMessageCount;
+            target.TotalMessageCount = source.TotalMessageCount;
+        }
+
+        private static McapDataLoaderInitialization CloneInitialization(
+            McapDataLoaderInitialization source)
+        {
+            var clone = new McapDataLoaderInitialization
+            {
+                HasTotalMessageCount = source.HasTotalMessageCount,
+                TotalMessageCount = source.TotalMessageCount,
+                TimeRange = new McapDataLoaderTimeRange
+                {
+                    HasRange = source.TimeRange?.HasRange ?? false,
+                    StartTimeNs = source.TimeRange?.StartTimeNs ?? 0,
+                    EndTimeNs = source.TimeRange?.EndTimeNs ?? 0
+                }
+            };
+
+            if (source.Channels != null)
+            {
+                foreach (var channel in source.Channels)
+                {
+                    if (channel == null)
+                        continue;
+                    clone.Channels.Add(new McapDataLoaderChannel
+                    {
+                        ChannelId = channel.ChannelId,
+                        SchemaId = channel.SchemaId,
+                        Topic = channel.Topic,
+                        MessageEncoding = channel.MessageEncoding,
+                        HasMessageCount = channel.HasMessageCount,
+                        MessageCount = channel.MessageCount
+                    });
+                }
+            }
+
+            if (source.Schemas != null)
+            {
+                foreach (var schema in source.Schemas)
+                {
+                    if (schema == null)
+                        continue;
+                    clone.Schemas.Add(new McapDataLoaderSchema
+                    {
+                        SchemaId = schema.SchemaId,
+                        Name = schema.Name,
+                        Encoding = schema.Encoding,
+                        Data = schema.Data == null ? null : (byte[])schema.Data.Clone()
+                    });
+                }
+            }
+
+            if (source.MetadataIndexes != null)
+            {
+                foreach (var index in source.MetadataIndexes)
+                {
+                    if (index == null)
+                        continue;
+                    clone.MetadataIndexes.Add(new McapDataLoaderMetadataIndex
+                    {
+                        Name = index.Name,
+                        Offset = index.Offset,
+                        Length = index.Length
+                    });
+                }
+            }
+
+            if (source.AttachmentIndexes != null)
+            {
+                foreach (var index in source.AttachmentIndexes)
+                {
+                    if (index == null)
+                        continue;
+                    clone.AttachmentIndexes.Add(new McapDataLoaderAttachmentIndex
+                    {
+                        Name = index.Name,
+                        MediaType = index.MediaType,
+                        Offset = index.Offset,
+                        Length = index.Length,
+                        LogTime = index.LogTime,
+                        CreateTime = index.CreateTime,
+                        DataSize = index.DataSize
+                    });
+                }
+            }
+
+            if (source.Problems != null)
+            {
+                foreach (var problem in source.Problems)
+                {
+                    if (problem == null)
+                        continue;
+                    clone.Problems.Add(new McapDataLoaderProblem(
+                        problem.Severity,
+                        problem.Message,
+                        problem.Code,
+                        problem.Tip));
+                }
+            }
+
+            return clone;
         }
 
         /// <summary>
@@ -126,6 +250,9 @@ namespace Unity.FoxgloveSDK.IO
         /// Creates a forward-only lazy iterator over matching raw messages in
         /// indexed file/chunk order. The returned enumerable can be enumerated
         /// only once and does not provide the eager iterator's log-time sorting.
+        /// When <see cref="McapDataLoaderQuery.MaxMessages"/> is positive, the
+        /// lazy iterator returns the first matching messages in file order;
+        /// the eager iterator instead retains the latest messages.
         /// Do not interleave lazy enumeration with other reads on this loader;
         /// the underlying indexed reader shares one seekable stream. Dispose
         /// this loader to release the file handle, even if the returned lazy

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
@@ -117,6 +118,82 @@ namespace FoxgloveSdk.UnitTests.Mcap
             Assert.False(data.Authorization.Allowed);
             Assert.False(dataStream.Authorization.Allowed);
             Assert.False(directStream.Authorization.Allowed);
+        }
+
+        [Fact]
+        public void SourceIdentityChangesWhenTheRecordingGenerationChanges()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-generation-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                File.WriteAllBytes(path, BuildRemoteMcap(1));
+                var source = new RemoteMcapDataSourcePrototype(path, "generation", "Generation", string.Empty);
+                var first = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                File.WriteAllBytes(path, BuildRemoteMcap(2));
+                File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(2));
+                var second = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                Assert.NotEqual(first, second);
+                Assert.Equal(RemoteMcapResponseStatus.NotFound,
+                    source.GetData(new RemoteMcapRequest { SourceId = first }).Status);
+                Assert.Equal(RemoteMcapResponseStatus.Ok,
+                    source.GetData(new RemoteMcapRequest { SourceId = second }).Status);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
+        }
+
+        [Fact]
+        public void SourceIdentityChangesWhenSameLengthContentIsReplacedWithSameTimestamp()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-generation-same-stamp-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                var firstBytes = BuildRemoteMcap(1, 0);
+                var secondBytes = BuildRemoteMcap(1, 1);
+                File.WriteAllBytes(path, firstBytes);
+                var stamp = File.GetLastWriteTimeUtc(path);
+                var source = new RemoteMcapDataSourcePrototype(path, "same-stamp", "Same stamp", string.Empty);
+                var first = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                File.WriteAllBytes(path, secondBytes);
+                File.SetLastWriteTimeUtc(path, stamp);
+                var second = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                Assert.Equal(firstBytes.Length, secondBytes.Length);
+                Assert.Equal(stamp, File.GetLastWriteTimeUtc(path));
+                Assert.NotEqual(first, second);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
+        }
+
+        [Fact]
+        public void ManifestDataRoutePreservesCustomQueryParameters()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-route-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                File.WriteAllBytes(path, BuildRemoteMcap(1));
+                var source = new RemoteMcapDataSourcePrototype(
+                    path,
+                    "route",
+                    "Route",
+                    string.Empty,
+                    dataRoute: "/v1/data?recordingId=route&startTime=1");
+
+                var manifest = source.GetManifest(new RemoteMcapRequest()).Manifest;
+                Assert.Equal("/v1/data?recordingId=route&startTime=1", manifest.Sources[0].DataUrl);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
         }
 
         [Fact]
@@ -360,6 +437,37 @@ namespace FoxgloveSdk.UnitTests.Mcap
             {
                 listener.Stop();
             }
+        }
+
+        private static byte[] BuildRemoteMcap(int messageCount, byte payloadSeed = 0)
+        {
+            using var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "remote-generation");
+                writer.WriteChannel(1, 0, "/generation", "json", new Dictionary<string, string>());
+                for (var i = 0; i < messageCount; i++)
+                    writer.WriteMessage(1, (uint)(i + 1), (ulong)(i + 1), (ulong)(i + 1), new byte[] { (byte)(i + payloadSeed) });
+                writer.WriteDataEnd();
+                var summary = new McapFileSummary
+                {
+                    Statistics = new McapStatistics
+                    {
+                        MessageCount = (ulong)messageCount,
+                        ChannelCount = 1,
+                        MessageStartTime = 1,
+                        MessageEndTime = (ulong)messageCount,
+                        ChannelMessageCounts = new Dictionary<ushort, ulong> { [1] = (ulong)messageCount }
+                    }
+                };
+                summary.Channels.Add(new McapChannel { Id = 1, Topic = "/generation", MessageEncoding = "json" });
+                McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
+                writer.WriteMagic();
+                writer.Flush();
+            }
+
+            return stream.ToArray();
         }
 
         private static bool IsAddressAlreadyInUse(Exception error)

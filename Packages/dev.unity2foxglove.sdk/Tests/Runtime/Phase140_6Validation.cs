@@ -198,7 +198,8 @@ namespace Unity.FoxgloveSDK.Tests
             var stats = ExtractMethodBody(source, "public TransportStatsSnapshot GetStatsSnapshot");
 
             Check(source.Contains("return _allowedOrigins.ToArray();", StringComparison.Ordinal)
-                  && stats.Contains("activeDropped += cs.DroppedDataFrames;", StringComparison.Ordinal)
+                  && stats.Contains("var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames);", StringComparison.Ordinal)
+                  && !stats.Contains("activeDropped", StringComparison.Ordinal)
                   && !stats.Contains("foreach (var cs in clientList)", StringComparison.Ordinal),
                 "140-6G-3: backend uses compact origin snapshots and one-pass stats aggregation");
         }
@@ -211,9 +212,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("public bool IsRunning => Volatile.Read(ref _listener) != null;", StringComparison.Ordinal),
                 "173-025F: ManagedWsBackend IsRunning uses a volatile listener read");
-            Check(source.Contains("Drop totals are best-effort under concurrent disconnects", StringComparison.Ordinal)
-                  && stats.Contains("Interlocked.Read(ref _totalDroppedDataFrames) + activeDropped", StringComparison.Ordinal),
-                "173-025G: ManagedWsBackend documents best-effort dropped-frame snapshots");
+            Check(source.Contains("Drop totals are lifetime counters updated at the point each data", StringComparison.Ordinal)
+                  && stats.Contains("var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames);", StringComparison.Ordinal)
+                  && !stats.Contains("activeDropped", StringComparison.Ordinal),
+                "173-025G: ManagedWsBackend reports lifetime dropped-frame snapshots");
             Check(receive.Contains("var fragmentedPayload = new MemoryStream();", StringComparison.Ordinal)
                   && receive.Contains("fragmentedPayload.SetLength(0);", StringComparison.Ordinal)
                   && receive.Contains("var hasFragmentedPayload = false;", StringComparison.Ordinal),

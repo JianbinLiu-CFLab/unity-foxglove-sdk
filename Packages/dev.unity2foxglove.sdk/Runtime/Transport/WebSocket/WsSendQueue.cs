@@ -79,6 +79,7 @@ namespace Unity.FoxgloveSDK.Transport
         private int _dataQueuedBytes;
         private bool _completed;
         private long _droppedDataFrames;
+        private int _inFlightFrames;
 
         public WsSendQueue(int maxFrames, int maxQueuedBytes)
         {
@@ -191,6 +192,12 @@ namespace Unity.FoxgloveSDK.Transport
                 return TryDequeueLocked(out frame);
         }
 
+        internal bool TryDequeueForSend(out QueuedFrame frame)
+        {
+            lock (_lock)
+                return TryDequeueLocked(out frame, trackInFlight: true);
+        }
+
         public bool WaitToDequeue(CancellationToken ct, out QueuedFrame frame)
         {
             frame = default;
@@ -204,7 +211,7 @@ namespace Unity.FoxgloveSDK.Transport
                         FoxgloveProfiler.Global.BeginSample("WsSendQueue.Flush");
                         try
                         {
-                            if (TryDequeueLocked(out frame))
+                            if (TryDequeueLocked(out frame, trackInFlight: true))
                                 return true;
                         }
                         finally
@@ -252,7 +259,7 @@ namespace Unity.FoxgloveSDK.Transport
             var timeoutSeconds = Math.Max(0d, timeout.TotalSeconds);
             lock (_lock)
             {
-                while (CountLocked > 0)
+                while (CountLocked > 0 || _inFlightFrames > 0)
                 {
                     var elapsedSeconds = (Stopwatch.GetTimestamp() - startTimestamp) / (double)Stopwatch.Frequency;
                     var remainingSeconds = timeoutSeconds - elapsedSeconds;
@@ -263,6 +270,19 @@ namespace Unity.FoxgloveSDK.Transport
                 }
 
                 return true;
+            }
+        }
+
+        internal void CompleteSendBatch(int frameCount)
+        {
+            if (frameCount <= 0)
+                return;
+
+            lock (_lock)
+            {
+                _inFlightFrames = Math.Max(0, _inFlightFrames - frameCount);
+                if (CountLocked == 0 && _inFlightFrames == 0)
+                    Monitor.PulseAll(_lock);
             }
         }
 
@@ -303,12 +323,14 @@ namespace Unity.FoxgloveSDK.Transport
                 && frame.SizeBytes <= _maxQueuedBytes - _queuedBytes;
         }
 
-        private bool TryDequeueLocked(out QueuedFrame frame)
+        private bool TryDequeueLocked(out QueuedFrame frame, bool trackInFlight = false)
         {
             if (_controlFrames.Count > 0)
             {
                 frame = _controlFrames.Dequeue();
                 _queuedBytes -= frame.SizeBytes;
+                if (trackInFlight)
+                    _inFlightFrames++;
                 if (CountLocked == 0) Monitor.PulseAll(_lock);
                 return true;
             }
@@ -318,6 +340,8 @@ namespace Unity.FoxgloveSDK.Transport
                 frame = _dataFrames.Dequeue();
                 _queuedBytes -= frame.SizeBytes;
                 _dataQueuedBytes -= frame.SizeBytes;
+                if (trackInFlight)
+                    _inFlightFrames++;
                 if (CountLocked == 0) Monitor.PulseAll(_lock);
                 return true;
             }

@@ -92,5 +92,11 @@ namespace Unity.FoxgloveSDK.IO
         /// zero disables this chunk decompression guard.
         /// </summary>
         public ulong ChunkUncompressedSizeLimit = McapReader.DefaultChunkUncompressedSizeLimit;
+
+        /// <summary>
+        /// Maximum cumulative summary section size accepted while opening an
+        /// indexed reader.
+        /// </summary>
+        public ulong SummarySizeLimit = McapReader.DefaultSummarySizeLimit;
     }
 }

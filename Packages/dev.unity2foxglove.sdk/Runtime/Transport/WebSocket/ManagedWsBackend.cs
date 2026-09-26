@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const int HandshakeTimeoutMs = 5000;
         private const int MaxQueuedCapacityResponses = 64;
         private const int MaxFragmentedMessageBytes = 4 * 1024 * 1024;
-        private const int MaxFragmentedMessageFrames = ManagedWebSocketOptions.DefaultMaxQueuedFrames;
+        private const ushort GoingAwayCloseCode = 1001;
         private const ushort ProtocolErrorCloseCode = 1002;
         private const ushort InvalidPayloadDataCloseCode = 1007;
         private const ushort MessageTooBigCloseCode = 1009;
@@ -258,12 +258,11 @@ namespace Unity.FoxgloveSDK.Transport
 
             try
             {
-                try { cts?.Cancel(); } catch { }
                 try { listener?.Stop(); } catch { }
                 WaitForShutdownTask(acceptLoopTask, StopAcceptLoopWaitMs, "accept loop");
 
                 var disconnects = clients
-                    .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value)))
+                    .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value, initiateGracefulClose: true)))
                     .ToArray();
                 if (disconnects.Length > 0)
                 {
@@ -291,6 +290,11 @@ namespace Unity.FoxgloveSDK.Transport
                     }
                 }
 
+                // Keep established send loops alive until their bounded
+                // graceful-close window has completed. The cancellation also
+                // stops receive/liveness loops before the remaining handlers
+                // are joined below.
+                try { cts?.Cancel(); } catch { }
                 WaitForPublicationTasks(publicationTasks);
 
                 // Give established clients their bounded graceful-close
@@ -390,7 +394,7 @@ namespace Unity.FoxgloveSDK.Transport
         public void ClearDataQueues()
         {
             foreach (var (_, conn) in _clients)
-                conn.ClearDataFrames();
+                RecordDroppedDataFrames(conn.ClearDataFrames());
         }
 
         /// <summary>
@@ -402,7 +406,7 @@ namespace Unity.FoxgloveSDK.Transport
         public void ClearDataQueue(uint clientId)
         {
             if (_clients.TryGetValue(clientId, out var conn))
-                conn.ClearDataFrames();
+                RecordDroppedDataFrames(conn.ClearDataFrames());
         }
 
         /// <summary>Stop the server and release the cancellation token source.</summary>
@@ -415,26 +419,23 @@ namespace Unity.FoxgloveSDK.Transport
 
         /// <summary>
         /// Produce an immutable snapshot of current transport health.
-        /// Drop totals are best-effort under concurrent disconnects: a client
-        /// can move from the active set to the retained aggregate during the snapshot.
+        /// Drop totals are lifetime counters updated at the point each data
+        /// frame is rejected or cleared.
         /// </summary>
         public TransportStatsSnapshot GetStatsSnapshot()
         {
             var clientList = new List<TransportClientStats>();
             long totalQueuedFrames = 0;
             long totalQueuedBytes = 0;
-            long activeDropped = 0;
-
             foreach (var kv in _clients)
             {
                 var cs = kv.Value.GetClientStats(kv.Key);
                 clientList.Add(cs);
                 totalQueuedFrames += cs.QueuedFrames;
                 totalQueuedBytes += cs.QueuedBytes;
-                activeDropped += cs.DroppedDataFrames;
             }
 
-            var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames) + activeDropped;
+            var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames);
 
             return new TransportStatsSnapshot
             {
@@ -1253,6 +1254,8 @@ namespace Unity.FoxgloveSDK.Transport
             byte fragmentedOpcode = 0;
             var fragmentedBytes = 0;
             var fragmentedFrames = 0;
+            var maxFragmentedMessageFrames = ManagedWebSocketOptions.NormalizeMaxFragmentedMessageFrames(
+                _options.MaxFragmentedMessageFrames);
 
             try
             {
@@ -1314,7 +1317,7 @@ namespace Unity.FoxgloveSDK.Transport
                             }
 
                             fragmentedFrames++;
-                            if (fragmentedFrames > MaxFragmentedMessageFrames)
+                            if (fragmentedFrames > maxFragmentedMessageFrames)
                             {
                                 CloseProtocolError(clientId, conn, MessageTooBigCloseCode);
                                 return;
@@ -1401,8 +1404,20 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         /// <summary>Remove the client from the dictionary, fire the disconnected event, and dispose the connection.</summary>
-        private void DisconnectClient(uint clientId, WsConnection conn)
+        private void DisconnectClient(uint clientId, WsConnection conn, bool initiateGracefulClose = false)
         {
+            if (initiateGracefulClose && conn != null)
+            {
+                var closeResult = conn.SendClose(GoingAwayCloseCode);
+                RecordDroppedDataFrames(closeResult.DroppedDataFrames);
+                if (closeResult.ShouldLogDataDrop)
+                {
+                    _logger.LogWarning(
+                        $"Client {clientId} send queue dropped {closeResult.DroppedDataFrames} stale data frame(s) while stopping; total dropped={closeResult.TotalDroppedDataFrames}.");
+                }
+                conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
+            }
+
             // Do not remove or dispose a connection while its connect callback
             // is still executing.  Stop and receive-loop teardown can race this
             // method; deferring the decision preserves connect-before-disconnect
@@ -1415,7 +1430,6 @@ namespace Unity.FoxgloveSDK.Transport
                 try { conn?.Dispose(); } catch { }
                 return;
             }
-            Interlocked.Add(ref _totalDroppedDataFrames, conn.DroppedDataFrames);
             if (announced)
                 Interlocked.Increment(ref _totalDisconnectedClients);
             try
@@ -1491,7 +1505,6 @@ namespace Unity.FoxgloveSDK.Transport
                 CloseUnannouncedClient(conn);
                 return;
             }
-            Interlocked.Add(ref _totalDroppedDataFrames, conn.DroppedDataFrames);
             CloseUnannouncedClient(conn);
         }
 
@@ -1534,6 +1547,7 @@ namespace Unity.FoxgloveSDK.Transport
 
         private void HandleEnqueueResult(uint clientId, WsConnection conn, EnqueueResult result, string operation)
         {
+            RecordDroppedDataFrames(result.DroppedDataFrames);
             if (result.ShouldLogDataDrop)
             {
                 _logger.LogWarning(
@@ -1546,6 +1560,12 @@ namespace Unity.FoxgloveSDK.Transport
                 _logger.LogWarning($"Client {clientId} send queue overflowed on control frame during {operation}; disconnecting.");
                 DisconnectClient(clientId, conn);
             }
+        }
+
+        private void RecordDroppedDataFrames(int count)
+        {
+            if (count > 0)
+                Interlocked.Add(ref _totalDroppedDataFrames, count);
         }
 
     }

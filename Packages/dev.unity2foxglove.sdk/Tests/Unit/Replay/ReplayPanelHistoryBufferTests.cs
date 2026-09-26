@@ -204,6 +204,82 @@ namespace Unity.FoxgloveSDK.Tests.Replay
         }
 
         [Fact]
+        public void BeginClientDrainsTransfersHistoryListOwnership()
+        {
+            var buffer = new ReplayPanelHistoryBuffer();
+            var messages = new List<McapMessage>
+            {
+                new McapMessage { ChannelId = 1, LogTime = 10, Data = new byte[] { 1 } }
+            };
+
+            buffer.BeginClientDrains(
+                10,
+                new Dictionary<uint, List<McapMessage>> { [1] = messages });
+
+            Assert.Same(messages, buffer.DebugGetClientBuffer(1));
+        }
+
+        [Fact]
+        public void TwoTargetedSnapshotsWithinDebounceAreBothConsumed()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 250, 1);
+            state.RequestPanelSnapshot(200, 350, 2);
+
+            Assert.False(state.TryConsumePanelSnapshot(249, out _, out _));
+            Assert.True(state.TryConsumePanelSnapshot(250, out var firstTime, out var firstClient));
+            Assert.Equal(100UL, firstTime);
+            Assert.Equal((uint)1, firstClient);
+            Assert.True(state.TryConsumePanelSnapshot(350, out var secondTime, out var secondClient));
+            Assert.Equal(200UL, secondTime);
+            Assert.Equal((uint)2, secondClient);
+            Assert.False(state.TryConsumePanelSnapshot(350, out _, out _));
+        }
+
+        [Fact]
+        public void ClearingOnePendingTargetedSnapshotPreservesTheOther()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 250, 1);
+            state.RequestPanelSnapshot(200, 250, 2);
+            state.ClearPanelSnapshot(1);
+
+            Assert.True(state.TryConsumePanelSnapshot(250, out var time, out var clientId));
+            Assert.Equal(200UL, time);
+            Assert.Equal((uint)2, clientId);
+            Assert.False(state.TryConsumePanelSnapshot(250, out _, out _));
+        }
+
+        [Fact]
+        public void RepeatedTargetedSnapshotForOneClientCoalescesToLatestRequest()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 250, 1);
+            state.RequestPanelSnapshot(200, 350, 1);
+
+            Assert.False(state.TryConsumePanelSnapshot(250, out _, out _));
+            Assert.True(state.TryConsumePanelSnapshot(350, out var time, out var clientId));
+            Assert.Equal(200UL, time);
+            Assert.Equal((uint)1, clientId);
+            Assert.False(state.TryConsumePanelSnapshot(350, out _, out _));
+        }
+
+        [Fact]
+        public void GlobalSnapshotSupersedesPendingTargetedSnapshots()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 100, 1);
+            state.RequestPanelSnapshot(900, 200);
+            state.RequestPanelSnapshot(300, 0, 2);
+
+            Assert.False(state.TryConsumePanelSnapshot(199, out _, out _));
+            Assert.True(state.TryConsumePanelSnapshot(200, out var time, out var clientId));
+            Assert.Equal(900UL, time);
+            Assert.Null(clientId);
+            Assert.False(state.TryConsumePanelSnapshot(200, out _, out _));
+        }
+
+        [Fact]
         public void ReplaySnapshotHistoryIsFilteredPerClientSubscription()
         {
             var path = Path.Combine(
@@ -258,6 +334,65 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                 Assert.Equal(new byte[] { 2 }, decoded.Find(item => item.clientId == 2).payload);
                 Assert.Equal((uint)11, decoded.Find(item => item.clientId == 1).subscriptionId);
                 Assert.Equal((uint)21, decoded.Find(item => item.clientId == 2).subscriptionId);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void ReplaySnapshotReusesHistoryQueryForEquivalentClientSubscriptions()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "phase192-replay-history-query-cache-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = File.Create(path))
+                using (var recorder = new McapRecorder(stream))
+                {
+                    recorder.AddChannel(1, "/history-query-cache", "json", "", "", "");
+                    recorder.WriteMessage(1, 1, new byte[] { 1 });
+                    recorder.Close();
+                }
+
+                using var transport = new StatsTransport
+                {
+                    Snapshot = new TransportStatsSnapshot
+                    {
+                        Supported = true,
+                        MaxQueuedFramesPerClient = 4,
+                        MaxQueuedBytesPerClient = 4096,
+                        Clients = new[]
+                        {
+                            new TransportClientStats { ClientId = 1, QueuedFrames = 4 },
+                            new TransportClientStats { ClientId = 2, QueuedFrames = 4 }
+                        }
+                    }
+                };
+                using var session = new FoxgloveSession("history-query-cache", transport);
+                using var controller = new ReplayController(new ConsoleLogger(), null, null);
+                controller.Enable(path, SchemaIdentityMode.Off);
+                Assert.True(controller.IsEnabled, controller.LastEnableFailureMessage);
+                controller.RegisterChannels(session);
+                var replayChannelId = (uint)McapReplayEngine.ReplayChannelIdBase | 1u;
+                transport.ReceiveText(1, string.Format(
+                    "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":11,\"channelId\":{0}}}]}}",
+                    replayChannelId));
+                transport.ReceiveText(2, string.Format(
+                    "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":21,\"channelId\":{0}}}]}}",
+                    replayChannelId));
+
+                controller.PublishSnapshot(session, 1);
+
+                var panelHistory = (ReplayPanelHistoryBuffer)typeof(ReplayController)
+                    .GetField("_panelHistory", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(controller);
+                Assert.Same(
+                    panelHistory.DebugGetClientBuffer(1),
+                    panelHistory.DebugGetClientBuffer(2));
             }
             finally
             {

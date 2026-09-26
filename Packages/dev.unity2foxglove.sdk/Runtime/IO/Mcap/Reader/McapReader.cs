@@ -33,6 +33,8 @@ namespace Unity.FoxgloveSDK.IO
         /// Default maximum decompressed size for a single MCAP chunk, set to 64 MiB.
         /// </summary>
         public const ulong DefaultChunkUncompressedSizeLimit = 64UL * 1024 * 1024;
+        /// <summary>Default cumulative summary allocation limit, set to 64 MiB.</summary>
+        public const ulong DefaultSummarySizeLimit = 64UL * 1024 * 1024;
         public McapReader(Stream stream)
         {
             _stream = stream ?? throw new ArgumentNullException(nameof(stream));
@@ -53,7 +55,8 @@ namespace Unity.FoxgloveSDK.IO
         public McapFileSummary ReadSummary(
             ulong recordSizeLimit = DefaultRecordSizeLimit,
             bool validateCrcs = true,
-            ulong chunkUncompressedSizeLimit = DefaultChunkUncompressedSizeLimit)
+            ulong chunkUncompressedSizeLimit = DefaultChunkUncompressedSizeLimit,
+            ulong summarySizeLimit = DefaultSummarySizeLimit)
         {
             if (!_stream.CanSeek)
                 throw new NotSupportedException("McapReader.ReadSummary requires a seekable stream; use McapStreamingReader for non-seekable streams.");
@@ -70,8 +73,7 @@ namespace Unity.FoxgloveSDK.IO
                     chunkUncompressedSizeLimit: chunkUncompressedSizeLimit);
 
             var summaryLen = footerOffset - footer.SummaryStart;
-            if (summaryLen > int.MaxValue)
-                throw new InvalidDataException("MCAP summary section size exceeds int.MaxValue");
+            ValidateSummarySize(summaryLen, summarySizeLimit);
 
             // Read summary section once. The same buffer feeds record parsing and
             // the optional summary CRC, avoiding a second stream pass.
@@ -89,7 +91,8 @@ namespace Unity.FoxgloveSDK.IO
 
         internal McapTrailerInfo ReadTrailerInfo(
             ulong recordSizeLimit = DefaultRecordSizeLimit,
-            bool validateCrcs = true)
+            bool validateCrcs = true,
+            ulong summarySizeLimit = DefaultSummarySizeLimit)
         {
             if (!_stream.CanSeek)
                 throw new NotSupportedException("McapReader.ReadTrailerInfo requires a seekable stream.");
@@ -98,7 +101,7 @@ namespace Unity.FoxgloveSDK.IO
             if (footer.SummaryStart == 0)
                 throw new InvalidDataException("MCAP amendment requires a summary section.");
 
-            var summaryBytes = ReadSummaryBytes(footer.SummaryStart, footerOffset);
+            var summaryBytes = ReadSummaryBytes(footer.SummaryStart, footerOffset, summarySizeLimit);
             ValidateSummaryCrc(
                 summaryBytes,
                 footer.SummaryStart,
@@ -182,6 +185,7 @@ namespace Unity.FoxgloveSDK.IO
             var isFirstRecord = true;
             while ((ulong)_stream.Position < dataSectionEndOffset)
             {
+                var recordStart = (ulong)_stream.Position;
                 var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
                 var recordEnd = (ulong)_stream.Position;
                 if (recordEnd > dataSectionEndOffset)
@@ -198,7 +202,9 @@ namespace Unity.FoxgloveSDK.IO
 
                 if (opcode == McapWriter.OpcodeMessage)
                 {
-                    visitor(McapRecordDecoder.DecodeMessage(content, 0, contentLength));
+                    var message = McapRecordDecoder.DecodeMessage(content, 0, contentLength);
+                    message.SourceOffset = recordStart;
+                    visitor(message);
                     continue;
                 }
 
@@ -212,7 +218,7 @@ namespace Unity.FoxgloveSDK.IO
                         chunkUncompressedSizeLimit);
                     McapChunkReader.EnsureCrcValid(crcValid, validateCrcs);
 
-                    foreach (var message in McapChunkReader.EnumerateMessages(records))
+                    foreach (var message in McapChunkReader.EnumerateMessages(records, chunkStartOffset: recordStart))
                         visitor(message);
                     continue;
                 }
@@ -255,6 +261,7 @@ namespace Unity.FoxgloveSDK.IO
             var isFirstRecord = true;
             while ((ulong)_stream.Position < dataSectionEndOffset)
             {
+                var recordStart = (ulong)_stream.Position;
                 var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
                 var recordEnd = (ulong)_stream.Position;
                 if (recordEnd > dataSectionEndOffset)
@@ -272,6 +279,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (opcode == McapWriter.OpcodeMessage)
                 {
                     var message = McapRecordDecoder.DecodeMessage(content, 0, contentLength);
+                    message.SourceOffset = recordStart;
                     if (ShouldYieldSequentialMessage(message, options, selectedChannelIds))
                     {
                         EnforceSequentialMessageLimits(
@@ -296,7 +304,7 @@ namespace Unity.FoxgloveSDK.IO
                         options.ChunkUncompressedSizeLimit);
                     McapChunkReader.EnsureCrcValid(crcValid, options.ValidateCrcs);
 
-                    foreach (var message in McapChunkReader.EnumerateMessages(records))
+                    foreach (var message in McapChunkReader.EnumerateMessages(records, chunkStartOffset: recordStart))
                     {
                         if (!ShouldYieldSequentialMessage(message, options, selectedChannelIds))
                             continue;
@@ -492,16 +500,27 @@ namespace Unity.FoxgloveSDK.IO
                     throw new InvalidDataException($"MCAP {location} magic mismatch");
         }
 
-        private byte[] ReadSummaryBytes(ulong summaryStart, ulong footerOffset)
+        private byte[] ReadSummaryBytes(
+            ulong summaryStart,
+            ulong footerOffset,
+            ulong summarySizeLimit)
         {
             var summaryLen = footerOffset - summaryStart;
-            if (summaryLen > int.MaxValue)
-                throw new InvalidDataException("MCAP summary section size exceeds int.MaxValue");
+            ValidateSummarySize(summaryLen, summarySizeLimit);
 
             _stream.Seek(ToSeekOffset(summaryStart, "summary_start"), SeekOrigin.Begin);
             var summaryBytes = new byte[(int)summaryLen];
             ReadExact(summaryBytes, 0, summaryBytes.Length);
             return summaryBytes;
+        }
+
+        private static void ValidateSummarySize(ulong summaryLength, ulong summarySizeLimit)
+        {
+            if (summaryLength > summarySizeLimit)
+                throw new InvalidDataException(
+                    $"MCAP summary section size {summaryLength} exceeds limit {summarySizeLimit}.");
+            if (summaryLength > int.MaxValue)
+                throw new InvalidDataException("MCAP summary section size exceeds int.MaxValue");
         }
 
         private static void ValidateSummaryCrc(
@@ -597,17 +616,23 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// Parses MCAP messages from decompressed chunk data, optionally filtering by channel ID.
         /// </summary>
-        public List<McapMessage> ReadChunkMessages(byte[] uncompressedRecords, ushort? filterChannelId = null)
+        public List<McapMessage> ReadChunkMessages(
+            byte[] uncompressedRecords,
+            ushort? filterChannelId = null,
+            ulong chunkStartOffset = 0)
         {
-            return McapChunkReader.ReadMessages(uncompressedRecords, filterChannelId);
+            return McapChunkReader.ReadMessages(uncompressedRecords, filterChannelId, chunkStartOffset);
         }
 
         /// <summary>
         /// Enumerates MCAP messages from decompressed chunk data, optionally filtering by channel ID.
         /// </summary>
-        public IEnumerable<McapMessage> EnumerateChunkMessages(byte[] uncompressedRecords, ushort? filterChannelId = null)
+        public IEnumerable<McapMessage> EnumerateChunkMessages(
+            byte[] uncompressedRecords,
+            ushort? filterChannelId = null,
+            ulong chunkStartOffset = 0)
         {
-            return McapChunkReader.EnumerateMessages(uncompressedRecords, filterChannelId);
+            return McapChunkReader.EnumerateMessages(uncompressedRecords, filterChannelId, chunkStartOffset);
         }
 
         private McapFileSummary ScanDataSection(
@@ -662,13 +687,16 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// Seeks to the given offset and reads a single attachment record.
         /// </summary>
-        public McapAttachment ReadAttachmentAt(ulong offset)
+        public McapAttachment ReadAttachmentAt(ulong offset, bool validateCrcs = true)
         {
             _stream.Seek(ToSeekOffset(offset, "attachment"), SeekOrigin.Begin);
             var (opcode, content, contentLength) = ReadOneRecordSegment();
             if (opcode != McapWriter.OpcodeAttachment)
                 throw new InvalidDataException($"Expected Attachment (0x09) at offset {offset}, got 0x{opcode:X2}");
-            return McapRecordDecoder.DecodeAttachment(content, 0, contentLength);
+            var attachment = McapRecordDecoder.DecodeAttachment(content, 0, contentLength);
+            if (validateCrcs && !attachment.CrcValid)
+                throw new InvalidDataException("MCAP attachment CRC mismatch.");
+            return attachment;
         }
 
         /// <summary>
@@ -683,60 +711,57 @@ namespace Unity.FoxgloveSDK.IO
             return McapRecordDecoder.DecodeMetadata(content, 0, contentLength);
         }
 
-        /// <summary>
-        /// Finds a metadata record by scanning the data section when the file
-        /// omits optional Metadata Index records.
-        /// </summary>
-        internal McapMetadata FindMetadataInDataSection(
-            string name,
-            ulong dataSectionEndOffset,
-            ulong recordSizeLimit = DefaultRecordSizeLimit)
+        /// <summary>Lightweight location for a metadata record in the data section.</summary>
+        internal readonly struct McapMetadataRecordIndex
         {
-            if (string.IsNullOrEmpty(name) || !_stream.CanSeek)
-                return null;
-
-            _stream.Seek(McapWriter.MagicLength, SeekOrigin.Begin);
-            while ((ulong)_stream.Position < dataSectionEndOffset)
+            internal McapMetadataRecordIndex(ulong offset, ulong length)
             {
-                var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
-                if ((ulong)_stream.Position > dataSectionEndOffset)
-                    throw new InvalidDataException("MCAP metadata scan crossed the data section boundary.");
-                if (opcode != McapWriter.OpcodeMetadata)
-                    continue;
-
-                var metadata = McapRecordDecoder.DecodeMetadata(content, 0, contentLength);
-                if (metadata != null && string.Equals(metadata.Name, name, StringComparison.Ordinal))
-                    return metadata;
+                Offset = offset;
+                Length = length;
             }
 
-            return null;
+            internal ulong Offset { get; }
+            internal ulong Length { get; }
         }
 
-        /// <summary>
-        /// Reads all metadata records in the data section, retaining the first
-        /// record for each name so callers can safely recover from a partial
-        /// Metadata Index without repeating the scan for every lookup.
-        /// </summary>
-        internal Dictionary<string, McapMetadata> ReadMetadataInDataSection(
+        /// <summary>Builds a bounded name-to-record-location index without retaining decoded metadata.</summary>
+        internal Dictionary<string, McapMetadataRecordIndex> BuildMetadataIndexInDataSection(
             ulong dataSectionEndOffset,
+            int maxRecords = McapSequentialReadLimits.DefaultMaxMetadataRecords,
+            long maxBytes = McapSequentialReadLimits.DefaultMaxMetadataBytes,
             ulong recordSizeLimit = DefaultRecordSizeLimit)
         {
-            var metadataByName = new Dictionary<string, McapMetadata>(StringComparer.Ordinal);
             if (!_stream.CanSeek)
-                return metadataByName;
+                return new Dictionary<string, McapMetadataRecordIndex>(StringComparer.Ordinal);
+            if (maxRecords < 0 || maxBytes < 0)
+                throw new ArgumentOutOfRangeException("metadata limits");
 
+            var metadataByName = new Dictionary<string, McapMetadataRecordIndex>(StringComparer.Ordinal);
+            var metadataRecords = 0;
+            long metadataBytes = 0;
             _stream.Seek(McapWriter.MagicLength, SeekOrigin.Begin);
             while ((ulong)_stream.Position < dataSectionEndOffset)
             {
+                var recordStart = (ulong)_stream.Position;
                 var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
-                if ((ulong)_stream.Position > dataSectionEndOffset)
+                var recordEnd = (ulong)_stream.Position;
+                if (recordEnd > dataSectionEndOffset)
                     throw new InvalidDataException("MCAP metadata scan crossed the data section boundary.");
                 if (opcode != McapWriter.OpcodeMetadata)
                     continue;
+
+                metadataRecords++;
+                metadataBytes = checked(metadataBytes + (long)(recordEnd - recordStart));
+                if (maxRecords > 0 && metadataRecords > maxRecords)
+                    throw new InvalidOperationException(
+                        "MCAP metadata fallback exceeded MaxMetadataRecords=" + maxRecords + ".");
+                if (maxBytes > 0 && metadataBytes > maxBytes)
+                    throw new InvalidOperationException(
+                        "MCAP metadata fallback exceeded MaxMetadataBytes=" + maxBytes + ".");
 
                 var metadata = McapRecordDecoder.DecodeMetadata(content, 0, contentLength);
                 if (metadata?.Name != null && !metadataByName.ContainsKey(metadata.Name))
-                    metadataByName.Add(metadata.Name, metadata);
+                    metadataByName.Add(metadata.Name, new McapMetadataRecordIndex(recordStart, recordEnd - recordStart));
             }
 
             return metadataByName;
