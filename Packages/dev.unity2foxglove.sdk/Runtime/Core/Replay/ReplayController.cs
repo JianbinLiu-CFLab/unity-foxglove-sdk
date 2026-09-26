@@ -8,6 +8,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.IO;
@@ -355,6 +356,7 @@ namespace Unity.FoxgloveSDK.Core
                     else
                     {
                         var clientBuffers = new Dictionary<uint, List<McapMessage>>();
+                        var historyQueryCache = new Dictionary<HistoryQueryKey, List<McapMessage>>();
                         foreach (var clientId in subscribedClients)
                         {
                             var clientChannels = session.SnapshotSubscribedChannelIds(clientId);
@@ -370,13 +372,21 @@ namespace Unity.FoxgloveSDK.Core
                                 startNs,
                                 clampedTo,
                                 ScrubHistoryWindowNs);
-                            var clientBuffer = new List<McapMessage>();
-                            _replayEngine.History(
+                            var queryKey = new HistoryQueryKey(
                                 clientFromNs,
                                 clampedTo,
-                                clientBuffer,
-                                ScrubHistoryMaxMessagesPerRequest,
-                                replayChannels);
+                                BuildHistoryChannelKey(replayChannels));
+                            if (!historyQueryCache.TryGetValue(queryKey, out var clientBuffer))
+                            {
+                                clientBuffer = new List<McapMessage>();
+                                _replayEngine.History(
+                                    clientFromNs,
+                                    clampedTo,
+                                    clientBuffer,
+                                    ScrubHistoryMaxMessagesPerRequest,
+                                    replayChannels);
+                                historyQueryCache.Add(queryKey, clientBuffer);
+                            }
                             clientBuffers[clientId] = clientBuffer;
                         }
 
@@ -700,6 +710,8 @@ namespace Unity.FoxgloveSDK.Core
                 + " rejectedPayloadBytes="
                 + overflow.RejectedBytes
                 + " droppedCallbacks="
+                + overflow.DroppedFrames
+                + " droppedBatches="
                 + overflow.DroppedCount
                 + " droppedPayloadBytes="
                 + overflow.DroppedBytes
@@ -735,6 +747,57 @@ namespace Unity.FoxgloveSDK.Core
                 return Math.Max(1, dispatch.MessageBatch.Count);
 
             return dispatch.MessageContext.HasValue || dispatch.IsBatch ? 1 : 0;
+        }
+
+        private static string BuildHistoryChannelKey(ISet<ushort> channelIds)
+        {
+            if (channelIds == null || channelIds.Count == 0)
+                return string.Empty;
+
+            var sorted = new List<ushort>(channelIds);
+            sorted.Sort();
+            var builder = new StringBuilder(sorted.Count * 6);
+            for (var i = 0; i < sorted.Count; i++)
+            {
+                if (i > 0)
+                    builder.Append(',');
+                builder.Append(sorted[i]);
+            }
+
+            return builder.ToString();
+        }
+
+        private readonly struct HistoryQueryKey : IEquatable<HistoryQueryKey>
+        {
+            public HistoryQueryKey(ulong fromNs, ulong toNs, string channelKey)
+            {
+                FromNs = fromNs;
+                ToNs = toNs;
+                ChannelKey = channelKey ?? string.Empty;
+            }
+
+            private ulong FromNs { get; }
+            private ulong ToNs { get; }
+            private string ChannelKey { get; }
+
+            public bool Equals(HistoryQueryKey other)
+                => FromNs == other.FromNs
+                   && ToNs == other.ToNs
+                   && string.Equals(ChannelKey, other.ChannelKey, StringComparison.Ordinal);
+
+            public override bool Equals(object obj)
+                => obj is HistoryQueryKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = FromNs.GetHashCode();
+                    hash = (hash * 397) ^ ToNs.GetHashCode();
+                    hash = (hash * 397) ^ StringComparer.Ordinal.GetHashCode(ChannelKey);
+                    return hash;
+                }
+            }
         }
 
         private bool IsReplayCallbackCurrent(long generation)

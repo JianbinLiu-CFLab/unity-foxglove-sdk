@@ -148,6 +148,26 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void GeneratedAfterAdmissionSeamsRequireAnAdmissionCredit()
+        {
+            var disposed = new List<int>();
+            using var stream = new FoxRunStream<int>(
+                new FoxRunStreamOptions(2, 1d, 1),
+                () => 0L,
+                1L);
+
+            Assert.False(stream.TryEnqueueOwnedAfterAdmission(1, disposed.Add));
+            Assert.Equal(new[] { 1 }, disposed);
+
+            Assert.False(stream.TryEnqueueDeferredOwnedAfterAdmission(
+                2,
+                static value => value,
+                disposed.Add,
+                static _ => { }));
+            Assert.Equal(new[] { 1, 2 }, disposed);
+        }
+
+        [Fact]
         public void ExtremelySmallFiniteRateCannotOverflowIntoAnUnlimitedAdmissionGate()
         {
             long timestamp = 0;

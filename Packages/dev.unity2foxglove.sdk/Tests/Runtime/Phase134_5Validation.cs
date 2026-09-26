@@ -128,9 +128,12 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText(FoxRunHubPath);
             Check(source.Contains("private readonly HashSet<string> _reportedFailures", StringComparison.Ordinal)
+                  && source.Contains("private readonly Queue<string> _reportedFailureOrder", StringComparison.Ordinal)
+                  && source.Contains("MaximumReportedFailures = 256", StringComparison.Ordinal)
                   && source.Contains("private void WarnOnce(", StringComparison.Ordinal)
-                  && source.Contains("!_reportedFailures.Add(message)", StringComparison.Ordinal),
-                "134-5B-1: FoxRun hub tracks keyed one-time source failure warnings");
+                  && source.Contains("!_reportedFailures.Add(key)", StringComparison.Ordinal)
+                  && source.Contains("_reportedFailureOrder.Dequeue()", StringComparison.Ordinal),
+                "134-5B-1: FoxRun hub tracks stable, bounded one-time source failure warnings");
             Check(source.Contains("TryPublishScheduled(", StringComparison.Ordinal)
                   && source.Contains("source,", StringComparison.Ordinal)
                   && source.Contains("state.Topics[index],", StringComparison.Ordinal)
@@ -149,10 +152,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-5B-4: FoxRun trigger publishes return false instead of throwing on generated source failure");
             Check(source.Contains("source?.GetType().FullName", StringComparison.Ordinal)
                   && source.Contains("+ topicIndex", StringComparison.Ordinal)
-                  && source.Contains("+ exception.GetType().FullName", StringComparison.Ordinal)
-                  && source.Contains("+ exception.Message", StringComparison.Ordinal)
+                  && source.Contains("var exceptionType = exception?.GetType().FullName", StringComparison.Ordinal)
+                  && source.Contains("var key = sourceType", StringComparison.Ordinal)
+                  && source.Contains("var message = key + \"|\"", StringComparison.Ordinal)
                   && source.Contains("Debug.LogWarning(\"[FoxRun] \" + message)", StringComparison.Ordinal),
-                "134-5B-5: FoxRun source failure warnings identify source, topic, exception type, and message while suppressing repeats");
+                "134-5B-5: FoxRun source failure warnings use stable identity and retain detail in the first message");
 
             var update = Slice(source, "private void Update()", "private void ResolveManager()");
             Check(!update.Contains("FoxgloveLog_Publish", StringComparison.Ordinal)

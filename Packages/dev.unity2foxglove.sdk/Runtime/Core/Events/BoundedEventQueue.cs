@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Core
         private int _queuedFrames;
         private long _queuedBytes;
         private long _droppedCount;
+        private long _droppedFrames;
         private long _droppedBytes;
 
         public BoundedEventQueue(
@@ -53,12 +54,14 @@ namespace Unity.FoxgloveSDK.Core
                     || (_hasByteBudget && _queuedBytes + itemBytes > _maxBytes))
                 {
                     _droppedCount++;
+                    _droppedFrames += itemFrames;
                     _droppedBytes += itemBytes;
                     overflow = new BoundedEventQueueOverflow(
                         _queuedFrames,
                         _queuedBytes,
                         itemBytes,
                         _droppedCount,
+                        _droppedFrames,
                         _droppedBytes);
                     return false;
                 }
@@ -114,6 +117,7 @@ namespace Unity.FoxgloveSDK.Core
                 _queuedFrames = 0;
                 _queuedBytes = 0;
                 _droppedCount = 0;
+                _droppedFrames = 0;
                 _droppedBytes = 0;
             }
         }
@@ -142,6 +146,15 @@ namespace Unity.FoxgloveSDK.Core
             {
                 lock (_lock)
                     return _droppedCount;
+            }
+        }
+
+        public long DroppedFrames
+        {
+            get
+            {
+                lock (_lock)
+                    return _droppedFrames;
             }
         }
 
@@ -179,12 +192,14 @@ namespace Unity.FoxgloveSDK.Core
             long queuedBytes,
             long rejectedBytes,
             long droppedCount,
+            long droppedFrames,
             long droppedBytes)
         {
             QueuedFrames = queuedFrames;
             QueuedBytes = queuedBytes;
             RejectedBytes = rejectedBytes;
             DroppedCount = droppedCount;
+            DroppedFrames = droppedFrames;
             DroppedBytes = droppedBytes;
         }
 
@@ -192,6 +207,8 @@ namespace Unity.FoxgloveSDK.Core
         public long QueuedBytes { get; }
         public long RejectedBytes { get; }
         public long DroppedCount { get; }
+        /// <summary>Total weighted frames rejected by the queue.</summary>
+        public long DroppedFrames { get; }
         public long DroppedBytes { get; }
     }
 }

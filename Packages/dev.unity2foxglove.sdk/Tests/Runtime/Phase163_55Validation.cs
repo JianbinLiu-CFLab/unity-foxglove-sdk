@@ -86,8 +86,9 @@ namespace Unity.FoxgloveSDK.Tests
             var dataStream = ExtractMethodBody(source, "public RemoteMcapDataStreamResponse GetDataStream");
 
             Check(directFile.Contains("!string.IsNullOrEmpty(request.SourceId)", StringComparison.Ordinal)
-                  && dataStream.Contains("if (!string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))", StringComparison.Ordinal),
-                "163-55D-2: direct file route may omit sourceId while /v1/data keeps explicit source identity");
+                  && dataStream.Contains("GetCurrentSourceId()", StringComparison.Ordinal)
+                  && source.Contains("_baseSourceId", StringComparison.Ordinal),
+                "163-55D-2: direct file route may omit sourceId while data requests enforce generation-aware identity");
         }
 
         private static string ExtractMethodBody(string source, string signature)
@@ -106,7 +107,13 @@ namespace Unity.FoxgloveSDK.Tests
             if (methodName.Length == 0)
                 return string.Empty;
 
-            var declaration = PhaseValidationSourceHelpers.TrySourceMethod(source, methodName);
+            var bodyMarker = methodName == "GetDataStream"
+                ? "RemoteMcapRangeWriter.CreateSlice"
+                : "new FileStream(";
+            var declaration = PhaseValidationSourceHelpers.SourceMethodContaining(
+                source,
+                methodName,
+                bodyMarker);
             if (string.IsNullOrEmpty(declaration))
                 return string.Empty;
             var brace = declaration.IndexOf('{');

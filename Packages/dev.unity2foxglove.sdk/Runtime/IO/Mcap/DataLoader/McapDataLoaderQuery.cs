@@ -27,8 +27,10 @@ namespace Unity.FoxgloveSDK.IO
         public List<string> Topics = new List<string>();
 
         /// <summary>
-        /// Latest-message cap. Defaults to <see cref="DefaultMaxMessages"/> to avoid materializing very large
-        /// query results by accident; set to zero to opt in to an unlimited query.
+        /// Bounded result count. Eager log-time queries retain the latest matching messages;
+        /// lazy file-order queries retain the first matching messages because they are
+        /// forward-only. Defaults to <see cref="DefaultMaxMessages"/>; set to zero to opt
+        /// in to an unlimited query.
         /// </summary>
         public int MaxMessages = DefaultMaxMessages;
     }

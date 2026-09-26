@@ -94,6 +94,18 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void WeightedQueueOverflowReportsItemsAndFramesSeparately()
+        {
+            var queue = new BoundedEventQueue<int>(4, 0, null, _ => 3);
+            Assert.True(queue.TryEnqueue(1, out _));
+
+            Assert.False(queue.TryEnqueue(2, out var overflow));
+            Assert.Equal(1L, overflow.DroppedCount);
+            Assert.Equal(3L, overflow.DroppedFrames);
+            Assert.Equal(3L, queue.DroppedFrames);
+        }
+
+        [Fact]
         public void CompiledManagerDrainRejectsStampedEventFromDifferentEpoch()
         {
             var manager = new FoxgloveManager();

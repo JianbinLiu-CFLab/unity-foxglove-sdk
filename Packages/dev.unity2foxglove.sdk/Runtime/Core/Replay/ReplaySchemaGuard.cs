@@ -35,7 +35,8 @@ namespace Unity.FoxgloveSDK.Core
 
             if (metadata.Metadata == null || !metadata.Metadata.TryGetValue("value", out var value))
                 return FoxRunSchemaMcapMetadata.CreateMalformedRecordedResult(
-                    "Metadata record is missing the value entry.");
+                    "Metadata record is missing the value entry.",
+                    identityMode);
 
             return FoxRunSchemaMcapMetadata.EvaluateRecordedJson(
                 value, FoxRunSchemaInfoRegistry.Current, identityMode);

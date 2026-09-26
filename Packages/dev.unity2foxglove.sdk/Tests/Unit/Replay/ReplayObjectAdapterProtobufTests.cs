@@ -69,5 +69,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.NotNull(entry);
             Assert.Null(entry.GetType().GetProperty("Binding")?.GetValue(entry));
         }
+
+        [Fact]
+        public void ReplayProtobufParserBoundsNegativeCacheEntries()
+        {
+            var maxEntries = (int)typeof(ReplayProtobufParser)
+                .GetField("MaxNegativeCacheEntries", BindingFlags.Static | BindingFlags.NonPublic)
+                .GetRawConstantValue();
+
+            for (var index = 0; index < maxEntries + 16; index++)
+            {
+                var typeName = "Missing.ReplayTypeForBoundedNegativeCache" + index;
+                Assert.Throws<InvalidOperationException>(() =>
+                    ReplayProtobufParser.Parse(typeName, Array.Empty<byte>()));
+            }
+
+            var cache = typeof(ReplayProtobufParser).GetField(
+                "ProtobufParserCache",
+                BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null) as IDictionary;
+            Assert.NotNull(cache);
+            Assert.True(cache.Count <= maxEntries);
+        }
     }
 }

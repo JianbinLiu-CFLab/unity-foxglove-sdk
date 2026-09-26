@@ -25,10 +25,12 @@ namespace Unity.FoxgloveSDK.Core
         internal bool DebugActive => _active;
         internal int DebugBufferedCount => _buffer.Count;
         internal int DebugClientDrainCount => _clientDrains.Count;
+        internal List<McapMessage> DebugGetClientBuffer(uint clientId)
+            => _clientDrains.TryGetValue(clientId, out var state) ? state.Buffer : null;
 
         private sealed class ClientDrainState
         {
-            internal readonly List<McapMessage> Buffer = new();
+            internal List<McapMessage> Buffer = new();
             internal int Offset;
             internal ulong ParkTimeNs;
             internal bool Active;
@@ -112,11 +114,10 @@ namespace Unity.FoxgloveSDK.Core
             {
                 var state = new ClientDrainState
                 {
+                    Buffer = pair.Value ?? new List<McapMessage>(),
                     ParkTimeNs = parkTimeNs,
                     Active = true
                 };
-                if (pair.Value != null)
-                    state.Buffer.AddRange(pair.Value);
                 _clientDrains[pair.Key] = state;
             }
         }
@@ -269,7 +270,7 @@ namespace Unity.FoxgloveSDK.Core
 
                     state.LastHistoryTimeNs = state.ParkTimeNs;
                     state.HasHistoryTime = true;
-                    state.Buffer.Clear();
+                    state.Buffer = null;
                     state.Offset = 0;
                     state.ParkTimeNs = 0;
                     state.Active = false;

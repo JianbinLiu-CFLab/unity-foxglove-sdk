@@ -29,6 +29,35 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void InitializeReturnsIndependentSnapshots()
+        {
+            using var stream = BuildTwoChannelMcap();
+            using var loader = new McapDataLoader(stream, leaveOpen: true);
+
+            var first = loader.Initialize();
+            first.Channels[0].Topic = "mutated";
+            first.Channels.Clear();
+
+            var second = loader.Initialize();
+            Assert.Equal(2, second.Channels.Count);
+            Assert.Equal("/a", second.Channels[0].Topic);
+        }
+
+        [Fact]
+        public void EagerAndLazyMaxMessagesUseDocumentedRetentionPolicies()
+        {
+            using var stream = BuildOrderedMessagesMcap();
+            using var loader = new McapDataLoader(stream, leaveOpen: true);
+            var query = new McapDataLoaderQuery { MaxMessages = 2 };
+
+            var eager = loader.CreateIterator(query).Select(message => message.LogTime).ToArray();
+            var lazy = loader.CreateLazyIterator(query).Select(message => message.LogTime).ToArray();
+
+            Assert.Equal(new ulong[] { 2, 3 }, eager);
+            Assert.Equal(new ulong[] { 1, 2 }, lazy);
+        }
+
+        [Fact]
         public void AmendmentStatisticsAccumulateRecordsWhenIndexesWereOmitted()
         {
             var path = Path.Combine(Path.GetTempPath(), "mcap-amendment-review-" + Guid.NewGuid().ToString("N") + ".mcap");
@@ -80,6 +109,18 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void MetadataLookupRejectsAnIndexPointingAtTheWrongRecord()
+        {
+            using var stream = BuildPartiallyIndexedMetadataMcap("unindexed");
+            using var reader = new McapIndexedReader(stream, leaveOpen: true);
+
+            var metadata = reader.FindMetadata("unindexed");
+
+            Assert.NotNull(metadata);
+            Assert.Equal("fallback", metadata.Metadata["k"]);
+        }
+
+        [Fact]
         public void ReplayMetadataLookupFallsBackWhenMetadataIndexIsPartial()
         {
             var path = Path.Combine(Path.GetTempPath(), "mcap-replay-partial-metadata-" + Guid.NewGuid().ToString("N") + ".mcap");
@@ -99,6 +140,51 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
                 if (File.Exists(path)) File.Delete(path);
             }
+        }
+
+        [Fact]
+        public void MetadataFallbackReturnsFreshValuesAndHonorsCumulativeBounds()
+        {
+            using (var stream = BuildMetadataWithoutIndexMcap())
+            using (var reader = new McapIndexedReader(stream, leaveOpen: true))
+            {
+                var first = reader.FindMetadata("review");
+                first.Metadata["k"] = "caller mutation";
+
+                var second = reader.FindMetadata("review");
+                Assert.Equal("v", second.Metadata["k"]);
+            }
+
+            using (var stream = BuildPartiallyIndexedMetadataMcap())
+            using (var reader = new McapReader(stream))
+            {
+                var summary = reader.ReadSummary();
+                Assert.Throws<InvalidOperationException>(() =>
+                    reader.BuildMetadataIndexInDataSection(
+                        summary.DataSectionEndOffset,
+                        maxRecords: 1,
+                        maxBytes: 0));
+            }
+        }
+
+        [Fact]
+        public void LatestTieUsesStableSourcePositionAcrossSequentialCandidates()
+        {
+            using var stream = BuildTieMcap();
+            using var reader = new McapReader(stream);
+            var summary = reader.ReadSummary();
+            var latest = new Dictionary<ushort, McapMessage>();
+            reader.VisitSequentialMessages(
+                summary.DataSectionEndOffset,
+                message => McapLatestAtQuery.ConsiderLatestCandidate(
+                    message,
+                    new McapReadOptions { EndTimeNs = 100 },
+                    null,
+                    latest));
+
+            Assert.Single(latest);
+            Assert.Equal(new byte[] { 2 }, latest[1].Data);
+            Assert.True(latest[1].SourceOffset > 0);
         }
 
         private static MemoryStream BuildTwoChannelMcap()
@@ -126,6 +212,39 @@ namespace Unity.FoxgloveSDK.UnitTests
                 };
                 summary.Channels.Add(new McapChannel { Id = 1, Topic = "/a", MessageEncoding = "json" });
                 summary.Channels.Add(new McapChannel { Id = 2, Topic = "/b", MessageEncoding = "json" });
+                McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
+                writer.WriteMagic();
+                writer.Flush();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream BuildOrderedMessagesMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "retention");
+                writer.WriteChannel(1, 0, "/ordered", "json", new Dictionary<string, string>());
+                writer.WriteMessage(1, 1, 1, 1, new byte[] { 1 });
+                writer.WriteMessage(1, 2, 2, 2, new byte[] { 2 });
+                writer.WriteMessage(1, 3, 3, 3, new byte[] { 3 });
+                writer.WriteDataEnd();
+                var summary = new McapFileSummary
+                {
+                    Statistics = new McapStatistics
+                    {
+                        MessageCount = 3,
+                        ChannelCount = 1,
+                        MessageStartTime = 1,
+                        MessageEndTime = 3,
+                        ChannelMessageCounts = new Dictionary<ushort, ulong> { [1] = 3 }
+                    }
+                };
+                summary.Channels.Add(new McapChannel { Id = 1, Topic = "/ordered", MessageEncoding = "json" });
                 McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
                 writer.WriteMagic();
                 writer.Flush();
@@ -183,7 +302,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             return stream;
         }
 
-        private static MemoryStream BuildPartiallyIndexedMetadataMcap()
+        private static MemoryStream BuildPartiallyIndexedMetadataMcap(string indexedName = "indexed")
         {
             var stream = new MemoryStream();
             using (var writer = new McapWriter(stream, leaveOpen: true))
@@ -203,8 +322,40 @@ namespace Unity.FoxgloveSDK.UnitTests
                 {
                     Offset = indexedOffset,
                     Length = indexedLength,
-                    Name = "indexed"
+                    Name = indexedName
                 });
+                McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
+                writer.WriteMagic();
+                writer.Flush();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream BuildTieMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "tie");
+                writer.WriteChannel(1, 0, "/tie", "json", new Dictionary<string, string>());
+                writer.WriteMessage(1, 7, 100, 100, new byte[] { 1 });
+                writer.WriteMessage(1, 7, 100, 100, new byte[] { 2 });
+                writer.WriteDataEnd();
+                var summary = new McapFileSummary
+                {
+                    Statistics = new McapStatistics
+                    {
+                        MessageCount = 2,
+                        ChannelCount = 1,
+                        MessageStartTime = 100,
+                        MessageEndTime = 100,
+                        ChannelMessageCounts = new Dictionary<ushort, ulong> { [1] = 2 }
+                    }
+                };
+                summary.Channels.Add(new McapChannel { Id = 1, Topic = "/tie", MessageEncoding = "json" });
                 McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
                 writer.WriteMagic();
                 writer.Flush();

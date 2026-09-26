@@ -365,17 +365,40 @@ namespace Unity.FoxgloveSDK.Components
             => new FoxRunReplaySchemaGuardResult(
                 FoxRunReplaySchemaGuardState.MalformedRecorded,
                 false,
-                "Recorded FoxRun schema metadata is malformed; replay will continue without schema hash enforcement. " +
+                "Recorded FoxRun schema metadata is malformed. " +
                 (string.IsNullOrWhiteSpace(detail) ? string.Empty : detail),
                 string.Empty,
                 string.Empty);
+
+        public static FoxRunReplaySchemaGuardResult CreateMalformedRecordedResult(
+            string detail,
+            SchemaIdentityMode identityMode)
+            => ApplyMalformedPolicy(
+                CreateMalformedRecordedResult(detail),
+                identityMode);
+
+        private static FoxRunReplaySchemaGuardResult ApplyMalformedPolicy(
+            FoxRunReplaySchemaGuardResult malformed,
+            SchemaIdentityMode identityMode)
+        {
+            var isBlocking = identityMode == SchemaIdentityMode.Strict;
+            return new FoxRunReplaySchemaGuardResult(
+                malformed.State,
+                isBlocking,
+                malformed.Message
+                + (isBlocking
+                    ? " Replay blocked by strict schema identity policy."
+                    : " Replay will continue without schema hash enforcement."),
+                malformed.RecordedGlobalManifestHash,
+                malformed.CurrentGlobalManifestHash);
+        }
 
         public static FoxRunReplaySchemaGuardResult EvaluateRecordedJson(
             string recordedJson,
             FoxRunSchemaManifestInfo current)
         {
             if (!TryParseJson(recordedJson, out var recorded, out var error))
-                return CreateMalformedRecordedResult(error);
+                return CreateMalformedRecordedResult(error, SchemaIdentityMode.Warn);
 
             return Evaluate(recorded, current);
         }
@@ -386,17 +409,7 @@ namespace Unity.FoxgloveSDK.Components
             SchemaIdentityMode identityMode)
         {
             if (!TryParseJson(recordedJson, out var recorded, out var error))
-            {
-                var malformed = CreateMalformedRecordedResult(error);
-                if (identityMode != SchemaIdentityMode.Strict)
-                    return malformed;
-                return new FoxRunReplaySchemaGuardResult(
-                    malformed.State,
-                    true,
-                    malformed.Message + " Replay blocked by strict schema identity policy.",
-                    malformed.RecordedGlobalManifestHash,
-                    malformed.CurrentGlobalManifestHash);
-            }
+                return CreateMalformedRecordedResult(error, identityMode);
             return Evaluate(recorded, current, identityMode);
         }
 
@@ -457,7 +470,9 @@ namespace Unity.FoxgloveSDK.Components
 
             var recordedHash = recorded.GlobalManifestHash ?? string.Empty;
             if (string.IsNullOrWhiteSpace(recordedHash))
-                return CreateMalformedRecordedResult("globalManifestHash is missing");
+                return CreateMalformedRecordedResult(
+                    "globalManifestHash is missing",
+                    SchemaIdentityMode.Warn);
 
             if (!HasUsableHash(current))
             {

@@ -38,11 +38,36 @@ namespace Unity.FoxgloveSDK.Components
     {
         private static readonly object Gate = new object();
         private static readonly List<FoxRunProviderFailureDiagnostic> Values = new List<FoxRunProviderFailureDiagnostic>();
+        private static ulong _currentGeneration;
+        private static bool _hasCurrentGeneration;
 
         public static IReadOnlyList<FoxRunProviderFailureDiagnostic> Snapshot()
         {
             lock (Gate)
-                return Values.ToArray();
+                return SnapshotLocked(_hasCurrentGeneration
+                    ? _currentGeneration
+                    : (ulong?)null);
+        }
+
+        public static IReadOnlyList<FoxRunProviderFailureDiagnostic> Snapshot(
+            ulong generation)
+        {
+            lock (Gate)
+                return SnapshotLocked(generation);
+        }
+
+        public static void BeginGeneration(ulong generation)
+        {
+            lock (Gate)
+            {
+                _currentGeneration = generation;
+                _hasCurrentGeneration = true;
+                for (var index = Values.Count - 1; index >= 0; index--)
+                {
+                    if (Values[index].Generation != generation)
+                        Values.RemoveAt(index);
+                }
+            }
         }
 
         public static void Record(
@@ -62,6 +87,13 @@ namespace Unity.FoxgloveSDK.Components
                 topic);
             lock (Gate)
             {
+                if (!_hasCurrentGeneration)
+                {
+                    _currentGeneration = generation;
+                    _hasCurrentGeneration = true;
+                }
+                if (_currentGeneration != generation)
+                    return;
                 if (Values.Count == 32)
                     Values.RemoveAt(0);
                 Values.Add(diagnostic);
@@ -71,7 +103,26 @@ namespace Unity.FoxgloveSDK.Components
         public static void Clear()
         {
             lock (Gate)
+            {
                 Values.Clear();
+                _currentGeneration = 0;
+                _hasCurrentGeneration = false;
+            }
+        }
+
+        private static IReadOnlyList<FoxRunProviderFailureDiagnostic> SnapshotLocked(
+            ulong? generation)
+        {
+            if (!generation.HasValue)
+                return Values.ToArray();
+
+            var snapshot = new List<FoxRunProviderFailureDiagnostic>();
+            for (var index = 0; index < Values.Count; index++)
+            {
+                if (Values[index].Generation == generation.Value)
+                    snapshot.Add(Values[index]);
+            }
+            return snapshot.ToArray();
         }
     }
 }
