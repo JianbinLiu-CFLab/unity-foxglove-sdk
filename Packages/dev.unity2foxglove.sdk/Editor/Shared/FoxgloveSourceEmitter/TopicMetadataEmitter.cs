@@ -45,20 +45,24 @@ namespace Unity.FoxgloveSDK.Editor
                 var mode = topicModes[topics[i]];
                 var tolerance = fields.Max(m => m.Tolerance);
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
-                var declaration = fields[0];
-                var hasExplicitDelivery =
-                    HasExplicit(
-                        declaration,
-                        FoxRunNamedArgumentPresence.Reliability)
-                    || HasExplicit(
-                        declaration,
-                        FoxRunNamedArgumentPresence.Durability)
-                    || HasExplicit(
-                        declaration,
-                        FoxRunNamedArgumentPresence.History)
-                    || HasExplicit(
-                        declaration,
-                        FoxRunNamedArgumentPresence.Depth);
+                var declaration = CanonicalDeclaration(fields);
+                var publishDeclaration = fields.FirstOrDefault(IsPublishing)
+                    ?? declaration;
+                var subscribeDeclaration = fields.FirstOrDefault(IsSubscribing)
+                    ?? declaration;
+                var hasExplicitDelivery = fields.Any(
+                    field => HasExplicit(
+                                 field,
+                                 FoxRunNamedArgumentPresence.Reliability)
+                             || HasExplicit(
+                                 field,
+                                 FoxRunNamedArgumentPresence.Durability)
+                             || HasExplicit(
+                                 field,
+                                 FoxRunNamedArgumentPresence.History)
+                             || HasExplicit(
+                                 field,
+                                 FoxRunNamedArgumentPresence.Depth));
                 sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                     "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, (FoxRunFlow){6}, publishTransportIds: {7}, subscribeTransportId: {8}, declaredEncoding: {9}, hasExplicitEncoding: {10}, deliveryPolicy: new FoxRunDeliveryPolicy({11}, {12}, {13}, {14}), hasExplicitDeliveryPolicy: {15}, hasExplicitHz: {16});",
                     pad,
@@ -69,14 +73,15 @@ namespace Unity.FoxgloveSDK.Editor
                     tolerance,
                     declaration.Mode,
                     TransportIdsLiteral(
-                        declaration.PublishTransportIds),
+                        publishDeclaration.PublishTransportIds),
                     NullableStringLiteral(
-                        declaration.SubscribeTransportId),
+                        subscribeDeclaration.SubscribeTransportId),
                     EncodingLiteral(declaration.Encoding),
                     InputDispatchEmitter.BoolLiteral(
-                        HasExplicit(
-                            declaration,
-                            FoxRunNamedArgumentPresence.Encoding)),
+                        fields.Any(
+                            field => HasExplicit(
+                                field,
+                                FoxRunNamedArgumentPresence.Encoding))),
                     ReliabilityLiteral(declaration.Reliability),
                     DurabilityLiteral(declaration.Durability),
                     HistoryLiteral(declaration.History),
@@ -103,6 +108,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var topic = topics[i];
                 var fields = topicMap[topic];
+                CanonicalDeclaration(fields);
                 var schema = fields.FirstOrDefault(
                     field => !string.IsNullOrEmpty(field.SchemaName))
                     ?.SchemaName ?? "";
@@ -210,6 +216,84 @@ namespace Unity.FoxgloveSDK.Editor
             FoxgloveSourceEmitter.TopicMember member,
             FoxRunNamedArgumentPresence presence)
             => (member.NamedArgumentPresence & presence) == presence;
+
+        private static FoxgloveSourceEmitter.TopicMember CanonicalDeclaration(
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+        {
+            if (fields == null || fields.Count == 0)
+                throw new InvalidOperationException(
+                    "FoxRun topics must contain at least one member.");
+
+            var first = fields.First();
+            if (fields.Skip(1).Any(
+                    field => !string.Equals(
+                                  first.SchemaName,
+                                  field.SchemaName,
+                                  StringComparison.Ordinal)
+                              || !string.Equals(
+                                  first.Encoding,
+                                  field.Encoding,
+                                  StringComparison.Ordinal)
+                              || !string.Equals(
+                                  first.Reliability,
+                                  field.Reliability,
+                                  StringComparison.Ordinal)
+                              || !string.Equals(
+                                  first.Durability,
+                                  field.Durability,
+                                  StringComparison.Ordinal)
+                              || !string.Equals(
+                                  first.History,
+                                  field.History,
+                                  StringComparison.Ordinal)
+                              || first.Depth != field.Depth))
+            {
+                throw new InvalidOperationException(
+                    "FoxRun topic members must share one schema, encoding, and delivery policy.");
+            }
+
+            var publishing = fields.Where(IsPublishing).ToList();
+            if (publishing.Skip(1).Any(
+                    field => !TransportIdsEqual(
+                        publishing[0].PublishTransportIds,
+                        field.PublishTransportIds)))
+            {
+                throw new InvalidOperationException(
+                    "FoxRun topic members must share one publish Provider selection.");
+            }
+
+            var subscribing = fields.Where(IsSubscribing).ToList();
+            if (subscribing.Skip(1).Any(
+                    field => !string.Equals(
+                        subscribing[0].SubscribeTransportId,
+                        field.SubscribeTransportId,
+                        StringComparison.Ordinal)))
+            {
+                throw new InvalidOperationException(
+                    "FoxRun topic members must share one subscribe Provider selection.");
+            }
+
+            return first;
+        }
+
+        private static bool IsPublishing(
+            FoxgloveSourceEmitter.TopicMember member)
+            => member != null && (member.Mode == 1 || member.Mode == 3);
+
+        private static bool IsSubscribing(
+            FoxgloveSourceEmitter.TopicMember member)
+            => member != null && (member.Mode == 2 || member.Mode == 3);
+
+        private static bool TransportIdsEqual(
+            IReadOnlyList<string> left,
+            IReadOnlyList<string> right)
+        {
+            if (ReferenceEquals(left, right))
+                return true;
+            if (left == null || right == null || left.Count != right.Count)
+                return false;
+            return left.SequenceEqual(right, StringComparer.Ordinal);
+        }
 
         internal static string EncodingLiteral(string value)
         {

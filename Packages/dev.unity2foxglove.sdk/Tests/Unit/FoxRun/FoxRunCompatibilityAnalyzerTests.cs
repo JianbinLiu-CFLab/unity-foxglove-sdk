@@ -7,10 +7,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Editor;
+using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.FoxRun
@@ -368,6 +371,49 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.Equal(FoxRunCompatibilityClass.BackwardCompatible, result.Classification);
         }
 
+        [Theory]
+        [InlineData("json")]
+        [InlineData("msgpack")]
+        public void VersionTwoNameBasedFieldsIgnoreInsertedOrdinal(string encoding)
+        {
+            var recordedManifest = ManifestWithContracts(
+                "recorded",
+                ContractWithFields(
+                    "old-contract", "old-binding", "old-policy", encoding,
+                    new FoxRunSchemaFieldInfo("b", "b", "field", "int32", false, false),
+                    new FoxRunSchemaFieldInfo("c", "c", "field", "string", false, false)));
+            var currentManifest = ManifestWithContracts(
+                "current",
+                ContractWithFields(
+                    "new-contract", "new-binding", "new-policy", encoding,
+                    new FoxRunSchemaFieldInfo("a", "a", "field", "bool", false, false),
+                    new FoxRunSchemaFieldInfo("b", "b", "field", "int32", false, false),
+                    new FoxRunSchemaFieldInfo("c", "c", "field", "string", false, false)));
+
+            Assert.True(
+                FoxRunSchemaMcapMetadata.TryCreateJson(
+                    recordedManifest,
+                    out var json));
+            var legacyJson = json.Replace(
+                "\"schemaMetadataVersion\":3",
+                "\"schemaMetadataVersion\":2",
+                StringComparison.Ordinal);
+            Assert.True(
+                FoxRunSchemaMcapMetadata.TryParseJson(
+                    legacyJson,
+                    out var record,
+                    out var error),
+                error);
+
+            var result = FoxRunCompatibilityAnalyzer.Analyze(
+                record,
+                currentManifest);
+
+            Assert.Equal(
+                FoxRunCompatibilityClass.BackwardCompatible,
+                result.Classification);
+        }
+
         [Fact]
         public void CurrentVersionRequiresFieldArraysDuringParsing()
         {
@@ -444,24 +490,37 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         public void RecordingControllerSkipsSchemaEvidenceWhenAuthorityIsConflicted()
         {
             var path = Path.Combine(
-                FindRepositoryRoot(),
-                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs");
-            var source = File.ReadAllText(path);
-            var conflict = source.IndexOf("FoxRunSchemaInfoRegistry.HasConflict", StringComparison.Ordinal);
-            var write = source.IndexOf("TryCreateJson(FoxRunSchemaInfoRegistry.Current", StringComparison.Ordinal);
-            Assert.True(conflict >= 0);
-            Assert.True(write > conflict);
-        }
+                Path.GetTempPath(),
+                "unity2foxglove-conflicted-schema-"
+                + Guid.NewGuid().ToString("N")
+                + ".mcap");
+            var first = Manifest("first", "c", "b", "p");
+            var second = Manifest("second", "c", "b", "p");
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            try
+            {
+                FoxRunSchemaInfoRegistry.RegisterGenerated(first);
+                FoxRunSchemaInfoRegistry.RegisterGenerated(second);
 
-        private static string FindRepositoryRoot()
-        {
-            var root = new DirectoryInfo(AppContext.BaseDirectory);
-            while (root != null
-                   && !Directory.Exists(Path.Combine(root.FullName, ".git"))
-                   && !File.Exists(Path.Combine(root.FullName, ".git")))
-                root = root.Parent;
-            Assert.NotNull(root);
-            return root.FullName;
+                using var session = new FoxgloveSession(
+                    "conflicted-schema",
+                    new NoopTransport());
+                using var controller = new RecordingController(new ConsoleLogger());
+                controller.Enable(path);
+                controller.AttachToSession(new FoxgloveParameterStore(), session);
+                controller.DetachFromSession();
+
+                using var indexed = McapIndexedReader.OpenRead(path);
+                Assert.DoesNotContain(
+                    indexed.MetadataIndexes,
+                    index => index.Name == FoxRunSchemaMcapMetadata.MetadataName);
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
         }
 
         private static FoxRunCompatibilityResult Analyze(
@@ -533,6 +592,22 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 "Demo.State", "/state", "Demo.State", encoding,
                 contractHash, bindingHash, policyHash,
                 "Publish", 1f, 0f, fields, flow: "Publish");
+        }
+
+        private sealed class NoopTransport : IFoxgloveTransport
+        {
+            public bool IsRunning => false;
+            public event Action<uint> OnClientConnected { add { } remove { } }
+            public event Action<uint> OnClientDisconnected { add { } remove { } }
+            public event Action<uint, string> OnTextReceived { add { } remove { } }
+            public event Action<uint, byte[]> OnBinaryReceived { add { } remove { } }
+            public void Start(string host, int port) { }
+            public void Stop() { }
+            public void BroadcastText(string json) { }
+            public void BroadcastBinary(byte[] data) { }
+            public void SendText(uint clientId, string json) { }
+            public void SendBinary(uint clientId, byte[] data) { }
+            public void Dispose() { }
         }
     }
 }

@@ -639,6 +639,10 @@ namespace Unity.FoxgloveSDK.Editor
                          .GroupBy(member => member.Topic, StringComparer.Ordinal))
             {
                 var members = group.ToList();
+                ValidateTopicAuthority(
+                    group.Key,
+                    members,
+                    diagnostics);
                 if (members.Select(member => member.SchemaName)
                     .Where(value => !string.IsNullOrEmpty(value))
                     .Distinct(StringComparer.Ordinal)
@@ -804,6 +808,103 @@ namespace Unity.FoxgloveSDK.Editor
                         "MessagePack members in one direction must share one normalized schedule.");
                 }
             }
+        }
+
+        private static void ValidateTopicAuthority(
+            string topic,
+            IReadOnlyList<FoxRunGenerationMember> members,
+            ICollection<FoxRunGenerationDiagnostic> diagnostics)
+        {
+            if (members == null || members.Count < 2)
+                return;
+
+            var publishing = members
+                .Where(member => member.Mode == 1 || member.Mode == 3)
+                .ToList();
+            var subscribing = members
+                .Where(member => member.Mode == 2 || member.Mode == 3)
+                .ToList();
+
+            if (HasDifferentPublishProviders(publishing))
+            {
+                AddError(
+                    diagnostics,
+                    InvalidDirectionalTransportId,
+                    publishing[0],
+                    "FoxRun topic '" + topic
+                    + "' must use one publish Provider selection across all members.");
+            }
+
+            if (subscribing.Count > 1
+                && subscribing.Skip(1).Any(
+                    member => !string.Equals(
+                        subscribing[0].SubscribeTransportId,
+                        member.SubscribeTransportId,
+                        StringComparison.Ordinal)))
+            {
+                AddError(
+                    diagnostics,
+                    InvalidDirectionalTransportId,
+                    subscribing[0],
+                    "FoxRun topic '" + topic
+                    + "' must use one subscribe Provider selection across all members.");
+            }
+
+            var first = members[0];
+            if (members.Skip(1).Any(
+                    member => !string.Equals(
+                                  first.Reliability,
+                                  member.Reliability,
+                                  StringComparison.Ordinal)
+                              || !string.Equals(
+                                  first.Durability,
+                                  member.Durability,
+                                  StringComparison.Ordinal)
+                              || !string.Equals(
+                                  first.History,
+                                  member.History,
+                                  StringComparison.Ordinal)
+                              || first.Depth != member.Depth))
+            {
+                AddError(
+                    diagnostics,
+                    InvalidDeliveryPolicyId,
+                    first,
+                    "FoxRun topic '" + topic
+                    + "' must use one delivery policy across all members.");
+            }
+        }
+
+        private static bool HasDifferentPublishProviders(
+            IReadOnlyList<FoxRunGenerationMember> publishing)
+        {
+            if (publishing == null || publishing.Count < 2)
+                return false;
+
+            var first = publishing[0].PublishTransportIds;
+            return publishing.Skip(1).Any(
+                member => !SequenceEqual(
+                    first,
+                    member.PublishTransportIds));
+        }
+
+        private static bool SequenceEqual(
+            IReadOnlyList<string> left,
+            IReadOnlyList<string> right)
+        {
+            if (ReferenceEquals(left, right))
+                return true;
+            if (left == null || right == null || left.Count != right.Count)
+                return false;
+            for (var index = 0; index < left.Count; index++)
+            {
+                if (!string.Equals(
+                        left[index],
+                        right[index],
+                        StringComparison.Ordinal))
+                    return false;
+            }
+            return true;
         }
 
         private static void ValidateDirectionalJsonNames(

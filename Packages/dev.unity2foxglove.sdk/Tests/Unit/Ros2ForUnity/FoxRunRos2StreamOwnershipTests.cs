@@ -250,7 +250,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     Assert.True(finishMaterialize.Wait(TimeSpan.FromSeconds(5)));
                     return new OwnedSample(message.Data);
                 },
-                transferOwned: owned => stream.TryEnqueueOwned(owned, throwingDisposer),
+                transferOwned: owned => stream.TryEnqueueOwnedAfterAdmission(owned, throwingDisposer),
                 clearOwned: () => stream.Clear());
 
             Assert.True(binding.TryRegister().Succeeded);
@@ -549,7 +549,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 backend,
                 tryAdmitInput: () => true,
                 materializeOwned: (message, _) => new OwnedSample(message.Data),
-                transferOwned: owned => stream.TryEnqueueOwned(
+                transferOwned: owned => stream.TryEnqueueOwnedAfterAdmission(
                     owned,
                     _ => Interlocked.Increment(ref disposed)),
                 clearOwned: () =>
@@ -596,7 +596,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 backend,
                 tryAdmitInput: () => true,
                 materializeOwned: (message, _) => new OwnedSample(message.Data),
-                transferOwned: owned => stream.TryEnqueueOwned(
+                transferOwned: owned => stream.TryEnqueueOwnedAfterAdmission(
                     owned,
                     _ => Interlocked.Increment(ref disposed)),
                 clearOwned: () =>

@@ -204,7 +204,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (member.IsStream)
             {
-                sb.AppendLine($"{pad}__stream.TryEnqueueOwned(__value, static _ => {{ }});");
+                sb.AppendLine($"{pad}__stream.TryEnqueueOwnedAfterAdmission(__value, static _ => {{ }});");
                 return;
             }
             sb.AppendLine($"{pad}__foxRunInputPending_{index} = __value;");

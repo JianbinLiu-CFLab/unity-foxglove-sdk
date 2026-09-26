@@ -127,7 +127,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 sb.AppendLine(pad + "            owned =>");
                 sb.AppendLine(pad + "            {");
-                sb.AppendLine(pad + "                __foxRunRos2Stream_" + index + ".TryEnqueueOwned(");
+                sb.AppendLine(pad + "                __foxRunRos2Stream_" + index + ".TryEnqueueOwnedAfterAdmission(");
                 sb.AppendLine(pad + "                    owned,");
                 sb.AppendLine(pad + "                    static value => __FoxRunRos2Dispose_" + index + "(value));");
                 sb.AppendLine(pad + "            },");

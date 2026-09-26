@@ -273,16 +273,33 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// After validating the non-null disposer, unconditionally takes
-        /// ownership at the call boundary. A false result means the value was
-        /// rejected and already disposed by this stream. Generated providers
-        /// acquire this sample's admission through <see cref="TryAdmitInput"/>
-        /// before performing avoidable materialization work.
+        /// Applies the public input-rate admission gate before taking ownership.
+        /// A false result means the value was rejected and already disposed by
+        /// this stream.
         /// </summary>
         public bool TryEnqueueOwned(T value, Action<T> disposer)
+            => TryEnqueueOwned(value, disposer, admissionAlreadyAcquired: false);
+
+        /// <summary>
+        /// Transfers an owned sample after generated infrastructure has already
+        /// admitted the input and performed its decode work.
+        /// </summary>
+        public bool TryEnqueueOwnedAfterAdmission(T value, Action<T> disposer)
+            => TryEnqueueOwned(value, disposer, admissionAlreadyAcquired: true);
+
+        private bool TryEnqueueOwned(
+            T value,
+            Action<T> disposer,
+            bool admissionAlreadyAcquired)
         {
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
+
+            if (!admissionAlreadyAcquired && !TryAdmitInput())
+            {
+                DisposeValue(value, disposer);
+                return false;
+            }
 
             DirectOwnedSample owned;
             try
@@ -311,6 +328,35 @@ namespace Unity.FoxgloveSDK.Components
             Func<TState, T> materializer,
             Action<TState> stateDisposer,
             Action<T> disposer)
+            => TryEnqueueDeferredOwned(
+                state,
+                materializer,
+                stateDisposer,
+                disposer,
+                admissionAlreadyAcquired: false);
+
+        /// <summary>
+        /// Transfers deferred owned state after generated infrastructure has
+        /// already admitted the input.
+        /// </summary>
+        public bool TryEnqueueDeferredOwnedAfterAdmission<TState>(
+            TState state,
+            Func<TState, T> materializer,
+            Action<TState> stateDisposer,
+            Action<T> disposer)
+            => TryEnqueueDeferredOwned(
+                state,
+                materializer,
+                stateDisposer,
+                disposer,
+                admissionAlreadyAcquired: true);
+
+        private bool TryEnqueueDeferredOwned<TState>(
+            TState state,
+            Func<TState, T> materializer,
+            Action<TState> stateDisposer,
+            Action<T> disposer,
+            bool admissionAlreadyAcquired)
         {
             if (materializer == null)
                 throw new ArgumentNullException(nameof(materializer));
@@ -318,6 +364,12 @@ namespace Unity.FoxgloveSDK.Components
                 throw new ArgumentNullException(nameof(stateDisposer));
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
+
+            if (!admissionAlreadyAcquired && !TryAdmitInput())
+            {
+                DisposeState(state, stateDisposer);
+                return false;
+            }
 
             DeferredOwnedSample<TState> owned;
             try
