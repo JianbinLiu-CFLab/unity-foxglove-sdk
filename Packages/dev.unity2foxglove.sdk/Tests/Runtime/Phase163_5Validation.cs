@@ -50,9 +50,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && !broadcastText.Contains("ToArray()", StringComparison.Ordinal)
                   && !broadcastBinary.Contains("ToArray()", StringComparison.Ordinal)
                   && !broadcastDataBinary.Contains("ToArray()", StringComparison.Ordinal)
-                  && backend.Contains("long activeDropped = 0;", StringComparison.Ordinal)
-                  && backend.Contains("Interlocked.Read(ref _totalDroppedDataFrames) + activeDropped", StringComparison.Ordinal),
-                "163-5C: client ids stay process-monotonic, Stop snapshots clients, broadcasts enumerate live clients, and dropped-frame stats remain stable");
+                  && backend.Contains("var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames);", StringComparison.Ordinal)
+                  && !backend.Contains("activeDropped", StringComparison.Ordinal)
+                  && backend.Contains("conn.SendClose(GoingAwayCloseCode)", StringComparison.Ordinal)
+                  && backend.Contains("NormalizeMaxFragmentedMessageFrames(", StringComparison.Ordinal)
+                  && backend.Contains("_options.MaxFragmentedMessageFrames", StringComparison.Ordinal),
+                "163-5C: client ids stay process-monotonic, Stop snapshots clients, broadcasts enumerate live clients, and transport limits and dropped-frame stats remain independent");
 
             Check(queue.Contains("frame.SizeBytes <= _maxQueuedBytes - _queuedBytes", StringComparison.Ordinal)
                   && unitTests.Contains("QueueByteCapacityCheckDoesNotOverflowNearIntMax", StringComparison.Ordinal),

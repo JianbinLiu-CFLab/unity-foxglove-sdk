@@ -351,6 +351,36 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         }
 
         [Fact]
+        public void StopSendsGoingAwayCloseBeforeDisposingEstablishedClient()
+        {
+            using var backend = new ManagedWsBackend();
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+            using var client = ConnectAndWriteHandshake(port);
+
+            try
+            {
+                var stream = client.GetStream();
+                Assert.StartsWith("HTTP/1.1 101", ReadHttpHeaders(stream));
+                Assert.True(SpinWait.SpinUntil(
+                    () => backend.GetStatsSnapshot().ActiveClientCount == 1,
+                    TimeSpan.FromSeconds(2)));
+
+                backend.Stop();
+
+                var close = ReadServerFrame(stream);
+                Assert.Equal(WsOpcode.Close, close.Opcode);
+                Assert.Equal(new byte[] { 0x03, 0xE9 }, close.Payload);
+                Assert.False(backend.IsRunning);
+            }
+            finally
+            {
+                if (backend.IsRunning)
+                    backend.Stop();
+            }
+        }
+
+        [Fact]
         public void MalformedRequiredHandshakeHeadersReturnConsistentBadRequest()
         {
             var requests = new[]
@@ -663,6 +693,39 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             connection.StartSendLoop(null, CancellationToken.None);
 
             InvokeReceiveLoop(backend, 4, connection);
+
+            var written = stream.WrittenBytes;
+            Assert.True(written.Length >= 4);
+            Assert.Equal((byte)(0x80 | WsOpcode.Close), written[0]);
+            Assert.Equal(2, written[1] & 0x7F);
+            Assert.Equal(1009, (written[2] << 8) | written[3]);
+            Assert.Empty(clients);
+        }
+
+        [Fact]
+        public void FragmentedMessageFrameLimitIsIndependentFromSendQueueCapacity()
+        {
+            var options = new ManagedWebSocketOptions
+            {
+                MaxQueuedFramesPerClient = 64,
+                MaxFragmentedMessageFrames = 2
+            };
+            var frames = new List<byte[]>
+            {
+                BuildMaskedFrame(WsOpcode.Binary, new byte[] { 1 }, fin: false),
+                BuildMaskedFrame(WsOpcode.Continuation, new byte[] { 2 }, fin: false),
+                BuildMaskedFrame(WsOpcode.Continuation, new byte[] { 3 })
+            };
+
+            using var backend = new ManagedWsBackend(options);
+            using var tcpClient = new TcpClient();
+            var stream = new DuplexBufferStream(JoinFrames(frames));
+            var connection = new WsConnection(tcpClient, stream, options.MaxQueuedFramesPerClient, 1024);
+            var clients = Clients(backend);
+            clients[5] = connection;
+            connection.StartSendLoop(null, CancellationToken.None);
+
+            InvokeReceiveLoop(backend, 5, connection);
 
             var written = stream.WrittenBytes;
             Assert.True(written.Length >= 4);
@@ -1028,7 +1091,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                 "DisconnectClient",
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(method);
-            method.Invoke(backend, new object[] { clientId, connection });
+            method.Invoke(backend, new object[] { clientId, connection, false });
         }
 
         private static byte[] BuildMaskedFrame(byte opcode, byte[] payload, bool fin = true)

@@ -19,6 +19,9 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Default per-client send queue frame cap.</summary>
         public const int DefaultMaxQueuedFrames = 256;
 
+        /// <summary>Default inbound fragmented-message frame cap.</summary>
+        public const int DefaultMaxFragmentedMessageFrames = 256;
+
         /// <summary>Default per-client send queue byte cap (8 MiB).</summary>
         public const int DefaultMaxQueuedBytes = 8 * 1024 * 1024;
 
@@ -43,6 +46,9 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Maximum queued frames per client before drop/disconnect policy applies.</summary>
         public int MaxQueuedFramesPerClient { get; set; } = DefaultMaxQueuedFrames;
 
+        /// <summary>Maximum frames allowed in one inbound fragmented message.</summary>
+        public int MaxFragmentedMessageFrames { get; set; } = DefaultMaxFragmentedMessageFrames;
+
         /// <summary>Maximum queued payload bytes per client before drop/disconnect policy applies.</summary>
         public int MaxQueuedBytesPerClient { get; set; } = DefaultMaxQueuedBytes;
 
@@ -57,6 +63,10 @@ namespace Unity.FoxgloveSDK.Transport
 
         /// <summary>Normalize frame capacity so a misconfigured value cannot disable protocol traffic.</summary>
         internal static int NormalizeMaxQueuedFrames(int value) => Math.Max(1, value);
+
+        /// <summary>Normalize the inbound fragmented-message frame cap.</summary>
+        internal static int NormalizeMaxFragmentedMessageFrames(int value) =>
+            value > 0 ? value : DefaultMaxFragmentedMessageFrames;
 
         /// <summary>Normalize client capacity so zero/negative values fall back to the usable default.</summary>
         internal static int NormalizeMaxClients(int value) =>
