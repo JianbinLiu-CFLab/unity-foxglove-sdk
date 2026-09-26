@@ -204,6 +204,66 @@ namespace Unity.FoxgloveSDK.Tests.Replay
         }
 
         [Fact]
+        public void TwoTargetedSnapshotsWithinDebounceAreBothConsumed()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 250, 1);
+            state.RequestPanelSnapshot(200, 350, 2);
+
+            Assert.False(state.TryConsumePanelSnapshot(249, out _, out _));
+            Assert.True(state.TryConsumePanelSnapshot(250, out var firstTime, out var firstClient));
+            Assert.Equal(100UL, firstTime);
+            Assert.Equal((uint)1, firstClient);
+            Assert.True(state.TryConsumePanelSnapshot(350, out var secondTime, out var secondClient));
+            Assert.Equal(200UL, secondTime);
+            Assert.Equal((uint)2, secondClient);
+            Assert.False(state.TryConsumePanelSnapshot(350, out _, out _));
+        }
+
+        [Fact]
+        public void ClearingOnePendingTargetedSnapshotPreservesTheOther()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 250, 1);
+            state.RequestPanelSnapshot(200, 250, 2);
+            state.ClearPanelSnapshot(1);
+
+            Assert.True(state.TryConsumePanelSnapshot(250, out var time, out var clientId));
+            Assert.Equal(200UL, time);
+            Assert.Equal((uint)2, clientId);
+            Assert.False(state.TryConsumePanelSnapshot(250, out _, out _));
+        }
+
+        [Fact]
+        public void RepeatedTargetedSnapshotForOneClientCoalescesToLatestRequest()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 250, 1);
+            state.RequestPanelSnapshot(200, 350, 1);
+
+            Assert.False(state.TryConsumePanelSnapshot(250, out _, out _));
+            Assert.True(state.TryConsumePanelSnapshot(350, out var time, out var clientId));
+            Assert.Equal(200UL, time);
+            Assert.Equal((uint)1, clientId);
+            Assert.False(state.TryConsumePanelSnapshot(350, out _, out _));
+        }
+
+        [Fact]
+        public void GlobalSnapshotSupersedesPendingTargetedSnapshots()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 100, 1);
+            state.RequestPanelSnapshot(900, 200);
+            state.RequestPanelSnapshot(300, 0, 2);
+
+            Assert.False(state.TryConsumePanelSnapshot(199, out _, out _));
+            Assert.True(state.TryConsumePanelSnapshot(200, out var time, out var clientId));
+            Assert.Equal(900UL, time);
+            Assert.Null(clientId);
+            Assert.False(state.TryConsumePanelSnapshot(200, out _, out _));
+        }
+
+        [Fact]
         public void ReplaySnapshotHistoryIsFilteredPerClientSubscription()
         {
             var path = Path.Combine(
