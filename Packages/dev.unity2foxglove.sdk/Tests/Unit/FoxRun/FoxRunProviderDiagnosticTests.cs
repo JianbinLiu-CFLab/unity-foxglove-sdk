@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using Unity.FoxgloveSDK.Components;
 using Xunit;
@@ -112,7 +113,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
             Assert.Equal(
                 1,
-                ((ICollection)reportedFailures.GetValue(hub)).Count);
+                ((ICollection<string>)reportedFailures.GetValue(hub)).Count);
 
             for (var index = 0; index < 300; index++)
             {
@@ -123,7 +124,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
             Assert.Equal(
                 256,
-                ((ICollection)reportedFailures.GetValue(hub)).Count);
+                ((ICollection<string>)reportedFailures.GetValue(hub)).Count);
         }
 
         private sealed class Source : IFoxgloveLogSource

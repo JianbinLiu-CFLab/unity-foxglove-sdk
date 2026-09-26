@@ -243,7 +243,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 throw new InvalidOperationException("owned disposal failed");
             var binding = Binding(
                 backend,
-                tryAdmitInput: () => true,
+                tryAdmitInput: stream.TryAdmitInput,
                 materializeOwned: (message, _) =>
                 {
                     materializeEntered.Set();
@@ -547,7 +547,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var stream = new FoxRunStream<OwnedSample>();
             var binding = Binding(
                 backend,
-                tryAdmitInput: () => true,
+                tryAdmitInput: stream.TryAdmitInput,
                 materializeOwned: (message, _) => new OwnedSample(message.Data),
                 transferOwned: owned => stream.TryEnqueueOwnedAfterAdmission(
                     owned,
@@ -591,10 +591,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             };
             var disposed = 0;
             var cleared = 0;
-            var stream = new FoxRunStream<OwnedSample>();
+            long ticks = 0;
+            var stream = new FoxRunStream<OwnedSample>(
+                new FoxRunStreamOptions(),
+                () => Interlocked.Increment(ref ticks),
+                1000L);
             var binding = Binding(
                 backend,
-                tryAdmitInput: () => true,
+                tryAdmitInput: stream.TryAdmitInput,
                 materializeOwned: (message, _) => new OwnedSample(message.Data),
                 transferOwned: owned => stream.TryEnqueueOwnedAfterAdmission(
                     owned,

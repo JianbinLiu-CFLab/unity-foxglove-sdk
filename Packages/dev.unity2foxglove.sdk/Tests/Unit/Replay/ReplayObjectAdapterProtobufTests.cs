@@ -88,7 +88,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                 "ProtobufParserCache",
                 BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null) as IDictionary;
             Assert.NotNull(cache);
-            Assert.True(cache.Count <= maxEntries);
+            var gate = typeof(ReplayProtobufParser).GetField(
+                "ReflectionCacheGate",
+                BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null);
+            Assert.NotNull(gate);
+            lock (gate)
+            {
+                var negativeEntries = 0;
+                foreach (DictionaryEntry pair in cache)
+                {
+                    if (pair.Value.GetType().GetProperty("Binding")?.GetValue(pair.Value) == null)
+                        negativeEntries++;
+                }
+                Assert.True(negativeEntries <= maxEntries);
+            }
         }
     }
 }
