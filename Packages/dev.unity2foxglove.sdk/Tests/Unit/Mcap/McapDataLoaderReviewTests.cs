@@ -67,6 +67,40 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal("v", metadata.Metadata["k"]);
         }
 
+        [Fact]
+        public void MetadataLookupFallsBackWhenMetadataIndexIsPartial()
+        {
+            using var stream = BuildPartiallyIndexedMetadataMcap();
+            using var reader = new McapIndexedReader(stream, leaveOpen: true);
+
+            var metadata = reader.FindMetadata("unindexed");
+
+            Assert.NotNull(metadata);
+            Assert.Equal("fallback", metadata.Metadata["k"]);
+        }
+
+        [Fact]
+        public void ReplayMetadataLookupFallsBackWhenMetadataIndexIsPartial()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "mcap-replay-partial-metadata-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = BuildPartiallyIndexedMetadataMcap())
+                    File.WriteAllBytes(path, stream.ToArray());
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var metadata = engine.FindMetadata("unindexed");
+
+                Assert.NotNull(metadata);
+                Assert.Equal("fallback", metadata.Metadata["k"]);
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
         private static MemoryStream BuildTwoChannelMcap()
         {
             var stream = new MemoryStream();
@@ -140,6 +174,37 @@ namespace Unity.FoxgloveSDK.UnitTests
                 {
                     Statistics = new McapStatistics { MetadataCount = 1 }
                 };
+                McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
+                writer.WriteMagic();
+                writer.Flush();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream BuildPartiallyIndexedMetadataMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "review");
+                var indexedOffset = (ulong)stream.Position;
+                writer.WriteMetadata("indexed", new Dictionary<string, string> { ["k"] = "indexed" });
+                var indexedLength = (ulong)stream.Position - indexedOffset;
+                writer.WriteMetadata("unindexed", new Dictionary<string, string> { ["k"] = "fallback" });
+                writer.WriteDataEnd();
+                var summary = new McapFileSummary
+                {
+                    Statistics = new McapStatistics { MetadataCount = 2 }
+                };
+                summary.MetadataIndexes.Add(new McapMetadataIndex
+                {
+                    Offset = indexedOffset,
+                    Length = indexedLength,
+                    Name = "indexed"
+                });
                 McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
                 writer.WriteMagic();
                 writer.Flush();

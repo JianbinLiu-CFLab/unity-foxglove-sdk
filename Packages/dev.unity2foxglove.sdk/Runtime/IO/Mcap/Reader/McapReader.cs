@@ -712,6 +712,36 @@ namespace Unity.FoxgloveSDK.IO
             return null;
         }
 
+        /// <summary>
+        /// Reads all metadata records in the data section, retaining the first
+        /// record for each name so callers can safely recover from a partial
+        /// Metadata Index without repeating the scan for every lookup.
+        /// </summary>
+        internal Dictionary<string, McapMetadata> ReadMetadataInDataSection(
+            ulong dataSectionEndOffset,
+            ulong recordSizeLimit = DefaultRecordSizeLimit)
+        {
+            var metadataByName = new Dictionary<string, McapMetadata>(StringComparer.Ordinal);
+            if (!_stream.CanSeek)
+                return metadataByName;
+
+            _stream.Seek(McapWriter.MagicLength, SeekOrigin.Begin);
+            while ((ulong)_stream.Position < dataSectionEndOffset)
+            {
+                var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
+                if ((ulong)_stream.Position > dataSectionEndOffset)
+                    throw new InvalidDataException("MCAP metadata scan crossed the data section boundary.");
+                if (opcode != McapWriter.OpcodeMetadata)
+                    continue;
+
+                var metadata = McapRecordDecoder.DecodeMetadata(content, 0, contentLength);
+                if (metadata?.Name != null && !metadataByName.ContainsKey(metadata.Name))
+                    metadataByName.Add(metadata.Name, metadata);
+            }
+
+            return metadataByName;
+        }
+
         private static long ToSeekOffset(ulong offset, string context)
         {
             if (offset > long.MaxValue)

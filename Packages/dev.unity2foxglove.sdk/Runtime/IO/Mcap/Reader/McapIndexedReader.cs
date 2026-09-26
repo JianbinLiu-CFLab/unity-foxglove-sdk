@@ -24,6 +24,8 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapSequentialReadLimits _sequentialReadLimits;
         private readonly object _chunkIndexCacheGate = new object();
         private List<McapChunkIndex> _chunkIndexesByDescendingEndTime;
+        private Dictionary<string, McapMetadata> _metadataFallbackCache;
+        private bool _metadataFallbackScanComplete;
         private int _disposed;
 
         /// <summary>
@@ -544,7 +546,17 @@ namespace Unity.FoxgloveSDK.IO
             }
 
             if (indexes != null && indexes.Count > 0)
-                return null;
+            {
+                if (!_metadataFallbackScanComplete)
+                {
+                    _metadataFallbackCache = _reader.ReadMetadataInDataSection(_summary.DataSectionEndOffset);
+                    _metadataFallbackScanComplete = true;
+                }
+
+                return _metadataFallbackCache.TryGetValue(name, out var fallback)
+                    ? fallback
+                    : null;
+            }
 
             return _reader.FindMetadataInDataSection(name, _summary.DataSectionEndOffset);
         }
@@ -559,6 +571,8 @@ namespace Unity.FoxgloveSDK.IO
 
             _reader.Dispose();
             _chunkIndexesByDescendingEndTime = null;
+            _metadataFallbackCache = null;
+            _metadataFallbackScanComplete = false;
             if (_ownsStream)
                 _stream.Dispose();
         }

@@ -94,6 +94,13 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 Assert.Equal(200, metrics.CandidateCount);
                 Assert.Equal(10, metrics.PayloadCopies);
                 Assert.True(metrics.FilteredRecords == 0);
+                Assert.True(metrics.PeakDecompressedChunkBytes > 0);
+                var maxChunkBytes = engine.Summary.ChunkIndexes
+                    .Select(index => checked((long)index.UncompressedSize))
+                    .Max();
+                Assert.True(
+                    metrics.PeakDecompressedChunkBytes <= maxChunkBytes,
+                    $"history retained more than one decompressed chunk: peak={metrics.PeakDecompressedChunkBytes}; maxChunk={maxChunkBytes}");
             }
             finally
             {

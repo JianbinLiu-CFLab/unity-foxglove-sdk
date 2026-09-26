@@ -63,24 +63,34 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Structural counters collected by the most recent <see cref="History"/> call.</summary>
         public readonly struct HistoryMetrics
         {
-            public HistoryMetrics(long candidateCount, long payloadCopies, long payloadBytesCopied, long filteredRecords)
+            public HistoryMetrics(
+                long candidateCount,
+                long payloadCopies,
+                long payloadBytesCopied,
+                long filteredRecords,
+                long peakDecompressedChunkBytes = 0)
             {
                 CandidateCount = candidateCount;
                 PayloadCopies = payloadCopies;
                 PayloadBytesCopied = payloadBytesCopied;
                 FilteredRecords = filteredRecords;
+                PeakDecompressedChunkBytes = peakDecompressedChunkBytes;
             }
 
             public long CandidateCount { get; }
             public long PayloadCopies { get; }
             public long PayloadBytesCopied { get; }
             public long FilteredRecords { get; }
+            /// <summary>Largest decompressed History chunk retained at one time.</summary>
+            public long PeakDecompressedChunkBytes { get; }
         }
 
         /// <summary>
         /// Underlying MCAP binary reader.
         /// </summary>
         private McapReader _reader;
+        private Dictionary<string, McapMetadata> _metadataFallbackCache;
+        private bool _metadataFallbackScanComplete;
         /// <summary>
         /// File stream for the loaded .mcap file.
         /// </summary>
@@ -254,10 +264,23 @@ namespace Unity.FoxgloveSDK.IO
                         return metadata;
                 }
 
-                return null;
+                return FindMetadataAfterIndexMiss(name);
             }
 
             return _reader.FindMetadataInDataSection(name, _summary.DataSectionEndOffset);
+        }
+
+        private McapMetadata FindMetadataAfterIndexMiss(string name)
+        {
+            if (!_metadataFallbackScanComplete)
+            {
+                _metadataFallbackCache = _reader.ReadMetadataInDataSection(_summary.DataSectionEndOffset);
+                _metadataFallbackScanComplete = true;
+            }
+
+            return _metadataFallbackCache.TryGetValue(name, out var fallback)
+                ? fallback
+                : null;
         }
 
         /// <summary>
@@ -677,6 +700,7 @@ namespace Unity.FoxgloveSDK.IO
             long candidateCount = 0;
             long payloadCopies = 0;
             long payloadBytesCopied = 0;
+            long peakDecompressedChunkBytes = 0;
             for (var chunkNumber = 0; chunkNumber < _summary.ChunkIndexes.Count; chunkNumber++)
             {
                 var chunkIndex = _summary.ChunkIndexes[chunkNumber];
@@ -688,6 +712,7 @@ namespace Unity.FoxgloveSDK.IO
                 var uncompressed = _reader.ReadChunkRecords(chunkIndex.ChunkStartOffset, chunkIndex.ChunkLength, out var crcValid);
                 if (!ShouldUseChunkRecords("History chunk", crcValid))
                     continue;
+                peakDecompressedChunkBytes = Math.Max(peakDecompressedChunkBytes, uncompressed.LongLength);
 
                 var offset = 0;
                 while (offset + 9 <= uncompressed.Length)
@@ -739,37 +764,48 @@ namespace Unity.FoxgloveSDK.IO
 
             if (boundedCandidates != null)
             {
-                var payloadChunks = new Dictionary<int, byte[]>();
+                var candidatesByChunk = new Dictionary<int, List<HistoryCandidate>>();
                 foreach (var candidate in boundedCandidates)
                 {
-                    if (!payloadChunks.TryGetValue(candidate.ChunkNumber, out var uncompressed))
+                    if (!candidatesByChunk.TryGetValue(candidate.ChunkNumber, out var chunkCandidates))
                     {
-                        var chunkIndex = _summary.ChunkIndexes[candidate.ChunkNumber];
-                        uncompressed = _reader.ReadChunkRecords(
-                            chunkIndex.ChunkStartOffset,
-                            chunkIndex.ChunkLength,
-                            out var crcValid);
-                        if (!ShouldUseChunkRecords("History payload chunk", crcValid))
-                            continue;
-                        payloadChunks[candidate.ChunkNumber] = uncompressed;
+                        chunkCandidates = new List<HistoryCandidate>();
+                        candidatesByChunk.Add(candidate.ChunkNumber, chunkCandidates);
                     }
-                    var data = new byte[candidate.DataLength];
-                    Buffer.BlockCopy(
-                        uncompressed,
-                        candidate.DataOffset,
-                        data,
-                        0,
-                        candidate.DataLength);
-                    result.Add(new McapMessage
+                    chunkCandidates.Add(candidate);
+                }
+
+                foreach (var chunkCandidates in candidatesByChunk.Values)
+                {
+                    var chunkIndex = _summary.ChunkIndexes[chunkCandidates[0].ChunkNumber];
+                    var uncompressed = _reader.ReadChunkRecords(
+                        chunkIndex.ChunkStartOffset,
+                        chunkIndex.ChunkLength,
+                        out var crcValid);
+                    if (!ShouldUseChunkRecords("History payload chunk", crcValid))
+                        continue;
+                    peakDecompressedChunkBytes = Math.Max(peakDecompressedChunkBytes, uncompressed.LongLength);
+
+                    foreach (var candidate in chunkCandidates)
                     {
-                        ChannelId = candidate.ChannelId,
-                        Sequence = candidate.Sequence,
-                        LogTime = candidate.LogTime,
-                        PublishTime = candidate.PublishTime,
-                        Data = data
-                    });
-                    payloadCopies++;
-                    payloadBytesCopied += candidate.DataLength;
+                        var data = new byte[candidate.DataLength];
+                        Buffer.BlockCopy(
+                            uncompressed,
+                            candidate.DataOffset,
+                            data,
+                            0,
+                            candidate.DataLength);
+                        result.Add(new McapMessage
+                        {
+                            ChannelId = candidate.ChannelId,
+                            Sequence = candidate.Sequence,
+                            LogTime = candidate.LogTime,
+                            PublishTime = candidate.PublishTime,
+                            Data = data
+                        });
+                        payloadCopies++;
+                        payloadBytesCopied += candidate.DataLength;
+                    }
                 }
             }
 
@@ -781,7 +817,8 @@ namespace Unity.FoxgloveSDK.IO
                 candidateCount,
                 payloadCopies,
                 payloadBytesCopied,
-                filteredRecords);
+                filteredRecords,
+                peakDecompressedChunkBytes);
             return result;
         }
 
@@ -968,6 +1005,8 @@ namespace Unity.FoxgloveSDK.IO
             // McapReader borrows the stream; disposing it releases reader-owned
             // scratch buffers without closing the stream.
             _reader = null;
+            _metadataFallbackCache = null;
+            _metadataFallbackScanComplete = false;
             _summary = null;
             _snapshotChunkIndexesByDescendingEndTime = null;
             _pending.Clear();
