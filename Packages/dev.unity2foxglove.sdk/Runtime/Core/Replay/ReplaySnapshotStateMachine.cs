@@ -85,6 +85,20 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        public void ClearPanelSnapshot(uint clientId)
+        {
+            lock (_panelSnapshotLock)
+            {
+                if (!_panelSnapshotPending || _panelSnapshotClientId != clientId)
+                    return;
+
+                _panelSnapshotPending = false;
+                _panelSnapshotTimeNs = 0;
+                _panelSnapshotReadyWallNs = 0;
+                _panelSnapshotClientId = null;
+            }
+        }
+
         public void ClearSceneSnapshot()
         {
             lock (_sceneSnapshotLock)

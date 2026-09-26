@@ -69,7 +69,11 @@ namespace Unity.FoxgloveSDK.Core
         private readonly object _replayEngineLock = new();
         private readonly IFoxgloveLogger _logger;
         private readonly BoundedEventQueue<ReplayCallbackDispatch> _pendingReplayCallbacks =
-            new(MaxPendingReplayCallbacks, MaxPendingReplayCallbackPayloadBytes, MeasureReplayCallbackPayloadBytes);
+            new(
+                MaxPendingReplayCallbacks,
+                MaxPendingReplayCallbackPayloadBytes,
+                MeasureReplayCallbackPayloadBytes,
+                MeasureReplayCallbackMessageCount);
         private readonly List<ReplayCallbackDispatch> _drainBuffer = new();
         private readonly object _replayCallbackDrainGate = new();
         private long _lastReplayCallbackOverflowWarningTicks;
@@ -344,41 +348,6 @@ namespace Unity.FoxgloveSDK.Core
                     else
                         subscribedClients = session.SnapshotSubscribedClientIds();
 
-                    var subscribed = new HashSet<uint>();
-                    foreach (var clientId in subscribedClients)
-                    {
-                        var clientChannels = session.SnapshotSubscribedChannelIds(clientId);
-                        foreach (var channelId in clientChannels)
-                            subscribed.Add(channelId);
-                    }
-
-                    var replayChannels = new HashSet<ushort>();
-                    foreach (var channelId in subscribed)
-                    {
-                        if ((channelId & (uint)McapReplayEngine.ReplayChannelIdBase) != 0)
-                            replayChannels.Add((ushort)(channelId & 0xFFFF));
-                    }
-
-                    var fromNs = clampedTo > ScrubHistoryWindowNs
-                        ? clampedTo - ScrubHistoryWindowNs
-                        : startNs;
-                    foreach (var clientId in subscribedClients)
-                    {
-                        var clientFromNs = _panelHistory.GetHistoryFromTime(
-                            clientId,
-                            startNs,
-                            clampedTo,
-                            ScrubHistoryWindowNs);
-                        if (clientFromNs < fromNs)
-                            fromNs = clientFromNs;
-                    }
-                    _replayEngine.History(
-                        fromNs,
-                        clampedTo,
-                        _panelHistory.Buffer,
-                        ScrubHistoryMaxMessagesPerRequest,
-                        replayChannels);
-
                     if (subscribedClients.Count == 0)
                     {
                         _panelHistory.CancelDrain();
@@ -388,14 +357,26 @@ namespace Unity.FoxgloveSDK.Core
                         var clientBuffers = new Dictionary<uint, List<McapMessage>>();
                         foreach (var clientId in subscribedClients)
                         {
-                            var clientBuffer = new List<McapMessage>();
                             var clientChannels = session.SnapshotSubscribedChannelIds(clientId);
-                            foreach (var message in _panelHistory.Buffer)
+                            var replayChannels = new HashSet<ushort>();
+                            foreach (var channelId in clientChannels)
                             {
-                                var replayId = (uint)(McapReplayEngine.ReplayChannelIdBase | message.ChannelId);
-                                if (clientChannels.Contains(replayId))
-                                    clientBuffer.Add(message);
+                                if ((channelId & (uint)McapReplayEngine.ReplayChannelIdBase) != 0)
+                                    replayChannels.Add((ushort)(channelId & 0xFFFF));
                             }
+
+                            var clientFromNs = _panelHistory.GetHistoryFromTime(
+                                clientId,
+                                startNs,
+                                clampedTo,
+                                ScrubHistoryWindowNs);
+                            var clientBuffer = new List<McapMessage>();
+                            _replayEngine.History(
+                                clientFromNs,
+                                clampedTo,
+                                clientBuffer,
+                                ScrubHistoryMaxMessagesPerRequest,
+                                replayChannels);
                             clientBuffers[clientId] = clientBuffer;
                         }
 
@@ -746,6 +727,14 @@ namespace Unity.FoxgloveSDK.Core
                 return 0;
 
             return dispatch.MessageContext.Value.Payload?.Length ?? 0;
+        }
+
+        private static int MeasureReplayCallbackMessageCount(ReplayCallbackDispatch dispatch)
+        {
+            if (dispatch.MessageBatch != null)
+                return Math.Max(1, dispatch.MessageBatch.Count);
+
+            return dispatch.MessageContext.HasValue || dispatch.IsBatch ? 1 : 0;
         }
 
         private bool IsReplayCallbackCurrent(long generation)

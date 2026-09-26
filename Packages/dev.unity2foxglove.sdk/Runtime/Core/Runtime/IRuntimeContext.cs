@@ -60,4 +60,10 @@ namespace Unity.FoxgloveSDK.Core
     {
         void RequestReplaySubscriberBackfill(uint clientId);
     }
+
+    /// <summary>Optional context extension for client-scoped replay cleanup.</summary>
+    internal interface IClientReplayDisconnectContext
+    {
+        void CancelReplayForClient(uint clientId);
+    }
 }

@@ -127,6 +127,44 @@ namespace Unity.FoxgloveSDK.Tests.Replay
         }
 
         [Fact]
+        public void ReplayCallbackAdmissionBoundsMessagesInsideOneAtomicBatch()
+        {
+            using var controller = new ReplayController(new ConsoleLogger(), null, null);
+            var deliveredMessages = 0;
+            var completedBatches = 0;
+            controller.OnReplayMessageContext += _ => deliveredMessages++;
+            controller.OnReplayBatchCompleted += _ => completedBatches++;
+
+            var contexts = new List<ReplayMessageContext>(8193);
+            for (var index = 0; index < 8193; index++)
+            {
+                contexts.Add(new ReplayMessageContext(
+                    1,
+                    "/phase192/replay-callback-bound",
+                    "json",
+                    string.Empty,
+                    string.Empty,
+                    (ulong)index,
+                    0,
+                    Array.Empty<byte>()));
+            }
+
+            var queueBatch = typeof(ReplayController).GetMethod(
+                "QueueReplaySceneBatch",
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                types: new[] { typeof(IReadOnlyList<ReplayMessageContext>), typeof(ulong), typeof(string) },
+                modifiers: null);
+            Assert.NotNull(queueBatch);
+            queueBatch.Invoke(controller, new object[] { contexts, 8193UL, "MessageCountBound" });
+
+            controller.DrainReplayCallbacks();
+
+            Assert.Equal(0, deliveredMessages);
+            Assert.Equal(0, completedBatches);
+        }
+
+        [Fact]
         public void DisableReleasesTickAndSnapshotPayloadBuffers()
         {
             var path = Path.Combine(
