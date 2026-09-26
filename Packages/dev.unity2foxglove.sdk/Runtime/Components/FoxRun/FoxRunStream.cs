@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading;
 
@@ -57,6 +58,7 @@ namespace Unity.FoxgloveSDK.Components
         private bool _disposed;
         private long _nextReservationIdentity;
         private long _activeReservationIdentity;
+        private long _pendingAdmissionCredits;
 
         private long _received;
         private long _admitted;
@@ -154,6 +156,8 @@ namespace Unity.FoxgloveSDK.Components
 
                 _lastAdmissionTimestamp = now;
                 _hasAdmissionTimestamp = true;
+                if (_pendingAdmissionCredits != long.MaxValue)
+                    _pendingAdmissionCredits++;
                 SaturatingIncrement(ref _admitted);
                 return true;
             }
@@ -278,24 +282,28 @@ namespace Unity.FoxgloveSDK.Components
         /// this stream.
         /// </summary>
         public bool TryEnqueueOwned(T value, Action<T> disposer)
-            => TryEnqueueOwned(value, disposer, admissionAlreadyAcquired: false);
+        {
+            if (disposer == null)
+                throw new ArgumentNullException(nameof(disposer));
+            if (!TryAdmitInput())
+            {
+                DisposeValue(value, disposer);
+                return false;
+            }
+            return TryEnqueueOwnedAfterAdmission(value, disposer);
+        }
 
         /// <summary>
         /// Transfers an owned sample after generated infrastructure has already
         /// admitted the input and performed its decode work.
         /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public bool TryEnqueueOwnedAfterAdmission(T value, Action<T> disposer)
-            => TryEnqueueOwned(value, disposer, admissionAlreadyAcquired: true);
-
-        private bool TryEnqueueOwned(
-            T value,
-            Action<T> disposer,
-            bool admissionAlreadyAcquired)
         {
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
 
-            if (!admissionAlreadyAcquired && !TryAdmitInput())
+            if (!ConsumeAdmissionCredit())
             {
                 DisposeValue(value, disposer);
                 return false;
@@ -328,35 +336,35 @@ namespace Unity.FoxgloveSDK.Components
             Func<TState, T> materializer,
             Action<TState> stateDisposer,
             Action<T> disposer)
-            => TryEnqueueDeferredOwned(
+        {
+            if (materializer == null)
+                throw new ArgumentNullException(nameof(materializer));
+            if (stateDisposer == null)
+                throw new ArgumentNullException(nameof(stateDisposer));
+            if (disposer == null)
+                throw new ArgumentNullException(nameof(disposer));
+            if (!TryAdmitInput())
+            {
+                DisposeState(state, stateDisposer);
+                return false;
+            }
+            return TryEnqueueDeferredOwnedAfterAdmission(
                 state,
                 materializer,
                 stateDisposer,
-                disposer,
-                admissionAlreadyAcquired: false);
+                disposer);
+        }
 
         /// <summary>
         /// Transfers deferred owned state after generated infrastructure has
         /// already admitted the input.
         /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public bool TryEnqueueDeferredOwnedAfterAdmission<TState>(
             TState state,
             Func<TState, T> materializer,
             Action<TState> stateDisposer,
             Action<T> disposer)
-            => TryEnqueueDeferredOwned(
-                state,
-                materializer,
-                stateDisposer,
-                disposer,
-                admissionAlreadyAcquired: true);
-
-        private bool TryEnqueueDeferredOwned<TState>(
-            TState state,
-            Func<TState, T> materializer,
-            Action<TState> stateDisposer,
-            Action<T> disposer,
-            bool admissionAlreadyAcquired)
         {
             if (materializer == null)
                 throw new ArgumentNullException(nameof(materializer));
@@ -365,7 +373,7 @@ namespace Unity.FoxgloveSDK.Components
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
 
-            if (!admissionAlreadyAcquired && !TryAdmitInput())
+            if (!ConsumeAdmissionCredit())
             {
                 DisposeState(state, stateDisposer);
                 return false;
@@ -386,6 +394,17 @@ namespace Unity.FoxgloveSDK.Components
                 throw;
             }
             return TryEnqueueOwnedCore(owned);
+        }
+
+        private bool ConsumeAdmissionCredit()
+        {
+            lock (_gate)
+            {
+                if (_pendingAdmissionCredits == 0)
+                    return false;
+                _pendingAdmissionCredits--;
+                return true;
+            }
         }
 
         private bool TryEnqueueOwnedCore(OwnedSample owned)

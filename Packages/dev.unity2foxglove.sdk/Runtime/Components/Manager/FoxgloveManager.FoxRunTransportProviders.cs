@@ -177,6 +177,8 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _lastFoxRunTransportSessionCaptureError = null;
+            FoxRunProviderDiagnostics.BeginGeneration(
+                _activeFoxRunTransportSession.Generation);
             _foxRunTransportCoordinator.SetSession(_activeFoxRunTransportSession);
             return true;
         }
