@@ -188,6 +188,7 @@ FORBIDDEN_SAMPLE_PARTS = {
     "Recordings",
     "Generated",
 }
+PACKAGE_BUILD_DIRECTORY_NAMES = frozenset({"bin", "obj", "__pycache__"})
 
 # Exact filenames that should never be shipped in package samples.
 FORBIDDEN_SAMPLE_NAMES = {
@@ -223,6 +224,23 @@ def iter_files(root: Path) -> Iterable[Path]:
     if not root.exists():
         return ()
     return (p for p in root.rglob("*") if p.is_file())
+
+
+def iter_bridge_asset_files(package: Path | None = None) -> list[Path]:
+    """Return Bridge package assets while excluding local build outputs."""
+    root = package if package is not None else ROS2_BRIDGE_PACKAGE
+    if not root.exists():
+        return []
+    return [
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in UNITY_META_EXTENSIONS
+        and not any(
+            part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES
+            for part in path.relative_to(root).parts
+        )
+    ]
 
 
 def path_is_relative_to(path: Path, root: Path) -> bool:
@@ -774,7 +792,7 @@ def check_forbidden_sample_artifacts(results: list[CheckResult], samples_entries
 def check_package_build_artifacts(results: list[CheckResult], package_entries: list[Path] | None = None) -> None:
     """Reject build/cache directories from the release package tree."""
     package_entries = package_entries if package_entries is not None else list(PACKAGE.rglob("*"))
-    forbidden_dirs = {"bin", "obj", "__pycache__"}
+    forbidden_dirs = PACKAGE_BUILD_DIRECTORY_NAMES
     offenders: list[str] = []
     for path in package_entries:
         if path.name.casefold() in forbidden_dirs and path.is_dir():
@@ -979,11 +997,7 @@ def main() -> int:
     check_ros2_bridge_package(results)
     check_optional_package_boundaries(results)
     check_required_files(results)
-    bridge_files = [
-        path
-        for path in ROS2_BRIDGE_PACKAGE.rglob("*")
-        if path.is_file() and path.suffix.lower() in UNITY_META_EXTENSIONS
-    ]
+    bridge_files = iter_bridge_asset_files()
     check_sample_meta(results, samples_files, bridge_files)
     check_sample_boundaries(results)
     check_forbidden_public_content(results, samples_files, docs_files)
