@@ -174,6 +174,34 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
+        public void SourceIdentityChangesWhenOnlyMiddleBytesChangeWithSameLengthAndTimestamp()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-generation-middle-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                var firstBytes = BuildRemoteMcap(1, 0, 16 * 1024);
+                var secondBytes = (byte[])firstBytes.Clone();
+                secondBytes[8 * 1024] ^= 1;
+                File.WriteAllBytes(path, firstBytes);
+                var stamp = File.GetLastWriteTimeUtc(path);
+                var source = new RemoteMcapDataSourcePrototype(path, "middle-only", "Middle only", string.Empty);
+                var first = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                File.WriteAllBytes(path, secondBytes);
+                File.SetLastWriteTimeUtc(path, stamp);
+                var second = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                Assert.Equal(firstBytes.Length, secondBytes.Length);
+                Assert.Equal(stamp, File.GetLastWriteTimeUtc(path));
+                Assert.NotEqual(first, second);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
+        }
+
+        [Fact]
         public void SourceIdentityIncludesContentGenerationAcrossPrototypeRestart()
         {
             var path = Path.Combine(Path.GetTempPath(), "remote-generation-restart-" + Guid.NewGuid().ToString("N") + ".mcap");
@@ -470,7 +498,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
         }
 
-        private static byte[] BuildRemoteMcap(int messageCount, byte payloadSeed = 0)
+        private static byte[] BuildRemoteMcap(int messageCount, byte payloadSeed = 0, int payloadSize = 1)
         {
             using var stream = new MemoryStream();
             using (var writer = new McapWriter(stream, leaveOpen: true))
@@ -479,7 +507,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 writer.WriteHeader("", "remote-generation");
                 writer.WriteChannel(1, 0, "/generation", "json", new Dictionary<string, string>());
                 for (var i = 0; i < messageCount; i++)
-                    writer.WriteMessage(1, (uint)(i + 1), (ulong)(i + 1), (ulong)(i + 1), new byte[] { (byte)(i + payloadSeed) });
+                    writer.WriteMessage(1, (uint)(i + 1), (ulong)(i + 1), (ulong)(i + 1), BuildPayload(payloadSize, (byte)(i + payloadSeed)));
                 writer.WriteDataEnd();
                 var summary = new McapFileSummary
                 {
@@ -499,6 +527,13 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
 
             return stream.ToArray();
+        }
+
+        private static byte[] BuildPayload(int size, byte value)
+        {
+            var payload = new byte[size];
+            Array.Fill(payload, value);
+            return payload;
         }
 
         private static bool IsAddressAlreadyInUse(Exception error)

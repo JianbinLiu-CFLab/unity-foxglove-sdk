@@ -106,6 +106,10 @@ namespace FoxgloveSdk.UnitTests.Mcap
                     metrics.MaxObservedDecompressedChunkBytes <= maxChunkBytes,
                     $"history observed more than one decompressed chunk: peak={metrics.MaxObservedDecompressedChunkBytes}; maxChunk={maxChunkBytes}");
                 Assert.Equal(1, metrics.PeakDecompressedChunkCount);
+                Assert.Equal(10, metrics.CandidatePayloadCopies);
+                Assert.True(
+                    metrics.PeakRetainedDecompressedBytes <= maxChunkBytes,
+                    $"history retained more than one decompressed chunk: peak={metrics.PeakRetainedDecompressedBytes}; maxChunk={maxChunkBytes}");
                 var unbounded = engine.History(1, 200, new List<McapMessage>(), 0, new HashSet<ushort> { 1 });
                 Assert.Equal(200, unbounded.Count);
                 Assert.Equal(1, engine.LastHistoryMetrics.PeakDecompressedChunkCount);
@@ -113,6 +117,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
                     RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs"));
                 Assert.DoesNotContain("Dictionary<int, byte[]> payloadChunks", replaySource, StringComparison.Ordinal);
                 Assert.DoesNotContain("payloadChunks = new Dictionary", replaySource, StringComparison.Ordinal);
+                Assert.DoesNotContain("retainedCandidateChunks", replaySource, StringComparison.Ordinal);
             }
             finally
             {
