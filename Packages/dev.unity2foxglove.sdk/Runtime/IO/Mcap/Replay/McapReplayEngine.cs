@@ -725,14 +725,17 @@ namespace Unity.FoxgloveSDK.IO
             long peakDecompressedChunkCount = 0;
             long peakRetainedDecompressedBytes = 0;
             long candidatePayloadCopies = 0;
-            var firstChunkNumber = boundedCandidates != null
-                ? _summary.ChunkIndexes.Count - 1
-                : 0;
-            var chunkStep = boundedCandidates != null ? -1 : 1;
-            for (var chunkNumber = firstChunkNumber;
-                 chunkNumber >= 0 && chunkNumber < _summary.ChunkIndexes.Count;
-                 chunkNumber += chunkStep)
+            var boundedChunkNumbers = boundedCandidates != null
+                ? GetHistoryChunkNumbersByDescendingEndTime()
+                : null;
+            var chunkIterations = boundedChunkNumbers != null
+                ? boundedChunkNumbers.Count
+                : _summary.ChunkIndexes.Count;
+            for (var chunkIteration = 0; chunkIteration < chunkIterations; chunkIteration++)
             {
+                var chunkNumber = boundedChunkNumbers != null
+                    ? boundedChunkNumbers[chunkIteration]
+                    : chunkIteration;
                 var chunkIndex = _summary.ChunkIndexes[chunkNumber];
                 if (boundedCandidates != null)
                 {
@@ -1648,6 +1651,27 @@ namespace Unity.FoxgloveSDK.IO
         private static void SortChunkIndexes(List<McapChunkIndex> chunkIndexes)
         {
             chunkIndexes?.Sort(CompareChunkIndexes);
+        }
+
+        private List<int> GetHistoryChunkNumbersByDescendingEndTime()
+        {
+            var ordered = new List<int>(_summary.ChunkIndexes.Count);
+            for (var i = 0; i < _summary.ChunkIndexes.Count; i++)
+                ordered.Add(i);
+
+            ordered.Sort((leftNumber, rightNumber) =>
+            {
+                var left = _summary.ChunkIndexes[leftNumber];
+                var right = _summary.ChunkIndexes[rightNumber];
+                var compare = right.MessageEndTime.CompareTo(left.MessageEndTime);
+                if (compare != 0)
+                    return compare;
+                compare = right.MessageStartTime.CompareTo(left.MessageStartTime);
+                if (compare != 0)
+                    return compare;
+                return right.ChunkStartOffset.CompareTo(left.ChunkStartOffset);
+            });
+            return ordered;
         }
 
         private List<McapChunkIndex> GetSnapshotChunkIndexesByDescendingEndTime()

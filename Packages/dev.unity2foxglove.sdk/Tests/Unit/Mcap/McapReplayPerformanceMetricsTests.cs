@@ -127,6 +127,39 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
+        public void BoundedHistoryKeepsMessagesAcrossOverlappingChunks()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-history-overlap-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(stream, null, chunkSizeBytes: 4096, compression: "", leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/history-overlap", "json", "phase188.HistoryOverlap", "jsonschema", "{}");
+                    recorder.WriteMessage(1, 0, new byte[] { 0 });
+                    recorder.WriteMessage(1, 80, new byte[] { 80 });
+                    recorder.WriteMessage(1, 100, new byte[] { 100 });
+                    recorder.AddAttachment("boundary", "application/octet-stream", new byte[] { 0 }, 1);
+                    recorder.WriteMessage(1, 50, new byte[] { 50 });
+                    recorder.WriteMessage(1, 60, new byte[] { 60 });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = engine.History(70, 100, new List<McapMessage>(), 2, new HashSet<ushort> { 1 });
+
+                Assert.Equal(new ulong[] { 80, 100 }, result.Select(message => message.LogTime).ToArray());
+                Assert.Equal(2, engine.LastHistoryMetrics.CandidatePayloadCopies);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
         public void HistoryFiltersIrrelevantHighRateChannelsBeforeAdmission()
         {
             var path = Path.Combine(Path.GetTempPath(), "phase188-history-filter-" + Guid.NewGuid().ToString("N") + ".mcap");
