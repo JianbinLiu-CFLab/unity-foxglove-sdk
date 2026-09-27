@@ -28,7 +28,7 @@ namespace Unity.FoxgloveSDK.Transport
     public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
     {
         private const int CloseDrainTimeoutMs = 250;
-        private const int CloseHandshakeTimeoutMs = 1000;
+        private const int CloseHandshakeTimeoutMs = 500;
         private const int StopAcceptLoopWaitMs = 500;
         private const int StopDisconnectWaitMs = 2000;
         private const int StopForcedCloseWaitMs = 1000;
