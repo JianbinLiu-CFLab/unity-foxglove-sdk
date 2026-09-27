@@ -389,9 +389,12 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
-        public void RemoteMcapManagerSuppliesStableGenerationAuthority()
+        public void RemoteMcapManagerPreservesContentIdentityWhenFileIsReplaced()
         {
             var path = Path.GetTempFileName();
+            var replacementPath = Path.GetTempFileName();
+            WriteRemoteMcapFixture(path, 1);
+            WriteRemoteMcapFixture(replacementPath, 2);
             var manager = new FoxgloveManager();
             manager.ConfigureRemoteForTest(path, FindFreePort());
 
@@ -401,15 +404,52 @@ namespace Unity.FoxgloveSDK.Tests.Manager
 
                 var options = manager.RemoteOptionsForTest;
                 Assert.NotNull(options);
-                Assert.NotNull(options.GenerationVersionProvider);
-                var first = options.GenerationVersionProvider();
-                Assert.False(string.IsNullOrEmpty(first));
-                Assert.Equal(first, options.GenerationVersionProvider());
+                Assert.Null(options.GenerationVersionProvider);
+                var source = new RemoteMcapDataSourcePrototype(
+                    options.McapPath,
+                    options.SourceId,
+                    options.ManifestName,
+                    options.RequiredBearerToken,
+                    options.MaxInMemoryDataBytes,
+                    options.DataRoute,
+                    options.DirectFileRoute,
+                    options.GenerationVersionProvider);
+                var first = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+                var originalWriteTime = File.GetLastWriteTimeUtc(path);
+                var replacement = File.ReadAllBytes(replacementPath);
+                Assert.Equal(new FileInfo(path).Length, replacement.LongLength);
+                File.WriteAllBytes(path, replacement);
+                File.SetLastWriteTimeUtc(path, originalWriteTime);
+
+                manager.RefreshRemoteForTest();
+                var second = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+                Assert.NotEqual(first, second);
             }
             finally
             {
                 manager.StopSidecarsForTest();
                 File.Delete(path);
+                File.Delete(replacementPath);
+            }
+        }
+
+        private static void WriteRemoteMcapFixture(string path, byte value)
+        {
+            using (var stream = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.Read))
+            using (var recorder = new McapRecorder(
+                stream,
+                null,
+                new McapWriterOptions
+                {
+                    UseChunking = true,
+                    ChunkSizeBytes = 128,
+                    IndexTypes = McapIndexTypes.Chunk | McapIndexTypes.Message
+                },
+                leaveOpen: true))
+            {
+                recorder.AddChannel(1, "/manager/generation", "json", "manager.Generation", "jsonschema", "{}");
+                recorder.WriteMessage(1, 1, new byte[] { value });
+                recorder.Close();
             }
         }
 
