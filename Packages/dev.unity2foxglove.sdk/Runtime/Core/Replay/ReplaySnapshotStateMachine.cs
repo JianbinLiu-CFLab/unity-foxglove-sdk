@@ -42,8 +42,6 @@ namespace Unity.FoxgloveSDK.Core
             lock (_panelSnapshotLock)
             {
                 _maxPendingTargetedPanelSnapshots = normalized;
-                while (_targetedPanelSnapshots.Count > _maxPendingTargetedPanelSnapshots)
-                    RemoveOldestTargetedSnapshot();
             }
         }
 
