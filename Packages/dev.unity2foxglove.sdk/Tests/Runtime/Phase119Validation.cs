@@ -159,7 +159,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = CreateIndexedFixture("data");
             var service = new RemoteMcapDataSourcePrototype(path, SourceId, "phase119-data", Token);
-            var response = service.GetData(AuthorizedRequest());
+            var manifest = service.GetManifest(AuthorizedRequest());
+            var response = service.GetData(AuthorizedRequest(SingleSource(manifest).Id));
             Check(response.Status == RemoteMcapResponseStatus.Ok && response.Data.Length == new FileInfo(path).Length,
                 "119-F1: authorized data request returns exact MCAP bytes");
 
@@ -195,12 +196,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "119-G2: runtime test project compiles Phase119Validation");
         }
 
-        private static RemoteMcapRequest AuthorizedRequest()
+        private static RemoteMcapRequest AuthorizedRequest(string sourceId = SourceId)
         {
             return new RemoteMcapRequest
             {
                 BearerToken = "Bearer " + Token,
-                SourceId = SourceId
+                SourceId = sourceId
             };
         }
 
