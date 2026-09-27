@@ -127,6 +127,40 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
+        public void BoundedHistoryCopiesOnlyFinalCandidatesAcrossOverlappingChunks()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-history-final-candidates-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(stream, null, chunkSizeBytes: 4096, compression: "", leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/history-final", "json", "phase188.HistoryFinal", "jsonschema", "{}");
+                    recorder.AddChannel(2, "/phase188/history-boundary", "json", "phase188.HistoryBoundary", "jsonschema", "{}");
+                    recorder.WriteMessage(1, 10, new byte[] { 10 });
+                    recorder.WriteMessage(2, 100, new byte[] { 100 });
+                    recorder.AddAttachment("boundary", "application/octet-stream", new byte[] { 0 }, 1);
+                    recorder.WriteMessage(1, 80, new byte[] { 80 });
+                    recorder.WriteMessage(2, 90, new byte[] { 90 });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = engine.History(0, 100, new List<McapMessage>(), 1, new HashSet<ushort> { 1 });
+
+                Assert.Equal(80UL, Assert.Single(result).LogTime);
+                Assert.Equal(1, engine.LastHistoryMetrics.CandidatePayloadCopies);
+                Assert.Equal(2, engine.LastHistoryMetrics.CandidateCount);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
         public void BoundedHistoryKeepsMessagesAcrossOverlappingChunks()
         {
             var path = Path.Combine(Path.GetTempPath(), "phase188-history-overlap-" + Guid.NewGuid().ToString("N") + ".mcap");

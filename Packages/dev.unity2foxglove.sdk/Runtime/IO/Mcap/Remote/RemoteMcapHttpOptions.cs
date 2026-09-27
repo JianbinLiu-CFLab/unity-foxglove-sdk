@@ -44,6 +44,13 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Maximum MCAP response size buffered in memory before the request is rejected.</summary>
         public long MaxInMemoryDataBytes = RemoteMcapDataSourcePrototype.DefaultMaxInMemoryDataBytes;
 
+        /// <summary>
+        /// Trusted recording-generation callback. When set, its value is the authoritative
+        /// source version and avoids hashing the file on unchanged-generation checks.
+        /// When unset, source identity uses a full content hash.
+        /// </summary>
+        public Func<string> GenerationVersionProvider;
+
         /// <summary>Returns the normalized listener base URL used by <see cref="RemoteMcapHttpServer"/>.</summary>
         public string BaseUrl
         {

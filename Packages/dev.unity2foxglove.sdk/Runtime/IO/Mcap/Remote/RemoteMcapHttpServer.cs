@@ -60,7 +60,8 @@ namespace Unity.FoxgloveSDK.IO
                 options.RequiredBearerToken,
                 options.MaxInMemoryDataBytes,
                 options.DataRoute,
-                options.DirectFileRoute);
+                options.DirectFileRoute,
+                options.GenerationVersionProvider);
             var router = new RemoteMcapHttpRouter(source);
 
             var stop = new CancellationTokenSource();
