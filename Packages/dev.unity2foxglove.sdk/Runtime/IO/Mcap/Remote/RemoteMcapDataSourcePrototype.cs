@@ -409,7 +409,9 @@ namespace Unity.FoxgloveSDK.IO
                 if (!_hasIdentityStamp)
                 {
                     _identityStamp = stamp;
-                    _generationSourceId = _baseSourceId;
+                    _generationSourceId = _baseSourceId
+                        + "@"
+                        + stamp.ContentHash;
                     _hasIdentityStamp = true;
                 }
                 else if (!SameStamp(_identityStamp, stamp))

@@ -187,6 +187,30 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.True(latest[1].SourceOffset > 0);
         }
 
+        [Fact]
+        public void LatestTieMatchesIndexedAndSequentialReadLatestBeforePaths()
+        {
+            using var stream = BuildIndexedTieMcap();
+            using var reader = new McapIndexedReader(stream, leaveOpen: true);
+            var options = new McapReadOptions
+            {
+                EndTimeNs = 100,
+                ChannelIds = new List<ushort> { 1 }
+            };
+
+            Assert.NotEmpty(reader.Summary.ChunkIndexes);
+            var indexed = reader.ReadLatestBefore(options);
+            Assert.Single(indexed);
+            Assert.Equal(new byte[] { 2 }, indexed[0].Data);
+
+            reader.Summary.ChunkIndexes.Clear();
+            var sequential = reader.ReadLatestBefore(options);
+            Assert.Single(sequential);
+            Assert.Equal(new byte[] { 2 }, sequential[0].Data);
+            Assert.Equal(indexed[0].SourceOffset, sequential[0].SourceOffset);
+            Assert.Equal(indexed[0].SourceRecordOffset, sequential[0].SourceRecordOffset);
+        }
+
         private static MemoryStream BuildTwoChannelMcap()
         {
             var stream = new MemoryStream();
@@ -327,6 +351,33 @@ namespace Unity.FoxgloveSDK.UnitTests
                 McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
                 writer.WriteMagic();
                 writer.Flush();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream BuildIndexedTieMcap()
+        {
+            var stream = new MemoryStream();
+            using (var recorder = new McapRecorder(
+                       stream,
+                       null,
+                       new McapWriterOptions
+                       {
+                           UseChunking = true,
+                           IndexTypes = McapIndexTypes.Chunk | McapIndexTypes.Message,
+                           UseStatistics = true,
+                           UseSummaryOffsets = false,
+                           EnableCrcs = false,
+                           ChunkSizeBytes = 1024
+                       },
+                       leaveOpen: true))
+            {
+                recorder.AddChannel(1, "/tie", "json", "mcap.Tie", "jsonschema", "{}");
+                recorder.WriteMessagePreservingMcapMetadata(1, 7, 100, 100, new byte[] { 1 });
+                recorder.WriteMessagePreservingMcapMetadata(1, 7, 100, 100, new byte[] { 2 });
+                recorder.Close();
             }
 
             stream.Position = 0;

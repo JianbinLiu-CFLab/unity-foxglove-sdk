@@ -9,6 +9,7 @@
 
 using System;
 using System.Diagnostics;
+using Newtonsoft.Json.Linq;
 using System.Linq;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
@@ -92,6 +93,23 @@ namespace Unity.FoxgloveSDK.UnitTests
             var completed = Assert.Single(reg.DrainCompleted());
             Assert.Equal(11u, completed.ClientId);
             Assert.Contains("timed out", completed.FailureMessage, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void EnqueueClonesCallerOwnedPayloadAndJson()
+        {
+            var reg = new FoxgloveServiceRegistry();
+            var payload = new byte[] { 1 };
+            var jsonPayload = new JObject { ["value"] = 1 };
+
+            Assert.True(reg.TryEnqueue(1, 1, 1, "json", payload, jsonPayload, out _, out var error), error);
+
+            payload[0] = 9;
+            jsonPayload["value"] = 9;
+
+            var pending = Assert.Single(reg.GetPendingCalls());
+            Assert.Equal(1, pending.Payload[0]);
+            Assert.Equal(1, pending.JsonPayload.Value<int>("value"));
         }
 
         [Fact]

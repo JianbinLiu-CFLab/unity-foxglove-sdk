@@ -28,10 +28,16 @@ namespace Unity.FoxgloveSDK.Core
         private uint _nextServiceId = 1;
         private readonly Dictionary<uint, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken>> _handlers = new();
 
-        /// <summary>Create a service registry with an optional monotonic timestamp provider.</summary>
-        public FoxgloveServiceRegistry(Func<long> monotonicTimestampProvider = null)
+        /// <summary>Create a service registry using the process monotonic clock.</summary>
+        public FoxgloveServiceRegistry()
+            : this(Stopwatch.GetTimestamp)
         {
-            _monotonicTimestampProvider = monotonicTimestampProvider ?? Stopwatch.GetTimestamp;
+        }
+
+        /// <summary>Create a service registry with a deterministic monotonic timestamp provider.</summary>
+        internal FoxgloveServiceRegistry(Func<long> monotonicTimestampProvider)
+        {
+            _monotonicTimestampProvider = monotonicTimestampProvider ?? throw new ArgumentNullException(nameof(monotonicTimestampProvider));
         }
 
         /// <summary>Register a service. Returns the assigned service ID.</summary>
@@ -266,8 +272,8 @@ namespace Unity.FoxgloveSDK.Core
                     CallId = callId,
                     ClientId = clientId,
                     Encoding = encoding,
-                    Payload = payload,
-                    JsonPayload = jsonPayload,
+                    Payload = payload == null ? null : (byte[])payload.Clone(),
+                    JsonPayload = jsonPayload?.DeepClone(),
                     CreatedAt = DateTime.UtcNow,
                     CreatedTimestamp = _monotonicTimestampProvider(),
                     HasCreatedTimestamp = true

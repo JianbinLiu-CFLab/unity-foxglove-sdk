@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Transport
     public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
     {
         private const int CloseDrainTimeoutMs = 250;
+        private const int CloseHandshakeTimeoutMs = 1000;
         private const int StopAcceptLoopWaitMs = 500;
         private const int StopDisconnectWaitMs = 2000;
         private const int StopForcedCloseWaitMs = 1000;
@@ -260,6 +261,7 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 try { listener?.Stop(); } catch { }
                 WaitForShutdownTask(acceptLoopTask, StopAcceptLoopWaitMs, "accept loop");
+                DrainCapacityResponseWorkers();
 
                 var disconnects = clients
                     .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value, initiateGracefulClose: true)))
@@ -319,7 +321,6 @@ namespace Unity.FoxgloveSDK.Transport
                     }
                 }
 
-                DrainCapacityResponseWorkers();
                 WaitForClientHandlers(clientHandlers);
             }
             finally
@@ -609,7 +610,7 @@ namespace Unity.FoxgloveSDK.Transport
                     _options.MaxQueuedFramesPerClient,
                     _options.MaxQueuedBytesPerClient,
                     _options.MaxInboundFrameBytes);
-                if (!TryRegisterClient(conn, out clientId, out var stopped))
+                if (!TryRegisterClient(conn, ct, out clientId, out var stopped))
                 {
                     if (stopped)
                         CloseUnannouncedClient(conn);
@@ -626,7 +627,7 @@ namespace Unity.FoxgloveSDK.Transport
                 // exactly once.
                 ReleasePendingClient(tcpClient);
 
-                if (ct.IsCancellationRequested || !BeginClientPublication(clientId, conn, ct))
+                if (ct.IsCancellationRequested || !BeginClientPublication(clientId, conn))
                 {
                     RemoveUnannouncedClient(clientId, conn);
                     conn = null;
@@ -645,6 +646,7 @@ namespace Unity.FoxgloveSDK.Transport
                     conn.StartLivenessMonitor(
                         ManagedWebSocketOptions.NormalizeEstablishedIdleTimeoutMs(_options.EstablishedIdleTimeoutMs),
                         () => DisconnectClient(clientId, conn),
+                        RecordLivenessEnqueueResult,
                         ct);
                     ReceiveLoop(clientId, conn, ct);
                 }
@@ -879,7 +881,11 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
-        private bool TryRegisterClient(WsConnection conn, out uint clientId, out bool stopped)
+        private bool TryRegisterClient(
+            WsConnection conn,
+            CancellationToken cancellationToken,
+            out uint clientId,
+            out bool stopped)
         {
             lock (_clientAdmissionLock)
             {
@@ -898,7 +904,11 @@ namespace Unity.FoxgloveSDK.Transport
                     return false;
                 }
 
-                clientId = AllocateClientId();
+                var allocatedClientId = AllocateClientId();
+                conn.StartSendLoop(
+                    () => DisconnectClient(allocatedClientId, conn),
+                    cancellationToken);
+                clientId = allocatedClientId;
                 _clients[clientId] = conn;
                 _clientPublications[clientId] = new ClientPublication();
                 stopped = false;
@@ -913,8 +923,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// </summary>
         private bool BeginClientPublication(
             uint clientId,
-            WsConnection expectedConnection,
-            CancellationToken cancellationToken)
+            WsConnection expectedConnection)
         {
             ClientPublication publication;
             var acceptedCounted = false;
@@ -996,9 +1005,6 @@ namespace Unity.FoxgloveSDK.Transport
                         }
                         else
                         {
-                            expectedConnection.StartSendLoop(
-                                () => DisconnectClient(clientId, expectedConnection),
-                                cancellationToken);
                             return true;
                         }
                     }
@@ -1275,6 +1281,13 @@ namespace Unity.FoxgloveSDK.Transport
                         break;
                     }
 
+                    if (conn.IsClosing
+                        && frame.Opcode != WsOpcode.Close
+                        && frame.Opcode != WsOpcode.Ping)
+                    {
+                        continue;
+                    }
+
                     conn.TouchInboundActivity();
                     switch (frame.Opcode)
                     {
@@ -1349,8 +1362,13 @@ namespace Unity.FoxgloveSDK.Transport
                             break;
 
                         case WsOpcode.Close:
-                            HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
-                            conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
+                            conn.BeginClosing();
+                            conn.MarkCloseReceived();
+                            if (!conn.CloseFrameSent)
+                            {
+                                HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
+                                conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
+                            }
                             return;
                         case WsOpcode.Ping:
                             HandleEnqueueResult(clientId, conn, conn.SendPong(frame.Payload), "SendPong");
@@ -1399,6 +1417,7 @@ namespace Unity.FoxgloveSDK.Transport
             WsConnection conn,
             ushort statusCode = ProtocolErrorCloseCode)
         {
+            conn.BeginClosing();
             HandleEnqueueResult(clientId, conn, conn.SendClose(statusCode), "SendClose");
             conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
         }
@@ -1408,14 +1427,23 @@ namespace Unity.FoxgloveSDK.Transport
         {
             if (initiateGracefulClose && conn != null)
             {
-                var closeResult = conn.SendClose(GoingAwayCloseCode);
-                RecordDroppedDataFrames(closeResult.DroppedDataFrames);
-                if (closeResult.ShouldLogDataDrop)
+                conn.BeginClosing();
+                if (!conn.CloseFrameSent)
                 {
-                    _logger.LogWarning(
-                        $"Client {clientId} send queue dropped {closeResult.DroppedDataFrames} stale data frame(s) while stopping; total dropped={closeResult.TotalDroppedDataFrames}.");
+                    var closeResult = conn.SendClose(GoingAwayCloseCode);
+                    RecordDroppedDataFrames(closeResult.DroppedDataFrames);
+                    if (closeResult.ShouldLogDataDrop)
+                    {
+                        _logger.LogWarning(
+                            $"Client {clientId} send queue dropped {closeResult.DroppedDataFrames} stale data frame(s) while stopping; total dropped={closeResult.TotalDroppedDataFrames}.");
+                    }
                 }
                 conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
+                if (!conn.WaitForCloseReceived(TimeSpan.FromMilliseconds(CloseHandshakeTimeoutMs)))
+                {
+                    _logger.LogWarning(
+                        $"Client {clientId} did not complete the WebSocket close handshake within {CloseHandshakeTimeoutMs}ms; forcing close.");
+                }
             }
 
             // Do not remove or dispose a connection while its connect callback
@@ -1543,6 +1571,11 @@ namespace Unity.FoxgloveSDK.Transport
         private static void CloseUnannouncedClient(WsConnection conn)
         {
             try { conn?.Dispose(); } catch { }
+        }
+
+        internal void RecordLivenessEnqueueResult(EnqueueResult result)
+        {
+            RecordDroppedDataFrames(result.DroppedDataFrames);
         }
 
         private void HandleEnqueueResult(uint clientId, WsConnection conn, EnqueueResult result, string operation)

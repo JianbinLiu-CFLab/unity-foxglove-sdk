@@ -174,6 +174,33 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
+        public void SourceIdentityIncludesContentGenerationAcrossPrototypeRestart()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-generation-restart-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                File.WriteAllBytes(path, BuildRemoteMcap(1));
+                var first = new RemoteMcapDataSourcePrototype(path, "restart", "Restart", string.Empty)
+                    .GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+                var firstRestart = new RemoteMcapDataSourcePrototype(path, "restart", "Restart", string.Empty)
+                    .GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                File.WriteAllBytes(path, BuildRemoteMcap(2));
+                var secondRestart = new RemoteMcapDataSourcePrototype(path, "restart", "Restart", string.Empty)
+                    .GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                Assert.StartsWith("restart@", first);
+                Assert.Equal(first, firstRestart);
+                Assert.StartsWith("restart@", secondRestart);
+                Assert.NotEqual(first, secondRestart);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
+        }
+
+        [Fact]
         public void ManifestDataRoutePreservesCustomQueryParameters()
         {
             var path = Path.Combine(Path.GetTempPath(), "remote-route-" + Guid.NewGuid().ToString("N") + ".mcap");
@@ -188,7 +215,11 @@ namespace FoxgloveSdk.UnitTests.Mcap
                     dataRoute: "/v1/data?recordingId=route&startTime=1");
 
                 var manifest = source.GetManifest(new RemoteMcapRequest()).Manifest;
-                Assert.Equal("/v1/data?recordingId=route&startTime=1", manifest.Sources[0].DataUrl);
+                Assert.Equal(
+                    "/v1/data?recordingId="
+                    + Uri.EscapeDataString(manifest.Sources[0].Id)
+                    + "&startTime=1",
+                    manifest.Sources[0].DataUrl);
             }
             finally
             {

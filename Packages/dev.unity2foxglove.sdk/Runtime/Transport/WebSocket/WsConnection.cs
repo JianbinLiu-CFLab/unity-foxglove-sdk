@@ -38,6 +38,10 @@ namespace Unity.FoxgloveSDK.Transport
         private CancellationTokenSource _livenessCts;
         private Task _livenessTask;
         private int _disposed;
+        private int _closing;
+        private int _closeFrameSent;
+        private readonly TaskCompletionSource<bool> _peerCloseReceived =
+            new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly int _maxInboundFrameBytes;
         private int _sendLoopThreadId;
         private int _livenessThreadId;
@@ -107,6 +111,20 @@ namespace Unity.FoxgloveSDK.Transport
             Interlocked.Exchange(ref _pingOutstanding, 0);
         }
 
+        internal bool IsClosing => Volatile.Read(ref _closing) != 0;
+        internal bool CloseFrameSent => Volatile.Read(ref _closeFrameSent) != 0;
+
+        internal void BeginClosing() => Interlocked.Exchange(ref _closing, 1);
+
+        internal void MarkCloseReceived() => _peerCloseReceived.TrySetResult(true);
+
+        internal bool WaitForCloseReceived(TimeSpan timeout)
+        {
+            try { return _peerCloseReceived.Task.Wait(timeout); }
+            catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException)) { return true; }
+            catch (ObjectDisposedException) { return true; }
+        }
+
         private static long MonotonicMilliseconds()
         {
             return Stopwatch.GetTimestamp() / StopwatchTicksPerMillisecond;
@@ -122,7 +140,11 @@ namespace Unity.FoxgloveSDK.Transport
             _sendTask = Task.Run(() => SendLoop(onSendFailed, token), token);
         }
 
-        internal void StartLivenessMonitor(int timeoutMs, Action onTimeout, CancellationToken parentToken)
+        internal void StartLivenessMonitor(
+            int timeoutMs,
+            Action onTimeout,
+            Action<EnqueueResult> onPingEnqueued,
+            CancellationToken parentToken)
         {
             if (_livenessTask != null || timeoutMs <= 0 || onTimeout == null)
                 return;
@@ -130,7 +152,7 @@ namespace Unity.FoxgloveSDK.Transport
             _livenessCts = CancellationTokenSource.CreateLinkedTokenSource(parentToken);
             var token = _livenessCts.Token;
             _livenessTask = Task.Run(
-                () => MonitorLiveness(timeoutMs, onTimeout, token),
+                () => MonitorLiveness(timeoutMs, onTimeout, onPingEnqueued, token),
                 token);
         }
 
@@ -160,6 +182,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Send a close frame with an empty payload to initiate graceful shutdown.</summary>
         public EnqueueResult SendClose()
         {
+            Interlocked.Exchange(ref _closeFrameSent, 1);
             return _sendQueue.Enqueue(new QueuedFrame(OpClose, Array.Empty<byte>(), FramePriority.Control));
         }
 
@@ -170,6 +193,7 @@ namespace Unity.FoxgloveSDK.Transport
                 (byte)(statusCode >> 8),
                 (byte)statusCode
             };
+            Interlocked.Exchange(ref _closeFrameSent, 1);
             return _sendQueue.Enqueue(new QueuedFrame(OpClose, payload, FramePriority.Control));
         }
 
@@ -215,14 +239,18 @@ namespace Unity.FoxgloveSDK.Transport
         private bool IsCurrentLivenessMonitor =>
             Environment.CurrentManagedThreadId == Volatile.Read(ref _livenessThreadId);
 
-        private async Task MonitorLiveness(int timeoutMs, Action onTimeout, CancellationToken ct)
+        private async Task MonitorLiveness(
+            int timeoutMs,
+            Action onTimeout,
+            Action<EnqueueResult> onPingEnqueued,
+            CancellationToken ct)
         {
             Interlocked.Exchange(ref _livenessThreadId, Environment.CurrentManagedThreadId);
             var pingIntervalMs = Math.Max(10, timeoutMs / 3);
             var pollMs = Math.Max(10, Math.Min(1000, pingIntervalMs / 4));
             try
             {
-                while (!ct.IsCancellationRequested)
+                while (!ct.IsCancellationRequested && !IsClosing)
                 {
                     await Task.Delay(pollMs, ct).ConfigureAwait(false);
                     // Async continuations may resume on a different worker;
@@ -235,7 +263,9 @@ namespace Unity.FoxgloveSDK.Transport
                         && Interlocked.CompareExchange(ref _pingOutstanding, 1, 0) == 0)
                     {
                         Interlocked.Exchange(ref _pingSentAtMs, nowMs);
-                        if (!SendPing().Accepted)
+                        var pingResult = SendPing();
+                        onPingEnqueued?.Invoke(pingResult);
+                        if (!pingResult.Accepted)
                         {
                             onTimeout();
                             return;
@@ -384,6 +414,7 @@ namespace Unity.FoxgloveSDK.Transport
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
 
+            BeginClosing();
             _sendQueue.Complete();
             try { _livenessCts?.Cancel(); } catch { }
             try { _sendCts?.Cancel(); } catch { }

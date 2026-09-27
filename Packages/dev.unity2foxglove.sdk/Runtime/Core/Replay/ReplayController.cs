@@ -409,12 +409,7 @@ namespace Unity.FoxgloveSDK.Core
         public void DrainPanelHistory(FoxgloveSession session)
         {
             lock (_panelHistoryLock)
-            {
-                if (_panelHistory.DebugClientDrainCount > 0)
-                    DrainPanelHistoryClientsLocked(session);
-                else
-                    DrainPanelHistoryLocked(session);
-            }
+                DrainPanelHistoryClientsLocked(session);
         }
 
         /// <summary>
@@ -449,17 +444,6 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_panelHistoryLock)
                 _panelHistory.ResetDebounce(clientId);
-        }
-
-        private void DrainPanelHistoryLocked(FoxgloveSession session)
-        {
-            _panelHistory.DrainLocked(
-                session,
-                _channelTopicMap,
-                _logger,
-                ScrubHistoryMaxMessagesPerTick,
-                ScrubHistoryQueueReserveFrames,
-                ScrubHistoryQueueReserveBytes);
         }
 
         private void DrainPanelHistoryClientsLocked(FoxgloveSession session)

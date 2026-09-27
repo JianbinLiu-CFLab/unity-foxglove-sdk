@@ -18,7 +18,8 @@ namespace Unity.FoxgloveSDK.Core
         private readonly object _panelSnapshotLock = new();
         private readonly object _sceneSnapshotLock = new();
 
-        private const int MaxPendingTargetedPanelSnapshots = 64;
+        private const int DefaultMaxPendingTargetedPanelSnapshots = 64;
+        private readonly int _maxPendingTargetedPanelSnapshots;
         private readonly Dictionary<uint, PendingPanelSnapshot> _targetedPanelSnapshots = new();
         private bool _globalPanelSnapshotPending;
         private ulong _globalPanelSnapshotTimeNs;
@@ -26,6 +27,14 @@ namespace Unity.FoxgloveSDK.Core
         private long _nextTargetedPanelSnapshotSequence;
         private bool _sceneSnapshotPending;
         private ulong _sceneSnapshotTimeNs;
+
+        internal ReplaySnapshotStateMachine(
+            int maxPendingTargetedPanelSnapshots = DefaultMaxPendingTargetedPanelSnapshots)
+        {
+            _maxPendingTargetedPanelSnapshots = maxPendingTargetedPanelSnapshots > 0
+                ? maxPendingTargetedPanelSnapshots
+                : DefaultMaxPendingTargetedPanelSnapshots;
+        }
 
         public void RequestPanelSnapshot(ulong timeNs, ulong readyWallNs, uint? clientId = null)
         {
@@ -46,7 +55,7 @@ namespace Unity.FoxgloveSDK.Core
                     return;
 
                 if (!_targetedPanelSnapshots.ContainsKey(clientId.Value)
-                    && _targetedPanelSnapshots.Count >= MaxPendingTargetedPanelSnapshots)
+                    && _targetedPanelSnapshots.Count >= _maxPendingTargetedPanelSnapshots)
                 {
                     RemoveOldestTargetedSnapshot();
                 }
