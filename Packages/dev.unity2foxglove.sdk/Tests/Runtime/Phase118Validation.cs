@@ -43,7 +43,7 @@ namespace Unity.FoxgloveSDK.Tests
             using var loader = new McapDataLoader(ms, leaveOpen: true);
             var first = loader.Initialize();
             var second = loader.Initialize();
-            Check(object.ReferenceEquals(first, second), "118-A1: Initialize preserves cached same-reference behavior");
+            Check(!object.ReferenceEquals(first, second), "118-A1: Initialize returns independent cached snapshots");
 
             first.Channels.Clear();
             var messages = loader.CreateIterator(new McapDataLoaderQuery

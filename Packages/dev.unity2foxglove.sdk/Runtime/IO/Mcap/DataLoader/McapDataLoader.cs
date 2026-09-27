@@ -22,7 +22,6 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapSequentialReadLimits _sequentialReadLimits;
         private readonly long _sourceLengthBytes;
         private McapDataLoaderInitialization _initialization;
-        private McapDataLoaderInitialization _publicInitialization;
         private Dictionary<ushort, McapSchema> _schemaMap;
         private Dictionary<ushort, McapChannel> _channelMap;
         private Dictionary<string, List<ushort>> _topicChannelMap;
@@ -86,10 +85,7 @@ namespace Unity.FoxgloveSDK.IO
             ThrowIfDisposed();
             ThrowIfLazyEnumerationActive();
             if (_initialization != null)
-            {
-                CopyInitialization(CloneInitialization(_initialization), _publicInitialization);
-                return _publicInitialization;
-            }
+                return CloneInitialization(_initialization);
 
             _schemaMap = BuildSchemaMap(_reader.Schemas);
             BuildChannelAndQueryMaps(_reader.Channels, out _channelMap, out _topicChannelMap, out _knownChannelIds);
@@ -103,27 +99,7 @@ namespace Unity.FoxgloveSDK.IO
             AddSequentialFallbackProblems(_initialization);
             AddSchemaReferenceProblems(_initialization);
             AddFoxRunSchemaMetadataProblems(_initialization);
-            _publicInitialization = CloneInitialization(_initialization);
-            return _publicInitialization;
-        }
-
-        private static void CopyInitialization(
-            McapDataLoaderInitialization source,
-            McapDataLoaderInitialization target)
-        {
-            target.Channels.Clear();
-            target.Channels.AddRange(source.Channels);
-            target.Schemas.Clear();
-            target.Schemas.AddRange(source.Schemas);
-            target.MetadataIndexes.Clear();
-            target.MetadataIndexes.AddRange(source.MetadataIndexes);
-            target.AttachmentIndexes.Clear();
-            target.AttachmentIndexes.AddRange(source.AttachmentIndexes);
-            target.Problems.Clear();
-            target.Problems.AddRange(source.Problems);
-            target.TimeRange = source.TimeRange;
-            target.HasTotalMessageCount = source.HasTotalMessageCount;
-            target.TotalMessageCount = source.TotalMessageCount;
+            return CloneInitialization(_initialization);
         }
 
         private static McapDataLoaderInitialization CloneInitialization(

@@ -39,6 +39,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             first.Channels.Clear();
 
             var second = loader.Initialize();
+            Assert.NotSame(first, second);
             Assert.Equal(2, second.Channels.Count);
             Assert.Equal("/a", second.Channels[0].Topic);
         }
