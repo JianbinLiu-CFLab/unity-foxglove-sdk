@@ -904,10 +904,11 @@ namespace Unity.FoxgloveSDK.Transport
                     return false;
                 }
 
-                clientId = AllocateClientId();
+                var allocatedClientId = AllocateClientId();
                 conn.StartSendLoop(
-                    () => DisconnectClient(clientId, conn),
+                    () => DisconnectClient(allocatedClientId, conn),
                     cancellationToken);
+                clientId = allocatedClientId;
                 _clients[clientId] = conn;
                 _clientPublications[clientId] = new ClientPublication();
                 stopped = false;
