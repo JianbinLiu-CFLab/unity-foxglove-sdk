@@ -605,6 +605,50 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         /// <summary>
+        /// Reads one payload from an uncompressed chunk without allocating a full decoded chunk buffer.
+        /// </summary>
+        internal bool TryReadUncompressedChunkPayload(
+            ulong chunkStartOffset,
+            ulong chunkLength,
+            int dataOffset,
+            int dataLength,
+            out byte[] payload,
+            out bool crcValid)
+        {
+            _stream.Seek(ToSeekOffset(chunkStartOffset, "chunk"), SeekOrigin.Begin);
+            var recordStart = _stream.Position;
+            var (opcode, content, contentLength) = ReadOneRecordSegment();
+            var recordEnd = _stream.Position;
+            var actualChunkLength = (ulong)(recordEnd - recordStart);
+            if (chunkLength != 0 && actualChunkLength != chunkLength)
+                throw new InvalidDataException(
+                    $"Chunk record at offset {chunkStartOffset} has length {actualChunkLength}, expected {chunkLength}.");
+            if (opcode != McapWriter.OpcodeChunk)
+                throw new InvalidDataException($"Expected Chunk (0x06) at offset {chunkStartOffset}, got 0x{opcode:X2}");
+
+            if (!McapRecordDecoder.TryGetUncompressedChunkData(
+                    content,
+                    0,
+                    contentLength,
+                    out var recordsOffset,
+                    out var recordsLength,
+                    out crcValid,
+                    McapReader.DefaultChunkUncompressedSizeLimit))
+            {
+                payload = null;
+                return false;
+            }
+
+            if (dataOffset < 0 || dataLength < 0 || dataOffset > recordsLength - dataLength)
+                throw new InvalidDataException("Chunk payload range is outside the uncompressed records.");
+
+            payload = new byte[dataLength];
+            if (dataLength > 0)
+                Buffer.BlockCopy(content, recordsOffset + dataOffset, payload, 0, dataLength);
+            return true;
+        }
+
+        /// <summary>
         /// Reads and decompresses a chunk's record data (backward-compatible overload).
         /// CRC validation result is discarded.
         /// </summary>
