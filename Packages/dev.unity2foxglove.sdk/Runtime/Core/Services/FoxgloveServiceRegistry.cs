@@ -292,7 +292,10 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 if (_pending.TryGetValue((clientId, callId), out var call))
-                    call.Complete(encoding, payload);
+                {
+                    var ownedPayload = payload == null ? null : (byte[])payload.Clone();
+                    call.Complete(encoding, ownedPayload);
+                }
             }
         }
 
