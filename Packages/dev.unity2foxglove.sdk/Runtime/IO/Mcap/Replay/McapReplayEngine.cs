@@ -773,7 +773,7 @@ namespace Unity.FoxgloveSDK.IO
                             record.PublishTime,
                             chunkIndex.ChunkStartOffset,
                             (ulong)record.RecordOffset);
-                        InsertBoundedHistoryCandidate(boundedCandidates, candidate, maxMessages, out var evicted);
+                        InsertBoundedHistoryCandidateCore(boundedCandidates, candidate, maxMessages, out var evicted);
                         retainedCandidateChunks[chunkNumber] = uncompressed;
                         retainedCandidateChunkReferences.TryGetValue(chunkNumber, out var candidateReferences);
                         retainedCandidateChunkReferences[chunkNumber] = candidateReferences + 1;
@@ -953,7 +953,13 @@ namespace Unity.FoxgloveSDK.IO
             internal byte[] Data { get; set; }
         }
 
-        private static void InsertBoundedHistoryCandidate(
+        private static bool InsertBoundedHistoryCandidate(List<HistoryCandidate> candidates, HistoryCandidate candidate, int maxMessages)
+        {
+            InsertBoundedHistoryCandidateCore(candidates, candidate, maxMessages, out _);
+            return candidates.Contains(candidate);
+        }
+
+        private static void InsertBoundedHistoryCandidateCore(
             List<HistoryCandidate> candidates,
             HistoryCandidate candidate,
             int maxMessages,
