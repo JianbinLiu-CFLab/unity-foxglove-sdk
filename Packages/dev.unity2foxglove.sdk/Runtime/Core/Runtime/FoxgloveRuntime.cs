@@ -145,6 +145,9 @@ namespace Unity.FoxgloveSDK.Core
 
         private static int ResolveReplaySnapshotCapacity(IFoxgloveTransport transport)
         {
+            if (transport is IFoxgloveTransportCapacityProvider capacityProvider
+                && capacityProvider.MaxClients > 0)
+                return capacityProvider.MaxClients;
             if (transport is IFoxgloveTransportStatsProvider provider)
             {
                 var snapshot = provider.GetStatsSnapshot();
@@ -152,7 +155,7 @@ namespace Unity.FoxgloveSDK.Core
                     return snapshot.MaxClients;
             }
 
-            return ManagedWebSocketOptions.DefaultMaxClients;
+            return int.MaxValue;
         }
 
         /// <summary>Active session; null before Start or after Stop.</summary>
@@ -403,6 +406,7 @@ namespace Unity.FoxgloveSDK.Core
                     Volatile.Read(ref _mirrorSink));
                 beforeTransportStart?.Invoke(session);
                 _session = session;
+                _tickCoordinator.UpdateReplaySnapshotCapacity(ResolveReplaySnapshotCapacity(_transport));
                 session.Start(host, port);
                 ClearReplaySuppressionWarnings();
                 _replayOrchestrator.Attach(_replay, session);
@@ -896,7 +900,10 @@ namespace Unity.FoxgloveSDK.Core
         /// replay engine when active, or broadcasts wall-clock time.
         /// </summary>
         public void Tick()
-            => _tickCoordinator.Tick(_session, _playbackClock, _replay, _wallClock, _externalReplayCursorController);
+        {
+            _tickCoordinator.UpdateReplaySnapshotCapacity(ResolveReplaySnapshotCapacity(_transport));
+            _tickCoordinator.Tick(_session, _playbackClock, _replay, _wallClock, _externalReplayCursorController);
+        }
 
         // ── Transport Health ──
 

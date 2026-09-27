@@ -311,6 +311,38 @@ namespace Unity.FoxgloveSDK.Tests.Replay
         }
 
         [Fact]
+        public void ReplayCapacityRefreshesWhenTransportAuthorityChanges()
+        {
+            var transport = new StatsTransport
+            {
+                Snapshot = new TransportStatsSnapshot { MaxClients = 64 },
+                MaxClients = 64
+            };
+            using var runtime = new FoxgloveRuntime(
+                transport,
+                new SystemClock(),
+                new DefaultSchemaRegistry());
+            transport.MaxClients = 128;
+            runtime.Tick();
+
+            var coordinator = (TickCoordinator)typeof(FoxgloveRuntime)
+                .GetField("_tickCoordinator", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(runtime);
+            var state = (ReplaySnapshotStateMachine)typeof(TickCoordinator)
+                .GetField("_replaySnapshots", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(coordinator);
+            for (uint clientId = 1; clientId <= 65; clientId++)
+                state.RequestPanelSnapshot(clientId, clientId, clientId);
+
+            for (uint clientId = 1; clientId <= 65; clientId++)
+            {
+                Assert.True(state.TryConsumePanelSnapshot(65, out var timeNs, out var consumedClientId));
+                Assert.Equal(clientId, timeNs);
+                Assert.Equal(clientId, consumedClientId);
+            }
+        }
+
+        [Fact]
         public void GlobalSnapshotSupersedesPendingTargetedSnapshots()
         {
             var state = new ReplaySnapshotStateMachine();
@@ -533,9 +565,10 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                 queueReserveBytes: 0);
         }
 
-        private sealed class StatsTransport : IFoxgloveTransport, IFoxgloveTransportStatsProvider
+        private sealed class StatsTransport : IFoxgloveTransport, IFoxgloveTransportStatsProvider, IFoxgloveTransportCapacityProvider
         {
             public TransportStatsSnapshot Snapshot { get; set; } = TransportStatsSnapshot.Unsupported;
+            public int MaxClients { get; set; }
             public List<uint> SentClientIds { get; } = new();
             public List<(uint clientId, byte[] data)> SentFrames { get; } = new();
             public bool IsRunning => false;

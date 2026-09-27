@@ -29,6 +29,9 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public TickCoordinator(ReplaySnapshotStateMachine snapshots) { _replaySnapshots = snapshots; }
 
+        public void UpdateReplaySnapshotCapacity(int capacity)
+            => _replaySnapshots.UpdateCapacity(capacity);
+
         /// <summary>
         /// Per-frame tick: drains pending service/playback-control calls, advances
         /// the clock, and dispatches replay work (scene snapshot, panel snapshot,

@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Transport
     /// Pure C# WebSocket server backend using TcpListener + manual WebSocket protocol.
     /// No http.sys dependency; works on all platforms without admin rights.
     /// </summary>
-    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
+    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IFoxgloveTransportCapacityProvider, IDisposable
     {
         private const int CloseDrainTimeoutMs = 250;
         private const int CloseHandshakeTimeoutMs = 1000;
@@ -130,6 +130,9 @@ namespace Unity.FoxgloveSDK.Transport
 
         /// <summary>Whether the TCP listener is actively accepting connections.</summary>
         public bool IsRunning => Volatile.Read(ref _listener) != null;
+
+        /// <summary>Current admission capacity, reflecting mutable options before Start.</summary>
+        public int MaxClients => ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients);
 
         /// <summary>
         /// Whether a capacity rejection can safely write a plaintext HTTP
