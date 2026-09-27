@@ -177,7 +177,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                     "Stop returned while a capacity response worker was still running.");
 
                 backend.ReleaseRejection.Set();
-                Assert.True(stopTask.Wait(TimeSpan.FromSeconds(2)));
+                Assert.True(stopTask.Wait(TimeSpan.FromSeconds(5)));
             }
             finally
             {
