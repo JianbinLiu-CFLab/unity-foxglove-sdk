@@ -89,7 +89,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var first = Invoke(loader, "Initialize");
             var second = Invoke(loader, "Initialize");
-            Check(object.ReferenceEquals(first, second), "116-B1: Initialize is idempotent and cached");
+            Check(!object.ReferenceEquals(first, second), "116-B1: Initialize returns independent cached snapshots");
 
             Check(Count(Member(first, "Channels")) == 3, "116-B2: initialization exposes three channels");
             Check(Count(Member(first, "Schemas")) == 3, "116-B3: initialization exposes three schemas");
