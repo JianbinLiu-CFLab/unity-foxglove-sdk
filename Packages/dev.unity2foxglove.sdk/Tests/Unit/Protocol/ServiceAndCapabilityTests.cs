@@ -113,6 +113,20 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void CompleteResponseClonesCallerOwnedPayload()
+        {
+            var reg = new FoxgloveServiceRegistry();
+            reg.Enqueue(1, 1, 1, "json", new byte[] { 1 });
+            var response = new byte[] { 1 };
+
+            reg.CompleteResponse(1, 1, "json", response);
+            response[0] = 9;
+
+            var completed = Assert.Single(reg.DrainCompleted());
+            Assert.Equal(1, completed.ResponsePayload[0]);
+        }
+
+        [Fact]
         public void TryEnqueueRejectsOversizedPayloadAtRegistryBoundary()
         {
             var reg = new FoxgloveServiceRegistry();
