@@ -8,6 +8,7 @@ using System.Reflection;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
@@ -18,48 +19,57 @@ namespace Unity.FoxgloveSDK.Tests.Replay
     public sealed class ReplayPanelHistoryBufferTests
     {
         [Fact]
-        public void HistoryStartUsesCompletedWatermarkUntilDebounceReset()
+        public void HistoryStartUsesCompletedClientWatermarkUntilDebounceReset()
         {
             var buffer = new ReplayPanelHistoryBuffer();
 
-            Assert.Equal(70UL, buffer.GetHistoryFromTime(startNs: 0, clampedToNs: 100, windowNs: 30));
+            Assert.Equal(70UL, buffer.GetHistoryFromTime(1, 0, 100, 30));
 
-            buffer.BeginDrain(100);
-            buffer.MarkDrainComplete();
+            CompleteClientDrain(buffer, 1, 100);
 
-            Assert.Equal(101UL, buffer.GetHistoryFromTime(startNs: 0, clampedToNs: 150, windowNs: 30));
+            Assert.Equal(101UL, buffer.GetHistoryFromTime(1, 0, 150, 30));
 
-            buffer.ResetDebounce();
+            buffer.ResetDebounce(1);
 
-            Assert.Equal(120UL, buffer.GetHistoryFromTime(startNs: 0, clampedToNs: 150, windowNs: 30));
+            Assert.Equal(120UL, buffer.GetHistoryFromTime(1, 0, 150, 30));
         }
 
         [Fact]
-        public void CancelClearsDrainWithoutForgettingCompletedWatermark()
+        public void CancelClientDrainRetiresOnlyRequestedClient()
         {
             var buffer = new ReplayPanelHistoryBuffer();
-            buffer.BeginDrain(100);
-            buffer.MarkDrainComplete();
+            var clientOneMessages = new List<McapMessage>
+            {
+                new McapMessage { ChannelId = 1, LogTime = 140, Data = new byte[] { 1 } }
+            };
+            var clientTwoMessages = new List<McapMessage>
+            {
+                new McapMessage { ChannelId = 1, LogTime = 150, Data = new byte[] { 2 } }
+            };
 
-            buffer.Buffer.Add(new McapMessage { ChannelId = 1, LogTime = 140, Data = new byte[] { 1 } });
-            buffer.BeginDrain(150);
-            buffer.CancelDrain();
+            buffer.BeginClientDrains(
+                150,
+                new Dictionary<uint, List<McapMessage>>
+                {
+                    [1] = clientOneMessages,
+                    [2] = clientTwoMessages
+                });
+            buffer.CancelDrain(1);
 
-            Assert.False(buffer.DebugActive);
-            Assert.Equal(0, buffer.DebugBufferedCount);
-            Assert.Equal(101UL, buffer.GetHistoryFromTime(startNs: 0, clampedToNs: 130, windowNs: 30));
+            Assert.Equal(1, buffer.DebugClientDrainCount);
+            Assert.Null(buffer.DebugGetClientBuffer(1));
+            Assert.Same(clientTwoMessages, buffer.DebugGetClientBuffer(2));
         }
 
         [Fact]
-        public void CompletedMaximumWatermarkDoesNotOverflowHistoryStart()
+        public void CompletedMaximumClientWatermarkDoesNotOverflowHistoryStart()
         {
             var buffer = new ReplayPanelHistoryBuffer();
-            buffer.BeginDrain(ulong.MaxValue);
-            buffer.MarkDrainComplete();
+            CompleteClientDrain(buffer, 1, ulong.MaxValue);
 
             Assert.Equal(
                 ulong.MaxValue,
-                buffer.GetHistoryFromTime(startNs: 0, clampedToNs: ulong.MaxValue, windowNs: 30));
+                buffer.GetHistoryFromTime(1, 0, ulong.MaxValue, 30));
         }
 
         [Fact]
@@ -67,7 +77,7 @@ namespace Unity.FoxgloveSDK.Tests.Replay
         {
             var buffer = new ReplayPanelHistoryBuffer();
 
-            Assert.Equal(40UL, buffer.GetHistoryFromTime(startNs: 40, clampedToNs: 50, windowNs: 100));
+            Assert.Equal(40UL, buffer.GetHistoryFromTime(1, 40, 50, 100));
         }
 
         [Fact]
@@ -80,7 +90,7 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                     Supported = true,
                     MaxQueuedFramesPerClient = 4,
                     MaxQueuedBytesPerClient = 100,
-                    Clients = new[] { new TransportClientStats() }
+                    Clients = new[] { new TransportClientStats { ClientId = 1 } }
                 }
             };
             using var session = new FoxgloveSession("history-oversized", transport);
@@ -94,15 +104,22 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             });
 
             var buffer = new ReplayPanelHistoryBuffer();
-            buffer.Buffer.Add(new McapMessage
-            {
-                ChannelId = 1,
-                LogTime = 10,
-                Data = new byte[200]
-            });
-            buffer.BeginDrain(10);
+            buffer.BeginClientDrains(
+                10,
+                new Dictionary<uint, List<McapMessage>>
+                {
+                    [1] = new List<McapMessage>
+                    {
+                        new McapMessage
+                        {
+                            ChannelId = 1,
+                            LogTime = 10,
+                            Data = new byte[200]
+                        }
+                    }
+                });
 
-            buffer.DrainLocked(
+            buffer.DrainClientsLocked(
                 session,
                 new Dictionary<ushort, string> { [1] = "/history" },
                 new ConsoleLogger(),
@@ -110,8 +127,7 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                 queueReserveFrames: 0,
                 queueReserveBytes: 0);
 
-            Assert.False(buffer.DebugActive);
-            Assert.Equal(0, buffer.DebugBufferedCount);
+            Assert.Null(buffer.DebugGetClientBuffer(1));
         }
 
         [Fact]
@@ -262,6 +278,36 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             Assert.Equal(200UL, time);
             Assert.Equal((uint)1, clientId);
             Assert.False(state.TryConsumePanelSnapshot(350, out _, out _));
+        }
+
+        [Fact]
+        public void ReplaySnapshotCapacityFollowsConfiguredTransportMaxClients()
+        {
+            using var transport = new ManagedWsBackend(new ManagedWebSocketOptions { MaxClients = 128 });
+            using var runtime = new FoxgloveRuntime(
+                transport,
+                new SystemClock(),
+                new DefaultSchemaRegistry());
+            Assert.Equal(128, transport.GetStatsSnapshot().MaxClients);
+
+            var coordinator = (TickCoordinator)typeof(FoxgloveRuntime)
+                .GetField("_tickCoordinator", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(runtime);
+            var state = (ReplaySnapshotStateMachine)typeof(TickCoordinator)
+                .GetField("_replaySnapshots", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(coordinator);
+
+            for (uint clientId = 1; clientId <= 65; clientId++)
+                state.RequestPanelSnapshot(clientId, clientId, clientId);
+
+            for (uint clientId = 1; clientId <= 65; clientId++)
+            {
+                Assert.True(state.TryConsumePanelSnapshot(65, out var timeNs, out var consumedClientId));
+                Assert.Equal(clientId, timeNs);
+                Assert.Equal(clientId, consumedClientId);
+            }
+
+            Assert.False(state.TryConsumePanelSnapshot(65, out _, out _));
         }
 
         [Fact]
@@ -464,6 +510,27 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                 if (File.Exists(path))
                     File.Delete(path);
             }
+        }
+
+        private static void CompleteClientDrain(
+            ReplayPanelHistoryBuffer buffer,
+            uint clientId,
+            ulong parkTimeNs)
+        {
+            using var session = new FoxgloveSession("history-watermark", new StatsTransport());
+            buffer.BeginClientDrains(
+                parkTimeNs,
+                new Dictionary<uint, List<McapMessage>>
+                {
+                    [clientId] = new List<McapMessage>()
+                });
+            buffer.DrainClientsLocked(
+                session,
+                new Dictionary<ushort, string>(),
+                new ConsoleLogger(),
+                maxMessagesPerTick: 256,
+                queueReserveFrames: 0,
+                queueReserveBytes: 0);
         }
 
         private sealed class StatsTransport : IFoxgloveTransport, IFoxgloveTransportStatsProvider

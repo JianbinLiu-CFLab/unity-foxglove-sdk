@@ -139,7 +139,20 @@ namespace Unity.FoxgloveSDK.Core
             _recording = new RecordingController(_logger, _playbackClock);
             _replay = new ReplayController(_logger, _recording, _playbackClock);
             _replayOrchestrator = new ReplayOrchestrator(_logger);
-            _tickCoordinator = new TickCoordinator(new ReplaySnapshotStateMachine());
+            _tickCoordinator = new TickCoordinator(
+                new ReplaySnapshotStateMachine(ResolveReplaySnapshotCapacity(_transport)));
+        }
+
+        private static int ResolveReplaySnapshotCapacity(IFoxgloveTransport transport)
+        {
+            if (transport is IFoxgloveTransportStatsProvider provider)
+            {
+                var snapshot = provider.GetStatsSnapshot();
+                if (snapshot != null && snapshot.MaxClients > 0)
+                    return snapshot.MaxClients;
+            }
+
+            return ManagedWebSocketOptions.DefaultMaxClients;
         }
 
         /// <summary>Active session; null before Start or after Stop.</summary>

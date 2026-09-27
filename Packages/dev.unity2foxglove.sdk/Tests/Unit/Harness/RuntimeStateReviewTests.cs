@@ -568,15 +568,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var runtime = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
             var replay = ReadPrivateField<ReplayController>(runtime, "_replay");
             var panelHistory = ReadPrivateField<object>(replay, "_panelHistory");
-            var originalBuffer = ReadPrivateField<List<McapMessage>>(panelHistory, "_buffer");
+            var originalDrains = ReadPrivateField<object>(panelHistory, "_clientDrains");
 
             try
             {
-                // Nulling the private buffer makes only the optional history
-                // housekeeping step fail; all resource-owning stop steps still
-                // complete. This models a permanently broken replay-history
+                // Nulling the private per-client drain map makes only the optional
+                // history housekeeping step fail; all resource-owning stop steps
+                // still complete. This models a permanently broken replay-history
                 // cleanup without changing the transport or session seams.
-                WritePrivateField<List<McapMessage>>(panelHistory, "_buffer", null);
+                WritePrivateField<object>(panelHistory, "_clientDrains", null);
                 runtime.Start("phase187-stop-optional-history");
 
                 Assert.Throws<NullReferenceException>(() => runtime.Stop());
@@ -588,7 +588,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
             finally
             {
-                WritePrivateField(panelHistory, "_buffer", originalBuffer);
+                WritePrivateField(panelHistory, "_clientDrains", originalDrains);
                 runtime.Dispose();
             }
         }

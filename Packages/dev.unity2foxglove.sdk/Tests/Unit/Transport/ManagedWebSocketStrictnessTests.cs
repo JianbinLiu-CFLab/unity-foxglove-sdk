@@ -381,6 +381,46 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         }
 
         [Fact]
+        public void StopWaitsForPeerCloseAndSuppressesApplicationFrames()
+        {
+            using var backend = new ManagedWsBackend();
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+            using var client = ConnectAndWriteHandshake(port);
+            var textReceived = 0;
+            backend.OnTextReceived += (_, _) => Interlocked.Increment(ref textReceived);
+
+            try
+            {
+                var stream = client.GetStream();
+                Assert.StartsWith("HTTP/1.1 101", ReadHttpHeaders(stream));
+                Assert.True(SpinWait.SpinUntil(
+                    () => backend.GetStatsSnapshot().ActiveClientCount == 1,
+                    TimeSpan.FromSeconds(2)));
+
+                var stopTask = Task.Run(() => backend.Stop());
+                var close = ReadServerFrame(stream);
+                Assert.Equal(WsOpcode.Close, close.Opcode);
+                Assert.Equal(new byte[] { 0x03, 0xE9 }, close.Payload);
+
+                WriteClientFrame(stream, (byte)WsOpcode.Text, Encoding.UTF8.GetBytes("{}"));
+                Assert.False(SpinWait.SpinUntil(
+                    () => Volatile.Read(ref textReceived) != 0,
+                    TimeSpan.FromMilliseconds(200)));
+                Assert.False(stopTask.Wait(TimeSpan.FromMilliseconds(100)));
+
+                WriteClientFrame(stream, (byte)WsOpcode.Close, new byte[] { 0x03, 0xE9 });
+                Assert.True(stopTask.Wait(TimeSpan.FromSeconds(3)));
+                Assert.False(backend.IsRunning);
+            }
+            finally
+            {
+                if (backend.IsRunning)
+                    backend.Stop();
+            }
+        }
+
+        [Fact]
         public void MalformedRequiredHandshakeHeadersReturnConsistentBadRequest()
         {
             var requests = new[]
