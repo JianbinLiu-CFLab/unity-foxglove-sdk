@@ -389,6 +389,31 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void RemoteMcapManagerSuppliesStableGenerationAuthority()
+        {
+            var path = Path.GetTempFileName();
+            var manager = new FoxgloveManager();
+            manager.ConfigureRemoteForTest(path, FindFreePort());
+
+            try
+            {
+                manager.StartRemoteForTest();
+
+                var options = manager.RemoteOptionsForTest;
+                Assert.NotNull(options);
+                Assert.NotNull(options.GenerationVersionProvider);
+                var first = options.GenerationVersionProvider();
+                Assert.False(string.IsNullOrEmpty(first));
+                Assert.Equal(first, options.GenerationVersionProvider());
+            }
+            finally
+            {
+                manager.StopSidecarsForTest();
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
         public void ReplayCursorStartupRetriesAfterPersistentFailureWindow()
         {
             var port = FindFreePort();

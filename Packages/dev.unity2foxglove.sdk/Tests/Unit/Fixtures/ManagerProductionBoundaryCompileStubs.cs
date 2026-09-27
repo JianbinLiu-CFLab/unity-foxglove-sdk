@@ -11,6 +11,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
+using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Transport;
@@ -330,6 +331,7 @@ namespace Unity.FoxgloveSDK.Components
         internal bool RemoteConfigKnownForTest => _remoteMcapFileServerConfigKnown;
         internal bool CursorConfigKnownForTest => _replayCursorEndpointConfigKnown;
         internal bool RemoteRunningForTest => _remoteMcapFileServer?.IsRunning == true;
+        internal RemoteMcapHttpOptions RemoteOptionsForTest => _remoteMcapFileServer?.Options;
         internal bool CursorRunningForTest => _replayCursorEndpoint?.IsRunning == true;
         internal void SetTimeForTest(double value) => Time.realtimeSinceStartupAsDouble = value;
 

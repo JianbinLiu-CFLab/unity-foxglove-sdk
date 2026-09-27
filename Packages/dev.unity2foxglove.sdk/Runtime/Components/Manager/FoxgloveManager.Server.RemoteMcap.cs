@@ -5,7 +5,9 @@
 // Purpose: Owns FoxgloveManager Remote MCAP resource lifecycle.
 
 using System;
+using System.Globalization;
 using System.IO;
+using System.Threading;
 using Unity.FoxgloveSDK.IO;
 using UnityEngine;
 
@@ -21,6 +23,7 @@ namespace Unity.FoxgloveSDK.Components
         private string _remoteMcapFileServerKnownPath;
         private string _remoteMcapFileServerKnownSourceId;
         private string _remoteMcapFileServerKnownToken;
+        private long _remoteMcapFileServerGeneration;
         private readonly RetryBackoffState _remoteMcapFileServerRetry = new RetryBackoffState();
         private Func<RemoteMcapHttpOptions, RemoteMcapHttpServer> _remoteMcapFileServerStart =
             RemoteMcapHttpServer.Start;
@@ -123,6 +126,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private RemoteMcapHttpOptions BuildRemoteMcapFileServerOptions(string resolvedPath)
         {
+            var generation = Interlocked.Increment(ref _remoteMcapFileServerGeneration);
             return new RemoteMcapHttpOptions
             {
                 Host = string.IsNullOrWhiteSpace(_remoteMcapFileServerHost) ? "127.0.0.1" : _remoteMcapFileServerHost.Trim(),
@@ -130,7 +134,8 @@ namespace Unity.FoxgloveSDK.Components
                 McapPath = resolvedPath,
                 SourceId = string.IsNullOrWhiteSpace(_remoteMcapFileServerSourceId) ? "local-mcap" : _remoteMcapFileServerSourceId.Trim(),
                 RequiredBearerToken = ResolveRemoteMcapFileServerToken(),
-                ManifestName = Path.GetFileName(resolvedPath)
+                ManifestName = Path.GetFileName(resolvedPath),
+                GenerationVersionProvider = () => "manager:" + generation.ToString(CultureInfo.InvariantCulture)
             };
         }
 

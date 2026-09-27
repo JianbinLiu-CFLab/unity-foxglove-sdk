@@ -71,7 +71,8 @@ namespace Unity.FoxgloveSDK.IO
                 long peakDecompressedChunkBytes = 0,
                 long peakDecompressedChunkCount = 0,
                 long peakRetainedDecompressedBytes = 0,
-                long candidatePayloadCopies = 0)
+                long candidatePayloadCopies = 0,
+                long decompressedChunkReads = 0)
             {
                 CandidateCount = candidateCount;
                 PayloadCopies = payloadCopies;
@@ -81,6 +82,7 @@ namespace Unity.FoxgloveSDK.IO
                 PeakDecompressedChunkCount = peakDecompressedChunkCount;
                 PeakRetainedDecompressedBytes = peakRetainedDecompressedBytes;
                 CandidatePayloadCopies = candidatePayloadCopies;
+                DecompressedChunkReads = decompressedChunkReads;
             }
 
             public long CandidateCount { get; }
@@ -97,6 +99,8 @@ namespace Unity.FoxgloveSDK.IO
             public long PeakRetainedDecompressedBytes { get; }
             /// <summary>Number of candidate payload copies made before final bounded selection.</summary>
             public long CandidatePayloadCopies { get; }
+            /// <summary>Number of chunk reads that performed decompression during the query.</summary>
+            public long DecompressedChunkReads { get; }
         }
 
         /// <summary>
@@ -725,6 +729,7 @@ namespace Unity.FoxgloveSDK.IO
             long peakDecompressedChunkCount = 0;
             long peakRetainedDecompressedBytes = 0;
             long candidatePayloadCopies = 0;
+            long decompressedChunkReads = 0;
             var finalizedCandidateCount = 0;
             var boundedChunkNumbers = boundedCandidates != null
                 ? GetHistoryChunkNumbersByDescendingEndTime()
@@ -754,6 +759,7 @@ namespace Unity.FoxgloveSDK.IO
                 }
 
                 var uncompressed = _reader.ReadChunkRecords(chunkIndex.ChunkStartOffset, chunkIndex.ChunkLength, out var crcValid);
+                decompressedChunkReads++;
                 if (!ShouldUseChunkRecords("History chunk", crcValid))
                     continue;
                 peakDecompressedChunkBytes = Math.Max(peakDecompressedChunkBytes, uncompressed.LongLength);
@@ -870,14 +876,79 @@ namespace Unity.FoxgloveSDK.IO
                 foreach (var chunkPair in candidatesByChunk)
                 {
                     var chunkIndex = _summary.ChunkIndexes[chunkPair.Key];
+                    var candidates = chunkPair.Value;
+                    var firstCandidate = candidates[0];
+                    if (string.IsNullOrEmpty(chunkIndex.Compression)
+                        && _reader.TryReadUncompressedChunkPayload(
+                            chunkIndex.ChunkStartOffset,
+                            chunkIndex.ChunkLength,
+                            firstCandidate.DataOffset,
+                            firstCandidate.DataLength,
+                            out var firstPayload,
+                            out var directCrcValid))
+                    {
+                        if (!ShouldUseChunkRecords("History payload chunk", directCrcValid))
+                            continue;
+
+                        firstCandidate.Data = firstPayload;
+                        candidatePayloadCopies++;
+                        payloadCopies++;
+                        payloadBytesCopied += firstCandidate.DataLength;
+                        result.Add(new McapMessage
+                        {
+                            ChannelId = firstCandidate.ChannelId,
+                            Sequence = firstCandidate.Sequence,
+                            LogTime = firstCandidate.LogTime,
+                            PublishTime = firstCandidate.PublishTime,
+                            SourceOffset = firstCandidate.SourceOffset,
+                            SourceRecordOffset = firstCandidate.SourceRecordOffset,
+                            Data = firstCandidate.Data
+                        });
+
+                        for (var candidateIndex = 1; candidateIndex < candidates.Count; candidateIndex++)
+                        {
+                            var candidate = candidates[candidateIndex];
+                            if (!_reader.TryReadUncompressedChunkPayload(
+                                    chunkIndex.ChunkStartOffset,
+                                    chunkIndex.ChunkLength,
+                                    candidate.DataOffset,
+                                    candidate.DataLength,
+                                    out var payload,
+                                    out var crcValid))
+                            {
+                                throw new InvalidDataException("Chunk compression changed while materializing History candidates.");
+                            }
+
+                            if (!ShouldUseChunkRecords("History payload chunk", crcValid, emitWarning: false))
+                                continue;
+                            candidate.Data = payload;
+                            candidatePayloadCopies++;
+                            payloadCopies++;
+                            payloadBytesCopied += candidate.DataLength;
+                            result.Add(new McapMessage
+                            {
+                                ChannelId = candidate.ChannelId,
+                                Sequence = candidate.Sequence,
+                                LogTime = candidate.LogTime,
+                                PublishTime = candidate.PublishTime,
+                                SourceOffset = candidate.SourceOffset,
+                                SourceRecordOffset = candidate.SourceRecordOffset,
+                                Data = candidate.Data
+                            });
+                        }
+
+                        continue;
+                    }
+
                     var uncompressed = _reader.ReadChunkRecords(
                         chunkIndex.ChunkStartOffset,
                         chunkIndex.ChunkLength,
-                        out var crcValid);
-                    if (!ShouldUseChunkRecords("History chunk", crcValid))
+                        out var fallbackCrcValid);
+                    decompressedChunkReads++;
+                    if (!ShouldUseChunkRecords("History chunk", fallbackCrcValid))
                         continue;
 
-                    foreach (var candidate in chunkPair.Value)
+                    foreach (var candidate in candidates)
                     {
                         candidate.Data = CopyPayload(uncompressed, candidate.DataOffset, candidate.DataLength);
                         candidatePayloadCopies++;
@@ -912,7 +983,8 @@ namespace Unity.FoxgloveSDK.IO
                 peakDecompressedChunkBytes,
                 peakDecompressedChunkCount,
                 peakRetainedDecompressedBytes,
-                candidatePayloadCopies);
+                candidatePayloadCopies,
+                decompressedChunkReads);
             return result;
         }
 
