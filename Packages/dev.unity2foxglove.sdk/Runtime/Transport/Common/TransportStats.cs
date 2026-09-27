@@ -21,6 +21,13 @@ namespace Unity.FoxgloveSDK.Transport
         TransportStatsSnapshot GetStatsSnapshot();
     }
 
+    /// <summary>Authoritative admission capacity exposed by a transport.</summary>
+    public interface IFoxgloveTransportCapacityProvider
+    {
+        /// <summary>Maximum number of clients the transport admits.</summary>
+        int MaxClients { get; }
+    }
+
     /// <summary>
     /// Immutable aggregate snapshot of transport health and per-client details.
     /// Callers receive a defensive copy; mutating the snapshot does not affect
