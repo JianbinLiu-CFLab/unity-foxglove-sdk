@@ -31,14 +31,13 @@ namespace Unity.FoxgloveSDK.IO
         private readonly string _dataRoute;
         private readonly string _directFileRoute;
         private readonly long _maxInMemoryDataBytes;
+        private readonly Func<string> _generationVersionProvider;
         private readonly object _manifestCacheGate = new object();
         private RemoteMcapManifest _cachedManifest;
         private byte[] _cachedManifestBytes;
         private DateTime _cachedManifestLastWriteUtc;
         private long _cachedManifestLength = -1L;
         private string _cachedManifestContentHash = string.Empty;
-        private FileStamp _observedStamp;
-        private bool _hasObservedStamp;
 
         private struct FileStamp
         {
@@ -46,7 +45,6 @@ namespace Unity.FoxgloveSDK.IO
             public long Length;
             public DateTime LastWriteUtc;
             public string ContentHash;
-            public string ProbeHash;
         }
 
         /// <summary>Creates a single-file Remote Data Loader prototype around one local MCAP path.</summary>
@@ -57,7 +55,8 @@ namespace Unity.FoxgloveSDK.IO
             string requiredBearerToken,
             long maxInMemoryDataBytes = DefaultMaxInMemoryDataBytes,
             string dataRoute = null,
-            string directFileRoute = null)
+            string directFileRoute = null,
+            Func<string> generationVersionProvider = null)
         {
             _mcapPath = mcapPath ?? throw new ArgumentNullException(nameof(mcapPath));
             _baseSourceId = string.IsNullOrEmpty(sourceId) ? "local-mcap" : sourceId;
@@ -73,6 +72,7 @@ namespace Unity.FoxgloveSDK.IO
                 ? "/v1/files/" + Uri.EscapeDataString(_baseSourceId) + ".mcap"
                 : directFileRoute;
             _maxInMemoryDataBytes = maxInMemoryDataBytes;
+            _generationVersionProvider = generationVersionProvider;
         }
 
         /// <summary>Relative direct-file route accepted by Foxglove's stock Remote files dialog.</summary>
@@ -473,25 +473,19 @@ namespace Unity.FoxgloveSDK.IO
                     Length = 0L,
                     LastWriteUtc = DateTime.MinValue,
                     ContentHash = string.Empty,
-                    ProbeHash = string.Empty,
                 };
             }
 
-            var length = info.Length;
-            var lastWriteUtc = info.LastWriteTimeUtc;
-            lock (_manifestCacheGate)
+            var generationVersion = _generationVersionProvider?.Invoke();
+            if (!string.IsNullOrEmpty(generationVersion))
             {
-                if (_hasObservedStamp
-                    && _observedStamp.Exists
-                    && _observedStamp.Length == length
-                    && _observedStamp.LastWriteUtc == lastWriteUtc
-                    && string.Equals(
-                        _observedStamp.ProbeHash,
-                        ReadProbeHash(length),
-                        StringComparison.Ordinal))
+                return new FileStamp
                 {
-                    return _observedStamp;
-                }
+                    Exists = true,
+                    Length = info.Length,
+                    LastWriteUtc = info.LastWriteTimeUtc,
+                    ContentHash = "generation:" + generationVersion,
+                };
             }
 
             using var input = new FileStream(
@@ -501,61 +495,13 @@ namespace Unity.FoxgloveSDK.IO
                 FileShare.ReadWrite | FileShare.Delete);
             using var sha = SHA256.Create();
             var hash = sha.ComputeHash(input);
-            var stamp = new FileStamp
+            return new FileStamp
             {
                 Exists = true,
-                Length = length,
-                LastWriteUtc = lastWriteUtc,
-                ContentHash = ToHex(hash),
-                ProbeHash = ReadProbeHash(length),
+                Length = info.Length,
+                LastWriteUtc = info.LastWriteTimeUtc,
+                ContentHash = ToHex(hash)
             };
-            lock (_manifestCacheGate)
-            {
-                _observedStamp = stamp;
-                _hasObservedStamp = true;
-            }
-
-            return stamp;
-        }
-
-        private string ReadProbeHash(long length)
-        {
-            const int probeLength = 4096;
-            var offsets = new[]
-            {
-                0L,
-                Math.Max(0L, (length - probeLength) / 2L),
-                Math.Max(0L, length - probeLength),
-            };
-
-            using var input = new FileStream(
-                _mcapPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete);
-            using var sha = SHA256.Create();
-            var buffer = new byte[probeLength];
-            var previousOffset = -1L;
-            for (var i = 0; i < offsets.Length; i++)
-            {
-                var offset = offsets[i];
-                if (offset == previousOffset)
-                    continue;
-                previousOffset = offset;
-                input.Seek(offset, SeekOrigin.Begin);
-                var remaining = (int)Math.Min(probeLength, length - offset);
-                var read = 0;
-                while (read < remaining)
-                {
-                    var count = input.Read(buffer, read, remaining - read);
-                    if (count == 0)
-                        break;
-                    read += count;
-                }
-                sha.TransformBlock(buffer, 0, read, buffer, 0);
-            }
-            sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-            return ToHex(sha.Hash);
         }
 
         private bool MatchesCachedStamp(FileStamp stamp)

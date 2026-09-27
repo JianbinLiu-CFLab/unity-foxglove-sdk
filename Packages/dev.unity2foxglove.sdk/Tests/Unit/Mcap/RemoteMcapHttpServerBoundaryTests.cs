@@ -202,6 +202,66 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
+        public void SourceIdentityChangesWhenAnUnsampledByteChangesWithSameLengthAndTimestamp()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-generation-unsampled-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                var firstBytes = BuildRemoteMcap(1, 0, 64 * 1024);
+                var secondBytes = (byte[])firstBytes.Clone();
+                secondBytes[secondBytes.Length / 4] ^= 1;
+                File.WriteAllBytes(path, firstBytes);
+                var stamp = File.GetLastWriteTimeUtc(path);
+                var source = new RemoteMcapDataSourcePrototype(path, "unsampled", "Unsampled", string.Empty);
+                var firstManifest = source.GetManifest(new RemoteMcapRequest()).Manifest;
+                var first = firstManifest.Sources[0].Id;
+
+                File.WriteAllBytes(path, secondBytes);
+                File.SetLastWriteTimeUtc(path, stamp);
+                var secondManifest = source.GetManifest(new RemoteMcapRequest()).Manifest;
+                var second = secondManifest.Sources[0].Id;
+
+                Assert.Equal(firstBytes.Length, secondBytes.Length);
+                Assert.Equal(stamp, File.GetLastWriteTimeUtc(path));
+                Assert.NotEqual(first, second);
+                Assert.NotEqual(firstManifest.Sources[0].DataUrl, secondManifest.Sources[0].DataUrl);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
+        }
+
+        [Fact]
+        public void SourceIdentityUsesTrustedGenerationVersionAuthority()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-generation-authority-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                File.WriteAllBytes(path, BuildRemoteMcap(1));
+                var generation = "generation-1";
+                var source = new RemoteMcapDataSourcePrototype(
+                    path,
+                    "authority",
+                    "Authority",
+                    string.Empty,
+                    generationVersionProvider: () => generation);
+                var first = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                generation = "generation-2";
+                var second = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                Assert.NotEqual(first, second);
+                Assert.EndsWith("generation:generation-1", first);
+                Assert.EndsWith("generation:generation-2", second);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
+        }
+
+        [Fact]
         public void SourceIdentityIncludesContentGenerationAcrossPrototypeRestart()
         {
             var path = Path.Combine(Path.GetTempPath(), "remote-generation-restart-" + Guid.NewGuid().ToString("N") + ".mcap");
