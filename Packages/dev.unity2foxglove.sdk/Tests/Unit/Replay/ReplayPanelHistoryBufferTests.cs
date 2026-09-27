@@ -343,6 +343,25 @@ namespace Unity.FoxgloveSDK.Tests.Replay
         }
 
         [Fact]
+        public void ReplayCapacityShrinkDoesNotDropAlreadyAcceptedClientBackfills()
+        {
+            var state = new ReplaySnapshotStateMachine(128);
+            for (uint clientId = 1; clientId <= 65; clientId++)
+                state.RequestPanelSnapshot(clientId, clientId, clientId);
+
+            state.UpdateCapacity(64);
+
+            for (uint clientId = 1; clientId <= 65; clientId++)
+            {
+                Assert.True(state.TryConsumePanelSnapshot(65, out var timeNs, out var consumedClientId));
+                Assert.Equal(clientId, timeNs);
+                Assert.Equal(clientId, consumedClientId);
+            }
+
+            Assert.False(state.TryConsumePanelSnapshot(65, out _, out _));
+        }
+
+        [Fact]
         public void GlobalSnapshotSupersedesPendingTargetedSnapshots()
         {
             var state = new ReplaySnapshotStateMachine();
