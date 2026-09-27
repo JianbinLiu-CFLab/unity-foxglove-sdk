@@ -37,6 +37,8 @@ namespace Unity.FoxgloveSDK.IO
         private DateTime _cachedManifestLastWriteUtc;
         private long _cachedManifestLength = -1L;
         private string _cachedManifestContentHash = string.Empty;
+        private FileStamp _lastFileStamp;
+        private bool _hasLastFileStamp;
 
         private struct FileStamp
         {
@@ -44,6 +46,7 @@ namespace Unity.FoxgloveSDK.IO
             public long Length;
             public DateTime LastWriteUtc;
             public string ContentHash;
+            public string ProbeHash;
         }
 
         /// <summary>Creates a single-file Remote Data Loader prototype around one local MCAP path.</summary>
@@ -469,9 +472,18 @@ namespace Unity.FoxgloveSDK.IO
                     Exists = false,
                     Length = 0L,
                     LastWriteUtc = DateTime.MinValue,
-                    ContentHash = string.Empty
+                    ContentHash = string.Empty,
+                    ProbeHash = string.Empty
                 };
             }
+
+            var probeHash = ReadProbeHash(info.Length);
+            if (_hasLastFileStamp
+                && _lastFileStamp.Exists
+                && _lastFileStamp.Length == info.Length
+                && _lastFileStamp.LastWriteUtc == info.LastWriteTimeUtc
+                && string.Equals(_lastFileStamp.ProbeHash, probeHash, StringComparison.Ordinal))
+                return _lastFileStamp;
 
             using var input = new FileStream(
                 _mcapPath,
@@ -480,15 +492,54 @@ namespace Unity.FoxgloveSDK.IO
                 FileShare.ReadWrite | FileShare.Delete);
             using var sha = SHA256.Create();
             var hash = sha.ComputeHash(input);
-            return new FileStamp
+            _lastFileStamp = new FileStamp
             {
                 Exists = true,
                 Length = info.Length,
                 LastWriteUtc = info.LastWriteTimeUtc,
-                ContentHash = ToHex(hash)
+                ContentHash = ToHex(hash),
+                ProbeHash = probeHash
             };
+            _hasLastFileStamp = true;
+            return _lastFileStamp;
         }
 
+        private string ReadProbeHash(long length)
+        {
+            const int ProbeBytes = 4096;
+            using var input = new FileStream(
+                _mcapPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            using var sha = SHA256.Create();
+            var buffer = new byte[Math.Min(ProbeBytes, Math.Max(0L, length))];
+            if (buffer.Length > 0)
+            {
+                ReadFully(input, buffer);
+                sha.TransformBlock(buffer, 0, buffer.Length, null, 0);
+                if (length > buffer.Length)
+                {
+                    input.Position = Math.Max(0L, length - buffer.Length);
+                    ReadFully(input, buffer);
+                    sha.TransformBlock(buffer, 0, buffer.Length, null, 0);
+                }
+            }
+            sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+            return ToHex(sha.Hash);
+        }
+
+        private static void ReadFully(Stream input, byte[] buffer)
+        {
+            var offset = 0;
+            while (offset < buffer.Length)
+            {
+                var read = input.Read(buffer, offset, buffer.Length - offset);
+                if (read <= 0)
+                    throw new EndOfStreamException();
+                offset += read;
+            }
+        }
         private bool MatchesCachedStamp(FileStamp stamp)
             => _cachedManifestLength == stamp.Length
                && _cachedManifestLastWriteUtc == stamp.LastWriteUtc

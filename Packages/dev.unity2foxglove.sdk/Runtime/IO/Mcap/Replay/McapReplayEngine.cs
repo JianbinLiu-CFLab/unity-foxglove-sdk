@@ -725,6 +725,8 @@ namespace Unity.FoxgloveSDK.IO
             long peakDecompressedChunkCount = 0;
             long peakRetainedDecompressedBytes = 0;
             long candidatePayloadCopies = 0;
+            var retainedCandidateChunks = boundedCandidates != null ? new Dictionary<int, byte[]>() : null;
+            var retainedCandidateChunkReferences = boundedCandidates != null ? new Dictionary<int, int>() : null;
             for (var chunkNumber = 0; chunkNumber < _summary.ChunkIndexes.Count; chunkNumber++)
             {
                 var chunkIndex = _summary.ChunkIndexes[chunkNumber];
@@ -771,10 +773,20 @@ namespace Unity.FoxgloveSDK.IO
                             record.PublishTime,
                             chunkIndex.ChunkStartOffset,
                             (ulong)record.RecordOffset);
-                        if (InsertBoundedHistoryCandidate(boundedCandidates, candidate, maxMessages))
+                        InsertBoundedHistoryCandidateCore(boundedCandidates, candidate, maxMessages, out var evicted);
+                        retainedCandidateChunks[chunkNumber] = uncompressed;
+                        retainedCandidateChunkReferences.TryGetValue(chunkNumber, out var candidateReferences);
+                        retainedCandidateChunkReferences[chunkNumber] = candidateReferences + 1;
+                        if (evicted != null)
                         {
-                            candidate.Data = CopyPayload(uncompressed, record.DataOffset, dataLen);
-                            candidatePayloadCopies++;
+                            retainedCandidateChunkReferences.TryGetValue(evicted.ChunkNumber, out var evictedReferences);
+                            if (evictedReferences <= 1)
+                            {
+                                retainedCandidateChunkReferences.Remove(evicted.ChunkNumber);
+                                retainedCandidateChunks.Remove(evicted.ChunkNumber);
+                            }
+                            else
+                                retainedCandidateChunkReferences[evicted.ChunkNumber] = evictedReferences - 1;
                         }
                         continue;
                     }
@@ -800,6 +812,9 @@ namespace Unity.FoxgloveSDK.IO
             {
                 foreach (var candidate in boundedCandidates)
                 {
+                    var owner = retainedCandidateChunks[candidate.ChunkNumber];
+                    candidate.Data = CopyPayload(owner, candidate.DataOffset, candidate.DataLength);
+                    candidatePayloadCopies++;
                     result.Add(new McapMessage
                     {
                         ChannelId = candidate.ChannelId,
@@ -938,24 +953,29 @@ namespace Unity.FoxgloveSDK.IO
             internal byte[] Data { get; set; }
         }
 
-        private static bool InsertBoundedHistoryCandidate(
+        private static bool InsertBoundedHistoryCandidate(List<HistoryCandidate> candidates, HistoryCandidate candidate, int maxMessages)
+        {
+            InsertBoundedHistoryCandidateCore(candidates, candidate, maxMessages, out _);
+            return candidates.Contains(candidate);
+        }
+
+        private static void InsertBoundedHistoryCandidateCore(
             List<HistoryCandidate> candidates,
             HistoryCandidate candidate,
-            int maxMessages)
+            int maxMessages,
+            out HistoryCandidate evicted)
         {
             var insertAt = candidates.Count;
             while (insertAt > 0
                    && CompareHistoryCandidates(candidates[insertAt - 1], candidate) > 0)
                 insertAt--;
             candidates.Insert(insertAt, candidate);
+            evicted = null;
             if (candidates.Count > maxMessages)
             {
-                var evicted = candidates[0];
+                evicted = candidates[0];
                 candidates.RemoveAt(0);
-                return !ReferenceEquals(evicted, candidate);
             }
-
-            return true;
         }
 
         private static int CompareHistoryCandidates(
