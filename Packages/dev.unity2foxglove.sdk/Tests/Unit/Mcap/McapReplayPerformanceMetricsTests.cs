@@ -161,6 +161,48 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
+        public void BoundedHistoryDoesNotMaterializeTransientCandidatesAcrossOverlappingFilteredChunks()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-history-transient-filtered-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(stream, null, chunkSizeBytes: 4096, compression: "", leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/history-transient-target", "json", "phase188.HistoryTransientTarget", "jsonschema", "{}");
+                    recorder.AddChannel(2, "/phase188/history-transient-noise", "json", "phase188.HistoryTransientNoise", "jsonschema", "{}");
+                    recorder.WriteMessage(1, 1, new byte[] { 1 });
+                    recorder.WriteMessage(1, 100, new byte[] { 100 });
+                    recorder.AddAttachment("boundary-a", "application/octet-stream", new byte[] { 0 }, 1);
+                    recorder.WriteMessage(1, 2, new byte[] { 2 });
+                    recorder.WriteMessage(2, 99, new byte[] { 99 });
+                    recorder.AddAttachment("boundary-b", "application/octet-stream", new byte[] { 0 }, 2);
+                    recorder.WriteMessage(1, 3, new byte[] { 3 });
+                    recorder.WriteMessage(2, 98, new byte[] { 98 });
+                    recorder.AddAttachment("boundary-c", "application/octet-stream", new byte[] { 0 }, 3);
+                    recorder.WriteMessage(1, 4, new byte[] { 4 });
+                    recorder.WriteMessage(2, 97, new byte[] { 97 });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = engine.History(0, 100, new List<McapMessage>(), 2, new HashSet<ushort> { 1 });
+                var metrics = engine.LastHistoryMetrics;
+
+                Assert.Equal(new ulong[] { 4, 100 }, result.Select(message => message.LogTime).ToArray());
+                Assert.Equal(2, metrics.CandidatePayloadCopies);
+                Assert.Equal(2, metrics.PayloadCopies);
+                Assert.Equal(5, metrics.CandidateCount);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
         public void BoundedHistoryKeepsMessagesAcrossOverlappingChunks()
         {
             var path = Path.Combine(Path.GetTempPath(), "phase188-history-overlap-" + Guid.NewGuid().ToString("N") + ".mcap");
