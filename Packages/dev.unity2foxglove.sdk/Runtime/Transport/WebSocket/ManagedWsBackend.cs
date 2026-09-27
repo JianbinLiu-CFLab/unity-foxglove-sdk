@@ -610,7 +610,7 @@ namespace Unity.FoxgloveSDK.Transport
                     _options.MaxQueuedFramesPerClient,
                     _options.MaxQueuedBytesPerClient,
                     _options.MaxInboundFrameBytes);
-                if (!TryRegisterClient(conn, out clientId, out var stopped))
+                if (!TryRegisterClient(conn, ct, out clientId, out var stopped))
                 {
                     if (stopped)
                         CloseUnannouncedClient(conn);
@@ -627,7 +627,7 @@ namespace Unity.FoxgloveSDK.Transport
                 // exactly once.
                 ReleasePendingClient(tcpClient);
 
-                if (ct.IsCancellationRequested || !BeginClientPublication(clientId, conn, ct))
+                if (ct.IsCancellationRequested || !BeginClientPublication(clientId, conn))
                 {
                     RemoveUnannouncedClient(clientId, conn);
                     conn = null;
@@ -881,7 +881,11 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
-        private bool TryRegisterClient(WsConnection conn, out uint clientId, out bool stopped)
+        private bool TryRegisterClient(
+            WsConnection conn,
+            CancellationToken cancellationToken,
+            out uint clientId,
+            out bool stopped)
         {
             lock (_clientAdmissionLock)
             {
@@ -901,6 +905,9 @@ namespace Unity.FoxgloveSDK.Transport
                 }
 
                 clientId = AllocateClientId();
+                conn.StartSendLoop(
+                    () => DisconnectClient(clientId, conn),
+                    cancellationToken);
                 _clients[clientId] = conn;
                 _clientPublications[clientId] = new ClientPublication();
                 stopped = false;
@@ -915,8 +922,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// </summary>
         private bool BeginClientPublication(
             uint clientId,
-            WsConnection expectedConnection,
-            CancellationToken cancellationToken)
+            WsConnection expectedConnection)
         {
             ClientPublication publication;
             var acceptedCounted = false;
@@ -998,9 +1004,6 @@ namespace Unity.FoxgloveSDK.Transport
                         }
                         else
                         {
-                            expectedConnection.StartSendLoop(
-                                () => DisconnectClient(clientId, expectedConnection),
-                                cancellationToken);
                             return true;
                         }
                     }
