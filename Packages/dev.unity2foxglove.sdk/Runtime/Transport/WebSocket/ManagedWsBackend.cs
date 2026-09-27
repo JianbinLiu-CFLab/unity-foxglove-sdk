@@ -28,7 +28,7 @@ namespace Unity.FoxgloveSDK.Transport
     public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
     {
         private const int CloseDrainTimeoutMs = 250;
-        private const int CloseHandshakeTimeoutMs = 500;
+        private const int CloseHandshakeTimeoutMs = 1000;
         private const int StopAcceptLoopWaitMs = 500;
         private const int StopDisconnectWaitMs = 2000;
         private const int StopForcedCloseWaitMs = 1000;
@@ -261,6 +261,7 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 try { listener?.Stop(); } catch { }
                 WaitForShutdownTask(acceptLoopTask, StopAcceptLoopWaitMs, "accept loop");
+                DrainCapacityResponseWorkers();
 
                 var disconnects = clients
                     .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value, initiateGracefulClose: true)))
@@ -320,7 +321,6 @@ namespace Unity.FoxgloveSDK.Transport
                     }
                 }
 
-                DrainCapacityResponseWorkers();
                 WaitForClientHandlers(clientHandlers);
             }
             finally
