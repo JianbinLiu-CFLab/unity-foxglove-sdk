@@ -725,13 +725,29 @@ namespace Unity.FoxgloveSDK.IO
             long peakDecompressedChunkCount = 0;
             long peakRetainedDecompressedBytes = 0;
             long candidatePayloadCopies = 0;
-            for (var chunkNumber = 0; chunkNumber < _summary.ChunkIndexes.Count; chunkNumber++)
+            var firstChunkNumber = boundedCandidates != null
+                ? _summary.ChunkIndexes.Count - 1
+                : 0;
+            var chunkStep = boundedCandidates != null ? -1 : 1;
+            for (var chunkNumber = firstChunkNumber;
+                 chunkNumber >= 0 && chunkNumber < _summary.ChunkIndexes.Count;
+                 chunkNumber += chunkStep)
             {
                 var chunkIndex = _summary.ChunkIndexes[chunkNumber];
-                if (chunkIndex.MessageStartTime > clampedTo)
-                    break;
-                if (chunkIndex.MessageEndTime < clampedFrom)
-                    continue;
+                if (boundedCandidates != null)
+                {
+                    if (chunkIndex.MessageEndTime < clampedFrom)
+                        break;
+                    if (chunkIndex.MessageStartTime > clampedTo)
+                        continue;
+                }
+                else
+                {
+                    if (chunkIndex.MessageStartTime > clampedTo)
+                        break;
+                    if (chunkIndex.MessageEndTime < clampedFrom)
+                        continue;
+                }
 
                 var uncompressed = _reader.ReadChunkRecords(chunkIndex.ChunkStartOffset, chunkIndex.ChunkLength, out var crcValid);
                 if (!ShouldUseChunkRecords("History chunk", crcValid))
@@ -791,36 +807,14 @@ namespace Unity.FoxgloveSDK.IO
                     payloadBytesCopied += dataLen;
                 }
 
-            }
-
-            if (boundedCandidates != null)
-            {
-                var candidatesByChunk = new Dictionary<int, List<HistoryCandidate>>();
-                foreach (var candidate in boundedCandidates)
+                if (boundedCandidates != null)
                 {
-                    if (!candidatesByChunk.TryGetValue(candidate.ChunkNumber, out var chunkCandidates))
+                    for (var candidateIndex = 0; candidateIndex < boundedCandidates.Count; candidateIndex++)
                     {
-                        chunkCandidates = new List<HistoryCandidate>();
-                        candidatesByChunk[candidate.ChunkNumber] = chunkCandidates;
-                    }
+                        var candidate = boundedCandidates[candidateIndex];
+                        if (candidate.ChunkNumber != chunkNumber)
+                            continue;
 
-                    chunkCandidates.Add(candidate);
-                }
-
-                foreach (var chunkPair in candidatesByChunk)
-                {
-                    var chunkNumber = chunkPair.Key;
-                    var chunkCandidates = chunkPair.Value;
-                    var chunkIndex = _summary.ChunkIndexes[chunkNumber];
-                    var uncompressed = _reader.ReadChunkRecords(
-                        chunkIndex.ChunkStartOffset,
-                        chunkIndex.ChunkLength,
-                        out var crcValid);
-                    if (!ShouldUseChunkRecords("History chunk", crcValid))
-                        continue;
-
-                    foreach (var candidate in chunkCandidates)
-                    {
                         candidate.Data = CopyPayload(uncompressed, candidate.DataOffset, candidate.DataLength);
                         candidatePayloadCopies++;
                         payloadCopies++;
@@ -838,6 +832,9 @@ namespace Unity.FoxgloveSDK.IO
                     }
                 }
             }
+
+            if (boundedCandidates != null)
+                boundedCandidates.Sort(CompareHistoryCandidates);
 
             if (result.Count > 1)
                 result.Sort(CompareMessages);
