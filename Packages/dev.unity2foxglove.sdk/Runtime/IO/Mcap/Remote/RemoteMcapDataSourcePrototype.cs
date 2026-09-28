@@ -34,6 +34,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly string _directFileRoute;
         private readonly long _maxInMemoryDataBytes;
         private readonly Func<string> _generationVersionProvider;
+        private readonly object _fileStampGate = new object();
         private readonly object _manifestCacheGate = new object();
         private FileStamp _observedStamp;
         private bool _hasObservedStamp;
@@ -149,7 +150,8 @@ namespace Unity.FoxgloveSDK.IO
                 return DataProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
                     "Phase 119 prototype supports one local MCAP source only.");
 
-            if (!string.Equals(request.SourceId, GetCurrentSourceId(), StringComparison.Ordinal))
+            var sourceId = GetCurrentSourceId();
+            if (!string.Equals(request.SourceId, sourceId, StringComparison.Ordinal))
                 return DataProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
                     "Requested MCAP source id is not available in this prototype.");
 
@@ -177,7 +179,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
-                SourceId = GetCurrentSourceId(),
+                SourceId = sourceId,
                 Data = data
             };
         }
@@ -206,7 +208,8 @@ namespace Unity.FoxgloveSDK.IO
                 return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
                     "Phase 119 prototype supports one local MCAP source only.");
 
-            if (!string.Equals(request.SourceId, GetCurrentSourceId(), StringComparison.Ordinal))
+            var sourceId = GetCurrentSourceId();
+            if (!string.Equals(request.SourceId, sourceId, StringComparison.Ordinal))
                 return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
                     "Requested MCAP source id is not available in this prototype.");
 
@@ -250,7 +253,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
-                SourceId = GetCurrentSourceId(),
+                SourceId = sourceId,
                 Length = slice.Length,
                 DataStream = slice
             };
@@ -273,8 +276,9 @@ namespace Unity.FoxgloveSDK.IO
                 return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
                     "Phase 119 prototype supports one local MCAP source only.");
 
+            var sourceId = GetCurrentSourceId();
             if (!string.IsNullOrEmpty(request.SourceId)
-                && !string.Equals(request.SourceId, GetCurrentSourceId(), StringComparison.Ordinal))
+                && !string.Equals(request.SourceId, sourceId, StringComparison.Ordinal))
                 return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
                     "Requested MCAP source id is not available in this prototype.");
 
@@ -287,7 +291,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
-                SourceId = GetCurrentSourceId(),
+                SourceId = sourceId,
                 Length = info.Length,
                 ContentType = "application/octet-stream",
                 DataStream = new FileStream(
@@ -470,10 +474,10 @@ namespace Unity.FoxgloveSDK.IO
 
         private FileStamp ReadFileStamp()
         {
-            var info = new FileInfo(_mcapPath);
-            if (!info.Exists)
+            var initialInfo = new FileInfo(_mcapPath);
+            if (!initialInfo.Exists)
             {
-                lock (_manifestCacheGate)
+                lock (_fileStampGate)
                     _hasObservedStamp = false;
                 return new FileStamp
                 {
@@ -485,63 +489,73 @@ namespace Unity.FoxgloveSDK.IO
                 };
             }
 
-            var lastWriteUtc = info.LastWriteTimeUtc;
             var generationVersion = _generationVersionProvider?.Invoke();
             if (!string.IsNullOrEmpty(generationVersion))
             {
+                lock (_fileStampGate)
+                    _hasObservedStamp = false;
                 return new FileStamp
                 {
                     Exists = true,
-                    Length = info.Length,
-                    LastWriteUtc = lastWriteUtc,
+                    Length = initialInfo.Length,
+                    LastWriteUtc = initialInfo.LastWriteTimeUtc,
                     ContentHash = "generation:" + generationVersion,
                     FileChangeToken = string.Empty
                 };
             }
 
-            using var input = new FileStream(
-                _mcapPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete);
-            var hasFileChangeToken = TryGetFileChangeToken(input.SafeFileHandle, out var fileChangeToken);
-            if (hasFileChangeToken)
+            lock (_fileStampGate)
             {
-                lock (_manifestCacheGate)
+                var info = new FileInfo(_mcapPath);
+                if (!info.Exists)
                 {
-                    if (_hasObservedStamp
-                        && _observedStamp.Exists
-                        && _observedStamp.Length == info.Length
-                        && _observedStamp.LastWriteUtc == lastWriteUtc
-                        && string.Equals(
-                            _observedStamp.FileChangeToken,
-                            fileChangeToken,
-                            StringComparison.Ordinal))
+                    _hasObservedStamp = false;
+                    return new FileStamp
                     {
-                        return _observedStamp;
-                    }
+                        Exists = false,
+                        Length = 0L,
+                        LastWriteUtc = DateTime.MinValue,
+                        ContentHash = string.Empty,
+                        FileChangeToken = string.Empty
+                    };
                 }
-            }
 
-            System.Threading.Interlocked.Increment(ref _fullContentHashComputations);
-            using var sha = SHA256.Create();
-            var hash = sha.ComputeHash(input);
-            var stamp = new FileStamp
-            {
-                Exists = true,
-                Length = info.Length,
-                LastWriteUtc = lastWriteUtc,
-                ContentHash = ToHex(hash),
-                FileChangeToken = hasFileChangeToken ? fileChangeToken : string.Empty
-            };
-            lock (_manifestCacheGate)
-            {
+                var lastWriteUtc = info.LastWriteTimeUtc;
+                using var input = new FileStream(
+                    _mcapPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                var hasFileChangeToken = TryGetFileChangeToken(input.SafeFileHandle, out var fileChangeToken);
+                if (hasFileChangeToken
+                    && _hasObservedStamp
+                    && _observedStamp.Exists
+                    && _observedStamp.Length == info.Length
+                    && _observedStamp.LastWriteUtc == lastWriteUtc
+                    && string.Equals(
+                        _observedStamp.FileChangeToken,
+                        fileChangeToken,
+                        StringComparison.Ordinal))
+                {
+                    return _observedStamp;
+                }
+
+                System.Threading.Interlocked.Increment(ref _fullContentHashComputations);
+                using var sha = SHA256.Create();
+                var hash = sha.ComputeHash(input);
+                var stamp = new FileStamp
+                {
+                    Exists = true,
+                    Length = info.Length,
+                    LastWriteUtc = lastWriteUtc,
+                    ContentHash = ToHex(hash),
+                    FileChangeToken = hasFileChangeToken ? fileChangeToken : string.Empty
+                };
                 _observedStamp = stamp;
                 _hasObservedStamp = hasFileChangeToken;
+                return stamp;
             }
-            return stamp;
         }
-
         private static bool TryGetFileChangeToken(SafeFileHandle handle, out string token)
         {
             token = string.Empty;

@@ -176,8 +176,14 @@ namespace Unity.FoxgloveSDK.IO
             }
             catch
             {
-                // Listener close wakes the loop with an exception; the completed loop can release synchronously.
-                DisposeStopSource();
+                if (_loop.IsCompleted)
+                {
+                    DisposeStopSource();
+                }
+                else
+                {
+                    _loop.ContinueWith(_ => DisposeStopSource(), TaskScheduler.Default);
+                }
             }
         }
 
