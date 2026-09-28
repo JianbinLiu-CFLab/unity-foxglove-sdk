@@ -650,7 +650,7 @@ namespace Unity.FoxgloveSDK.IO
                     return false;
 
                 usn = Marshal.ReadInt64(output, 24);
-                return true;
+                return usn != 0;
             }
             finally
             {
