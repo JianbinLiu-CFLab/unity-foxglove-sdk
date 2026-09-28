@@ -121,6 +121,48 @@ namespace FoxgloveSdk.UnitTests.Mcap
             Assert.False(directStream.Authorization.Allowed);
         }
 
+        [Theory]
+        [InlineData((short)2, 32, 24, 123456789L)]
+        [InlineData((short)3, 48, 40, 987654321L)]
+        public void WindowsUsnParserReadsV2AndV3Records(
+            short majorVersion,
+            int length,
+            int expectedOffset,
+            long expectedUsn)
+        {
+            var record = new byte[length];
+            record[4] = (byte)majorVersion;
+            record[5] = (byte)(majorVersion >> 8);
+            for (var index = 0; index < sizeof(long); index++)
+                record[expectedOffset + index] = (byte)(expectedUsn >> (index * 8));
+
+            Assert.True(RemoteMcapDataSourcePrototype.TryGetWindowsUsnOffset(
+                majorVersion,
+                (uint)record.Length,
+                out var usnOffset));
+            Assert.Equal(expectedOffset, usnOffset);
+            Assert.True(RemoteMcapDataSourcePrototype.TryParseWindowsUsnRecord(
+                record,
+                out var usn));
+            Assert.Equal(expectedUsn, usn);
+        }
+
+        [Fact]
+        public void WindowsUsnParserRejectsUnsupportedOrTruncatedRecords()
+        {
+            var unsupported = new byte[48];
+            unsupported[4] = 4;
+            Assert.False(RemoteMcapDataSourcePrototype.TryParseWindowsUsnRecord(
+                unsupported,
+                out _));
+
+            var truncated = new byte[47];
+            truncated[4] = 3;
+            Assert.False(RemoteMcapDataSourcePrototype.TryParseWindowsUsnRecord(
+                truncated,
+                out _));
+        }
+
         [Fact]
         public void SourceIdentityChangesWhenTheRecordingGenerationChanges()
         {
