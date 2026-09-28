@@ -77,10 +77,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && submit.Contains("var ownedFrameBytes = _rgbScratch;", StringComparison.Ordinal)
                   && !submit.Contains("frameBytes.ToArray()", StringComparison.Ordinal),
                 "164-15C-2: video submit path copies readback bytes into reusable scratch without per-frame array allocation");
-            Check(source.Contains("GetData<byte>().CopyTo(destination)", StringComparison.Ordinal)
-                  || (publisherVideo.Contains("private readonly NativeArray<byte> _data;", StringComparison.Ordinal)
-                      && publisherVideo.Contains("_data = request.GetData<byte>();", StringComparison.Ordinal)
-                      && source.Contains("_data.CopyTo(destination)", StringComparison.Ordinal)),
+            Check(source.Contains("NativeArray<byte>.Copy(_data, 0, destination, 0, _data.Length)", StringComparison.Ordinal)
+                  && source.Contains("destination.Length < _data.Length", StringComparison.Ordinal)
+                  && publisherVideo.Contains("private readonly NativeArray<byte> _data;", StringComparison.Ordinal),
                 "164-15C-3: camera video readback source copies directly from AsyncGPUReadback data");
         }
 

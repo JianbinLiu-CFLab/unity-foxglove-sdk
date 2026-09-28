@@ -40,6 +40,8 @@ namespace Unity.FoxgloveSDK.Tests
             H264NormalizerAvoidsLinqHotPathPasses();
             OpenH264StdoutReaderReusesLengthHeader();
             SidecarsCacheQueueCapacitiesOnStart();
+            FrameSourceSubmissionUsesGenericStructPath();
+            MediaFoundationWorkerOwnsNativeCleanup();
 
             Console.WriteLine($"Phase 140-15: {_passed} checks passed.");
         }
@@ -241,6 +243,36 @@ namespace Unity.FoxgloveSDK.Tests
             Check(SidecarCachesQueueCapacities(
                     Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs")),
                 "140-15N-3: OpenH264 sidecar caches queue capacities after option validation");
+        }
+
+        private static void FrameSourceSubmissionUsesGenericStructPath()
+        {
+            var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
+            var h264 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs");
+            var h265 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs");
+            var mediaFoundation = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs");
+            Check(pipeline.Contains("TrySubmitFrame<TFrameBytes>", StringComparison.Ordinal)
+                  && h264.Contains("private bool TryEnqueueFrame<TFrameBytes>", StringComparison.Ordinal)
+                  && h265.Contains("private bool TryEnqueueFrame<TFrameBytes>", StringComparison.Ordinal)
+                  && mediaFoundation.Contains("private bool TrySubmitFrameCore<TFrameBytes>", StringComparison.Ordinal)
+                  && !h264.Contains("Action<byte[]> copyFrame", StringComparison.Ordinal)
+                  && !h265.Contains("Action<byte[]> copyFrame", StringComparison.Ordinal)
+                  && !mediaFoundation.Contains("Action<byte[]> copyFrame", StringComparison.Ordinal),
+                "140-15N-4: direct frame-source submission uses generic structs without copy delegates");
+        }
+
+        private static void MediaFoundationWorkerOwnsNativeCleanup()
+        {
+            var session = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
+            var sidecar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs");
+            Check(session.Contains("ICameraVideoSidecarDeferredCleanup", StringComparison.Ordinal)
+                  && session.Contains("CameraVideoSidecarRetirementRegistry.Retire(deferred)", StringComparison.Ordinal)
+                  && session.Contains("CameraVideoSidecarRetirementRegistry.Poll()", StringComparison.Ordinal)
+                  && sidecar.Contains("EncoderWorkerMain", StringComparison.Ordinal)
+                  && sidecar.Contains("ReleaseEncoderResources", StringComparison.Ordinal)
+                  && sidecar.Contains("_workerInitialized.Wait(StartupTimeoutMs)", StringComparison.Ordinal)
+                  && sidecar.Contains("worker != null && worker.IsAlive", StringComparison.Ordinal),
+                "140-15O-1: Media Foundation worker owns native initialization and cleanup after bounded stop");
         }
 
         private static bool SidecarCachesQueueCapacities(string source)

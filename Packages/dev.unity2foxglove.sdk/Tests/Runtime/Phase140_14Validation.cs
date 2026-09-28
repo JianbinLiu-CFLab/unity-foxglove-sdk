@@ -123,8 +123,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("private readonly NativeArray<byte> _data;", StringComparison.Ordinal)
                   && source.Contains("public int Length => _data.Length;", StringComparison.Ordinal)
-                  && source.Contains("_data.CopyTo(destination);", StringComparison.Ordinal),
-                "140-14G-2b: camera video readback byte source reuses one GetData view for length and copy");
+                  && source.Contains("destination.Length < _data.Length", StringComparison.Ordinal)
+                  && source.Contains("NativeArray<byte>.Copy(_data, 0, destination, 0, _data.Length);", StringComparison.Ordinal)
+                  && !source.Contains("_data.CopyTo(destination);", StringComparison.Ordinal),
+                "140-14G-2b: camera video readback byte source copies exactly the NativeArray length into pooled destinations");
         }
 
         private static void CameraDemandChecksReuseResolvedProfile()

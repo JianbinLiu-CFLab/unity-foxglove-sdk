@@ -78,7 +78,12 @@ namespace Unity.FoxgloveSDK.Components
             public int Length => _data.Length;
 
             public void CopyTo(byte[] destination)
-                => _data.CopyTo(destination);
+            {
+                if (destination == null || destination.Length < _data.Length)
+                    throw new ArgumentException("The destination buffer is smaller than the readback frame.", nameof(destination));
+
+                NativeArray<byte>.Copy(_data, 0, destination, 0, _data.Length);
+            }
         }
 
         /// <summary>

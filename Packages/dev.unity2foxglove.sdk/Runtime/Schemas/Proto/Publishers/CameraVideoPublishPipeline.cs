@@ -45,9 +45,19 @@ namespace Unity.FoxgloveSDK.Components
         void CopyTo(byte[] destination);
     }
 
+    internal readonly struct CameraVideoArrayFrameBytesSource : ICameraVideoFrameBytesSource
+    {
+        private readonly byte[] _data;
+
+        internal CameraVideoArrayFrameBytesSource(byte[] data) => _data = data;
+        public int Length => _data?.Length ?? 0;
+        public void CopyTo(byte[] destination) => Buffer.BlockCopy(_data, 0, destination, 0, Length);
+    }
+
     internal interface ICameraVideoFrameSourceSidecar
     {
-        bool TrySubmitFrame(ICameraVideoFrameBytesSource frame, ulong timestampNs);
+        bool TrySubmitFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
+            where TFrameBytes : struct, ICameraVideoFrameBytesSource;
     }
 
     internal sealed class CameraVideoPublishPipeline : IDisposable

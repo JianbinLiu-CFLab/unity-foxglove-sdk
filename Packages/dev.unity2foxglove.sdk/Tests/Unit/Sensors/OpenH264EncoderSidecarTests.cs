@@ -6,6 +6,8 @@
 
 using System;
 using System.Reflection;
+using System.Collections;
+using Unity.FoxgloveSDK.Components;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -303,6 +305,170 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             using var sidecar = new MediaFoundationH264EncoderSidecar();
             Assert.Equal(2, sidecar.MaxInputQueue);
             Assert.Equal(0, sidecar.InputQueueDepth);
+        }
+
+        [Fact]
+        public void DeferredSidecarRetirementKeepsOwnerUntilCleanup()
+        {
+            var owner = new TestDeferredSidecar();
+            var before = CameraVideoSidecarRetirementRegistry.PendingCountForTests;
+
+            CameraVideoSidecarRetirementRegistry.Retire(owner);
+            Assert.Equal(before + 1, CameraVideoSidecarRetirementRegistry.PendingCountForTests);
+
+            CameraVideoSidecarRetirementRegistry.Poll();
+            Assert.Equal(before + 1, CameraVideoSidecarRetirementRegistry.PendingCountForTests);
+            Assert.Equal(1, owner.PollCount);
+
+            owner.Ready = true;
+            CameraVideoSidecarRetirementRegistry.Poll();
+            Assert.Equal(before, CameraVideoSidecarRetirementRegistry.PendingCountForTests);
+            Assert.Equal(2, owner.PollCount);
+        }
+
+        private sealed class TestDeferredSidecar : ICameraVideoSidecarDeferredCleanup
+        {
+            internal bool Ready;
+            internal int PollCount;
+
+            public bool TryFinalizeDeferredCleanup()
+            {
+                PollCount++;
+                return Ready;
+            }
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void FrameSourceCopiesOnlyLogicalBytesIntoOversizedPoolBuffer(int codec)
+        {
+            using var process = Process.GetCurrentProcess();
+            var sidecar = CreateFrameSourceSidecar(codec, process);
+            var source = new ObservedFrameSource(12);
+            try
+            {
+                Assert.True(((ICameraVideoFrameSourceSidecar)sidecar).TrySubmitFrame(source, 123UL));
+                Assert.True(source.Observation.DestinationLength > source.Length);
+                var frames = (IEnumerable)GetField(sidecar, "_inputFrames");
+                object queued = null;
+                foreach (var entry in frames)
+                    queued = entry;
+                Assert.NotNull(queued);
+                var bytes = (byte[])queued.GetType().GetProperty("Data", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(queued);
+                var length = (int)queued.GetType().GetProperty("Length", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(queued);
+                var timestamp = (ulong)queued.GetType().GetProperty("TimestampNs", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(queued);
+                Assert.Equal(12, length);
+                Assert.Equal(123UL, timestamp);
+                for (var i = 0; i < length; i++)
+                    Assert.Equal((byte)(i + 1), bytes[i]);
+                for (var i = length; i < bytes.Length; i++)
+                    Assert.Equal((byte)0xA5, bytes[i]);
+            }
+            finally
+            {
+                DisposeFrameSourceSidecar(sidecar, codec);
+            }
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void FailedFrameSourceCopyLeavesInputQueueUnchanged(int codec)
+        {
+            using var process = Process.GetCurrentProcess();
+            var sidecar = CreateFrameSourceSidecar(codec, process);
+            try
+            {
+                var source = new ObservedFrameSource(12, fail: true);
+                Assert.Throws<InvalidOperationException>(() => ((ICameraVideoFrameSourceSidecar)sidecar).TrySubmitFrame(source, 123UL));
+                Assert.Equal(0, ((ICameraVideoEncoderSidecar)sidecar).InputQueueDepth);
+                Assert.True(((ICameraVideoFrameSourceSidecar)sidecar).TrySubmitFrame(new ObservedFrameSource(12), 456UL));
+                Assert.Equal(1, ((ICameraVideoEncoderSidecar)sidecar).InputQueueDepth);
+            }
+            finally
+            {
+                DisposeFrameSourceSidecar(sidecar, codec);
+            }
+        }
+
+        [Fact]
+        public void MediaFoundationWorkerReleaseClearsManagedStateOnWorkerThread()
+        {
+            var sidecar = new MediaFoundationH264EncoderSidecar();
+            SetField(sidecar, "_options", new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
+            SetField(sidecar, "_nv12Scratch", new byte[6]);
+            var worker = new Thread(() => Invoke(sidecar, "ReleaseEncoderResources"))
+            {
+                IsBackground = true
+            };
+
+            worker.Start();
+            Assert.True(worker.Join(TimeSpan.FromSeconds(10)));
+            Assert.Null(GetField(sidecar, "_options"));
+            Assert.Null(GetField(sidecar, "_nv12Scratch"));
+            Assert.False(sidecar.IsRunning);
+            sidecar.Dispose();
+        }
+
+        private static object CreateFrameSourceSidecar(int codec, Process process)
+        {
+            object sidecar;
+            if (codec == 2)
+            {
+                sidecar = new MediaFoundationH264EncoderSidecar();
+                SetProperty(sidecar, "IsRunning", true);
+                SetField(sidecar, "_options", new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
+            }
+            else
+            {
+                sidecar = codec == 0 ? (object)new FfmpegH264EncoderSidecar() : new FfmpegH265EncoderSidecar();
+                SetField(sidecar, "_options", codec == 0
+                    ? (object)new FfmpegH264EncoderOptions { Width = 2, Height = 2 }
+                    : new FfmpegH265EncoderOptions { Width = 2, Height = 2 });
+                SetField(sidecar, "_process", process);
+            }
+            return sidecar;
+        }
+
+        private static void DisposeFrameSourceSidecar(object sidecar, int codec)
+        {
+            if (codec != 2)
+                SetField(sidecar, "_process", null);
+            ((IDisposable)sidecar).Dispose();
+        }
+
+        private sealed class CopyObservation
+        {
+            internal int DestinationLength;
+        }
+
+        private readonly struct ObservedFrameSource : ICameraVideoFrameBytesSource
+        {
+            private readonly long _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p;
+            private readonly bool _fail;
+            internal readonly CopyObservation Observation;
+            public int Length { get; }
+
+            internal ObservedFrameSource(int length, bool fail = false)
+            {
+                Length = length;
+                _fail = fail;
+                Observation = new CopyObservation();
+                _a = _b = _c = _d = _e = _f = _g = _h = _i = _j = _k = _l = _m = _n = _o = _p = 0;
+            }
+
+            public void CopyTo(byte[] destination)
+            {
+                if (_fail)
+                    throw new InvalidOperationException("Injected frame copy failure.");
+                Observation.DestinationLength = destination.Length;
+                Array.Fill(destination, (byte)0xA5);
+                for (var i = 0; i < Length; i++)
+                    destination[i] = (byte)(i + 1);
+            }
         }
 
         private static string QuoteArgument(string value)
