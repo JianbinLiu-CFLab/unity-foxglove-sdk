@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly Func<int> _currentCaptureGeneration;
         private readonly int _workerStopWaitMs;
+        private readonly object _queueGate = new object();
         private DropOldestBoundedQueue<JpegEncodeRequest> _encodeQueue;
         private DropOldestBoundedQueue<JpegEncodeResult> _completedQueue;
         private AutoResetEvent _workerSignal;
@@ -47,8 +48,23 @@ namespace Unity.FoxgloveSDK.Components
 
         public string LastStartError { get; private set; }
         public int WorkerGeneration => Volatile.Read(ref _workerGeneration);
-        public int EncodeQueueDepth => Volatile.Read(ref _encodeQueue)?.Count ?? 0;
-        public int CompletedQueueDepth => Volatile.Read(ref _completedQueue)?.Count ?? 0;
+        public int EncodeQueueDepth
+        {
+            get
+            {
+                lock (_queueGate)
+                    return _encodeQueue?.Count ?? 0;
+            }
+        }
+
+        public int CompletedQueueDepth
+        {
+            get
+            {
+                lock (_queueGate)
+                    return _completedQueue?.Count ?? 0;
+            }
+        }
 
         public void Configure(int maxEncodeQueue, int maxCompletedQueue)
         {
@@ -105,11 +121,15 @@ namespace Unity.FoxgloveSDK.Components
                 throw new ArgumentNullException(nameof(request));
 
             ThrowIfDisposed();
-            var queue = Volatile.Read(ref _encodeQueue);
-            if (queue == null)
-                throw new InvalidOperationException("JPEG queues must be configured before queueing frames.");
+            bool dropped;
+            lock (_queueGate)
+            {
+                var queue = _encodeQueue;
+                if (queue == null)
+                    throw new InvalidOperationException("JPEG queues must be configured before queueing frames.");
 
-            var dropped = queue.Enqueue(request);
+                dropped = queue.Enqueue(request);
+            }
             try
             {
                 _workerSignal?.Set();
@@ -128,14 +148,18 @@ namespace Unity.FoxgloveSDK.Components
 
             ThrowIfDisposed();
             droppedCompleted = Interlocked.Exchange(ref _droppedCompletedCount, 0);
-            var queue = Volatile.Read(ref _completedQueue);
-            if (queue == null)
-                return 0;
-
             var drained = 0;
             var limit = Math.Max(1, maxResults);
-            while (drained < limit && queue.TryDequeue(out var result))
+            while (drained < limit)
             {
+                JpegEncodeResult result;
+                lock (_queueGate)
+                {
+                    var queue = _completedQueue;
+                    if (queue == null || !queue.TryDequeue(out result))
+                        break;
+                }
+
                 drained++;
                 publish(result);
             }
@@ -196,8 +220,11 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ClearCore()
         {
-            Volatile.Read(ref _encodeQueue)?.Clear();
-            Volatile.Read(ref _completedQueue)?.Clear();
+            lock (_queueGate)
+            {
+                _encodeQueue?.Clear();
+                _completedQueue?.Clear();
+            }
             Interlocked.Exchange(ref _droppedCompletedCount, 0);
         }
 
@@ -217,35 +244,38 @@ namespace Unity.FoxgloveSDK.Components
 
         private void EnsureQueues()
         {
-            var encodeQueue = Volatile.Read(ref _encodeQueue);
-            if (encodeQueue == null || encodeQueue.Capacity != _encodeCapacity)
+            lock (_queueGate)
             {
-                var replacement = new DropOldestBoundedQueue<JpegEncodeRequest>(_encodeCapacity);
-                var pending = encodeQueue?.DrainSnapshot();
-                if (pending != null)
+                var encodeQueue = _encodeQueue;
+                if (encodeQueue == null || encodeQueue.Capacity != _encodeCapacity)
                 {
-                    var first = Math.Max(0, pending.Length - _encodeCapacity);
-                    for (var index = first; index < pending.Length; index++)
-                        replacement.Enqueue(pending[index]);
+                    var replacement = new DropOldestBoundedQueue<JpegEncodeRequest>(_encodeCapacity);
+                    var pending = encodeQueue?.DrainSnapshot();
+                    if (pending != null)
+                    {
+                        var first = Math.Max(0, pending.Length - _encodeCapacity);
+                        for (var index = first; index < pending.Length; index++)
+                            replacement.Enqueue(pending[index]);
+                    }
+
+                    _encodeQueue = replacement;
                 }
 
-                Volatile.Write(ref _encodeQueue, replacement);
-            }
-
-            var completedQueue = Volatile.Read(ref _completedQueue);
-            if (completedQueue == null || completedQueue.Capacity != _completedCapacity)
-            {
-                var replacement = new DropOldestBoundedQueue<JpegEncodeResult>(_completedCapacity);
-                var completed = completedQueue?.DrainSnapshot();
-                if (completed != null)
+                var completedQueue = _completedQueue;
+                if (completedQueue == null || completedQueue.Capacity != _completedCapacity)
                 {
-                    var first = Math.Max(0, completed.Length - _completedCapacity);
-                    _droppedCompletedCount += first;
-                    for (var index = first; index < completed.Length; index++)
-                        replacement.Enqueue(completed[index]);
-                }
+                    var replacement = new DropOldestBoundedQueue<JpegEncodeResult>(_completedCapacity);
+                    var completed = completedQueue?.DrainSnapshot();
+                    if (completed != null)
+                    {
+                        var first = Math.Max(0, completed.Length - _completedCapacity);
+                        Interlocked.Add(ref _droppedCompletedCount, first);
+                        for (var index = first; index < completed.Length; index++)
+                            replacement.Enqueue(completed[index]);
+                    }
 
-                Volatile.Write(ref _completedQueue, replacement);
+                    _completedQueue = replacement;
+                }
             }
         }
 
@@ -270,8 +300,18 @@ namespace Unity.FoxgloveSDK.Components
             {
                 while (!_workerStopping && workerGeneration == WorkerGeneration)
                 {
-                    var queue = Volatile.Read(ref _encodeQueue);
-                    if (queue != null && queue.TryDequeue(out var request))
+                    JpegEncodeRequest request;
+                    var hasRequest = false;
+                    lock (_queueGate)
+                    {
+                        var queue = _encodeQueue;
+                        if (queue != null)
+                            hasRequest = queue.TryDequeue(out request);
+                        else
+                            request = null;
+                    }
+
+                    if (hasRequest)
                     {
                         if (request.Generation != _currentCaptureGeneration())
                             continue;
@@ -283,9 +323,12 @@ namespace Unity.FoxgloveSDK.Components
                             && workerGeneration == WorkerGeneration
                             && result.Request.JpegWorkerGeneration == workerGeneration)
                         {
-                            var completed = Volatile.Read(ref _completedQueue);
-                            if (completed != null && completed.Enqueue(result))
-                                Interlocked.Increment(ref _droppedCompletedCount);
+                            lock (_queueGate)
+                            {
+                                var completed = _completedQueue;
+                                if (completed != null && completed.Enqueue(result))
+                                    Interlocked.Increment(ref _droppedCompletedCount);
+                            }
                         }
 
                         continue;

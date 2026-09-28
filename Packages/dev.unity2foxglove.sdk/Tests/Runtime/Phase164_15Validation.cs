@@ -70,12 +70,13 @@ namespace Unity.FoxgloveSDK.Tests
             var source = PhaseValidationSourceHelpers.SourceMethod(publisherVideo, "public void CopyTo");
 
             Check(pipeline.Contains("private byte[] _rgbScratch;", StringComparison.Ordinal)
-                  && pipeline.Contains("private byte[] EnsureRgbScratch(int length)", StringComparison.Ordinal),
+                  && !pipeline.Contains("EnsureRgbScratch(int length)", StringComparison.Ordinal),
                 "164-15C-1: video publish pipeline owns a reusable RGB scratch buffer");
-            Check(submit.Contains("var ownedFrameBytes = EnsureRgbScratch(frameBytes.Length);", StringComparison.Ordinal)
-                  && submit.Contains("frameBytes.CopyTo(ownedFrameBytes);", StringComparison.Ordinal)
+            Check(submit.Contains("if (_rgbScratch == null || _rgbScratch.Length != frameBytes.Length)", StringComparison.Ordinal)
+                  && submit.Contains("frameBytes.CopyTo(_rgbScratch);", StringComparison.Ordinal)
+                  && submit.Contains("var ownedFrameBytes = _rgbScratch;", StringComparison.Ordinal)
                   && !submit.Contains("frameBytes.ToArray()", StringComparison.Ordinal),
-                "164-15C-2: video submit path copies readback bytes into reusable scratch instead of allocating ToArray");
+                "164-15C-2: video submit path copies readback bytes into reusable scratch without per-frame array allocation");
             Check(source.Contains("GetData<byte>().CopyTo(destination)", StringComparison.Ordinal)
                   || (publisherVideo.Contains("private readonly NativeArray<byte> _data;", StringComparison.Ordinal)
                       && publisherVideo.Contains("_data = request.GetData<byte>();", StringComparison.Ordinal)

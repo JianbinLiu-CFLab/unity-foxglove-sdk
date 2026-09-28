@@ -741,6 +741,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("GCHandle.Alloc(xyz, GCHandleType.Pinned)", source, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void DracoMsgPackPathDoesNotFallbackToProtobuf()
+        {
+            var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Draco.cs");
+
+            Assert.Contains("TryPublishComponentMessagePackDraco(", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("&& TryPublishComponentMessagePackDraco", source, StringComparison.Ordinal);
+            Assert.Contains("PublishProto(result.WebSocketPayload", source, StringComparison.Ordinal);
+        }
+
         private static void AssertPoint(
             BinaryReader reader,
             float x,

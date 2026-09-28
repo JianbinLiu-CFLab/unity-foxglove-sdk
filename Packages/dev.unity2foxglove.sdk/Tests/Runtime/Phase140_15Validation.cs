@@ -152,10 +152,11 @@ namespace Unity.FoxgloveSDK.Tests
             var method = Slice(source, "public CameraVideoSubmitResult SubmitVideoFrame", "private static double ElapsedMs");
             Check(method.Contains("where TFrameBytes : struct, ICameraVideoFrameBytesSource", StringComparison.Ordinal)
                   && method.Contains("if (frameBytes.Length <= 0)", StringComparison.Ordinal)
-                  && method.Contains("var ownedFrameBytes = EnsureRgbScratch(frameBytes.Length)", StringComparison.Ordinal)
-                  && method.Contains("frameBytes.CopyTo(ownedFrameBytes)", StringComparison.Ordinal)
+                  && method.Contains("if (_rgbScratch == null || _rgbScratch.Length != frameBytes.Length)", StringComparison.Ordinal)
+                  && method.Contains("frameBytes.CopyTo(_rgbScratch)", StringComparison.Ordinal)
+                  && method.Contains("var ownedFrameBytes = _rgbScratch", StringComparison.Ordinal)
                   && !method.Contains("Func<byte[]>", StringComparison.Ordinal),
-                "140-15H-1: Camera video submit keeps the frame byte source contract and avoids per-frame factory closures and RGB allocations");
+                "140-15H-1: Camera video submit keeps the frame byte source contract and reuses the pipeline RGB scratch buffer");
         }
 
         private static void OpenH264I420ScratchIsReusedBeforeSidecarCopy()

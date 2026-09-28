@@ -222,6 +222,21 @@ namespace Unity.FoxgloveSDK.Components
             if (_pendingScanState != PendingScanState.Scheduled || _pendingBatchCount <= 0)
                 return;
 
+            if (!_pendingScanHandle.IsCompleted)
+            {
+                RecordLidarDiagnostics(
+                    logPerformanceDiagnostics,
+                    _pendingBatchCount,
+                    0,
+                    0d,
+                    0d,
+                    0d,
+                    asyncOverrun: true,
+                    profileInvalidation: false,
+                    fixedDeltaTime);
+                return;
+            }
+
             var completeStart = _scanDiagnostics.Start(logPerformanceDiagnostics);
             _pendingScanHandle.Complete();
             var completeMs = _scanDiagnostics.ElapsedMs(completeStart);

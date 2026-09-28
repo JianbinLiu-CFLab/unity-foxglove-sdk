@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Number of samples currently queued.</summary>
         public int Count => _count;
 
-        /// <summary>Total number of oldest samples dropped by or since the last resize.</summary>
+        /// <summary>Total number of oldest samples dropped since the queue was created.</summary>
         public long DroppedCount => _droppedCount;
 
         /// <summary>Resize the bounded queue while preserving the oldest available samples.</summary>
@@ -71,7 +71,6 @@ namespace Unity.FoxgloveSDK.Components
             _items = next;
             _count = copyCount;
             _head = 0;
-            _droppedCount = 0;
             RecordDropped(droppedByResize);
         }
 

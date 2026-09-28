@@ -109,8 +109,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(queue.Count == 2 && queue.DroppedCount == 1,
                 "163-18D-1: IMU queue reports overwritten oldest samples");
             queue.Resize(3, minCapacity: 2);
-            Check(queue.DroppedCount == 0,
-                "163-18D-2: IMU queue drop counter resets on capacity changes");
+            Check(queue.DroppedCount == 1,
+                "163-18D-2: IMU queue drop counter remains cumulative across capacity changes");
         }
 
         private static void ImuSubStepTimestampsRoundFractionalNanoseconds()
@@ -178,9 +178,10 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
             var schedule = ExtractMethod(source, "public void SchedulePendingScan");
 
-            Check(schedule.Contains("batchCount + rays.Length > scanBuffers.EffectiveRayCount", StringComparison.Ordinal)
-                  && CheckOrdered(schedule, "batchCount + rays.Length > scanBuffers.EffectiveRayCount", "scanColumnCursor++;"),
-                "163-18H-1: VirtualLidar scheduler stops before consuming a partial column at the batch cap");
+            Check(schedule.Contains("var commandBudget = Math.Max(1, maxRaycastCommandsPerFixedUpdate);", StringComparison.Ordinal)
+                  && schedule.Contains("batchCount < commandBudget", StringComparison.Ordinal)
+                  && schedule.Contains("scanColumnCursor++;", StringComparison.Ordinal),
+                "163-18H-1: VirtualLidar scheduler caps commands without advancing a partial column");
             Check(source.Contains("profileInvalidation: true", StringComparison.Ordinal)
                   && source.Contains("timingOverrun={8} profileInvalidation={9}", StringComparison.Ordinal),
                 "163-18H-2: VirtualLidar scheduler reports profile invalidations separately from timing overruns");

@@ -289,9 +289,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && IndexOf(drain, "EnsureJpegPublishPipeline();") >= 0
                   && IndexOf(drain, "EnsureJpegPublishPipeline();") < IndexOf(drain, "_jpegPublishPipeline.DrainCompleted("),
                 "138Q-5D2: camera JPEG pipeline is lazily restored before runtime queue/drain use");
-            Check(publishPipeline.Contains("return !dropped;", StringComparison.Ordinal)
+            Check(publishPipeline.Contains("if (dropped)", StringComparison.Ordinal)
+                  && publishPipeline.Contains("onEncodeQueueDrop?.Invoke();", StringComparison.Ordinal)
+                  && publishPipeline.Contains("return true;", StringComparison.Ordinal)
                   && !publishPipeline.Contains("return dropped;", StringComparison.Ordinal),
-                "138Q-5D3: camera JPEG TryQueueFrame follows true-means-queued Try semantics");
+                "138Q-5D3: camera JPEG TryQueueFrame admits the newest frame and reports replacement separately");
+            Check(pipeline.Contains("private readonly object _queueGate", StringComparison.Ordinal)
+                  && CountOccurrences(pipeline, "lock (_queueGate)") >= 4,
+                "138Q-5D4: camera JPEG queue migration and worker admission share one synchronization gate");
         }
 
         private static void CameraPublisherDelegatesPublishDiagnostics()
@@ -408,17 +413,20 @@ namespace Unity.FoxgloveSDK.Tests
             Check(helper.Contains("internal static class CameraSensorProfileResolver", StringComparison.Ordinal)
                   && helper.Contains("ResolveProfile(", StringComparison.Ordinal)
                   && helper.Contains("ResolveFrameId(", StringComparison.Ordinal)
+                  && helper.Contains("ResolveCompressedImageTopic(", StringComparison.Ordinal)
+                  && helper.Contains("ResolveRawImageTopic(", StringComparison.Ordinal)
                   && helper.Contains("ResolveImageTopic(", StringComparison.Ordinal)
                   && helper.Contains("ApplyDefaults(", StringComparison.Ordinal)
                   && helper.Contains("HasCompressedImageDemand(", StringComparison.Ordinal)
-                  && helper.Contains("SerializeCompressedImage(", StringComparison.Ordinal),
-                "138Q-22A: camera sensor profile/topic/frame/ROS image helpers live outside the publisher");
+                  && helper.Contains("HasRawImageDemand(", StringComparison.Ordinal),
+                "138Q-22A: camera sensor profile, topic, frame, and demand helpers live outside the publisher");
             Check(camera.Contains("CameraSensorProfileResolver.ResolveProfile(", StringComparison.Ordinal)
                   && camera.Contains("CameraSensorProfileResolver.ResolveFrameId(", StringComparison.Ordinal)
                   && camera.Contains("CameraSensorProfileResolver.ResolveImageTopic(", StringComparison.Ordinal)
+                  && camera.Contains("CameraSensorProfileResolver.ResolveRawImageTopic(", StringComparison.Ordinal)
                   && camera.Contains("CameraSensorProfileResolver.ApplyDefaults(", StringComparison.Ordinal)
                   && camera.Contains("CameraSensorProfileResolver.HasCompressedImageDemand(", StringComparison.Ordinal)
-                  && camera.Contains("CameraSensorProfileResolver.SerializeCompressedImage(", StringComparison.Ordinal)
+                  && camera.Contains("CameraSensorProfileResolver.HasRawImageDemand(", StringComparison.Ordinal)
                   && !camera.Contains("Ros2CdrSensorCompressedImageBuilder.Serialize", StringComparison.Ordinal)
                   && !camera.Contains("Ros2CdrCompressedImageBuilder.Serialize", StringComparison.Ordinal),
                 "138Q-22B: FoxgloveCameraPublisher delegates sensor camera profile resolution");
@@ -432,7 +440,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(helper.Contains("internal static class PointCloudWorkerEncoders", StringComparison.Ordinal)
                   && helper.Contains("EncodeDracoRequest(", StringComparison.Ordinal)
                   && helper.Contains("EncodePackedPointCloudRequest(", StringComparison.Ordinal)
-                  && helper.Contains("BuildPackedPointCloudPayload(", StringComparison.Ordinal),
+                  && helper.Contains("BuildPackedPointCloudFrame(", StringComparison.Ordinal)
+                  && helper.Contains("BuildDracoPublishPayloads(", StringComparison.Ordinal),
                 "138Q-6A: point-cloud worker encode/build logic lives outside the publisher");
             Check(pointcloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest", StringComparison.Ordinal)
                   && pointcloud.Contains("PointCloudWorkerEncoders.EncodePackedPointCloudRequest", StringComparison.Ordinal)
@@ -755,6 +764,19 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return source.Substring(index);
+        }
+
+        private static int CountOccurrences(string source, string value)
+        {
+            var count = 0;
+            var offset = 0;
+            while ((offset = source.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                offset += value.Length;
+            }
+
+            return count;
         }
 
         private static void Check(bool condition, string label)

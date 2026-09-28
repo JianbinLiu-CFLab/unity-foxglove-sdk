@@ -66,11 +66,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
 
-            Check(source.Contains("Volatile.Read(ref _encodeQueue)", StringComparison.Ordinal)
-                  && source.Contains("Volatile.Read(ref _completedQueue)", StringComparison.Ordinal)
-                  && source.Contains("Volatile.Write(ref _encodeQueue", StringComparison.Ordinal)
-                  && source.Contains("Volatile.Write(ref _completedQueue", StringComparison.Ordinal),
-                "140-14C-1: JPEG worker queue reference replacement uses volatile access");
+            Check(source.Contains("private readonly object _queueGate", StringComparison.Ordinal)
+                  && CountOccurrences(source, "lock (_queueGate)") >= 4,
+                "140-14C-1: JPEG worker queue access and capacity migration share one synchronization gate");
         }
 
         private static void JpegWorkerStopTimeoutTracksOrphanedThread()
@@ -108,8 +106,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!method.Contains("Func<byte[]>", StringComparison.Ordinal)
                   && method.Contains("ICameraVideoFrameBytesSource", StringComparison.Ordinal)
-                  && method.Contains("frameBytes.CopyTo(ownedFrameBytes)", StringComparison.Ordinal),
-                "140-14G-1: video submit accepts a frame byte source and defers scratch copy until validation passes");
+                  && method.Contains("frameBytes.CopyTo(_rgbScratch)", StringComparison.Ordinal)
+                  && method.Contains("var ownedFrameBytes = _rgbScratch", StringComparison.Ordinal),
+                "140-14G-1: video submit accepts a frame byte source and reuses the pipeline RGB scratch buffer");
         }
 
         private static void VideoFrameSubmitAvoidsPerFrameClosure()

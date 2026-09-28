@@ -92,6 +92,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("var commandBudget = Math.Max(1, maxRaycastCommandsPerFixedUpdate);", source);
             Assert.Contains("batchCount < commandBudget", source);
             Assert.Contains("ref int scanColumnRayCursor", source);
+            Assert.Contains("if (!_pendingScanHandle.IsCompleted)", source);
+            Assert.Contains("asyncOverrun: true", source);
         }
     }
 }
