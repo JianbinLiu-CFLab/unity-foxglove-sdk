@@ -1139,12 +1139,11 @@ namespace Unity.FoxgloveSDK.IO
                             candidateCount++;
                             InsertBoundedIndexedHistoryCandidate(
                                 candidates,
-                                new IndexedHistoryCandidate(
-                                    chunkNumber,
-                                    messageIndex.ChannelId,
-                                    entry.timestamp,
-                                    chunkIndex.ChunkStartOffset,
-                                    entry.offset),
+                                chunkNumber,
+                                messageIndex.ChannelId,
+                                entry.timestamp,
+                                chunkIndex.ChunkStartOffset,
+                                entry.offset,
                                 candidateLimit);
                         }
                     }
@@ -1294,16 +1293,94 @@ namespace Unity.FoxgloveSDK.IO
 
         private static void InsertBoundedIndexedHistoryCandidate(
             List<IndexedHistoryCandidate> candidates,
-            IndexedHistoryCandidate candidate,
+            int chunkNumber,
+            ushort channelId,
+            ulong logTime,
+            ulong sourceOffset,
+            ulong sourceRecordOffset,
             int maxCandidates)
         {
-            var insertAt = candidates.Count;
-            while (insertAt > 0
-                   && CompareIndexedHistoryCandidates(candidates[insertAt - 1], candidate) > 0)
-                insertAt--;
-            candidates.Insert(insertAt, candidate);
-            if (candidates.Count > maxCandidates)
-                candidates.RemoveAt(0);
+            if (maxCandidates <= 0)
+                return;
+
+            if (candidates.Count >= maxCandidates
+                && CompareIndexedHistoryCandidateToValues(
+                    candidates[0],
+                    channelId,
+                    logTime,
+                    sourceOffset,
+                    sourceRecordOffset) >= 0)
+                return;
+
+            var candidate = new IndexedHistoryCandidate(
+                chunkNumber,
+                channelId,
+                logTime,
+                sourceOffset,
+                sourceRecordOffset);
+            if (candidates.Count < maxCandidates)
+            {
+                candidates.Add(candidate);
+                SiftIndexedHistoryCandidateUp(candidates, candidates.Count - 1);
+                return;
+            }
+
+            candidates[0] = candidate;
+            SiftIndexedHistoryCandidateDown(candidates, 0);
+        }
+
+        private static int CompareIndexedHistoryCandidateToValues(
+            IndexedHistoryCandidate existing,
+            ushort channelId,
+            ulong logTime,
+            ulong sourceOffset,
+            ulong sourceRecordOffset)
+        {
+            var compare = existing.LogTime.CompareTo(logTime);
+            if (compare != 0) return compare;
+            compare = existing.ChannelId.CompareTo(channelId);
+            if (compare != 0) return compare;
+            compare = existing.SourceOffset.CompareTo(sourceOffset);
+            return compare != 0 ? compare : existing.SourceRecordOffset.CompareTo(sourceRecordOffset);
+        }
+
+        private static void SiftIndexedHistoryCandidateUp(
+            List<IndexedHistoryCandidate> candidates,
+            int index)
+        {
+            while (index > 0)
+            {
+                var parent = (index - 1) / 2;
+                if (CompareIndexedHistoryCandidates(candidates[parent], candidates[index]) <= 0)
+                    break;
+                var parentCandidate = candidates[parent];
+                candidates[parent] = candidates[index];
+                candidates[index] = parentCandidate;
+                index = parent;
+            }
+        }
+
+        private static void SiftIndexedHistoryCandidateDown(
+            List<IndexedHistoryCandidate> candidates,
+            int index)
+        {
+            while (true)
+            {
+                var left = index * 2 + 1;
+                if (left >= candidates.Count)
+                    return;
+                var right = left + 1;
+                var smallest = right < candidates.Count
+                    && CompareIndexedHistoryCandidates(candidates[right], candidates[left]) < 0
+                    ? right
+                    : left;
+                if (CompareIndexedHistoryCandidates(candidates[index], candidates[smallest]) <= 0)
+                    return;
+                var currentCandidate = candidates[index];
+                candidates[index] = candidates[smallest];
+                candidates[smallest] = currentCandidate;
+                index = smallest;
+            }
         }
 
         private static byte[] CopyPayload(byte[] source, int offset, int length)
