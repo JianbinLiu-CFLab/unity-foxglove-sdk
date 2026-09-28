@@ -45,6 +45,11 @@ namespace Unity.FoxgloveSDK.Components
         void CopyTo(byte[] destination);
     }
 
+    internal interface ICameraVideoFrameSourceSidecar
+    {
+        bool TrySubmitFrame(ICameraVideoFrameBytesSource frame, ulong timestampNs);
+    }
+
     internal sealed class CameraVideoPublishPipeline : IDisposable
     {
         private readonly CameraPublishDiagnostics _diagnostics;
@@ -65,6 +70,7 @@ namespace Unity.FoxgloveSDK.Components
         public int SidecarHeight => _videoSidecarSession.Height;
         public CameraOutputMode Mode => _videoSidecarSession.Mode;
         public bool IsOpenH264Mode => _videoSidecarSession.IsOpenH264Mode;
+        public bool SupportsFrameSource => _videoSidecarSession.SupportsFrameSource;
         public int OutputQueueDepth => _videoSidecarSession.OutputQueueDepth;
         public int MaxOutputQueue => _videoSidecarSession.MaxOutputQueue;
         public int InputQueueDepth => _videoSidecarSession.InputQueueDepth;
@@ -151,6 +157,26 @@ namespace Unity.FoxgloveSDK.Components
                     ElapsedMs(submitStart));
                 _diagnostics.RecordVideoSubmitMs(result.SubmitMs);
                 return result;
+            }
+
+            if (!_videoSidecarSession.IsOpenH264Mode
+                && _videoSidecarSession.SupportsFrameSource)
+            {
+                if (!_videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs))
+                {
+                    _diagnostics.RecordVideoSubmitFailure();
+                    var result = new CameraVideoSubmitResult(
+                        CameraVideoSubmitOutcome.SubmitRejected,
+                        _videoSidecarSession.DescribeFailure("Video encoder refused the frame."),
+                        ElapsedMs(submitStart));
+                    _diagnostics.RecordVideoSubmitMs(result.SubmitMs);
+                    return result;
+                }
+
+                _diagnostics.RecordVideoFrameSubmitted();
+                var sourceSubmitted = new CameraVideoSubmitResult(CameraVideoSubmitOutcome.Submitted, "", ElapsedMs(submitStart));
+                _diagnostics.RecordVideoSubmitMs(sourceSubmitted.SubmitMs);
+                return sourceSubmitted;
             }
 
             if (_rgbScratch == null || _rgbScratch.Length != frameBytes.Length)

@@ -14,6 +14,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.FoxgloveSDK.Components;
 
 namespace Foxglove.Schemas.Video
 {
@@ -21,7 +22,7 @@ namespace Foxglove.Schemas.Video
     /// Encodes RGB24 frames through an external FFmpeg process and exposes completed
     /// H.264 Annex B access units through a thread-safe bounded output queue.
     /// </summary>
-    public sealed class FfmpegH264EncoderSidecar : IFfmpegVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
+    public sealed class FfmpegH264EncoderSidecar : IFfmpegVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar, ICameraVideoFrameSourceSidecar
     {
         private const int ShutdownTimeoutMs = 500;
 
@@ -191,10 +192,32 @@ namespace Foxglove.Schemas.Video
 
         public bool TrySubmitFrame(byte[] rgb24Frame, ulong timestampNs)
         {
-            var submittingProcess = Volatile.Read(ref _process);
-            if (rgb24Frame == null || rgb24Frame.Length == 0 || !IsProcessRunning(submittingProcess))
+            var process = Volatile.Read(ref _process);
+            if (rgb24Frame == null || rgb24Frame.Length == 0 || !IsProcessRunning(process))
                 return false;
 
+            return TryEnqueueFrame(
+                process,
+                rgb24Frame.Length,
+                timestampNs,
+                destination => Buffer.BlockCopy(rgb24Frame, 0, destination, 0, rgb24Frame.Length));
+        }
+
+        bool ICameraVideoFrameSourceSidecar.TrySubmitFrame(ICameraVideoFrameBytesSource frame, ulong timestampNs)
+        {
+            var process = Volatile.Read(ref _process);
+            if (frame == null || frame.Length <= 0 || !IsProcessRunning(process))
+                return false;
+
+            return TryEnqueueFrame(process, frame.Length, timestampNs, frame.CopyTo);
+        }
+
+        private bool TryEnqueueFrame(
+            Process submittingProcess,
+            int frameLength,
+            ulong timestampNs,
+            Action<byte[]> copyFrame)
+        {
             var expectedBytes = _options != null ? _options.FrameByteCount : 0;
             if (expectedBytes <= 0)
             {
@@ -202,21 +225,29 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            if (rgb24Frame.Length != expectedBytes)
+            if (frameLength != expectedBytes)
             {
                 LastError = "RGB24 frame byte count does not match encoder dimensions.";
                 return false;
             }
 
-            var copy = ArrayPool<byte>.Shared.Rent(rgb24Frame.Length);
-            Buffer.BlockCopy(rgb24Frame, 0, copy, 0, rgb24Frame.Length);
+            var copy = ArrayPool<byte>.Shared.Rent(expectedBytes);
+            try
+            {
+                copyFrame(copy);
+            }
+            catch
+            {
+                ArrayPool<byte>.Shared.Return(copy);
+                throw;
+            }
 
             lock (_inputLock)
             {
                 if (!ReferenceEquals(submittingProcess, Volatile.Read(ref _process))
                     || !IsProcessRunning(submittingProcess))
                 {
-                    ReturnInputFrameBuffer(new QueuedVideoFrame(copy, timestampNs));
+                    ReturnInputFrameBuffer(new QueuedVideoFrame(copy, timestampNs, pooled: true, length: expectedBytes));
                     return false;
                 }
 
@@ -229,12 +260,12 @@ namespace Foxglove.Schemas.Video
                 // Pending raw frames and written-but-unpaired frames share one finite budget.
                 if ((long)_inputCount + _encodedFrameTimestamps.Count >= (long)_maxInputQueue + _maxOutputQueue)
                 {
-                    ReturnInputFrameBuffer(new QueuedVideoFrame(copy, timestampNs));
+                    ReturnInputFrameBuffer(new QueuedVideoFrame(copy, timestampNs, pooled: true, length: expectedBytes));
                     return false;
                 }
 
                 var signalInput = _inputCount == 0;
-                _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
+                _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs, pooled: true, length: expectedBytes));
                 _inputCount++;
                 if (signalInput)
                     _inputSignal.Release();
@@ -600,7 +631,7 @@ namespace Foxglove.Schemas.Video
 
         private static void ReturnInputFrameBuffer(QueuedVideoFrame frame)
         {
-            if (frame.Data != null && frame.Data.Length > 0)
+            if (frame.Pooled && frame.Data != null && frame.Data.Length > 0)
                 ArrayPool<byte>.Shared.Return(frame.Data);
         }
 

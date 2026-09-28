@@ -18,6 +18,23 @@ namespace Foxglove.Schemas.Video
             byte[] nv12,
             bool flipVertical,
             out string error)
+            => TryConvertRgb24ToNv12(
+                rgb24,
+                rgb24?.Length ?? 0,
+                width,
+                height,
+                nv12,
+                flipVertical,
+                out error);
+
+        public static bool TryConvertRgb24ToNv12(
+            byte[] rgb24,
+            int rgb24Length,
+            int width,
+            int height,
+            byte[] nv12,
+            bool flipVertical,
+            out string error)
         {
             error = "";
             if (width <= 0 || height <= 0 || (width % 2) != 0 || (height % 2) != 0)
@@ -28,7 +45,7 @@ namespace Foxglove.Schemas.Video
 
             var rgbBytes = checked(width * height * 3);
             var nv12Bytes = checked(width * height * 3 / 2);
-            if (rgb24 == null || rgb24.Length != rgbBytes)
+            if (rgb24 == null || rgb24Length < rgbBytes || rgb24Length > rgb24.Length)
             {
                 error = "RGB24 input buffer length does not match width * height * 3.";
                 return false;

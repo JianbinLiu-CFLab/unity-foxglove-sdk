@@ -219,10 +219,11 @@ namespace Unity.FoxgloveSDK.Components
             ref int activeScanValidPoints,
             LidarScanBoundaryHandler onScanBoundary)
         {
-            if (_pendingScanState != PendingScanState.Scheduled || _pendingBatchCount <= 0)
+            var scheduled = _pendingScanState == PendingScanState.Scheduled;
+            if (!scheduled || _pendingBatchCount <= 0)
                 return;
 
-            if (!_pendingScanHandle.IsCompleted)
+            if (!LidarPendingScanCompletionPolicy.IsReady(scheduled, _pendingScanHandle.IsCompleted, _pendingBatchCount))
             {
                 RecordLidarDiagnostics(
                     logPerformanceDiagnostics,
