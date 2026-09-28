@@ -195,6 +195,7 @@ namespace Unity.FoxgloveSDK.Tests
             client.Connect("127.0.0.1", port);
             var stream = client.GetStream();
             WriteHandshake(stream, port);
+            Thread.Sleep(100);
             return ReadHttpResponse(stream);
         }
 

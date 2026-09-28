@@ -9,6 +9,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -35,6 +36,8 @@ namespace Unity.FoxgloveSDK.Transport
         private const int StopPendingHandshakeWaitMs = 1000;
         private const int StopClientHandlersWaitMs = 5000;
         private const int HandshakeTimeoutMs = 5000;
+        private const int CapacityRequestDrainTimeoutMs = 250;
+        private const int MaxCapacityRequestBytes = 64 * 1024;
         private const int MaxQueuedCapacityResponses = 64;
         private const int MaxFragmentedMessageBytes = 4 * 1024 * 1024;
         private const ushort GoingAwayCloseCode = 1001;
@@ -776,7 +779,11 @@ namespace Unity.FoxgloveSDK.Transport
                     stream = tcpClient?.GetStream();
                     ConfigureStreamTimeouts(stream, HandshakeTimeoutMs, HandshakeTimeoutMs);
                     if (stream != null)
+                    {
+                        DrainCapacityRequest(stream);
                         WsHandshakeHandler.WriteCapacityResponse(stream);
+                        stream.Flush();
+                    }
                 }
             }
             catch (Exception ex)
@@ -1215,6 +1222,49 @@ namespace Unity.FoxgloveSDK.Transport
 
             stream.ReadTimeout = readTimeout;
             stream.WriteTimeout = writeTimeout;
+        }
+
+        private static void DrainCapacityRequest(Stream stream)
+        {
+            if (stream == null || !stream.CanRead)
+                return;
+
+            try
+            {
+                var deadline = Stopwatch.GetTimestamp()
+                    + Stopwatch.Frequency * CapacityRequestDrainTimeoutMs / 1000;
+                var matched = 0;
+                for (var count = 0; count < MaxCapacityRequestBytes; count++)
+                {
+                    var remainingTicks = deadline - Stopwatch.GetTimestamp();
+                    if (remainingTicks <= 0)
+                        return;
+                    if (stream.CanTimeout)
+                    {
+                        var remainingMs = (int)Math.Min(
+                            CapacityRequestDrainTimeoutMs,
+                            Math.Max(1, remainingTicks * 1000 / Stopwatch.Frequency));
+                        stream.ReadTimeout = remainingMs;
+                    }
+
+                    var value = stream.ReadByte();
+                    if (value < 0)
+                        return;
+
+                    if (matched == 0 && value == '\r')
+                        matched = 1;
+                    else if (matched == 1 && value == '\n')
+                        matched = 2;
+                    else if (matched == 2 && value == '\r')
+                        matched = 3;
+                    else if (matched == 3 && value == '\n')
+                        return;
+                    else
+                        matched = value == '\r' ? 1 : 0;
+                }
+            }
+            catch (IOException) { }
+            catch (SocketException) { }
         }
 
         private bool IsStopping => Volatile.Read(ref _stopping) != 0;
