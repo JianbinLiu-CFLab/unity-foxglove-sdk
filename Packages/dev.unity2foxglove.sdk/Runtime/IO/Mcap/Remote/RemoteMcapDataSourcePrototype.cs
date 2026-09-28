@@ -557,16 +557,18 @@ namespace Unity.FoxgloveSDK.IO
                             handle,
                             FileBasicInfoClass,
                             out var basicInfo,
-                            (uint)Marshal.SizeOf(typeof(FileBasicInfo))))
+                            (uint)Marshal.SizeOf(typeof(FileBasicInfo)))
+                        || !TryGetWindowsUsn(handle, out var usn))
                         return false;
 
                     var fileIndex = ((ulong)information.FileIndexHigh << 32) | information.FileIndexLow;
                     token = string.Format(
                         CultureInfo.InvariantCulture,
-                        "windows:{0:x8}:{1:x16}:{2}",
+                        "windows:{0:x8}:{1:x16}:{2}:{3}",
                         information.VolumeSerialNumber,
                         fileIndex,
-                        basicInfo.ChangeTime);
+                        basicInfo.ChangeTime,
+                        usn);
                     return true;
                 }
 
@@ -612,6 +614,38 @@ namespace Unity.FoxgloveSDK.IO
             return false;
         }
 
+        private static bool TryGetWindowsUsn(SafeFileHandle handle, out long usn)
+        {
+            usn = 0;
+            var request = Marshal.AllocHGlobal(4);
+            var output = Marshal.AllocHGlobal(1024);
+            try
+            {
+                Marshal.WriteInt16(request, 0, 2);
+                Marshal.WriteInt16(request, 2, 3);
+                if (!DeviceIoControl(
+                    handle,
+                    FsctlReadFileUsnData,
+                    request,
+                    4,
+                    output,
+                    1024,
+                    out var bytesReturned,
+                    IntPtr.Zero)
+                    || bytesReturned < 32)
+                    return false;
+
+                usn = Marshal.ReadInt64(output, 24);
+                return true;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(request);
+                Marshal.FreeHGlobal(output);
+            }
+        }
+
+        private const uint FsctlReadFileUsnData = 0x000900EB;
         private const int FileBasicInfoClass = 0;
         private const int AtEmptyPath = 0x1000;
         private const uint StatxIno = 0x0100;
@@ -661,6 +695,18 @@ namespace Unity.FoxgloveSDK.IO
         private static extern bool GetFileInformationByHandle(
             SafeFileHandle file,
             out ByHandleFileInformation information);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool DeviceIoControl(
+            SafeFileHandle device,
+            uint controlCode,
+            IntPtr inputBuffer,
+            uint inputBufferSize,
+            IntPtr outputBuffer,
+            uint outputBufferSize,
+            out uint bytesReturned,
+            IntPtr overlapped);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
