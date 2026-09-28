@@ -234,7 +234,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
-        public void SourceIdentityRecomputesFullHashWhenFileMetadataIsStable()
+        public void SourceIdentityReusesFullHashWhenFileChangeIdentityIsStable()
         {
             var path = Path.Combine(Path.GetTempPath(), "remote-generation-cache-" + Guid.NewGuid().ToString("N") + ".mcap");
             try
@@ -252,8 +252,98 @@ namespace FoxgloveSdk.UnitTests.Mcap
 
                 Assert.Equal(first, second);
                 var secondHashCount = (int)counter.GetValue(source);
+                var observedToken = typeof(RemoteMcapDataSourcePrototype).GetField(
+                    "_hasObservedStamp",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(observedToken);
                 Assert.True(firstHashCount > 0);
-                Assert.True(secondHashCount > firstHashCount);
+                if ((bool)observedToken.GetValue(source))
+                    Assert.Equal(firstHashCount, secondHashCount);
+                else
+                    Assert.True(secondHashCount > firstHashCount);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
+        }
+
+        [Fact]
+        public void DataRequestsReuseOneSourceStampPerRequest()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-source-stamp-request-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                File.WriteAllBytes(path, BuildRemoteMcap(1));
+                var generationCalls = 0;
+                var source = new RemoteMcapDataSourcePrototype(
+                    path,
+                    "request",
+                    "Request",
+                    string.Empty,
+                    generationVersionProvider: () =>
+                    {
+                        Interlocked.Increment(ref generationCalls);
+                        return "stable";
+                    });
+                var sourceId = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                generationCalls = 0;
+                var data = source.GetData(new RemoteMcapRequest { SourceId = sourceId });
+                Assert.Equal(RemoteMcapResponseStatus.Ok, data.Status);
+                Assert.Equal(1, generationCalls);
+
+                generationCalls = 0;
+                using (var dataStream = source.GetDataStream(new RemoteMcapRequest { SourceId = sourceId }))
+                    Assert.Equal(RemoteMcapResponseStatus.Ok, dataStream.Status);
+                Assert.Equal(1, generationCalls);
+
+                generationCalls = 0;
+                using (var directStream = source.GetDirectFileStream(new RemoteMcapRequest { SourceId = sourceId }))
+                    Assert.Equal(RemoteMcapResponseStatus.Ok, directStream.Status);
+                Assert.Equal(1, generationCalls);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
+        }
+
+        [Fact]
+        public async Task ConcurrentManifestReadsShareInitialNativeStampHash()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-source-stamp-concurrent-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                File.WriteAllBytes(path, BuildRemoteMcap(1, 0, 64 * 1024));
+                var source = new RemoteMcapDataSourcePrototype(path, "concurrent", "Concurrent", string.Empty);
+                var counter = typeof(RemoteMcapDataSourcePrototype).GetField(
+                    "_fullContentHashComputations",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                var observedToken = typeof(RemoteMcapDataSourcePrototype).GetField(
+                    "_hasObservedStamp",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(counter);
+                Assert.NotNull(observedToken);
+
+                using var start = new ManualResetEventSlim(false);
+                var tasks = new List<Task>();
+                for (var i = 0; i < 8; i++)
+                {
+                    tasks.Add(Task.Run(() =>
+                    {
+                        start.Wait();
+                        return source.GetManifest(new RemoteMcapRequest());
+                    }));
+                }
+
+                start.Set();
+                await Task.WhenAll(tasks);
+
+                var hashCount = (int)counter.GetValue(source);
+                Assert.True(hashCount > 0);
+                if ((bool)observedToken.GetValue(source))
+                    Assert.Equal(1, hashCount);
             }
             finally
             {
