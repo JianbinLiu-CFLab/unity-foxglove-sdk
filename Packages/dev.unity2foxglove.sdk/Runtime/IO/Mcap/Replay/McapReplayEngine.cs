@@ -718,6 +718,10 @@ namespace Unity.FoxgloveSDK.IO
                 return result;
             }
 
+            if (maxMessages > 0
+                && TryReadIndexedBoundedHistory(clampedFrom, clampedTo, result, maxMessages, channelFilter))
+                return result;
+
             var boundedCandidates = maxMessages > 0
                 ? new List<HistoryCandidate>(maxMessages)
                 : null;
@@ -986,6 +990,180 @@ namespace Unity.FoxgloveSDK.IO
                 candidatePayloadCopies,
                 decompressedChunkReads);
             return result;
+        }
+
+        private bool TryReadIndexedBoundedHistory(
+            ulong clampedFrom,
+            ulong clampedTo,
+            List<McapMessage> result,
+            int maxMessages,
+            ISet<ushort> channelFilter)
+        {
+            if (_summary?.ChunkIndexes == null || _summary.ChunkIndexes.Count == 0)
+                return false;
+
+            var candidates = new List<IndexedHistoryCandidate>();
+            var seenLogTimes = new HashSet<ulong>();
+            long filteredRecords = 0;
+            try
+            {
+                for (var chunkNumber = 0; chunkNumber < _summary.ChunkIndexes.Count; chunkNumber++)
+                {
+                    var chunkIndex = _summary.ChunkIndexes[chunkNumber];
+                    if (chunkIndex.MessageIndexOffsets == null || chunkIndex.MessageIndexOffsets.Count == 0)
+                        return false;
+
+                    foreach (var indexOffset in chunkIndex.MessageIndexOffsets)
+                    {
+                        var messageIndex = _reader.ReadMessageIndex(
+                            indexOffset.Value,
+                            chunkIndex.MessageIndexLength);
+                        if (messageIndex.ChannelId != indexOffset.Key)
+                            return false;
+
+                        foreach (var entry in messageIndex.Records)
+                        {
+                            if (entry.timestamp < clampedFrom || entry.timestamp > clampedTo)
+                                continue;
+                            if (channelFilter != null && !channelFilter.Contains(messageIndex.ChannelId))
+                            {
+                                filteredRecords++;
+                                continue;
+                            }
+
+                            if (!seenLogTimes.Add(entry.timestamp))
+                                return false;
+                            candidates.Add(new IndexedHistoryCandidate(
+                                chunkNumber,
+                                messageIndex.ChannelId,
+                                entry.timestamp,
+                                chunkIndex.ChunkStartOffset,
+                                entry.offset));
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (
+                ex is InvalidDataException
+                || ex is EndOfStreamException
+                || ex is IOException
+                || ex is NotSupportedException)
+            {
+                return false;
+            }
+            var candidateCount = candidates.Count;
+            candidates.Sort(CompareIndexedHistoryCandidates);
+            if (candidates.Count > maxMessages)
+                candidates.RemoveRange(0, candidates.Count - maxMessages);
+
+            var candidatesByChunk = new Dictionary<int, Dictionary<ulong, IndexedHistoryCandidate>>();
+            foreach (var candidate in candidates)
+            {
+                if (!candidatesByChunk.TryGetValue(candidate.ChunkNumber, out var chunkCandidates))
+                {
+                    chunkCandidates = new Dictionary<ulong, IndexedHistoryCandidate>();
+                    candidatesByChunk[candidate.ChunkNumber] = chunkCandidates;
+                }
+
+                if (chunkCandidates.ContainsKey(candidate.SourceRecordOffset))
+                    return false;
+                chunkCandidates[candidate.SourceRecordOffset] = candidate;
+            }
+
+            var indexedResult = new List<McapMessage>(candidates.Count);
+            long payloadBytesCopied = 0;
+            long decompressedChunkReads = 0;
+            long peakDecompressedChunkBytes = 0;
+            foreach (var chunkPair in candidatesByChunk)
+            {
+                var chunkIndex = _summary.ChunkIndexes[chunkPair.Key];
+                var uncompressed = _reader.ReadChunkRecords(
+                    chunkIndex.ChunkStartOffset,
+                    chunkIndex.ChunkLength,
+                    out var crcValid);
+                decompressedChunkReads++;
+                if (!ShouldUseChunkRecords("History indexed chunk", crcValid))
+                    return false;
+
+                peakDecompressedChunkBytes = Math.Max(peakDecompressedChunkBytes, uncompressed.LongLength);
+                var offset = 0;
+                var matched = 0;
+                while (offset + 9 <= uncompressed.Length)
+                {
+                    var record = McapReplayChunkRecordReader.ReadNext(uncompressed, ref offset);
+                    if (!record.IsMessage
+                        || !chunkPair.Value.TryGetValue((ulong)record.RecordOffset, out var candidate))
+                        continue;
+                    if (record.ChannelId != candidate.ChannelId || record.LogTime != candidate.LogTime)
+                        return false;
+
+                    var data = CopyPayload(uncompressed, record.DataOffset, record.DataLength);
+                    indexedResult.Add(new McapMessage
+                    {
+                        ChannelId = record.ChannelId,
+                        Sequence = record.Sequence,
+                        LogTime = record.LogTime,
+                        PublishTime = record.PublishTime,
+                        SourceOffset = candidate.SourceOffset,
+                        SourceRecordOffset = candidate.SourceRecordOffset,
+                        Data = data
+                    });
+                    payloadBytesCopied += record.DataLength;
+                    matched++;
+                }
+
+                if (matched != chunkPair.Value.Count)
+                    return false;
+            }
+
+            indexedResult.Sort(CompareMessages);
+            result.AddRange(indexedResult);
+            LastHistoryMetrics = new HistoryMetrics(
+                candidateCount,
+                indexedResult.Count,
+                payloadBytesCopied,
+                filteredRecords,
+                peakDecompressedChunkBytes,
+                candidatesByChunk.Count == 0 ? 0 : 1,
+                peakDecompressedChunkBytes,
+                indexedResult.Count,
+                decompressedChunkReads);
+            return true;
+        }
+
+        private sealed class IndexedHistoryCandidate
+        {
+            internal IndexedHistoryCandidate(
+                int chunkNumber,
+                ushort channelId,
+                ulong logTime,
+                ulong sourceOffset,
+                ulong sourceRecordOffset)
+            {
+                ChunkNumber = chunkNumber;
+                ChannelId = channelId;
+                LogTime = logTime;
+                SourceOffset = sourceOffset;
+                SourceRecordOffset = sourceRecordOffset;
+            }
+
+            internal int ChunkNumber { get; }
+            internal ushort ChannelId { get; }
+            internal ulong LogTime { get; }
+            internal ulong SourceOffset { get; }
+            internal ulong SourceRecordOffset { get; }
+        }
+
+        private static int CompareIndexedHistoryCandidates(
+            IndexedHistoryCandidate left,
+            IndexedHistoryCandidate right)
+        {
+            var compare = left.LogTime.CompareTo(right.LogTime);
+            if (compare != 0) return compare;
+            compare = left.ChannelId.CompareTo(right.ChannelId);
+            if (compare != 0) return compare;
+            compare = left.SourceOffset.CompareTo(right.SourceOffset);
+            return compare != 0 ? compare : left.SourceRecordOffset.CompareTo(right.SourceRecordOffset);
         }
 
         private static byte[] CopyPayload(byte[] source, int offset, int length)
