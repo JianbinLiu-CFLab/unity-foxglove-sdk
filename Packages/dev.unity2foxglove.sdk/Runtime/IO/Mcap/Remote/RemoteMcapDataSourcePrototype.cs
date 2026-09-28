@@ -646,10 +646,13 @@ namespace Unity.FoxgloveSDK.IO
                     1024,
                     out var bytesReturned,
                     IntPtr.Zero)
-                    || bytesReturned < 32)
+                    || bytesReturned < 6)
                     return false;
 
-                usn = Marshal.ReadInt64(output, 24);
+                var majorVersion = Marshal.ReadInt16(output, 4);
+                if (!TryGetWindowsUsnOffset(majorVersion, bytesReturned, out var usnOffset))
+                    return false;
+                usn = Marshal.ReadInt64(output, usnOffset);
                 return usn != 0;
             }
             finally
@@ -657,6 +660,43 @@ namespace Unity.FoxgloveSDK.IO
                 Marshal.FreeHGlobal(request);
                 Marshal.FreeHGlobal(output);
             }
+        }
+
+        internal static bool TryGetWindowsUsnOffset(
+            short majorVersion,
+            uint bytesReturned,
+            out int usnOffset)
+        {
+            usnOffset = majorVersion switch
+            {
+                2 => 24,
+                3 => 40,
+                _ => 0
+            };
+            return usnOffset > 0
+                && bytesReturned >= (uint)(usnOffset + sizeof(long));
+        }
+
+        internal static bool TryParseWindowsUsnRecord(
+            ReadOnlySpan<byte> record,
+            out long usn)
+        {
+            usn = 0;
+            if (record.Length < 6)
+                return false;
+
+            var majorVersion = (short)(record[4] | (record[5] << 8));
+            if (!TryGetWindowsUsnOffset(
+                    majorVersion,
+                    (uint)record.Length,
+                    out var usnOffset))
+                return false;
+
+            ulong value = 0;
+            for (var index = 0; index < sizeof(long); index++)
+                value |= (ulong)record[usnOffset + index] << (index * 8);
+            usn = unchecked((long)value);
+            return usn != 0;
         }
 
         private const uint FsctlReadFileUsnData = 0x000900EB;

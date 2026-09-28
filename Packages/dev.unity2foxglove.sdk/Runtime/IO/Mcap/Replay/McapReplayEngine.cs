@@ -189,6 +189,7 @@ namespace Unity.FoxgloveSDK.IO
         private int _maxMessagesPerTick = 8;
 
         private const long DefaultMaxDeferredOwnerBytes = (long)McapReader.DefaultChunkUncompressedSizeLimit;
+        private const long DefaultMaxHistorySpoolBytes = (long)McapReader.DefaultChunkUncompressedSizeLimit;
         private const int DefaultMaxDeferredMessages = 100000;
         // Retry entries contain only bounded scalar metadata and are not
         // counted as owner-retained payloads. Keep a separate hard ceiling so
@@ -196,6 +197,7 @@ namespace Unity.FoxgloveSDK.IO
         // grow the metadata queue indefinitely.
         private const int DefaultMaxDeferredRetryRecords = 100000;
         private long _maxDeferredOwnerBytes = DefaultMaxDeferredOwnerBytes;
+        private long _maxHistorySpoolBytes = DefaultMaxHistorySpoolBytes;
         private int _maxDeferredMessages = DefaultMaxDeferredMessages;
 
         public int MaxMessagesPerTick
@@ -212,6 +214,16 @@ namespace Unity.FoxgloveSDK.IO
         {
             get => _maxDeferredOwnerBytes;
             set => _maxDeferredOwnerBytes = value > 0 ? value : DefaultMaxDeferredOwnerBytes;
+        }
+
+        /// <summary>
+        /// Maximum compressed-history spool bytes retained for bounded queries.
+        /// A non-positive value restores the default bound.
+        /// </summary>
+        public long MaxHistorySpoolBytes
+        {
+            get => _maxHistorySpoolBytes;
+            set => _maxHistorySpoolBytes = value > 0 ? value : DefaultMaxHistorySpoolBytes;
         }
 
         /// <summary>
@@ -736,7 +748,7 @@ namespace Unity.FoxgloveSDK.IO
             long decompressedChunkReads = 0;
             var finalizedCandidateCount = 0;
             using var historySpool = boundedCandidates != null
-                ? new HistoryChunkSpool()
+                ? new HistoryChunkSpool(MaxHistorySpoolBytes)
                 : null;
             var boundedChunkNumbers = boundedCandidates != null
                 ? GetHistoryChunkNumbersByDescendingEndTime()
@@ -830,9 +842,6 @@ namespace Unity.FoxgloveSDK.IO
                     payloadBytesCopied += dataLen;
                 }
 
-                if (!string.IsNullOrEmpty(chunkIndex.Compression))
-                    historySpool?.Store(chunkNumber, uncompressed);
-
                 if (boundedCandidates != null)
                 {
                     var nextMaxEndTime = chunkIteration + 1 < chunkIterations
@@ -866,6 +875,12 @@ namespace Unity.FoxgloveSDK.IO
                         boundedCandidates.RemoveAt(candidateIndex);
                         finalizedCandidateCount++;
                     }
+
+                    if (finalizedCandidateCount >= maxMessages)
+                        break;
+                    if (!string.IsNullOrEmpty(chunkIndex.Compression)
+                        && HasHistoryCandidateForChunk(boundedCandidates, chunkNumber))
+                        historySpool?.Store(chunkNumber, uncompressed);
                 }
             }
 
@@ -981,39 +996,69 @@ namespace Unity.FoxgloveSDK.IO
                         continue;
                     }
 
-                    if (historySpool == null
-                        || !historySpool.TryCopyPayload(
-                            chunkPair.Key,
-                            candidates[0].DataOffset,
-                            candidates[0].DataLength,
-                            out var spooledFirstPayload))
-                        throw new InvalidDataException("History chunk spool is missing the compressed candidate chunk.");
-
-                    candidates[0].Data = spooledFirstPayload;
-                    candidatePayloadCopies++;
-                    payloadCopies++;
-                    payloadBytesCopied += candidates[0].DataLength;
-                    result.Add(new McapMessage
+                    var spooledPayloads = new List<byte[]>(candidates.Count);
+                    var useSpool = historySpool != null;
+                    if (useSpool)
                     {
-                        ChannelId = candidates[0].ChannelId,
-                        Sequence = candidates[0].Sequence,
-                        LogTime = candidates[0].LogTime,
-                        PublishTime = candidates[0].PublishTime,
-                        SourceOffset = candidates[0].SourceOffset,
-                        SourceRecordOffset = candidates[0].SourceRecordOffset,
-                        Data = candidates[0].Data
-                    });
+                        foreach (var candidate in candidates)
+                        {
+                            if (!historySpool.TryCopyPayload(
+                                    chunkPair.Key,
+                                    candidate.DataOffset,
+                                    candidate.DataLength,
+                                    out var payload))
+                            {
+                                useSpool = false;
+                                break;
+                            }
+                            spooledPayloads.Add(payload);
+                        }
+                    }
 
-                    for (var candidateIndex = 1; candidateIndex < candidates.Count; candidateIndex++)
+                    if (useSpool)
                     {
-                        var candidate = candidates[candidateIndex];
-                        if (!historySpool.TryCopyPayload(
-                                chunkPair.Key,
-                                candidate.DataOffset,
-                                candidate.DataLength,
-                                out var payload))
-                            throw new InvalidDataException("History chunk spool is missing a compressed candidate payload.");
-                        candidate.Data = payload;
+                        for (var candidateIndex = 0; candidateIndex < candidates.Count; candidateIndex++)
+                        {
+                            var candidate = candidates[candidateIndex];
+                            candidate.Data = spooledPayloads[candidateIndex];
+                            candidatePayloadCopies++;
+                            payloadCopies++;
+                            payloadBytesCopied += candidate.DataLength;
+                            result.Add(new McapMessage
+                            {
+                                ChannelId = candidate.ChannelId,
+                                Sequence = candidate.Sequence,
+                                LogTime = candidate.LogTime,
+                                PublishTime = candidate.PublishTime,
+                                SourceOffset = candidate.SourceOffset,
+                                SourceRecordOffset = candidate.SourceRecordOffset,
+                                Data = candidate.Data
+                            });
+                        }
+
+                        continue;
+                    }
+
+                    var fallbackUncompressed = _reader.ReadChunkRecords(
+                        chunkIndex.ChunkStartOffset,
+                        chunkIndex.ChunkLength,
+                        out var compressedFallbackCrcValid);
+                    decompressedChunkReads++;
+                    if (!ShouldUseChunkRecords("History chunk", compressedFallbackCrcValid))
+                        continue;
+                    peakDecompressedChunkBytes = Math.Max(
+                        peakDecompressedChunkBytes,
+                        fallbackUncompressed.LongLength);
+                    peakDecompressedChunkCount = Math.Max(peakDecompressedChunkCount, 1);
+                    peakRetainedDecompressedBytes = Math.Max(
+                        peakRetainedDecompressedBytes,
+                        fallbackUncompressed.LongLength);
+                    foreach (var candidate in candidates)
+                    {
+                        candidate.Data = CopyPayload(
+                            fallbackUncompressed,
+                            candidate.DataOffset,
+                            candidate.DataLength);
                         candidatePayloadCopies++;
                         payloadCopies++;
                         payloadBytesCopied += candidate.DataLength;
@@ -1062,6 +1107,8 @@ namespace Unity.FoxgloveSDK.IO
                 return false;
 
             var candidates = new List<IndexedHistoryCandidate>();
+            var candidateLimit = maxMessages == int.MaxValue ? int.MaxValue : maxMessages + 1;
+            long candidateCount = 0;
             long filteredRecords = 0;
             try
             {
@@ -1089,12 +1136,16 @@ namespace Unity.FoxgloveSDK.IO
                                 continue;
                             }
 
-                            candidates.Add(new IndexedHistoryCandidate(
-                                chunkNumber,
-                                messageIndex.ChannelId,
-                                entry.timestamp,
-                                chunkIndex.ChunkStartOffset,
-                                entry.offset));
+                            candidateCount++;
+                            InsertBoundedIndexedHistoryCandidate(
+                                candidates,
+                                new IndexedHistoryCandidate(
+                                    chunkNumber,
+                                    messageIndex.ChannelId,
+                                    entry.timestamp,
+                                    chunkIndex.ChunkStartOffset,
+                                    entry.offset),
+                                candidateLimit);
                         }
                     }
                 }
@@ -1107,10 +1158,16 @@ namespace Unity.FoxgloveSDK.IO
             {
                 return false;
             }
-            var candidateCount = candidates.Count;
             candidates.Sort(CompareIndexedHistoryCandidates);
             if (candidates.Count > maxMessages)
-                candidates.RemoveRange(0, candidates.Count - maxMessages);
+            {
+                var cut = candidates.Count - maxMessages;
+                if (cut > 0
+                    && candidates[cut - 1].LogTime == candidates[cut].LogTime
+                    && candidates[cut - 1].ChannelId == candidates[cut].ChannelId)
+                    return false;
+                candidates.RemoveRange(0, cut);
+            }
 
             var candidatesByChunk = new Dictionary<int, Dictionary<ulong, IndexedHistoryCandidate>>();
             foreach (var candidate in candidates)
@@ -1220,6 +1277,33 @@ namespace Unity.FoxgloveSDK.IO
             if (compare != 0) return compare;
             compare = left.SourceOffset.CompareTo(right.SourceOffset);
             return compare != 0 ? compare : left.SourceRecordOffset.CompareTo(right.SourceRecordOffset);
+        }
+
+        private static bool HasHistoryCandidateForChunk(
+            List<HistoryCandidate> candidates,
+            int chunkNumber)
+        {
+            foreach (var candidate in candidates)
+            {
+                if (candidate.ChunkNumber == chunkNumber)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static void InsertBoundedIndexedHistoryCandidate(
+            List<IndexedHistoryCandidate> candidates,
+            IndexedHistoryCandidate candidate,
+            int maxCandidates)
+        {
+            var insertAt = candidates.Count;
+            while (insertAt > 0
+                   && CompareIndexedHistoryCandidates(candidates[insertAt - 1], candidate) > 0)
+                insertAt--;
+            candidates.Insert(insertAt, candidate);
+            if (candidates.Count > maxCandidates)
+                candidates.RemoveAt(0);
         }
 
         private static byte[] CopyPayload(byte[] source, int offset, int length)
@@ -2120,38 +2204,49 @@ namespace Unity.FoxgloveSDK.IO
 
         private sealed class HistoryChunkSpool : IDisposable
         {
-            private readonly string _path;
-            private readonly FileStream _stream;
+            private readonly long _maxBytes;
             private readonly Dictionary<int, SpoolChunk> _chunks = new Dictionary<int, SpoolChunk>();
+            private string _path;
+            private FileStream _stream;
+            private long _storedBytes;
             private bool _flushed;
             private bool _disposed;
 
-            internal HistoryChunkSpool()
+            internal HistoryChunkSpool(long maxBytes)
             {
-                _path = Path.Combine(
-                    Path.GetTempPath(),
-                    "foxglove-history-" + Guid.NewGuid().ToString("N") + ".tmp");
-                _stream = new FileStream(
-                    _path,
-                    FileMode.CreateNew,
-                    FileAccess.ReadWrite,
-                    FileShare.Read,
-                    64 * 1024,
-                    FileOptions.SequentialScan);
+                _maxBytes = maxBytes;
             }
 
-            internal void Store(int chunkNumber, byte[] uncompressed)
+            internal bool Store(int chunkNumber, byte[] uncompressed)
             {
                 if (_disposed)
                     throw new ObjectDisposedException(nameof(HistoryChunkSpool));
                 if (uncompressed == null)
                     throw new ArgumentNullException(nameof(uncompressed));
+                if (uncompressed.LongLength > _maxBytes - _storedBytes)
+                    return false;
+
+                if (_stream == null)
+                {
+                    _path = Path.Combine(
+                        Path.GetTempPath(),
+                        "foxglove-history-" + Guid.NewGuid().ToString("N") + ".tmp");
+                    _stream = new FileStream(
+                        _path,
+                        FileMode.CreateNew,
+                        FileAccess.ReadWrite,
+                        FileShare.Read,
+                        64 * 1024,
+                        FileOptions.SequentialScan);
+                }
 
                 var offset = _stream.Length;
                 _stream.Seek(offset, SeekOrigin.Begin);
                 _stream.Write(uncompressed, 0, uncompressed.Length);
                 _chunks[chunkNumber] = new SpoolChunk(offset, uncompressed.Length);
+                _storedBytes += uncompressed.LongLength;
                 _flushed = false;
+                return true;
             }
 
             internal bool TryCopyPayload(
@@ -2162,6 +2257,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 payload = null;
                 if (_disposed
+                    || _stream == null
                     || dataOffset < 0
                     || dataLength < 0
                     || !_chunks.TryGetValue(chunkNumber, out var chunk)
@@ -2196,7 +2292,9 @@ namespace Unity.FoxgloveSDK.IO
                 if (_disposed)
                     return;
                 _disposed = true;
-                _stream.Dispose();
+                _stream?.Dispose();
+                if (_path == null)
+                    return;
                 try
                 {
                     File.Delete(_path);
