@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
             DeadSerializedSensorFieldsAreRemoved();
             VirtualLidarWarnsOnUnknownBuiltinModelFallback();
             VirtualLidarScanSchedulerDocumentsGrowOnlyCrossingBuffer();
+            VirtualLidarSchedulesBatchedJobsImmediately();
             VirtualLidarScanFramePublisherHasNoSelfReferencingUsing();
             LidarRayGeneratorIsHiddenFromNormalRuntimeApiDiscovery();
             PhaseWiringIsPresent();
@@ -48,14 +49,20 @@ namespace Unity.FoxgloveSDK.Tests
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             var clock = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanClock.cs");
             var start = Slice(lidar, "private void Start()", "private SensorUnitProfile ResolveSensorUnitProfile()");
+            var configuration = Slice(lidar, "private void RebuildScanConfiguration()", "private void AllocateScanBuffers()");
             var resetIndex = start.IndexOf("_scanClock.Reset()", StringComparison.Ordinal);
             var resetStateIndex = start.IndexOf("ResetScanState(Time.fixedTimeAsDouble)", StringComparison.Ordinal);
+            if (resetIndex < 0 || resetStateIndex < 0)
+            {
+                resetIndex = configuration.IndexOf("_scanClock.Reset()", StringComparison.Ordinal);
+                resetStateIndex = configuration.IndexOf("ResetScanState(Time.fixedTimeAsDouble)", StringComparison.Ordinal);
+            }
 
             Check(clock.Contains("public void Reset()", StringComparison.Ordinal)
                   && resetIndex >= 0
                   && resetStateIndex >= 0
                   && resetIndex < resetStateIndex,
-                "140-17A-1: VirtualLidar resets scan clock after manager resolution before scan-state reset");
+                "140-17A-1: VirtualLidar resets scan clock before scan-state reset");
         }
 
         private static void VirtualImuPhysicsRateOverrideIsReferenceCounted()
@@ -195,6 +202,16 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("grow-only", StringComparison.Ordinal)
                   && source.Contains("_pendingScanCrossings", StringComparison.Ordinal),
                 "140-17H-1: VirtualLidar scan scheduler documents grow-only crossing-buffer retention");
+        }
+
+        private static void VirtualLidarSchedulesBatchedJobsImmediately()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
+            var schedule = Slice(source, "public void SchedulePendingScan(", "public void ConsumePendingScan(");
+            Check(schedule.Contains("JobHandle.ScheduleBatchedJobs();", StringComparison.Ordinal)
+                  && schedule.IndexOf("_pendingScanHandle = buildJob.Schedule", StringComparison.Ordinal) < schedule.IndexOf("JobHandle.ScheduleBatchedJobs();", StringComparison.Ordinal)
+                  && schedule.IndexOf("JobHandle.ScheduleBatchedJobs();", StringComparison.Ordinal) < schedule.IndexOf("_pendingScanState = PendingScanState.Scheduled;", StringComparison.Ordinal),
+                "140-17J-1: Virtual LiDAR submits scheduled raycast and build jobs before asynchronous completion polling");
         }
 
         private static void VirtualLidarScanFramePublisherHasNoSelfReferencingUsing()

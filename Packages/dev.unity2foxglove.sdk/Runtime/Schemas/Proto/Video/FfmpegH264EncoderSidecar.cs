@@ -196,27 +196,23 @@ namespace Foxglove.Schemas.Video
             if (rgb24Frame == null || rgb24Frame.Length == 0 || !IsProcessRunning(process))
                 return false;
 
-            return TryEnqueueFrame(
-                process,
-                rgb24Frame.Length,
-                timestampNs,
-                destination => Buffer.BlockCopy(rgb24Frame, 0, destination, 0, rgb24Frame.Length));
+            return TryEnqueueFrame(process, new CameraVideoArrayFrameBytesSource(rgb24Frame), timestampNs);
         }
 
-        bool ICameraVideoFrameSourceSidecar.TrySubmitFrame(ICameraVideoFrameBytesSource frame, ulong timestampNs)
+        bool ICameraVideoFrameSourceSidecar.TrySubmitFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
         {
             var process = Volatile.Read(ref _process);
-            if (frame == null || frame.Length <= 0 || !IsProcessRunning(process))
+            if (frame.Length <= 0 || !IsProcessRunning(process))
                 return false;
 
-            return TryEnqueueFrame(process, frame.Length, timestampNs, frame.CopyTo);
+            return TryEnqueueFrame(process, frame, timestampNs);
         }
 
-        private bool TryEnqueueFrame(
+        private bool TryEnqueueFrame<TFrameBytes>(
             Process submittingProcess,
-            int frameLength,
-            ulong timestampNs,
-            Action<byte[]> copyFrame)
+            TFrameBytes frame,
+            ulong timestampNs)
+            where TFrameBytes : struct, ICameraVideoFrameBytesSource
         {
             var expectedBytes = _options != null ? _options.FrameByteCount : 0;
             if (expectedBytes <= 0)
@@ -225,7 +221,7 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            if (frameLength != expectedBytes)
+            if (frame.Length != expectedBytes)
             {
                 LastError = "RGB24 frame byte count does not match encoder dimensions.";
                 return false;
@@ -234,7 +230,7 @@ namespace Foxglove.Schemas.Video
             var copy = ArrayPool<byte>.Shared.Rent(expectedBytes);
             try
             {
-                copyFrame(copy);
+                frame.CopyTo(copy);
             }
             catch
             {
@@ -242,6 +238,15 @@ namespace Foxglove.Schemas.Video
                 throw;
             }
 
+            return EnqueueCopiedFrame(submittingProcess, copy, timestampNs, expectedBytes);
+        }
+
+        private bool EnqueueCopiedFrame(
+            Process submittingProcess,
+            byte[] copy,
+            ulong timestampNs,
+            int expectedBytes)
+        {
             lock (_inputLock)
             {
                 if (!ReferenceEquals(submittingProcess, Volatile.Read(ref _process))

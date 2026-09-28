@@ -4,10 +4,81 @@
 // Module: Runtime/Schemas/Proto/Video
 
 using System;
+using System.Collections.Generic;
 using Unity.FoxgloveSDK.Components;
 
 namespace Foxglove.Schemas.Video
 {
+    internal interface ICameraVideoSidecarDeferredCleanup
+    {
+        bool TryFinalizeDeferredCleanup();
+    }
+
+    internal interface ICameraVideoSidecarDeferredCleanupScheduler
+    {
+        void ScheduleDeferredCleanup(Action callback);
+    }
+
+    internal static class CameraVideoSidecarRetirementRegistry
+    {
+        private static readonly object Gate = new object();
+        private static readonly List<ICameraVideoSidecarDeferredCleanup> Pending = new List<ICameraVideoSidecarDeferredCleanup>();
+
+        internal static void Retire(ICameraVideoSidecarDeferredCleanup sidecar)
+        {
+            if (sidecar == null)
+                return;
+
+            var added = false;
+            lock (Gate)
+            {
+                if (!Pending.Contains(sidecar))
+                {
+                    Pending.Add(sidecar);
+                    added = true;
+                }
+            }
+
+            if (added && sidecar is ICameraVideoSidecarDeferredCleanupScheduler scheduler)
+                scheduler.ScheduleDeferredCleanup(Poll);
+        }
+
+        internal static void Complete(ICameraVideoSidecarDeferredCleanup sidecar)
+        {
+            lock (Gate)
+                Pending.Remove(sidecar);
+        }
+
+        internal static void Poll()
+        {
+            ICameraVideoSidecarDeferredCleanup[] snapshot;
+            lock (Gate)
+            {
+                if (Pending.Count == 0)
+                    return;
+                snapshot = Pending.ToArray();
+            }
+
+            foreach (var sidecar in snapshot)
+            {
+                if (!sidecar.TryFinalizeDeferredCleanup())
+                    continue;
+
+                lock (Gate)
+                    Pending.Remove(sidecar);
+            }
+        }
+
+        internal static int PendingCountForTests
+        {
+            get
+            {
+                lock (Gate)
+                    return Pending.Count;
+            }
+        }
+    }
+
     /// <summary>
     /// Owns the running camera video encoder sidecar and its restart state.
     /// </summary>
@@ -41,6 +112,7 @@ namespace Foxglove.Schemas.Video
             Action drain,
             out string error)
         {
+            CameraVideoSidecarRetirementRegistry.Poll();
             error = "";
             if (!profile.IsVideo)
                 return false;
@@ -128,6 +200,7 @@ namespace Foxglove.Schemas.Video
             double nowSeconds,
             Action drain)
         {
+            CameraVideoSidecarRetirementRegistry.Poll();
             if (_sidecar == null)
                 return CameraVideoSidecarMatchResult.Allow();
 
@@ -162,14 +235,17 @@ namespace Foxglove.Schemas.Video
             return CameraVideoSidecarMatchResult.Restart(resetEncoderWarning: true);
         }
 
-        public bool TrySubmitFrame(ICameraVideoFrameBytesSource frame, ulong timestampNs)
+        public bool TrySubmitFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
+            where TFrameBytes : struct, ICameraVideoFrameBytesSource
         {
+            CameraVideoSidecarRetirementRegistry.Poll();
             var sidecar = _sidecar as ICameraVideoFrameSourceSidecar;
             return sidecar != null && sidecar.TrySubmitFrame(frame, timestampNs);
         }
 
         public bool TrySubmitFrame(byte[] frameBytes, ulong timestampNs)
         {
+            CameraVideoSidecarRetirementRegistry.Poll();
             var sidecar = _sidecar;
             if (sidecar == null)
                 return false;
@@ -185,6 +261,7 @@ namespace Foxglove.Schemas.Video
             Action<ICameraVideoEncoderSidecar> observeSidecar,
             int maxAccessUnits = 4)
         {
+            CameraVideoSidecarRetirementRegistry.Poll();
             var sidecar = _sidecar;
             if (sidecar == null)
                 return false;
@@ -222,16 +299,24 @@ namespace Foxglove.Schemas.Video
 
         public void Stop(Action drain)
         {
+            CameraVideoSidecarRetirementRegistry.Poll();
             if (_sidecar == null)
             {
                 ResetSidecarState();
                 return;
             }
 
+            var sidecar = _sidecar;
             drain?.Invoke();
-            _sidecar.Dispose();
+            sidecar.Dispose();
             drain?.Invoke();
+            if (sidecar is ICameraVideoSidecarDeferredCleanup deferred
+                && !deferred.TryFinalizeDeferredCleanup())
+            {
+                CameraVideoSidecarRetirementRegistry.Retire(deferred);
+            }
             ResetSidecarState();
+            CameraVideoSidecarRetirementRegistry.Poll();
         }
 
         public void ResetRestartState()

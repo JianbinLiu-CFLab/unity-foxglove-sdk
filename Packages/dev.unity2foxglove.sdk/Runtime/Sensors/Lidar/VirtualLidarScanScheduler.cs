@@ -83,19 +83,7 @@ namespace Unity.FoxgloveSDK.Components
             using (ScheduleScanMarker.Auto())
             {
                 if (_pendingScanState == PendingScanState.Scheduled)
-                {
-                    RecordLidarDiagnostics(
-                        logPerformanceDiagnostics,
-                        0,
-                        0,
-                        0d,
-                        0d,
-                        0d,
-                        asyncOverrun: true,
-                        profileInvalidation: false,
-                        fixedDeltaTimeSeconds);
                     return;
-                }
 
                 // Rays are cast from the current tick pose. The build job always keeps
                 // active scan-reference coordinates and only computes acquisition-time
@@ -201,6 +189,7 @@ namespace Unity.FoxgloveSDK.Components
                 };
                 using (BuildPointsScheduleMarker.Auto())
                     _pendingScanHandle = buildJob.Schedule(batchCount, 64, raycastHandle);
+                JobHandle.ScheduleBatchedJobs();
                 _pendingScanState = PendingScanState.Scheduled;
             }
         }

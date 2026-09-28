@@ -19,7 +19,7 @@ namespace Foxglove.Schemas.Video
     /// bounded worker queue so TrySubmitFrame remains non-blocking like the
     /// other video sidecars.
     /// </summary>
-    public sealed partial class MediaFoundationH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar, ICameraVideoFrameSourceSidecar
+    public sealed partial class MediaFoundationH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar, ICameraVideoFrameSourceSidecar, ICameraVideoSidecarDeferredCleanup, ICameraVideoSidecarDeferredCleanupScheduler
     {
         private const int SOk = 0;
         private const int SFalse = 1;
@@ -66,7 +66,13 @@ namespace Foxglove.Schemas.Video
         private int _outputCount;
         private int _inputCount;
         private Thread _encoderWorker;
+        private readonly ManualResetEvent _workerExited = new ManualResetEvent(false);
+        private readonly ManualResetEventSlim _workerInitialized = new ManualResetEventSlim(false);
+        private RegisteredWaitHandle _deferredCleanupRegistration;
+        private int _deferredCleanupScheduled;
+        private int _stopRequested;
         private const int MaxInputQueueCapacity = 2;
+        private const int StartupTimeoutMs = 10000;
         private const int ShutdownTimeoutMs = 500;
         private int _maxOutputQueue = 4;
         private bool _mfStarted;
@@ -109,6 +115,11 @@ namespace Foxglove.Schemas.Video
                 LastError = "Media Foundation H.264 worker is still stopping.";
                 return false;
             }
+            if (_transform != null || _mfStarted || _comInitialized)
+            {
+                LastError = "Media Foundation H.264 native cleanup is still pending.";
+                return false;
+            }
             _options = options ?? new MediaFoundationH264EncoderOptions();
             _maxOutputQueue = Math.Max(1, _options.MaxOutputQueue);
             Interlocked.Exchange(ref _evictedTimestampCount, 0);
@@ -128,17 +139,34 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
+            _workerExited.Reset();
+            _workerInitialized.Reset();
+            Volatile.Write(ref _stopRequested, 0);
+
             try
             {
-                InitializeMediaFoundation();
-                ConfigureEncoder(_options);
-                IsRunning = true;
-                _encoderWorker = new Thread(EncoderWorkerLoop)
+                _encoderWorker = new Thread(EncoderWorkerMain)
                 {
                     IsBackground = true,
                     Name = "Foxglove-MediaFoundation-H264"
                 };
                 _encoderWorker.Start();
+                if (!_workerInitialized.Wait(StartupTimeoutMs))
+                {
+                    LastError = "Media Foundation H.264 worker initialization timed out.";
+                    LastDiagnosticLine = LastError;
+                    Stop(clearOutputQueue: true);
+                    return false;
+                }
+
+                if (!IsRunning)
+                {
+                    if (string.IsNullOrWhiteSpace(LastError))
+                        LastError = "Media Foundation H.264 worker failed to initialize.";
+                    Stop(clearOutputQueue: true);
+                    return false;
+                }
+
                 LastDiagnosticLine = AppendDiagnostic(LastDiagnosticLine, "Windows Media Foundation H.264 encoder started.");
                 return true;
             }
@@ -156,24 +184,15 @@ namespace Foxglove.Schemas.Video
             => TrySubmitFrame(rgb24Frame, 0UL);
 
         public bool TrySubmitFrame(byte[] rgb24Frame, ulong timestampNs)
-            => TrySubmitFrameCore(
-                rgb24Frame?.Length ?? 0,
-                timestampNs,
-                destination =>
-                {
-                    if (rgb24Frame != null)
-                        Buffer.BlockCopy(rgb24Frame, 0, destination, 0, rgb24Frame.Length);
-                });
+            => TrySubmitFrameCore(new CameraVideoArrayFrameBytesSource(rgb24Frame), timestampNs);
 
-        bool ICameraVideoFrameSourceSidecar.TrySubmitFrame(ICameraVideoFrameBytesSource frame, ulong timestampNs)
+        bool ICameraVideoFrameSourceSidecar.TrySubmitFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
         {
-            if (frame == null)
-                return false;
-
-            return TrySubmitFrameCore(frame.Length, timestampNs, frame.CopyTo);
+            return TrySubmitFrameCore(frame, timestampNs);
         }
 
-        private bool TrySubmitFrameCore(int frameLength, ulong timestampNs, Action<byte[]> copyFrame)
+        private bool TrySubmitFrameCore<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
+            where TFrameBytes : struct, ICameraVideoFrameBytesSource
         {
             if (!IsRunning)
             {
@@ -188,7 +207,7 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            if (frameLength != expectedBytes)
+            if (frame.Length != expectedBytes)
             {
                 LastError = "RGB24 frame byte count does not match Media Foundation encoder dimensions.";
                 return false;
@@ -197,7 +216,7 @@ namespace Foxglove.Schemas.Video
             var copy = ArrayPool<byte>.Shared.Rent(expectedBytes);
             try
             {
-                copyFrame(copy);
+                frame.CopyTo(copy);
             }
             catch
             {
@@ -205,6 +224,11 @@ namespace Foxglove.Schemas.Video
                 throw;
             }
 
+            return EnqueueInputFrame(copy, expectedBytes, timestampNs);
+        }
+
+        private bool EnqueueInputFrame(byte[] copy, int frameLength, ulong timestampNs)
+        {
             lock (_inputLock)
             {
                 if (!IsRunning)
@@ -221,7 +245,7 @@ namespace Foxglove.Schemas.Video
                     Interlocked.Increment(ref _droppedInputFrames);
                 }
 
-                _inputFrames.Enqueue(new QueuedInputFrame(copy, expectedBytes, timestampNs));
+                _inputFrames.Enqueue(new QueuedInputFrame(copy, frameLength, timestampNs));
                 _inputCount++;
             }
 
@@ -229,57 +253,87 @@ namespace Foxglove.Schemas.Video
             return true;
         }
 
+        private void EncoderWorkerMain()
+        {
+            try
+            {
+                InitializeMediaFoundation();
+                ConfigureEncoder(_options);
+                if (Volatile.Read(ref _stopRequested) != 0)
+                    return;
+
+                IsRunning = true;
+                _workerInitialized.Set();
+                EncoderWorkerLoop();
+            }
+            catch (Exception ex)
+            {
+                LastError = DescribeException(ex);
+                LastDiagnosticLine = LastError;
+                IsRunning = false;
+                _workerInitialized.Set();
+            }
+            finally
+            {
+                IsRunning = false;
+                DrainInputQueue();
+                ReleaseEncoderResources();
+                _workerInitialized.Set();
+                _workerExited.Set();
+            }
+        }
+
         private void EncoderWorkerLoop()
         {
             while (IsRunning || Volatile.Read(ref _inputCount) > 0)
-            {
-                QueuedInputFrame frame;
-                lock (_inputLock)
                 {
-                    if (!_inputFrames.TryDequeue(out frame))
+                    QueuedInputFrame frame;
+                    lock (_inputLock)
                     {
-                        frame = default;
+                        if (!_inputFrames.TryDequeue(out frame))
+                        {
+                            frame = default;
+                        }
+                        else
+                        {
+                            _inputCount--;
+                        }
                     }
-                    else
+
+                    if (frame.Data == null)
                     {
-                        _inputCount--;
+                        _inputSignal.WaitOne(50);
+                        continue;
+                    }
+
+                    try
+                    {
+                        var nv12Frame = EnsureNv12Scratch();
+                        if (!Rgb24ToNv12Converter.TryConvertRgb24ToNv12(
+                            frame.Data,
+                            frame.Length,
+                            _options.Width,
+                            _options.Height,
+                            nv12Frame,
+                            flipVertical: true,
+                            out var conversionError))
+                            throw new InvalidOperationException(conversionError);
+                        ProcessInputFrame(nv12Frame, frame.TimestampNs);
+                        DrainEncoderOutput();
+                    }
+                    catch (Exception ex)
+                    {
+                        LastError = DescribeException(ex);
+                        LastDiagnosticLine = LastError;
+                        IsRunning = false;
+                        DrainInputQueue();
+                        break;
+                    }
+                    finally
+                    {
+                        ReturnInputFrameBuffer(frame);
                     }
                 }
-
-                if (frame.Data == null)
-                {
-                    _inputSignal.WaitOne(50);
-                    continue;
-                }
-
-                try
-                {
-                    var nv12Frame = EnsureNv12Scratch();
-                    if (!Rgb24ToNv12Converter.TryConvertRgb24ToNv12(
-                        frame.Data,
-                        frame.Length,
-                        _options.Width,
-                        _options.Height,
-                        nv12Frame,
-                        flipVertical: true,
-                        out var conversionError))
-                        throw new InvalidOperationException(conversionError);
-                    ProcessInputFrame(nv12Frame, frame.TimestampNs);
-                    DrainEncoderOutput();
-                }
-                catch (Exception ex)
-                {
-                    LastError = DescribeException(ex);
-                    LastDiagnosticLine = LastError;
-                    IsRunning = false;
-                    DrainInputQueue();
-                    break;
-                }
-                finally
-                {
-                    ReturnInputFrameBuffer(frame);
-                }
-            }
         }
 
         private readonly struct QueuedInputFrame
@@ -321,6 +375,52 @@ namespace Foxglove.Schemas.Video
             }
         }
 
+        bool ICameraVideoSidecarDeferredCleanup.TryFinalizeDeferredCleanup()
+        {
+            if (IsRunning)
+                return false;
+
+            var worker = Volatile.Read(ref _encoderWorker);
+            if (worker != null && worker.IsAlive)
+                return false;
+
+            if (worker != null)
+                Interlocked.CompareExchange(ref _encoderWorker, null, worker);
+
+            if (_transform != null || _mfStarted || _comInitialized)
+                return false;
+
+            Interlocked.Exchange(ref _deferredCleanupScheduled, 0);
+            var registration = Interlocked.Exchange(ref _deferredCleanupRegistration, null);
+            registration?.Unregister(null);
+            CameraVideoSidecarRetirementRegistry.Complete(this);
+            return true;
+        }
+
+        void ICameraVideoSidecarDeferredCleanupScheduler.ScheduleDeferredCleanup(Action callback)
+        {
+            if (callback == null || Interlocked.Exchange(ref _deferredCleanupScheduled, 1) != 0)
+                return;
+
+            var worker = Volatile.Read(ref _encoderWorker);
+            if (worker == null || !worker.IsAlive)
+            {
+                callback();
+                return;
+            }
+
+            _deferredCleanupRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _workerExited,
+                (_, __) =>
+                {
+                    worker.Join();
+                    callback();
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: true);
+        }
+
         public void Dispose()
         {
             Stop(clearOutputQueue: false);
@@ -328,20 +428,59 @@ namespace Foxglove.Schemas.Video
 
         private void Stop(bool clearOutputQueue)
         {
+            Volatile.Write(ref _stopRequested, 1);
             IsRunning = false;
             _inputSignal.Set();
-            var worker = Interlocked.Exchange(ref _encoderWorker, null);
-            if (worker != null && !ReferenceEquals(worker, Thread.CurrentThread)
-                && !worker.Join(ShutdownTimeoutMs))
+
+            var worker = Volatile.Read(ref _encoderWorker);
+            if (worker != null && ReferenceEquals(worker, Thread.CurrentThread))
             {
-                LastDiagnosticLine = AppendDiagnostic(
-                    LastDiagnosticLine,
-                    "Media Foundation H.264 worker shutdown timed out.");
-                Interlocked.CompareExchange(ref _encoderWorker, worker, null);
                 DrainInputQueue();
                 return;
             }
+
+            if (worker != null)
+            {
+                if (!worker.Join(ShutdownTimeoutMs))
+                {
+                    LastDiagnosticLine = AppendDiagnostic(
+                        LastDiagnosticLine,
+                        "Media Foundation H.264 worker shutdown timed out; native cleanup remains worker-owned.");
+                    DrainInputQueue();
+                    CameraVideoSidecarRetirementRegistry.Retire(this);
+                    return;
+                }
+
+                Interlocked.CompareExchange(ref _encoderWorker, null, worker);
+            }
+
             DrainInputQueue();
+            ClearManagedEncoderState();
+
+            if (clearOutputQueue)
+            {
+                _maxOutputQueue = 4;
+                DrainOutputQueue();
+            }
+
+            var registration = Interlocked.Exchange(ref _deferredCleanupRegistration, null);
+            registration?.Unregister(null);
+            Interlocked.Exchange(ref _deferredCleanupScheduled, 0);
+            CameraVideoSidecarRetirementRegistry.Complete(this);
+        }
+
+        private void ClearManagedEncoderState()
+        {
+            _options = null;
+            _nv12Scratch = null;
+            _hasOutputStreamInfo = false;
+            _nextSampleTime = 0;
+            _sampleDuration = 0;
+            ClearSampleTimestampMap();
+        }
+
+        private void ReleaseEncoderResources()
+        {
             if (_transform != null)
             {
                 try
@@ -352,19 +491,14 @@ namespace Foxglove.Schemas.Video
                 }
                 catch
                 {
-                    // Best-effort shutdown.
+                    // Best-effort shutdown on the owning worker thread.
                 }
 
                 ReleaseComObject(_transform);
                 _transform = null;
             }
 
-            _options = null;
-            _nv12Scratch = null;
-            _hasOutputStreamInfo = false;
-            _nextSampleTime = 0;
-            _sampleDuration = 0;
-            ClearSampleTimestampMap();
+            ClearManagedEncoderState();
 
             if (_mfStarted)
             {
@@ -376,12 +510,6 @@ namespace Foxglove.Schemas.Video
             {
                 NativeMethods.CoUninitialize();
                 _comInitialized = false;
-            }
-
-            if (clearOutputQueue)
-            {
-                _maxOutputQueue = 4;
-                DrainOutputQueue();
             }
         }
 
