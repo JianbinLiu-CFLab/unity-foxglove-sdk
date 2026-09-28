@@ -5,10 +5,12 @@
 // Purpose: Experimental Windows Media Foundation H.264 encoder sidecar.
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Unity.FoxgloveSDK.Components;
 
 namespace Foxglove.Schemas.Video
 {
@@ -17,7 +19,7 @@ namespace Foxglove.Schemas.Video
     /// bounded worker queue so TrySubmitFrame remains non-blocking like the
     /// other video sidecars.
     /// </summary>
-    public sealed partial class MediaFoundationH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
+    public sealed partial class MediaFoundationH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar, ICameraVideoFrameSourceSidecar
     {
         private const int SOk = 0;
         private const int SFalse = 1;
@@ -51,6 +53,7 @@ namespace Foxglove.Schemas.Video
         private readonly Dictionary<long, LinkedListNode<long>> _sampleTimestampNodesByTime = new Dictionary<long, LinkedListNode<long>>();
         private readonly LinkedList<long> _sampleTimestampOrder = new LinkedList<long>();
         private readonly object _outputLock = new object();
+        private readonly object _inputLock = new object();
         private readonly H264AccessUnitNormalizer _normalizer = new H264AccessUnitNormalizer();
         private MediaFoundationH264EncoderOptions _options;
         private IMFTransform _transform;
@@ -59,10 +62,12 @@ namespace Foxglove.Schemas.Video
         private long _nextSampleTime;
         private long _sampleDuration;
         private long _evictedTimestampCount;
+        private long _droppedInputFrames;
         private int _outputCount;
         private int _inputCount;
         private Thread _encoderWorker;
         private const int MaxInputQueueCapacity = 2;
+        private const int ShutdownTimeoutMs = 500;
         private int _maxOutputQueue = 4;
         private bool _mfStarted;
         private bool _comInitialized;
@@ -91,6 +96,7 @@ namespace Foxglove.Schemas.Video
             private set => Volatile.Write(ref _lastError, value);
         }
         public long EvictedTimestampCount => Interlocked.Read(ref _evictedTimestampCount);
+        public long DroppedInputFrames => Interlocked.Read(ref _droppedInputFrames);
 
         internal static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
@@ -98,9 +104,15 @@ namespace Foxglove.Schemas.Video
         public bool Start(MediaFoundationH264EncoderOptions options)
         {
             Stop(clearOutputQueue: true);
+            if (_encoderWorker != null && _encoderWorker.IsAlive)
+            {
+                LastError = "Media Foundation H.264 worker is still stopping.";
+                return false;
+            }
             _options = options ?? new MediaFoundationH264EncoderOptions();
             _maxOutputQueue = Math.Max(1, _options.MaxOutputQueue);
             Interlocked.Exchange(ref _evictedTimestampCount, 0);
+            Interlocked.Exchange(ref _droppedInputFrames, 0);
             LastError = null;
             LastDiagnosticLine = null;
 
@@ -144,6 +156,24 @@ namespace Foxglove.Schemas.Video
             => TrySubmitFrame(rgb24Frame, 0UL);
 
         public bool TrySubmitFrame(byte[] rgb24Frame, ulong timestampNs)
+            => TrySubmitFrameCore(
+                rgb24Frame?.Length ?? 0,
+                timestampNs,
+                destination =>
+                {
+                    if (rgb24Frame != null)
+                        Buffer.BlockCopy(rgb24Frame, 0, destination, 0, rgb24Frame.Length);
+                });
+
+        bool ICameraVideoFrameSourceSidecar.TrySubmitFrame(ICameraVideoFrameBytesSource frame, ulong timestampNs)
+        {
+            if (frame == null)
+                return false;
+
+            return TrySubmitFrameCore(frame.Length, timestampNs, frame.CopyTo);
+        }
+
+        private bool TrySubmitFrameCore(int frameLength, ulong timestampNs, Action<byte[]> copyFrame)
         {
             if (!IsRunning)
             {
@@ -158,19 +188,43 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            if (rgb24Frame == null || rgb24Frame.Length != expectedBytes)
+            if (frameLength != expectedBytes)
             {
                 LastError = "RGB24 frame byte count does not match Media Foundation encoder dimensions.";
                 return false;
             }
 
-            var copy = new byte[rgb24Frame.Length];
-            Buffer.BlockCopy(rgb24Frame, 0, copy, 0, copy.Length);
-            while (Volatile.Read(ref _inputCount) >= MaxInputQueueCapacity
-                   && _inputFrames.TryDequeue(out _))
-                Interlocked.Decrement(ref _inputCount);
-            _inputFrames.Enqueue(new QueuedInputFrame(copy, timestampNs));
-            Interlocked.Increment(ref _inputCount);
+            var copy = ArrayPool<byte>.Shared.Rent(expectedBytes);
+            try
+            {
+                copyFrame(copy);
+            }
+            catch
+            {
+                ArrayPool<byte>.Shared.Return(copy);
+                throw;
+            }
+
+            lock (_inputLock)
+            {
+                if (!IsRunning)
+                {
+                    ArrayPool<byte>.Shared.Return(copy);
+                    return false;
+                }
+
+                while (_inputCount >= MaxInputQueueCapacity
+                    && _inputFrames.TryDequeue(out var dropped))
+                {
+                    _inputCount--;
+                    ReturnInputFrameBuffer(dropped);
+                    Interlocked.Increment(ref _droppedInputFrames);
+                }
+
+                _inputFrames.Enqueue(new QueuedInputFrame(copy, expectedBytes, timestampNs));
+                _inputCount++;
+            }
+
             _inputSignal.Set();
             return true;
         }
@@ -179,17 +233,31 @@ namespace Foxglove.Schemas.Video
         {
             while (IsRunning || Volatile.Read(ref _inputCount) > 0)
             {
-                if (!_inputFrames.TryDequeue(out var frame))
+                QueuedInputFrame frame;
+                lock (_inputLock)
+                {
+                    if (!_inputFrames.TryDequeue(out frame))
+                    {
+                        frame = default;
+                    }
+                    else
+                    {
+                        _inputCount--;
+                    }
+                }
+
+                if (frame.Data == null)
                 {
                     _inputSignal.WaitOne(50);
                     continue;
                 }
-                Interlocked.Decrement(ref _inputCount);
+
                 try
                 {
                     var nv12Frame = EnsureNv12Scratch();
                     if (!Rgb24ToNv12Converter.TryConvertRgb24ToNv12(
                         frame.Data,
+                        frame.Length,
                         _options.Width,
                         _options.Height,
                         nv12Frame,
@@ -204,22 +272,27 @@ namespace Foxglove.Schemas.Video
                     LastError = DescribeException(ex);
                     LastDiagnosticLine = LastError;
                     IsRunning = false;
-                    while (_inputFrames.TryDequeue(out _))
-                        Interlocked.Decrement(ref _inputCount);
+                    DrainInputQueue();
                     break;
+                }
+                finally
+                {
+                    ReturnInputFrameBuffer(frame);
                 }
             }
         }
 
         private readonly struct QueuedInputFrame
         {
-            internal QueuedInputFrame(byte[] data, ulong timestampNs)
+            internal QueuedInputFrame(byte[] data, int length, ulong timestampNs)
             {
                 Data = data;
+                Length = length;
                 TimestampNs = timestampNs;
             }
 
             internal byte[] Data { get; }
+            internal int Length { get; }
             internal ulong TimestampNs { get; }
         }
 
@@ -258,10 +331,17 @@ namespace Foxglove.Schemas.Video
             IsRunning = false;
             _inputSignal.Set();
             var worker = Interlocked.Exchange(ref _encoderWorker, null);
-            if (worker != null && !ReferenceEquals(worker, Thread.CurrentThread))
-                worker.Join();
-            while (_inputFrames.TryDequeue(out _))
-                Interlocked.Decrement(ref _inputCount);
+            if (worker != null && !ReferenceEquals(worker, Thread.CurrentThread)
+                && !worker.Join(ShutdownTimeoutMs))
+            {
+                LastDiagnosticLine = AppendDiagnostic(
+                    LastDiagnosticLine,
+                    "Media Foundation H.264 worker shutdown timed out.");
+                Interlocked.CompareExchange(ref _encoderWorker, worker, null);
+                DrainInputQueue();
+                return;
+            }
+            DrainInputQueue();
             if (_transform != null)
             {
                 try
@@ -302,6 +382,27 @@ namespace Foxglove.Schemas.Video
             {
                 _maxOutputQueue = 4;
                 DrainOutputQueue();
+            }
+        }
+
+        private static void ReturnInputFrameBuffer(QueuedInputFrame frame)
+        {
+            if (frame.Data != null)
+                ArrayPool<byte>.Shared.Return(frame.Data);
+        }
+
+        private void DrainInputQueue()
+        {
+            lock (_inputLock)
+            {
+                while (_inputFrames.TryDequeue(out var frame))
+                {
+                    ReturnInputFrameBuffer(frame);
+                    if (_inputCount > 0)
+                        _inputCount--;
+                }
+
+                _inputCount = 0;
             }
         }
 

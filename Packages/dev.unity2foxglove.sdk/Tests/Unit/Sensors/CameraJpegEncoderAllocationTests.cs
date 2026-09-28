@@ -96,6 +96,46 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void JpegQueueAdmitsNewestFrameAndReportsReplacedFrame()
+        {
+            using var pipeline = new CameraJpegPublishPipeline(() => 1, new CameraPublishDiagnostics());
+            pipeline.EnsureQueues(1, 1);
+            var drops = 0;
+
+            Assert.True(pipeline.TryQueueFrame(
+                new byte[] { 1, 2, 3 },
+                1UL,
+                1,
+                1,
+                publishWebSocket: false,
+                publishProvider: false,
+                publishNativeFrame: false,
+                PublisherEffectiveEncoding.Json,
+                readbackLatencyMs: 0d,
+                jpegQuality: 90,
+                frameId: "frame",
+                maxEncodedBytes: 0,
+                onEncodeQueueDrop: () => drops++));
+            Assert.True(pipeline.TryQueueFrame(
+                new byte[] { 4, 5, 6 },
+                2UL,
+                1,
+                1,
+                publishWebSocket: false,
+                publishProvider: false,
+                publishNativeFrame: false,
+                PublisherEffectiveEncoding.Json,
+                readbackLatencyMs: 0d,
+                jpegQuality: 90,
+                frameId: "frame",
+                maxEncodedBytes: 0,
+                onEncodeQueueDrop: () => drops++));
+
+            Assert.Equal(1, drops);
+            Assert.Equal(1, pipeline.EncodeQueueDepth);
+        }
+
+        [Fact]
         public void ResizingBoundedQueueRetainsNewestItemsForMigration()
         {
             var queue = new DropOldestBoundedQueue<int>(3);

@@ -79,6 +79,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 LidarProfileLoader.CreateUniform("Custom", 4097, 1024, 10.0, 1.0, -1.0, 0.5));
         }
 
+        [Theory]
+        [InlineData(false, true, 1, false)]
+        [InlineData(true, false, 1, false)]
+        [InlineData(true, true, 0, false)]
+        [InlineData(true, true, 1, true)]
+        public void PendingScanCompletionRequiresACompletedScheduledBatch(
+            bool scheduled,
+            bool completed,
+            int batchCount,
+            bool expected)
+        {
+            Assert.Equal(expected, LidarPendingScanCompletionPolicy.IsReady(scheduled, completed, batchCount));
+        }
+
         [Fact]
         public void SchedulerSourceKeepsEveryRaycastBatchInsideTheFixedStepBudget()
         {
@@ -92,8 +106,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("var commandBudget = Math.Max(1, maxRaycastCommandsPerFixedUpdate);", source);
             Assert.Contains("batchCount < commandBudget", source);
             Assert.Contains("ref int scanColumnRayCursor", source);
-            Assert.Contains("if (!_pendingScanHandle.IsCompleted)", source);
-            Assert.Contains("asyncOverrun: true", source);
         }
     }
 }

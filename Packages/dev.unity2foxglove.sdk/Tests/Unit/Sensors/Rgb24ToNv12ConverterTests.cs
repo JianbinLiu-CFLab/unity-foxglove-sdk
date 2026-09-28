@@ -53,6 +53,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void ConversionAcceptsAValidLogicalLengthWithinAReusedBuffer()
+        {
+            var rgb24 = new byte[32];
+            var nv12 = new byte[6];
+
+            Assert.True(Rgb24ToNv12Converter.TryConvertRgb24ToNv12(
+                rgb24,
+                12,
+                2,
+                2,
+                nv12,
+                flipVertical: true,
+                out var error), error);
+        }
+
+        [Fact]
         public void InvalidInputsReturnFalseWithError()
         {
             Assert.False(Rgb24ToNv12Converter.TryConvertRgb24ToNv12(new byte[3 * 3 * 3], 3, 3, new byte[14], true, out var error));

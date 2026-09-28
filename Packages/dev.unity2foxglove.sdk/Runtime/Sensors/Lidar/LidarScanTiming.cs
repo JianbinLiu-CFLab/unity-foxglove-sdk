@@ -7,6 +7,12 @@ using System;
 
 namespace Unity.FoxgloveSDK.Sensors.Lidar
 {
+    internal static class LidarPendingScanCompletionPolicy
+    {
+        internal static bool IsReady(bool scheduled, bool jobCompleted, int batchCount)
+            => scheduled && jobCompleted && batchCount > 0;
+    }
+
     /// <summary>
     /// Shared scan timing helpers for LiDAR patterns and point-cloud payloads.
     /// </summary>

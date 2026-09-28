@@ -19,6 +19,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
     public sealed class PointCloudHotPathAllocationTests
     {
         [Fact]
+        public void DracoMsgPackFailureNeverPublishesProtobufFallback()
+        {
+            var msgPackCalls = 0;
+            var protobufCalls = 0;
+
+            Assert.False(DracoWebSocketPublicationPolicy.Publish(
+                PublisherEffectiveEncoding.MsgPack,
+                () =>
+                {
+                    msgPackCalls++;
+                    return false;
+                },
+                () => protobufCalls++));
+            Assert.Equal(1, msgPackCalls);
+            Assert.Equal(0, protobufCalls);
+
+            Assert.True(DracoWebSocketPublicationPolicy.Publish(
+                PublisherEffectiveEncoding.Protobuf,
+                () => { msgPackCalls++; return false; },
+                () => protobufCalls++));
+            Assert.Equal(1, msgPackCalls);
+            Assert.Equal(1, protobufCalls);
+        }
+
+        [Fact]
         public void PointCloud2BuilderUsesOwnedArrayWithoutPooledFrameData()
         {
             var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PackedPointCloudDataBuilder.cs");

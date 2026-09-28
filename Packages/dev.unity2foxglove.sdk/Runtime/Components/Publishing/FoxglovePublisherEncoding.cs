@@ -7,6 +7,21 @@
 
 namespace Unity.FoxgloveSDK.Components
 {
+    internal static class DracoWebSocketPublicationPolicy
+    {
+        internal static bool Publish(
+            PublisherEffectiveEncoding encoding,
+            System.Func<bool> tryPublishMsgPack,
+            System.Action publishProtobuf)
+        {
+            if (encoding == PublisherEffectiveEncoding.MsgPack)
+                return tryPublishMsgPack != null && tryPublishMsgPack();
+
+            publishProtobuf?.Invoke();
+            return true;
+        }
+    }
+
     /// <summary>
     /// Global default publisher encoding configured on <see cref="FoxgloveManager"/>.
     /// </summary>

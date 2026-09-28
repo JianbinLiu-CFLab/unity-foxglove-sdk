@@ -273,6 +273,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void MediaFoundationInputQueueReportsDroppedInputFrames()
+        {
+            using var sidecar = new MediaFoundationH264EncoderSidecar();
+            SetProperty(sidecar, "IsRunning", true);
+            SetField(sidecar, "_options", new MediaFoundationH264EncoderOptions { Width = 2, Height = 2 });
+
+            Assert.True(sidecar.TrySubmitFrame(new byte[12], 1UL));
+            Assert.True(sidecar.TrySubmitFrame(new byte[12], 2UL));
+            Assert.True(sidecar.TrySubmitFrame(new byte[12], 3UL));
+
+            Assert.Equal(1, sidecar.DroppedInputFrames);
+            Assert.Equal(2, sidecar.InputQueueDepth);
+        }
+
+        [Fact]
         public void StartRejectsWindowsOnlyEncoderOutsideWindows()
         {
             if (OperatingSystem.IsWindows())
