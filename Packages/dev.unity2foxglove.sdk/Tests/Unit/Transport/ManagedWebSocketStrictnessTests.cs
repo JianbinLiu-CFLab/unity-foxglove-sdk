@@ -398,6 +398,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
                     () => backend.GetStatsSnapshot().ActiveClientCount == 1,
                     TimeSpan.FromSeconds(2)));
 
+                stream.ReadTimeout = 5000;
                 var stopTask = Task.Run(() => backend.Stop());
                 var close = ReadServerFrame(stream);
                 Assert.Equal(WsOpcode.Close, close.Opcode);
