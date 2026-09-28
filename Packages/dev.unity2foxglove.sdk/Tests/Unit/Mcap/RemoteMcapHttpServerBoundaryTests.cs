@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -145,6 +146,21 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 record,
                 out var usn));
             Assert.Equal(expectedUsn, usn);
+
+            var nativeRecord = Marshal.AllocHGlobal(record.Length);
+            try
+            {
+                Marshal.Copy(record, 0, nativeRecord, record.Length);
+                Assert.True(RemoteMcapDataSourcePrototype.TryParseWindowsUsnRecord(
+                    nativeRecord,
+                    (uint)record.Length,
+                    out var nativeUsn));
+                Assert.Equal(expectedUsn, nativeUsn);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(nativeRecord);
+            }
         }
 
         [Fact]

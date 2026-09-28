@@ -649,17 +649,30 @@ namespace Unity.FoxgloveSDK.IO
                     || bytesReturned < 6)
                     return false;
 
-                var majorVersion = Marshal.ReadInt16(output, 4);
-                if (!TryGetWindowsUsnOffset(majorVersion, bytesReturned, out var usnOffset))
-                    return false;
-                usn = Marshal.ReadInt64(output, usnOffset);
-                return usn != 0;
+                return TryParseWindowsUsnRecord(output, bytesReturned, out usn);
             }
             finally
             {
                 Marshal.FreeHGlobal(request);
                 Marshal.FreeHGlobal(output);
             }
+        }
+
+        internal static bool TryParseWindowsUsnRecord(
+            IntPtr record,
+            uint bytesReturned,
+            out long usn)
+        {
+            usn = 0;
+            if (record == IntPtr.Zero || bytesReturned < 6)
+                return false;
+
+            var majorVersion = Marshal.ReadInt16(record, 4);
+            if (!TryGetWindowsUsnOffset(majorVersion, bytesReturned, out var usnOffset))
+                return false;
+
+            usn = Marshal.ReadInt64(record, usnOffset);
+            return usn != 0;
         }
 
         internal static bool TryGetWindowsUsnOffset(

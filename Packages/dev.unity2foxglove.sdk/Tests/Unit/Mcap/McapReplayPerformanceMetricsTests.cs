@@ -506,6 +506,125 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
+        public void IndexedHistoryRetainsLatestCandidatesWithBoundedHeap()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-history-indexed-heap-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(
+                    stream,
+                    null,
+                    new McapWriterOptions
+                    {
+                        UseChunking = true,
+                        ChunkSizeBytes = 4096,
+                        IndexTypes = McapIndexTypes.Chunk | McapIndexTypes.Message
+                    },
+                    leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/history-indexed-heap", "json", "phase188.HistoryIndexedHeap", "jsonschema", "{}");
+                    for (ulong time = 1; time <= 64; time++)
+                        recorder.WriteMessage(1, time, new byte[] { (byte)time });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = engine.History(0, 64, new List<McapMessage>(), 5, new HashSet<ushort> { 1 });
+                var metrics = engine.LastHistoryMetrics;
+
+                Assert.Equal(new ulong[] { 60, 61, 62, 63, 64 }, result.Select(message => message.LogTime).ToArray());
+                Assert.Equal(64, metrics.CandidateCount);
+                Assert.Equal(5, metrics.CandidatePayloadCopies);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+        [Theory]
+        [InlineData("lz4")]
+        [InlineData("zstd")]
+        public void BoundedHistoryUsesMixedCompressedSpoolBudget(string compression)
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-history-compressed-spool-mixed-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(
+                    stream,
+                    null,
+                    new McapWriterOptions
+                    {
+                        UseChunking = true,
+                        ChunkSizeBytes = 4096,
+                        Compression = compression,
+                        IndexTypes = McapIndexTypes.Chunk
+                    },
+                    leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/history-spool-mixed-target", "json", "phase188.HistorySpoolMixedTarget", "jsonschema", "{}");
+                    recorder.AddChannel(2, "/phase188/history-spool-mixed-noise", "json", "phase188.HistorySpoolMixedNoise", "jsonschema", "{}");
+                    recorder.WriteMessage(1, 80, new byte[] { 80 });
+                    recorder.WriteMessage(2, 200, new byte[128]);
+                    recorder.AddAttachment("mixed-boundary-a", "application/octet-stream", new byte[] { 0 }, 1);
+                    recorder.WriteMessage(1, 90, new byte[] { 90 });
+                    recorder.WriteMessage(2, 200, new byte[128]);
+                    recorder.AddAttachment("mixed-boundary-b", "application/octet-stream", new byte[] { 0 }, 2);
+                    recorder.WriteMessage(1, 100, new byte[] { 100 });
+                    recorder.WriteMessage(2, 200, new byte[128]);
+                    recorder.AddAttachment("mixed-boundary-c", "application/octet-stream", new byte[] { 0 }, 3);
+                    recorder.Close();
+                }
+
+                int firstChunkBytes;
+                int secondChunkBytes;
+                using (var inspectStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var inspectReader = new McapReader(inspectStream))
+                {
+                    var summary = inspectReader.ReadSummary();
+                    Assert.Equal(3, summary.ChunkIndexes.Count);
+                    var ordered = summary.ChunkIndexes
+                        .OrderByDescending(index => index.MessageEndTime)
+                        .ThenByDescending(index => index.MessageStartTime)
+                        .ThenByDescending(index => index.ChunkStartOffset)
+                        .ToArray();
+                    firstChunkBytes = inspectReader.ReadChunkRecords(
+                        ordered[0].ChunkStartOffset,
+                        ordered[0].ChunkLength,
+                        out _).Length;
+                    secondChunkBytes = inspectReader.ReadChunkRecords(
+                        ordered[1].ChunkStartOffset,
+                        ordered[1].ChunkLength,
+                        out _).Length;
+                    Assert.True(firstChunkBytes > 0);
+                    Assert.True(secondChunkBytes > 0);
+                }
+
+                using var engine = new McapReplayEngine
+                {
+                    MaxHistorySpoolBytes = firstChunkBytes
+                };
+                engine.Load(path);
+                var result = engine.History(0, 200, new List<McapMessage>(), 2, new HashSet<ushort> { 1 });
+                var metrics = engine.LastHistoryMetrics;
+
+                Assert.Equal(new ulong[] { 90, 100 }, result.Select(message => message.LogTime).ToArray());
+                Assert.Equal(new byte[] { 90 }, result[0].Data);
+                Assert.Equal(new byte[] { 100 }, result[1].Data);
+                Assert.Equal(3, metrics.CandidateCount);
+                Assert.Equal(4, metrics.DecompressedChunkReads);
+                Assert.Equal(2, metrics.CandidatePayloadCopies);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+        [Fact]
         public void HistoryFiltersIrrelevantHighRateChannelsBeforeAdmission()
         {
             var path = Path.Combine(Path.GetTempPath(), "phase188-history-filter-" + Guid.NewGuid().ToString("N") + ".mcap");
