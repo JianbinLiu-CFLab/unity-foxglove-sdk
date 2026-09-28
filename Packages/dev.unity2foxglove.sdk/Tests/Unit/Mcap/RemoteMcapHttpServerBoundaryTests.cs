@@ -234,7 +234,7 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
-        public void SourceIdentityRecomputesFullHashWhenFileMetadataIsStable()
+        public void SourceIdentityReusesFullHashWhenFileChangeIdentityIsStable()
         {
             var path = Path.Combine(Path.GetTempPath(), "remote-generation-cache-" + Guid.NewGuid().ToString("N") + ".mcap");
             try
@@ -252,8 +252,15 @@ namespace FoxgloveSdk.UnitTests.Mcap
 
                 Assert.Equal(first, second);
                 var secondHashCount = (int)counter.GetValue(source);
+                var observedToken = typeof(RemoteMcapDataSourcePrototype).GetField(
+                    "_hasObservedStamp",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(observedToken);
                 Assert.True(firstHashCount > 0);
-                Assert.True(secondHashCount > firstHashCount);
+                if ((bool)observedToken.GetValue(source))
+                    Assert.Equal(firstHashCount, secondHashCount);
+                else
+                    Assert.True(secondHashCount > firstHashCount);
             }
             finally
             {

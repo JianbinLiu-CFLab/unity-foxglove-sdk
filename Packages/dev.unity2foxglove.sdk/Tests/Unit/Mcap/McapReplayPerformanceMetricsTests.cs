@@ -306,6 +306,101 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
         }
 
+        [Theory]
+        [InlineData("lz4")]
+        [InlineData("zstd")]
+        public void BoundedHistorySpoolsCompressedNoIndexChunksWithoutSecondDecompression(string compression)
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-history-compressed-no-index-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(
+                    stream,
+                    null,
+                    new McapWriterOptions
+                    {
+                        UseChunking = true,
+                        ChunkSizeBytes = 4096,
+                        Compression = compression,
+                        IndexTypes = McapIndexTypes.Chunk
+                    },
+                    leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/history-compressed-no-index", "json", "phase188.HistoryCompressedNoIndex", "jsonschema", "{}");
+                    recorder.WriteMessage(1, 80, new byte[] { 80 });
+                    recorder.WriteMessage(1, 85, new byte[] { 85 });
+                    recorder.WriteMessage(1, 100, new byte[] { 100 });
+                    recorder.AddAttachment("boundary", "application/octet-stream", new byte[] { 0 }, 1);
+                    recorder.WriteMessage(1, 90, new byte[] { 90 });
+                    recorder.WriteMessage(1, 95, new byte[] { 95 });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                Assert.Equal(2, engine.Summary.ChunkIndexes.Count);
+                var result = engine.History(70, 100, new List<McapMessage>(), 2, new HashSet<ushort> { 1 });
+                var metrics = engine.LastHistoryMetrics;
+
+                Assert.Equal(new ulong[] { 95, 100 }, result.Select(message => message.LogTime).ToArray());
+                Assert.Equal(2, metrics.DecompressedChunkReads);
+                Assert.Equal(2, metrics.CandidatePayloadCopies);
+                Assert.Equal(5, metrics.CandidateCount);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Theory]
+        [InlineData("lz4")]
+        [InlineData("zstd")]
+        public void IndexedHistoryAcceptsDuplicateLogTimesWithoutFallback(string compression)
+        {
+            var path = Path.Combine(Path.GetTempPath(), "phase188-history-duplicate-times-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read))
+                using (var recorder = new McapRecorder(
+                    stream,
+                    null,
+                    new McapWriterOptions
+                    {
+                        UseChunking = true,
+                        ChunkSizeBytes = 4096,
+                        Compression = compression,
+                        IndexTypes = McapIndexTypes.Chunk | McapIndexTypes.Message
+                    },
+                    leaveOpen: true))
+                {
+                    recorder.AddChannel(1, "/phase188/history-duplicate-times", "json", "phase188.HistoryDuplicateTimes", "jsonschema", "{}");
+                    recorder.WriteMessage(1, 10, new byte[] { 1 });
+                    recorder.WriteMessage(1, 10, new byte[] { 2 });
+                    recorder.WriteMessage(1, 20, new byte[] { 3 });
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = engine.History(0, 20, new List<McapMessage>(), 2, new HashSet<ushort> { 1 });
+                var metrics = engine.LastHistoryMetrics;
+
+                Assert.Equal(new ulong[] { 10, 20 }, result.Select(message => message.LogTime).ToArray());
+                Assert.Equal(new byte[] { 2 }, result[0].Data);
+                Assert.Equal(new byte[] { 3 }, result[1].Data);
+                Assert.Equal(1, metrics.DecompressedChunkReads);
+                Assert.Equal(2, metrics.CandidatePayloadCopies);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
         [Fact]
         public void HistoryFiltersIrrelevantHighRateChannelsBeforeAdmission()
         {

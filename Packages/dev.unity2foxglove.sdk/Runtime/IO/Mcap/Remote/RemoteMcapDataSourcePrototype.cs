@@ -7,9 +7,11 @@
 using System;
 using System.IO;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using Microsoft.Win32.SafeHandles;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.IO
@@ -33,6 +35,8 @@ namespace Unity.FoxgloveSDK.IO
         private readonly long _maxInMemoryDataBytes;
         private readonly Func<string> _generationVersionProvider;
         private readonly object _manifestCacheGate = new object();
+        private FileStamp _observedStamp;
+        private bool _hasObservedStamp;
         private int _fullContentHashComputations;
         private RemoteMcapManifest _cachedManifest;
         private byte[] _cachedManifestBytes;
@@ -46,6 +50,7 @@ namespace Unity.FoxgloveSDK.IO
             public long Length;
             public DateTime LastWriteUtc;
             public string ContentHash;
+            public string FileChangeToken;
         }
 
         /// <summary>Creates a single-file Remote Data Loader prototype around one local MCAP path.</summary>
@@ -468,12 +473,15 @@ namespace Unity.FoxgloveSDK.IO
             var info = new FileInfo(_mcapPath);
             if (!info.Exists)
             {
+                lock (_manifestCacheGate)
+                    _hasObservedStamp = false;
                 return new FileStamp
                 {
                     Exists = false,
                     Length = 0L,
                     LastWriteUtc = DateTime.MinValue,
-                    ContentHash = string.Empty
+                    ContentHash = string.Empty,
+                    FileChangeToken = string.Empty
                 };
             }
 
@@ -486,7 +494,8 @@ namespace Unity.FoxgloveSDK.IO
                     Exists = true,
                     Length = info.Length,
                     LastWriteUtc = lastWriteUtc,
-                    ContentHash = "generation:" + generationVersion
+                    ContentHash = "generation:" + generationVersion,
+                    FileChangeToken = string.Empty
                 };
             }
 
@@ -495,17 +504,225 @@ namespace Unity.FoxgloveSDK.IO
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete);
+            var hasFileChangeToken = TryGetFileChangeToken(input.SafeFileHandle, out var fileChangeToken);
+            if (hasFileChangeToken)
+            {
+                lock (_manifestCacheGate)
+                {
+                    if (_hasObservedStamp
+                        && _observedStamp.Exists
+                        && _observedStamp.Length == info.Length
+                        && _observedStamp.LastWriteUtc == lastWriteUtc
+                        && string.Equals(
+                            _observedStamp.FileChangeToken,
+                            fileChangeToken,
+                            StringComparison.Ordinal))
+                    {
+                        return _observedStamp;
+                    }
+                }
+            }
+
             System.Threading.Interlocked.Increment(ref _fullContentHashComputations);
             using var sha = SHA256.Create();
             var hash = sha.ComputeHash(input);
-            return new FileStamp
+            var stamp = new FileStamp
             {
                 Exists = true,
                 Length = info.Length,
                 LastWriteUtc = lastWriteUtc,
-                ContentHash = ToHex(hash)
+                ContentHash = ToHex(hash),
+                FileChangeToken = hasFileChangeToken ? fileChangeToken : string.Empty
             };
+            lock (_manifestCacheGate)
+            {
+                _observedStamp = stamp;
+                _hasObservedStamp = hasFileChangeToken;
+            }
+            return stamp;
         }
+
+        private static bool TryGetFileChangeToken(SafeFileHandle handle, out string token)
+        {
+            token = string.Empty;
+            if (handle == null || handle.IsInvalid)
+                return false;
+
+            try
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    if (!GetFileInformationByHandle(handle, out var information)
+                        || !GetFileInformationByHandleEx(
+                            handle,
+                            FileBasicInfoClass,
+                            out var basicInfo,
+                            (uint)Marshal.SizeOf(typeof(FileBasicInfo)))
+                        || !TryGetWindowsUsn(handle, out var usn))
+                        return false;
+
+                    var fileIndex = ((ulong)information.FileIndexHigh << 32) | information.FileIndexLow;
+                    token = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "windows:{0:x8}:{1:x16}:{2}:{3}",
+                        information.VolumeSerialNumber,
+                        fileIndex,
+                        basicInfo.ChangeTime,
+                        usn);
+                    return true;
+                }
+
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    var descriptor = checked((int)handle.DangerousGetHandle().ToInt64());
+                    var buffer = Marshal.AllocHGlobal(256);
+                    try
+                    {
+                        if (Statx(descriptor, string.Empty, AtEmptyPath, StatxIno | StatxCtime | StatxMtime, buffer) != 0)
+                            return false;
+
+                        var inode = unchecked((ulong)Marshal.ReadInt64(buffer, StatxInodeOffset));
+                        var changeSeconds = Marshal.ReadInt64(buffer, StatxCtimeSecondsOffset);
+                        var changeNanoseconds = unchecked((uint)Marshal.ReadInt32(buffer, StatxCtimeNanosecondsOffset));
+                        var modifiedSeconds = Marshal.ReadInt64(buffer, StatxMtimeSecondsOffset);
+                        var modifiedNanoseconds = unchecked((uint)Marshal.ReadInt32(buffer, StatxMtimeNanosecondsOffset));
+                        token = string.Format(
+                            CultureInfo.InvariantCulture,
+                            "linux:{0:x16}:{1}:{2}:{3}:{4}",
+                            inode,
+                            changeSeconds,
+                            changeNanoseconds,
+                            modifiedSeconds,
+                            modifiedNanoseconds);
+                        return true;
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(buffer);
+                    }
+                }
+            }
+            catch (Exception ex) when (
+                ex is DllNotFoundException
+                || ex is EntryPointNotFoundException
+                || ex is BadImageFormatException
+                || ex is OverflowException)
+            {
+                return false;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetWindowsUsn(SafeFileHandle handle, out long usn)
+        {
+            usn = 0;
+            var request = Marshal.AllocHGlobal(4);
+            var output = Marshal.AllocHGlobal(1024);
+            try
+            {
+                Marshal.WriteInt16(request, 0, 2);
+                Marshal.WriteInt16(request, 2, 3);
+                if (!DeviceIoControl(
+                    handle,
+                    FsctlReadFileUsnData,
+                    request,
+                    4,
+                    output,
+                    1024,
+                    out var bytesReturned,
+                    IntPtr.Zero)
+                    || bytesReturned < 32)
+                    return false;
+
+                usn = Marshal.ReadInt64(output, 24);
+                return true;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(request);
+                Marshal.FreeHGlobal(output);
+            }
+        }
+
+        private const uint FsctlReadFileUsnData = 0x000900EB;
+        private const int FileBasicInfoClass = 0;
+        private const int AtEmptyPath = 0x1000;
+        private const uint StatxIno = 0x0100;
+        private const uint StatxCtime = 0x0800;
+        private const uint StatxMtime = 0x0040;
+        private const int StatxInodeOffset = 32;
+        private const int StatxCtimeSecondsOffset = 96;
+        private const int StatxCtimeNanosecondsOffset = 104;
+        private const int StatxMtimeSecondsOffset = 112;
+        private const int StatxMtimeNanosecondsOffset = 120;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeFileTime
+        {
+            internal uint Low;
+            internal uint High;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ByHandleFileInformation
+        {
+            internal uint FileAttributes;
+            internal NativeFileTime CreationTime;
+            internal NativeFileTime LastAccessTime;
+            internal NativeFileTime LastWriteTime;
+            internal uint VolumeSerialNumber;
+            internal uint FileSizeHigh;
+            internal uint FileSizeLow;
+            internal uint NumberOfLinks;
+            internal uint FileIndexHigh;
+            internal uint FileIndexLow;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FileBasicInfo
+        {
+            internal long CreationTime;
+            internal long LastAccessTime;
+            internal long LastWriteTime;
+            internal long ChangeTime;
+            internal uint FileAttributes;
+            internal uint Reserved;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetFileInformationByHandle(
+            SafeFileHandle file,
+            out ByHandleFileInformation information);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool DeviceIoControl(
+            SafeFileHandle device,
+            uint controlCode,
+            IntPtr inputBuffer,
+            uint inputBufferSize,
+            IntPtr outputBuffer,
+            uint outputBufferSize,
+            out uint bytesReturned,
+            IntPtr overlapped);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetFileInformationByHandleEx(
+            SafeFileHandle file,
+            int fileInformationClass,
+            out FileBasicInfo fileInformation,
+            uint bufferSize);
+
+        [DllImport("libc", EntryPoint = "statx", SetLastError = true)]
+        private static extern int Statx(
+            int directoryFileDescriptor,
+            string path,
+            int flags,
+            uint mask,
+            IntPtr buffer);
 
         private bool MatchesCachedStamp(FileStamp stamp)
             => _cachedManifestLength == stamp.Length
