@@ -94,6 +94,7 @@ namespace Unity.FoxgloveSDK.Transport
             internal bool CallbackCompleted;
             internal int CallbackThreadId;
             internal bool Cancelled;
+            internal bool StopDisconnectRequested;
             internal readonly TaskCompletionSource<bool> Completion =
                 new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
@@ -1009,12 +1010,14 @@ namespace Unity.FoxgloveSDK.Transport
                             // releasing the lock, so the disconnect event
                             // cannot overtake OnClientConnected.
                             stopOwnsConnection = IsStopping
+                                && !publication.StopDisconnectRequested
                                 && _clients.TryGetValue(clientId, out current)
                                 && ReferenceEquals(current, expectedConnection);
-                            disconnectAfterCallback = !stopOwnsConnection
-                                && publication.Announced
-                                && _clients.TryGetValue(clientId, out current)
-                                && ReferenceEquals(current, expectedConnection);
+                            disconnectAfterCallback = publication.StopDisconnectRequested
+                                || (!stopOwnsConnection
+                                    && publication.Announced
+                                    && _clients.TryGetValue(clientId, out current)
+                                    && ReferenceEquals(current, expectedConnection));
                         }
                         else
                         {
@@ -1541,6 +1544,7 @@ namespace Unity.FoxgloveSDK.Transport
                 }
 
                 publication.Cancelled = true;
+                publication.StopDisconnectRequested = true;
                 return true;
             }
         }

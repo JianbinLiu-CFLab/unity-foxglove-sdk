@@ -576,18 +576,22 @@ namespace Unity.FoxgloveSDK.IO
                     var buffer = Marshal.AllocHGlobal(256);
                     try
                     {
-                        if (Statx(descriptor, string.Empty, AtEmptyPath, StatxIno | StatxCtime, buffer) != 0)
+                        if (Statx(descriptor, string.Empty, AtEmptyPath, StatxIno | StatxCtime | StatxMtime, buffer) != 0)
                             return false;
 
                         var inode = unchecked((ulong)Marshal.ReadInt64(buffer, StatxInodeOffset));
                         var changeSeconds = Marshal.ReadInt64(buffer, StatxCtimeSecondsOffset);
                         var changeNanoseconds = unchecked((uint)Marshal.ReadInt32(buffer, StatxCtimeNanosecondsOffset));
+                        var modifiedSeconds = Marshal.ReadInt64(buffer, StatxMtimeSecondsOffset);
+                        var modifiedNanoseconds = unchecked((uint)Marshal.ReadInt32(buffer, StatxMtimeNanosecondsOffset));
                         token = string.Format(
                             CultureInfo.InvariantCulture,
-                            "linux:{0:x16}:{1}:{2}",
+                            "linux:{0:x16}:{1}:{2}:{3}:{4}",
                             inode,
                             changeSeconds,
-                            changeNanoseconds);
+                            changeNanoseconds,
+                            modifiedSeconds,
+                            modifiedNanoseconds);
                         return true;
                     }
                     finally
@@ -612,9 +616,12 @@ namespace Unity.FoxgloveSDK.IO
         private const int AtEmptyPath = 0x1000;
         private const uint StatxIno = 0x0100;
         private const uint StatxCtime = 0x0800;
+        private const uint StatxMtime = 0x0040;
         private const int StatxInodeOffset = 32;
         private const int StatxCtimeSecondsOffset = 96;
         private const int StatxCtimeNanosecondsOffset = 104;
+        private const int StatxMtimeSecondsOffset = 112;
+        private const int StatxMtimeNanosecondsOffset = 120;
 
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeFileTime
