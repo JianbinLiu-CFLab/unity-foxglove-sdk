@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
-        public void ResizeResetsDroppedCountForNewSessionCapacity()
+        public void ResizePreservesLifetimeDroppedCount()
         {
             var queue = new ImuSampleQueue();
             queue.Resize(2, 2);
@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             queue.Resize(3, 2);
 
-            Assert.Equal(0, queue.DroppedCount);
+            Assert.Equal(1, queue.DroppedCount);
         }
 
         [Fact]

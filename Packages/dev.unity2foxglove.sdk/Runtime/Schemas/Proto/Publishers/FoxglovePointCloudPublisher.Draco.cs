@@ -176,13 +176,13 @@ namespace Unity.FoxgloveSDK.Components
 
             if (result.Request.PublishWebSocket)
             {
-                if (result.Request.WebSocketEncoding == PublisherEffectiveEncoding.MsgPack
-                    && TryPublishComponentMessagePackDraco(
-                        result.ProtobufMessage,
-                        result.Request.UnixNs))
+                if (result.Request.WebSocketEncoding == PublisherEffectiveEncoding.MsgPack)
                 {
-                    // MessagePack was serialized from the worker's neutral
-                    // compressed-point-cloud value with the requested encoding.
+                    // A requested MsgPack channel must never receive a protobuf
+                    // payload when its generated codec is unavailable.
+                    TryPublishComponentMessagePackDraco(
+                        result.ProtobufMessage,
+                        result.Request.UnixNs);
                 }
                 else
                 {
