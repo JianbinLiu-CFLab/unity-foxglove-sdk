@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -225,6 +226,33 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 Assert.Equal(stamp, File.GetLastWriteTimeUtc(path));
                 Assert.NotEqual(first, second);
                 Assert.NotEqual(firstManifest.Sources[0].DataUrl, secondManifest.Sources[0].DataUrl);
+            }
+            finally
+            {
+                DeleteTempFileWithRetry(path);
+            }
+        }
+
+        [Fact]
+        public void SourceIdentityReusesFullHashWhenFileChangeIdentityIsStable()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "remote-generation-cache-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                File.WriteAllBytes(path, BuildRemoteMcap(1, 0, 64 * 1024));
+                var source = new RemoteMcapDataSourcePrototype(path, "cached", "Cached", string.Empty);
+
+                var counter = typeof(RemoteMcapDataSourcePrototype).GetField(
+                    "_fullContentHashComputations",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.NotNull(counter);
+                var first = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+                var firstHashCount = (int)counter.GetValue(source);
+                var second = source.GetManifest(new RemoteMcapRequest()).Manifest.Sources[0].Id;
+
+                Assert.Equal(first, second);
+                Assert.Equal(1, firstHashCount);
+                Assert.Equal(firstHashCount, (int)counter.GetValue(source));
             }
             finally
             {

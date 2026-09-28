@@ -540,7 +540,7 @@ namespace Unity.FoxgloveSDK.Transport
                 }
                 catch (ObjectDisposedException) when (ct.IsCancellationRequested) { break; }
                 catch (NullReferenceException) when (ct.IsCancellationRequested || IsStopping) { break; }
-                catch (Exception) when (ct.IsCancellationRequested) { break; }
+                catch (Exception) when (ct.IsCancellationRequested || IsStopping) { break; }
                 catch (Exception ex)
                 {
                     _logger.LogError($"Accept error: {ex.Message}");
@@ -955,6 +955,7 @@ namespace Unity.FoxgloveSDK.Transport
             // that case no connect callback is emitted after cancellation.
             lock (publication.CallbackGate)
             {
+                var stopOwnsConnection = false;
                 lock (_clientAdmissionLock)
                 {
                     if (IsStopping
@@ -968,8 +969,13 @@ namespace Unity.FoxgloveSDK.Transport
                             acceptedCounted = false;
                         }
                         publication.Cancelled = true;
-                        _clients.TryRemove(clientId, out _);
-                        _clientPublications.Remove(clientId);
+                        if (!(IsStopping
+                            && _clients.TryGetValue(clientId, out var stoppingConnection)
+                            && ReferenceEquals(stoppingConnection, expectedConnection)))
+                        {
+                            _clients.TryRemove(clientId, out _);
+                            _clientPublications.Remove(clientId);
+                        }
                         publication.Completion.TrySetResult(true);
                         return false;
                     }
@@ -1002,7 +1008,11 @@ namespace Unity.FoxgloveSDK.Transport
                             // through the normal disconnect path after
                             // releasing the lock, so the disconnect event
                             // cannot overtake OnClientConnected.
-                            disconnectAfterCallback = publication.Announced
+                            stopOwnsConnection = IsStopping
+                                && _clients.TryGetValue(clientId, out current)
+                                && ReferenceEquals(current, expectedConnection);
+                            disconnectAfterCallback = !stopOwnsConnection
+                                && publication.Announced
                                 && _clients.TryGetValue(clientId, out current)
                                 && ReferenceEquals(current, expectedConnection);
                         }
@@ -1010,6 +1020,12 @@ namespace Unity.FoxgloveSDK.Transport
                         {
                             return true;
                         }
+                    }
+
+                    if (stopOwnsConnection)
+                    {
+                        CompleteClientPublication(clientId);
+                        return false;
                     }
 
                     if (disconnectAfterCallback)
@@ -1531,6 +1547,27 @@ namespace Unity.FoxgloveSDK.Transport
 
         private void RemoveUnannouncedClient(uint clientId, WsConnection conn)
         {
+            if (IsStopping)
+            {
+                lock (_clientAdmissionLock)
+                {
+                    if (_clients.TryGetValue(clientId, out var current)
+                        && ReferenceEquals(current, conn))
+                    {
+                        // Stop owns the registered connection snapshot and
+                        // must send its graceful close before disposal. Mark
+                        // the publication complete without closing the socket;
+                        // Stop will remove and dispose it after the close drain.
+                        if (_clientPublications.TryGetValue(clientId, out var publication))
+                        {
+                            publication.Cancelled = true;
+                            publication.Completion.TrySetResult(true);
+                        }
+                        return;
+                    }
+                }
+            }
+
             if (!TryRemoveClient(clientId, conn, out _))
             {
                 CloseUnannouncedClient(conn);

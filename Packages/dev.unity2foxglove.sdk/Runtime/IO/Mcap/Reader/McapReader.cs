@@ -605,6 +605,23 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         /// <summary>
+        /// Reads one Message Index record at the supplied summary offset.
+        /// </summary>
+        internal McapMessageIndex ReadMessageIndex(ulong recordOffset, ulong sectionLength = 0)
+        {
+            _stream.Seek(ToSeekOffset(recordOffset, "message index"), SeekOrigin.Begin);
+            var recordStart = (ulong)_stream.Position;
+            var (opcode, content, contentLength) = ReadOneRecordSegment();
+            var recordEnd = (ulong)_stream.Position;
+            if (opcode != McapWriter.OpcodeMessageIndex)
+                throw new InvalidDataException(
+                    $"Expected Message Index (0x07) at offset {recordOffset}, got 0x{opcode:X2}");
+            if (sectionLength != 0 && recordEnd - recordStart > sectionLength)
+                throw new InvalidDataException("Message Index record extends past its indexed section.");
+            return McapRecordDecoder.DecodeMessageIndex(content, 0, contentLength);
+        }
+
+        /// <summary>
         /// Reads one payload from an uncompressed chunk without allocating a full decoded chunk buffer.
         /// </summary>
         internal bool TryReadUncompressedChunkPayload(
