@@ -53,6 +53,7 @@ namespace
         int bitrateKbps = 4000;
         int keyint = 30;
         std::string openh264Dll;
+        int protocolVersion = 1;
     };
 
     using WelsCreateSVCEncoderFn = int (*)(ISVCEncoder**);
@@ -98,6 +99,10 @@ namespace
 
     bool ParseArgs(int argc, char** argv, Options& options)
     {
+        const char* requestedProtocol = std::getenv("OPENH264_PROBE_PROTOCOL");
+        if (requestedProtocol != nullptr && std::strcmp(requestedProtocol, "2") == 0)
+            options.protocolVersion = 2;
+
         for (int i = 1; i < argc; i += 2)
         {
             if (i + 1 >= argc)
@@ -124,6 +129,8 @@ namespace
                 options.bitrateKbps = value;
             else if (key == "--keyint")
                 options.keyint = value;
+            else if (key == "--protocol")
+                options.protocolVersion = value;
             else
                 return false;
         }
@@ -138,6 +145,7 @@ namespace
             && options.bitrateKbps <= MaxBitrateKbps
             && options.keyint > 0
             && options.keyint <= MaxKeyframeInterval
+            && (options.protocolVersion == 1 || options.protocolVersion == 2)
 #ifdef _WIN32
             && !options.openh264Dll.empty()
 #endif
@@ -151,7 +159,7 @@ namespace
             << "Usage: openh264_probe_encoder "
             << "--openh264-dll <path> "
             << "--width <even_pixels> --height <even_pixels> "
-            << "--fps <frames_per_second> --bitrate-kbps <kbps> --keyint <frames>"
+            << "--fps <frames_per_second> --bitrate-kbps <kbps> --keyint <frames> --protocol <1|2>"
             << std::endl;
     }
 
@@ -257,16 +265,56 @@ namespace
         return OutputIsHealthy();
     }
 
-    bool WriteSkippedFrameSentinel()
+    bool WriteProtocolHeader(uint64_t timestampNs, uint32_t length)
     {
-        if (!WriteLittleEndianLength(0))
+        uint8_t header[12];
+        for (int i = 0; i < 8; ++i)
+            header[i] = static_cast<uint8_t>((timestampNs >> (8 * i)) & 0xFF);
+        header[8] = static_cast<uint8_t>(length & 0xFF);
+        header[9] = static_cast<uint8_t>((length >> 8) & 0xFF);
+        header[10] = static_cast<uint8_t>((length >> 16) & 0xFF);
+        header[11] = static_cast<uint8_t>((length >> 24) & 0xFF);
+        std::cout.write(reinterpret_cast<const char*>(header), sizeof(header));
+        return OutputIsHealthy();
+    }
+
+    bool WriteSkippedFrameSentinel(uint64_t timestampNs, bool protocolV2)
+    {
+        if (protocolV2 ? !WriteProtocolHeader(timestampNs, 0) : !WriteLittleEndianLength(0))
             return false;
         std::cout.flush();
         return OutputIsHealthy();
     }
 
-    FrameReadStatus ReadFrame(std::vector<uint8_t>& frame)
+    FrameReadStatus ReadFrame(std::vector<uint8_t>& frame, uint64_t& timestampNs, bool protocolV2)
     {
+        timestampNs = 0;
+        if (protocolV2)
+        {
+            uint8_t header[12];
+            std::cin.read(reinterpret_cast<char*>(header), sizeof(header));
+            const std::streamsize read = std::cin.gcount();
+            if (read == 0 && std::cin.eof())
+                return FrameReadStatus::EndOfStream;
+            if (read != static_cast<std::streamsize>(sizeof(header)))
+            {
+                std::cerr << "Partial OpenH264 protocol frame header at EOF. bytes=" << read << std::endl;
+                return FrameReadStatus::PartialFrame;
+            }
+
+            for (int i = 0; i < 8; ++i)
+                timestampNs |= static_cast<uint64_t>(header[i]) << (8 * i);
+            uint32_t length = static_cast<uint32_t>(header[8])
+                | (static_cast<uint32_t>(header[9]) << 8)
+                | (static_cast<uint32_t>(header[10]) << 16)
+                | (static_cast<uint32_t>(header[11]) << 24);
+            if (length != frame.size())
+            {
+                std::cerr << "OpenH264 protocol frame length does not match configured dimensions." << std::endl;
+                return FrameReadStatus::PartialFrame;
+            }
+        }
+
         std::cin.read(reinterpret_cast<char*>(frame.data()), static_cast<std::streamsize>(frame.size()));
         const std::streamsize read = std::cin.gcount();
         if (read == 0 && std::cin.eof())
@@ -312,20 +360,20 @@ namespace
         return true;
     }
 
-    bool WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)
+    bool WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit, uint64_t timestampNs, bool protocolV2)
     {
         accessUnit.clear();
 
         if (info.eFrameType == videoFrameTypeSkip)
         {
             std::cerr << "OpenH264 skipped frame." << std::endl;
-            return WriteSkippedFrameSentinel();
+            return WriteSkippedFrameSentinel(timestampNs, protocolV2);
         }
 
         if (info.eFrameType == videoFrameTypeInvalid)
         {
             std::cerr << "OpenH264 returned an invalid frame." << std::endl;
-            return WriteSkippedFrameSentinel();
+            return WriteSkippedFrameSentinel(timestampNs, protocolV2);
         }
 
         for (int layer = 0; layer < info.iLayerNum; ++layer)
@@ -336,7 +384,7 @@ namespace
 
         if (accessUnit.empty())
         {
-            return WriteSkippedFrameSentinel();
+            return WriteSkippedFrameSentinel(timestampNs, protocolV2);
         }
 
         if (accessUnit.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
@@ -345,7 +393,12 @@ namespace
             return false;
         }
 
-        if (!WriteLittleEndianLength(static_cast<uint32_t>(accessUnit.size())))
+        if (protocolV2)
+        {
+            if (!WriteProtocolHeader(timestampNs, static_cast<uint32_t>(accessUnit.size())))
+                return false;
+        }
+        else if (!WriteLittleEndianLength(static_cast<uint32_t>(accessUnit.size())))
             return false;
         std::cout.write(reinterpret_cast<const char*>(accessUnit.data()), static_cast<std::streamsize>(accessUnit.size()));
         std::cout.flush();
@@ -426,10 +479,14 @@ int main(int argc, char** argv)
     std::vector<uint8_t> accessUnit;
     uint64_t framesEncoded = 0;
     int exitCode = 0;
+    const bool protocolV2 = options.protocolVersion >= 2;
+    if (protocolV2)
+        std::cerr << "OPENH264_PROBE_PROTOCOL 2" << std::endl;
 
     while (true)
     {
-        const FrameReadStatus readStatus = ReadFrame(frame);
+        uint64_t timestampNs = 0;
+        const FrameReadStatus readStatus = ReadFrame(frame, timestampNs, protocolV2);
         if (readStatus == FrameReadStatus::EndOfStream)
             break;
         if (readStatus == FrameReadStatus::PartialFrame)
@@ -461,7 +518,7 @@ int main(int argc, char** argv)
             return 6;
         }
 
-        if (!WriteAccessUnit(info, accessUnit))
+        if (!WriteAccessUnit(info, accessUnit, timestampNs, protocolV2))
         {
             exitCode = 7;
             break;

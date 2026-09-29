@@ -96,7 +96,7 @@ namespace Foxglove.Schemas.Video
                 "--keyint " + KeyframeInterval.ToString(CultureInfo.InvariantCulture)
             });
 
-            return new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = HelperExecutablePath,
                 Arguments = args,
@@ -106,6 +106,8 @@ namespace Foxglove.Schemas.Video
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            startInfo.Environment["OPENH264_PROBE_PROTOCOL"] = "2";
+            return startInfo;
         }
 
         private static string QuoteArgument(string value)

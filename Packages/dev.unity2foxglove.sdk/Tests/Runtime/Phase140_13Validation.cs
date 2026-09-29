@@ -15,6 +15,10 @@ namespace Unity.FoxgloveSDK.Tests
     /// Review-driven validation for protobuf builders, typed publishers, and
     /// video/point-cloud sidecar hardening found in Phase 140-13.
     /// </summary>
+    /// <remarks>
+    /// Source-text checks here are architecture guards for lifecycle and allocation boundaries;
+    /// executable video and ownership behavior is covered by the focused xUnit tests.
+    /// </remarks>
     public static class Phase140_13Validation
     {
         private static int _passed;
@@ -30,7 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             DescriptorSubsetsKeepDeterministicOrder();
             LegacyVideoRenderTextureIsDestroyed();
             MediaFoundationTimestampMapEvictsOneEntry();
-            FfmpegTimestampPairingDocumentsAccessUnitAssumption();
+            FfmpegTimestampPairingUsesPtsBearingMpegTs();
             LegacyVideoPublisherIsObsolete();
             DeadJpegQueueMethodIsRemoved();
             LaserScanWrappedAnglesAreDocumented();
@@ -82,18 +86,19 @@ namespace Unity.FoxgloveSDK.Tests
                 "140-13D-1: Media Foundation timestamp map evicts oldest samples instead of bulk clearing");
         }
 
-        private static void FfmpegTimestampPairingDocumentsAccessUnitAssumption()
+        private static void FfmpegTimestampPairingUsesPtsBearingMpegTs()
         {
-            CheckFfmpegTimestampComment("FfmpegH264EncoderSidecar.cs", "140-13E-1: FFmpeg H.264 timestamp pairing documents rawvideo PTS limitation");
-            CheckFfmpegTimestampComment("FfmpegH265EncoderSidecar.cs", "140-13E-2: FFmpeg H.265 timestamp pairing documents rawvideo PTS limitation");
+            CheckFfmpegTimestampComment("FfmpegH264EncoderSidecar.cs", "140-13E-1: FFmpeg H.264 timestamp pairing uses PTS-bearing MPEG-TS");
+            CheckFfmpegTimestampComment("FfmpegH265EncoderSidecar.cs", "140-13E-2: FFmpeg H.265 timestamp pairing uses PTS-bearing MPEG-TS");
         }
 
         private static void CheckFfmpegTimestampComment(string fileName, string description)
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/" + fileName);
 
-            Check(source.Contains("rawvideo pipe carries no per-frame PTS", StringComparison.Ordinal)
-                  && source.Contains("remains an approximation until a PTS-bearing sidecar protocol exists", StringComparison.Ordinal),
+            Check(source.Contains("MpegTsVideoDemuxer", StringComparison.Ordinal)
+                  && source.Contains("FfmpegTimestampMatcher", StringComparison.Ordinal)
+                  && source.Contains("accessUnit.Pts90k", StringComparison.Ordinal),
                 description);
         }
 

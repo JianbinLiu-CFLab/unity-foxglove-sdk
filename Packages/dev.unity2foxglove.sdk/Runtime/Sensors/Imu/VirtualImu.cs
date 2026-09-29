@@ -84,7 +84,7 @@ namespace Unity.FoxgloveSDK.Components
         private ISchemaRegistry _schemaRegisteredRegistry;
         private int _sharedClockGeneration = -1;
 
-        private bool PublishEnabled => _publishing;
+        private bool PublishEnabled => _initialized && _publishing;
 
         /// <summary>True when the component can provide IMU native frame handoffs.</summary>
         public bool IsImuNativeOutput => isActiveAndEnabled;

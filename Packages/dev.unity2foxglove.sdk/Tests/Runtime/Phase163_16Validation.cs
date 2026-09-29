@@ -68,12 +68,14 @@ namespace Unity.FoxgloveSDK.Tests
             var validator = ExtractMethod(source, "private static bool TryValidateLengthPrefixedAccessUnit");
             var compatibility = ExtractMethod(source, "private static string BuildCompatibilityError");
 
-            Check(check.Contains("TryValidateLengthPrefixedAccessUnit(stdout, out var stdoutError)", StringComparison.Ordinal)
+            Check(check.Contains("TryValidateLengthPrefixedAccessUnit(stdout, protocolV2, out var stdoutError)", StringComparison.Ordinal)
+                  && source.Contains("OPENH264_PROBE_PROTOCOL", StringComparison.Ordinal)
                   && check.Contains("process.ExitCode == 0 && hasAccessUnit", StringComparison.Ordinal),
                 "163-16B-1: OpenH264 executable check requires a validated access unit before reporting Found");
-            Check(validator.Contains("stdout.Length < 4", StringComparison.Ordinal)
+            Check(validator.Contains("var headerBytes = protocolV2 ? 12 : 4", StringComparison.Ordinal)
+                  && validator.Contains("var lengthOffset = protocolV2 ? 8 : 0", StringComparison.Ordinal)
                   && validator.Contains("length <= 0", StringComparison.Ordinal)
-                  && validator.Contains("stdout.Length < 4 + length", StringComparison.Ordinal)
+                  && validator.Contains("stdout.Length < headerBytes + length", StringComparison.Ordinal)
                   && validator.Contains("LooksLikeDecodableH264AccessUnit(payload)", StringComparison.Ordinal),
                 "163-16B-2: OpenH264 executable check rejects sentinels, truncation, and non-decodable payloads");
             Check(compatibility.Contains("stderr:", StringComparison.Ordinal)

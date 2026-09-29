@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -45,7 +46,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 82 Native Media Foundation Smoke ===");
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                Console.WriteLine("Skipped: Windows Media Foundation is only available on Windows.");
+                Console.WriteLine("NATIVE_SMOKE_SKIPPED: Windows Media Foundation is only available on Windows.");
                 return;
             }
 
@@ -62,8 +63,13 @@ namespace Unity.FoxgloveSDK.Tests
             SetField(optionsType, options, "FrameRate", 30);
             SetField(optionsType, options, "BitrateKbps", 4000);
             SetField(optionsType, options, "KeyframeInterval", 30);
-            SetField(optionsType, options, "MaxInputQueue", 1);
-            SetField(optionsType, options, "MaxOutputQueue", 8);
+            SetField(optionsType, options, "MaxOutputQueue", 64);
+
+            var retirementRegistryType = FindType("Foxglove.Schemas.Video.CameraVideoSidecarRetirementRegistry");
+            var pendingBefore = retirementRegistryType == null
+                ? 0
+                : GetStaticIntProperty(retirementRegistryType, "PendingCountForTests");
+            var nativeSmokeSkipped = false;
 
             using (var sidecar = (IDisposable)Activator.CreateInstance(sidecarType))
             {
@@ -72,62 +78,131 @@ namespace Unity.FoxgloveSDK.Tests
                     throw new InvalidOperationException("Native H.264 sidecar does not expose Start(options).");
 
                 if (!(bool)start.Invoke(sidecar, new[] { options }))
-                    throw new InvalidOperationException("Native H.264 start failed: " + GetStringProperty(sidecarType, sidecar, "LastError"));
-
-                var frame = new byte[GetIntProperty(optionsType, options, "Rgb24FrameByteCount")];
-                for (var i = 0; i < frame.Length; i += 3)
                 {
-                    frame[i] = 32;
-                    frame[i + 1] = 128;
-                    frame[i + 2] = 32;
-                }
-
-                var trySubmitFrame = sidecarType.GetMethod("TrySubmitFrame", new[] { typeof(byte[]) });
-                var tryDequeueAccessUnit = sidecarType.GetMethod("TryDequeueAccessUnit");
-                if (trySubmitFrame == null || tryDequeueAccessUnit == null)
-                    throw new InvalidOperationException("Native H.264 sidecar publish methods are not available.");
-
-                var accessUnits = 0;
-                var bytes = 0;
-                var firstOutputAfterInput = -1;
-                for (var i = 0; i < NativeSmokeSubmittedFrames; i++)
-                {
-                    if (!(bool)trySubmitFrame.Invoke(sidecar, new object[] { frame }))
-                        throw new InvalidOperationException("Native H.264 frame submit failed: " + GetStringProperty(sidecarType, sidecar, "LastError"));
-
-                    while (InvokeTryDequeueAccessUnit(tryDequeueAccessUnit, sidecar, out var accessUnit))
+                    var error = GetStringProperty(sidecarType, sidecar, "LastError");
+                    if (IsMissingH264Transform(error))
                     {
-                        if (firstOutputAfterInput < 0)
-                            firstOutputAfterInput = i + 1;
-
-                        accessUnits++;
-                        bytes += accessUnit?.Length ?? 0;
+                        Console.WriteLine("NATIVE_SMOKE_SKIPPED: " + error);
+                        nativeSmokeSkipped = true;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("Native H.264 start failed: " + error);
                     }
                 }
 
-                // Media Foundation low-latency mode is expected to emit the first access unit within
-                // two submitted frames and to drain nearly all submitted frames before Stop().
-                if (accessUnits == 0)
-                    throw new InvalidOperationException(
-                        "Native H.264 produced zero access units for "
-                        + NativeSmokeSubmittedFrames
-                        + " input frames.");
-                if (firstOutputAfterInput < 0 || firstOutputAfterInput > NativeSmokeMaxFirstOutputInput)
-                    throw new InvalidOperationException(
-                        "Native H.264 first output was delayed until input "
-                        + firstOutputAfterInput + "; low-latency mode did not engage.");
-                if (accessUnits < NativeSmokeExpectedMinimumAccessUnits)
-                    throw new InvalidOperationException(
-                        "Native H.264 produced only " + accessUnits
-                        + " access units for " + NativeSmokeSubmittedFrames
-                        + " input frames; expected at least " + NativeSmokeExpectedMinimumAccessUnits + ".");
+                if (!nativeSmokeSkipped)
+                {
+                    var frame = new byte[GetIntProperty(optionsType, options, "Rgb24FrameByteCount")];
+                    for (var i = 0; i < frame.Length; i += 3)
+                    {
+                        frame[i] = 32;
+                        frame[i + 1] = 128;
+                        frame[i + 2] = 32;
+                    }
 
-                Console.WriteLine(
-                    "Native H.264 smoke completed. AccessUnits=" + accessUnits
-                    + ", Bytes=" + bytes
-                    + ", FirstOutputAfterInput=" + firstOutputAfterInput);
-                Console.WriteLine("LastDiagnosticLine=" + GetStringProperty(sidecarType, sidecar, "LastDiagnosticLine"));
+                    var trySubmitFrame = sidecarType.GetMethod("TrySubmitFrame", new[] { typeof(byte[]), typeof(ulong) });
+                    var tryDequeueAccessUnit = sidecarType.GetMethod("TryDequeueAccessUnit");
+                    if (trySubmitFrame == null)
+                        trySubmitFrame = sidecarType.GetMethod("TrySubmitFrame", new[] { typeof(byte[]) });
+                    if (trySubmitFrame == null || tryDequeueAccessUnit == null)
+                        throw new InvalidOperationException("Native H.264 sidecar publish methods are not available.");
+
+                    var inputCapacity = Math.Max(1, GetIntProperty(sidecarType, sidecar, "MaxInputQueue"));
+                    var accessUnits = 0;
+                    var bytes = 0;
+                    var firstOutputAfterInput = -1;
+                    for (var i = 0; i < NativeSmokeSubmittedFrames; i++)
+                    {
+                        var deadline = Stopwatch.GetTimestamp() + MillisecondsToTicks(200);
+                        var submitted = false;
+                        while (!submitted && Stopwatch.GetTimestamp() < deadline)
+                        {
+                            if (GetIntProperty(sidecarType, sidecar, "InputQueueDepth") < inputCapacity)
+                            {
+                                submitted = trySubmitFrame.GetParameters().Length == 2
+                                    ? (bool)trySubmitFrame.Invoke(sidecar, new object[] { frame, (ulong)(i + 1) })
+                                    : (bool)trySubmitFrame.Invoke(sidecar, new object[] { frame });
+                            }
+
+                            if (!submitted)
+                                System.Threading.Thread.Sleep(1);
+                        }
+
+                        if (!submitted)
+                            throw new InvalidOperationException("Native H.264 frame submit failed: " + GetStringProperty(sidecarType, sidecar, "LastError"));
+
+                        deadline = Stopwatch.GetTimestamp() + MillisecondsToTicks(200);
+                        while (Stopwatch.GetTimestamp() < deadline)
+                        {
+                            var drained = false;
+                            while (InvokeTryDequeueAccessUnit(tryDequeueAccessUnit, sidecar, out var accessUnit))
+                            {
+                                drained = true;
+                                if (firstOutputAfterInput < 0)
+                                    firstOutputAfterInput = i + 1;
+                                accessUnits++;
+                                bytes += accessUnit?.Length ?? 0;
+                            }
+
+                            if (drained || firstOutputAfterInput >= 0)
+                                break;
+                            System.Threading.Thread.Sleep(1);
+                        }
+                    }
+
+                    var finalDeadline = Stopwatch.GetTimestamp() + MillisecondsToTicks(2000);
+                    while (Stopwatch.GetTimestamp() < finalDeadline)
+                    {
+                        while (InvokeTryDequeueAccessUnit(tryDequeueAccessUnit, sidecar, out var accessUnit))
+                        {
+                            if (firstOutputAfterInput < 0)
+                                firstOutputAfterInput = NativeSmokeSubmittedFrames;
+                            accessUnits++;
+                            bytes += accessUnit?.Length ?? 0;
+                        }
+
+                        if (accessUnits >= NativeSmokeSubmittedFrames)
+                            break;
+                        System.Threading.Thread.Sleep(1);
+                    }
+
+                    if (accessUnits < NativeSmokeExpectedMinimumAccessUnits)
+                        throw new InvalidOperationException(
+                            "Native H.264 produced only " + accessUnits
+                            + " access units for " + NativeSmokeSubmittedFrames + " input frames; expected at least " + NativeSmokeExpectedMinimumAccessUnits + ".");
+                    if (firstOutputAfterInput < 0 || firstOutputAfterInput > NativeSmokeMaxFirstOutputInput)
+                        throw new InvalidOperationException(
+                            "Native H.264 first output was delayed until input "
+                            + firstOutputAfterInput + "; low-latency mode did not engage.");
+                    var droppedInputFrames = GetLongProperty(sidecarType, sidecar, "DroppedInputFrames");
+                    if (droppedInputFrames != 0)
+                        throw new InvalidOperationException("Native H.264 dropped " + droppedInputFrames + " input frames during smoke.");
+
+                    Console.WriteLine(
+                        "Native H.264 smoke completed. AccessUnits=" + accessUnits
+                        + ", Bytes=" + bytes
+                        + ", FirstOutputAfterInput=" + firstOutputAfterInput);
+                    Console.WriteLine("LastDiagnosticLine=" + GetStringProperty(sidecarType, sidecar, "LastDiagnosticLine"));
+                }
             }
+
+            if (retirementRegistryType != null)
+            {
+                var pendingAfter = GetStaticIntProperty(retirementRegistryType, "PendingCountForTests");
+                if (pendingAfter != pendingBefore)
+                    throw new InvalidOperationException("Native H.264 retirement registry retained " + pendingAfter + " sidecars.");
+            }
+        }
+
+        private static long MillisecondsToTicks(int milliseconds)
+            => (long)(milliseconds * (double)Stopwatch.Frequency / 1000.0);
+
+        private static bool IsMissingH264Transform(string error)
+        {
+            return error != null
+                && error.IndexOf("Could not create the Windows Media Foundation H.264 encoder MFT.", StringComparison.OrdinalIgnoreCase) >= 0
+                && error.IndexOf("HRESULT=0x80040154", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static void VerifyModeProfile()
@@ -411,6 +486,18 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var value = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance)?.GetValue(target);
             return value is bool b && b;
+        }
+
+        private static long GetLongProperty(Type type, object target, string name)
+        {
+            var value = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance)?.GetValue(target);
+            return value is long l ? l : value is int i ? i : 0;
+        }
+
+        private static int GetStaticIntProperty(Type type, string name)
+        {
+            var value = type.GetProperty(name, BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public)?.GetValue(null);
+            return value is int i ? i : 0;
         }
 
         private static int GetIntProperty(Type type, object target, string name)

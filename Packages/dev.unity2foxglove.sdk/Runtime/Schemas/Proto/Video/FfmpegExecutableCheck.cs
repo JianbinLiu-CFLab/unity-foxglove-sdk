@@ -10,6 +10,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 
 namespace Foxglove.Schemas.Video
 {
@@ -44,6 +45,23 @@ namespace Foxglove.Schemas.Video
     public static class FfmpegExecutableCheck
     {
         private const int MinimumProcessTimeoutMs = 100;
+        private static readonly Regex VersionPattern = new Regex(
+            @"ffmpeg\s+version\s+n?(?<major>\d+)\.(?<minor>\d+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        internal static bool SupportsFpsModePassthrough(string versionLine)
+        {
+            if (string.IsNullOrWhiteSpace(versionLine))
+                return false;
+
+            var match = VersionPattern.Match(versionLine);
+            if (!match.Success
+                || !int.TryParse(match.Groups["major"].Value, out var major)
+                || !int.TryParse(match.Groups["minor"].Value, out var minor))
+                return false;
+
+            return major > 5 || (major == 5 && minor >= 1);
+        }
         private const int PostExitReaderDrainTimeoutMs = 200;
 
         /// <summary>

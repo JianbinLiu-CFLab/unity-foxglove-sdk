@@ -69,6 +69,7 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        // Raw subscribers receive the callback-owned snapshot, never the asynchronous encoder's buffer.
         private void InvokeRawSubscribers(SensorRawImageFrame frame)
         {
             if (IsReplaySuppressed)

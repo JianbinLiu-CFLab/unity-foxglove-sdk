@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Collections.Generic;
 using Foxglove.Schemas.Video;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -13,6 +14,11 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validation type for Phase140_15Validation.
     /// </summary>
+    /// <remarks>
+    /// Source-text checks in this validator are explicit architecture guards for boundaries
+    /// that cannot be observed reliably from the standalone runtime harness; behavior checks
+    /// for encoder queues, ownership, timestamps, and cleanup live in the xUnit suite.
+    /// </remarks>
     public static class Phase140_15Validation
     {
         private static int _passed;
@@ -32,7 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
             MediaFoundationStreamChangeIsBoundedAndRenegotiated();
             FfmpegPresetValidationRejectsUnexpectedPresetValues();
             FfmpegOutputCountersUseLockOnlyArithmetic();
-            VideoTimestampPairingRiskIsDocumentedAtTheFfmpegBoundary();
+            VideoTimestampPairingUsesPtsBearingMpegTs();
             CameraVideoSubmitUsesFrameByteSourceContract();
             OpenH264I420ScratchIsReusedBeforeSidecarCopy();
             FfmpegStdoutReadersAppendReadBufferRanges();
@@ -42,8 +48,64 @@ namespace Unity.FoxgloveSDK.Tests
             SidecarsCacheQueueCapacitiesOnStart();
             FrameSourceSubmissionUsesGenericStructPath();
             MediaFoundationWorkerOwnsNativeCleanup();
+            CameraFrameSourceCopyCountIsBounded();
+            Module7CoverageIsClassified();
 
             Console.WriteLine($"Phase 140-15: {_passed} checks passed.");
+        }
+
+        private static readonly string[] Module7Coverage =
+        {
+            "M7-01|behavior|RawSnapshotOwnsPixelsBeforeSubscriberMutation",
+            "M7-02|behavior|FrameSourceCopiesOnlyLogicalBytesIntoOversizedPoolBuffer and CopyCount == 1",
+            "M7-03|runtime-smoke|Phase82 native Media Foundation smoke",
+            "M7-04|behavior|OpenH264EncoderSidecarTests output/input queue ownership",
+            "M7-05|behavior|MediaFoundationWorkerReleaseClearsManagedStateOnWorkerThread",
+            "M7-06|behavior|FfmpegTimestampMatcherTests and VideoTimestampIntegrityTests",
+            "M7-07|behavior|LegacyHelperFallbackCompletesWithoutProtocolMarker",
+            "M7-08|behavior|VirtualLidarScanScheduler asynchronous job completion",
+            "M7-09|behavior|IMU cumulative dropped-frame accounting",
+            "M7-10|architecture-guard|Phase140-15Validation source guards",
+            "M7-11|behavior|FrameSourceSubmissionUsesGenericStructPath",
+            "M7-12|behavior-and-runtime-smoke|MpegTsVideoDemuxerTests and Phase82 smoke"
+        };
+
+        private static void CameraFrameSourceCopyCountIsBounded()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
+            var method = Slice(source, "public CameraVideoSubmitResult SubmitVideoFrame", "private static double ElapsedMs");
+            var copyCount = CountOccurrences(method, "frameBytes.CopyTo(_rgbScratch)");
+            Check(copyCount == 1 && !method.Contains("new byte[captureWidth * captureHeight * 3 / 2]", StringComparison.Ordinal),
+                "140-15O-1: camera fallback performs one source handoff copy before bounded conversion");
+        }
+
+        private static void Module7CoverageIsClassified()
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var valid = Module7Coverage.Length == 12;
+            foreach (var entry in Module7Coverage)
+            {
+                var parts = entry.Split('|');
+                valid &= parts.Length == 3 && !string.IsNullOrWhiteSpace(parts[0])
+                    && !string.IsNullOrWhiteSpace(parts[1]) && !string.IsNullOrWhiteSpace(parts[2])
+                    && seen.Add(parts[0]);
+            }
+
+            Check(valid && seen.Count == 12,
+                "140-15P-1: Module 7 findings have one explicit behavior, smoke, or architecture classification");
+        }
+
+        private static int CountOccurrences(string text, string value)
+        {
+            var count = 0;
+            var offset = 0;
+            while ((offset = text.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                offset += value.Length;
+            }
+
+            return count;
         }
 
         private static void MediaFoundationCreateSampleReleasesPartialSamples()
@@ -138,18 +200,26 @@ namespace Unity.FoxgloveSDK.Tests
                    && !method.Contains("Volatile.Write(ref _outputCount", StringComparison.Ordinal);
         }
 
-        private static void VideoTimestampPairingRiskIsDocumentedAtTheFfmpegBoundary()
+        private static void VideoTimestampPairingUsesPtsBearingMpegTs()
         {
             var h264 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs");
             var h265 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs");
             var h264Options = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderOptions.cs");
             var h265Options = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderOptions.cs");
-            Check(h264.Contains("rawvideo pipe carries no per-frame PTS", StringComparison.Ordinal)
-                  && h264Options.Contains("-vsync 0", StringComparison.Ordinal),
-                "140-15G-1: FFmpeg H.264 timestamp pairing documents the rawvideo PTS limitation and disables frame duplication");
-            Check(h265.Contains("rawvideo pipe carries no per-frame PTS", StringComparison.Ordinal)
-                  && h265Options.Contains("-vsync 0", StringComparison.Ordinal),
-                "140-15G-2: FFmpeg H.265 timestamp pairing documents the rawvideo PTS limitation and disables frame duplication");
+            Check(PtsBearingMpegTsPath(h264, h264Options),
+                "140-15G-1: FFmpeg H.264 uses PTS-bearing MPEG-TS and capture timestamp matching");
+            Check(PtsBearingMpegTsPath(h265, h265Options),
+                "140-15G-2: FFmpeg H.265 uses PTS-bearing MPEG-TS and capture timestamp matching");
+        }
+
+        private static bool PtsBearingMpegTsPath(string sidecar, string options)
+        {
+            return sidecar.Contains("MpegTsVideoDemuxer", StringComparison.Ordinal)
+                   && sidecar.Contains("FfmpegTimestampMatcher", StringComparison.Ordinal)
+                   && sidecar.Contains("accessUnit.Pts90k", StringComparison.Ordinal)
+                   && options.Contains("-fps_mode passthrough", StringComparison.Ordinal)
+                   && options.Contains("-f mpegts", StringComparison.Ordinal)
+                   && options.Contains("-mpegts_copyts 1", StringComparison.Ordinal);
         }
 
         private static void CameraVideoSubmitUsesFrameByteSourceContract()
