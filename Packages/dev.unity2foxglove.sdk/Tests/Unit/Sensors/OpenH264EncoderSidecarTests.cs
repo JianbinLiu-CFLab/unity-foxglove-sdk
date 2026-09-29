@@ -256,6 +256,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         public async Task LegacyHelperFallbackCompletesWithoutProtocolMarker()
         {
             var sidecar = new OpenH264EncoderSidecar();
+            SetField(sidecar, "_protocolNegotiationTimeoutMs", 50);
             var wait = typeof(OpenH264EncoderSidecar).GetMethod(
                 "WaitForProtocolNegotiation",
                 BindingFlags.Instance | BindingFlags.NonPublic);
@@ -266,6 +267,46 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(1, (int)GetField(sidecar, "_helperProtocolVersion"));
             Assert.Equal(1, (int)GetField(sidecar, "_protocolNegotiationState"));
             Assert.Contains("legacy framing", sidecar.LastDiagnosticLine, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task SlowHelperMarkerWithinNegotiationWindowSelectsTimestampProtocol()
+        {
+            var sidecar = new OpenH264EncoderSidecar();
+            var wait = typeof(OpenH264EncoderSidecar).GetMethod(
+                "WaitForProtocolNegotiation",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var accept = typeof(OpenH264EncoderSidecar).GetMethod(
+                "TryAcceptProtocolMarker",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(wait);
+            Assert.NotNull(accept);
+
+            // A cold helper can take longer than the previous 250 ms window to
+            // advertise; the marker must still win over the legacy fallback.
+            var task = (Task)wait.Invoke(sidecar, new object[] { CancellationToken.None });
+            await Task.Delay(300);
+            Assert.False(task.IsCompleted);
+            Assert.True((bool)accept.Invoke(sidecar, null));
+            await task.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(2, (int)GetField(sidecar, "_helperProtocolVersion"));
+            Assert.Equal(2, (int)GetField(sidecar, "_protocolNegotiationState"));
+        }
+
+        [Fact]
+        public void ProtocolMarkerAfterLegacyFallbackIsReportedAsMismatch()
+        {
+            var sidecar = new OpenH264EncoderSidecar();
+            SetField(sidecar, "_protocolNegotiationState", 1);
+            var accept = typeof(OpenH264EncoderSidecar).GetMethod(
+                "TryAcceptProtocolMarker",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(accept);
+
+            Assert.False((bool)accept.Invoke(sidecar, null));
+            Assert.Equal(1, (int)GetField(sidecar, "_helperProtocolVersion"));
+            Assert.Equal(1, (int)GetField(sidecar, "_protocolNegotiationState"));
         }
 
         [Fact]

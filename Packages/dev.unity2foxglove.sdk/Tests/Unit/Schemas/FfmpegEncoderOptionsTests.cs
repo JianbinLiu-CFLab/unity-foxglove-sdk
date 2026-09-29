@@ -70,6 +70,10 @@ namespace Unity.FoxgloveSDK.UnitTests
         [InlineData("ffmpeg version 6.1.2", true)]
         [InlineData("ffmpeg version 4.4.2", false)]
         [InlineData("ffmpeg version 5.0.3", false)]
+        [InlineData("ffmpeg version n7.1", true)]
+        [InlineData("ffmpeg version 2025-06-02-git-688f3944ce-full_build-www.gyan.dev", true)]
+        [InlineData("ffmpeg version N-117000-g1234567890", true)]
+        [InlineData("", true)]
         public void FfmpegVersionSelectsCompatiblePassthroughOption(string versionLine, bool modern)
         {
             var h264 = new FfmpegH264EncoderOptions { Width = 2, Height = 2 }

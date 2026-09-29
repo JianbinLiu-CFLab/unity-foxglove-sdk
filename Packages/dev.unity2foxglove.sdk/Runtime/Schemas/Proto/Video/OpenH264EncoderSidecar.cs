@@ -26,6 +26,11 @@ namespace Foxglove.Schemas.Video
         private const int MaxAccessUnitBytes = 16 * 1024 * 1024;
         private const int ShutdownTimeoutMs = 500;
         private const string ProtocolMarker = "OPENH264_PROBE_PROTOCOL 2";
+        // Only a legacy helper waits the full window; v2 helpers advertise before loading OpenH264.
+        private const int DefaultProtocolNegotiationTimeoutMs = 2000;
+        private const string ProtocolMismatchError =
+            "OpenH264 helper advertised protocol 2 after legacy framing was selected; stopping the encoder session.";
+        private int _protocolNegotiationTimeoutMs = DefaultProtocolNegotiationTimeoutMs;
         private int _helperProtocolVersion = 1;
         private int _protocolNegotiationState;
         private readonly object _protocolNegotiationLock = new object();
@@ -591,7 +596,7 @@ namespace Foxglove.Schemas.Video
             {
                 await ReadBoundedDiagnosticStream(
                     process.StandardError.BaseStream,
-                    line => HandleDiagnosticLine(process, sessionId, line),
+                    line => HandleDiagnosticLine(process, sessionId, line, token),
                     token,
                     Math.Max(1, _options?.MaxStderrLineBytes ?? 8192),
                     Math.Max(1, _options?.MaxStderrRetainedBytes ?? 8192)).ConfigureAwait(false);
@@ -603,24 +608,41 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private void HandleDiagnosticLine(Process process, long sessionId, string line)
+        private void HandleDiagnosticLine(Process process, long sessionId, string line, CancellationToken token)
         {
             if (!IsCurrentSessionForTests(process, sessionId))
                 return;
 
-            if (string.Equals(line, ProtocolMarker, StringComparison.Ordinal))
-            {
-                lock (_protocolNegotiationLock)
-                {
-                    if (_protocolNegotiationState == 0)
-                    {
-                        Volatile.Write(ref _helperProtocolVersion, 2);
-                        _protocolNegotiationState = 2;
-                        _helperProtocolReady.TrySetResult(true);
-                    }
-                }
-            }
             LastDiagnosticLine = line;
+            if (string.Equals(line, ProtocolMarker, StringComparison.Ordinal)
+                && !TryAcceptProtocolMarker())
+            {
+                // Legacy framing was already chosen, but the helper is framing v2.
+                // Continuing would desynchronize both pipes, so fail the session.
+                RetireFailedProcess(process, token, ProtocolMismatchError);
+            }
+        }
+
+        /// <summary>
+        /// Records the helper's v2 advertisement. Returns false when the negotiation
+        /// already fell back to legacy framing, which is a protocol mismatch.
+        /// </summary>
+        private bool TryAcceptProtocolMarker()
+        {
+            lock (_protocolNegotiationLock)
+            {
+                if (_protocolNegotiationState == 1)
+                    return false;
+
+                if (_protocolNegotiationState == 0)
+                {
+                    Volatile.Write(ref _helperProtocolVersion, 2);
+                    _protocolNegotiationState = 2;
+                    _helperProtocolReady.TrySetResult(true);
+                }
+
+                return true;
+            }
         }
 
         private async Task WaitForProtocolNegotiation(CancellationToken token)
@@ -633,7 +655,9 @@ namespace Foxglove.Schemas.Video
 
             try
             {
-                var completed = await Task.WhenAny(_helperProtocolReady.Task, Task.Delay(250, token)).ConfigureAwait(false);
+                var completed = await Task.WhenAny(
+                    _helperProtocolReady.Task,
+                    Task.Delay(Volatile.Read(ref _protocolNegotiationTimeoutMs), token)).ConfigureAwait(false);
                 if (completed != _helperProtocolReady.Task
                     && !token.IsCancellationRequested
                     && TrySelectLegacyProtocol())

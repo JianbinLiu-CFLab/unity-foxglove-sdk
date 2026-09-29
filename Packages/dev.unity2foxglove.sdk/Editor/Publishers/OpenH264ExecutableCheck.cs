@@ -101,7 +101,9 @@ namespace Unity.FoxgloveSDK.Editor
                     var protocolV2 = false;
                     try
                     {
-                        protocolV2 = protocolMarker.Task.Wait(250) && protocolMarker.Task.Result;
+                        // Same window as the runtime sidecar: v2 helpers advertise before
+                        // loading OpenH264, so only a legacy helper waits the full time.
+                        protocolV2 = protocolMarker.Task.Wait(2000) && protocolMarker.Task.Result;
                     }
                     catch
                     {

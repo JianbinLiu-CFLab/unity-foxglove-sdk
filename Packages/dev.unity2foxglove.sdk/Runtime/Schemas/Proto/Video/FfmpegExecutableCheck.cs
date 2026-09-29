@@ -49,16 +49,21 @@ namespace Foxglove.Schemas.Video
             @"ffmpeg\s+version\s+n?(?<major>\d+)\.(?<minor>\d+)",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+        /// <summary>
+        /// Returns false only for a release version known to predate -fps_mode (5.1).
+        /// Git, nightly, and dated builds carry no release number and track current
+        /// FFmpeg, where -vsync is deprecated, so they use -fps_mode.
+        /// </summary>
         internal static bool SupportsFpsModePassthrough(string versionLine)
         {
             if (string.IsNullOrWhiteSpace(versionLine))
-                return false;
+                return true;
 
             var match = VersionPattern.Match(versionLine);
             if (!match.Success
                 || !int.TryParse(match.Groups["major"].Value, out var major)
                 || !int.TryParse(match.Groups["minor"].Value, out var minor))
-                return false;
+                return true;
 
             return major > 5 || (major == 5 && minor >= 1);
         }

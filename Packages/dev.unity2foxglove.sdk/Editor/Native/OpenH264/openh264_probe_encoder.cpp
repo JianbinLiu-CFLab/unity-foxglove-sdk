@@ -427,6 +427,13 @@ int main(int argc, char** argv)
         return 2;
     }
 
+    // Advertise the framing before loading OpenH264: the host waits for this line to
+    // choose between timestamped (v2) and legacy framing, and DLL load plus encoder
+    // initialization can take longer than the host's negotiation window.
+    const bool protocolV2 = options.protocolVersion >= 2;
+    if (protocolV2)
+        std::cerr << "OPENH264_PROBE_PROTOCOL 2" << std::endl;
+
     OpenH264Api api;
     if (!LoadOpenH264(options, api))
         return 4;
@@ -479,9 +486,6 @@ int main(int argc, char** argv)
     std::vector<uint8_t> accessUnit;
     uint64_t framesEncoded = 0;
     int exitCode = 0;
-    const bool protocolV2 = options.protocolVersion >= 2;
-    if (protocolV2)
-        std::cerr << "OPENH264_PROBE_PROTOCOL 2" << std::endl;
 
     while (true)
     {
