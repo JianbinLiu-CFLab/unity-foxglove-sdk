@@ -56,6 +56,10 @@ namespace Unity.FoxgloveSDK.Components
 
     internal interface ICameraVideoFrameSourceSidecar
     {
+        /// <summary>
+        /// Accepts a struct frame source and performs the single required handoff copy
+        /// on the encoder side, so the caller remains independent of the asynchronous worker.
+        /// </summary>
         bool TrySubmitFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
             where TFrameBytes : struct, ICameraVideoFrameBytesSource;
     }
@@ -125,6 +129,10 @@ namespace Unity.FoxgloveSDK.Components
             return false;
         }
 
+        /// <summary>
+        /// Makes one durable ArrayPool-backed handoff copy for asynchronous encoders; format
+        /// conversion remains on the worker side whenever the sidecar supports frame sources.
+        /// </summary>
         public CameraVideoSubmitResult SubmitVideoFrame<TFrameBytes>(
             TFrameBytes frameBytes,
             ulong renderUnixNs,
@@ -216,6 +224,8 @@ namespace Unity.FoxgloveSDK.Components
                 return sourceSubmitted;
             }
 
+            // The readback source is only valid for this callback. Keep one owned handoff
+            // buffer for the asynchronous encoder and never expose the caller's storage.
             if (_rgbScratch == null || _rgbScratch.Length != frameBytes.Length)
                 _rgbScratch = new byte[frameBytes.Length];
             frameBytes.CopyTo(_rgbScratch);

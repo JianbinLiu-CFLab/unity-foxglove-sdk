@@ -211,6 +211,38 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void OpenH264StartInfoUsesTimestampProtocolV2()
+        {
+            var options = new OpenH264EncoderOptions
+            {
+                HelperExecutablePath = "openh264_probe_encoder",
+                OpenH264DllPath = "openh264.dll"
+            };
+
+            var startInfo = options.CreateStartInfo();
+            Assert.DoesNotContain("--protocol", startInfo.Arguments, StringComparison.Ordinal);
+            Assert.Equal("2", startInfo.Environment["OPENH264_PROBE_PROTOCOL"]);
+        }
+
+        [Fact]
+        public void RawSnapshotOwnsPixelsBeforeSubscriberMutation()
+        {
+            var source = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+            var frame = CameraRawImageFrameBuilder.BuildRgb8(
+                1UL,
+                "frame",
+                2,
+                2,
+                source,
+                flipVertical: false);
+
+            source[0] = 99;
+            var data = (byte[])frame.GetType().GetProperty("Data").GetValue(frame);
+
+            Assert.NotSame(source, data);
+            Assert.Equal(1, data[0]);
+        }
+        [Fact]
         public void OpenH264TimestampTestSeamAvoidsPrivateFieldReflection()
         {
             var sidecar = new OpenH264EncoderSidecar();
@@ -218,6 +250,118 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             sidecar.EnqueueTimestampForTests(123UL);
 
             Assert.Equal(1, sidecar.PendingTimestampCountForTests);
+        }
+
+        [Fact]
+        public async Task LegacyHelperFallbackCompletesWithoutProtocolMarker()
+        {
+            var sidecar = new OpenH264EncoderSidecar();
+            SetField(sidecar, "_protocolNegotiationTimeoutMs", 50);
+            var wait = typeof(OpenH264EncoderSidecar).GetMethod(
+                "WaitForProtocolNegotiation",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(wait);
+
+            var task = (Task)wait.Invoke(sidecar, new object[] { CancellationToken.None });
+            await task.WaitAsync(TimeSpan.FromSeconds(1));
+            Assert.Equal(1, (int)GetField(sidecar, "_helperProtocolVersion"));
+            Assert.Equal(1, (int)GetField(sidecar, "_protocolNegotiationState"));
+            Assert.Contains("legacy framing", sidecar.LastDiagnosticLine, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task SlowHelperMarkerWithinNegotiationWindowSelectsTimestampProtocol()
+        {
+            var sidecar = new OpenH264EncoderSidecar();
+            var wait = typeof(OpenH264EncoderSidecar).GetMethod(
+                "WaitForProtocolNegotiation",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var accept = typeof(OpenH264EncoderSidecar).GetMethod(
+                "TryAcceptProtocolMarker",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(wait);
+            Assert.NotNull(accept);
+
+            // A cold helper can take longer than the previous 250 ms window to
+            // advertise; the marker must still win over the legacy fallback.
+            var task = (Task)wait.Invoke(sidecar, new object[] { CancellationToken.None });
+            await Task.Delay(300);
+            Assert.False(task.IsCompleted);
+            Assert.True((bool)accept.Invoke(sidecar, null));
+            await task.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(2, (int)GetField(sidecar, "_helperProtocolVersion"));
+            Assert.Equal(2, (int)GetField(sidecar, "_protocolNegotiationState"));
+        }
+
+        [Fact]
+        public void ProtocolMarkerAfterLegacyFallbackIsReportedAsMismatch()
+        {
+            var sidecar = new OpenH264EncoderSidecar();
+            SetField(sidecar, "_protocolNegotiationState", 1);
+            var accept = typeof(OpenH264EncoderSidecar).GetMethod(
+                "TryAcceptProtocolMarker",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(accept);
+
+            Assert.False((bool)accept.Invoke(sidecar, null));
+            Assert.Equal(1, (int)GetField(sidecar, "_helperProtocolVersion"));
+            Assert.Equal(1, (int)GetField(sidecar, "_protocolNegotiationState"));
+        }
+
+        [Fact]
+        public void TimestampedOutputQueueDropConsumesExactlyOneWrittenFrame()
+        {
+            var sidecar = new OpenH264EncoderSidecar();
+            SetField(sidecar, "_maxOutputQueue", 1);
+            SetField(sidecar, "_outputCount", 1);
+            SetField(sidecar, "_writtenFrameCount", 2L);
+            var accept = typeof(OpenH264EncoderSidecar).GetMethod(
+                "AcceptHelperAccessUnit",
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                types: new[] { typeof(byte[]), typeof(ulong) },
+                modifiers: null);
+            Assert.NotNull(accept);
+
+            accept.Invoke(sidecar, new object[] { new byte[] { 1 }, 42UL });
+
+            Assert.Equal(1L, (long)GetField(sidecar, "_writtenFrameCount"));
+            Assert.Equal(1, sidecar.DroppedOutputFrames);
+        }
+
+        [Fact]
+        public void WrittenFrameAdmissionIncludesTheFrameBeingProcessed()
+        {
+            using var process = Process.GetCurrentProcess();
+            var sidecar = new OpenH264EncoderSidecar();
+            SetField(sidecar, "_options", new OpenH264EncoderOptions { Width = 2, Height = 2 });
+            SetField(sidecar, "_maxInputQueue", 1);
+            SetField(sidecar, "_maxOutputQueue", 0);
+            SetField(sidecar, "_process", process);
+            var dequeue = typeof(OpenH264EncoderSidecar).GetMethod(
+                "TryDequeueInputFrame",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var returnBuffer = typeof(OpenH264EncoderSidecar).GetMethod(
+                "ReturnInputFrameBuffer",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.NotNull(dequeue);
+            Assert.NotNull(returnBuffer);
+
+            try
+            {
+                Assert.True(sidecar.TrySubmitFrame(new byte[6], 1UL));
+                var args = new object[] { process, CancellationToken.None, null };
+                Assert.True((bool)dequeue.Invoke(sidecar, args));
+                Assert.Equal(1, sidecar.PendingTimestampCountForTests);
+                Assert.False(sidecar.TrySubmitFrame(new byte[6], 2UL));
+                returnBuffer.Invoke(null, new[] { args[2] });
+            }
+            finally
+            {
+                SetField(sidecar, "_process", null);
+                sidecar.Stop();
+            }
         }
 
         [Fact]
@@ -350,6 +494,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             try
             {
                 Assert.True(((ICameraVideoFrameSourceSidecar)sidecar).TrySubmitFrame(source, 123UL));
+                Assert.Equal(1, source.Observation.CopyCount);
                 Assert.True(source.Observation.DestinationLength > source.Length);
                 var frames = (IEnumerable)GetField(sidecar, "_inputFrames");
                 object queued = null;
@@ -425,6 +570,77 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             }
         }
 
+        /// Every encoder backend receives exactly one handoff copy per frame from the
+        /// publish pipeline, and no caller-side scratch copy or RGB-to-I420 conversion runs.
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(3)]
+        public void PublishPipelineHandsEachFrameToEncoderWithExactlyOneCopy(int codec)
+        {
+            using var process = Process.GetCurrentProcess();
+            object sidecar;
+            CameraOutputMode mode;
+            if (codec == 3)
+            {
+                sidecar = new OpenH264EncoderSidecar();
+                SetField(sidecar, "_options", new OpenH264EncoderOptions { Width = 2, Height = 2 });
+                SetField(sidecar, "_maxInputQueue", 2);
+                SetField(sidecar, "_maxOutputQueue", 4);
+                SetField(sidecar, "_process", process);
+                mode = CameraOutputMode.H264OpenH264;
+            }
+            else
+            {
+                sidecar = CreateFrameSourceSidecar(codec, process);
+                mode = codec == 0 ? CameraOutputMode.H264Ffmpeg
+                    : codec == 1 ? CameraOutputMode.H265Ffmpeg
+                    : CameraOutputMode.H264MediaFoundationExperimental;
+            }
+
+            var pipeline = new CameraVideoPublishPipeline(new CameraPublishDiagnostics());
+            var session = GetField(pipeline, "_videoSidecarSession");
+            SetField(session, "_sidecar", sidecar);
+            SetField(session, "_mode", mode);
+            SetField(session, "_width", 2);
+            SetField(session, "_height", 2);
+            try
+            {
+                for (var frame = 1; frame <= 2; frame++)
+                {
+                    var source = new ObservedFrameSource(12);
+                    var result = pipeline.SubmitVideoFrame(source, (ulong)frame, 2, 2);
+
+                    Assert.True(result.Submitted, result.Reason);
+                    Assert.Equal(1, source.Observation.CopyCount);
+                }
+
+                Assert.Null(GetField(pipeline, "_rgbScratch"));
+                Assert.Null(GetField(pipeline, "_i420Scratch"));
+                foreach (var entry in (IEnumerable)GetField(sidecar, "_inputFrames"))
+                {
+                    var length = (int)entry.GetType().GetProperty("Length", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(entry);
+                    Assert.Equal(12, length);
+                }
+            }
+            finally
+            {
+                SetField(session, "_sidecar", null);
+                if (codec == 3)
+                {
+                    SetField(sidecar, "_process", null);
+                    ((IDisposable)sidecar).Dispose();
+                }
+                else
+                {
+                    DisposeFrameSourceSidecar(sidecar, codec);
+                }
+
+                pipeline.Dispose();
+            }
+        }
+
         [Fact]
         public void MediaFoundationWorkerReleaseClearsManagedStateOnWorkerThread()
         {
@@ -442,6 +658,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Null(GetField(sidecar, "_nv12Scratch"));
             Assert.False(sidecar.IsRunning);
             sidecar.Dispose();
+        }
+
+        [Fact]
+        public void MediaFoundationTimestampTrackingEvictsOnlyTheOldestSample()
+        {
+            var sidecar = new MediaFoundationH264EncoderSidecar();
+            var register = typeof(MediaFoundationH264EncoderSidecar).GetMethod(
+                "RegisterSampleTimestamp",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(register);
+            const long capacity = 256;
+            try
+            {
+                for (var sampleTime = 0L; sampleTime <= capacity; sampleTime++)
+                    register.Invoke(sidecar, new object[] { sampleTime, 1_000UL + (ulong)sampleTime });
+
+                var map = (IDictionary)GetField(sidecar, "_sampleTimestampNsByTime");
+                Assert.Equal((int)capacity, map.Count);
+                Assert.False(map.Contains(0L));
+                Assert.Equal(1_001UL, map[1L]);
+                Assert.Equal(1_000UL + (ulong)capacity, map[capacity]);
+            }
+            finally
+            {
+                sidecar.Dispose();
+            }
         }
 
         private static object CreateFrameSourceSidecar(int codec, Process process)
@@ -474,6 +716,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         private sealed class CopyObservation
         {
             internal int DestinationLength;
+            internal int CopyCount;
         }
 
         private readonly struct ObservedFrameSource : ICameraVideoFrameBytesSource
@@ -495,6 +738,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             {
                 if (_fail)
                     throw new InvalidOperationException("Injected frame copy failure.");
+                Observation.CopyCount++;
                 Observation.DestinationLength = destination.Length;
                 Array.Fill(destination, (byte)0xA5);
                 for (var i = 0; i < Length; i++)

@@ -273,6 +273,11 @@ jobs:
         shell: pwsh
         run: python -B Scripts/release/run_ci.py --only dotnet-runtime
 
+      - name: Run Media Foundation native smoke
+        if: always()
+        shell: pwsh
+        run: python -B Scripts/release/run_ci.py --only mediafoundation-native-smoke
+
       - name: Run Windows core xUnit tests
         shell: pwsh
         run: python -B Scripts/release/run_ci.py --only xunit

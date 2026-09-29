@@ -57,8 +57,36 @@ namespace Unity.FoxgloveSDK.UnitTests
             var h264 = new FfmpegH264EncoderOptions { Width = 2, Height = 2 }.CreateStartInfo().Arguments;
             var h265 = new FfmpegH265EncoderOptions { Width = 2, Height = 2 }.CreateStartInfo().Arguments;
 
-            Assert.Contains("-vsync 0", h264, StringComparison.Ordinal);
-            Assert.Contains("-vsync 0", h265, StringComparison.Ordinal);
+            Assert.Contains("-fps_mode passthrough", h264, StringComparison.Ordinal);
+            Assert.Contains("-fps_mode passthrough", h265, StringComparison.Ordinal);
+            Assert.Contains("-f mpegts", h264, StringComparison.Ordinal);
+            Assert.Contains("-f mpegts", h265, StringComparison.Ordinal);
+            Assert.Contains("-mpegts_copyts 1", h264, StringComparison.Ordinal);
+            Assert.Contains("-mpegts_copyts 1", h265, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("ffmpeg version 5.1.0", true)]
+        [InlineData("ffmpeg version 6.1.2", true)]
+        [InlineData("ffmpeg version 4.4.2", false)]
+        [InlineData("ffmpeg version 5.0.3", false)]
+        [InlineData("ffmpeg version n7.1", true)]
+        [InlineData("ffmpeg version 2025-06-02-git-688f3944ce-full_build-www.gyan.dev", true)]
+        [InlineData("ffmpeg version N-117000-g1234567890", true)]
+        [InlineData("", true)]
+        public void FfmpegVersionSelectsCompatiblePassthroughOption(string versionLine, bool modern)
+        {
+            var h264 = new FfmpegH264EncoderOptions { Width = 2, Height = 2 }
+                .CreateStartInfo(versionLine).Arguments;
+            var h265 = new FfmpegH265EncoderOptions { Width = 2, Height = 2 }
+                .CreateStartInfo(versionLine).Arguments;
+            var expected = modern ? "-fps_mode passthrough" : "-vsync passthrough";
+            var rejected = modern ? "-vsync passthrough" : "-fps_mode passthrough";
+
+            Assert.Contains(expected, h264, StringComparison.Ordinal);
+            Assert.Contains(expected, h265, StringComparison.Ordinal);
+            Assert.DoesNotContain(rejected, h264, StringComparison.Ordinal);
+            Assert.DoesNotContain(rejected, h265, StringComparison.Ordinal);
         }
 
         [Fact]

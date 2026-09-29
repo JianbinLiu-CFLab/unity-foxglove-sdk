@@ -326,14 +326,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("path.read_text", generate, StringComparison.Ordinal);
             Assert.Equal(1, TestSources.Count(generate, "path.read_bytes()"));
             Assert.Equal(openh264, packageOpenh264);
-            Assert.Contains("bool WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)", openh264, StringComparison.Ordinal);
-            Assert.Contains("bool WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)", packageOpenh264, StringComparison.Ordinal);
+            Assert.Contains("bool WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit, uint64_t timestampNs, bool protocolV2)", openh264, StringComparison.Ordinal);
+            Assert.Contains("bool WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit, uint64_t timestampNs, bool protocolV2)", packageOpenh264, StringComparison.Ordinal);
             AssertWindowsMinMaxMacrosAreDisabledBeforeWindowsHeader(openh264);
             AssertWindowsMinMaxMacrosAreDisabledBeforeWindowsHeader(packageOpenh264);
             Assert.Contains("accessUnit.clear();", writeAccessUnit, StringComparison.Ordinal);
             Assert.DoesNotContain("std::vector<uint8_t> accessUnit;", writeAccessUnit, StringComparison.Ordinal);
             Assert.Contains("std::vector<uint8_t> accessUnit;", openh264Main, StringComparison.Ordinal);
-            Assert.Contains("if (!WriteAccessUnit(info, accessUnit))", openh264Main, StringComparison.Ordinal);
+            Assert.Contains("if (!WriteAccessUnit(info, accessUnit, timestampNs, protocolV2))", openh264Main, StringComparison.Ordinal);
             Assert.Contains("ReadStatus ProcessOneFrame(std::vector<float>* xyz)", draco, StringComparison.Ordinal);
             Assert.Contains("xyz->resize(float_count);", processOneFrame, StringComparison.Ordinal);
             Assert.Contains("ReadExact(reinterpret_cast<char*>(xyz->data())", processOneFrame, StringComparison.Ordinal);

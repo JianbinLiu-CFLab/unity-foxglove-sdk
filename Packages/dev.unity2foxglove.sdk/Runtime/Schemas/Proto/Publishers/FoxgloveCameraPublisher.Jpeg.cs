@@ -105,6 +105,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             EnsureJpegPublishPipeline();
             var copyStart = Stopwatch.GetTimestamp();
+            // AsyncGPUReadback memory is callback-scoped; the worker receives an independent
+            // byte[] so later subscriber or Unity mutations cannot alter queued JPEG input.
             frameBytes ??= req.GetData<byte>().ToArray();
             var copyMs = ElapsedMs(copyStart);
             _diagnostics.RecordReadbackCopy(

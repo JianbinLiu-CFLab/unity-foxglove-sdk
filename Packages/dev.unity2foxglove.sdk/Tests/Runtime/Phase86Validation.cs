@@ -100,7 +100,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("RunStdinWriter(process, token")
                   && (source.Contains("RunStdoutReader(process, token)") ||
                       source.Contains("RunStdoutReaderForSession(process, token, sessionId)"))
-                  && source.Contains("RunStderrReader(process, token)")
+                  && (source.Contains("RunStderrReader(process, token)") ||
+                      source.Contains("RunStderrReaderForSession(process, token, sessionId)"))
                   && waitsTasks,
                 checkName);
         }

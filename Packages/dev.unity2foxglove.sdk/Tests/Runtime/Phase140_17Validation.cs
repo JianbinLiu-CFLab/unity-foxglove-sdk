@@ -62,7 +62,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && resetIndex >= 0
                   && resetStateIndex >= 0
                   && resetIndex < resetStateIndex,
-                "140-17A-1: VirtualLidar resets scan clock before scan-state reset");
+                "architecture guard: 140-17A-1: VirtualLidar resets scan clock before scan-state reset");
         }
 
         private static void VirtualImuUsesLocalRateOverride()
@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("private int _globalPhysicsRateHzOverride", StringComparison.Ordinal)
                   && source.Contains("NormalizeRateHz(_globalPhysicsRateHzOverride)", StringComparison.Ordinal)
                   && !source.Contains("Time.fixedDeltaTime =", StringComparison.Ordinal),
-                "140-17B-1: VirtualImu keeps the configured sampling-rate override local and never writes global physics state");
+                "architecture guard: 140-17B-1: VirtualImu keeps the configured sampling-rate override local and never writes global physics state");
         }
 
         private static void VirtualImuLocalRateOverrideHasNoStaticState()
@@ -80,7 +80,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!source.Contains("ResetStaticPhysicsOverrideState", StringComparison.Ordinal)
                   && !source.Contains("_fixedDeltaOverrideUsers", StringComparison.Ordinal)
                   && source.Contains("NormalizeRateHz(_globalPhysicsRateHzOverride)", StringComparison.Ordinal),
-                "140-17B-3: VirtualImu has no process-wide physics override state to leak across domain reload");
+                "architecture guard: 140-17B-3: VirtualImu has no process-wide physics override state to leak across domain reload");
         }
 
         private static void VirtualImuReenableResetsState()
@@ -90,10 +90,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(onEnable.Contains("_hasLastVelocity = false", StringComparison.Ordinal)
                   && onEnable.Contains("_hasEpoch = false", StringComparison.Ordinal)
                   && onEnable.Contains("_nextSampleIndex = 0", StringComparison.Ordinal),
-                "140-17C-1: VirtualImu OnEnable resets velocity and epoch state after re-enable");
+                "architecture guard: 140-17C-1: VirtualImu OnEnable resets velocity and epoch state after re-enable");
             Check(!onEnable.Contains("ApplyGlobalPhysicsRateOverride", StringComparison.Ordinal)
                   && !source.Contains("Time.fixedDeltaTime =", StringComparison.Ordinal),
-                "140-17C-2: VirtualImu re-enable does not reacquire or restore a global physics-rate lease");
+                "architecture guard: 140-17C-2: VirtualImu re-enable does not reacquire or restore a global physics-rate lease");
         }
 
         private static void RosettePositiveElevationUsesYUpSensorFrame()
@@ -169,7 +169,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !lidarEditor.Contains("_scanSubSteps", StringComparison.Ordinal)
                   && !imu.Contains("_publishOnStart", StringComparison.Ordinal)
                   && !imu.Contains("_enableNoise", StringComparison.Ordinal),
-                "140-17F-1: dead serialized sensor fields are removed instead of silently ignored");
+                "architecture guard: 140-17F-1: dead serialized sensor fields are removed instead of silently ignored");
         }
 
         private static void VirtualLidarWarnsOnUnknownBuiltinModelFallback()
@@ -177,7 +177,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             Check(source.Contains("Unknown built-in LiDAR model", StringComparison.Ordinal)
                   && source.Contains("using OS-1-32 fallback", StringComparison.Ordinal),
-                "140-17G-1: VirtualLidar logs a warning before unknown built-in model fallback");
+                "architecture guard: 140-17G-1: VirtualLidar logs a warning before unknown built-in model fallback");
         }
 
         private static void VirtualLidarScanSchedulerDocumentsGrowOnlyCrossingBuffer()
@@ -185,7 +185,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
             Check(source.Contains("grow-only", StringComparison.Ordinal)
                   && source.Contains("_pendingScanCrossings", StringComparison.Ordinal),
-                "140-17H-1: VirtualLidar scan scheduler documents grow-only crossing-buffer retention");
+                "architecture guard: 140-17H-1: VirtualLidar scan scheduler documents grow-only crossing-buffer retention");
         }
 
         private static void VirtualLidarSchedulesBatchedJobsImmediately()
@@ -195,21 +195,21 @@ namespace Unity.FoxgloveSDK.Tests
             Check(schedule.Contains("JobHandle.ScheduleBatchedJobs();", StringComparison.Ordinal)
                   && schedule.IndexOf("_pendingScanHandle = buildJob.Schedule", StringComparison.Ordinal) < schedule.IndexOf("JobHandle.ScheduleBatchedJobs();", StringComparison.Ordinal)
                   && schedule.IndexOf("JobHandle.ScheduleBatchedJobs();", StringComparison.Ordinal) < schedule.IndexOf("_pendingScanState = PendingScanState.Scheduled;", StringComparison.Ordinal),
-                "140-17J-1: Virtual LiDAR submits scheduled raycast and build jobs before asynchronous completion polling");
+                "architecture guard: 140-17L-1: Virtual LiDAR submits scheduled raycast and build jobs before asynchronous completion polling");
         }
 
         private static void VirtualLidarScanFramePublisherHasNoSelfReferencingUsing()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanFramePublisher.cs");
             Check(!source.Contains("using Unity.FoxgloveSDK.Components;", StringComparison.Ordinal),
-                "140-17I-1: VirtualLidarScanFramePublisher has no self-referencing namespace using");
+                "architecture guard: 140-17I-1: VirtualLidarScanFramePublisher has no self-referencing namespace using");
         }
 
         private static void LidarRayGeneratorIsHiddenFromNormalRuntimeApiDiscovery()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/LidarRayGenerator.cs");
             Check(source.Contains("[EditorBrowsable(EditorBrowsableState.Never)]", StringComparison.Ordinal),
-                "140-17J-1: LidarRayGenerator public reference helper is hidden from normal API discovery");
+                "architecture guard: 140-17J-1: LidarRayGenerator public reference helper is hidden from normal API discovery");
         }
 
         private static void PhaseWiringIsPresent()
@@ -217,9 +217,9 @@ namespace Unity.FoxgloveSDK.Tests
             var project = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(project.Contains("Phase140_17Validation.cs", StringComparison.Ordinal),
-                "140-17K-1: test project compiles Phase140_17Validation");
+                "architecture guard: 140-17K-1: test project compiles Phase140_17Validation");
             Check(registry.Contains("Ci(\"--phase140-17\", \"Phase 140-17: regression coverage for virtual LiDAR and IMU sensor lifecycle fixes\", Phase140_17Validation.Validate", StringComparison.Ordinal),
-                "140-17K-2: validation registry exposes --phase140-17");
+                "architecture guard: 140-17K-2: validation registry exposes --phase140-17");
         }
 
         private static string Read(string path)

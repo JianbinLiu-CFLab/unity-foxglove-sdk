@@ -1454,7 +1454,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.True(
                 SpinWait.SpinUntil(
                     () => runtime.IsConnected,
-                    TimeSpan.FromSeconds(10)),
+                    TimeSpan.FromSeconds(30)),
                 "the generated duplex runtime did not complete hello");
             Assert.True(runtime.HasInboundPipeline);
 

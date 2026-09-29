@@ -60,35 +60,35 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VirtualImuApiSurface()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
-            Check(!string.IsNullOrWhiteSpace(source), "138S-2A: VirtualImu source exists in runtime");
+            Check(!string.IsNullOrWhiteSpace(source), "architecture guard: 138S-2A: VirtualImu source exists in runtime");
             if (string.IsNullOrWhiteSpace(source))
                 return;
 
             Check(ContainsSignature(source, "public bool IsImuNativeOutput"),
-                "138S-2A: VirtualImu exposes IMU native output eligibility accessor");
+                "architecture guard: 138S-2A: VirtualImu exposes IMU native output eligibility accessor");
             Check(ContainsSignature(source, "public string ImuNativeTopic"),
-                "138S-2B: VirtualImu exposes native topic property");
+                "architecture guard: 138S-2B: VirtualImu exposes native topic property");
             Check(ContainsSignature(source, "public IReadOnlyList<double> ImuOrientationCovariance")
                 && ContainsSignature(source, "public IReadOnlyList<double> ImuAngularVelocityCovariance")
                 && ContainsSignature(source, "public IReadOnlyList<double> ImuLinearAccelerationCovariance"),
-                "138S-2C: VirtualImu exposes IMU native covariance accessors");
+                "architecture guard: 138S-2C: VirtualImu exposes IMU native covariance accessors");
             Check(
                 ContainsSignature(source, "public event Action<ImuNativeFrame> ImuNativeFrameReady"),
-                "138S-2D: VirtualImu exposes ImuNativeFrameReady event");
+                "architecture guard: 138S-2D: VirtualImu exposes ImuNativeFrameReady event");
             Check(source.Contains("ImuNativeFrameReady", StringComparison.Ordinal),
-                "138S-2E: VirtualImu source code includes IMU native frame-ready event usage");
+                "architecture guard: 138S-2E: VirtualImu source code includes IMU native frame-ready event usage");
             Check(ExtractMethod(source, "private void Start()").Contains("NormalizeSerializedConfiguration();", StringComparison.Ordinal)
                   && ExtractMethod(source, "private void OnValidate()").Contains("NormalizeSerializedConfiguration();", StringComparison.Ordinal),
-                "138S-2F: VirtualImu normalizes native DDS serialized config in runtime and editor validation paths");
+                "architecture guard: 138S-2F: VirtualImu normalizes native DDS serialized config in runtime and editor validation paths");
             Check(source.Contains("[SerializeField, HideInInspector] private bool _publishImuNative", StringComparison.Ordinal)
                   && source.Contains("[SerializeField, HideInInspector] private string _imuNativeTopic", StringComparison.Ordinal),
-                "138S-2G: legacy IMU native override fields are hidden from the default Inspector");
+                "architecture guard: 138S-2G: legacy IMU native override fields are hidden from the default Inspector");
             Check(ExtractProperty(source, "public bool IsImuNativeOutput").Contains("=> isActiveAndEnabled", StringComparison.Ordinal)
                   && !ExtractProperty(source, "public bool IsImuNativeOutput").Contains("_publishImuNative", StringComparison.Ordinal),
-                "138S-2H: IMU native output follows component eligibility instead of a second per-IMU toggle");
+                "architecture guard: 138S-2H: IMU native output follows component eligibility instead of a second per-IMU toggle");
             Check(ExtractProperty(source, "public string ImuNativeTopic").Contains("_topic", StringComparison.Ordinal)
                   && !ExtractProperty(source, "public string ImuNativeTopic").Contains("_imuNativeTopic", StringComparison.Ordinal),
-                "138S-2I: IMU native topic follows the main IMU topic");
+                "architecture guard: 138S-2I: IMU native topic follows the main IMU topic");
         }
 
         private static void VirtualImuInspectorSurface()
@@ -98,36 +98,36 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(editor.Contains("[CustomEditor(typeof(VirtualImu))]", StringComparison.Ordinal)
                   && editor.Contains("class VirtualImuEditor", StringComparison.Ordinal),
-                "138S-2J: VirtualImu uses a dedicated Inspector instead of the raw default field dump");
+                "architecture guard: 138S-2J: VirtualImu uses a dedicated Inspector instead of the raw default field dump");
             Check(source.Contains("private PublisherRateSource _publishRateSource = PublisherRateSource.OverrideLocal", StringComparison.Ordinal)
                   && source.Contains("private int _targetRateHz = DefaultTargetRateHz", StringComparison.Ordinal),
-                "138S-2K: VirtualImu defaults to local 200Hz sample-rate override");
+                "architecture guard: 138S-2K: VirtualImu defaults to local 200Hz sample-rate override");
             Check(editor.Contains("Publish Rate Source", StringComparison.Ordinal)
                   && editor.Contains("Use Manager Default", StringComparison.Ordinal)
                   && editor.Contains("Override Local", StringComparison.Ordinal)
                   && editor.Contains("Sample Rate Hz", StringComparison.Ordinal),
-                "138S-2L: VirtualImu Inspector matches publisher-style rate source UI");
+                "architecture guard: 138S-2L: VirtualImu Inspector matches publisher-style rate source UI");
             Check(editor.Contains("Advanced IMU Model", StringComparison.Ordinal)
                   && editor.Contains("Orientation Covariance", StringComparison.Ordinal)
                   && editor.Contains("Angular Velocity Covariance", StringComparison.Ordinal)
                   && editor.Contains("Linear Acceleration Covariance", StringComparison.Ordinal)
                   && editor.Contains("Override Local IMU Rate Hz", StringComparison.Ordinal),
-                "138S-2M: VirtualImu Inspector keeps covariance and physics-rate override in Advanced IMU Model");
+                "architecture guard: 138S-2M: VirtualImu Inspector keeps covariance and physics-rate override in Advanced IMU Model");
             Check(editor.Contains("DrawCovarianceMatrix", StringComparison.Ordinal)
                   && editor.Contains("CovarianceMatrixSize = 3", StringComparison.Ordinal)
                   && editor.Contains("row < CovarianceMatrixSize", StringComparison.Ordinal)
                   && editor.Contains("column < CovarianceMatrixSize", StringComparison.Ordinal),
-                "138S-2M2: VirtualImu Inspector renders covariance as a 3x3 matrix");
+                "architecture guard: 138S-2M2: VirtualImu Inspector renders covariance as a 3x3 matrix");
             Check(editor.Contains("EditorGUILayout.GetControlRect()", StringComparison.Ordinal)
                   && editor.Contains("EditorGUI.DoubleField(cellRect", StringComparison.Ordinal)
                   && !editor.Contains("EditorGUI.LabelField(labelRect", StringComparison.Ordinal)
                   && !editor.Contains("EditorGUILayout.PrefixLabel", StringComparison.Ordinal),
-                "138S-2M3: VirtualImu covariance matrix uses fixed row rects to keep columns aligned");
+                "architecture guard: 138S-2M3: VirtualImu covariance matrix uses fixed row rects to keep columns aligned");
             Check(editor.Contains("Publish Orientation", StringComparison.Ordinal)
                   && !editor.Contains("Publish On Start", StringComparison.Ordinal)
                   && !editor.Contains("Enable Noise", StringComparison.Ordinal)
                   && !editor.Contains("Noise (future)", StringComparison.Ordinal),
-                "138S-2N: VirtualImu Inspector hides legacy publish-start and unimplemented noise controls");
+                "architecture guard: 138S-2N: VirtualImu Inspector hides legacy publish-start and unimplemented noise controls");
         }
 
         private static void UpdatePublishesNativeFrameFromDequeuedSample()
@@ -136,22 +136,22 @@ namespace Unity.FoxgloveSDK.Tests
             var update = ExtractMethod(source, "private void Update()");
             Check(update.Contains("_queue.TryDequeue(out var sample)", StringComparison.Ordinal)
                   && update.Contains("updateGeneration == _lifecycleGeneration", StringComparison.Ordinal),
-                "138S-3A: VirtualImu drains the IMU queue on Update through TryDequeue");
+                "architecture guard: 138S-3A: VirtualImu drains the IMU queue on Update through TryDequeue");
             Check(!update.Contains("_queue.Dequeue()", StringComparison.Ordinal),
-                "138S-3B: VirtualImu uses the queue's non-throwing drain contract");
+                "architecture guard: 138S-3B: VirtualImu uses the queue's non-throwing drain contract");
             Check(update.Contains("var nativeFrameHandler = ImuNativeFrameReady;", StringComparison.Ordinal)
                   && update.Contains("ImuNativeFrame nativeFrame = null;", StringComparison.Ordinal)
                   && update.Contains("if (nativeFrameHandler != null)", StringComparison.Ordinal)
                   && update.Contains("CreateNativeFrame(", StringComparison.Ordinal)
                   && update.Contains("_nativeFrameDispatch.Invoke(", StringComparison.Ordinal),
-                "138S-3C: VirtualImu creates and emits native frame from dequeued sample");
+                "architecture guard: 138S-3C: VirtualImu creates and emits native frame from dequeued sample");
             Check(!update.Contains("_publishImuNative", StringComparison.Ordinal),
-                "138S-3C2: VirtualImu native frame emission is subscriber-driven, not gated by a second Inspector toggle");
+                "architecture guard: 138S-3C2: VirtualImu native frame emission is subscriber-driven, not gated by a second Inspector toggle");
             Check(update.IndexOf("ImuNativeFrame nativeFrame", StringComparison.Ordinal)
                       < update.IndexOf("_nativeFrameDispatch.Invoke(", StringComparison.Ordinal),
-                "138S-3D: IMU native frame is created before publish invocation");
+                "architecture guard: 138S-3D: IMU native frame is created before publish invocation");
             Check(!update.Contains("return; //", StringComparison.Ordinal),
-                "138S-3E: VirtualImu update path contains no accidental early native-frame bypass");
+                "architecture guard: 138S-3E: VirtualImu update path contains no accidental early native-frame bypass");
         }
 
         private static void CoreContainsNoRos2References()
@@ -178,58 +178,58 @@ namespace Unity.FoxgloveSDK.Tests
             var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityImuNativeBridge.cs");
             var asmdef = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Unity2Foxglove.Ros2ForUnity.Native.asmdef");
             Check(bridge.Contains("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal),
-                "138S-5A: IMU bridge is wrapped by ROS2 package symbol");
+                "architecture guard: 138S-5A: IMU bridge is wrapped by ROS2 package symbol");
             Check(bridge.Contains("FindObjectsByType<VirtualImu>", StringComparison.Ordinal),
-                "138S-5B: IMU bridge scans VirtualImu instances");
+                "architecture guard: 138S-5B: IMU bridge scans VirtualImu instances");
             Check(bridge.Contains("ImuNativeFrameReady", StringComparison.Ordinal),
-                "138S-5C: IMU bridge subscribes to native frame event");
+                "architecture guard: 138S-5C: IMU bridge subscribes to native frame event");
             Check(bridge.Contains("using Unity.FoxgloveSDK.Schemas.Imu;", StringComparison.Ordinal),
-                "138S-5C2: IMU bridge imports the schema-neutral IMU DTO namespace");
+                "architecture guard: 138S-5C2: IMU bridge imports the schema-neutral IMU DTO namespace");
             Check(bridge.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal),
-                "138S-5D: IMU bridge observes global native output policy");
+                "architecture guard: 138S-5D: IMU bridge observes global native output policy");
             Check(bridge.Contains("IPublisher<sensor_msgs.msg.Imu>", StringComparison.Ordinal),
-                "138S-5E: IMU bridge creates IMU DDS publishers");
+                "architecture guard: 138S-5E: IMU bridge creates IMU DDS publishers");
             Check(asmdef.Contains("\"Unity.FoxgloveSDK.Sensors\"", StringComparison.Ordinal),
-                "138S-5F: R2FU native asmdef references the Sensors assembly that contains VirtualImu");
+                "architecture guard: 138S-5F: R2FU native asmdef references the Sensors assembly that contains VirtualImu");
         }
 
         private static void ImuMessageBuilderMapping()
         {
             var builder = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityImuMessageBuilder.cs");
             Check(builder.Contains("class Ros2ForUnityImuMessageBuilder", StringComparison.Ordinal),
-                "138S-6A: IMU ROS2 builder exists");
+                "architecture guard: 138S-6A: IMU ROS2 builder exists");
             Check(builder.Contains("Build(", StringComparison.Ordinal)
                   && builder.Contains("frame.UnixNs", StringComparison.Ordinal)
                   && builder.Contains("frame.FrameId", StringComparison.Ordinal),
-                "138S-6B: IMU ROS2 builder maps timestamp and frame id");
+                "architecture guard: 138S-6B: IMU ROS2 builder maps timestamp and frame id");
             Check(builder.Contains("Angular_velocity", StringComparison.Ordinal)
                   && builder.Contains("Linear_acceleration", StringComparison.Ordinal),
-                "138S-6C: IMU ROS2 builder maps angular velocity and linear acceleration");
+                "architecture guard: 138S-6C: IMU ROS2 builder maps angular velocity and linear acceleration");
             Check(builder.Contains("Orientation_covariance", StringComparison.Ordinal),
-                "138S-6D: IMU ROS2 builder maps orientation covariance");
+                "architecture guard: 138S-6D: IMU ROS2 builder maps orientation covariance");
             Check(builder.Contains("Orientation_covariance", StringComparison.Ordinal)
                   && builder.Contains("Orientation_covariance[0] = -1", StringComparison.Ordinal),
-                "138S-6E: IMU ROS2 builder applies orientation disabled convention");
+                "architecture guard: 138S-6E: IMU ROS2 builder applies orientation disabled convention");
             Check(builder.Contains("CopyInto(orientationCovariance, message.Orientation_covariance)", StringComparison.Ordinal)
                   && builder.Contains("CopyInto(angularVelocityCovariance, message.Angular_velocity_covariance)", StringComparison.Ordinal)
                   && builder.Contains("CopyInto(linearAccelerationCovariance, message.Linear_acceleration_covariance)", StringComparison.Ordinal),
-                "138S-6F: IMU ROS2 builder copies covariance values into generated fixed arrays");
+                "architecture guard: 138S-6F: IMU ROS2 builder copies covariance values into generated fixed arrays");
             Check(!builder.Contains("Orientation_covariance = ", StringComparison.Ordinal)
                   && !builder.Contains("Angular_velocity_covariance = ", StringComparison.Ordinal)
                   && !builder.Contains("Linear_acceleration_covariance = ", StringComparison.Ordinal),
-                "138S-6F2: IMU ROS2 builder does not assign read-only generated covariance arrays");
+                "architecture guard: 138S-6F2: IMU ROS2 builder does not assign read-only generated covariance arrays");
             Check(builder.Contains("ValidateCovariance", StringComparison.Ordinal),
-                "138S-6G: IMU ROS2 builder validates covariance length");
+                "architecture guard: 138S-6G: IMU ROS2 builder validates covariance length");
         }
 
         private static void RegistryIncludesPhase138s()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(registry.Contains("Ci(\"--phase138s\"", StringComparison.Ordinal),
-                "138S-7A: phase 138s is registered in validation registry");
+                "architecture guard: 138S-7A: phase 138s is registered in validation registry");
             var phaseEntry = ExtractRegistryEntry(registry, "Ci(\"--phase138s\"");
             Check(phaseEntry.Contains("includeInDefault: false", StringComparison.Ordinal),
-                "138S-7B: phase 138s is available as explicit CI phase and not in default");
+                "architecture guard: 138S-7B: phase 138s is available as explicit CI phase and not in default");
         }
 
         private static string ReadDirectory(string path, bool includeMd)

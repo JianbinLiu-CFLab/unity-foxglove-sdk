@@ -1139,6 +1139,7 @@ class RunCiTests(unittest.TestCase):
             [
                 "analyzer",
                 "dotnet-runtime",
+                "mediafoundation-native-smoke",
                 "xunit",
                 "xunit-adapter",
                 "xunit-native",
@@ -1626,6 +1627,7 @@ class RunCiTests(unittest.TestCase):
             {
                 "analyzer": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "dotnet-runtime": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                "mediafoundation-native-smoke": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "xunit": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "xunit-adapter": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
                 "xunit-native": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
@@ -1663,6 +1665,7 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual(
             [
                 "dotnet-runtime",
+                "mediafoundation-native-smoke",
                 "xunit",
                 "xunit-adapter",
                 "xunit-native",
@@ -2175,6 +2178,7 @@ class RunCiTests(unittest.TestCase):
             [
                 "analyzer",
                 "dotnet-runtime",
+                "mediafoundation-native-smoke",
                 "xunit",
                 "xunit-adapter",
                 "xunit-native",
