@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static readonly GUIContent SampleRateLabel = new GUIContent("Sample Rate Hz");
         private static readonly GUIContent WebSocketSamplesLabel = new GUIContent("WebSocket Max Samples / Frame");
         private static readonly GUIContent PublishOrientationLabel = new GUIContent("Publish Orientation");
-        private static readonly GUIContent PhysicsRateOverrideLabel = new GUIContent("Override Unity Physics Rate Hz");
+        private static readonly GUIContent PhysicsRateOverrideLabel = new GUIContent("Override Local IMU Rate Hz");
 
         private bool _showAdvancedImuModel;
         private SerializedProperty _scriptProperty;
@@ -135,7 +135,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.Space();
             DrawProperty(_globalPhysicsRateHzOverrideProperty, PhysicsRateOverrideLabel);
             EditorGUILayout.HelpBox(
-                "Leave at 0 for normal use. A positive value changes Unity Time.fixedDeltaTime globally and can affect physics, vehicle control, and performance.",
+                "Leave at 0 to use the configured publish rate. A positive value overrides only the local IMU sampling rate.",
                 MessageType.Warning);
         }
 

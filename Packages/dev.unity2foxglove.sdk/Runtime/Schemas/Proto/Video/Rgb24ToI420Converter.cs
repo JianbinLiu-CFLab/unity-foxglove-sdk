@@ -29,13 +29,13 @@ namespace Foxglove.Schemas.Video
             var pixelCount = checked(width * height);
             var rgbBytes = checked(pixelCount * 3);
             var i420Bytes = checked(pixelCount * 3 / 2);
-            if (rgb24 == null || rgb24.Length != rgbBytes)
+            if (rgb24 == null || rgb24.Length < rgbBytes)
             {
                 error = "RGB24 input buffer length does not match width * height * 3.";
                 return false;
             }
 
-            if (i420 == null || i420.Length != i420Bytes)
+            if (i420 == null || i420.Length < i420Bytes)
             {
                 error = "I420 output buffer length does not match width * height * 3 / 2.";
                 return false;

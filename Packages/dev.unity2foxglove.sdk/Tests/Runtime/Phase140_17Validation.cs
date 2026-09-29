@@ -27,8 +27,8 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             VirtualLidarReinitializesScanClockAfterManagerResolution();
-            VirtualImuPhysicsRateOverrideIsReferenceCounted();
-            VirtualImuPhysicsRateOverrideResetsAcrossDomainReload();
+            VirtualImuUsesLocalRateOverride();
+            VirtualImuLocalRateOverrideHasNoStaticState();
             VirtualImuReenableResetsState();
             RosettePositiveElevationUsesYUpSensorFrame();
             MetadataJsonUsesModelDefaultMinRange();
@@ -65,51 +65,35 @@ namespace Unity.FoxgloveSDK.Tests
                 "140-17A-1: VirtualLidar resets scan clock before scan-state reset");
         }
 
-        private static void VirtualImuPhysicsRateOverrideIsReferenceCounted()
+        private static void VirtualImuUsesLocalRateOverride()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
-            var meta = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs.meta");
-            var apply = Slice(source, "private void ApplyGlobalPhysicsRateOverride", "private void RestoreFixedDeltaTime()");
-            var restore = Slice(source, "private void RestoreFixedDeltaTime()", "private void EnsureSchemaRegistered()");
-
-            Check(source.Contains("private static int _fixedDeltaOverrideUsers", StringComparison.Ordinal)
-                  && source.Contains("private static float _fixedDeltaOverrideOriginal", StringComparison.Ordinal)
-                  && apply.Contains("_fixedDeltaOverrideUsers == 0", StringComparison.Ordinal)
-                  && restore.Contains("_fixedDeltaOverrideUsers--", StringComparison.Ordinal)
-                  && restore.Contains("_fixedDeltaOverrideUsers == 0", StringComparison.Ordinal),
-                "140-17B-1: VirtualImu global physics-rate override is reference-counted across instances");
-            Check(meta.Contains("MonoImporter:", StringComparison.Ordinal)
-                  && meta.Contains("executionOrder: 0", StringComparison.Ordinal),
-                "140-17B-2: VirtualImu script meta keeps a complete MonoImporter block");
+            Check(source.Contains("private int _globalPhysicsRateHzOverride", StringComparison.Ordinal)
+                  && source.Contains("NormalizeRateHz(_globalPhysicsRateHzOverride)", StringComparison.Ordinal)
+                  && !source.Contains("Time.fixedDeltaTime =", StringComparison.Ordinal),
+                "140-17B-1: VirtualImu keeps the configured sampling-rate override local and never writes global physics state");
         }
 
-        private static void VirtualImuPhysicsRateOverrideResetsAcrossDomainReload()
+        private static void VirtualImuLocalRateOverrideHasNoStaticState()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
-            var reset = Slice(source, "private static void ResetStaticPhysicsOverrideState", "private void Start()");
-            var apply = Slice(source, "private void ApplyGlobalPhysicsRateOverride", "private void RestoreFixedDeltaTime()");
-
-            Check(source.Contains("RuntimeInitializeLoadType.SubsystemRegistration", StringComparison.Ordinal)
-                  && reset.Contains("_fixedDeltaOverrideUsers = 0", StringComparison.Ordinal)
-                  && reset.Contains("_warnedFixedDeltaOverrideConflict = false", StringComparison.Ordinal)
-                  && apply.Contains("_fixedDeltaOverrideTargetHz != targetHz", StringComparison.Ordinal),
-                "140-17B-3: VirtualImu resets static physics-rate override state on domain reload and compares target Hz");
+            Check(!source.Contains("ResetStaticPhysicsOverrideState", StringComparison.Ordinal)
+                  && !source.Contains("_fixedDeltaOverrideUsers", StringComparison.Ordinal)
+                  && source.Contains("NormalizeRateHz(_globalPhysicsRateHzOverride)", StringComparison.Ordinal),
+                "140-17B-3: VirtualImu has no process-wide physics override state to leak across domain reload");
         }
 
         private static void VirtualImuReenableResetsState()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var onEnable = Slice(source, "private void OnEnable()", "private void OnDisable()");
-            var apply = Slice(source, "private void ApplyGlobalPhysicsRateOverride", "private void RestoreFixedDeltaTime()");
             Check(onEnable.Contains("_hasLastVelocity = false", StringComparison.Ordinal)
                   && onEnable.Contains("_hasEpoch = false", StringComparison.Ordinal)
                   && onEnable.Contains("_nextSampleIndex = 0", StringComparison.Ordinal),
                 "140-17C-1: VirtualImu OnEnable resets velocity and epoch state after re-enable");
-            Check(source.Contains("private bool _initialized", StringComparison.Ordinal)
-                  && onEnable.Contains("_initialized && _globalPhysicsRateHzOverride > 0", StringComparison.Ordinal)
-                  && onEnable.Contains("ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride)", StringComparison.Ordinal)
-                  && apply.Contains("if (_didSetFixedDelta)", StringComparison.Ordinal),
-                "140-17C-2: VirtualImu reacquires exactly one global physics-rate lease after re-enable");
+            Check(!onEnable.Contains("ApplyGlobalPhysicsRateOverride", StringComparison.Ordinal)
+                  && !source.Contains("Time.fixedDeltaTime =", StringComparison.Ordinal),
+                "140-17C-2: VirtualImu re-enable does not reacquire or restore a global physics-rate lease");
         }
 
         private static void RosettePositiveElevationUsesYUpSensorFrame()

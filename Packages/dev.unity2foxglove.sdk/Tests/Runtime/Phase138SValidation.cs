@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && editor.Contains("Orientation Covariance", StringComparison.Ordinal)
                   && editor.Contains("Angular Velocity Covariance", StringComparison.Ordinal)
                   && editor.Contains("Linear Acceleration Covariance", StringComparison.Ordinal)
-                  && editor.Contains("Override Unity Physics Rate Hz", StringComparison.Ordinal),
+                  && editor.Contains("Override Local IMU Rate Hz", StringComparison.Ordinal),
                 "138S-2M: VirtualImu Inspector keeps covariance and physics-rate override in Advanced IMU Model");
             Check(editor.Contains("DrawCovarianceMatrix", StringComparison.Ordinal)
                   && editor.Contains("CovarianceMatrixSize = 3", StringComparison.Ordinal)

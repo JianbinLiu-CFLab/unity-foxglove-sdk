@@ -13,6 +13,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.FoxgloveSDK.Components;
 
 namespace Foxglove.Schemas.Video
 {
@@ -20,7 +21,7 @@ namespace Foxglove.Schemas.Video
     /// Encodes I420 frames through an external OpenH264 helper process and
     /// exposes completed H.264 Annex B access units.
     /// </summary>
-    public sealed class OpenH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
+    public sealed class OpenH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar, ICameraVideoRgbFrameSourceSidecar
     {
         private const int MaxAccessUnitBytes = 16 * 1024 * 1024;
         private const int ShutdownTimeoutMs = 500;
@@ -199,6 +200,67 @@ namespace Foxglove.Schemas.Video
             return true;
         }
 
+        bool ICameraVideoRgbFrameSourceSidecar.TrySubmitRgbFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
+        {
+            var submittingProcess = Volatile.Read(ref _process);
+            if (frame.Length <= 0 || !IsProcessRunning(submittingProcess))
+                return false;
+
+            var expectedBytes = _options != null ? _options.Rgb24FrameByteCount : 0;
+            if (expectedBytes <= 0)
+            {
+                LastError = "OpenH264 encoder dimensions produce an invalid RGB24 frame size.";
+                return false;
+            }
+
+            if (frame.Length != expectedBytes)
+            {
+                LastError = "RGB24 frame byte count does not match OpenH264 encoder dimensions.";
+                return false;
+            }
+
+            var copy = ArrayPool<byte>.Shared.Rent(expectedBytes);
+            try
+            {
+                frame.CopyTo(copy);
+            }
+            catch
+            {
+                ArrayPool<byte>.Shared.Return(copy);
+                throw;
+            }
+
+            lock (_inputLock)
+            {
+                if (!ReferenceEquals(submittingProcess, Volatile.Read(ref _process))
+                    || !IsProcessRunning(submittingProcess))
+                {
+                    ArrayPool<byte>.Shared.Return(copy);
+                    return false;
+                }
+
+                while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out var dropped))
+                {
+                    ReturnInputFrameBuffer(dropped);
+                    _inputCount--;
+                    Interlocked.Increment(ref _droppedInputFrames);
+                }
+
+                if ((long)_inputCount + _encodedFrameTimestamps.Count >= (long)_maxInputQueue + _maxOutputQueue)
+                {
+                    ArrayPool<byte>.Shared.Return(copy);
+                    return false;
+                }
+
+                _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs, pooled: true, length: expectedBytes, isRgb24: true));
+                _inputCount++;
+            }
+
+            Interlocked.Increment(ref _framesSubmitted);
+            return true;
+        }
+
+
         public bool TryDequeueAccessUnit(out byte[] accessUnit)
         {
             if (TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit timestamped))
@@ -305,13 +367,43 @@ namespace Foxglove.Schemas.Video
                 {
                     if (TryDequeueInputFrame(process, token, out var frame))
                     {
+                        byte[] converted = null;
                         try
                         {
-                            await stream.WriteAsync(frame.Data, 0, frame.Length, token).ConfigureAwait(false);
+                            var data = frame.Data;
+                            var length = frame.Length;
+                            if (frame.IsRgb24)
+                            {
+                                var options = _options;
+                                var i420Length = options != null ? options.FrameByteCount : 0;
+                                if (i420Length <= 0)
+                                    throw new InvalidOperationException("OpenH264 encoder dimensions produce an invalid I420 frame size.");
+
+                                converted = ArrayPool<byte>.Shared.Rent(i420Length);
+                                string conversionError;
+                                if (!Rgb24ToI420Converter.TryConvertRgb24ToI420(
+                                        frame.Data,
+                                        options.Width,
+                                        options.Height,
+                                        converted,
+                                        flipVertical: true,
+                                        out conversionError))
+                                {
+                                    throw new InvalidOperationException(
+                                        conversionError ?? "OpenH264 RGB24 conversion failed.");
+                                }
+
+                                data = converted;
+                                length = i420Length;
+                            }
+
+                            await stream.WriteAsync(data, 0, length, token).ConfigureAwait(false);
                             await stream.FlushAsync(token).ConfigureAwait(false);
                         }
                         finally
                         {
+                            if (converted != null)
+                                ArrayPool<byte>.Shared.Return(converted);
                             ReturnInputFrameBuffer(frame);
                         }
                     }

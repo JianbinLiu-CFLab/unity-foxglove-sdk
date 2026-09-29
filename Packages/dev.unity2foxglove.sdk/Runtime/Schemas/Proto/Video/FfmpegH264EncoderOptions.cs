@@ -113,6 +113,7 @@ namespace Foxglove.Schemas.Video
                 "-g " + keyframeInterval.ToString(CultureInfo.InvariantCulture),
                 "-b:v " + bitrate.ToString(CultureInfo.InvariantCulture) + "k",
                 "-x264-params aud=1:repeat-headers=1:bframes=0",
+                "-vsync 0",
                 "-f h264",
                 "pipe:1"
             });

@@ -31,6 +31,7 @@ namespace Foxglove.Schemas.Video
 
         /// <summary>Returns the expected I420/YUV420 byte count for one raw helper input frame.</summary>
         public int FrameByteCount => CameraVideoFrameGeometry.GetYuv420FrameByteCountOrZero(Width, Height);
+        public int Rgb24FrameByteCount => CameraVideoFrameGeometry.GetRgb24FrameByteCountOrZero(Width, Height);
 
         public bool Validate(out string error)
         {

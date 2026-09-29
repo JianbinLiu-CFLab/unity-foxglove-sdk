@@ -52,6 +52,16 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void FfmpegRawVideoCommandsPreserveOneOutputPerInputFrame()
+        {
+            var h264 = new FfmpegH264EncoderOptions { Width = 2, Height = 2 }.CreateStartInfo().Arguments;
+            var h265 = new FfmpegH265EncoderOptions { Width = 2, Height = 2 }.CreateStartInfo().Arguments;
+
+            Assert.Contains("-vsync 0", h264, StringComparison.Ordinal);
+            Assert.Contains("-vsync 0", h265, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void H264CreateStartInfoRejectsInvalidOptions()
         {
             var options = new FfmpegH264EncoderOptions { FrameRate = 0 };
