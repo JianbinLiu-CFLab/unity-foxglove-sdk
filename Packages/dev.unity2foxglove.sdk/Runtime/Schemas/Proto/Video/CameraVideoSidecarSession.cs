@@ -101,6 +101,7 @@ namespace Foxglove.Schemas.Video
         public int Height => _height;
         public bool IsOpenH264Mode => _mode == CameraOutputMode.H264OpenH264;
         public bool SupportsFrameSource => _sidecar is ICameraVideoFrameSourceSidecar;
+        public bool SupportsRgbFrameSource => _sidecar is ICameraVideoRgbFrameSourceSidecar;
         public int OutputQueueDepth => _sidecar?.OutputQueueDepth ?? 0;
         public int MaxOutputQueue => _sidecar?.MaxOutputQueue ?? 1;
         public int InputQueueDepth => _sidecar?.InputQueueDepth ?? 0;
@@ -241,6 +242,14 @@ namespace Foxglove.Schemas.Video
             CameraVideoSidecarRetirementRegistry.Poll();
             var sidecar = _sidecar as ICameraVideoFrameSourceSidecar;
             return sidecar != null && sidecar.TrySubmitFrame(frame, timestampNs);
+        }
+
+        public bool TrySubmitRgbFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
+            where TFrameBytes : struct, ICameraVideoFrameBytesSource
+        {
+            CameraVideoSidecarRetirementRegistry.Poll();
+            var sidecar = _sidecar as ICameraVideoRgbFrameSourceSidecar;
+            return sidecar != null && sidecar.TrySubmitRgbFrame(frame, timestampNs);
         }
 
         public bool TrySubmitFrame(byte[] frameBytes, ulong timestampNs)

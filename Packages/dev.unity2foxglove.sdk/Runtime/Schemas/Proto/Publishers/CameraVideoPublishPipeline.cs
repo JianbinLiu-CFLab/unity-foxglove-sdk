@@ -60,6 +60,12 @@ namespace Unity.FoxgloveSDK.Components
             where TFrameBytes : struct, ICameraVideoFrameBytesSource;
     }
 
+    internal interface ICameraVideoRgbFrameSourceSidecar
+    {
+        bool TrySubmitRgbFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
+            where TFrameBytes : struct, ICameraVideoFrameBytesSource;
+    }
+
     internal sealed class CameraVideoPublishPipeline : IDisposable
     {
         private readonly CameraPublishDiagnostics _diagnostics;
@@ -81,6 +87,7 @@ namespace Unity.FoxgloveSDK.Components
         public CameraOutputMode Mode => _videoSidecarSession.Mode;
         public bool IsOpenH264Mode => _videoSidecarSession.IsOpenH264Mode;
         public bool SupportsFrameSource => _videoSidecarSession.SupportsFrameSource;
+        public bool SupportsRgbFrameSource => _videoSidecarSession.SupportsRgbFrameSource;
         public int OutputQueueDepth => _videoSidecarSession.OutputQueueDepth;
         public int MaxOutputQueue => _videoSidecarSession.MaxOutputQueue;
         public int InputQueueDepth => _videoSidecarSession.InputQueueDepth;
@@ -167,6 +174,26 @@ namespace Unity.FoxgloveSDK.Components
                     ElapsedMs(submitStart));
                 _diagnostics.RecordVideoSubmitMs(result.SubmitMs);
                 return result;
+            }
+
+            if (_videoSidecarSession.IsOpenH264Mode
+                && _videoSidecarSession.SupportsRgbFrameSource)
+            {
+                if (!_videoSidecarSession.TrySubmitRgbFrame(frameBytes, renderUnixNs))
+                {
+                    _diagnostics.RecordVideoSubmitFailure();
+                    var result = new CameraVideoSubmitResult(
+                        CameraVideoSubmitOutcome.SubmitRejected,
+                        _videoSidecarSession.DescribeFailure("Video encoder refused the RGB frame."),
+                        ElapsedMs(submitStart));
+                    _diagnostics.RecordVideoSubmitMs(result.SubmitMs);
+                    return result;
+                }
+
+                _diagnostics.RecordVideoFrameSubmitted();
+                var rgbSourceSubmitted = new CameraVideoSubmitResult(CameraVideoSubmitOutcome.Submitted, "", ElapsedMs(submitStart));
+                _diagnostics.RecordVideoSubmitMs(rgbSourceSubmitted.SubmitMs);
+                return rgbSourceSubmitted;
             }
 
             if (!_videoSidecarSession.IsOpenH264Mode

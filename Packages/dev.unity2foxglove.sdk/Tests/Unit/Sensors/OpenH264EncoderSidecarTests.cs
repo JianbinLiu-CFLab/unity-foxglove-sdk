@@ -372,6 +372,37 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             }
         }
 
+        [Fact]
+        public void OpenH264RgbFrameSourceQueuesRgbBytesForWorkerConversion()
+        {
+            using var process = Process.GetCurrentProcess();
+            var sidecar = new OpenH264EncoderSidecar();
+            SetField(sidecar, "_options", new OpenH264EncoderOptions { Width = 2, Height = 2 });
+            SetField(sidecar, "_maxInputQueue", 2);
+            SetField(sidecar, "_maxOutputQueue", 4);
+            SetField(sidecar, "_process", process);
+
+            try
+            {
+                var source = new ObservedFrameSource(12);
+                Assert.True(((ICameraVideoRgbFrameSourceSidecar)sidecar).TrySubmitRgbFrame(source, 789UL));
+
+                var frames = (IEnumerable)GetField(sidecar, "_inputFrames");
+                object queued = null;
+                foreach (var entry in frames)
+                    queued = entry;
+                Assert.NotNull(queued);
+                Assert.True((bool)queued.GetType().GetProperty("IsRgb24", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(queued));
+                Assert.Equal(12, (int)queued.GetType().GetProperty("Length", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(queued));
+                Assert.Equal(789UL, (ulong)queued.GetType().GetProperty("TimestampNs", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(queued));
+            }
+            finally
+            {
+                SetField(sidecar, "_process", null);
+                sidecar.Dispose();
+            }
+        }
+
         [Theory]
         [InlineData(0)]
         [InlineData(1)]

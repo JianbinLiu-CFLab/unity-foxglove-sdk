@@ -545,9 +545,10 @@ namespace Foxglove.Schemas.Video
 
             lock (_outputLock)
             {
-                // FFmpeg's rawvideo pipe carries no per-frame PTS. With zerolatency
-                // and B-frames disabled, output order is expected to match input order;
-                // consume one capture timestamp for every parsed access unit, including
+                // FFmpeg's rawvideo pipe carries no per-frame PTS. The command line
+                // explicitly disables output frame duplication/drop, and zerolatency
+                // with B-frames disabled keeps one access unit in input order per frame.
+                // Consume one capture timestamp for every parsed access unit, including
                 // an access unit dropped because the bounded output queue is full. This
                 // remains an approximation until a PTS-bearing sidecar protocol exists.
                 var hasTimestamp = _encodedFrameTimestamps.TryDequeue(out var capturedNs);

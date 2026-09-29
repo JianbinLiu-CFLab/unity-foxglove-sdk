@@ -33,11 +33,6 @@ namespace Unity.FoxgloveSDK.Components
         private static readonly double[] DefaultAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
         private static readonly double[] DefaultLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
         private static readonly ProfilerMarker PublishMarker = new ProfilerMarker("VirtualImu.Publish");
-        private static int _fixedDeltaOverrideUsers;
-        private static float _fixedDeltaOverrideOriginal;
-        private static float _fixedDeltaOverrideTarget;
-        private static int _fixedDeltaOverrideTargetHz;
-        private static bool _warnedFixedDeltaOverrideConflict;
 
         private readonly ImuSampleQueue _queue = new ImuSampleQueue();
         private readonly ClientEventDispatchState _nativeFrameDispatch = new ClientEventDispatchState();
@@ -55,8 +50,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Tooltip("IMU linear acceleration covariance (9 values, diagonal default).")] private double[] _imuLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
         [SerializeField, Tooltip("Include orientation in each IMU message.")] private bool _includeOrientation = true;
         [SerializeField, Range(0, ImuSubStep.MaxSupportedRateHz), Tooltip(
-            "If greater than 0, set Time.fixedDeltaTime globally to 1 / value for higher IMU rate.\n"
-            + "This affects all physics in the project.")]
+            "If greater than 0, use this as the local IMU sampling-rate override.\n"
+            + "This does not change the global physics timestep.")]
         private int _globalPhysicsRateHzOverride = 0;
 
         [Header("Rate")]
@@ -79,7 +74,6 @@ namespace Unity.FoxgloveSDK.Components
         private Vector3 _lastBodyAngularVelocity;
         private Quaternion _lastBodyRotation;
         private bool _initialized;
-        private bool _didSetFixedDelta;
         private bool _hasEpoch;
         private ulong _epochUnixNs;
         private double _epochPhysSeconds;
@@ -116,16 +110,6 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Raised when a native IMU frame is ready for optional DDS adapters.</summary>
         public event Action<ImuNativeFrame> ImuNativeFrameReady;
-
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStaticPhysicsOverrideState()
-        {
-            _fixedDeltaOverrideUsers = 0;
-            _fixedDeltaOverrideOriginal = 0f;
-            _fixedDeltaOverrideTarget = 0f;
-            _fixedDeltaOverrideTargetHz = 0;
-            _warnedFixedDeltaOverrideConflict = false;
-        }
 
         private void Start()
         {
@@ -166,8 +150,6 @@ namespace Unity.FoxgloveSDK.Components
             _publishing = true;
             EnsureSchemaRegistered();
             _initialized = true;
-            if (_globalPhysicsRateHzOverride > 0)
-                ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride);
         }
 
         private void OnEnable()
@@ -178,19 +160,15 @@ namespace Unity.FoxgloveSDK.Components
             _nextSampleIndex = 0;
             _nextDroppedSamplesLogTime = 0f;
             _schemaRegisteredRegistry = null;
-            if (_initialized && _globalPhysicsRateHzOverride > 0)
-                ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride);
         }
 
         private void OnDisable()
         {
             RetireQueuedSamplesForLifecycleTransition();
-            RestoreFixedDeltaTime();
         }
 
         private void OnDestroy()
         {
-            RestoreFixedDeltaTime();
         }
 
         private void FixedUpdate()
@@ -422,6 +400,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private int ResolveTargetRateHz()
         {
+            if (_globalPhysicsRateHzOverride > 0)
+                return ImuSubStep.NormalizeRateHz(_globalPhysicsRateHzOverride);
+
             if (_publishRateSource != PublisherRateSource.UseManagerDefault)
                 return ImuSubStep.NormalizeRateHz(_targetRateHz);
 
@@ -429,67 +410,6 @@ namespace Unity.FoxgloveSDK.Components
                 return ImuSubStep.NormalizeRateHz(_targetRateHz);
 
             return ImuSubStep.NormalizeRateHz(_manager.DefaultPublishRateHz);
-        }
-
-        private void ApplyGlobalPhysicsRateOverride(int targetHz)
-        {
-            if (_didSetFixedDelta)
-                return;
-
-            targetHz = ImuSubStep.NormalizeRateHz(targetHz);
-            if (targetHz == 0)
-                return;
-
-            var target = 1f / targetHz;
-            if (target <= 0f)
-                return;
-
-            if (_fixedDeltaOverrideUsers == 0)
-            {
-                _fixedDeltaOverrideOriginal = Time.fixedDeltaTime;
-                Time.fixedDeltaTime = target;
-                _fixedDeltaOverrideTarget = target;
-                _fixedDeltaOverrideTargetHz = targetHz;
-            }
-            else if (_fixedDeltaOverrideTargetHz != targetHz
-                     && !_warnedFixedDeltaOverrideConflict)
-            {
-                Debug.LogWarning(
-                    $"[VirtualImu] Global physics rate override is already active at {_fixedDeltaOverrideTargetHz} Hz; ignoring conflicting request for {targetHz} Hz on {name}.",
-                    this);
-                _warnedFixedDeltaOverrideConflict = true;
-            }
-
-            _fixedDeltaOverrideUsers++;
-            _didSetFixedDelta = true;
-        }
-
-        private void RestoreFixedDeltaTime()
-        {
-            if (!_didSetFixedDelta)
-                return;
-
-            if (_fixedDeltaOverrideUsers > 0)
-                _fixedDeltaOverrideUsers--;
-
-            // Restore only while the lease still owns the global value. Another
-            // physics system may have intentionally changed fixedDeltaTime while
-            // this component was enabled; never overwrite that external change.
-            if (_fixedDeltaOverrideUsers == 0
-                && Math.Abs(Time.fixedDeltaTime - _fixedDeltaOverrideTarget) <= 1e-6f
-                && Math.Abs(Time.fixedDeltaTime - _fixedDeltaOverrideOriginal) > 1e-6f)
-            {
-                Time.fixedDeltaTime = _fixedDeltaOverrideOriginal;
-            }
-
-            if (_fixedDeltaOverrideUsers == 0)
-            {
-                _fixedDeltaOverrideTarget = 0f;
-                _fixedDeltaOverrideTargetHz = 0;
-                _warnedFixedDeltaOverrideConflict = false;
-            }
-
-            _didSetFixedDelta = false;
         }
 
         private void LogDroppedSamplesIfNeeded()

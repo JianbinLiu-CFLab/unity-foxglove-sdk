@@ -172,21 +172,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
-        public void VirtualImuReacquiresItsPhysicsOverrideAndUsesBoundedTickPlanning()
+        public void VirtualImuUsesLocalRateOverrideAndBoundedTickPlanning()
         {
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
-            var onEnable = TestSources.Slice(source, "private void OnEnable()", "private void OnDisable()");
-            var apply = TestSources.Slice(
-                source,
-                "private void ApplyGlobalPhysicsRateOverride",
-                "private void RestoreFixedDeltaTime()");
             var fixedUpdate = TestSources.Slice(source, "private void FixedUpdate()", "private void Update()");
 
             Assert.Contains("private bool _initialized", source, StringComparison.Ordinal);
-            Assert.Contains("_initialized && _globalPhysicsRateHzOverride > 0", onEnable, StringComparison.Ordinal);
-            Assert.Contains("ApplyGlobalPhysicsRateOverride(_globalPhysicsRateHzOverride)", onEnable, StringComparison.Ordinal);
-            Assert.Contains("if (_didSetFixedDelta)", apply, StringComparison.Ordinal);
+            Assert.Contains("if (_globalPhysicsRateHzOverride > 0)", source, StringComparison.Ordinal);
+            Assert.Contains("NormalizeRateHz(_globalPhysicsRateHzOverride)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Time.fixedDeltaTime =", source, StringComparison.Ordinal);
             Assert.Contains("ImuSubStep.PlanTickSamples", fixedUpdate, StringComparison.Ordinal);
             Assert.DoesNotContain("while (ImuSubStep.TryGetSampleTime", fixedUpdate, StringComparison.Ordinal);
         }

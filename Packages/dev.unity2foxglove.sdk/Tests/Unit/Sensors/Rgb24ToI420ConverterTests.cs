@@ -53,6 +53,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void ConversionAcceptsPooledBuffersWithTrailingCapacity()
+        {
+            var rgb24 = new byte[16];
+            for (var i = 0; i < 12; i++)
+                rgb24[i] = (byte)(i + 1);
+            var i420 = new byte[10];
+
+            Assert.True(Rgb24ToI420Converter.TryConvertRgb24ToI420(rgb24, 2, 2, i420, false, out var error), error);
+            Assert.NotEqual(0, i420[0]);
+            Assert.Equal(0, i420[6]);
+        }
+
+        [Fact]
         public void InvalidInputsReturnFalseWithError()
         {
             Assert.False(Rgb24ToI420Converter.TryConvertRgb24ToI420(new byte[3 * 3 * 3], 3, 3, new byte[14], false, out var error));

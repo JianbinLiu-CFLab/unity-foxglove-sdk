@@ -142,10 +142,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var h264 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs");
             var h265 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs");
-            Check(h264.Contains("rawvideo pipe carries no per-frame PTS", StringComparison.Ordinal),
-                "140-15G-1: FFmpeg H.264 timestamp pairing documents the rawvideo PTS limitation");
-            Check(h265.Contains("rawvideo pipe carries no per-frame PTS", StringComparison.Ordinal),
-                "140-15G-2: FFmpeg H.265 timestamp pairing documents the rawvideo PTS limitation");
+            var h264Options = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderOptions.cs");
+            var h265Options = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderOptions.cs");
+            Check(h264.Contains("rawvideo pipe carries no per-frame PTS", StringComparison.Ordinal)
+                  && h264Options.Contains("-vsync 0", StringComparison.Ordinal),
+                "140-15G-1: FFmpeg H.264 timestamp pairing documents the rawvideo PTS limitation and disables frame duplication");
+            Check(h265.Contains("rawvideo pipe carries no per-frame PTS", StringComparison.Ordinal)
+                  && h265Options.Contains("-vsync 0", StringComparison.Ordinal),
+                "140-15G-2: FFmpeg H.265 timestamp pairing documents the rawvideo PTS limitation and disables frame duplication");
         }
 
         private static void CameraVideoSubmitUsesFrameByteSourceContract()
@@ -167,9 +171,13 @@ namespace Unity.FoxgloveSDK.Tests
             var openH264 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs");
             Check(pipeline.Contains("private byte[] _i420Scratch", StringComparison.Ordinal)
                   && pipeline.Contains("EnsureI420Scratch(captureWidth, captureHeight)", StringComparison.Ordinal)
+                  && pipeline.Contains("SupportsRgbFrameSource", StringComparison.Ordinal)
+                  && pipeline.Contains("TrySubmitRgbFrame", StringComparison.Ordinal)
                   && !pipeline.Contains("new byte[captureWidth * captureHeight * 3 / 2]", StringComparison.Ordinal)
+                  && openH264.Contains("frame.IsRgb24", StringComparison.Ordinal)
+                  && openH264.Contains("Rgb24ToI420Converter.TryConvertRgb24ToI420", StringComparison.Ordinal)
                   && openH264.Contains("Buffer.BlockCopy(frame, 0, copy, 0, frame.Length)", StringComparison.Ordinal),
-                "140-15I-1: OpenH264 pipeline reuses I420 scratch while sidecar keeps the defensive queued-frame copy");
+                "140-15I-1: OpenH264 uses worker-side RGB conversion while retaining the bounded I420 fallback and defensive queue copy");
         }
 
         private static void FfmpegStdoutReadersAppendReadBufferRanges()
@@ -251,10 +259,14 @@ namespace Unity.FoxgloveSDK.Tests
             var h264 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH264EncoderSidecar.cs");
             var h265 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs");
             var mediaFoundation = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs");
+            var openH264 = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs");
             Check(pipeline.Contains("TrySubmitFrame<TFrameBytes>", StringComparison.Ordinal)
+                  && pipeline.Contains("TrySubmitRgbFrame<TFrameBytes>", StringComparison.Ordinal)
                   && h264.Contains("private bool TryEnqueueFrame<TFrameBytes>", StringComparison.Ordinal)
                   && h265.Contains("private bool TryEnqueueFrame<TFrameBytes>", StringComparison.Ordinal)
                   && mediaFoundation.Contains("private bool TrySubmitFrameCore<TFrameBytes>", StringComparison.Ordinal)
+                  && openH264.Contains("ICameraVideoRgbFrameSourceSidecar", StringComparison.Ordinal)
+                  && openH264.Contains("TrySubmitRgbFrame<TFrameBytes>", StringComparison.Ordinal)
                   && !h264.Contains("Action<byte[]> copyFrame", StringComparison.Ordinal)
                   && !h265.Contains("Action<byte[]> copyFrame", StringComparison.Ordinal)
                   && !mediaFoundation.Contains("Action<byte[]> copyFrame", StringComparison.Ordinal),

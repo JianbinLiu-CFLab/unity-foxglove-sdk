@@ -191,19 +191,12 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var fixedUpdate = ExtractMethod(source, "private void FixedUpdate");
-            var applyOverride = ExtractMethod(source, "private void ApplyGlobalPhysicsRateOverride");
-            var restore = ExtractMethod(source, "private void RestoreFixedDeltaTime");
             var update = ExtractMethod(source, "private void Update");
 
-            Check(source.Contains("private static int _fixedDeltaOverrideTargetHz;", StringComparison.Ordinal)
-                  && source.Contains("private static bool _warnedFixedDeltaOverrideConflict;", StringComparison.Ordinal),
-                "163-18I-1: VirtualImu stores the active fixed-delta override target");
-            Check(applyOverride.Contains("ignoring conflicting request", StringComparison.Ordinal)
-                  && applyOverride.Contains("_fixedDeltaOverrideTargetHz", StringComparison.Ordinal),
-                "163-18I-2: VirtualImu warns and keeps the first active physics-rate override");
-            Check(restore.Contains("_fixedDeltaOverrideTarget = 0f;", StringComparison.Ordinal)
-                  && restore.Contains("_warnedFixedDeltaOverrideConflict = false;", StringComparison.Ordinal),
-                "163-18I-3: VirtualImu clears override-conflict state when the last user exits");
+            Check(source.Contains("NormalizeRateHz(_globalPhysicsRateHzOverride)", StringComparison.Ordinal)
+                  && !source.Contains("_fixedDeltaOverrideTargetHz", StringComparison.Ordinal)
+                  && !source.Contains("Time.fixedDeltaTime =", StringComparison.Ordinal),
+                "163-18I-1: VirtualImu treats the configured rate as local sampling state without global conflict ownership");
             Check(fixedUpdate.Contains("initializedEpochThisTick", StringComparison.Ordinal)
                   && fixedUpdate.Contains("initializedEpochThisTick ? linearBody : _lastBodyAcceleration", StringComparison.Ordinal),
                 "163-18I-4: VirtualImu first sub-step starts from the current tick sample instead of zero");
