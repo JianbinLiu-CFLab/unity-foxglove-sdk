@@ -94,6 +94,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             {
                 Assert.True(fixture.Submit((ulong)i));
                 await fixture.ExpectLine("FRAME_READ_" + i);
+                Assert.True(
+                    SpinWait.SpinUntil(
+                        () => fixture.InputCount == 0 && fixture.ProcessingFrameCount == 0,
+                        TimeSpan.FromSeconds(10)),
+                    "the submitted frame did not leave the writer accounting window");
             }
             Assert.Equal(budget, fixture.PendingTimestamps);
             Assert.Equal(0, fixture.InputCount);
@@ -209,6 +214,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             private readonly string directory;
             public long FramesSubmitted => (long)Sidecar.GetType().GetProperty("FramesSubmitted").GetValue(Sidecar);
             public int InputCount => (int)Get("_inputCount");
+            public int ProcessingFrameCount
+            {
+                get
+                {
+                    var field = Sidecar.GetType().GetField(
+                        "_processingFrameCount",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                    return field == null ? 0 : Convert.ToInt32(field.GetValue(Sidecar));
+                }
+            }
             public object InputLock => Get("_inputLock");
             public void Stop() => Sidecar.GetType().GetMethod("Stop", Type.EmptyTypes).Invoke(Sidecar, null);
             public int PendingTimestamps => (int)Sidecar.GetType().GetProperty(
