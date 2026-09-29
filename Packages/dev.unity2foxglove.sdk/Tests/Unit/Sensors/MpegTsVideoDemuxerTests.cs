@@ -105,7 +105,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(new byte[] { 2 }, output.Data);
             Assert.False(demuxer.TryDequeue(out _));
         }
-        private readonly struct PesSample
+        internal readonly struct PesSample
         {
             public PesSample(long pts, byte[] data)
             {
@@ -117,13 +117,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             public byte[] Data { get; }
         }
 
-        private static byte[] BuildStream(byte streamType, IReadOnlyList<PesSample> samples, bool includeAdaptationField = false)
+        internal static byte[] BuildStream(
+            byte streamType,
+            IReadOnlyList<PesSample> samples,
+            bool includeAdaptationField = false,
+            bool unbounded = false)
         {
             var packets = new List<byte[]>();
             packets.Add(BuildPat(0x0100));
             packets.Add(BuildPmt(0x0100, streamType, 0x0101));
             foreach (var sample in samples)
-                packets.AddRange(BuildPes(0x0101, sample.Pts, sample.Data, includeAdaptationField));
+                packets.AddRange(BuildPes(0x0101, sample.Pts, sample.Data, includeAdaptationField, unbounded));
 
             return FlattenPackets(packets);
         }

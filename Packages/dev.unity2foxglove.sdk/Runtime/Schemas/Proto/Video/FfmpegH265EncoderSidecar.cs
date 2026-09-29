@@ -422,15 +422,18 @@ namespace Foxglove.Schemas.Video
         private async Task RunStdoutReaderForSession(Process process, CancellationToken token, long sessionId)
         {
             var buffer = new byte[16 * 1024];
+            var outputEnded = false;
             try
             {
                 var stream = process.StandardOutput.BaseStream;
-                while (!token.IsCancellationRequested && IsProcessRunning(process))
+                // End of stream, not process exit, ends the loop: an exited encoder can still
+                // have its final MPEG-TS bytes buffered in the pipe.
+                while (!token.IsCancellationRequested)
                 {
                     var read = await stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
                     if (read <= 0)
                     {
-                        RetireFailedProcess(process, token, "Encoder stdout ended unexpectedly.");
+                        outputEnded = true;
                         break;
                     }
 
@@ -466,6 +469,11 @@ namespace Foxglove.Schemas.Video
                         DrainPacketizer();
                     }
                 }
+
+                // Retire only after the final access unit left the demuxer: retirement ends the
+                // session asynchronously and would otherwise discard the tail.
+                if (outputEnded)
+                    RetireFailedProcess(process, token, "Encoder stdout ended unexpectedly.");
             }
             catch (OperationCanceledException)
             {

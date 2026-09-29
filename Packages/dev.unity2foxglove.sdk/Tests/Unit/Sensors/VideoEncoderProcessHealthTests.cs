@@ -143,6 +143,41 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Theory]
         [InlineData(0)]
         [InlineData(1)]
+        public async Task StdoutEndDeliversTheFinalBufferedAccessUnitBeforeRetiring(int codec)
+        {
+            byte[] Slice(byte marker) => codec == 0
+                ? new byte[] { 0, 0, 0, 1, 0x41, marker }
+                : new byte[] { 0, 0, 0, 1, 0x02, 0x01, marker };
+            // Unbounded video PES, as FFmpeg writes them: the last one completes only on flush.
+            var stream = MpegTsVideoDemuxerTests.BuildStream(
+                codec == 0 ? (byte)0x1B : (byte)0x24,
+                new[]
+                {
+                    new MpegTsVideoDemuxerTests.PesSample(0, Slice(1)),
+                    new MpegTsVideoDemuxerTests.PesSample(3000, Slice(2)),
+                    new MpegTsVideoDemuxerTests.PesSample(6000, Slice(3))
+                },
+                unbounded: true);
+            var captures = new[] { 111UL, 222UL, 333UL };
+            using var fixture = new WorkerFixture(codec, "emit-ts", stream, captures);
+            await fixture.ExpectLine("READY");
+            var reader = fixture.StartReader();
+            fixture.Process.StandardInput.WriteLine("EMIT");
+            fixture.Process.StandardInput.Flush();
+            await reader.WaitAsync(TimeSpan.FromSeconds(10));
+            await fixture.WaitUntilDrained();
+
+            var sidecar = (ITimestampedCameraVideoEncoderSidecar)fixture.Sidecar;
+            var received = new System.Collections.Generic.List<ulong>();
+            while (sidecar.TryDequeueEncodedAccessUnit(out var unit))
+                received.Add(unit.TimestampNs);
+            Assert.Equal(captures, received);
+            Assert.Equal("Encoder stdout ended unexpectedly.", fixture.Sidecar.LastError);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
         [InlineData(2)]
         public void LateReaderCannotPublishIntoANewSession(int codec)
         {
@@ -181,7 +216,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             public ulong[] PendingTimestampValues =>
                 ((ConcurrentQueue<ulong>)Get("_encodedFrameTimestamps")).ToArray();
 
-            public WorkerFixture(int codec, string mode)
+            public WorkerFixture(int codec, string mode, byte[] stdoutPayload = null, ulong[] captureTimestamps = null)
             {
                 bytes = codec == 2 ? 6 : 12;
                 Sidecar = codec == 0 ? (ICameraVideoEncoderSidecar)new FfmpegH264EncoderSidecar()
@@ -194,6 +229,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 Set("_maxOutputQueue", 4);
                 if (codec < 2)
                     Set("_packetizer", codec == 0 ? (object)new H264AnnexBAccessUnitPacketizer() : new H265AnnexBAccessUnitPacketizer());
+                if (stdoutPayload != null)
+                {
+                    var matcher = new FfmpegTimestampMatcher();
+                    matcher.Reset(30);
+                    foreach (var timestamp in captureTimestamps ?? Array.Empty<ulong>())
+                        matcher.Track(timestamp);
+                    Set("_mpegTsDemuxer", new MpegTsVideoDemuxer());
+                    Set("_timestampMatcher", matcher);
+                }
                 directory = Path.Combine(Path.GetTempPath(), "video-worker-" + Guid.NewGuid().ToString("N"));
                 Directory.CreateDirectory(directory);
                 var dll = Path.Combine(directory, "Child.dll");
@@ -208,6 +252,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 start.ArgumentList.Add(dll);
                 start.ArgumentList.Add(mode);
                 start.ArgumentList.Add(bytes.ToString());
+                if (stdoutPayload != null)
+                {
+                    var payload = Path.Combine(directory, "stdout.bin");
+                    File.WriteAllBytes(payload, stdoutPayload);
+                    start.ArgumentList.Add(payload);
+                }
                 Process = System.Diagnostics.Process.Start(start);
                 Observer = System.Diagnostics.Process.GetProcessById(Process.Id);
                 Assert.Equal(Process.StartTime, Observer.StartTime);
@@ -302,6 +352,11 @@ class Child {
         Console.WriteLine(""READY""); Console.Out.Flush();
         if (args[0] == ""close-stdout"") {
             Console.ReadLine(); Close(1); return;
+        }
+        if (args[0] == ""emit-ts"") {
+            Console.ReadLine();
+            using (var output = Console.OpenStandardOutput()) output.Write(File.ReadAllBytes(args[2]));
+            return;
         }
         var stream = Console.OpenStandardInput(); var frame = new byte[int.Parse(args[1])];
         for (int i = 1;; i++) {
