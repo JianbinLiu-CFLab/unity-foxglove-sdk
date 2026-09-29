@@ -888,6 +888,7 @@ def run_mediafoundation_native_smoke(
 ) -> tuple[bool, bool]:
     """Run the native smoke and return (passed, environment_skipped)."""
     def finish(result: CapturedCommandResult) -> tuple[bool, bool]:
+        """Echo captured output and classify the smoke result."""
         if result.stdout:
             print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
         if result.stderr:

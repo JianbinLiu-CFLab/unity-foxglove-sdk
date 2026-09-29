@@ -587,9 +587,6 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private Task RunStderrReader(Process process, CancellationToken token)
-            => RunStderrReaderForSession(process, token, Volatile.Read(ref _sessionId));
-
         private async Task RunStderrReaderForSession(Process process, CancellationToken token, long sessionId)
         {
             try

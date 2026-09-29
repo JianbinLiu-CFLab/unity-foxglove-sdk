@@ -158,7 +158,7 @@ namespace Unity.FoxgloveSDK.Tests
             CheckContains(command, "aud=1", "74C-15: command emits AUD NAL units");
             CheckContains(command, "repeat-headers=1", "74C-16: command repeats SPS/PPS headers");
             CheckContains(command, "bframes=0", "74C-17: command disables x264 B frames");
-            CheckContains(command, "-f h264", "74C-18: command outputs H.264 elementary stream");
+            CheckContains(command, "-f mpegts", "74C-18: command outputs PTS-bearing MPEG-TS");
             CheckContains(command, "pipe:1", "74C-19: command writes Annex B stream to stdout");
 
             var sidecarType = Type.GetType("Foxglove.Schemas.Video.FfmpegH264EncoderSidecar, FoxgloveSdk.Tests");

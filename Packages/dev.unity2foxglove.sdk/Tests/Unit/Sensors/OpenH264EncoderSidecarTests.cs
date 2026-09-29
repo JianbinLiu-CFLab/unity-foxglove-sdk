@@ -570,6 +570,77 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             }
         }
 
+        /// Every encoder backend receives exactly one handoff copy per frame from the
+        /// publish pipeline, and no caller-side scratch copy or RGB-to-I420 conversion runs.
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(3)]
+        public void PublishPipelineHandsEachFrameToEncoderWithExactlyOneCopy(int codec)
+        {
+            using var process = Process.GetCurrentProcess();
+            object sidecar;
+            CameraOutputMode mode;
+            if (codec == 3)
+            {
+                sidecar = new OpenH264EncoderSidecar();
+                SetField(sidecar, "_options", new OpenH264EncoderOptions { Width = 2, Height = 2 });
+                SetField(sidecar, "_maxInputQueue", 2);
+                SetField(sidecar, "_maxOutputQueue", 4);
+                SetField(sidecar, "_process", process);
+                mode = CameraOutputMode.H264OpenH264;
+            }
+            else
+            {
+                sidecar = CreateFrameSourceSidecar(codec, process);
+                mode = codec == 0 ? CameraOutputMode.H264Ffmpeg
+                    : codec == 1 ? CameraOutputMode.H265Ffmpeg
+                    : CameraOutputMode.H264MediaFoundationExperimental;
+            }
+
+            var pipeline = new CameraVideoPublishPipeline(new CameraPublishDiagnostics());
+            var session = GetField(pipeline, "_videoSidecarSession");
+            SetField(session, "_sidecar", sidecar);
+            SetField(session, "_mode", mode);
+            SetField(session, "_width", 2);
+            SetField(session, "_height", 2);
+            try
+            {
+                for (var frame = 1; frame <= 2; frame++)
+                {
+                    var source = new ObservedFrameSource(12);
+                    var result = pipeline.SubmitVideoFrame(source, (ulong)frame, 2, 2);
+
+                    Assert.True(result.Submitted, result.Reason);
+                    Assert.Equal(1, source.Observation.CopyCount);
+                }
+
+                Assert.Null(GetField(pipeline, "_rgbScratch"));
+                Assert.Null(GetField(pipeline, "_i420Scratch"));
+                foreach (var entry in (IEnumerable)GetField(sidecar, "_inputFrames"))
+                {
+                    var length = (int)entry.GetType().GetProperty("Length", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(entry);
+                    Assert.Equal(12, length);
+                }
+            }
+            finally
+            {
+                SetField(session, "_sidecar", null);
+                if (codec == 3)
+                {
+                    SetField(sidecar, "_process", null);
+                    ((IDisposable)sidecar).Dispose();
+                }
+                else
+                {
+                    DisposeFrameSourceSidecar(sidecar, codec);
+                }
+
+                pipeline.Dispose();
+            }
+        }
+
         [Fact]
         public void MediaFoundationWorkerReleaseClearsManagedStateOnWorkerThread()
         {
@@ -587,6 +658,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Null(GetField(sidecar, "_nv12Scratch"));
             Assert.False(sidecar.IsRunning);
             sidecar.Dispose();
+        }
+
+        [Fact]
+        public void MediaFoundationTimestampTrackingEvictsOnlyTheOldestSample()
+        {
+            var sidecar = new MediaFoundationH264EncoderSidecar();
+            var register = typeof(MediaFoundationH264EncoderSidecar).GetMethod(
+                "RegisterSampleTimestamp",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(register);
+            const long capacity = 256;
+            try
+            {
+                for (var sampleTime = 0L; sampleTime <= capacity; sampleTime++)
+                    register.Invoke(sidecar, new object[] { sampleTime, 1_000UL + (ulong)sampleTime });
+
+                var map = (IDictionary)GetField(sidecar, "_sampleTimestampNsByTime");
+                Assert.Equal((int)capacity, map.Count);
+                Assert.False(map.Contains(0L));
+                Assert.Equal(1_001UL, map[1L]);
+                Assert.Equal(1_000UL + (ulong)capacity, map[capacity]);
+            }
+            finally
+            {
+                sidecar.Dispose();
+            }
         }
 
         private static object CreateFrameSourceSidecar(int codec, Process process)

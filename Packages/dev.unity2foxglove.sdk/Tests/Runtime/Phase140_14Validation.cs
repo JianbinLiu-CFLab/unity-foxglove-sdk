@@ -59,7 +59,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisher.Contains("Volatile.Read(ref _captureGeneration)", StringComparison.Ordinal)
                   && publisher.Contains("Interlocked.Increment(ref _captureGeneration)", StringComparison.Ordinal)
                   && jpeg.Contains("() => Volatile.Read(ref _captureGeneration)", StringComparison.Ordinal),
-                "140-14B-1: capture generation cross-thread reads and writes use memory barriers");
+                "architecture guard: 140-14B-1: capture generation cross-thread reads and writes use memory barriers");
         }
 
         private static void JpegWorkerQueuesUseVolatileReferences()
