@@ -193,6 +193,67 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Equal(id, await disconnected.Task.WaitAsync(timeout.Token));
         }
 
+        [Fact]
+        public async Task BroadcastDoesNotPrecedeServerInfoDuringClientPublication()
+        {
+            using var backend = new ManagedWsBackend();
+            var callbackStarted = new TaskCompletionSource<uint>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseCallback = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            backend.OnClientConnected += id =>
+            {
+                callbackStarted.TrySetResult(id);
+                releaseCallback.Task.GetAwaiter().GetResult();
+                backend.SendText(id, "{\"op\":\"serverInfo\"}");
+            };
+
+            backend.Start("127.0.0.1", 0);
+            var listener = (TcpListener)typeof(ManagedWsBackend).GetField("_listener", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(backend);
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            using var client = new ClientWebSocket();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            client.Options.AddSubProtocol("foxglove.websocket.v1");
+            await client.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), timeout.Token);
+            await callbackStarted.Task.WaitAsync(timeout.Token);
+
+            var firstFrameTask = ReceiveMessageAsync(client, timeout.Token);
+            backend.BroadcastDataBinary(new byte[] { 0x01 });
+            await Task.WhenAny(firstFrameTask, Task.Delay(1000));
+            var prePublicationFrame = firstFrameTask.Status == TaskStatus.RanToCompletion;
+
+            releaseCallback.TrySetResult(true);
+            var firstFrame = await firstFrameTask.WaitAsync(timeout.Token);
+            Assert.False(prePublicationFrame);
+            Assert.Equal(WebSocketMessageType.Text, firstFrame.Type);
+            Assert.Contains("\"op\":\"serverInfo\"", Encoding.UTF8.GetString(firstFrame.Payload), StringComparison.Ordinal);
+            client.Abort();
+        }
+
+        [Fact]
+        public void DisposeCompletesPendingCloseWait()
+        {
+            using var stream = new ProbeStream(Array.Empty<byte>());
+            using var connection = new WsConnection(null, stream, 8, 1024);
+            connection.Dispose();
+            Assert.True(connection.WaitForCloseReceived(TimeSpan.Zero));
+        }
+
+        private static async Task<(WebSocketMessageType Type, byte[] Payload)> ReceiveMessageAsync(
+            ClientWebSocket client,
+            CancellationToken cancellationToken)
+        {
+            var buffer = new byte[1024];
+            using var payload = new MemoryStream();
+            WebSocketReceiveResult result;
+            do
+            {
+                result = await client.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+                payload.Write(buffer, 0, result.Count);
+            }
+            while (!result.EndOfMessage);
+
+            return (result.MessageType, payload.ToArray());
+        }
+
         private static string HandshakeRequest(string target = "/", string extraHeaders = "") =>
             $"GET {target} HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n" +
             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n" +

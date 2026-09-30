@@ -415,6 +415,7 @@ namespace Unity.FoxgloveSDK.Transport
                 return;
 
             BeginClosing();
+            _peerCloseReceived.TrySetResult(false);
             _sendQueue.Complete();
             try { _livenessCts?.Cancel(); } catch { }
             try { _sendCts?.Cancel(); } catch { }

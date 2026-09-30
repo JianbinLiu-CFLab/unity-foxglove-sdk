@@ -380,22 +380,40 @@ namespace Unity.FoxgloveSDK.Transport
         public void BroadcastText(string json)
         {
             var payload = Encoding.UTF8.GetBytes(json ?? string.Empty);
-            foreach (var (id, conn) in _clients)
+            foreach (var (id, conn) in SnapshotAnnouncedClients())
                 HandleEnqueueResult(id, conn, conn.SendTextEncoded(payload, FramePriority.Control), "BroadcastText");
         }
 
         /// <summary>Send a binary frame to every connected client.</summary>
         public void BroadcastBinary(byte[] data)
         {
-            foreach (var (id, conn) in _clients)
+            foreach (var (id, conn) in SnapshotAnnouncedClients())
                 HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Control), "BroadcastBinary");
         }
 
         /// <summary>Send droppable live data binary frames to every connected client.</summary>
         public void BroadcastDataBinary(byte[] data)
         {
-            foreach (var (id, conn) in _clients)
+            foreach (var (id, conn) in SnapshotAnnouncedClients())
                 HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Data), "BroadcastDataBinary");
+        }
+
+        private KeyValuePair<uint, WsConnection>[] SnapshotAnnouncedClients()
+        {
+            lock (_clientAdmissionLock)
+            {
+                var clients = new List<KeyValuePair<uint, WsConnection>>(_clients.Count);
+                foreach (var pair in _clients)
+                {
+                    if (_clientPublications.TryGetValue(pair.Key, out var publication)
+                        && !publication.CallbackCompleted)
+                        continue;
+
+                    clients.Add(pair);
+                }
+
+                return clients.ToArray();
+            }
         }
 
         /// <summary>Drop queued data frames for all clients while preserving protocol control frames.</summary>
