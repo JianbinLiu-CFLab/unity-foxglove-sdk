@@ -252,6 +252,7 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
             public string Identity { get; }
             public int SourceInstanceId => 0;
             public bool IsStopped { get; private set; }
+            public bool CleanupPending => false;
 
             public void Stop()
             {
@@ -260,6 +261,8 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
                 if (_throws)
                     throw new InvalidOperationException(Identity + " failed");
             }
+
+            public bool TryRetryCleanup() => true;
         }
 
         private sealed class FatalHostedBinding : IFoxRunRos2CustomPublisherHostedBinding
@@ -275,6 +278,7 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
             public string Identity { get; }
             public int SourceInstanceId => 0;
             public bool IsStopped { get; private set; }
+            public bool CleanupPending => false;
 
             public void Stop()
             {
@@ -282,6 +286,8 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
                 IsStopped = true;
                 throw new OutOfMemoryException(Identity + " fatal");
             }
+
+            public bool TryRetryCleanup() => true;
         }
     }
 }

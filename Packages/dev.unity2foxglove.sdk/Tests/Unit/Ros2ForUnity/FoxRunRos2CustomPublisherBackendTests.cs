@@ -122,7 +122,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void PublisherFailureUsesTheInnermostExceptionClassWithoutLeakingItsMessage()
+        public void NativeBinaryLoadFailureEscapesThePublisherBoundaryWithoutLeakingItsMessage()
         {
             var driver = new FakeNodeDriver
             {
@@ -135,13 +135,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 new ManagedQosFactory());
             var publisher = owner.AcquirePublisherBackend();
 
-            var registration = publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default);
+            var exception = Assert.Throws<TargetInvocationException>(
+                () => publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default));
 
-            Assert.False(registration.Succeeded);
-            Assert.Equal(FoxRunRos2RegistrationError.PublisherBackendFailure, registration.Error);
-            Assert.Equal("DllNotFoundException", registration.FailureKind);
-            Assert.DoesNotContain("phase181-secret", registration.Diagnostic, StringComparison.Ordinal);
-            Assert.DoesNotContain("phase181-secret", registration.FailureKind, StringComparison.Ordinal);
+            Assert.IsType<DllNotFoundException>(exception.InnerException);
+            publisher.ReleaseNodeOwnership();
+            owner.ReleaseHostOwnership();
+        }
+
+        [Fact]
+        public void FatalPublisherInspectionPreservesPrimaryFailureAndRollsBackTheEndpoint()
+        {
+            var driver = new FakeNodeDriver
+            {
+                PublisherUsabilityFailure = new OutOfMemoryException("publisher-inspection")
+            };
+            var owner = new Ros2ForUnityFoxRunNodeOwner(
+                driver,
+                () => true,
+                new ManagedQosFactory());
+            var publisher = owner.AcquirePublisherBackend();
+
+            var thrown = Assert.Throws<OutOfMemoryException>(
+                () => publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default));
+
+            Assert.Equal("publisher-inspection", thrown.Message);
+            Assert.Equal(1, driver.CreatePublisherCount);
+            Assert.Equal(1, driver.RemovePublisherCount);
             publisher.ReleaseNodeOwnership();
             owner.ReleaseHostOwnership();
         }
@@ -287,6 +307,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public int ReleaseNodeCount { get; private set; }
             public bool PublisherUsable { get; set; } = true;
             public Exception PublisherFailure { get; set; }
+            public Exception PublisherUsabilityFailure { get; set; }
             public ROS2.QualityOfServiceProfile LastPublisherQos { get; private set; }
 
             public object CreateSubscription<T>(string topic, Action<T> callback, ROS2.QualityOfServiceProfile qos)
@@ -308,7 +329,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             public bool IsPublisherUsable<T>(object publisher)
                 where T : ROS2.Message, new()
-                => PublisherUsable && publisher != null;
+            {
+                if (PublisherUsabilityFailure != null)
+                    throw PublisherUsabilityFailure;
+                return PublisherUsable && publisher != null;
+            }
 
             public bool Publish<T>(object publisher, T message)
                 where T : ROS2.Message, new()

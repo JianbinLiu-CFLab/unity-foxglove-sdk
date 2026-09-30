@@ -376,6 +376,23 @@ class SchemaToolingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Circular ROS 2 .msg dependency"):
             module.merged_schema(sources["A"], sources, root_name="A")
 
+    def test_schema_catalog_hashes_transitive_dependency_changes(self) -> None:
+        """Schema identity must change when a merged dependency changes."""
+        module = load_module("schema_catalog_dependency_identity", "Scripts/schema/generate_ros2_msg_schema_catalog.py")
+        sources = {
+            "Root": "foxglove_msgs/Dep dependency\n",
+            "Dep": "int32 value\n",
+        }
+
+        first = module.merged_schema(sources["Root"], sources, root_name="Root")
+        first_hash = module.source_file_sha(first.encode("utf-8"))
+        sources["Dep"] = "int32 changed_value\n"
+        second = module.merged_schema(sources["Root"], sources, root_name="Root")
+        second_hash = module.source_file_sha(second.encode("utf-8"))
+
+        self.assertNotEqual(first, second)
+        self.assertNotEqual(first_hash, second_hash)
+
     def test_generators_skip_identical_text_writes(self) -> None:
         """Schema generators should not churn generated file mtimes when text is unchanged."""
         cdr = load_module("cdr_generator_write_cache", "Scripts/schema/generate_ros2_cdr_serializers.py")

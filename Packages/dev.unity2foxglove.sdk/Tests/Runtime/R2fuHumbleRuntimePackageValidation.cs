@@ -76,8 +76,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             var packageJson = ReadRepoText(RuntimePackage + "/package.json");
             Check(packageJson.Contains("dev.unity2foxglove.ros2forunity.runtime.humble.win64", StringComparison.Ordinal)
-                  && packageJson.Contains("Humble Win64", StringComparison.Ordinal),
-                "160-A5: package metadata names the Humble Win64 runtime package");
+                  && packageJson.Contains("Humble Win64", StringComparison.Ordinal)
+                  && packageJson.Contains("\"unity2foxgloveRuntimeId\": \"r2fu-humble-win64\"", StringComparison.Ordinal),
+                "160-A5: package metadata names and identifies the Humble Win64 runtime package");
 
             var manifest = ReadRepoText(RuntimePackage + "/RuntimeSupport/runtime-manifest.json");
             Check(manifest.Contains("\"runtimeId\": \"r2fu-humble-win64\"", StringComparison.Ordinal)

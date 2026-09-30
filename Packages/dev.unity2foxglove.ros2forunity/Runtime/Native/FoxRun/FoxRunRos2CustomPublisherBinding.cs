@@ -32,9 +32,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Func<FoxRunRos2CustomTypesupportReadiness> _readiness;
         private readonly Action _onStopped;
         private readonly Func<FoxTopicEnvelope<TDto>, bool> _busCallback;
+        private readonly object _cleanupGate = new object();
         private IFoxRunRos2NativePublisherToken _token;
         private bool _subscribed;
         private int _stopped;
+        private int _cleanupPending;
+        private int _ownershipReleased;
+        private int _completionNotified;
 
         internal FoxRunRos2CustomPublisherBinding(
             FoxRunRos2CustomPublisherContract contract,
@@ -62,6 +66,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
 
         internal bool IsStopped => Volatile.Read(ref _stopped) != 0;
+        internal bool CleanupPending => Volatile.Read(ref _cleanupPending) != 0;
         internal int PublishedCount { get; private set; }
         internal int MapperFailureCount { get; private set; }
         internal int PublishFailureCount { get; private set; }
@@ -149,11 +154,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal void Stop()
         {
-            if (Interlocked.Exchange(ref _stopped, 1) != 0)
-                return;
-
             ExceptionDispatchInfo fatal = null;
-            if (_subscribed)
+            if (Interlocked.Exchange(ref _stopped, 1) == 0 && _subscribed)
             {
                 try
                 {
@@ -177,41 +179,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
             }
 
-            var token = Interlocked.Exchange(ref _token, null);
-            if (token != null)
-            {
-                try
-                {
-                    TryRemovePublisher(token);
-                }
-                catch (Exception exception)
-                {
-                    fatal ??= ExceptionDispatchInfo.Capture(exception);
-                }
-            }
-
             try
             {
-                _backend.ReleaseNodeOwnership();
-            }
-            catch (Exception exception) when (
-                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
-            {
-                // The node can already be gone during native shutdown.
-            }
-            catch (Exception exception)
-            {
-                fatal ??= ExceptionDispatchInfo.Capture(exception);
-            }
-
-            try
-            {
-                _onStopped?.Invoke();
-            }
-            catch (Exception exception) when (
-                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
-            {
-                // Origin bookkeeping failure cannot block completed teardown.
+                TryRetryCleanup();
             }
             catch (Exception exception)
             {
@@ -219,6 +189,79 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             fatal?.Throw();
+        }
+
+        internal bool TryRetryCleanup()
+        {
+            lock (_cleanupGate)
+                return TryRetryCleanupCore();
+        }
+
+        private bool TryRetryCleanupCore()
+        {
+            if (!IsStopped)
+                return false;
+
+            ExceptionDispatchInfo fatal = null;
+            var token = Volatile.Read(ref _token);
+            if (token != null)
+            {
+                try
+                {
+                    if (!TryRemovePublisher(token))
+                    {
+                        Volatile.Write(ref _cleanupPending, 1);
+                        return false;
+                    }
+
+                    Interlocked.CompareExchange(ref _token, null, token);
+                    Volatile.Write(ref _cleanupPending, 0);
+                }
+                catch (Exception exception)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(exception);
+                    Interlocked.CompareExchange(ref _token, null, token);
+                }
+            }
+
+            if (Volatile.Read(ref _token) == null
+                && Interlocked.Exchange(ref _ownershipReleased, 1) == 0)
+            {
+                try
+                {
+                    _backend.ReleaseNodeOwnership();
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    // The node can already be gone during native shutdown.
+                }
+                catch (Exception exception)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+
+            if (Volatile.Read(ref _token) == null
+                && Interlocked.Exchange(ref _completionNotified, 1) == 0)
+            {
+                try
+                {
+                    _onStopped?.Invoke();
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    // Origin bookkeeping failure cannot block completed teardown.
+                }
+                catch (Exception exception)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+
+            fatal?.Throw();
+            return Volatile.Read(ref _token) == null;
         }
 
         private bool OnBusEnvelope(FoxTopicEnvelope<TDto> envelope)
@@ -310,19 +353,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return false;
         }
 
-        private void TryRemovePublisher(IFoxRunRos2NativePublisherToken token)
+        private bool TryRemovePublisher(IFoxRunRos2NativePublisherToken token)
         {
             try
             {
                 _backend.RemovePublisher(token);
+                return true;
             }
             catch (Exception exception) when (
                 FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
-                // The native runtime can already be shut down when a Unity
-                // lifecycle callback reaches this endpoint teardown. The
-                // token was detached before this call, and the lease release
-                // below remains mandatory; never throw into that callback.
+                // Keep the token and node lease so the owner can retry after
+                // the native runtime becomes available again.
+                return false;
             }
         }
     }

@@ -321,7 +321,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("return data.decode(\"utf-8\").replace(\"\\r\\n\", \"\\n\").replace(\"\\r\", \"\\n\")", catalog, StringComparison.Ordinal);
             Assert.Contains("local_sources = {path.stem: decode_schema_text(file_bytes[path]) for path in files}", catalog, StringComparison.Ordinal);
             Assert.Contains("tree_sha = source_tree_sha(files, file_bytes)", catalog, StringComparison.Ordinal);
-            Assert.Contains("source_sha = source_file_sha(file_bytes[path])", catalog, StringComparison.Ordinal);
+            Assert.Contains("source_sha = source_file_sha(content.encode(\"utf-8\"))", catalog, StringComparison.Ordinal);
             Assert.Contains("sha.update(canonical_source_bytes(file_bytes[path]))", sourceTreeSha, StringComparison.Ordinal);
             Assert.DoesNotContain("path.read_text", generate, StringComparison.Ordinal);
             Assert.Equal(1, TestSources.Count(generate, "path.read_bytes()"));

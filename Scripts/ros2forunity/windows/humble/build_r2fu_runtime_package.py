@@ -613,6 +613,7 @@ def package_json() -> dict[str, object]:
     return {
         "name": PACKAGE_NAME,
         "version": PACKAGE_VERSION,
+        "unity2foxgloveRuntimeId": RUNTIME_ID,
         "displayName": "Unity2Foxglove ROS2 For Unity Runtime - Humble Win64",
         "license": "Apache-2.0",
         "unity": "6000.0",
