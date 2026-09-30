@@ -277,14 +277,17 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Applies the public input-rate admission gate before taking ownership.
-        /// A false result means the value was rejected and already disposed by
-        /// this stream.
+        /// Consumes a prior admission credit or applies the public input-rate
+        /// gate before taking ownership. A false result means the value was
+        /// rejected and already disposed by this stream.
         /// </summary>
         public bool TryEnqueueOwned(T value, Action<T> disposer)
         {
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
+            if (ConsumeAdmissionCredit())
+                return TryEnqueueOwnedAfterCredit(value, disposer);
+
             if (!TryAdmitInput())
             {
                 DisposeValue(value, disposer);
@@ -309,6 +312,13 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
+            return TryEnqueueOwnedAfterCredit(value, disposer);
+        }
+
+        private bool TryEnqueueOwnedAfterCredit(
+            T value,
+            Action<T> disposer)
+        {
             DirectOwnedSample owned;
             try
             {

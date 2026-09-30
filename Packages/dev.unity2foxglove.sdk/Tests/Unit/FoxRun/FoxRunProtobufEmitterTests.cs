@@ -63,6 +63,41 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void PartialSchemaNameDeclarationsKeepGenerationSuccessful()
+        {
+            var members = new[]
+            {
+                new FoxgloveSourceEmitter.TopicMember(
+                    "_count",
+                    "System.Int32",
+                    "/phase175/partial_schema",
+                    10f,
+                    "Demo.Count",
+                    (int)FoxRunPolicy.FixedRate,
+                    0f,
+                    encoding: "protobuf",
+                    typeShape: FoxRunTypeShape.Canonical("int32")),
+                new FoxgloveSourceEmitter.TopicMember(
+                    "_enabled",
+                    "System.Boolean",
+                    "/phase175/partial_schema",
+                    10f,
+                    "",
+                    (int)FoxRunPolicy.FixedRate,
+                    0f,
+                    encoding: "protobuf",
+                    typeShape: FoxRunTypeShape.Canonical("bool"))
+            };
+
+            var source = FoxgloveSourceEmitter.EmitClass(
+                "Demo",
+                "PartialSchemaTelemetry",
+                members);
+
+            Assert.Contains("/phase175/partial_schema", source);
+        }
+
+        [Fact]
         public void InheritedTopicWithoutSchemaPublishesUsingItsDescriptorSchemaName()
         {
             var member = new FoxgloveSourceEmitter.TopicMember(

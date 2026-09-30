@@ -225,11 +225,15 @@ namespace Unity.FoxgloveSDK.Editor
                     "FoxRun topics must contain at least one member.");
 
             var first = fields.First();
+            var schemaName = fields.FirstOrDefault(
+                field => !string.IsNullOrEmpty(field.SchemaName))?.SchemaName
+                ?? string.Empty;
             if (fields.Skip(1).Any(
-                    field => !string.Equals(
-                                  first.SchemaName,
+                    field => (!string.IsNullOrEmpty(field.SchemaName)
+                              && !string.Equals(
+                                  schemaName,
                                   field.SchemaName,
-                                  StringComparison.Ordinal)
+                                  StringComparison.Ordinal))
                               || !string.Equals(
                                   first.Encoding,
                                   field.Encoding,
