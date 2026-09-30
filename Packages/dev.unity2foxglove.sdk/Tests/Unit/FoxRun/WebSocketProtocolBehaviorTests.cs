@@ -233,6 +233,41 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public async Task PublicationControlOverflowDisconnectsTheClient()
+        {
+            using var backend = new ManagedWsBackend(new ManagedWebSocketOptions
+            {
+                MaxQueuedFramesPerClient = 1,
+                MaxQueuedBytesPerClient = 1024
+            });
+            var callbackStarted = new TaskCompletionSource<uint>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseCallback = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var disconnected = new TaskCompletionSource<uint>(TaskCreationOptions.RunContinuationsAsynchronously);
+            backend.OnClientConnected += id =>
+            {
+                callbackStarted.TrySetResult(id);
+                releaseCallback.Task.GetAwaiter().GetResult();
+            };
+            backend.OnClientDisconnected += id => disconnected.TrySetResult(id);
+
+            backend.Start("127.0.0.1", 0);
+            var listener = (TcpListener)typeof(ManagedWsBackend).GetField("_listener", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(backend);
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            using var client = new ClientWebSocket();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            client.Options.AddSubProtocol("foxglove.websocket.v1");
+            await client.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), timeout.Token);
+            var clientId = await callbackStarted.Task.WaitAsync(timeout.Token);
+
+            backend.BroadcastText("{\"op\":\"advertise\",\"topic\":\"/first\"}");
+            backend.BroadcastText("{\"op\":\"advertise\",\"topic\":\"/overflow\"}");
+            releaseCallback.TrySetResult(true);
+
+            Assert.Equal(clientId, await disconnected.Task.WaitAsync(timeout.Token));
+            Assert.Equal(1, backend.GetStatsSnapshot().ControlOverflowDisconnects);
+        }
+
+        [Fact]
         public void DisposeCompletesPendingCloseWait()
         {
             using var stream = new ProbeStream(Array.Empty<byte>());

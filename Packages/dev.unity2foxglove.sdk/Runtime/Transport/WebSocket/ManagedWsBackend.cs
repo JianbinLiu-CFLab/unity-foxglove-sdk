@@ -451,6 +451,7 @@ namespace Unity.FoxgloveSDK.Transport
                 || bytes.Length > maxBytes - publication.PendingControlBytes)
             {
                 publication.ControlOverflowed = true;
+                Interlocked.Increment(ref _totalControlOverflowDisconnects);
                 return;
             }
 
