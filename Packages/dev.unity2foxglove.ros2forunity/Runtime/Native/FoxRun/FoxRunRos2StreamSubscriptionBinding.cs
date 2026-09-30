@@ -29,6 +29,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Func<long> _activeGeneration;
         private readonly long _maximumCopyBytes;
         private readonly Func<bool> _tryAdmitInput;
+        private readonly Func<bool> _cancelAdmissionCredit;
         private readonly Func<TTransport, FoxRunRos2CopyContext, TSample> _materializeOwned;
         private readonly Action<TSample> _transferOwned;
         private readonly Action _clearOwned;
@@ -70,7 +71,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             IFoxRunRos2NativeBackend backend,
             FoxRunResolvedQos? qos = null,
             IFoxRunRos2NativeQosProfileFactory qosFactory = null,
-            Func<TTransport, bool> dropBorrowed = null)
+            Func<TTransport, bool> dropBorrowed = null,
+            Func<bool> cancelAdmissionCredit = null)
         {
             Contract = contract ?? throw new ArgumentNullException(nameof(contract));
             if (sessionGeneration < 0)
@@ -81,6 +83,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _activeGeneration = activeGeneration ?? throw new ArgumentNullException(nameof(activeGeneration));
             _maximumCopyBytes = maximumCopyBytes;
             _tryAdmitInput = tryAdmitInput ?? throw new ArgumentNullException(nameof(tryAdmitInput));
+            _cancelAdmissionCredit = cancelAdmissionCredit;
             _materializeOwned = materializeOwned ?? throw new ArgumentNullException(nameof(materializeOwned));
             _transferOwned = transferOwned ?? throw new ArgumentNullException(nameof(transferOwned));
             _clearOwned = clearOwned ?? throw new ArgumentNullException(nameof(clearOwned));
@@ -509,6 +512,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
                     Interlocked.Increment(ref _copyFailed);
+                    _cancelAdmissionCredit?.Invoke();
                     return;
                 }
                 finally

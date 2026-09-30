@@ -353,12 +353,19 @@ namespace Unity.FoxgloveSDK.Components
                 throw new ArgumentNullException(nameof(stateDisposer));
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
-            if (!ConsumeAdmissionCredit() && !TryAdmitInput())
+            if (ConsumeAdmissionCredit())
+                return TryEnqueueDeferredOwnedAfterCredit(
+                    state,
+                    materializer,
+                    stateDisposer,
+                    disposer);
+
+            if (!TryAdmitInput())
             {
                 DisposeState(state, stateDisposer);
                 return false;
             }
-            return TryEnqueueDeferredOwnedAfterCredit(
+            return TryEnqueueDeferredOwnedAfterAdmission(
                 state,
                 materializer,
                 stateDisposer,
@@ -420,7 +427,11 @@ namespace Unity.FoxgloveSDK.Components
             return TryEnqueueOwnedCore(owned);
         }
 
-        /// <summary>Return one admission credit when decode or staging rejects an admitted input.</summary>
+        /// <summary>
+        /// Return one admission credit when decode or staging rejects an admitted input.
+        /// The admission timestamp and counters remain consumed so cancellation
+        /// cannot reopen the rate window for another input.
+        /// </summary>
         [EditorBrowsable(EditorBrowsableState.Never)]
         public bool CancelAdmissionCredit()
         {

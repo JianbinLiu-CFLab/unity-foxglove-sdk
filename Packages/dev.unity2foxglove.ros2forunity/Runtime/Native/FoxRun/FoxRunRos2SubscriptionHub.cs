@@ -1409,6 +1409,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             SourceCandidate source,
             FoxRunRos2GeneratedContract contract,
             Func<bool> tryAdmitInput,
+            Func<bool> cancelAdmissionCredit,
             Func<TTransport, FoxRunRos2CopyContext, TSample> materializeOwned,
             Action<TSample> transferOwned,
             Action clearOwned)
@@ -1518,7 +1519,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     backend,
                     qos,
                     qosFactory: null,
-                    dropBorrowed: dropBorrowed);
+                    dropBorrowed: dropBorrowed,
+                    cancelAdmissionCredit: cancelAdmissionCredit);
                 binding.WaitForRuntime();
                 if (Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
                         gameObject.scene))
@@ -1908,13 +1910,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 Func<bool> tryAdmitInput,
                 Func<TTransport, FoxRunRos2CopyContext, TSample> materializeOwned,
                 Action<TSample> transferOwned,
-                Action clearOwned)
+                Action clearOwned,
+                Func<bool> cancelAdmissionCredit = null)
                 where TTransport : ROS2.Message, new()
                 => FoxRunRos2RegistrationIsolation.TryRun(
                     () => _hub.AddStreamBinding(
                         _source,
                         contract,
                         tryAdmitInput,
+                        cancelAdmissionCredit,
                         materializeOwned,
                         transferOwned,
                         clearOwned),
