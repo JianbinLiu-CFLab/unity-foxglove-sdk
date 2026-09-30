@@ -285,6 +285,8 @@ def generate(input_dir: Path, output: Path) -> str:
     local_sources = {path.stem: decode_schema_text(file_bytes[path]) for path in files}
     tree_sha = source_tree_sha(files, file_bytes)
     source_commit = try_source_commit(input_dir)
+    log_file = next(path for path in files if path.stem == "Log")
+    standard_authority_log_sha = source_file_sha(file_bytes[log_file])
 
     entry_blocks: list[str] = []
     for path in files:
@@ -372,6 +374,7 @@ namespace {CSHARP_NAMESPACE}
         public const string SourceSnapshot = "third-party/foxglove-sdk/schemas/ros2";
         public const string SourceTreeSha256 = "{tree_sha}";
         public const string SourceCommit = "{source_commit}";
+        public const string StandardAuthorityLogSourceSha256 = "{standard_authority_log_sha}";
 
         // These generated schema strings are decoded once at type initialization so
         // publisher registration has deterministic startup cost and no first-topic hitch.
