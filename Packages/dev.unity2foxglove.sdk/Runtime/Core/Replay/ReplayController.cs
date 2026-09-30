@@ -367,6 +367,12 @@ namespace Unity.FoxgloveSDK.Core
                                     replayChannels.Add((ushort)(channelId & 0xFFFF));
                             }
 
+                            if (replayChannels.Count == 0)
+                            {
+                                clientBuffers[clientId] = new List<McapMessage>();
+                                continue;
+                            }
+
                             var clientFromNs = _panelHistory.GetHistoryFromTime(
                                 clientId,
                                 startNs,
