@@ -643,17 +643,18 @@ namespace Unity.FoxgloveSDK.Editor
                     group.Key,
                     members,
                     diagnostics);
-                if (members.Select(member => member.SchemaName)
-                    .Where(value => !string.IsNullOrEmpty(value))
+                var schemaNames = members
+                    .Select(member => member.SchemaName ?? string.Empty)
                     .Distinct(StringComparer.Ordinal)
-                    .Count() > 1)
+                    .ToList();
+                if (schemaNames.Count > 1)
                 {
                     diagnostics.Add(
                         FoxRunGenerationDiagnostic.Error(
                             "FOXRUN002",
                             group.Key,
                             string.Empty,
-                            "Topic has conflicting SchemaName values across FoxRun members."));
+                            "Topic members must either all omit SchemaName or all declare the same SchemaName."));
                 }
 
                 if (members.Select(member => member.Encoding)

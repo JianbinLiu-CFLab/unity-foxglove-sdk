@@ -5,6 +5,7 @@
 // Purpose: Phase 174-002 source generator decomposition checks.
 
 using System;
+using System.Linq;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -79,6 +80,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     model,
                     StringComparison.Ordinal);
             }
+        }
+
+        [Fact]
+        public void FoxRunGenerationValidatorsRemainByteForByteIdentical()
+        {
+            var paths = new[]
+            {
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/FoxRunGenerationModelValidator.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/FoxRunGenerationModelValidator.cs"
+            };
+            var expected = TestSources.Text(paths[0]);
+
+            foreach (var path in paths.Skip(1))
+                Assert.Equal(expected, TestSources.Text(path));
         }
     }
 }

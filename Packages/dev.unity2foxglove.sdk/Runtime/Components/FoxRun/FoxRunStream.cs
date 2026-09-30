@@ -353,12 +353,12 @@ namespace Unity.FoxgloveSDK.Components
                 throw new ArgumentNullException(nameof(stateDisposer));
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
-            if (!TryAdmitInput())
+            if (!ConsumeAdmissionCredit() && !TryAdmitInput())
             {
                 DisposeState(state, stateDisposer);
                 return false;
             }
-            return TryEnqueueDeferredOwnedAfterAdmission(
+            return TryEnqueueDeferredOwnedAfterCredit(
                 state,
                 materializer,
                 stateDisposer,
@@ -389,6 +389,20 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
+            return TryEnqueueDeferredOwnedAfterCredit(
+                state,
+                materializer,
+                stateDisposer,
+                disposer);
+        }
+
+        private bool TryEnqueueDeferredOwnedAfterCredit<TState>(
+            TState state,
+            Func<TState, T> materializer,
+            Action<TState> stateDisposer,
+            Action<T> disposer)
+        {
+
             DeferredOwnedSample<TState> owned;
             try
             {
@@ -404,6 +418,19 @@ namespace Unity.FoxgloveSDK.Components
                 throw;
             }
             return TryEnqueueOwnedCore(owned);
+        }
+
+        /// <summary>Return one admission credit when decode or staging rejects an admitted input.</summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public bool CancelAdmissionCredit()
+        {
+            lock (_gate)
+            {
+                if (_pendingAdmissionCredits == 0)
+                    return false;
+                _pendingAdmissionCredits--;
+                return true;
+            }
         }
 
         private bool ConsumeAdmissionCredit()

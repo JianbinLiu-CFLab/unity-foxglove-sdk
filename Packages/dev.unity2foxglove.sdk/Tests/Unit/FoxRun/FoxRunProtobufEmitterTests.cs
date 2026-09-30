@@ -63,7 +63,28 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void PartialSchemaNameDeclarationsKeepGenerationSuccessful()
+        public void StreamInputDecodeFailuresReturnAdmissionCredit()
+        {
+            var member = new FoxgloveSourceEmitter.TopicMember(
+                "_count",
+                "System.Int32",
+                "/phase175/stream-input",
+                10f,
+                "Demo.Count",
+                (int)FoxRunPolicy.FixedRate,
+                0f,
+                mode: (int)FoxRunFlow.Subscribe,
+                encoding: "protobuf",
+                typeShape: FoxRunTypeShape.Canonical("int32"),
+                isStream: true);
+
+            var source = FoxgloveSourceEmitter.EmitClass("Demo", "StreamInput", new[] { member });
+
+            Assert.Contains("CancelAdmissionCredit()", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PartialSchemaNameDeclarationsAreRejectedByEmitterSafetyNet()
         {
             var members = new[]
             {
@@ -89,12 +110,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     typeShape: FoxRunTypeShape.Canonical("bool"))
             };
 
-            var source = FoxgloveSourceEmitter.EmitClass(
-                "Demo",
-                "PartialSchemaTelemetry",
-                members);
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                FoxgloveSourceEmitter.EmitClass(
+                    "Demo",
+                    "PartialSchemaTelemetry",
+                    members));
 
-            Assert.Contains("/phase175/partial_schema", source);
+            Assert.Contains("share one schema", error.Message, StringComparison.Ordinal);
         }
 
         [Fact]

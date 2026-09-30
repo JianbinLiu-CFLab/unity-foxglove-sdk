@@ -159,14 +159,22 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 sb.AppendLine($"{pad}                    if (string.Equals(encoding, \"protobuf\", global::System.StringComparison.OrdinalIgnoreCase))");
                 sb.AppendLine($"{pad}                    {{");
-                sb.AppendLine($"{pad}                        if (!{protobufReader}) return false;");
+                sb.AppendLine($"{pad}                        if (!{protobufReader})");
+                sb.AppendLine($"{pad}                        {{");
+                EmitAdmissionCancellation(sb, member, pad + "                            ");
+                sb.AppendLine($"{pad}                            return false;");
+                sb.AppendLine($"{pad}                        }}");
                 EmitStageAssignment(sb, member, index, pad + "                        ");
                 sb.AppendLine($"{pad}                    }}");
                 if (SupportsJsonInbound(member))
                 {
                     sb.AppendLine($"{pad}                    else if (string.Equals(encoding, \"json\", global::System.StringComparison.OrdinalIgnoreCase))");
                     sb.AppendLine($"{pad}                    {{");
-                    sb.AppendLine($"{pad}                        if (!{jsonReader}) return false;");
+                    sb.AppendLine($"{pad}                        if (!{jsonReader})");
+                    sb.AppendLine($"{pad}                        {{");
+                    EmitAdmissionCancellation(sb, member, pad + "                            ");
+                    sb.AppendLine($"{pad}                            return false;");
+                    sb.AppendLine($"{pad}                        }}");
                     EmitStageAssignment(sb, member, index, pad + "                        ");
                     sb.AppendLine($"{pad}                    }}");
                 }
@@ -174,12 +182,14 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     sb.AppendLine($"{pad}                    else if (string.Equals(encoding, \"json\", global::System.StringComparison.OrdinalIgnoreCase))");
                     sb.AppendLine($"{pad}                    {{");
+                    EmitAdmissionCancellation(sb, member, pad + "                        ");
                     sb.AppendLine($"{pad}                        error = \"This inherited FoxRun input requires Protobuf for its declared type.\";");
                     sb.AppendLine($"{pad}                        return false;");
                     sb.AppendLine($"{pad}                    }}");
                 }
                 sb.AppendLine($"{pad}                    else");
                 sb.AppendLine($"{pad}                    {{");
+                    EmitAdmissionCancellation(sb, member, pad + "                        ");
                 sb.AppendLine($"{pad}                        error = \"Unsupported FoxRun inbound wire encoding.\";");
                 sb.AppendLine($"{pad}                        return false;");
                 sb.AppendLine($"{pad}                    }}");
@@ -188,12 +198,24 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var reader = protobuf ? protobufReader : jsonReader;
                 sb.AppendLine($"{pad}                    if (!{reader})");
+                sb.AppendLine($"{pad}                    {{");
+                EmitAdmissionCancellation(sb, member, pad + "                        ");
                 sb.AppendLine($"{pad}                        return false;");
+                sb.AppendLine($"{pad}                    }}");
                 EmitStageAssignment(sb, member, index, pad + "                    ");
             }
             sb.AppendLine($"{pad}                    error = string.Empty;");
             sb.AppendLine($"{pad}                    return true;");
             sb.AppendLine($"{pad}                }}");
+        }
+
+        private static void EmitAdmissionCancellation(
+            StringBuilder sb,
+            FoxgloveSourceEmitter.TopicMember member,
+            string pad)
+        {
+            if (member.IsStream)
+                sb.AppendLine($"{pad}__stream.CancelAdmissionCredit();");
         }
 
         private static void EmitStageAssignment(
