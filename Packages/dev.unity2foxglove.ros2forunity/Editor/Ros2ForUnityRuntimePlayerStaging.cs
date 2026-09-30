@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #if UNITY_EDITOR
+using System;
 using System.IO;
+using System.Security.Cryptography;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -45,9 +47,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var packageName = status.SelectedRuntime.PackageName;
             var package = Path.Combine(project, "Packages", packageName);
             var source = Path.Combine(package, "Runtime", "Ros2ForUnity");
+            var manifestSource = Path.Combine(package, "RuntimeSupport", "runtime-manifest.json");
             var destination = Path.Combine(Application.dataPath, "StreamingAssets", "Ros2ForUnity");
             if (!Directory.Exists(source))
                 throw new BuildFailedException("Selected ROS2 For Unity runtime has no Runtime/Ros2ForUnity payload: " + package);
+            if (!File.Exists(manifestSource))
+                throw new BuildFailedException("Selected ROS2 For Unity runtime has no runtime manifest: " + manifestSource);
             CleanupStaleStaging();
             if (Directory.Exists(destination))
             {
@@ -56,9 +61,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     "move it before building so user files are not overwritten or deleted: " + destination);
             }
             Directory.CreateDirectory(destination);
-            File.WriteAllText(Path.Combine(destination, ".unity2foxglove-staged"), packageName);
+            var manifestBytes = File.ReadAllBytes(manifestSource);
+            File.WriteAllText(
+                Path.Combine(destination, ".unity2foxglove-staged"),
+                packageName + "|" + status.SelectedRuntime.RuntimeId + "|" + Hash(manifestBytes));
             CopyIfPresent(Path.Combine(source, "metadata_ros2_for_unity.xml"), destination);
             CopyIfPresent(Path.Combine(source, "metadata_ros2cs.xml"), destination);
+            CopyIfPresent(
+                manifestSource,
+                destination);
             var share = Path.Combine(source, "Plugins", "Windows", "x86_64", "share");
             if (!Directory.Exists(share))
                 throw new BuildFailedException("Selected ROS2 For Unity runtime has no plugin share payload: " + share);
@@ -88,6 +99,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             Directory.CreateDirectory(destination);
             foreach (var file in Directory.GetFiles(source)) File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), true);
             foreach (var directory in Directory.GetDirectories(source)) CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)));
+        }
+
+        private static string Hash(byte[] bytes)
+        {
+            using (var sha = SHA256.Create())
+                return BitConverter.ToString(sha.ComputeHash(bytes))
+                    .Replace("-", string.Empty)
+                    .ToLowerInvariant();
         }
     }
 }

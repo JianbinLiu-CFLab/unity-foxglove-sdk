@@ -5,6 +5,7 @@
   "license": "Apache-2.0",
   "unity": "6000.0",
   "description": "Optional Lyrical Windows x64 runtime package for Unity2Foxglove ROS2 For Unity integration.",
+  "unity2foxgloveRuntimeId": "r2fu-lyrical-win64",
   "keywords": [
     "unity2foxglove",
     "ros2",

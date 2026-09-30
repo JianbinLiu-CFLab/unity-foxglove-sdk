@@ -66,5 +66,50 @@ namespace Unity2Foxglove.Ros2Bridge.UnitTests
 
             Assert.Null(decoder);
         }
+
+        [Fact]
+        public void EmptyLegacySchemaDataRemainsNameGated()
+        {
+            Assert.True(
+                FoxgloveRos2MsgSchemaCatalog.TryGet(
+                    "foxglove_msgs/msg/Log",
+                    out var catalogEntry));
+
+            var decoder = new McapRos2CdrTypedDecoderFactory().TryCreate(
+                new McapSchema
+                {
+                    Name = catalogEntry.SchemaName,
+                    Encoding = FoxgloveRos2MsgSchemaCatalog.SchemaEncoding,
+                    Data = Array.Empty<byte>()
+                },
+                new McapChannel { Topic = "/log", MessageEncoding = "cdr" });
+
+            Assert.NotNull(decoder);
+        }
+
+        [Fact]
+        public void MergedDependencyChangeIsRejectedForTheSameSchemaName()
+        {
+            Assert.True(
+                FoxgloveRos2MsgSchemaCatalog.TryGet(
+                    "foxglove_msgs/msg/PoseInFrame",
+                    out var catalogEntry));
+            var changed = catalogEntry.Content.Replace(
+                "MSG: geometry_msgs/Point\nfloat64 x",
+                "MSG: geometry_msgs/Point\nfloat64 changed_x",
+                StringComparison.Ordinal);
+            Assert.NotEqual(catalogEntry.Content, changed);
+
+            var decoder = new McapRos2CdrTypedDecoderFactory().TryCreate(
+                new McapSchema
+                {
+                    Name = catalogEntry.SchemaName,
+                    Encoding = FoxgloveRos2MsgSchemaCatalog.SchemaEncoding,
+                    Data = Encoding.UTF8.GetBytes(changed)
+                },
+                new McapChannel { Topic = "/pose", MessageEncoding = "cdr" });
+
+            Assert.Null(decoder);
+        }
     }
 }

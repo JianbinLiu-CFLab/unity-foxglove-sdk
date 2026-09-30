@@ -211,7 +211,7 @@ def canonical_source_bytes(data: bytes) -> bytes:
 
 
 def source_file_sha(data: bytes) -> str:
-    """Hash one source file after canonical line-ending normalization."""
+    """Hash one canonical merged schema after line-ending normalization."""
 
     return hashlib.sha256(canonical_source_bytes(data)).hexdigest()
 
@@ -291,7 +291,7 @@ def generate(input_dir: Path, output: Path) -> str:
         name = path.stem
         schema_name = f"foxglove_msgs/msg/{name}"
         content = merged_schema(local_sources[name], local_sources, root_name=name)
-        source_sha = source_file_sha(file_bytes[path])
+        source_sha = source_file_sha(content.encode("utf-8"))
         category = CATEGORIES.get(name, "")
         has_publisher = "true" if name in DEDICATED_JSON_OR_PROTOBUF_PUBLISHERS else "false"
         content_literal = csharp_base64_literal(content, "                    ")
@@ -354,7 +354,7 @@ namespace {CSHARP_NAMESPACE}
         /// <summary>Source root .msg filename from the Foxglove SDK snapshot.</summary>
         public string SourceFile {{ get; }}
 
-        /// <summary>SHA-256 of the source root .msg text after LF line-ending normalization.</summary>
+        /// <summary>SHA-256 of the merged schema text, including transitive dependencies.</summary>
         public string SourceSha256 {{ get; }}
 
         /// <summary>Coarse schema category used for documentation.</summary>
