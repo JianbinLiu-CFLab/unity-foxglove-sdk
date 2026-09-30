@@ -643,8 +643,7 @@ namespace Unity.FoxgloveSDK.Editor
                     group.Key,
                     members,
                     diagnostics);
-                var schemaNames = members
-                    .Select(member => member.SchemaName)
+                var schemaNames = members.Select(member => member.SchemaName)
                     .Select(schemaName => schemaName ?? string.Empty)
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
