@@ -643,17 +643,22 @@ namespace Unity.FoxgloveSDK.Editor
                     group.Key,
                     members,
                     diagnostics);
-                if (members.Select(member => member.SchemaName)
-                    .Where(value => !string.IsNullOrEmpty(value))
+                var schemaNames = members.Select(member => member.SchemaName)
+                    .Select(schemaName => schemaName ?? string.Empty)
                     .Distinct(StringComparer.Ordinal)
-                    .Count() > 1)
+                    .ToList();
+                var mixedAggregateTopic = members.Any(
+                        member => member.IsAggregateMember)
+                    && members.Any(
+                        member => !member.IsAggregateMember);
+                if (!mixedAggregateTopic && schemaNames.Count > 1)
                 {
                     diagnostics.Add(
                         FoxRunGenerationDiagnostic.Error(
                             "FOXRUN002",
                             group.Key,
                             string.Empty,
-                            "Topic has conflicting SchemaName values across FoxRun members."));
+                            "Topic members must either all omit SchemaName or all declare the same SchemaName."));
                 }
 
                 if (members.Select(member => member.Encoding)
@@ -689,10 +694,7 @@ namespace Unity.FoxgloveSDK.Editor
                         + fieldNumbers.Key + ".");
                 }
 
-                if (members.Any(
-                        member => member.IsAggregateMember)
-                    && members.Any(
-                        member => !member.IsAggregateMember))
+                if (mixedAggregateTopic)
                 {
                     AddError(
                         diagnostics,

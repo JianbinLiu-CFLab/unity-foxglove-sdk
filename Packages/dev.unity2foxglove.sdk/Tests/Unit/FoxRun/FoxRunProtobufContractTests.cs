@@ -589,6 +589,30 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ModelValidatorRejectsPartialSchemaNameDeclarationsDeterministically()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                new FoxRunGenerationMember(
+                    "Demo", "WireState", "_count", "field", "System.Int32", true, false, "",
+                    "/phase175/partial_schema", 10f, "Demo.WireState", (int)FoxRunPolicy.FixedRate, 0f,
+                    "UnitTest", 0, "", encoding: "protobuf"),
+                new FoxRunGenerationMember(
+                    "Demo", "WireState", "_enabled", "field", "System.Boolean", true, false, "",
+                    "/phase175/partial_schema", 10f, "", (int)FoxRunPolicy.FixedRate, 0f,
+                    "UnitTest", 1, "", encoding: "protobuf")
+            });
+
+            var diagnostic = Assert.Single(
+                FoxRunGenerationModelValidator.Validate(model),
+                value => value.Id == "FOXRUN002");
+
+            Assert.Equal(
+                "Topic members must either all omit SchemaName or all declare the same SchemaName.",
+                diagnostic.Message);
+        }
+
+        [Fact]
         public void ModelValidatorReportsOneDeterministicExplicitTagCollision()
         {
             var model = FoxRunGenerationModel.FromMembers(new[]

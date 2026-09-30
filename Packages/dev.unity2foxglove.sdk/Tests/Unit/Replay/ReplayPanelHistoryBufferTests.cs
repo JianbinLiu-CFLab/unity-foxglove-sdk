@@ -439,6 +439,69 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             }
         }
 
+        [Theory]
+        [InlineData(true, false)]
+        [InlineData(true, true)]
+        [InlineData(false, true)]
+        public void ReplaySnapshotSkipsHistoryForClientWithoutReplaySubscription(
+            bool targeted,
+            bool subscribeLive)
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "phase192-replay-history-no-subscription-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = File.Create(path))
+                using (var recorder = new McapRecorder(
+                    stream,
+                    null,
+                    new McapWriterOptions
+                    {
+                        Compression = "lz4",
+                        IndexTypes = McapIndexTypes.Chunk
+                    }))
+                {
+                    recorder.AddChannel(1, "/history-no-subscription", "json", "", "", "");
+                    recorder.WriteMessage(1, 1, new byte[] { 1 });
+                    recorder.Close();
+                }
+
+                using var transport = new StatsTransport();
+                using var session = new FoxgloveSession("history-no-subscription", transport);
+                using var controller = new ReplayController(new ConsoleLogger(), null, null);
+                controller.Enable(path, SchemaIdentityMode.Off);
+                Assert.True(controller.IsEnabled, controller.LastEnableFailureMessage);
+                controller.RegisterChannels(session);
+                Assert.True(controller.Engine.CanSeek);
+                Assert.All(controller.Engine.Summary.ChunkIndexes,
+                    chunk => Assert.Empty(chunk.MessageIndexOffsets));
+                if (subscribeLive)
+                {
+                    session.RegisterChannel(new AdvertiseChannel
+                    {
+                        Id = 2,
+                        Topic = "/live-only",
+                        Encoding = "json"
+                    });
+                    transport.ReceiveText(1,
+                        "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":11,\"channelId\":2}]}");
+                }
+
+                controller.PublishSnapshot(session, 1, targetClientId: targeted ? 1u : (uint?)null);
+
+                Assert.Equal(0, controller.Engine.LastHistoryMetrics.CandidateCount);
+                Assert.Equal(0, controller.Engine.LastHistoryMetrics.DecompressedChunkReads);
+                Assert.DoesNotContain(transport.SentFrames,
+                    frame => BinaryEncoding.TryDecodeServerMessageData(frame.data, out _, out _, out _));
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
         [Fact]
         public void ReplaySnapshotReusesHistoryQueryForEquivalentClientSubscriptions()
         {

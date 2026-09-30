@@ -164,14 +164,13 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     error = $"Unknown service: {serviceId}";
                 }
-                else if (_services.TryEnqueue(
+                else if (_services.TryEnqueueInternal(
                     serviceId,
                     callId,
                     clientId,
                     encoding,
                     payload,
                     parsedPayload,
-                    out _,
                     out error))
                 {
                     error = null;

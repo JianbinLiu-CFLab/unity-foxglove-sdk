@@ -863,7 +863,8 @@ namespace Phase184
             global::System.Func<bool> tryAdmitInput,
             global::System.Func<TTransport, global::Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CopyContext, TSample> materializeOwned,
             global::System.Action<TSample> transferOwned,
-            global::System.Action clearOwned)
+            global::System.Action clearOwned,
+            global::System.Func<bool> cancelAdmissionCredit = null)
             where TTransport : global::ROS2.Message, new()
         {
             _tryAdmit = tryAdmitInput;

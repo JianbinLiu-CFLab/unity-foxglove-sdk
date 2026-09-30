@@ -277,14 +277,17 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Applies the public input-rate admission gate before taking ownership.
-        /// A false result means the value was rejected and already disposed by
-        /// this stream.
+        /// Consumes a prior admission credit or applies the public input-rate
+        /// gate before taking ownership. A false result means the value was
+        /// rejected and already disposed by this stream.
         /// </summary>
         public bool TryEnqueueOwned(T value, Action<T> disposer)
         {
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
+            if (ConsumeAdmissionCredit())
+                return TryEnqueueOwnedAfterCredit(value, disposer);
+
             if (!TryAdmitInput())
             {
                 DisposeValue(value, disposer);
@@ -309,6 +312,13 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
+            return TryEnqueueOwnedAfterCredit(value, disposer);
+        }
+
+        private bool TryEnqueueOwnedAfterCredit(
+            T value,
+            Action<T> disposer)
+        {
             DirectOwnedSample owned;
             try
             {
@@ -343,6 +353,13 @@ namespace Unity.FoxgloveSDK.Components
                 throw new ArgumentNullException(nameof(stateDisposer));
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
+            if (ConsumeAdmissionCredit())
+                return TryEnqueueDeferredOwnedAfterCredit(
+                    state,
+                    materializer,
+                    stateDisposer,
+                    disposer);
+
             if (!TryAdmitInput())
             {
                 DisposeState(state, stateDisposer);
@@ -379,6 +396,20 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
+            return TryEnqueueDeferredOwnedAfterCredit(
+                state,
+                materializer,
+                stateDisposer,
+                disposer);
+        }
+
+        private bool TryEnqueueDeferredOwnedAfterCredit<TState>(
+            TState state,
+            Func<TState, T> materializer,
+            Action<TState> stateDisposer,
+            Action<T> disposer)
+        {
+
             DeferredOwnedSample<TState> owned;
             try
             {
@@ -394,6 +425,23 @@ namespace Unity.FoxgloveSDK.Components
                 throw;
             }
             return TryEnqueueOwnedCore(owned);
+        }
+
+        /// <summary>
+        /// Return one admission credit when decode or staging rejects an admitted input.
+        /// The admission timestamp and counters remain consumed so cancellation
+        /// cannot reopen the rate window for another input.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public bool CancelAdmissionCredit()
+        {
+            lock (_gate)
+            {
+                if (_pendingAdmissionCredits == 0)
+                    return false;
+                _pendingAdmissionCredits--;
+                return true;
+            }
         }
 
         private bool ConsumeAdmissionCredit()

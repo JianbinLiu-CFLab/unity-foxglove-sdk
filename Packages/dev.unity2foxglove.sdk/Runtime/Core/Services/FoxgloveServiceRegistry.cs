@@ -234,6 +234,51 @@ namespace Unity.FoxgloveSDK.Core
             out FoxgloveServiceCall call,
             out string error)
         {
+            return TryEnqueueCore(
+                serviceId,
+                callId,
+                clientId,
+                encoding,
+                payload,
+                jsonPayload,
+                createSnapshot: true,
+                out call,
+                out error);
+        }
+
+        /// <summary>Enqueue a service call for the internal dispatch pipeline without creating a caller snapshot.</summary>
+        internal bool TryEnqueueInternal(
+            uint serviceId,
+            uint callId,
+            uint clientId,
+            string encoding,
+            byte[] payload,
+            JToken jsonPayload,
+            out string error)
+        {
+            return TryEnqueueCore(
+                serviceId,
+                callId,
+                clientId,
+                encoding,
+                payload,
+                jsonPayload,
+                createSnapshot: false,
+                out _,
+                out error);
+        }
+
+        private bool TryEnqueueCore(
+            uint serviceId,
+            uint callId,
+            uint clientId,
+            string encoding,
+            byte[] payload,
+            JToken jsonPayload,
+            bool createSnapshot,
+            out FoxgloveServiceCall call,
+            out string error)
+        {
             if (payload != null && payload.Length > MaxPayloadBytes)
             {
                 call = null;
@@ -280,7 +325,7 @@ namespace Unity.FoxgloveSDK.Core
                 };
                 _pending[key] = authority;
                 _pendingCountByClient[clientId] = clientPending + 1;
-                call = authority.CreateSnapshot();
+                call = createSnapshot ? authority.CreateSnapshot() : null;
                 error = null;
                 return true;
             }
@@ -358,7 +403,12 @@ namespace Unity.FoxgloveSDK.Core
             return completed;
         }
 
-        /// <summary>Drain all completed calls into a caller-owned list and remove them from pending.</summary>
+        /// <summary>
+        /// Drain completed call snapshots into a caller-owned list and remove them from pending.
+        /// Ownership of the returned snapshots transfers to the caller, which is responsible for
+        /// delivering or discarding them after the registry forgets the calls.
+        /// The session cannot send responses for calls already drained by another consumer.
+        /// </summary>
         public void DrainCompletedTo(List<FoxgloveServiceCall> destination)
         {
             if (destination == null)

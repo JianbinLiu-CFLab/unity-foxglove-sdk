@@ -98,8 +98,24 @@ namespace Unity.FoxgloveSDK.Transport
             internal int CallbackThreadId;
             internal bool Cancelled;
             internal bool StopDisconnectRequested;
+            internal readonly List<PendingPublicationFrame> PendingControlFrames =
+                new List<PendingPublicationFrame>();
+            internal int PendingControlBytes;
+            internal bool ControlOverflowed;
             internal readonly TaskCompletionSource<bool> Completion =
                 new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        private readonly struct PendingPublicationFrame
+        {
+            internal PendingPublicationFrame(bool text, byte[] payload)
+            {
+                Text = text;
+                Payload = payload ?? Array.Empty<byte>();
+            }
+
+            internal bool Text { get; }
+            internal byte[] Payload { get; }
         }
 
         private sealed class ClientHandler
@@ -380,22 +396,83 @@ namespace Unity.FoxgloveSDK.Transport
         public void BroadcastText(string json)
         {
             var payload = Encoding.UTF8.GetBytes(json ?? string.Empty);
-            foreach (var (id, conn) in _clients)
+            foreach (var (id, conn) in SnapshotAnnouncedClients(FramePriority.Control, true, payload))
                 HandleEnqueueResult(id, conn, conn.SendTextEncoded(payload, FramePriority.Control), "BroadcastText");
         }
 
         /// <summary>Send a binary frame to every connected client.</summary>
         public void BroadcastBinary(byte[] data)
         {
-            foreach (var (id, conn) in _clients)
+            foreach (var (id, conn) in SnapshotAnnouncedClients(FramePriority.Control, false, data))
                 HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Control), "BroadcastBinary");
         }
 
         /// <summary>Send droppable live data binary frames to every connected client.</summary>
         public void BroadcastDataBinary(byte[] data)
         {
-            foreach (var (id, conn) in _clients)
+            foreach (var (id, conn) in SnapshotAnnouncedClients(FramePriority.Data, false, data))
                 HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Data), "BroadcastDataBinary");
+        }
+
+        private KeyValuePair<uint, WsConnection>[] SnapshotAnnouncedClients(
+            FramePriority priority,
+            bool text,
+            byte[] payload)
+        {
+            lock (_clientAdmissionLock)
+            {
+                var clients = new List<KeyValuePair<uint, WsConnection>>(_clients.Count);
+                foreach (var pair in _clients)
+                {
+                    if (_clientPublications.TryGetValue(pair.Key, out var publication)
+                        && !publication.CallbackCompleted)
+                    {
+                        if (priority == FramePriority.Control)
+                            DeferPublicationControlLocked(publication, text, payload);
+                        continue;
+                    }
+
+                    clients.Add(pair);
+                }
+
+                return clients.ToArray();
+            }
+        }
+
+        private void DeferPublicationControlLocked(
+            ClientPublication publication,
+            bool text,
+            byte[] payload)
+        {
+            var bytes = payload ?? Array.Empty<byte>();
+            var maxFrames = ManagedWebSocketOptions.NormalizeMaxQueuedFrames(_options.MaxQueuedFramesPerClient);
+            var maxBytes = ManagedWebSocketOptions.NormalizeMaxQueuedBytes(_options.MaxQueuedBytesPerClient);
+            if (publication.PendingControlFrames.Count >= maxFrames
+                || bytes.Length > maxBytes - publication.PendingControlBytes)
+            {
+                if (!publication.ControlOverflowed)
+                {
+                    publication.ControlOverflowed = true;
+                    Interlocked.Increment(ref _totalControlOverflowDisconnects);
+                }
+                return;
+            }
+
+            publication.PendingControlFrames.Add(
+                new PendingPublicationFrame(text, (byte[])bytes.Clone()));
+            publication.PendingControlBytes += bytes.Length;
+        }
+
+        private static List<PendingPublicationFrame> TakePendingPublicationControlsLocked(
+            ClientPublication publication)
+        {
+            if (publication.PendingControlFrames.Count == 0)
+                return null;
+
+            var pending = new List<PendingPublicationFrame>(publication.PendingControlFrames);
+            publication.PendingControlFrames.Clear();
+            publication.PendingControlBytes = 0;
+            return pending;
         }
 
         /// <summary>Drop queued data frames for all clients while preserving protocol control frames.</summary>
@@ -1000,16 +1077,21 @@ namespace Unity.FoxgloveSDK.Transport
                     if (InvokeClientObservers(OnClientConnected, clientId, "connected"))
                         disconnectAfterCallback = true;
 
+                    List<PendingPublicationFrame> pendingControls = null;
+                    var publicationReady = false;
                     lock (_clientAdmissionLock)
                     {
-                        publication.CallbackCompleted = true;
                         publication.CallbackThreadId = 0;
                         if (disconnectAfterCallback
                             || publication.Cancelled
+                            || publication.ControlOverflowed
                             || IsStopping
                             || !_clients.TryGetValue(clientId, out var current)
                             || !ReferenceEquals(current, expectedConnection))
                         {
+                            publication.CallbackCompleted = true;
+                            publication.PendingControlFrames.Clear();
+                            publication.PendingControlBytes = 0;
                             // A concurrent Stop/DisconnectClient marked the
                             // publication cancelled while the callback was
                             // running. Leave the entry in place and finish it
@@ -1028,7 +1110,62 @@ namespace Unity.FoxgloveSDK.Transport
                         }
                         else
                         {
-                            return true;
+                            pendingControls = TakePendingPublicationControlsLocked(publication);
+                            publicationReady = true;
+                        }
+                    }
+
+                    while (publicationReady)
+                    {
+                        if (pendingControls != null)
+                        {
+                            foreach (var pending in pendingControls)
+                            {
+                                var result = pending.Text
+                                    ? expectedConnection.SendTextEncoded(pending.Payload, FramePriority.Control)
+                                    : expectedConnection.SendBinary(pending.Payload, FramePriority.Control);
+                                HandleEnqueueResult(
+                                    clientId,
+                                    expectedConnection,
+                                    result,
+                                    pending.Text ? "FlushPublicationText" : "FlushPublicationBinary");
+                                if (result.ShouldDisconnect)
+                                    break;
+                            }
+                        }
+
+                        lock (_clientAdmissionLock)
+                        {
+                            if (publication.Cancelled
+                                || IsStopping
+                                || publication.ControlOverflowed
+                                || !_clients.TryGetValue(clientId, out var current)
+                                || !ReferenceEquals(current, expectedConnection))
+                            {
+                                publication.CallbackCompleted = true;
+                                publication.PendingControlFrames.Clear();
+                                publication.PendingControlBytes = 0;
+                                stopOwnsConnection = IsStopping
+                                    && !publication.StopDisconnectRequested
+                                    && _clients.TryGetValue(clientId, out current)
+                                    && ReferenceEquals(current, expectedConnection);
+                                disconnectAfterCallback = publication.StopDisconnectRequested
+                                    || (!stopOwnsConnection
+                                        && publication.Announced
+                                        && _clients.TryGetValue(clientId, out current)
+                                        && ReferenceEquals(current, expectedConnection));
+                                publicationReady = false;
+                            }
+                            else
+                            {
+                                pendingControls = TakePendingPublicationControlsLocked(publication);
+                                if (pendingControls == null)
+                                {
+                                    publication.CallbackCompleted = true;
+                                    publicationReady = false;
+                                    return true;
+                                }
+                            }
                         }
                     }
 

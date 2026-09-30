@@ -148,6 +148,89 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void PublicOwnedEnqueueConsumesPreAdmittedCredit()
+        {
+            var disposed = new List<int>();
+            using var stream = new FoxRunStream<int>(
+                new FoxRunStreamOptions(2, 1d, 2),
+                () => 0L,
+                1L);
+
+            Assert.True(stream.TryAdmitInput());
+            Assert.True(stream.TryEnqueueOwned(1, disposed.Add));
+
+            Assert.Empty(disposed);
+            Assert.Equal(1, stream.Count);
+            Assert.Equal(1, stream.Stats.Admitted);
+            Assert.Equal(0, stream.Stats.RateDropped);
+        }
+
+        [Fact]
+        public void PublicDeferredEnqueueConsumesPreAdmittedCredit()
+        {
+            var disposed = new List<int>();
+            using var stream = new FoxRunStream<int>(
+                new FoxRunStreamOptions(2, 1d, 2),
+                () => 0L,
+                1L);
+
+            Assert.True(stream.TryAdmitInput());
+            Assert.True(stream.TryEnqueueDeferredOwned(
+                1,
+                static value => value,
+                disposed.Add,
+                static _ => { }));
+
+            Assert.Empty(disposed);
+            Assert.Equal(1, stream.Count);
+            Assert.Equal(1, stream.Stats.Admitted);
+            Assert.Equal(0, stream.Stats.RateDropped);
+        }
+
+        [Fact]
+        public void PublicDeferredEnqueueAdmitsExactlyOnceWhenCallerHasNoCredit()
+        {
+            var disposed = new List<int>();
+            using var stream = new FoxRunStream<int>(
+                new FoxRunStreamOptions(2, 1d, 2),
+                () => 0L,
+                1L);
+
+            Assert.True(stream.TryEnqueueDeferredOwned(
+                1,
+                static value => value,
+                disposed.Add,
+                static _ => { }));
+            Assert.False(stream.TryEnqueueDeferredOwned(
+                2,
+                static value => value,
+                disposed.Add,
+                static _ => { }));
+
+            Assert.Equal(new[] { 2 }, disposed);
+            Assert.Equal(1, stream.Count);
+            Assert.Equal(1, stream.Stats.Admitted);
+            Assert.Equal(1, stream.Stats.RateDropped);
+        }
+
+        [Fact]
+        public void CancelledAdmissionCreditCannotBeReusedByAnotherEnqueue()
+        {
+            var disposed = new List<int>();
+            using var stream = new FoxRunStream<int>(
+                new FoxRunStreamOptions(2, 1d, 2),
+                () => 0L,
+                1L);
+
+            Assert.True(stream.TryAdmitInput());
+            Assert.True(stream.CancelAdmissionCredit());
+            Assert.False(stream.TryEnqueueOwned(1, disposed.Add));
+
+            Assert.Equal(new[] { 1 }, disposed);
+            Assert.Equal(1, stream.Stats.RateDropped);
+        }
+
+        [Fact]
         public void GeneratedAfterAdmissionSeamsRequireAnAdmissionCredit()
         {
             var disposed = new List<int>();

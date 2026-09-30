@@ -94,6 +94,11 @@ namespace Unity.FoxgloveSDK.Editor
                     + " = __foxRunRos2Stream_" + index
                     + " == null ? null : new global::System.Func<bool>(__foxRunRos2Stream_"
                     + index + ".TryAdmitInput);");
+                sb.AppendLine(
+                    pad + "        var __foxRunRos2CancelAdmission_" + index
+                    + " = __foxRunRos2Stream_" + index
+                    + " == null ? null : new global::System.Func<bool>(__foxRunRos2Stream_"
+                    + index + ".CancelAdmissionCredit);");
             }
             sb.AppendLine(
                 pad + "        registrar."
@@ -131,7 +136,8 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(pad + "                    owned,");
                 sb.AppendLine(pad + "                    static value => __FoxRunRos2Dispose_" + index + "(value));");
                 sb.AppendLine(pad + "            },");
-                sb.AppendLine(pad + "            () => __foxRunRos2Stream_" + index + ".Clear());");
+                sb.AppendLine(pad + "            () => __foxRunRos2Stream_" + index + ".Clear(),");
+                sb.AppendLine(pad + "            __foxRunRos2CancelAdmission_" + index + ");");
                 return;
             }
             sb.AppendLine(pad + "            static owned => __FoxRunRos2Dispose_" + index + "(owned),");

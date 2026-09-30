@@ -88,6 +88,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void MaterializerFailureReturnsAdmissionCreditToTheStream()
+        {
+            var backend = new FakeBackend();
+            var disposed = new System.Collections.Generic.List<int>();
+            using var stream = new FoxRunStream<int>(
+                new FoxRunStreamOptions(2, 1d, 2),
+                () => 0L,
+                1L);
+            var binding = Binding(
+                backend,
+                tryAdmitInput: stream.TryAdmitInput,
+                materializeOwned: (_, __) => throw new InvalidOperationException("copy failed"),
+                transferOwned: _ => throw new InvalidOperationException("must not transfer"),
+                cancelAdmissionCredit: stream.CancelAdmissionCredit);
+
+            Assert.True(binding.TryRegister().Succeeded);
+            backend.Invoke(new FakeMessage());
+
+            Assert.False(stream.TryEnqueueOwned(1, disposed.Add));
+            Assert.Equal(new[] { 1 }, disposed);
+            Assert.Equal(1, stream.Stats.RateDropped);
+            binding.Stop();
+        }
+
+        [Fact]
         public void NullMaterializerResultIsRejectedBeforeOwnershipTransfer()
         {
             var backend = new FakeBackend();
@@ -845,7 +870,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Func<FakeMessage, FoxRunRos2CopyContext, OwnedSample> materializeOwned,
             Action<OwnedSample> transferOwned,
             Action clearOwned = null,
-            Action<Action> dispatchCleanup = null)
+            Action<Action> dispatchCleanup = null,
+            Func<bool> cancelAdmissionCredit = null)
             => new FoxRunRos2StreamSubscriptionBinding<FakeMessage, OwnedSample>(
                 Contract(),
                 7,
@@ -858,7 +884,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 dispatchCleanup ?? (action => action()),
                 backend,
                 FoxRunResolvedQos.Default,
-                new ManagedQosFactory());
+                new ManagedQosFactory(),
+                cancelAdmissionCredit: cancelAdmissionCredit);
 
         private static FoxRunRos2GeneratedContract Contract()
             => new FoxRunRos2GeneratedContract(
