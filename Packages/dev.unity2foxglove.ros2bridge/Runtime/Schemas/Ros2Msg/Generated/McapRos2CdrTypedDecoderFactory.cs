@@ -5,6 +5,7 @@
 // Purpose: Packaged Foxglove ROS 2 CDR typed decoder factory for MCAP DataLoader.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Google.Protobuf;
@@ -45,12 +46,28 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             if (recorded == null || string.IsNullOrEmpty(bundled))
                 return false;
-            var recordedText = NormalizeSchema(Encoding.UTF8.GetString(recorded));
-            return string.Equals(recordedText, NormalizeSchema(bundled), StringComparison.Ordinal);
+            var recordedText = CanonicalizeSchema(Encoding.UTF8.GetString(recorded));
+            return string.Equals(recordedText, CanonicalizeSchema(bundled), StringComparison.Ordinal);
         }
 
-        private static string NormalizeSchema(string value)
-            => (value ?? string.Empty).TrimStart('\uFEFF').Replace("\r\n", "\n").Replace('\r', '\n');
+        private static string CanonicalizeSchema(string value)
+        {
+            var normalized = (value ?? string.Empty)
+                .TrimStart('\uFEFF')
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n');
+            var lines = normalized.Split('\n');
+            var meaningfulLines = new List<string>(lines.Length);
+            foreach (var line in lines)
+            {
+                var canonicalLine = line.Trim();
+                if (canonicalLine.Length == 0 || canonicalLine.StartsWith("#", StringComparison.Ordinal))
+                    continue;
+                meaningfulLines.Add(canonicalLine);
+            }
+
+            return string.Join("\n", meaningfulLines);
+        }
 
         private sealed class Decoder :
             IMcapMessageDecoder,

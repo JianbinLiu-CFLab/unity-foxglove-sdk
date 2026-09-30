@@ -15,7 +15,10 @@ namespace Unity.FoxgloveSDK.Schemas
     /// </summary>
     public interface ISchemaRegistry
     {
-        /// <summary>Try to get a schema by its full name (e.g. "foxglove.FrameTransform").</summary>
+        /// <summary>
+        /// Try to get a schema by its full name (e.g. "foxglove.FrameTransform").
+        /// Name-only lookup returns false when multiple non-JSON encodings are registered.
+        /// </summary>
         bool TryGetSchema(string name, out SchemaEntry entry);
 
         /// <summary>Register a schema. Schema bytes can be JSON Schema text or raw bytes.</summary>
@@ -92,24 +95,36 @@ namespace Unity.FoxgloveSDK.Schemas
 
         /// <summary>
         /// Register a schema. Multiple encodings can coexist for the same name;
-        /// name-only lookup preserves jsonschema as the default when present.
+        /// duplicate keys must have identical content and name-only lookup preserves
+        /// jsonschema as the default when present.
         /// </summary>
         public void Register(SchemaEntry entry)
         {
             if (string.IsNullOrEmpty(entry.Name))
                 throw new ArgumentException("Schema name is required", nameof(entry));
 
-            entry = CloneEntryWithRawContentSnapshot(entry);
             entry.Encoding = NormalizeEncoding(entry.Encoding);
+            if (entry.Encoding.Length == 0)
+                throw new ArgumentException("Schema encoding is required", nameof(entry));
+            ValidateContentInvariant(entry);
+            entry = CloneEntryWithRawContentSnapshot(entry);
             lock (_gate)
             {
-                _schemasByEncoding[MakeKey(entry.Name, entry.Encoding)] = entry;
-
-                if (!_schemas.TryGetValue(entry.Name, out var existing)
-                    || ShouldReplaceNameDefault(existing.Encoding, entry.Encoding))
+                var key = MakeKey(entry.Name, entry.Encoding);
+                if (_schemasByEncoding.TryGetValue(key, out var existing))
                 {
-                    _schemas[entry.Name] = entry;
+                    if (!EntriesEqual(existing, entry))
+                    {
+                        throw new InvalidOperationException(
+                            "Schema '" + entry.Name + "' with encoding '" + entry.Encoding +
+                            "' is already registered with different content.");
+                    }
+
+                    return;
                 }
+
+                _schemasByEncoding.Add(key, entry);
+                RecomputeNameDefaultLocked(entry.Name);
             }
         }
 
@@ -120,16 +135,70 @@ namespace Unity.FoxgloveSDK.Schemas
 
         private static string NormalizeEncoding(string encoding)
         {
-            if (string.IsNullOrEmpty(encoding))
+            if (string.IsNullOrWhiteSpace(encoding))
                 return string.Empty;
-            return encoding.ToLowerInvariant();
+            return encoding.Trim().ToLowerInvariant();
         }
 
-        private static bool ShouldReplaceNameDefault(string existingEncoding, string newEncoding)
+        private void RecomputeNameDefaultLocked(string name)
         {
-            if (string.Equals(newEncoding, JsonSchemaEncoding, StringComparison.OrdinalIgnoreCase))
+            SchemaEntry selected = default;
+            var count = 0;
+            var hasJson = false;
+            foreach (var candidate in _schemasByEncoding.Values)
+            {
+                if (!string.Equals(candidate.Name, name, StringComparison.Ordinal))
+                    continue;
+
+                count++;
+                if (string.Equals(candidate.Encoding, JsonSchemaEncoding, StringComparison.Ordinal))
+                {
+                    selected = candidate;
+                    hasJson = true;
+                }
+                else if (!hasJson)
+                {
+                    selected = candidate;
+                }
+            }
+
+            if (count == 0 || (count > 1 && !hasJson))
+            {
+                _schemas.Remove(name);
+                return;
+            }
+
+            _schemas[name] = selected;
+        }
+
+        private static bool EntriesEqual(SchemaEntry left, SchemaEntry right)
+        {
+            if (!string.Equals(left.Name, right.Name, StringComparison.Ordinal)
+                || !string.Equals(left.Encoding, right.Encoding, StringComparison.Ordinal)
+                || !string.Equals(left.Content, right.Content, StringComparison.Ordinal))
+                return false;
+
+            if (ReferenceEquals(left.RawContent, right.RawContent))
                 return true;
-            return !string.Equals(existingEncoding, JsonSchemaEncoding, StringComparison.OrdinalIgnoreCase);
+            if (left.RawContent == null || right.RawContent == null || left.RawContent.Length != right.RawContent.Length)
+                return false;
+            for (var i = 0; i < left.RawContent.Length; i++)
+                if (left.RawContent[i] != right.RawContent[i])
+                    return false;
+            return true;
+        }
+
+        private static void ValidateContentInvariant(SchemaEntry entry)
+        {
+            if (string.Equals(entry.Encoding, "protobuf", StringComparison.Ordinal)
+                && entry.Content != null
+                && entry.RawContent != null
+                && !string.Equals(entry.Content, Convert.ToBase64String(entry.RawContent), StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "Protobuf schema Content must equal the base64 encoding of RawContent.",
+                    nameof(entry));
+            }
         }
 
         private static SchemaEntry CloneEntryWithRawContentSnapshot(SchemaEntry entry)

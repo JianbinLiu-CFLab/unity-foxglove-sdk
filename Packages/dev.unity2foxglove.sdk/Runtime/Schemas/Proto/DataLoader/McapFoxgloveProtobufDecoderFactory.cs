@@ -7,9 +7,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using Foxglove.Schemas;
 using Google.Protobuf;
+using Google.Protobuf.Reflection;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Schemas;
 
@@ -36,12 +38,12 @@ namespace Unity.FoxgloveSDK.IO
                 return null;
 
             if (!FoxgloveProtoSchemaCatalog.TryGet(schema?.Name ?? string.Empty, out var entry))
-                return new FailingDecoder("Packaged Foxglove protobuf schema is unknown: " + (schema?.Name ?? string.Empty) + ".");
+                return null;
 
             var bundledDescriptor = s_bundledRegistry.Value.GetFileDescriptorSet(entry.SchemaName);
             if (schema.Data == null || schema.Data.Length == 0)
                 return new FailingDecoder("MCAP protobuf schema descriptor is missing for " + entry.SchemaName + ".");
-            if (bundledDescriptor == null || !BytesEqual(schema.Data, bundledDescriptor))
+            if (bundledDescriptor == null || !DescriptorSetsEqual(schema.Data, bundledDescriptor))
                 return new FailingDecoder("MCAP protobuf schema descriptor does not match the bundled snapshot for " + entry.SchemaName + ".");
 
             var parser = ResolveParser(entry.ClrType);
@@ -61,6 +63,46 @@ namespace Unity.FoxgloveSDK.IO
                     return false;
             }
             return true;
+        }
+
+        private static bool DescriptorSetsEqual(byte[] left, byte[] right)
+        {
+            try
+            {
+                return BytesEqual(CanonicalizeDescriptorSet(left), CanonicalizeDescriptorSet(right));
+            }
+            catch (InvalidProtocolBufferException)
+            {
+                return false;
+            }
+        }
+
+        private static byte[] CanonicalizeDescriptorSet(byte[] bytes)
+        {
+            var descriptorSet = FileDescriptorSet.Parser.ParseFrom(bytes);
+            var files = descriptorSet.File
+                .Select(file => CanonicalizeFile(file))
+                .OrderBy(file => file.Name, StringComparer.Ordinal)
+                .ToArray();
+            descriptorSet.File.Clear();
+            descriptorSet.File.Add(files);
+            return descriptorSet.ToByteArray();
+        }
+
+        private static FileDescriptorProto CanonicalizeFile(FileDescriptorProto file)
+        {
+            var clone = file.Clone();
+            var dependencies = clone.Dependency.OrderBy(value => value, StringComparer.Ordinal).ToArray();
+            clone.Dependency.Clear();
+            clone.Dependency.Add(dependencies);
+            var publicDependencies = clone.PublicDependency.OrderBy(value => value).ToArray();
+            clone.PublicDependency.Clear();
+            clone.PublicDependency.Add(publicDependencies);
+            var weakDependencies = clone.WeakDependency.OrderBy(value => value).ToArray();
+            clone.WeakDependency.Clear();
+            clone.WeakDependency.Add(weakDependencies);
+            clone.SourceCodeInfo = null;
+            return clone;
         }
 
         private static MessageParser ResolveParser(Type clrType)
