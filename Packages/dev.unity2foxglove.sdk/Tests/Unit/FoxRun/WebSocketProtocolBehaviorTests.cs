@@ -274,6 +274,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             using var stream = new ProbeStream(Array.Empty<byte>());
             using var connection = new WsConnection(null, stream, 8, 1024);
             connection.Dispose();
+            Assert.False(connection.WaitForCloseReceived(TimeSpan.Zero));
+        }
+
+        [Fact]
+        public void PeerCloseCompletesCloseWaitSuccessfully()
+        {
+            using var stream = new ProbeStream(Array.Empty<byte>());
+            using var connection = new WsConnection(null, stream, 8, 1024);
+            connection.MarkCloseReceived();
             Assert.True(connection.WaitForCloseReceived(TimeSpan.Zero));
         }
 

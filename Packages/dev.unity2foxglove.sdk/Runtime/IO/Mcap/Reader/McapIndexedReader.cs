@@ -590,8 +590,34 @@ namespace Unity.FoxgloveSDK.IO
         private bool HasCompleteMetadataIndex()
         {
             var metadataCount = _summary.Statistics?.MetadataCount;
-            return metadataCount.HasValue
-                && (ulong)(_summary.MetadataIndexes?.Count ?? 0) == metadataCount.Value;
+            var indexes = _summary.MetadataIndexes;
+            if (!metadataCount.HasValue
+                || (ulong)(indexes?.Count ?? 0) != metadataCount.Value)
+                return false;
+            if (indexes == null || indexes.Count == 0)
+                return true;
+
+            var offsets = new HashSet<ulong>();
+            try
+            {
+                for (var i = 0; i < indexes.Count; i++)
+                {
+                    var index = indexes[i];
+                    if (index == null
+                        || !offsets.Add(index.Offset))
+                        return false;
+                    var metadata = _reader.ReadMetadataAt(index.Offset);
+                    if (metadata == null
+                        || !string.Equals(metadata.Name, index.Name, StringComparison.Ordinal))
+                        return false;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>

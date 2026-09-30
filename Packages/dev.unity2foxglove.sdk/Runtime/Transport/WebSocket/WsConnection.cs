@@ -120,9 +120,20 @@ namespace Unity.FoxgloveSDK.Transport
 
         internal bool WaitForCloseReceived(TimeSpan timeout)
         {
-            try { return _peerCloseReceived.Task.Wait(timeout); }
-            catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException)) { return true; }
-            catch (ObjectDisposedException) { return true; }
+            try
+            {
+                if (!_peerCloseReceived.Task.Wait(timeout))
+                    return false;
+                return _peerCloseReceived.Task.GetAwaiter().GetResult();
+            }
+            catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
+            {
+                return false;
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
         }
 
         private static long MonotonicMilliseconds()

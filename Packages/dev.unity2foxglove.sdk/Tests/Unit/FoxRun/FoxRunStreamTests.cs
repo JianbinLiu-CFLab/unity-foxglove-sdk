@@ -214,6 +214,51 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void AdmissionCreditCannotBeConsumedByAnotherProducerThread()
+        {
+            var disposed = new ConcurrentQueue<int>();
+            using var stream = new FoxRunStream<int>(
+                new FoxRunStreamOptions(2, 1d, 2),
+                () => 0L,
+                1L);
+            using var admitted = new ManualResetEventSlim();
+            using var release = new ManualResetEventSlim();
+            var producerAId = 0;
+            var producerBId = 0;
+            var producerAAdmitted = false;
+            var producerAResult = false;
+            var producerBResult = true;
+
+            var producerA = new Thread(() =>
+            {
+                producerAId = Environment.CurrentManagedThreadId;
+                producerAAdmitted = stream.TryAdmitInput();
+                admitted.Set();
+                release.Wait();
+                producerAResult = stream.TryEnqueueOwned(1, disposed.Enqueue);
+            });
+            var producerB = new Thread(() =>
+            {
+                producerBId = Environment.CurrentManagedThreadId;
+                admitted.Wait();
+                producerBResult = stream.TryEnqueueOwned(2, disposed.Enqueue);
+            });
+
+            producerA.Start();
+            producerB.Start();
+            producerB.Join();
+            release.Set();
+            producerA.Join();
+
+            Assert.NotEqual(producerAId, producerBId);
+            Assert.True(producerAAdmitted);
+            Assert.False(producerBResult);
+            Assert.True(producerAResult);
+            Assert.Equal(new[] { 2 }, disposed.ToArray());
+            Assert.Equal(1, stream.Count);
+        }
+
+        [Fact]
         public void CancelledAdmissionCreditCannotBeReusedByAnotherEnqueue()
         {
             var disposed = new List<int>();
