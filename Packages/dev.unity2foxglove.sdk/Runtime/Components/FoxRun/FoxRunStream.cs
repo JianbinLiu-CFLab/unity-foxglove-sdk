@@ -58,7 +58,8 @@ namespace Unity.FoxgloveSDK.Components
         private bool _disposed;
         private long _nextReservationIdentity;
         private long _activeReservationIdentity;
-        private long _pendingAdmissionCredits;
+        private readonly Dictionary<int, long> _pendingAdmissionCreditsByThread
+            = new Dictionary<int, long>();
 
         private long _received;
         private long _admitted;
@@ -137,11 +138,14 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Applies the stream's finite monotonic admission ceiling before the
         /// provider performs avoidable decode, allocation, or deep-copy work.
+        /// The resulting compatibility credit belongs to the calling producer
+        /// thread; generated providers that cross threads must use a reservation.
         /// </summary>
         public bool TryAdmitInput()
         {
             SaturatingIncrement(ref _received);
             var now = _getTimestamp();
+            var producerThreadId = Environment.CurrentManagedThreadId;
             lock (_gate)
             {
                 if (_disposed)
@@ -156,8 +160,17 @@ namespace Unity.FoxgloveSDK.Components
 
                 _lastAdmissionTimestamp = now;
                 _hasAdmissionTimestamp = true;
-                if (_pendingAdmissionCredits != long.MaxValue)
-                    _pendingAdmissionCredits++;
+                if (_pendingAdmissionCreditsByThread.TryGetValue(
+                        producerThreadId,
+                        out var pendingCredits))
+                {
+                    if (pendingCredits != long.MaxValue)
+                        _pendingAdmissionCreditsByThread[producerThreadId] = pendingCredits + 1;
+                }
+                else
+                {
+                    _pendingAdmissionCreditsByThread[producerThreadId] = 1;
+                }
                 SaturatingIncrement(ref _admitted);
                 return true;
             }
@@ -428,7 +441,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Return one admission credit when decode or staging rejects an admitted input.
+        /// Return one admission credit for the calling producer thread when decode or staging rejects an admitted input.
         /// The admission timestamp and counters remain consumed so cancellation
         /// cannot reopen the rate window for another input.
         /// </summary>
@@ -437,9 +450,13 @@ namespace Unity.FoxgloveSDK.Components
         {
             lock (_gate)
             {
-                if (_pendingAdmissionCredits == 0)
+                var producerThreadId = Environment.CurrentManagedThreadId;
+                if (!_pendingAdmissionCreditsByThread.TryGetValue(
+                        producerThreadId,
+                        out var pendingCredits)
+                    || pendingCredits == 0)
                     return false;
-                _pendingAdmissionCredits--;
+                RemoveAdmissionCredit(producerThreadId, pendingCredits);
                 return true;
             }
         }
@@ -448,11 +465,23 @@ namespace Unity.FoxgloveSDK.Components
         {
             lock (_gate)
             {
-                if (_pendingAdmissionCredits == 0)
+                var producerThreadId = Environment.CurrentManagedThreadId;
+                if (!_pendingAdmissionCreditsByThread.TryGetValue(
+                        producerThreadId,
+                        out var pendingCredits)
+                    || pendingCredits == 0)
                     return false;
-                _pendingAdmissionCredits--;
+                RemoveAdmissionCredit(producerThreadId, pendingCredits);
                 return true;
             }
+        }
+
+        private void RemoveAdmissionCredit(int producerThreadId, long pendingCredits)
+        {
+            if (pendingCredits == 1)
+                _pendingAdmissionCreditsByThread.Remove(producerThreadId);
+            else
+                _pendingAdmissionCreditsByThread[producerThreadId] = pendingCredits - 1;
         }
 
         private bool TryEnqueueOwnedCore(OwnedSample owned)
