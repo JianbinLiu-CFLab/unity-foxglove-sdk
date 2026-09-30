@@ -261,6 +261,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             backend.BroadcastText("{\"op\":\"advertise\",\"topic\":\"/first\"}");
             backend.BroadcastText("{\"op\":\"advertise\",\"topic\":\"/overflow\"}");
+            backend.BroadcastText("{\"op\":\"advertise\",\"topic\":\"/overflow-again\"}");
             releaseCallback.TrySetResult(true);
 
             Assert.Equal(clientId, await disconnected.Task.WaitAsync(timeout.Token));

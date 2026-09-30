@@ -450,8 +450,11 @@ namespace Unity.FoxgloveSDK.Transport
             if (publication.PendingControlFrames.Count >= maxFrames
                 || bytes.Length > maxBytes - publication.PendingControlBytes)
             {
-                publication.ControlOverflowed = true;
-                Interlocked.Increment(ref _totalControlOverflowDisconnects);
+                if (!publication.ControlOverflowed)
+                {
+                    publication.ControlOverflowed = true;
+                    Interlocked.Increment(ref _totalControlOverflowDisconnects);
+                }
                 return;
             }
 
@@ -1126,6 +1129,8 @@ namespace Unity.FoxgloveSDK.Transport
                                     expectedConnection,
                                     result,
                                     pending.Text ? "FlushPublicationText" : "FlushPublicationBinary");
+                                if (result.ShouldDisconnect)
+                                    break;
                             }
                         }
 
