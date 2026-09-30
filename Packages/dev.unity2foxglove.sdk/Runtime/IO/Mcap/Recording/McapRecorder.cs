@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Util;
 using ZstdSharp;
 
@@ -491,6 +492,30 @@ namespace Unity.FoxgloveSDK.IO
                 var len = (ulong)_writer.Position - off;
                 _metaIdx.Add(new MetadataIndexState { Offset = off, Length = len, Name = name });
                 _metadataCount++;
+            }
+        }
+
+        internal IReadOnlyList<SchemaEntry> GetRecordedSchemaSnapshot()
+        {
+            lock (_lock)
+            {
+                var snapshot = new List<SchemaEntry>(_schemas.Count);
+                foreach (var schema in _schemas)
+                {
+                    snapshot.Add(new SchemaEntry
+                    {
+                        Name = schema.Name,
+                        Encoding = schema.Encoding,
+                        Content = schema.Encoding == "protobuf"
+                            ? Convert.ToBase64String(schema.Data ?? Array.Empty<byte>())
+                            : System.Text.Encoding.UTF8.GetString(schema.Data ?? Array.Empty<byte>()),
+                        RawContent = schema.Encoding == "protobuf" && schema.Data != null
+                            ? (byte[])schema.Data.Clone()
+                            : null
+                    });
+                }
+
+                return snapshot;
             }
         }
 

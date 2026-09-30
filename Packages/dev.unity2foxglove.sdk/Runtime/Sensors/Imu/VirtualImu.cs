@@ -454,7 +454,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            ProtobufSchemaRegistryLoader.FromBytes(ImuSchema.FileDescriptorSetData, schemas).RegisterAll();
+            ImuSchema.Register(schemas);
             _schemaRegisteredRegistry = schemas;
         }
 

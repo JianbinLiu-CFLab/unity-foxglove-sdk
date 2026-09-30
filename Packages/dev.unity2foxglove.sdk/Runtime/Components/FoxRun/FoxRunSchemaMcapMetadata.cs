@@ -158,7 +158,8 @@ namespace Unity.FoxgloveSDK.Components
     public static class SdkWireSchemaMcapMetadata
     {
         public const string MetadataName = "unity2foxglove.sdk.wire-schema";
-        private const int MetadataVersion = 1;
+        private const int LegacyMetadataVersion = 1;
+        private const int MetadataVersion = 2;
 
         private sealed class Envelope
         {
@@ -184,8 +185,16 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         public static bool TryParseJson(string json, out string hash, out string error)
+            => TryParseJson(json, out hash, out _, out error);
+
+        public static bool TryParseJson(
+            string json,
+            out string hash,
+            out int version,
+            out string error)
         {
             hash = string.Empty;
+            version = 0;
             error = string.Empty;
             if (string.IsNullOrWhiteSpace(json))
             {
@@ -204,7 +213,8 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if (envelope == null || envelope.Version != MetadataVersion)
+            if (envelope == null
+                || (envelope.Version != LegacyMetadataVersion && envelope.Version != MetadataVersion))
             {
                 error = "unsupported SDK wire-schema metadata version";
                 return false;
@@ -216,6 +226,7 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
+            version = envelope.Version;
             hash = envelope.Hash;
             return true;
         }
