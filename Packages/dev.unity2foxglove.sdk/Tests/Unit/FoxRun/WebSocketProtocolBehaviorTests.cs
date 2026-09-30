@@ -217,6 +217,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             var firstFrameTask = ReceiveMessageAsync(client, timeout.Token);
             backend.BroadcastDataBinary(new byte[] { 0x01 });
+            backend.BroadcastText("{\"op\":\"advertise\",\"topic\":\"/during-publication\"}");
             await Task.WhenAny(firstFrameTask, Task.Delay(1000));
             var prePublicationFrame = firstFrameTask.Status == TaskStatus.RanToCompletion;
 
@@ -225,6 +226,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.False(prePublicationFrame);
             Assert.Equal(WebSocketMessageType.Text, firstFrame.Type);
             Assert.Contains("\"op\":\"serverInfo\"", Encoding.UTF8.GetString(firstFrame.Payload), StringComparison.Ordinal);
+            var controlFrame = await ReceiveMessageAsync(client, timeout.Token);
+            Assert.Equal(WebSocketMessageType.Text, controlFrame.Type);
+            Assert.Contains("/during-publication", Encoding.UTF8.GetString(controlFrame.Payload), StringComparison.Ordinal);
             client.Abort();
         }
 
