@@ -100,14 +100,7 @@ namespace Unity.FoxgloveSDK.Schemas
         /// </summary>
         public void Register(SchemaEntry entry)
         {
-            if (string.IsNullOrEmpty(entry.Name))
-                throw new ArgumentException("Schema name is required", nameof(entry));
-
-            entry.Encoding = NormalizeEncoding(entry.Encoding);
-            if (entry.Encoding.Length == 0)
-                throw new ArgumentException("Schema encoding is required", nameof(entry));
-            ValidateContentInvariant(entry);
-            entry = CloneEntryWithRawContentSnapshot(entry);
+            entry = PrepareEntry(entry);
             lock (_gate)
             {
                 var key = MakeKey(entry.Name, entry.Encoding);
@@ -128,9 +121,40 @@ namespace Unity.FoxgloveSDK.Schemas
             }
         }
 
+        /// <summary>Replace an existing schema key explicitly.</summary>
+        public void Replace(SchemaEntry entry)
+        {
+            entry = PrepareEntry(entry);
+            lock (_gate)
+            {
+                var key = MakeKey(entry.Name, entry.Encoding);
+                if (!_schemasByEncoding.ContainsKey(key))
+                {
+                    throw new InvalidOperationException(
+                        "Schema '" + entry.Name + "' with encoding '" + entry.Encoding +
+                        "' is not registered and cannot be replaced.");
+                }
+
+                _schemasByEncoding[key] = entry;
+                RecomputeNameDefaultLocked(entry.Name);
+            }
+        }
+
         private static string MakeKey(string name, string encoding)
         {
             return (name ?? string.Empty) + "\n" + (encoding ?? string.Empty);
+        }
+
+        private static SchemaEntry PrepareEntry(SchemaEntry entry)
+        {
+            if (string.IsNullOrEmpty(entry.Name))
+                throw new ArgumentException("Schema name is required", nameof(entry));
+
+            entry.Encoding = NormalizeEncoding(entry.Encoding);
+            if (entry.Encoding.Length == 0)
+                throw new ArgumentException("Schema encoding is required", nameof(entry));
+            ValidateContentInvariant(entry);
+            return CloneEntryWithRawContentSnapshot(entry);
         }
 
         private static string NormalizeEncoding(string encoding)

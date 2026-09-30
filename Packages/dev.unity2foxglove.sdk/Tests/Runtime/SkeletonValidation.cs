@@ -53,7 +53,7 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(customRuntime != null, "FoxgloveRuntime created with custom deps", ref passCount);
 
             // 3. Schema registry
-            schemas.Register(new SchemaEntry
+            schemas.Replace(new SchemaEntry
             {
                 Name = "foxglove.FrameTransform",
                 Encoding = "jsonschema",

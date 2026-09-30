@@ -60,6 +60,28 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ReplaceUpdatesAnExistingSchemaExplicitly()
+        {
+            var registry = new DefaultSchemaRegistry();
+            registry.Register(new SchemaEntry
+            {
+                Name = "phase8.Type",
+                Encoding = "jsonschema",
+                Content = "first"
+            });
+
+            registry.Replace(new SchemaEntry
+            {
+                Name = "phase8.Type",
+                Encoding = "jsonschema",
+                Content = "second"
+            });
+
+            Assert.True(registry.TryGetSchema("phase8.Type", out var resolved));
+            Assert.Equal("second", resolved.Content);
+        }
+
+        [Fact]
         public void EncodingIsTrimmedAndEmptyEncodingIsRejected()
         {
             var registry = new DefaultSchemaRegistry();
