@@ -58,8 +58,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && selection.Contains("RemoveRuntimePackageDependencies", StringComparison.Ordinal)
                   && selection.Contains("AddRuntimePackageDependency", StringComparison.Ordinal)
                   && selection.Contains("Client.Resolve()", StringComparison.Ordinal)
-                  && !selection.Contains("\"Packages\", \"packages-lock.json\"", StringComparison.Ordinal),
-                "134-21-D3: runtime detection uses manifest source-of-truth and resolves package locks after switching");
+                  && selection.Contains("\"Packages\", \"packages-lock.json\"", StringComparison.Ordinal),
+                "134-21-D3: runtime detection uses manifest and resolved package-lock source-of-truth after switching");
         }
 
         private static void VerifyAsmdefAndDocsPolicy()
