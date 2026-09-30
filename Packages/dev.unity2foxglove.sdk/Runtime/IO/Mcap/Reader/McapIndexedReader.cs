@@ -544,11 +544,13 @@ namespace Unity.FoxgloveSDK.IO
                 return null;
 
             var indexes = _summary.MetadataIndexes;
+            var matchingIndex = false;
             for (var i = 0; indexes != null && i < indexes.Count; i++)
             {
                 var index = indexes[i];
                 if (index != null && string.Equals(index.Name, name, StringComparison.Ordinal))
                 {
+                    matchingIndex = true;
                     var metadata = _reader.ReadMetadataAt(index.Offset);
                     if (metadata != null && string.Equals(metadata.Name, name, StringComparison.Ordinal))
                         return metadata;
@@ -557,6 +559,11 @@ namespace Unity.FoxgloveSDK.IO
 
             if (indexes != null && indexes.Count > 0)
             {
+                var metadataCount = _summary.Statistics?.MetadataCount ?? 0;
+                var hasCompleteMetadataIndex = metadataCount > 0 && (ulong)indexes.Count == metadataCount;
+                if (!matchingIndex && hasCompleteMetadataIndex)
+                    return null;
+
                 if (!_metadataFallbackScanComplete)
                 {
                     _metadataFallbackCache = _reader.BuildMetadataIndexInDataSection(_summary.DataSectionEndOffset);

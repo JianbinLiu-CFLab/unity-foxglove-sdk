@@ -285,15 +285,20 @@ namespace Unity.FoxgloveSDK.IO
 
             if (_summary.MetadataIndexes != null && _summary.MetadataIndexes.Count > 0)
             {
+                var matchingIndex = false;
                 foreach (var index in _summary.MetadataIndexes)
                 {
                     if (!string.Equals(index?.Name, name, StringComparison.Ordinal))
                         continue;
 
+                    matchingIndex = true;
                     var metadata = _reader.ReadMetadataAt(index.Offset);
                     if (metadata != null && string.Equals(metadata.Name, name, StringComparison.Ordinal))
                         return metadata;
                 }
+
+                if (!matchingIndex && HasCompleteMetadataIndex())
+                    return null;
 
                 return FindMetadataAfterIndexMiss(name);
             }
@@ -312,6 +317,12 @@ namespace Unity.FoxgloveSDK.IO
             return _metadataFallbackCache.TryGetValue(name, out var fallback)
                 ? _reader.ReadMetadataAt(fallback.Offset)
                 : null;
+        }
+
+        private bool HasCompleteMetadataIndex()
+        {
+            var metadataCount = _summary.Statistics?.MetadataCount ?? 0;
+            return metadataCount > 0 && (ulong)_summary.MetadataIndexes.Count == metadataCount;
         }
 
         /// <summary>
