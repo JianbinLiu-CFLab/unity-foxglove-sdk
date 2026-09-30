@@ -136,8 +136,8 @@ namespace Unity.FoxgloveSDK.Core
                 () => _sessionPendingCleanup == null);
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
             TryRegisterProtobufSchemas();
-            _recording = new RecordingController(_logger, _playbackClock);
-            _replay = new ReplayController(_logger, _recording, _playbackClock);
+            _recording = new RecordingController(_logger, _playbackClock, _schemaRegistry);
+            _replay = new ReplayController(_logger, _recording, _playbackClock, _schemaRegistry);
             _replayOrchestrator = new ReplayOrchestrator(_logger);
             _tickCoordinator = new TickCoordinator(
                 new ReplaySnapshotStateMachine(ResolveReplaySnapshotCapacity(_transport)));
@@ -1062,7 +1062,7 @@ namespace Unity.FoxgloveSDK.Core
         /// registration cannot mutate the next-session definition set until the
         /// retired session has finished cleanup.
         /// </summary>
-        private sealed class GuardedSchemaRegistry : IEncodingAwareSchemaRegistry
+        private sealed class GuardedSchemaRegistry : IEncodingAwareSchemaRegistry, ISchemaRegistrySnapshot
         {
             private readonly ISchemaRegistry _inner;
             private readonly Func<bool> _mutationAllowed;
@@ -1094,6 +1094,11 @@ namespace Unity.FoxgloveSDK.Core
                         "Schema registry mutations are unavailable while session cleanup is pending.");
                 _inner.Register(entry);
             }
+
+            public IReadOnlyList<SchemaEntry> GetSchemaSnapshot()
+                => _inner is ISchemaRegistrySnapshot snapshot
+                    ? snapshot.GetSchemaSnapshot()
+                    : Array.Empty<SchemaEntry>();
         }
 
     }

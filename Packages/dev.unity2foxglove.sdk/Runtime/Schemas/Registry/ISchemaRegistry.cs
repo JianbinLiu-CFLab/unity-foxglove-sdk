@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Unity.FoxgloveSDK.Schemas
 {
@@ -15,7 +16,10 @@ namespace Unity.FoxgloveSDK.Schemas
     /// </summary>
     public interface ISchemaRegistry
     {
-        /// <summary>Try to get a schema by its full name (e.g. "foxglove.FrameTransform").</summary>
+        /// <summary>
+        /// Try to get a schema by its full name (e.g. "foxglove.FrameTransform").
+        /// Name-only lookup returns false when multiple non-JSON encodings are registered.
+        /// </summary>
         bool TryGetSchema(string name, out SchemaEntry entry);
 
         /// <summary>Register a schema. Schema bytes can be JSON Schema text or raw bytes.</summary>
@@ -30,6 +34,12 @@ namespace Unity.FoxgloveSDK.Schemas
     {
         /// <summary>Try to get a schema by full name and schema encoding.</summary>
         bool TryGetSchema(string name, string encoding, out SchemaEntry entry);
+    }
+
+    /// <summary>Optional immutable snapshot capability used by schema identity guards.</summary>
+    public interface ISchemaRegistrySnapshot
+    {
+        IReadOnlyList<SchemaEntry> GetSchemaSnapshot();
     }
 
     /// <summary>Schema metadata + content.</summary>
@@ -49,7 +59,7 @@ namespace Unity.FoxgloveSDK.Schemas
     }
 
     /// <summary>Minimal in-memory schema registry.</summary>
-    public class DefaultSchemaRegistry : IEncodingAwareSchemaRegistry
+    public class DefaultSchemaRegistry : IEncodingAwareSchemaRegistry, ISchemaRegistrySnapshot
     {
         /// <summary>Foxglove schemaEncoding value for JSON Schema definitions.</summary>
         private const string JsonSchemaEncoding = "jsonschema";
@@ -92,24 +102,58 @@ namespace Unity.FoxgloveSDK.Schemas
 
         /// <summary>
         /// Register a schema. Multiple encodings can coexist for the same name;
-        /// name-only lookup preserves jsonschema as the default when present.
+        /// duplicate keys must have identical content and name-only lookup preserves
+        /// jsonschema as the default when present.
         /// </summary>
         public void Register(SchemaEntry entry)
         {
-            if (string.IsNullOrEmpty(entry.Name))
-                throw new ArgumentException("Schema name is required", nameof(entry));
-
-            entry = CloneEntryWithRawContentSnapshot(entry);
-            entry.Encoding = NormalizeEncoding(entry.Encoding);
+            entry = PrepareEntry(entry);
             lock (_gate)
             {
-                _schemasByEncoding[MakeKey(entry.Name, entry.Encoding)] = entry;
-
-                if (!_schemas.TryGetValue(entry.Name, out var existing)
-                    || ShouldReplaceNameDefault(existing.Encoding, entry.Encoding))
+                var key = MakeKey(entry.Name, entry.Encoding);
+                if (_schemasByEncoding.TryGetValue(key, out var existing))
                 {
-                    _schemas[entry.Name] = entry;
+                    if (!EntriesEqual(existing, entry))
+                    {
+                        throw new InvalidOperationException(
+                            "Schema '" + entry.Name + "' with encoding '" + entry.Encoding +
+                            "' is already registered with different content.");
+                    }
+
+                    return;
                 }
+
+                _schemasByEncoding.Add(key, entry);
+                RecomputeNameDefaultLocked(entry.Name);
+            }
+        }
+
+        /// <summary>Replace an existing schema key explicitly.</summary>
+        public void Replace(SchemaEntry entry)
+        {
+            entry = PrepareEntry(entry);
+            lock (_gate)
+            {
+                var key = MakeKey(entry.Name, entry.Encoding);
+                if (!_schemasByEncoding.ContainsKey(key))
+                {
+                    throw new InvalidOperationException(
+                        "Schema '" + entry.Name + "' with encoding '" + entry.Encoding +
+                        "' is not registered and cannot be replaced.");
+                }
+
+                _schemasByEncoding[key] = entry;
+                RecomputeNameDefaultLocked(entry.Name);
+            }
+        }
+
+        public IReadOnlyList<SchemaEntry> GetSchemaSnapshot()
+        {
+            lock (_gate)
+            {
+                return _schemasByEncoding.Values
+                    .Select(CloneEntryWithRawContentSnapshot)
+                    .ToArray();
             }
         }
 
@@ -118,18 +162,84 @@ namespace Unity.FoxgloveSDK.Schemas
             return (name ?? string.Empty) + "\n" + (encoding ?? string.Empty);
         }
 
-        private static string NormalizeEncoding(string encoding)
+        private static SchemaEntry PrepareEntry(SchemaEntry entry)
         {
-            if (string.IsNullOrEmpty(encoding))
-                return string.Empty;
-            return encoding.ToLowerInvariant();
+            if (string.IsNullOrEmpty(entry.Name))
+                throw new ArgumentException("Schema name is required", nameof(entry));
+
+            entry.Encoding = NormalizeEncoding(entry.Encoding);
+            if (entry.Encoding.Length == 0)
+                throw new ArgumentException("Schema encoding is required", nameof(entry));
+            ValidateContentInvariant(entry);
+            return CloneEntryWithRawContentSnapshot(entry);
         }
 
-        private static bool ShouldReplaceNameDefault(string existingEncoding, string newEncoding)
+        private static string NormalizeEncoding(string encoding)
         {
-            if (string.Equals(newEncoding, JsonSchemaEncoding, StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(encoding))
+                return string.Empty;
+            return encoding.Trim().ToLowerInvariant();
+        }
+
+        private void RecomputeNameDefaultLocked(string name)
+        {
+            SchemaEntry selected = default;
+            var count = 0;
+            var hasJson = false;
+            foreach (var candidate in _schemasByEncoding.Values)
+            {
+                if (!string.Equals(candidate.Name, name, StringComparison.Ordinal))
+                    continue;
+
+                count++;
+                if (string.Equals(candidate.Encoding, JsonSchemaEncoding, StringComparison.Ordinal))
+                {
+                    selected = candidate;
+                    hasJson = true;
+                }
+                else if (!hasJson)
+                {
+                    selected = candidate;
+                }
+            }
+
+            if (count == 0 || (count > 1 && !hasJson))
+            {
+                _schemas.Remove(name);
+                return;
+            }
+
+            _schemas[name] = selected;
+        }
+
+        private static bool EntriesEqual(SchemaEntry left, SchemaEntry right)
+        {
+            if (!string.Equals(left.Name, right.Name, StringComparison.Ordinal)
+                || !string.Equals(left.Encoding, right.Encoding, StringComparison.Ordinal)
+                || !string.Equals(left.Content, right.Content, StringComparison.Ordinal))
+                return false;
+
+            if (ReferenceEquals(left.RawContent, right.RawContent))
                 return true;
-            return !string.Equals(existingEncoding, JsonSchemaEncoding, StringComparison.OrdinalIgnoreCase);
+            if (left.RawContent == null || right.RawContent == null || left.RawContent.Length != right.RawContent.Length)
+                return false;
+            for (var i = 0; i < left.RawContent.Length; i++)
+                if (left.RawContent[i] != right.RawContent[i])
+                    return false;
+            return true;
+        }
+
+        private static void ValidateContentInvariant(SchemaEntry entry)
+        {
+            if (string.Equals(entry.Encoding, "protobuf", StringComparison.Ordinal)
+                && entry.Content != null
+                && entry.RawContent != null
+                && !string.Equals(entry.Content, Convert.ToBase64String(entry.RawContent), StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "Protobuf schema Content must equal the base64 encoding of RawContent.",
+                    nameof(entry));
+            }
         }
 
         private static SchemaEntry CloneEntryWithRawContentSnapshot(SchemaEntry entry)

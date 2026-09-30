@@ -13,6 +13,7 @@ using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
@@ -541,6 +542,56 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             finally
             {
                 FoxRunSchemaInfoRegistry.ClearForTests();
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void ReplayGuardBlocksSdkWideWireSchemaMismatchWithoutFoxRunMetadata()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-sdk-wire-schema-mismatch-"
+                + Guid.NewGuid().ToString("N")
+                + ".mcap");
+            var registry = new DefaultSchemaRegistry();
+            registry.Register(new SchemaEntry
+            {
+                Name = "module8.ReplayIdentity",
+                Encoding = "jsonschema",
+                Content = "{\"type\":\"integer\"}"
+            });
+
+            try
+            {
+                Assert.True(SdkWireSchemaIdentity.TryCompute(registry, out var currentHash));
+                Assert.True(SdkWireSchemaMcapMetadata.TryCreateJson(
+                    new string('0', currentHash.Length),
+                    out var recordedJson));
+                using (var stream = new MemoryStream())
+                {
+                    using (var recorder = new McapRecorder(stream, leaveOpen: true))
+                    {
+                        recorder.WriteMetadata(SdkWireSchemaMcapMetadata.MetadataName, recordedJson);
+                        recorder.Close();
+                    }
+                    File.WriteAllBytes(path, stream.ToArray());
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = ReplaySchemaGuard.EvaluateWithMode(
+                    engine,
+                    SchemaIdentityMode.Strict,
+                    registry);
+
+                Assert.Equal(FoxRunReplaySchemaGuardState.Mismatch, result.State);
+                Assert.True(result.IsBlocking);
+                Assert.Contains("SDK-wide wire-schema identity mismatch", result.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
                 if (File.Exists(path))
                     File.Delete(path);
             }

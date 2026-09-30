@@ -13,6 +13,7 @@ using System.Threading;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
@@ -202,11 +203,25 @@ namespace Unity.FoxgloveSDK.Core
         /// playback diagnostics. Uses the supplied recording state reader for
         /// mutual-exclusion checks and the clock for playback range control.
         /// </summary>
-        public ReplayController(IFoxgloveLogger logger, IRecordingStateReader recordingState, IRangePlaybackClock clock)
+        public ReplayController(
+            IFoxgloveLogger logger,
+            IRecordingStateReader recordingState,
+            IRangePlaybackClock clock)
+            : this(logger, recordingState, clock, null) { }
+
+        /// <summary>
+        /// Creates a replay controller with an optional SDK schema registry.
+        /// </summary>
+        public ReplayController(
+            IFoxgloveLogger logger,
+            IRecordingStateReader recordingState,
+            IRangePlaybackClock clock,
+            ISchemaRegistry schemaRegistry)
         {
             _logger = logger;
             _recordingState = recordingState;
             _clock = clock;
+            _schemaRegistry = schemaRegistry;
         }
 
         /// <summary>
@@ -214,10 +229,11 @@ namespace Unity.FoxgloveSDK.Core
         /// playback diagnostics.
         /// </summary>
         [Obsolete("Use ReplayController(IFoxgloveLogger, IRecordingStateReader, IRangePlaybackClock) instead.")]
-        public ReplayController(IFoxgloveLogger logger) : this(logger, null, null) { }
+        public ReplayController(IFoxgloveLogger logger) : this(logger, null, null, null) { }
 
         private readonly IRecordingStateReader _recordingState;
         private readonly IRangePlaybackClock _clock;
+        private readonly ISchemaRegistry _schemaRegistry;
 
         /// <summary>Register replay channels on the session with replay ID prefix.</summary>
         public void RegisterChannels(FoxgloveSession session)
