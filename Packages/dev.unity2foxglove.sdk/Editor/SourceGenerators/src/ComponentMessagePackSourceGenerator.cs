@@ -176,7 +176,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 var method = MethodName(type.Type);
                 var supported = IsSupported(type);
                 var reason = type.Ignored ? "excluded by ComponentMessagePackIgnoreAttribute" : supported ? string.Empty : "unsupported typed MessagePack member or shape";
-                sb.Append("                new ComponentMessagePackGeneratedEntry(typeof(").Append(type.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).Append("), \"").Append(Escape(type.SchemaName)).Append("\", \"").Append(Escape(type.Type.ToDisplayString())).Append("\", ");
+                sb.Append("                new ComponentMessagePackGeneratedEntry(typeof(").Append(type.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).Append("), \"").Append(Escape(type.SchemaName)).Append("\", \"").Append(ComputeShapeIdentity(type)).Append("\", ");
                 if (supported)
                     sb.Append("true, true, \"\", ").Append(method);
                 else
@@ -241,6 +241,19 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             // the same "unsupported" token, allowing a changed generated codec to
             // retain a stale manifest hash.
             var canonical = string.Join("\n", types.Select(t => t.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "|" + t.SchemaName + "|" + string.Join(",", t.Members.OrderBy(m => m.WireName, StringComparer.Ordinal).ThenBy(m => m.MemberName, StringComparer.Ordinal).Select(m => m.WireName + ":" + (m.Shape == null ? "unsupported" : FoxRunMessagePackTypeShapeIdentity.Build(m.Shape))))));
+            using (var sha = SHA256.Create())
+                return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(canonical))).Replace("-", string.Empty).ToLowerInvariant();
+        }
+
+        private static string ComputeShapeIdentity(ComponentMessagePackTypeModel type)
+        {
+            var canonical = (type.SchemaName ?? string.Empty) + "|"
+                + string.Join(",", type.Members
+                    .OrderBy(m => m.WireName, StringComparer.Ordinal)
+                    .ThenBy(m => m.MemberName, StringComparer.Ordinal)
+                    .Select(m => m.WireName + ":" + (m.Shape == null
+                        ? "unsupported"
+                        : FoxRunMessagePackTypeShapeIdentity.Build(m.Shape))));
             using (var sha = SHA256.Create())
                 return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(canonical))).Replace("-", string.Empty).ToLowerInvariant();
         }

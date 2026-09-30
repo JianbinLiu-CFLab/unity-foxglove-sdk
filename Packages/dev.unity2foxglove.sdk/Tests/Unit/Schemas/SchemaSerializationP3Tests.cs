@@ -5,12 +5,18 @@
 // Purpose: Regression coverage for Module 8 schema serialization P3 fixes.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Foxglove.Schemas;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
+using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.MsgPack;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests
@@ -168,6 +174,151 @@ namespace Unity.FoxgloveSDK.UnitTests
                 new McapChannel { MessageEncoding = "protobuf" });
 
             Assert.NotNull(decoder);
+            var decoded = decoder.Decode(new McapDataLoaderMessage
+            {
+                MessageEncoding = "protobuf",
+                Data = new Foxglove.FrameTransform
+                {
+                    ParentFrameId = "module8",
+                    ChildFrameId = "descriptor-order"
+                }.ToByteArray()
+            });
+            var value = Assert.IsType<Foxglove.FrameTransform>(decoded.Value);
+            Assert.Equal("module8", value.ParentFrameId);
+            Assert.Equal("descriptor-order", value.ChildFrameId);
+        }
+
+        [Fact]
+        public void SupportedSchemaEncodingMatrixAdvertisePayloadDecodeAndRoundTrip()
+        {
+            var rows = new[]
+            {
+                new SchemaEncodingMatrixRow("jsonschema", "module8.Json", "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}}}",
+                    payload: () => Encoding.UTF8.GetBytes("{\"value\":8}"),
+                    decode: payload => Assert.Equal(8, (int)JObject.Parse(Encoding.UTF8.GetString(payload))["value"])),
+                CreateProtobufMatrixRow(),
+                new SchemaEncodingMatrixRow("msgpack", "module8.MsgPack", "",
+                    payload: () =>
+                    {
+                        using var writer = new FoxgloveMsgPackWriter();
+                        writer.WriteMapHeader(1);
+                        writer.WriteString("value");
+                        writer.WriteInt32(8);
+                        return writer.ToArray();
+                    },
+                    decode: payload =>
+                    {
+                        var reader = new FoxgloveMsgPackReader(payload, FoxgloveMsgPackReadLimits.ForPayloadBytes(payload.Length));
+                        Assert.True(reader.TryReadMapHeader(out var count));
+                        Assert.Equal(1, count);
+                        Assert.True(reader.TryReadString(out var key));
+                        Assert.Equal("value", key);
+                        Assert.True(reader.TryReadInt32(out var value));
+                        Assert.Equal(8, value);
+                        Assert.False(reader.HasError);
+                        Assert.Equal(0, reader.RemainingBytes);
+                    })
+            };
+
+            foreach (var row in rows)
+            {
+                var registry = new DefaultSchemaRegistry();
+                registry.Register(new SchemaEntry
+                {
+                    Name = row.SchemaName,
+                    Encoding = row.SchemaEncoding,
+                    Content = row.SchemaContent,
+                    RawContent = row.RawContent
+                });
+                Assert.True(registry.TryGetSchema(row.SchemaName, row.SchemaEncoding, out var advertised));
+                Assert.Equal(row.SchemaContent, advertised.Content);
+                Assert.Equal(row.RawContent ?? Array.Empty<byte>(), advertised.RawContent ?? Array.Empty<byte>());
+
+                var payload = row.Payload();
+                row.Decode(payload);
+                row.RoundTrip(payload);
+            }
+        }
+
+        [Fact]
+        public void SdkWireSchemaIdentityChangesWhenRegisteredSchemaContentChanges()
+        {
+            var first = new DefaultSchemaRegistry();
+            first.Register(new SchemaEntry
+            {
+                Name = "module8.Identity",
+                Encoding = "jsonschema",
+                Content = "{\"type\":\"integer\"}"
+            });
+            var second = new DefaultSchemaRegistry();
+            second.Register(new SchemaEntry
+            {
+                Name = "module8.Identity",
+                Encoding = "jsonschema",
+                Content = "{\"type\":\"string\"}"
+            });
+
+            Assert.True(SdkWireSchemaIdentity.TryCompute(first, out var firstHash));
+            Assert.True(SdkWireSchemaIdentity.TryCompute(second, out var secondHash));
+            Assert.NotEqual(firstHash, secondHash);
+            Assert.Equal(64, firstHash.Length);
+            Assert.Equal(64, secondHash.Length);
+        }
+
+        [Fact]
+        public void SdkWireSchemaMetadataRoundTripsItsHash()
+        {
+            Assert.True(SdkWireSchemaMcapMetadata.TryCreateJson("aabbcc", out var json));
+            Assert.True(SdkWireSchemaMcapMetadata.TryParseJson(json, out var hash, out var error), error);
+            Assert.Equal("aabbcc", hash);
+        }
+
+        private static SchemaEncodingMatrixRow CreateProtobufMatrixRow()
+        {
+            var message = new Foxglove.KeyValuePair { Key = "value", Value = "8" };
+            var registry = ProtobufSchemaRegistryLoader.FromDefault(new DefaultSchemaRegistry());
+            var descriptor = registry.GetFileDescriptorSet("foxglove.KeyValuePair");
+            return new SchemaEncodingMatrixRow(
+                "protobuf",
+                "foxglove.KeyValuePair",
+                Convert.ToBase64String(descriptor),
+                () => message.ToByteArray(),
+                payload =>
+                {
+                    var decoder = new McapFoxgloveProtobufDecoderFactory().TryCreate(
+                        new McapSchema { Name = "foxglove.KeyValuePair", Encoding = "protobuf", Data = descriptor },
+                        new McapChannel { MessageEncoding = "protobuf" });
+                    var decoded = Assert.IsType<Foxglove.KeyValuePair>(decoder.Decode(new McapDataLoaderMessage { Data = payload }).Value);
+                    Assert.Equal(message.Key, decoded.Key);
+                    Assert.Equal(message.Value, decoded.Value);
+                },
+                payload => Assert.Equal(payload, message.ToByteArray()),
+                descriptor);
+        }
+
+        private sealed class SchemaEncodingMatrixRow
+        {
+            public SchemaEncodingMatrixRow(string schemaEncoding, string schemaName, string schemaContent, Func<byte[]> payload, Action<byte[]> decode, byte[] rawContent = null)
+                : this(schemaEncoding, schemaName, schemaContent, payload, decode, bytes => Assert.Equal(bytes, payload()), rawContent) { }
+
+            public SchemaEncodingMatrixRow(string schemaEncoding, string schemaName, string schemaContent, Func<byte[]> payload, Action<byte[]> decode, Action<byte[]> roundTrip, byte[] rawContent = null)
+            {
+                SchemaEncoding = schemaEncoding;
+                SchemaName = schemaName;
+                SchemaContent = schemaContent;
+                Payload = payload;
+                Decode = decode;
+                RoundTrip = roundTrip;
+                RawContent = rawContent;
+            }
+
+            public string SchemaEncoding { get; }
+            public string SchemaName { get; }
+            public string SchemaContent { get; }
+            public byte[] RawContent { get; }
+            public Func<byte[]> Payload { get; }
+            public Action<byte[]> Decode { get; }
+            public Action<byte[]> RoundTrip { get; }
         }
     }
 }

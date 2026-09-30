@@ -5,6 +5,7 @@
 // Purpose: Regression coverage for ROS 2 schema canonicalization.
 
 using System;
+using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.IO;
 using Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg;
@@ -23,8 +24,11 @@ namespace Unity2Foxglove.Ros2Bridge.UnitTests
                 FoxgloveRos2MsgSchemaCatalog.TryGet(
                     "foxglove_msgs/msg/Log",
                     out var catalogEntry));
-            var equivalent = "\uFEFF" + catalogEntry.Content
-                .Replace("\n", "\r\n")
+            var equivalent = "\uFEFF" + string.Join(
+                    "\r\n",
+                    catalogEntry.Content
+                        .Split('\n')
+                        .Select(line => line + "   "))
                 + "\r\n   \r\n# generated trailing comment\r\n";
 
             var decoder = new McapRos2CdrTypedDecoderFactory().TryCreate(

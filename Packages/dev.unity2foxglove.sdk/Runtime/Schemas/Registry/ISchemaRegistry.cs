@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Unity.FoxgloveSDK.Schemas
 {
@@ -35,6 +36,12 @@ namespace Unity.FoxgloveSDK.Schemas
         bool TryGetSchema(string name, string encoding, out SchemaEntry entry);
     }
 
+    /// <summary>Optional immutable snapshot capability used by schema identity guards.</summary>
+    public interface ISchemaRegistrySnapshot
+    {
+        IReadOnlyList<SchemaEntry> GetSchemaSnapshot();
+    }
+
     /// <summary>Schema metadata + content.</summary>
     public struct SchemaEntry
     {
@@ -52,7 +59,7 @@ namespace Unity.FoxgloveSDK.Schemas
     }
 
     /// <summary>Minimal in-memory schema registry.</summary>
-    public class DefaultSchemaRegistry : IEncodingAwareSchemaRegistry
+    public class DefaultSchemaRegistry : IEncodingAwareSchemaRegistry, ISchemaRegistrySnapshot
     {
         /// <summary>Foxglove schemaEncoding value for JSON Schema definitions.</summary>
         private const string JsonSchemaEncoding = "jsonschema";
@@ -137,6 +144,16 @@ namespace Unity.FoxgloveSDK.Schemas
 
                 _schemasByEncoding[key] = entry;
                 RecomputeNameDefaultLocked(entry.Name);
+            }
+        }
+
+        public IReadOnlyList<SchemaEntry> GetSchemaSnapshot()
+        {
+            lock (_gate)
+            {
+                return _schemasByEncoding.Values
+                    .Select(CloneEntryWithRawContentSnapshot)
+                    .ToArray();
             }
         }
 

@@ -92,15 +92,9 @@ namespace Unity.FoxgloveSDK.IO
         private static FileDescriptorProto CanonicalizeFile(FileDescriptorProto file)
         {
             var clone = file.Clone();
-            var dependencies = clone.Dependency.OrderBy(value => value, StringComparer.Ordinal).ToArray();
-            clone.Dependency.Clear();
-            clone.Dependency.Add(dependencies);
-            var publicDependencies = clone.PublicDependency.OrderBy(value => value).ToArray();
-            clone.PublicDependency.Clear();
-            clone.PublicDependency.Add(publicDependencies);
-            var weakDependencies = clone.WeakDependency.OrderBy(value => value).ToArray();
-            clone.WeakDependency.Clear();
-            clone.WeakDependency.Add(weakDependencies);
+            // Dependency indexes in public_dependency and weak_dependency refer
+            // to the dependency list by position. Preserve that order here;
+            // sorting names without remapping indexes changes descriptor meaning.
             clone.SourceCodeInfo = null;
             return clone;
         }

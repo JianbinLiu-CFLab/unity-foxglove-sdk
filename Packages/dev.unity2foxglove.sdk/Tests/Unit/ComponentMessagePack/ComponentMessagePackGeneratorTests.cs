@@ -94,6 +94,27 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
         }
 
         [Fact]
+        public void GeneratedShapeIdentityChangesWhenNestedShapeChanges()
+        {
+            var first = BuildManifest(
+                "using Unity.FoxgloveSDK.Protocol; public sealed class Stamp { public ulong Sec; public uint Nsec; }\n"
+                + "[FoxgloveSchema(\"demo.Nested\")] public sealed class Nested { public Stamp Timestamp; }",
+                "NestedShapeIdentityFirst",
+                out _);
+            var second = BuildManifest(
+                "using Unity.FoxgloveSDK.Protocol; public sealed class Stamp { public ulong Sec; public ulong Nsec; }\n"
+                + "[FoxgloveSchema(\"demo.Nested\")] public sealed class Nested { public Stamp Timestamp; }",
+                "NestedShapeIdentitySecond",
+                out _);
+
+            var firstEntry = Assert.Single(first.Entries);
+            var secondEntry = Assert.Single(second.Entries);
+            Assert.NotEqual(firstEntry.ShapeIdentity, secondEntry.ShapeIdentity);
+            Assert.Equal(64, firstEntry.ShapeIdentity.Length);
+            Assert.Equal(64, secondEntry.ShapeIdentity.Length);
+        }
+
+        [Fact]
         public void SameSimpleTypeNamesInDifferentNamespacesCompile()
         {
             var source = "using Unity.FoxgloveSDK.Protocol; namespace A { [FoxgloveSchema(\"demo.A\")] public sealed class Sample { public int Value; } } "

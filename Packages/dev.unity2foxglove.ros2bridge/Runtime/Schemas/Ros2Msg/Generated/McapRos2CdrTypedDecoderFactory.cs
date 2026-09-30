@@ -60,13 +60,48 @@ namespace Unity2Foxglove.Ros2Bridge
             var meaningfulLines = new List<string>(lines.Length);
             foreach (var line in lines)
             {
-                var canonicalLine = line.Trim();
+                var canonicalLine = CanonicalizeLine(line);
                 if (canonicalLine.Length == 0 || canonicalLine.StartsWith("#", StringComparison.Ordinal))
                     continue;
                 meaningfulLines.Add(canonicalLine);
             }
 
             return string.Join("\n", meaningfulLines);
+        }
+
+        private static string CanonicalizeLine(string line)
+        {
+            var builder = new StringBuilder();
+            var inQuotes = false;
+            var pendingWhitespace = false;
+            foreach (var character in line ?? string.Empty)
+            {
+                if (character == '"')
+                {
+                    if (pendingWhitespace && builder.Length > 0)
+                        builder.Append(' ');
+                    pendingWhitespace = false;
+                    inQuotes = !inQuotes;
+                    builder.Append(character);
+                    continue;
+                }
+
+                if (!inQuotes && character == '#')
+                    break;
+
+                if (!inQuotes && (character == ' ' || character == '\t'))
+                {
+                    pendingWhitespace = true;
+                    continue;
+                }
+
+                if (pendingWhitespace && builder.Length > 0)
+                    builder.Append(' ');
+                pendingWhitespace = false;
+                builder.Append(character);
+            }
+
+            return builder.ToString().Trim();
         }
 
         private sealed class Decoder :

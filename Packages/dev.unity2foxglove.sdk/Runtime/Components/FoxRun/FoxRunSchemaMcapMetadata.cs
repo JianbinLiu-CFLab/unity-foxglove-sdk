@@ -149,6 +149,76 @@ namespace Unity.FoxgloveSDK.Components
 
         [JsonProperty("contracts", Order = 9)]
         public List<FoxRunSchemaMcapContractMetadata> Contracts { get; set; }
+
+        [JsonProperty("sdkWireSchemaHash", Order = 10)]
+        public string SdkWireSchemaHash { get; set; }
+    }
+
+    /// <summary>SDK-wide wire-schema identity stored alongside recording metadata.</summary>
+    public static class SdkWireSchemaMcapMetadata
+    {
+        public const string MetadataName = "unity2foxglove.sdk.wire-schema";
+        private const int MetadataVersion = 1;
+
+        private sealed class Envelope
+        {
+            [JsonProperty("version", Order = 0)]
+            public int Version { get; set; }
+
+            [JsonProperty("hash", Order = 1)]
+            public string Hash { get; set; }
+        }
+
+        public static bool TryCreateJson(string hash, out string json)
+        {
+            json = null;
+            if (string.IsNullOrWhiteSpace(hash))
+                return false;
+
+            json = JsonConvert.SerializeObject(new Envelope
+            {
+                Version = MetadataVersion,
+                Hash = hash
+            }, Formatting.None);
+            return true;
+        }
+
+        public static bool TryParseJson(string json, out string hash, out string error)
+        {
+            hash = string.Empty;
+            error = string.Empty;
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                error = "metadata value is empty";
+                return false;
+            }
+
+            Envelope envelope;
+            try
+            {
+                envelope = JsonConvert.DeserializeObject<Envelope>(json);
+            }
+            catch (Exception ex) when (ex is JsonException || ex is ArgumentException)
+            {
+                error = ex.Message;
+                return false;
+            }
+
+            if (envelope == null || envelope.Version != MetadataVersion)
+            {
+                error = "unsupported SDK wire-schema metadata version";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(envelope.Hash))
+            {
+                error = "hash is missing";
+                return false;
+            }
+
+            hash = envelope.Hash;
+            return true;
+        }
     }
 
     /// <summary>
@@ -161,17 +231,25 @@ namespace Unity.FoxgloveSDK.Components
         public const int SchemaMetadataVersion = 3;
 
         public static bool TryCreateJson(FoxRunSchemaManifestInfo manifest, out string json)
+            => TryCreateJson(manifest, string.Empty, out json);
+
+        public static bool TryCreateJson(
+            FoxRunSchemaManifestInfo manifest,
+            string sdkWireSchemaHash,
+            out string json)
         {
             json = null;
             if (!HasUsableHash(manifest))
                 return false;
 
-            var record = CreateRecord(manifest);
+            var record = CreateRecord(manifest, sdkWireSchemaHash);
             json = JsonConvert.SerializeObject(record, Formatting.None);
             return true;
         }
 
-        public static FoxRunSchemaMcapMetadataRecord CreateRecord(FoxRunSchemaManifestInfo manifest)
+        public static FoxRunSchemaMcapMetadataRecord CreateRecord(
+            FoxRunSchemaManifestInfo manifest,
+            string sdkWireSchemaHash = "")
         {
             if (!HasUsableHash(manifest))
                 throw new ArgumentException("FoxRun schema manifest info is missing a global manifest hash.", nameof(manifest));
@@ -216,7 +294,8 @@ namespace Unity.FoxgloveSDK.Components
                 TypeCount = manifest.TypeCount,
                 ContractCount = manifest.ContractCount,
                 FieldCount = manifest.FieldCount,
-                Contracts = contracts
+                Contracts = contracts,
+                SdkWireSchemaHash = sdkWireSchemaHash ?? string.Empty
             };
         }
 
