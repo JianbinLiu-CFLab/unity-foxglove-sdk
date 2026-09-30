@@ -119,7 +119,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             stream.ResetReadOperations();
 
             Assert.Null(reader.FindMetadata("missing"));
-            Assert.Equal(0, stream.ReadOperations);
+            Assert.Equal(3, stream.ReadOperations);
         }
 
         [Fact]
@@ -145,6 +145,40 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             Assert.NotNull(metadata);
             Assert.Equal("fallback", metadata.Metadata["k"]);
+        }
+
+        [Fact]
+        public void MetadataLookupFallsBackWhenIndexCountMatchesButCoverageIsIncomplete()
+        {
+            using var stream = BuildDuplicateIndexedMetadataMcap();
+            using var reader = new McapIndexedReader(stream, leaveOpen: true);
+
+            var metadata = reader.FindMetadata("hidden");
+
+            Assert.NotNull(metadata);
+            Assert.Equal("fallback", metadata.Metadata["k"]);
+        }
+
+        [Fact]
+        public void ReplayMetadataLookupFallsBackWhenIndexCountMatchesButCoverageIsIncomplete()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "mcap-replay-duplicate-index-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = BuildDuplicateIndexedMetadataMcap())
+                    File.WriteAllBytes(path, stream.ToArray());
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var metadata = engine.FindMetadata("hidden");
+
+                Assert.NotNull(metadata);
+                Assert.Equal("fallback", metadata.Metadata["k"]);
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
         }
 
         [Fact]
@@ -418,6 +452,43 @@ namespace Unity.FoxgloveSDK.UnitTests
                 {
                     Statistics = new McapStatistics { MetadataCount = 1 }
                 };
+                summary.MetadataIndexes.Add(new McapMetadataIndex
+                {
+                    Offset = indexedOffset,
+                    Length = indexedLength,
+                    Name = "indexed"
+                });
+                McapSummarySerializer.WriteSummaryAndFooter(writer, summary, true, true);
+                writer.WriteMagic();
+                writer.Flush();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
+        private static MemoryStream BuildDuplicateIndexedMetadataMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "review");
+                var indexedOffset = (ulong)stream.Position;
+                writer.WriteMetadata("indexed", new Dictionary<string, string> { ["k"] = "indexed" });
+                var indexedLength = (ulong)stream.Position - indexedOffset;
+                writer.WriteMetadata("hidden", new Dictionary<string, string> { ["k"] = "fallback" });
+                writer.WriteDataEnd();
+                var summary = new McapFileSummary
+                {
+                    Statistics = new McapStatistics { MetadataCount = 2 }
+                };
+                summary.MetadataIndexes.Add(new McapMetadataIndex
+                {
+                    Offset = indexedOffset,
+                    Length = indexedLength,
+                    Name = "indexed"
+                });
                 summary.MetadataIndexes.Add(new McapMetadataIndex
                 {
                     Offset = indexedOffset,
