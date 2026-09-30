@@ -62,6 +62,12 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>
         /// Creates a recording controller with the provided logger and clock.
         /// </summary>
+        public RecordingController(IFoxgloveLogger logger, IFoxgloveClock clock)
+            : this(logger, clock, null) { }
+
+        /// <summary>
+        /// Creates a recording controller with the provided logger and clock.
+        /// </summary>
         public RecordingController(
             IFoxgloveLogger logger,
             IFoxgloveClock clock,

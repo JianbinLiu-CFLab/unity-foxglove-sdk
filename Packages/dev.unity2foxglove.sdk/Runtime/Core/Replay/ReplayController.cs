@@ -206,8 +206,17 @@ namespace Unity.FoxgloveSDK.Core
         public ReplayController(
             IFoxgloveLogger logger,
             IRecordingStateReader recordingState,
+            IRangePlaybackClock clock)
+            : this(logger, recordingState, clock, null) { }
+
+        /// <summary>
+        /// Creates a replay controller with an optional SDK schema registry.
+        /// </summary>
+        public ReplayController(
+            IFoxgloveLogger logger,
+            IRecordingStateReader recordingState,
             IRangePlaybackClock clock,
-            ISchemaRegistry schemaRegistry = null)
+            ISchemaRegistry schemaRegistry)
         {
             _logger = logger;
             _recordingState = recordingState;
