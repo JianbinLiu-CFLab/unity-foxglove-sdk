@@ -303,6 +303,9 @@ namespace Unity.FoxgloveSDK.IO
                 return FindMetadataAfterIndexMiss(name);
             }
 
+            if (HasCompleteMetadataIndex())
+                return null;
+
             return FindMetadataAfterIndexMiss(name);
         }
 
@@ -321,8 +324,9 @@ namespace Unity.FoxgloveSDK.IO
 
         private bool HasCompleteMetadataIndex()
         {
-            var metadataCount = _summary.Statistics?.MetadataCount ?? 0;
-            return metadataCount > 0 && (ulong)_summary.MetadataIndexes.Count == metadataCount;
+            var metadataCount = _summary.Statistics?.MetadataCount;
+            return metadataCount.HasValue
+                && (ulong)(_summary.MetadataIndexes?.Count ?? 0) == metadataCount.Value;
         }
 
         /// <summary>

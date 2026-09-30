@@ -123,6 +123,19 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void MetadataLookupDoesNotScanWhenStatisticsDeclareNoMetadata()
+        {
+            using var source = BuildNoMetadataWithCorruptDataRecordMcap();
+            using var stream = new CountingReadStream(source.ToArray());
+            using var reader = new McapIndexedReader(stream, leaveOpen: true);
+
+            stream.ResetReadOperations();
+
+            Assert.Null(reader.FindMetadata("missing"));
+            Assert.Equal(0, stream.ReadOperations);
+        }
+
+        [Fact]
         public void MetadataLookupRejectsAnIndexPointingAtTheWrongRecord()
         {
             using var stream = BuildPartiallyIndexedMetadataMcap("unindexed");
@@ -149,6 +162,25 @@ namespace Unity.FoxgloveSDK.UnitTests
 
                 Assert.NotNull(metadata);
                 Assert.Equal("fallback", metadata.Metadata["k"]);
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void ReplayMetadataLookupDoesNotScanWhenStatisticsDeclareNoMetadata()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "mcap-replay-empty-metadata-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = BuildNoMetadataWithCorruptDataRecordMcap())
+                    File.WriteAllBytes(path, stream.ToArray());
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                Assert.Null(engine.FindMetadata("missing"));
             }
             finally
             {
@@ -399,6 +431,26 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             stream.Position = 0;
             return stream;
+        }
+
+        private static MemoryStream BuildNoMetadataWithCorruptDataRecordMcap()
+        {
+            using var clean = BuildTwoChannelMcap();
+            var bytes = clean.ToArray();
+            using (var reader = new McapReader(new MemoryStream(bytes)))
+            {
+                var summary = reader.ReadSummary();
+                McapMessage first = null;
+                reader.VisitSequentialMessages(
+                    summary.DataSectionEndOffset,
+                    message => first ??= message);
+                Assert.NotNull(first);
+                var offset = checked((int)first.SourceOffset);
+                for (var i = 0; i < sizeof(ulong); i++)
+                    bytes[offset + 1 + i] = byte.MaxValue;
+            }
+
+            return new MemoryStream(bytes);
         }
 
         private static MemoryStream BuildIndexedTieMcap()

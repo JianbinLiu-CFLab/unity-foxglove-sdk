@@ -557,13 +557,11 @@ namespace Unity.FoxgloveSDK.IO
                 }
             }
 
+            if (!matchingIndex && HasCompleteMetadataIndex())
+                return null;
+
             if (indexes != null && indexes.Count > 0)
             {
-                var metadataCount = _summary.Statistics?.MetadataCount ?? 0;
-                var hasCompleteMetadataIndex = metadataCount > 0 && (ulong)indexes.Count == metadataCount;
-                if (!matchingIndex && hasCompleteMetadataIndex)
-                    return null;
-
                 if (!_metadataFallbackScanComplete)
                 {
                     _metadataFallbackCache = _reader.BuildMetadataIndexInDataSection(_summary.DataSectionEndOffset);
@@ -575,6 +573,9 @@ namespace Unity.FoxgloveSDK.IO
                     : null;
             }
 
+            if (HasCompleteMetadataIndex())
+                return null;
+
             if (!_metadataFallbackScanComplete)
             {
                 _metadataFallbackCache = _reader.BuildMetadataIndexInDataSection(_summary.DataSectionEndOffset);
@@ -584,6 +585,13 @@ namespace Unity.FoxgloveSDK.IO
             return _metadataFallbackCache.TryGetValue(name, out var fallbackIndex)
                 ? _reader.ReadMetadataAt(fallbackIndex.Offset)
                 : null;
+        }
+
+        private bool HasCompleteMetadataIndex()
+        {
+            var metadataCount = _summary.Statistics?.MetadataCount;
+            return metadataCount.HasValue
+                && (ulong)(_summary.MetadataIndexes?.Count ?? 0) == metadataCount.Value;
         }
 
         /// <summary>
