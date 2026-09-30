@@ -225,7 +225,6 @@ namespace Unity.FoxgloveSDK.Core
                 recorder.WriteMetadata("foxglove.parameters.snapshot",
                     JsonConvert.SerializeObject(snapshot));
                 TryWriteFoxRunSchemaMetadata(recorder);
-                TryWriteSdkWireSchemaMetadata(recorder);
                 parameters.OnParameterChanged -= OnParameterChanged;
                 parameters.OnParameterChanged += OnParameterChanged;
 
@@ -280,8 +279,9 @@ namespace Unity.FoxgloveSDK.Core
 
         private void TryWriteSdkWireSchemaMetadata(McapRecorder recorder)
         {
-            if (recorder == null
-                || !SdkWireSchemaIdentity.TryCompute(_schemaRegistry, out var hash)
+            var schemas = recorder?.GetRecordedSchemaSnapshot();
+            if (schemas == null
+                || !SdkWireSchemaIdentity.TryCompute(schemas, out var hash)
                 || !SdkWireSchemaMcapMetadata.TryCreateJson(hash, out var json))
                 return;
 
@@ -316,7 +316,10 @@ namespace Unity.FoxgloveSDK.Core
             if (parameters != null) parameters.OnParameterChanged -= OnParameterChanged;
 
             if (recorder != null)
+            {
+                TryWriteSdkWireSchemaMetadata(recorder);
                 DisposeRecorderBestEffort(recorder);
+            }
         }
 
         private void DisposeRecorderBestEffort(McapRecorder recorder)

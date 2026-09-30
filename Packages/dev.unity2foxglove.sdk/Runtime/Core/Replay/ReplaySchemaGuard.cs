@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Core
                     string.Empty,
                     string.Empty);
 
-            if (!SdkWireSchemaMcapMetadata.TryParseJson(value, out var recordedHash, out var error))
+            if (!SdkWireSchemaMcapMetadata.TryParseJson(value, out var recordedHash, out var metadataVersion, out var error))
                 return CreateSdkResult(
                     FoxRunReplaySchemaGuardState.MalformedRecorded,
                     identityMode,
@@ -105,7 +105,13 @@ namespace Unity.FoxgloveSDK.Core
                     string.Empty,
                     string.Empty);
 
-            if (!SdkWireSchemaIdentity.TryCompute(schemaRegistry, out var currentHash))
+            var currentIdentityAvailable = metadataVersion >= 2
+                ? SdkWireSchemaIdentity.TryCompute(
+                    schemaRegistry,
+                    replayEngine.Summary?.Schemas,
+                    out var currentHash)
+                : SdkWireSchemaIdentity.TryCompute(schemaRegistry, out currentHash);
+            if (!currentIdentityAvailable)
                 return CreateSdkResult(
                     FoxRunReplaySchemaGuardState.MissingCurrent,
                     identityMode,
@@ -139,8 +145,7 @@ namespace Unity.FoxgloveSDK.Core
             string recordedHash,
             string currentHash)
         {
-            var isBlocking = identityMode == SchemaIdentityMode.Strict
-                || identityMode == SchemaIdentityMode.Compatible;
+            var isBlocking = identityMode == SchemaIdentityMode.Strict;
             return new FoxRunReplaySchemaGuardResult(
                 state,
                 isBlocking,
@@ -165,9 +170,67 @@ namespace Unity.FoxgloveSDK.Core
             if (!(registry is ISchemaRegistrySnapshot snapshot))
                 return false;
 
+            return TryCompute(snapshot.GetSchemaSnapshot(), includeComponentSnapshot: true, out hash);
+        }
+
+        internal static bool TryCompute(
+            ISchemaRegistry registry,
+            IReadOnlyList<McapSchema> recordedSchemas,
+            out string hash)
+        {
+            hash = string.Empty;
+            if (!(registry is ISchemaRegistrySnapshot snapshot)
+                || recordedSchemas == null)
+                return false;
+
+            var current = snapshot.GetSchemaSnapshot() ?? Array.Empty<SchemaEntry>();
+            var selected = new List<SchemaEntry>(recordedSchemas.Count);
+            foreach (var recorded in recordedSchemas)
+            {
+                if (recorded == null)
+                    continue;
+
+                var match = current.FirstOrDefault(entry =>
+                    string.Equals(entry.Name, recorded.Name, StringComparison.Ordinal)
+                    && string.Equals(entry.Encoding, recorded.Encoding, StringComparison.OrdinalIgnoreCase));
+                if (string.IsNullOrEmpty(match.Name))
+                {
+                    selected.Add(new SchemaEntry
+                    {
+                        Name = recorded.Name ?? string.Empty,
+                        Encoding = recorded.Encoding ?? string.Empty,
+                        Content = recorded.Encoding == "protobuf"
+                            ? Convert.ToBase64String(recorded.Data ?? Array.Empty<byte>())
+                            : recorded.Data == null
+                                ? string.Empty
+                                : Encoding.UTF8.GetString(recorded.Data)
+                    });
+                }
+                else
+                {
+                    selected.Add(match);
+                }
+            }
+
+            return TryCompute(selected, includeComponentSnapshot: false, out hash);
+        }
+
+        internal static bool TryCompute(
+            IEnumerable<SchemaEntry> schemaEntries,
+            out string hash)
+            => TryCompute(schemaEntries, includeComponentSnapshot: false, out hash);
+
+        private static bool TryCompute(
+            IEnumerable<SchemaEntry> schemaEntries,
+            bool includeComponentSnapshot,
+            out string hash)
+        {
+            hash = string.Empty;
+            if (schemaEntries == null)
+                return false;
+
             var builder = new StringBuilder();
-            var schemas = snapshot.GetSchemaSnapshot() ?? Array.Empty<SchemaEntry>();
-            foreach (var schema in schemas
+            foreach (var schema in schemaEntries
                 .OrderBy(entry => entry.Name, StringComparer.Ordinal)
                 .ThenBy(entry => entry.Encoding, StringComparer.Ordinal))
             {
@@ -178,16 +241,19 @@ namespace Unity.FoxgloveSDK.Core
                 Append(builder, schema.RawContent == null ? string.Empty : Convert.ToBase64String(schema.RawContent));
             }
 
-            var componentSnapshot = ComponentMessagePackCodecRegistry.CaptureSnapshot();
-            foreach (var entry in componentSnapshot.Entries
-                .OrderBy(value => value.LogicalSchemaName, StringComparer.Ordinal)
-                .ThenBy(value => value.ClrType == null ? string.Empty : value.ClrType.FullName, StringComparer.Ordinal))
+            if (includeComponentSnapshot)
             {
-                builder.Append("component|");
-                Append(builder, entry.ClrType == null ? string.Empty : entry.ClrType.FullName);
-                Append(builder, entry.LogicalSchemaName);
-                Append(builder, entry.ShapeIdentity);
-                builder.Append(entry.IsAvailable ? '1' : '0').Append(entry.ClaimsLogicalSchemaKey ? '1' : '0');
+                var componentSnapshot = ComponentMessagePackCodecRegistry.CaptureSnapshot();
+                foreach (var entry in componentSnapshot.Entries
+                    .OrderBy(value => value.LogicalSchemaName, StringComparer.Ordinal)
+                    .ThenBy(value => value.ClrType == null ? string.Empty : value.ClrType.FullName, StringComparer.Ordinal))
+                {
+                    builder.Append("component|");
+                    Append(builder, entry.ClrType == null ? string.Empty : entry.ClrType.FullName);
+                    Append(builder, entry.LogicalSchemaName);
+                    Append(builder, entry.ShapeIdentity);
+                    builder.Append(entry.IsAvailable ? '1' : '0').Append(entry.ClaimsLogicalSchemaKey ? '1' : '0');
+                }
             }
 
             using (var sha = SHA256.Create())

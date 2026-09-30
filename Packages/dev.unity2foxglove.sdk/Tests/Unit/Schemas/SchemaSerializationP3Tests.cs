@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Foxglove.Schemas;
@@ -15,8 +16,10 @@ using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.MsgPack;
+using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests
@@ -137,6 +140,19 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ImuRegistrationDoesNotConflictWithTheOfficialProtobufCatalog()
+        {
+            var registry = new DefaultSchemaRegistry();
+            ProtobufSchemasSetup.RegisterSchemas(registry);
+
+            ImuSchema.Register(registry);
+
+            Assert.True(registry.TryGetSchema(ImuSchema.SchemaName, "protobuf", out var entry));
+            Assert.NotNull(entry.RawContent);
+            Assert.Equal(Convert.ToBase64String(entry.RawContent), entry.Content);
+        }
+
+        [Fact]
         public void UnknownFoxgloveProtobufSchemaIsUnsupported()
         {
             var factory = new McapFoxgloveProtobufDecoderFactory();
@@ -241,6 +257,96 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void SupportedSchemaEncodingMatrixTraversesSessionAdvertisementAndMcap()
+        {
+            var rows = new[]
+            {
+                new SchemaEncodingMatrixRow(
+                    "jsonschema",
+                    "module8.RuntimeJson",
+                    "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"integer\"}}}",
+                    () => Encoding.UTF8.GetBytes("{\"value\":8}"),
+                    payload => Assert.Equal(8, (int)JObject.Parse(Encoding.UTF8.GetString(payload))["value"])),
+                CreateProtobufMatrixRow(),
+                new SchemaEncodingMatrixRow(
+                    "",
+                    "",
+                    "",
+                    () =>
+                    {
+                        using var writer = new FoxgloveMsgPackWriter();
+                        writer.WriteMapHeader(1);
+                        writer.WriteString("value");
+                        writer.WriteInt32(8);
+                        return writer.ToArray();
+                    },
+                    payload =>
+                    {
+                        var reader = new FoxgloveMsgPackReader(payload, FoxgloveMsgPackReadLimits.ForPayloadBytes(payload.Length));
+                        Assert.True(reader.TryReadMapHeader(out var count));
+                        Assert.Equal(1, count);
+                        Assert.True(reader.TryReadString(out var key));
+                        Assert.Equal("value", key);
+                        Assert.True(reader.TryReadInt32(out var value));
+                        Assert.Equal(8, value);
+                        Assert.False(reader.HasError);
+                        Assert.Equal(0, reader.RemainingBytes);
+                    })
+            };
+
+            foreach (var row in rows)
+            {
+                var registry = new DefaultSchemaRegistry();
+                using var transport = new MatrixTransport();
+                using var session = new FoxgloveSession("module8-runtime-matrix", transport, schemaRegistry: registry);
+                using var stream = new MemoryStream();
+                using var recorder = new McapRecorder(stream, leaveOpen: true);
+
+                if (!string.IsNullOrEmpty(row.SchemaName))
+                    registry.Register(new SchemaEntry
+                    {
+                        Name = row.SchemaName,
+                        Encoding = row.SchemaEncoding,
+                        Content = row.SchemaContent,
+                        RawContent = row.RawContent
+                    });
+
+                session.SetRecorder(recorder);
+                if (row.SchemaEncoding == "jsonschema")
+                    session.RegisterSchemaChannel(1, "/module8/runtime/json", row.SchemaName, "json");
+                else if (row.SchemaEncoding == "protobuf")
+                    session.RegisterProtobufSchemaChannel(1, "/module8/runtime/protobuf", row.SchemaName);
+                else
+                    session.RegisterChannel(new AdvertiseChannel
+                    {
+                        Id = 1,
+                        Topic = "/module8/runtime/msgpack",
+                        Encoding = "msgpack",
+                        SchemaName = "",
+                        SchemaEncoding = "",
+                        Schema = ""
+                    });
+
+                var payload = row.Payload();
+                session.Publish(1, payload, 8UL);
+                session.SetRecorder(null);
+                recorder.Close();
+
+                Assert.Contains(transport.BroadcastTexts, value => value.Contains("advertise", StringComparison.Ordinal));
+                stream.Position = 0;
+                using var reader = new McapStreamingReader(stream, leaveOpen: true);
+                var recorded = reader.Read();
+                var channel = Assert.Single(recorded.Summary.Channels);
+                Assert.Equal(row.SchemaEncoding == "" ? "msgpack" : row.SchemaEncoding == "protobuf" ? "protobuf" : "json", channel.MessageEncoding);
+                if (row.SchemaEncoding == "")
+                    Assert.Equal((ushort)0, channel.SchemaId);
+                else
+                    Assert.NotEqual((ushort)0, channel.SchemaId);
+                row.Decode(Assert.Single(recorded.Messages).Data);
+            }
+        }
+
+        [Fact]
         public void SdkWireSchemaIdentityChangesWhenRegisteredSchemaContentChanges()
         {
             var first = new DefaultSchemaRegistry();
@@ -269,8 +375,18 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void SdkWireSchemaMetadataRoundTripsItsHash()
         {
             Assert.True(SdkWireSchemaMcapMetadata.TryCreateJson("aabbcc", out var json));
-            Assert.True(SdkWireSchemaMcapMetadata.TryParseJson(json, out var hash, out var error), error);
+            Assert.True(SdkWireSchemaMcapMetadata.TryParseJson(json, out var hash, out var version, out var error), error);
             Assert.Equal("aabbcc", hash);
+            Assert.Equal(2, version);
+
+            const string legacyJson = "{\"version\":1,\"hash\":\"aabbcc\"}";
+            Assert.True(SdkWireSchemaMcapMetadata.TryParseJson(
+                legacyJson,
+                out var legacyHash,
+                out var legacyVersion,
+                out var legacyError), legacyError);
+            Assert.Equal("aabbcc", legacyHash);
+            Assert.Equal(1, legacyVersion);
         }
 
         private static SchemaEncodingMatrixRow CreateProtobufMatrixRow()
@@ -319,6 +435,23 @@ namespace Unity.FoxgloveSDK.UnitTests
             public Func<byte[]> Payload { get; }
             public Action<byte[]> Decode { get; }
             public Action<byte[]> RoundTrip { get; }
+        }
+
+        private sealed class MatrixTransport : IFoxgloveTransport
+        {
+            public bool IsRunning => true;
+            public List<string> BroadcastTexts { get; } = new List<string>();
+            public event Action<uint> OnClientConnected { add { } remove { } }
+            public event Action<uint> OnClientDisconnected { add { } remove { } }
+            public event Action<uint, string> OnTextReceived { add { } remove { } }
+            public event Action<uint, byte[]> OnBinaryReceived { add { } remove { } }
+            public void Start(string host, int port) { }
+            public void Stop() { }
+            public void BroadcastText(string json) => BroadcastTexts.Add(json);
+            public void BroadcastBinary(byte[] data) { }
+            public void SendText(uint clientId, string json) { }
+            public void SendBinary(uint clientId, byte[] data) { }
+            public void Dispose() { }
         }
     }
 }

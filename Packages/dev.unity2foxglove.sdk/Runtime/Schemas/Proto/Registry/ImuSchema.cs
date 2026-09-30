@@ -5,6 +5,7 @@
 // Purpose: Vendored descriptor set for the custom Unity2Foxglove IMU schema.
 
 using System;
+using Unity.FoxgloveSDK.Schemas;
 
 namespace Foxglove.Schemas
 {
@@ -34,5 +35,21 @@ namespace Foxglove.Schemas
             + "YXRSC29yaWVudGF0aW9uEjUKFm9yaWVudGF0aW9uX2NvdmFyaWFuY2UYBiADKAFSFW9yaWVudGF0aW9uQ292YXJpYW5jZRI+Chthbmd1bGFyX3ZlbG9jaXR5"
             + "X2NvdmFyaWFuY2UYByADKAFSGWFuZ3VsYXJWZWxvY2l0eUNvdmFyaWFuY2USRAoebGluZWFyX2FjY2VsZXJhdGlvbl9jb3ZhcmlhbmNlGAggAygBUhxsaW5l"
             + "YXJBY2NlbGVyYXRpb25Db3ZhcmlhbmNlYgZwcm90bzM=");
+
+        internal static void Register(ISchemaRegistry schemaRegistry)
+        {
+            if (schemaRegistry == null)
+                throw new ArgumentNullException(nameof(schemaRegistry));
+
+            var registry = ProtobufSchemaRegistryLoader.FromBytes(FileDescriptorSetData, schemaRegistry);
+            var descriptor = registry.GetFileDescriptorSet(SchemaName);
+            schemaRegistry.Register(new SchemaEntry
+            {
+                Name = SchemaName,
+                Encoding = ProtobufSchemaRegistry.SchemaEncoding,
+                Content = Convert.ToBase64String(descriptor),
+                RawContent = descriptor
+            });
+        }
     }
 }

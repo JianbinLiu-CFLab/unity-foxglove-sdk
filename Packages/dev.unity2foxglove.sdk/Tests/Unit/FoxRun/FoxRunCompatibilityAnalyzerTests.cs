@@ -589,6 +589,74 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 Assert.Equal(FoxRunReplaySchemaGuardState.Mismatch, result.State);
                 Assert.True(result.IsBlocking);
                 Assert.Contains("SDK-wide wire-schema identity mismatch", result.Message, StringComparison.Ordinal);
+
+                var compatible = ReplaySchemaGuard.EvaluateWithMode(
+                    engine,
+                    SchemaIdentityMode.Compatible,
+                    registry);
+                Assert.Equal(FoxRunReplaySchemaGuardState.Mismatch, compatible.State);
+                Assert.False(compatible.IsBlocking);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void RecordingIdentityUsesSchemasActuallyWrittenAfterLateRegistration()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-sdk-wire-schema-late-registration-"
+                + Guid.NewGuid().ToString("N")
+                + ".mcap");
+            var registry = new DefaultSchemaRegistry();
+            registry.Register(new SchemaEntry
+            {
+                Name = "module8.Recorded",
+                Encoding = "jsonschema",
+                Content = "{\"type\":\"integer\"}"
+            });
+
+            try
+            {
+                using var session = new FoxgloveSession(
+                    "module8-late-registration",
+                    new NoopTransport(),
+                    schemaRegistry: registry);
+                session.RegisterSchemaChannel(1, "/module8/recorded", "module8.Recorded", "json");
+                using var controller = new RecordingController(new ConsoleLogger(), new SystemClock(), registry);
+                controller.Enable(path);
+                controller.AttachToSession(new FoxgloveParameterStore(), session);
+
+                registry.Register(new SchemaEntry
+                {
+                    Name = "module8.RegisteredAfterAttach",
+                    Encoding = "jsonschema",
+                    Content = "{\"type\":\"string\"}"
+                });
+                session.Publish(1, new byte[] { 1 }, 8UL);
+                controller.DetachFromSession();
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var metadata = engine.FindMetadata(SdkWireSchemaMcapMetadata.MetadataName);
+                Assert.NotNull(metadata);
+                Assert.True(SdkWireSchemaMcapMetadata.TryParseJson(
+                    metadata.Metadata["value"],
+                    out _,
+                    out var version,
+                    out var error), error);
+                Assert.Equal(2, version);
+
+                var result = ReplaySchemaGuard.EvaluateWithMode(
+                    engine,
+                    SchemaIdentityMode.Strict,
+                    registry);
+                Assert.Equal(FoxRunReplaySchemaGuardState.Match, result.State);
+                Assert.False(result.IsBlocking);
             }
             finally
             {
