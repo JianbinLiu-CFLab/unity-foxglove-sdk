@@ -92,6 +92,7 @@ namespace Unity.FoxgloveSDK.Tests
             var packageJson = ReadRepoText(RuntimePackage + "/package.json");
             Check(packageJson.Contains("dev.unity2foxglove.ros2forunity.runtime.lyrical.win64", StringComparison.Ordinal)
                   && packageJson.Contains("Lyrical Win64", StringComparison.Ordinal)
+                  && packageJson.Contains("\"unity2foxgloveRuntimeId\": \"r2fu-lyrical-win64\"", StringComparison.Ordinal)
                   && packageJson.Contains("\"dependencies\": {}", StringComparison.Ordinal),
                 "146B-A5: package metadata names the Lyrical Win64 runtime package");
 

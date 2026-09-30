@@ -18,7 +18,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         string Identity { get; }
         int SourceInstanceId { get; }
         bool IsStopped { get; }
+        bool CleanupPending { get; }
         void Stop();
+        bool TryRetryCleanup();
     }
 
     /// <summary>
@@ -152,6 +154,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 StopBindings();
                 return;
             }
+
+            RetryPendingBindings();
 
             ApplyPublishSessionPolicy(
                 _manager.ActiveFoxRunPublishSessionPolicy);
@@ -526,13 +530,34 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             finally
             {
-                _bindings.Clear();
+                RemoveCompletedBindings();
                 _stale.Clear();
                 _existing.Clear();
                 _seen.Clear();
                 _nativeDemand.Clear();
                 _observedNativeContractCount = 0;
                 _scanCompleted = false;
+            }
+        }
+
+        private void RetryPendingBindings()
+        {
+            for (var index = 0; index < _bindings.Count; index++)
+            {
+                var binding = _bindings[index];
+                if (binding.CleanupPending)
+                    binding.TryRetryCleanup();
+            }
+
+            RemoveCompletedBindings();
+        }
+
+        private void RemoveCompletedBindings()
+        {
+            for (var index = _bindings.Count - 1; index >= 0; index--)
+            {
+                if (_bindings[index].IsStopped && !_bindings[index].CleanupPending)
+                    _bindings.RemoveAt(index);
             }
         }
 
@@ -618,7 +643,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 finally
                 {
-                    if (binding != null)
+                    if (binding != null && !binding.CleanupPending)
                     {
                         bindings?.Remove(binding);
                         existing?.Remove(binding.Identity);
@@ -818,7 +843,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             public string Identity { get; }
             public int SourceInstanceId { get; }
             public bool IsStopped => _binding.IsStopped;
+            public bool CleanupPending => _binding.CleanupPending;
             public void Stop() => _binding.Stop();
+            public bool TryRetryCleanup() => _binding.TryRetryCleanup();
         }
     }
 

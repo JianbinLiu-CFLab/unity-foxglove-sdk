@@ -58,12 +58,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyNativeBridgeEditorWarmupStopsPollingTime()
         {
             var gate = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs");
-            Check(gate.Contains("EditorPlayModeStableDelaySeconds", StringComparison.Ordinal)
-                  && gate.Contains("_editorEnteredPlayModeAt = EditorApplication.timeSinceStartup", StringComparison.Ordinal)
+            Check(!gate.Contains("EditorPlayModeStableDelaySeconds", StringComparison.Ordinal)
+                  && !gate.Contains("_editorEnteredPlayModeAt", StringComparison.Ordinal)
                   && gate.Contains("EditorApplication.update += OnEditorUpdateUntilPlayModeStable", StringComparison.Ordinal)
                   && gate.Contains("EditorApplication.update -= OnEditorUpdateUntilPlayModeStable", StringComparison.Ordinal)
-                  && gate.Contains("if (EditorApplication.timeSinceStartup - _editorEnteredPlayModeAt < EditorPlayModeStableDelaySeconds)", StringComparison.Ordinal),
-                "164-2B-1: shared lifecycle gate polls EditorApplication time only until Play Mode is stable");
+                  && gate.Contains("RefreshSceneStateIfNeeded();", StringComparison.Ordinal)
+                  && gate.Contains("if (!_isStablePlayModeScene || IsHardEditorShutdownWindow)", StringComparison.Ordinal),
+                "164-2B-1: shared lifecycle gate waits for event-driven scene readiness");
 
             foreach (var relativePath in new[]
             {

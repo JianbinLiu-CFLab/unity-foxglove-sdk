@@ -274,7 +274,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void StopSuppressesPublisherRemovalFailureAndStillReleasesTheNodeLease()
+        public void StopRetainsPublisherRemovalFailureForAControlledRetry()
         {
             var bus = new FoxTopicBus();
             var backend = new FakePublisherBackend
@@ -288,7 +288,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             binding.Stop();
 
             Assert.False(bus.HasSubscribers("/phase181/custom"));
-            Assert.Equal(new[] { "remove", "release" }, backend.StopOrder);
+            Assert.True(binding.CleanupPending);
+            Assert.Equal(new[] { "remove" }, backend.StopOrder);
+            Assert.Equal(0, backend.ReleaseCount);
+
+            backend.RemoveFailure = null;
+            Assert.True(binding.TryRetryCleanup());
+            Assert.False(binding.CleanupPending);
+            Assert.Equal(new[] { "remove", "remove", "release" }, backend.StopOrder);
             Assert.Equal(1, backend.ReleaseCount);
         }
 

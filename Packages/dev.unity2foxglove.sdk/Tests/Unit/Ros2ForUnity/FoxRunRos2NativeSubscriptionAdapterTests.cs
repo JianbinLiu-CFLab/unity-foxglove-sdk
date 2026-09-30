@@ -953,13 +953,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             binding.Stop();
 
             Assert.Equal(FoxRunRos2SubscriptionBindingState.Stopped, binding.State);
+            Assert.True(binding.CleanupPending);
+            Assert.Equal(0, backend.ReleaseCount);
             Assert.True(binding.TryGetSnapshot(32, out var snapshot));
             Assert.Equal(FoxRunRos2RegistrationError.TeardownFailure, snapshot.Error);
             Assert.Equal("The native ROS2 subscription did not complete teardown.", snapshot.Diagnostic);
             Assert.Equal(
-                new[] { "remove-subscription", "clear-applied", "dispose-owned", "release-node" },
+                new[] { "remove-subscription", "clear-applied", "dispose-owned" },
                 events);
+            Assert.Equal(1, backend.RemoveCount);
+
+            backend.RemoveException = null;
+            backend.ReleaseException = null;
+            binding.Stop();
+
+            Assert.False(binding.CleanupPending);
+            Assert.Equal(2, backend.RemoveCount);
             Assert.Equal(1, backend.ReleaseCount);
+            Assert.Equal(
+                new[]
+                {
+                    "remove-subscription",
+                    "clear-applied",
+                    "dispose-owned",
+                    "remove-subscription",
+                    "release-node"
+                },
+                events);
         }
 
         [Fact]
@@ -1269,7 +1289,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.Null(exception);
             Assert.Equal(
-                new[] { "remove-subscription", "clear-applied", "dispose-owned", "release-node" },
+                new[] { "remove-subscription", "clear-applied", "dispose-owned" },
+                events);
+            Assert.True(binding.CleanupPending);
+            backend.RemoveException = null;
+            binding.Stop();
+            Assert.Equal(
+                new[]
+                {
+                    "remove-subscription",
+                    "clear-applied",
+                    "dispose-owned",
+                    "remove-subscription",
+                    "release-node"
+                },
                 events);
             Assert.Equal(FoxRunRos2SubscriptionBindingState.Stopped, binding.State);
         }
@@ -1630,7 +1663,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(FoxRunRos2RegistrationError.ApplyFailure, snapshot.Error);
             Assert.Equal("The native ROS2 subscription could not apply the copied message.", snapshot.Diagnostic);
             Assert.Equal(1, backend.RemoveCount);
-            Assert.Equal(1, backend.ReleaseCount);
+            Assert.Equal(0, backend.ReleaseCount);
             Assert.Equal(1, owned.DisposeCount);
 
             using var late = Message("late");
@@ -1638,8 +1671,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(1, copies);
             Assert.Equal(1, binding.RejectedAfterStopCount);
             Assert.False(binding.TryApplyLatest(15));
+            backend.RemoveException = null;
             binding.Stop();
-            Assert.Equal(1, backend.RemoveCount);
+            Assert.Equal(2, backend.RemoveCount);
             Assert.Equal(1, backend.ReleaseCount);
             Assert.Equal(FoxRunRos2SubscriptionBindingState.Failed, binding.State);
         }

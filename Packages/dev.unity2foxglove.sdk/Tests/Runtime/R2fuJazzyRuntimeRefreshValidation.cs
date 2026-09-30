@@ -82,8 +82,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             var packageJson = ReadRepoText(RuntimePackage + "/package.json");
             Check(packageJson.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal)
-                  && packageJson.Contains("Jazzy Win64", StringComparison.Ordinal),
-                "161-A5: package metadata names the Jazzy Win64 runtime package");
+                  && packageJson.Contains("Jazzy Win64", StringComparison.Ordinal)
+                  && packageJson.Contains("\"unity2foxgloveRuntimeId\": \"r2fu-jazzy-win64\"", StringComparison.Ordinal),
+                "161-A5: package metadata names and identifies the Jazzy Win64 runtime package");
 
             var manifest = ReadRepoText(RuntimePackage + "/RuntimeSupport/runtime-manifest.json");
             Check(manifest.Contains("\"runtimeId\": \"r2fu-jazzy-win64\"", StringComparison.Ordinal)

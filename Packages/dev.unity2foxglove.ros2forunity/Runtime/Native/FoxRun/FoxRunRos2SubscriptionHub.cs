@@ -1672,7 +1672,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     "stop-binding|deferred-cleanup-timeout",
                     "Native ROS2 subscription teardown remains pending after the bounded host cleanup window.");
             }
-            _bindings.Clear();
+            if (cleanupComplete)
+            {
+                _bindings.Clear();
+            }
+            else
+            {
+                // Keep bindings that still own a native token. A later host
+                // update must be able to retry removal instead of losing the
+                // only managed retirement owner after the bounded drain.
+                for (var index = _bindings.Count - 1; index >= 0; index--)
+                {
+                    if (_bindings[index].CleanupComplete)
+                        _bindings.RemoveAt(index);
+                }
+            }
             _stale.Clear();
             _sources.Clear();
             _seenSources.Clear();

@@ -18,10 +18,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     internal static class Ros2ForUnityNativeBridgeLifecycleGate
     {
-        // Keep early Editor Play Mode out of native bootstrap so scene restore,
-        // domain reload, and backup-scene cleanup cannot race ROS2 initialization.
-        private const double EditorPlayModeStableDelaySeconds = 3.0;
-
         private static volatile bool _applicationQuitting;
         private static volatile bool _nativeReloadWindow;
         private static volatile bool _isStablePlayModeScene;
@@ -37,7 +33,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private static volatile bool _editorAssemblyReloading;
         private static volatile bool _editorCompiling;
         private static volatile bool _editorPlayModeTransition;
-        private static double _editorEnteredPlayModeAt;
 #endif
 
         internal static bool IsStablePlayModeScene => _isStablePlayModeScene;
@@ -61,7 +56,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return !_nativeReloadWindow
                    && _isStablePlayModeScene
                    && IsActiveSceneCacheCurrent
-                   && !IsBridgeSceneUnsafe(ownerScene);
+                   && !IsBridgeSceneUnsafe(ownerScene)
+                   && Ros2ForUnityNativeRuntimeIdentity.TryObserve();
         }
 
         internal static bool IsShuttingDownForBridge(Scene ownerScene)
@@ -183,7 +179,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _editorAssemblyReloading = false;
             _editorCompiling = false;
             _editorPlayModeTransition = false;
-            _editorEnteredPlayModeAt = 0.0;
             EditorApplication.update -= OnEditorUpdateUntilPlayModeStable;
         }
 
@@ -237,7 +232,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 case PlayModeStateChange.EnteredPlayMode:
                     _editorEnteredPlayMode = true;
-                    _editorEnteredPlayModeAt = EditorApplication.timeSinceStartup;
                     _editorPlayModeTransition = true;
                     _applicationQuitting = false;
                     _editorAssemblyReloading = false;
@@ -266,7 +260,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
-            if (EditorApplication.timeSinceStartup - _editorEnteredPlayModeAt < EditorPlayModeStableDelaySeconds)
+            RefreshSceneStateIfNeeded();
+            if (!_isStablePlayModeScene || IsHardEditorShutdownWindow)
                 return;
 
             _editorPlayModeTransition = false;

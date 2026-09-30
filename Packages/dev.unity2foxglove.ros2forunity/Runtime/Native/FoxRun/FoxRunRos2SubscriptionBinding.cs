@@ -259,6 +259,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool _registrationInFlight;
         private bool _stopCleanupInProgress;
         private bool _slotCleanupComplete;
+        private bool _cleanupPending;
         private bool _nodeReleaseClaimed;
         private bool _teardownFailureRecorded;
         private bool _preserveTerminalFailure;
@@ -925,15 +926,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         public void Stop() => StopCore(null);
 
+        internal bool CleanupPending
+        {
+            get
+            {
+                lock (_lifecycleLock)
+                    return _cleanupPending;
+            }
+        }
+
         private void StopCore(FoxRunRos2RegistrationResult? primaryFailure)
         {
             IFoxRunRos2NativeSubscriptionToken token = null;
             var beginStop = false;
             lock (_lifecycleLock)
             {
-                if (_slotCleanupComplete || _stopCleanupInProgress)
+                if ((_slotCleanupComplete && _token == null) || _stopCleanupInProgress)
                     return;
                 _stopCleanupInProgress = true;
+                token = _token;
                 if (Volatile.Read(ref _stopping) == 0)
                 {
                     beginStop = true;
@@ -941,8 +952,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     Interlocked.Exchange(ref _acceptanceAdmission, 0);
                     Interlocked.Exchange(ref _acceptanceCompletingEpoch, 0);
                     Volatile.Write(ref _activeRegistrationAttempt, 0L);
-                    token = _token;
-                    _token = null;
                     if (primaryFailure.HasValue)
                     {
                         _preserveTerminalFailure = true;
@@ -975,21 +984,34 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     fatal = ExceptionDispatchInfo.Capture(exception);
                 }
 
-                if (token != null)
+            }
+
+            if (token != null)
+            {
+                try
                 {
-                    try
+                    _backend.RemoveSubscription(token);
+                    lock (_lifecycleLock)
                     {
-                        _backend.RemoveSubscription(token);
+                        if (ReferenceEquals(_token, token))
+                        {
+                            _token = null;
+                            _cleanupPending = false;
+                        }
                     }
-                    catch (Exception exception) when (
-                        FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
-                    {
-                        RecordTeardownFailure("remove subscription", exception);
-                    }
-                    catch (Exception exception)
-                    {
-                        fatal ??= ExceptionDispatchInfo.Capture(exception);
-                    }
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    lock (_lifecycleLock)
+                        _cleanupPending = true;
+                    RecordTeardownFailure("remove subscription", exception);
+                }
+                catch (Exception exception)
+                {
+                    lock (_lifecycleLock)
+                        _cleanupPending = true;
+                    fatal ??= ExceptionDispatchInfo.Capture(exception);
                 }
             }
 
@@ -1256,6 +1278,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             if (Volatile.Read(ref _stopping) == 0
                 || !_slotCleanupComplete
+                || _token != null
                 || _registrationInFlight
                 || _nodeReleaseClaimed)
                 return false;
