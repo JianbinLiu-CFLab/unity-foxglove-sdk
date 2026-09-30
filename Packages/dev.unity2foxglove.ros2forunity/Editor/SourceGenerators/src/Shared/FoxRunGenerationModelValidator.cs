@@ -644,10 +644,15 @@ namespace Unity.FoxgloveSDK.Editor
                     members,
                     diagnostics);
                 var schemaNames = members
-                    .Select(member => member.SchemaName ?? string.Empty)
+                    .Select(member => member.SchemaName)
+                    .Select(schemaName => schemaName ?? string.Empty)
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
-                if (schemaNames.Count > 1)
+                var mixedAggregateTopic = members.Any(
+                        member => member.IsAggregateMember)
+                    && members.Any(
+                        member => !member.IsAggregateMember);
+                if (!mixedAggregateTopic && schemaNames.Count > 1)
                 {
                     diagnostics.Add(
                         FoxRunGenerationDiagnostic.Error(
@@ -690,10 +695,7 @@ namespace Unity.FoxgloveSDK.Editor
                         + fieldNumbers.Key + ".");
                 }
 
-                if (members.Any(
-                        member => member.IsAggregateMember)
-                    && members.Any(
-                        member => !member.IsAggregateMember))
+                if (mixedAggregateTopic)
                 {
                     AddError(
                         diagnostics,
