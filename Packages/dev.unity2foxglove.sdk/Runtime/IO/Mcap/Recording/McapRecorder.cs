@@ -42,6 +42,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly List<ChannelWriteState> _allChannelWriteStates = new();
         private readonly Dictionary<ushort, ulong> _messageIndexOffsetsScratch = new();
         private readonly List<SchemaRecordState> _schemas = new();
+        private readonly HashSet<ushort> _outputSchemaIds = new();
         private readonly List<SdkWireSchemaComponentIdentity> _recordedComponentContracts = new();
         private readonly List<ChannelRecordState> _channels = new();
         private readonly List<ChunkIndexState> _chunkIdx = new();
@@ -241,6 +242,7 @@ namespace Unity.FoxgloveSDK.IO
                     return;
                 }
                 var sid = GetOrCreateSchema(sName, sEnc, sContent);
+                if (sid != 0) _outputSchemaIds.Add(sid);
                 if (_recordingFailed) return;
                 ushort mCid;
                 if (explicitMcapChannelId.HasValue)
@@ -555,6 +557,8 @@ namespace Unity.FoxgloveSDK.IO
                 var snapshot = new List<SchemaEntry>(_schemas.Count);
                 foreach (var schema in _schemas)
                 {
+                    if (!_outputSchemaIds.Contains(schema.Id))
+                        continue;
                     snapshot.Add(new SchemaEntry
                     {
                         Name = schema.Name,

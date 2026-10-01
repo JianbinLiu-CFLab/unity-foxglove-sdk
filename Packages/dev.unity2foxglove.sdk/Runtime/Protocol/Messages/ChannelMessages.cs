@@ -95,8 +95,26 @@ namespace Unity.FoxgloveSDK.Protocol
 
         private string _schema = "";
 
-        internal string ComponentLogicalSchemaName { get; set; }
-        internal string ComponentShapeIdentity { get; set; }
+        private string _componentLogicalSchemaName;
+        internal string ComponentLogicalSchemaName
+        {
+            get => _componentLogicalSchemaName;
+            set
+            {
+                EnsureWritable();
+                _componentLogicalSchemaName = value;
+            }
+        }
+        private string _componentShapeIdentity;
+        internal string ComponentShapeIdentity
+        {
+            get => _componentShapeIdentity;
+            set
+            {
+                EnsureWritable();
+                _componentShapeIdentity = value;
+            }
+        }
 
         /// <summary>Always serialized as non-null; null setter is coerced to "".</summary>
         [JsonProperty("schema")]

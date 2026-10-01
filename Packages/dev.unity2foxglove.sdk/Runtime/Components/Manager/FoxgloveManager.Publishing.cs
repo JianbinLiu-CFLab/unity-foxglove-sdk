@@ -409,21 +409,43 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="topic">Topic to publish to.</param>
         /// <param name="encoding">Foxglove message encoding.</param>
         /// <returns>The channel identifier associated with the topic and encoding.</returns>
+        private uint GetOrRegisterChannel(string topic, string encoding)
+            => GetOrRegisterChannel(topic, encoding, null, null);
+
         private uint GetOrRegisterChannel(
             string topic,
             string encoding,
-            string componentLogicalSchemaName = null,
-            string componentShapeIdentity = null)
+            string componentLogicalSchemaName,
+            string componentShapeIdentity)
         {
             if (!IsValidPublishTopic(topic))
                 throw new System.InvalidOperationException("Foxglove publisher topic must be non-empty.");
 
-            var cacheSchemaName = string.IsNullOrEmpty(componentLogicalSchemaName)
-                ? EmptySchemaName
-                : "component\u001f" + componentLogicalSchemaName + "\u001f" + (componentShapeIdentity ?? string.Empty);
-            var key = (topic, cacheSchemaName, encoding, "");
+            var hasComponentIdentity = !string.IsNullOrEmpty(componentLogicalSchemaName);
+            var cacheSchemaName = hasComponentIdentity
+                ? componentLogicalSchemaName
+                : EmptySchemaName;
+            var cacheShapeIdentity = hasComponentIdentity
+                ? componentShapeIdentity ?? string.Empty
+                : string.Empty;
+            var key = (topic, cacheSchemaName, encoding, cacheShapeIdentity);
             if (_channelCache.TryGetValue(key, out var id))
+                return id;
+
+            if (hasComponentIdentity)
             {
+                var rawKey = (topic, EmptySchemaName, encoding, string.Empty);
+                if (_channelCache.TryGetValue(rawKey, out id)
+                    && TryBindComponentChannel(id, componentLogicalSchemaName, cacheShapeIdentity))
+                {
+                    _channelCache[key] = id;
+                    _componentChannelDefaults[(topic, encoding)] = id;
+                    return id;
+                }
+            }
+            else if (_componentChannelDefaults.TryGetValue((topic, encoding), out id))
+            {
+                _channelCache[key] = id;
                 return id;
             }
 
@@ -436,11 +458,30 @@ namespace Unity.FoxgloveSDK.Components
                 SchemaName = EmptySchemaName,
                 Schema = EmptySchemaPayload,
                 ComponentLogicalSchemaName = componentLogicalSchemaName ?? string.Empty,
-                ComponentShapeIdentity = componentShapeIdentity ?? string.Empty
+                ComponentShapeIdentity = cacheShapeIdentity
             });
             _connectionState.NextChannelId++;
             _channelCache[key] = id;
+            if (hasComponentIdentity)
+            {
+                _componentChannelDefaults[(topic, encoding)] = id;
+                _componentChannelIdentities[id] = (componentLogicalSchemaName, cacheShapeIdentity);
+            }
             return id;
+        }
+
+        private bool TryBindComponentChannel(
+            uint channelId,
+            string logicalSchema,
+            string shapeIdentity)
+        {
+            if (_componentChannelIdentities.TryGetValue(channelId, out var existing))
+                return string.Equals(existing.logicalSchema, logicalSchema, System.StringComparison.Ordinal)
+                       && string.Equals(existing.shapeIdentity, shapeIdentity, System.StringComparison.Ordinal);
+            if (!_runtime.TryUpdateChannelComponentIdentity(channelId, logicalSchema, shapeIdentity))
+                return false;
+            _componentChannelIdentities[channelId] = (logicalSchema, shapeIdentity);
+            return true;
         }
     }
 }

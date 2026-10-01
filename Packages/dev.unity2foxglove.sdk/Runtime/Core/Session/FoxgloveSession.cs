@@ -509,6 +509,12 @@ namespace Unity.FoxgloveSDK.Core
             RegisterChannelCore(channel, recordingOnly: false);
         }
 
+        internal bool TryUpdateChannelComponentIdentity(uint channelId, string logicalSchema, string shapeIdentity)
+        {
+            lock (_channelLifecycleLock)
+                return _channels.TryUpdateComponentIdentity(channelId, logicalSchema, shapeIdentity);
+        }
+
         /// <summary>
         /// Register an MCAP-only external-boundary channel. It is neither
         /// advertised to live clients nor mirrored into another transport.

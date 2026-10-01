@@ -348,6 +348,71 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StrictIdentityIgnoresClientInputSchemasInRecordedMcap()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-sdk-client-input-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var registry = new DefaultSchemaRegistry();
+            registry.Register(new SchemaEntry
+            {
+                Name = "module8.ServerOutput",
+                Encoding = "jsonschema",
+                Content = "{\"type\":\"integer\"}"
+            });
+
+            try
+            {
+                using (var stream = new MemoryStream())
+                {
+                    using (var recorder = new McapRecorder(stream, leaveOpen: true))
+                    {
+                        recorder.AddChannel(1, "/module8/output", "json", "module8.ServerOutput", "jsonschema", "{\"type\":\"integer\"}");
+                        recorder.WriteMessage(1, 1UL, Encoding.UTF8.GetBytes("1"));
+                        recorder.WriteClientMessage(
+                            7,
+                            1,
+                            2UL,
+                            Encoding.UTF8.GetBytes("2"),
+                            "/module8/input",
+                            "json",
+                            "module8.ClientOnly",
+                            "jsonschema",
+                            "{\"type\":\"string\"}");
+
+                        var schemas = recorder.GetRecordedSchemaSnapshot();
+                        Assert.Single(schemas);
+                        Assert.Equal("module8.ServerOutput", schemas[0].Name);
+                        Assert.True(SdkWireSchemaIdentity.TryCompute(
+                            schemas,
+                            Array.Empty<SdkWireSchemaComponentIdentity>(),
+                            out var hash));
+                        Assert.True(SdkWireSchemaMcapMetadata.TryCreateJson(hash, out var metadataJson));
+                        recorder.WriteMetadata(SdkWireSchemaMcapMetadata.MetadataName, metadataJson);
+                        recorder.Close();
+                    }
+                    File.WriteAllBytes(path, stream.ToArray());
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = ReplaySchemaGuard.EvaluateWithMode(
+                    engine,
+                    SchemaIdentityMode.Strict,
+                    registry);
+
+                Assert.Equal(FoxRunReplaySchemaGuardState.Match, result.State);
+                Assert.False(result.IsBlocking);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+
+        [Fact]
         public void SdkWireSchemaIdentityChangesWhenRegisteredSchemaContentChanges()
         {
             var first = new DefaultSchemaRegistry();
@@ -459,12 +524,37 @@ namespace Unity.FoxgloveSDK.UnitTests
                                 true,
                                 string.Empty)
                         }));
+                var currentComponents = new[]
+                {
+                    new SdkWireSchemaComponentIdentity
+                    {
+                        Topic = "/module8/component",
+                        Encoding = "msgpack",
+                        LogicalSchema = "module8.Component",
+                        ShapeIdentity = "shape.v2"
+                    }
+                };
                 Assert.True(SdkWireSchemaIdentity.TryCompute(
                     registry,
                     Array.Empty<McapSchema>(),
-                    components,
+                    currentComponents,
                     out var secondHash));
                 Assert.NotEqual(firstHash, secondHash);
+                Assert.False(SdkWireSchemaIdentity.TryCompute(
+                    registry,
+                    Array.Empty<McapSchema>(),
+                    new[]
+                    {
+                        new SdkWireSchemaComponentIdentity
+                        {
+                            Topic = "/module8/component",
+                            Encoding = "msgpack",
+                            LogicalSchema = "module8.Component",
+                            ShapeIdentity = "shape.v1"
+                        }
+                    },
+                    out var rejectedHash));
+                Assert.Equal(string.Empty, rejectedHash);
 
                 Assert.True(SdkWireSchemaMcapMetadata.TryCreateJson(firstHash, components, out var json));
                 Assert.True(SdkWireSchemaMcapMetadata.TryParseJson(
