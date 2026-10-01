@@ -413,6 +413,76 @@ namespace Unity.FoxgloveSDK.UnitTests
 
 
         [Fact]
+        public void V3RecordingRoundTripsThroughReplaySchemaGuard()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-sdk-v3-roundtrip-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var registry = new DefaultSchemaRegistry();
+            try
+            {
+                ComponentMessagePackCodecRegistry.RegisterGenerated(
+                    new ComponentMessagePackGeneratedManifest(
+                        "module8",
+                        "v1",
+                        new[]
+                        {
+                            new ComponentMessagePackGeneratedEntry(
+                                typeof(ComponentIdentityMessage),
+                                "module8.Component",
+                                "shape.v1",
+                                true,
+                                true,
+                                string.Empty)
+                        }));
+
+                using (var stream = new MemoryStream())
+                {
+                    using (var recorder = new McapRecorder(stream, leaveOpen: true))
+                    {
+                        recorder.AddChannel(1, "/module8/component", "msgpack", "", "", "");
+                        recorder.WriteMessage(
+                            1,
+                            1UL,
+                            new byte[] { 0x91, 0x01 },
+                            "msgpack",
+                            "module8.Component",
+                            "shape.v1");
+                        var components = recorder.GetRecordedComponentContractSnapshot();
+                        Assert.Single(components);
+                        Assert.True(SdkWireSchemaIdentity.TryCompute(
+                            registry,
+                            Array.Empty<McapSchema>(),
+                            components,
+                            out var hash));
+                        Assert.True(SdkWireSchemaMcapMetadata.TryCreateJson(
+                            hash,
+                            components,
+                            out var metadataJson));
+                        recorder.WriteMetadata(SdkWireSchemaMcapMetadata.MetadataName, metadataJson);
+                        recorder.Close();
+                    }
+                    File.WriteAllBytes(path, stream.ToArray());
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = ReplaySchemaGuard.EvaluateWithMode(
+                    engine,
+                    SchemaIdentityMode.Strict,
+                    registry);
+
+                Assert.Equal(FoxRunReplaySchemaGuardState.Match, result.State);
+                Assert.False(result.IsBlocking);
+            }
+            finally
+            {
+                ComponentMessagePackCodecRegistry.ResetForSubsystemRegistration();
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+        [Fact]
         public void SdkWireSchemaIdentityChangesWhenRegisteredSchemaContentChanges()
         {
             var first = new DefaultSchemaRegistry();
