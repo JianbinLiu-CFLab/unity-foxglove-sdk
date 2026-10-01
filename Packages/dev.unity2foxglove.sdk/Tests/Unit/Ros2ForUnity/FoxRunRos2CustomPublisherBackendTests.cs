@@ -95,6 +95,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void InvalidPublisherTokenRetainsRollbackOwnerWhenRemovalFails()
+        {
+            var driver = new FakeNodeDriver
+            {
+                PublisherUsable = false,
+                PublisherRemovalFailuresRemaining = 1
+            };
+            var owner = new Ros2ForUnityFoxRunNodeOwner(
+                driver,
+                () => true,
+                new ManagedQosFactory());
+            var publisher = owner.AcquirePublisherBackend();
+
+            var registration = publisher.Register<TestEnvelope>(
+                Contract(),
+                FoxRunResolvedQos.Default);
+
+            Assert.False(registration.Succeeded);
+            Assert.NotNull(registration.Token);
+            Assert.Equal(1, driver.RemovePublisherCount);
+
+            publisher.RemovePublisher(registration.Token);
+
+            Assert.Equal(2, driver.RemovePublisherCount);
+            publisher.ReleaseNodeOwnership();
+            owner.ReleaseHostOwnership();
+        }
+
+        [Fact]
         public void QosDisposeFailureRollsBackTheCreatedPublisherExactlyOnce()
         {
             var driver = new FakeNodeDriver();
@@ -122,7 +151,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void NativeBinaryLoadFailureEscapesThePublisherBoundaryWithoutLeakingItsMessage()
+        public void NativeBinaryLoadFailureIsolatedToThePublisherContract()
         {
             var driver = new FakeNodeDriver
             {
@@ -135,10 +164,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 new ManagedQosFactory());
             var publisher = owner.AcquirePublisherBackend();
 
-            var exception = Assert.Throws<TargetInvocationException>(
-                () => publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default));
+            var registration = publisher.Register<TestEnvelope>(
+                Contract(),
+                FoxRunResolvedQos.Default);
 
-            Assert.IsType<DllNotFoundException>(exception.InnerException);
+            Assert.False(registration.Succeeded);
+            Assert.Equal(
+                FoxRunRos2RegistrationError.PublisherBackendFailure,
+                registration.Error);
+            Assert.Equal("DllNotFoundException", registration.FailureKind);
+            Assert.Equal(0, driver.RemovePublisherCount);
             publisher.ReleaseNodeOwnership();
             owner.ReleaseHostOwnership();
         }
@@ -306,6 +341,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public int PublishCount { get; private set; }
             public int ReleaseNodeCount { get; private set; }
             public bool PublisherUsable { get; set; } = true;
+            public int PublisherRemovalFailuresRemaining { get; set; }
             public Exception PublisherFailure { get; set; }
             public Exception PublisherUsabilityFailure { get; set; }
             public ROS2.QualityOfServiceProfile LastPublisherQos { get; private set; }
@@ -350,6 +386,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 if (publisher == null)
                     return false;
                 RemovePublisherCount++;
+                if (PublisherRemovalFailuresRemaining > 0)
+                {
+                    PublisherRemovalFailuresRemaining--;
+                    return false;
+                }
                 return true;
             }
 

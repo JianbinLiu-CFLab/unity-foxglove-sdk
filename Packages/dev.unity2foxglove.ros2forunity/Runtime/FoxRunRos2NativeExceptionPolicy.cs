@@ -23,9 +23,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     || current is StackOverflowException
                     || current is AccessViolationException
                     || current is AppDomainUnloadedException
-                    || current is DllNotFoundException
-                    || current is EntryPointNotFoundException
-                    || current is BadImageFormatException
                     || current is SEHException)
                 {
                     return false;

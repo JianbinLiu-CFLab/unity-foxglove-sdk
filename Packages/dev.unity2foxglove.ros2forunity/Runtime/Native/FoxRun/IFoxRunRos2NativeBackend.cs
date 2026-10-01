@@ -219,6 +219,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2RegistrationError error,
             string diagnostic)
             => new FoxRunRos2NativePublisherRegistration(false, null, error, diagnostic);
+
+        public static FoxRunRos2NativePublisherRegistration Failure(
+            FoxRunRos2RegistrationError error,
+            string diagnostic,
+            IFoxRunRos2NativePublisherToken token)
+            => new FoxRunRos2NativePublisherRegistration(false, token, error, diagnostic);
     }
 
     /// <summary>
