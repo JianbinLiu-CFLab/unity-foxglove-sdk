@@ -742,7 +742,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal(1, legacyVersion);
         }
         [Fact]
-        public void LegacyFoxRunHashFallbackUsesRecordedSchemasOnly()
+        public void LegacyFoxRunHashFallbackUsesFullRegistry()
         {
             var path = Path.Combine(
                 Path.GetTempPath(),
@@ -764,13 +764,15 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.True(SdkWireSchemaIdentity.TryCompute(
                 registry,
                 new[] { recordedSchema },
-                out var recordedHash));
+                out var recordedSchemaHash));
             registry.Register(new SchemaEntry
             {
                 Name = "module8.Unrelated",
                 Encoding = "jsonschema",
                 Content = "{\"type\":\"string\"}"
             });
+            Assert.True(SdkWireSchemaIdentity.TryCompute(registry, out var recordedHash));
+            Assert.NotEqual(recordedSchemaHash, recordedHash);
             var manifest = new FoxRunSchemaManifestInfo(
                 1,
                 "module8",
@@ -801,8 +803,21 @@ namespace Unity.FoxgloveSDK.UnitTests
                     SchemaIdentityMode.Strict,
                     registry);
 
-                Assert.True(result.State != FoxRunReplaySchemaGuardState.Mismatch, result.Message + " recorded=" + result.RecordedGlobalManifestHash + " current=" + result.CurrentGlobalManifestHash);
+                Assert.Equal(FoxRunReplaySchemaGuardState.Match, result.State);
                 Assert.False(result.IsBlocking);
+
+                registry.Register(new SchemaEntry
+                {
+                    Name = "module8.Later",
+                    Encoding = "jsonschema",
+                    Content = "{\"type\":\"boolean\"}"
+                });
+                var changed = ReplaySchemaGuard.EvaluateWithMode(
+                    engine,
+                    SchemaIdentityMode.Strict,
+                    registry);
+                Assert.Equal(FoxRunReplaySchemaGuardState.Mismatch, changed.State);
+                Assert.True(changed.IsBlocking);
             }
             finally
             {
