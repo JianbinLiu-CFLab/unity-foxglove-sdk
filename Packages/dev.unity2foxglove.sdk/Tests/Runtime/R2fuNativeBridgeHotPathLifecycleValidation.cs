@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             VerifySharedLifecycleGateShape();
+            VerifyRuntimeIdentityObservationIsCachedAndDiagnosed();
             VerifyBridgeHotPathsUseCheapLifecycleReads();
             VerifyPointCloud2PublishersPrewarmOutsideFrameCallback();
             VerifyReadyLogsAvoidEditorStackTraceExtraction();
@@ -117,6 +118,20 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("EnsureUnsafeSceneHandleCapacity", StringComparison.Ordinal)
                   && !source.Contains("new int[Math.Max(SceneManager.sceneCount, 1)]", StringComparison.Ordinal),
                 "173-055-E1: lifecycle gate reuses unsafe-scene handle storage and avoids getter-time array churn");
+        }
+
+        private static void VerifyRuntimeIdentityObservationIsCachedAndDiagnosed()
+        {
+            var source = ReadRepoText(
+                NativeDir + "/Ros2ForUnityNativeRuntimeIdentity.cs");
+            Check(source.Contains("_cachedObservationKey", StringComparison.Ordinal)
+                  && source.Contains("BuildObservationKey", StringComparison.Ordinal)
+                  && source.Contains("FileStamp", StringComparison.Ordinal)
+                  && source.Contains("ResetForRuntimeLoss", StringComparison.Ordinal),
+                "165-A14: native runtime identity observations are cached and reset after runtime loss");
+            Check(source.Contains("Debug.LogWarning", StringComparison.Ordinal)
+                  && source.Contains("runtime manifest validation failed", StringComparison.Ordinal),
+                "165-A15: native runtime identity failures emit a one-time diagnostic");
         }
 
         private static void VerifyBridgeHotPathsUseCheapLifecycleReads()

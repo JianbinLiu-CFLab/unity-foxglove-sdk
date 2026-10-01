@@ -20,7 +20,141 @@ namespace Unity2Foxglove.Ros2ForUnity
         internal static string ObservedManifestSha256 { get; private set; }
         internal static string ObservedRmwImplementation { get; private set; }
 
+        private static readonly object ObservationGate = new object();
+        private static string _cachedObservationKey;
+        private static string _failureLoggedKey;
+        private static bool _hasCachedObservation;
+        private static bool _cachedObservationResult;
+        private static string _cachedRuntimeId;
+        private static string _cachedPackageName;
+        private static string _cachedManifestSha256;
+        private static string _cachedRmwImplementation;
+
         internal static bool TryObserve()
+        {
+            var manifestPath = Path.Combine(
+                Application.dataPath,
+                "StreamingAssets",
+                "Ros2ForUnity",
+                "runtime-manifest.json");
+            var markerPath = Path.Combine(
+                Application.dataPath,
+                "StreamingAssets",
+                "Ros2ForUnity",
+                ".unity2foxglove-staged");
+            string observationKey;
+            try
+            {
+                observationKey = BuildObservationKey(manifestPath, markerPath);
+            }
+            catch (Exception exception)
+            {
+                return RecordFailedObservation(exception.GetType().Name);
+            }
+
+            lock (ObservationGate)
+            {
+                if (_hasCachedObservation
+                    && string.Equals(
+                        _cachedObservationKey,
+                        observationKey,
+                        StringComparison.Ordinal))
+                {
+                    ApplyCachedObservation();
+                    return _cachedObservationResult;
+                }
+            }
+
+            var observed = TryObserveUncached();
+            var diagnostic = observed ? null : "runtime manifest validation failed";
+            var logFailure = false;
+            lock (ObservationGate)
+            {
+                _cachedObservationKey = observationKey;
+                _cachedObservationResult = observed;
+                _cachedRuntimeId = ObservedRuntimeId;
+                _cachedPackageName = ObservedPackageName;
+                _cachedManifestSha256 = ObservedManifestSha256;
+                _cachedRmwImplementation = ObservedRmwImplementation;
+                _hasCachedObservation = true;
+                if (!observed
+                    && !string.Equals(
+                        _failureLoggedKey,
+                        observationKey,
+                        StringComparison.Ordinal))
+                {
+                    _failureLoggedKey = observationKey;
+                    logFailure = true;
+                }
+                if (observed)
+                    _failureLoggedKey = null;
+            }
+            if (logFailure)
+                Debug.LogWarning(
+                    "[Unity2Foxglove] ROS2 native runtime identity validation failed: "
+                    + diagnostic);
+            return observed;
+        }
+
+        internal static void Reset()
+        {
+            lock (ObservationGate)
+            {
+                _cachedObservationKey = null;
+                _failureLoggedKey = null;
+                _hasCachedObservation = false;
+                _cachedObservationResult = false;
+                _cachedRuntimeId = null;
+                _cachedPackageName = null;
+                _cachedManifestSha256 = null;
+                _cachedRmwImplementation = null;
+            }
+            ObservedRuntimeId = null;
+            ObservedPackageName = null;
+            ObservedManifestSha256 = null;
+            ObservedRmwImplementation = null;
+        }
+
+        internal static void ResetForRuntimeLoss() => Reset();
+
+        private static void ApplyCachedObservation()
+        {
+            ObservedRuntimeId = _cachedRuntimeId;
+            ObservedPackageName = _cachedPackageName;
+            ObservedManifestSha256 = _cachedManifestSha256;
+            ObservedRmwImplementation = _cachedRmwImplementation;
+        }
+
+        private static bool RecordFailedObservation(string diagnostic)
+        {
+            lock (ObservationGate)
+            {
+                _cachedObservationKey = null;
+                _failureLoggedKey = null;
+                _hasCachedObservation = false;
+            }
+            ObservedRuntimeId = null;
+            ObservedPackageName = null;
+            ObservedManifestSha256 = null;
+            ObservedRmwImplementation = null;
+            Debug.LogWarning(
+                "[Unity2Foxglove] ROS2 native runtime identity validation failed: "
+                + diagnostic);
+            return false;
+        }
+
+        private static string BuildObservationKey(string manifestPath, string markerPath)
+            => manifestPath + "|" + FileStamp(manifestPath) + "|" + FileStamp(markerPath);
+
+        private static string FileStamp(string path)
+        {
+            if (!File.Exists(path))
+                return "missing";
+            var info = new FileInfo(path);
+            return info.Length + ":" + info.LastWriteTimeUtc.Ticks;
+        }
+
+        private static bool TryObserveUncached()
         {
             ObservedRuntimeId = null;
             ObservedPackageName = null;
