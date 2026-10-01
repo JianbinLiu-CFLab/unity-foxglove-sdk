@@ -532,6 +532,17 @@ namespace Unity.FoxgloveSDK.UnitTests
                 }
 
                 ComponentMessagePackCodecRegistry.ResetForSubsystemRegistration();
+                using (var diagnosticEngine = new McapReplayEngine())
+                {
+                    diagnosticEngine.Load(path);
+                    var diagnostic = ReplaySchemaGuard.EvaluateWithMode(
+                        diagnosticEngine,
+                        SchemaIdentityMode.Strict,
+                        registry);
+                    Assert.Equal(FoxRunReplaySchemaGuardState.MissingCurrent, diagnostic.State);
+                    Assert.Contains("module8.Component", diagnostic.Message);
+                    Assert.Contains("shape.v1", diagnostic.Message);
+                }
                 using var controller = new ReplayController(new ConsoleLogger(), null, null, registry);
                 controller.Enable(path, SchemaIdentityMode.Strict);
 
@@ -585,8 +596,14 @@ namespace Unity.FoxgloveSDK.UnitTests
                 }
             };
 
-            Assert.False(SdkWireSchemaIdentity.TryCompute(registry, recorded, out var hash));
+            Assert.False(SdkWireSchemaIdentity.TryCompute(
+                registry,
+                recorded,
+                out var hash,
+                out var failureReason));
             Assert.Equal(string.Empty, hash);
+            Assert.Contains("module8.Missing", failureReason);
+            Assert.Contains("jsonschema", failureReason);
         }
 
         [Fact]
@@ -603,8 +620,14 @@ namespace Unity.FoxgloveSDK.UnitTests
                 }
             };
 
-            Assert.False(SdkWireSchemaIdentity.TryCompute(registry, recorded, out var hash));
+            Assert.False(SdkWireSchemaIdentity.TryCompute(
+                registry,
+                recorded,
+                out var hash,
+                out var failureReason));
             Assert.Equal(string.Empty, hash);
+            Assert.Contains("module8.MissingProtobuf", failureReason);
+            Assert.Contains("protobuf", failureReason);
         }
 
         [Fact]
@@ -827,27 +850,30 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
         [Fact]
-        public void RawMessagePackCannotBorrowTypedComponentChannel()
+        public void RawAndTypedMessagePackChannelKeysRemainDistinct()
         {
-            var source = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"));
+            var raw = FoxgloveMsgPackChannelIdentity.GetCacheKey(
+                "/same/topic",
+                "msgpack",
+                string.Empty,
+                string.Empty);
+            var typed = FoxgloveMsgPackChannelIdentity.GetCacheKey(
+                "/same/topic",
+                "msgpack",
+                "module8.Component",
+                "shape.v1");
+            var changedShape = FoxgloveMsgPackChannelIdentity.GetCacheKey(
+                "/same/topic",
+                "msgpack",
+                "module8.Component",
+                "shape.v2");
 
-            Assert.DoesNotContain("_componentChannelDefaults.TryGetValue", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("TryBindComponentChannel", source, StringComparison.Ordinal);
-            Assert.Contains("var key = (topic, cacheSchemaName, encoding, cacheShapeIdentity);", source, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void TypedComponentCannotRetroactivelyBindRawMessagePackChannel()
-        {
-            var publishing = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"));
-            var session = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs"));
-            var runtime = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs"));
-            var registry = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/ChannelRegistry.cs"));
-
-            Assert.DoesNotContain("TryUpdateChannelComponentIdentity", publishing, StringComparison.Ordinal);
-            Assert.DoesNotContain("TryUpdateChannelComponentIdentity", session, StringComparison.Ordinal);
-            Assert.DoesNotContain("TryUpdateChannelComponentIdentity", runtime, StringComparison.Ordinal);
-            Assert.DoesNotContain("TryUpdateComponentIdentity", registry, StringComparison.Ordinal);
+            Assert.Equal(string.Empty, raw.schemaName);
+            Assert.Equal(string.Empty, raw.shapeIdentity);
+            Assert.Equal("module8.Component", typed.schemaName);
+            Assert.Equal("shape.v1", typed.shapeIdentity);
+            Assert.NotEqual(raw, typed);
+            Assert.NotEqual(typed, changedShape);
         }
 
         private static string RepoPath(string relativePath)

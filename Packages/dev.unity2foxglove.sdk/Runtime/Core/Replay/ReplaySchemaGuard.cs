@@ -141,23 +141,40 @@ namespace Unity.FoxgloveSDK.Core
                     string.Empty);
 
             var recordedSchemas = SelectSdkSchemaRecords(replayEngine?.Summary);
-            var currentIdentityAvailable = metadataVersion >= 3
-                ? SdkWireSchemaIdentity.TryCompute(
+            string identityFailure;
+            string currentHash;
+            bool currentIdentityAvailable;
+            if (metadataVersion >= 3)
+            {
+                currentIdentityAvailable = SdkWireSchemaIdentity.TryCompute(
                     schemaRegistry,
                     recordedSchemas,
                     recordedComponents,
-                    out var currentHash)
-                : metadataVersion >= 2
-                    ? SdkWireSchemaIdentity.TryCompute(
-                        schemaRegistry,
-                        recordedSchemas,
-                        out currentHash)
-                    : SdkWireSchemaIdentity.TryCompute(schemaRegistry, out currentHash);
+                    out currentHash,
+                    out identityFailure);
+            }
+            else if (metadataVersion >= 2)
+            {
+                currentIdentityAvailable = SdkWireSchemaIdentity.TryCompute(
+                    schemaRegistry,
+                    recordedSchemas,
+                    out currentHash,
+                    out identityFailure);
+            }
+            else
+            {
+                currentIdentityAvailable = SdkWireSchemaIdentity.TryCompute(
+                    schemaRegistry,
+                    out currentHash);
+                identityFailure = currentIdentityAvailable
+                    ? string.Empty
+                    : "Current runtime does not expose an SDK-wide wire-schema identity.";
+            }
             if (!currentIdentityAvailable)
                 return CreateSdkResult(
                     FoxRunReplaySchemaGuardState.MissingCurrent,
                     identityMode,
-                    "Current runtime does not expose an SDK-wide wire-schema identity or one of the recorded output contracts.",
+                    "Current runtime does not expose the recorded output contracts. " + identityFailure,
                     recordedHash,
                     string.Empty);
 
@@ -243,19 +260,38 @@ namespace Unity.FoxgloveSDK.Core
             ISchemaRegistry registry,
             IReadOnlyList<McapSchema> recordedSchemas,
             out string hash)
-            => TryCompute(registry, recordedSchemas, Array.Empty<SdkWireSchemaComponentIdentity>(), out hash);
+            => TryCompute(registry, recordedSchemas, Array.Empty<SdkWireSchemaComponentIdentity>(), out hash, out _);
+
+        internal static bool TryCompute(
+            ISchemaRegistry registry,
+            IReadOnlyList<McapSchema> recordedSchemas,
+            out string hash,
+            out string failureReason)
+            => TryCompute(registry, recordedSchemas, Array.Empty<SdkWireSchemaComponentIdentity>(), out hash, out failureReason);
 
         internal static bool TryCompute(
             ISchemaRegistry registry,
             IReadOnlyList<McapSchema> recordedSchemas,
             IReadOnlyList<SdkWireSchemaComponentIdentity> recordedComponents,
             out string hash)
+            => TryCompute(registry, recordedSchemas, recordedComponents, out hash, out _);
+
+        internal static bool TryCompute(
+            ISchemaRegistry registry,
+            IReadOnlyList<McapSchema> recordedSchemas,
+            IReadOnlyList<SdkWireSchemaComponentIdentity> recordedComponents,
+            out string hash,
+            out string failureReason)
         {
             hash = string.Empty;
+            failureReason = string.Empty;
             if (!(registry is ISchemaRegistrySnapshot snapshot)
                 || recordedSchemas == null
                 || recordedComponents == null)
+            {
+                failureReason = "The current schema registry cannot provide a snapshot.";
                 return false;
+            }
 
             var current = snapshot.GetSchemaSnapshot() ?? Array.Empty<SchemaEntry>();
             var selected = new List<SchemaEntry>(recordedSchemas.Count);
@@ -268,7 +304,10 @@ namespace Unity.FoxgloveSDK.Core
                     string.Equals(entry.Name, recorded.Name, StringComparison.Ordinal)
                     && string.Equals(entry.Encoding, recorded.Encoding, StringComparison.OrdinalIgnoreCase));
                 if (string.IsNullOrEmpty(match.Name))
+                {
+                    failureReason = "Missing schema '" + recorded.Name + "' with encoding '" + recorded.Encoding + "'.";
                     return false;
+                }
                 selected.Add(match);
             }
 
@@ -276,11 +315,20 @@ namespace Unity.FoxgloveSDK.Core
             var selectedComponents = new List<SdkWireSchemaComponentIdentity>(recordedComponents.Count);
             foreach (var recorded in recordedComponents)
             {
-                if (recorded == null
-                    || !string.Equals(recorded.Encoding, "msgpack", StringComparison.OrdinalIgnoreCase)
+                if (recorded == null)
+                {
+                    failureReason = "The recording contains a null component contract.";
+                    return false;
+                }
+                if (!string.Equals(recorded.Encoding, "msgpack", StringComparison.OrdinalIgnoreCase)
                     || string.IsNullOrEmpty(recorded.LogicalSchema)
                     || string.IsNullOrEmpty(recorded.ShapeIdentity))
+                {
+                    failureReason = "Invalid recorded component contract for logical schema '"
+                        + (recorded.LogicalSchema ?? string.Empty)
+                        + "' and shape '" + (recorded.ShapeIdentity ?? string.Empty) + "'.";
                     return false;
+                }
 
                 var currentComponent = componentSnapshot.Entries.FirstOrDefault(entry =>
                     entry.IsAvailable
@@ -288,7 +336,11 @@ namespace Unity.FoxgloveSDK.Core
                     && string.Equals(entry.LogicalSchemaName, recorded.LogicalSchema, StringComparison.Ordinal)
                     && string.Equals(entry.ShapeIdentity, recorded.ShapeIdentity, StringComparison.Ordinal));
                 if (currentComponent == null)
+                {
+                    failureReason = "Missing component '" + recorded.LogicalSchema
+                        + "' with recorded shape '" + recorded.ShapeIdentity + "'.";
                     return false;
+                }
 
                 selectedComponents.Add(new SdkWireSchemaComponentIdentity
                 {
