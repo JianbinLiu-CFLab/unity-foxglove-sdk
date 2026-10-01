@@ -434,7 +434,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (attemptedEncoding == PublisherEffectiveEncoding.MsgPack)
             {
-                return _manager.TryPrepareMsgPackPublish(_topic, out _, requireDemand: true);
+                return _manager.TryPrepareMsgPackPublish(this, out _, requireDemand: true);
             }
 
             var wireEncoding = PublisherEncodingPolicy.ToProtocolEncoding(attemptedEncoding);
@@ -533,7 +533,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            _manager.PublishMsgPack(_topic, payload, logTimeNs);
+            _manager.PublishMsgPack(this, payload, logTimeNs);
         }
 
         /// <summary>

@@ -979,7 +979,7 @@ namespace Unity.FoxgloveSDK.Core
             payload ??= Array.Empty<byte>();
             var recorder = Volatile.Read(ref _recorder);
             if (recorder != null && AllowMcapRecording(channel) && recorder.HasServerChannel(channelId))
-                WriteMessageSafely(recorder, channelId, logTimeNs, payload);
+                WriteMessageSafely(recorder, channel, logTimeNs, payload);
             var mirrorSink = Volatile.Read(ref _mirrorSink);
             if (!recordingOnly && mirrorSink != null)
                 TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
@@ -1011,11 +1011,17 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        private void WriteMessageSafely(McapRecorder recorder, uint channelId, ulong logTimeNs, byte[] payload)
+        private void WriteMessageSafely(McapRecorder recorder, AdvertiseChannel channel, ulong logTimeNs, byte[] payload)
         {
             try
             {
-                recorder.WriteMessage(channelId, logTimeNs, payload);
+                recorder.WriteMessage(
+                    channel.Id,
+                    logTimeNs,
+                    payload,
+                    channel.Encoding,
+                    channel.ComponentLogicalSchemaName,
+                    channel.ComponentShapeIdentity);
             }
             catch (Exception ex)
             {

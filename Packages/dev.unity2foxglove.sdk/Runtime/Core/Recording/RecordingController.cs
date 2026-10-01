@@ -280,9 +280,11 @@ namespace Unity.FoxgloveSDK.Core
         private void TryWriteSdkWireSchemaMetadata(McapRecorder recorder)
         {
             var schemas = recorder?.GetRecordedSchemaSnapshot();
+            var components = recorder?.GetRecordedComponentContractSnapshot();
             if (schemas == null
-                || !SdkWireSchemaIdentity.TryCompute(schemas, out var hash)
-                || !SdkWireSchemaMcapMetadata.TryCreateJson(hash, out var json))
+                || components == null
+                || !SdkWireSchemaIdentity.TryCompute(schemas, components, out var hash)
+                || !SdkWireSchemaMcapMetadata.TryCreateJson(hash, components, out var json))
                 return;
 
             try

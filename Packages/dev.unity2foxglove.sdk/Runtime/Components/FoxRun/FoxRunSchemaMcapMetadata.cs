@@ -154,12 +154,29 @@ namespace Unity.FoxgloveSDK.Components
         public string SdkWireSchemaHash { get; set; }
     }
 
+    /// <summary>One schemaless Component MessagePack contract actually written to a recording.</summary>
+    internal sealed class SdkWireSchemaComponentIdentity
+    {
+        [JsonProperty("topic", Order = 0)]
+        public string Topic { get; set; }
+
+        [JsonProperty("encoding", Order = 1)]
+        public string Encoding { get; set; }
+
+        [JsonProperty("logicalSchema", Order = 2)]
+        public string LogicalSchema { get; set; }
+
+        [JsonProperty("shapeIdentity", Order = 3)]
+        public string ShapeIdentity { get; set; }
+    }
+
     /// <summary>SDK-wide wire-schema identity stored alongside recording metadata.</summary>
     public static class SdkWireSchemaMcapMetadata
     {
         public const string MetadataName = "unity2foxglove.sdk.wire-schema";
         private const int LegacyMetadataVersion = 1;
-        private const int MetadataVersion = 2;
+        private const int SchemaOnlyMetadataVersion = 2;
+        private const int MetadataVersion = 3;
 
         private sealed class Envelope
         {
@@ -168,6 +185,9 @@ namespace Unity.FoxgloveSDK.Components
 
             [JsonProperty("hash", Order = 1)]
             public string Hash { get; set; }
+
+            [JsonProperty("components", Order = 2)]
+            public List<SdkWireSchemaComponentIdentity> Components { get; set; }
         }
 
         public static bool TryCreateJson(string hash, out string json)
@@ -178,8 +198,42 @@ namespace Unity.FoxgloveSDK.Components
 
             json = JsonConvert.SerializeObject(new Envelope
             {
-                Version = MetadataVersion,
+                Version = SchemaOnlyMetadataVersion,
                 Hash = hash
+            }, Formatting.None);
+            return true;
+        }
+
+        internal static bool TryCreateJson(
+            string hash,
+            IReadOnlyList<SdkWireSchemaComponentIdentity> components,
+            out string json)
+        {
+            json = null;
+            if (string.IsNullOrWhiteSpace(hash))
+                return false;
+
+            var copiedComponents = components == null
+                ? null
+                : components
+                    .Where(component => component != null)
+                    .Select(component => new SdkWireSchemaComponentIdentity
+                    {
+                        Topic = component.Topic ?? string.Empty,
+                        Encoding = component.Encoding ?? string.Empty,
+                        LogicalSchema = component.LogicalSchema ?? string.Empty,
+                        ShapeIdentity = component.ShapeIdentity ?? string.Empty
+                    })
+                    .ToList();
+            json = JsonConvert.SerializeObject(new Envelope
+            {
+                Version = copiedComponents != null && copiedComponents.Count > 0
+                    ? MetadataVersion
+                    : SchemaOnlyMetadataVersion,
+                Hash = hash,
+                Components = copiedComponents != null && copiedComponents.Count > 0
+                    ? copiedComponents
+                    : null
             }, Formatting.None);
             return true;
         }
@@ -192,9 +246,18 @@ namespace Unity.FoxgloveSDK.Components
             out string hash,
             out int version,
             out string error)
+            => TryParseJson(json, out hash, out version, out _, out error);
+
+        internal static bool TryParseJson(
+            string json,
+            out string hash,
+            out int version,
+            out IReadOnlyList<SdkWireSchemaComponentIdentity> components,
+            out string error)
         {
             hash = string.Empty;
             version = 0;
+            components = Array.Empty<SdkWireSchemaComponentIdentity>();
             error = string.Empty;
             if (string.IsNullOrWhiteSpace(json))
             {
@@ -214,7 +277,9 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             if (envelope == null
-                || (envelope.Version != LegacyMetadataVersion && envelope.Version != MetadataVersion))
+                || (envelope.Version != LegacyMetadataVersion
+                    && envelope.Version != SchemaOnlyMetadataVersion
+                    && envelope.Version != MetadataVersion))
             {
                 error = "unsupported SDK wire-schema metadata version";
                 return false;
@@ -228,6 +293,7 @@ namespace Unity.FoxgloveSDK.Components
 
             version = envelope.Version;
             hash = envelope.Hash;
+            components = envelope.Components ?? new List<SdkWireSchemaComponentIdentity>();
             return true;
         }
     }

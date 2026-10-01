@@ -14,6 +14,7 @@ using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Components.Publishing.MessagePack;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
@@ -372,6 +373,134 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void SdkWireSchemaIdentityDoesNotSelfFillMissingRecordedTextSchema()
+        {
+            var registry = new DefaultSchemaRegistry();
+            var recorded = new[]
+            {
+                new McapSchema
+                {
+                    Name = "module8.Missing",
+                    Encoding = "jsonschema",
+                    Data = Encoding.UTF8.GetBytes("{\"type\":\"integer\"}")
+                }
+            };
+
+            Assert.False(SdkWireSchemaIdentity.TryCompute(registry, recorded, out var hash));
+            Assert.Equal(string.Empty, hash);
+        }
+
+        [Fact]
+        public void SdkWireSchemaIdentityDoesNotFallbackMissingRecordedProtobufSchema()
+        {
+            var registry = new DefaultSchemaRegistry();
+            var recorded = new[]
+            {
+                new McapSchema
+                {
+                    Name = "module8.MissingProtobuf",
+                    Encoding = "protobuf",
+                    Data = new byte[] { 0x0a, 0x01, 0x01 }
+                }
+            };
+
+            Assert.False(SdkWireSchemaIdentity.TryCompute(registry, recorded, out var hash));
+            Assert.Equal(string.Empty, hash);
+        }
+
+        [Fact]
+        public void SdkWireSchemaIdentityIncludesRecordedComponentShape()
+        {
+            var components = new[]
+            {
+                new SdkWireSchemaComponentIdentity
+                {
+                    Topic = "/module8/component",
+                    Encoding = "msgpack",
+                    LogicalSchema = "module8.Component",
+                    ShapeIdentity = "shape.v1"
+                }
+            };
+            var registry = new DefaultSchemaRegistry();
+            try
+            {
+                ComponentMessagePackCodecRegistry.RegisterGenerated(
+                    new ComponentMessagePackGeneratedManifest(
+                        "module8",
+                        "v1",
+                        new[]
+                        {
+                            new ComponentMessagePackGeneratedEntry(
+                                typeof(ComponentIdentityMessage),
+                                "module8.Component",
+                                "shape.v1",
+                                true,
+                                true,
+                                string.Empty)
+                        }));
+                Assert.True(SdkWireSchemaIdentity.TryCompute(
+                    registry,
+                    Array.Empty<McapSchema>(),
+                    components,
+                    out var firstHash));
+
+                ComponentMessagePackCodecRegistry.ResetForSubsystemRegistration();
+                ComponentMessagePackCodecRegistry.RegisterGenerated(
+                    new ComponentMessagePackGeneratedManifest(
+                        "module8",
+                        "v2",
+                        new[]
+                        {
+                            new ComponentMessagePackGeneratedEntry(
+                                typeof(ComponentIdentityMessage),
+                                "module8.Component",
+                                "shape.v2",
+                                true,
+                                true,
+                                string.Empty)
+                        }));
+                Assert.True(SdkWireSchemaIdentity.TryCompute(
+                    registry,
+                    Array.Empty<McapSchema>(),
+                    components,
+                    out var secondHash));
+                Assert.NotEqual(firstHash, secondHash);
+
+                Assert.True(SdkWireSchemaMcapMetadata.TryCreateJson(firstHash, components, out var json));
+                Assert.True(SdkWireSchemaMcapMetadata.TryParseJson(
+                    json,
+                    out var parsedHash,
+                    out var version,
+                    out var parsedComponents,
+                    out var error), error);
+                Assert.Equal(firstHash, parsedHash);
+                Assert.Equal(3, version);
+                Assert.Single(parsedComponents);
+            }
+            finally
+            {
+                ComponentMessagePackCodecRegistry.ResetForSubsystemRegistration();
+            }
+        }
+
+        [Fact]
+        public void McapRecorderTracksWrittenComponentContractsOnce()
+        {
+            using var stream = new MemoryStream();
+            using var recorder = new McapRecorder(stream);
+            recorder.AddChannel(1, "/module8/component", "msgpack", "", "", "");
+
+            recorder.WriteMessage(1, 1UL, new byte[] { 1 }, "msgpack", "module8.Component", "shape.v1");
+            recorder.WriteMessage(1, 2UL, new byte[] { 2 }, "msgpack", "module8.Component", "shape.v1");
+
+            var contracts = recorder.GetRecordedComponentContractSnapshot();
+            var contract = Assert.Single(contracts);
+            Assert.Equal("/module8/component", contract.Topic);
+            Assert.Equal("module8.Component", contract.LogicalSchema);
+            Assert.Equal("shape.v1", contract.ShapeIdentity);
+        }
+
+        [Fact]
         public void SdkWireSchemaMetadataRoundTripsItsHash()
         {
             Assert.True(SdkWireSchemaMcapMetadata.TryCreateJson("aabbcc", out var json));
@@ -410,6 +539,11 @@ namespace Unity.FoxgloveSDK.UnitTests
                 },
                 payload => Assert.Equal(payload, message.ToByteArray()),
                 descriptor);
+        }
+
+        private sealed class ComponentIdentityMessage
+        {
+            public int Value { get; set; }
         }
 
         private sealed class SchemaEncodingMatrixRow
