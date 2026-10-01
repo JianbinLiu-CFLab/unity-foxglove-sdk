@@ -447,6 +447,5 @@ namespace Unity.FoxgloveSDK.Components
             _channelCache[key] = id;
             return id;
         }
-
     }
 }

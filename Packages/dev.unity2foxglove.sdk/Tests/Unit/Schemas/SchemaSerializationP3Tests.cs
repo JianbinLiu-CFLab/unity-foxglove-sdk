@@ -483,6 +483,70 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
         [Fact]
+        public void MissingCurrentComponentShapeSetsReplayMismatchFlag()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-sdk-missing-component-shape-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var registry = new DefaultSchemaRegistry();
+            var components = new[]
+            {
+                new SdkWireSchemaComponentIdentity
+                {
+                    Topic = "/module8/component",
+                    Encoding = "msgpack",
+                    LogicalSchema = "module8.Component",
+                    ShapeIdentity = "shape.v1"
+                }
+            };
+            try
+            {
+                ComponentMessagePackCodecRegistry.RegisterGenerated(
+                    new ComponentMessagePackGeneratedManifest(
+                        "module8",
+                        "v1",
+                        new[]
+                        {
+                            new ComponentMessagePackGeneratedEntry(
+                                typeof(ComponentIdentityMessage),
+                                "module8.Component",
+                                "shape.v1",
+                                true,
+                                true,
+                                string.Empty)
+                        }));
+                Assert.True(SdkWireSchemaIdentity.TryCompute(
+                    registry,
+                    Array.Empty<McapSchema>(),
+                    components,
+                    out var hash));
+                Assert.True(SdkWireSchemaMcapMetadata.TryCreateJson(hash, components, out var metadataJson));
+
+                using (var stream = File.Create(path))
+                using (var recorder = new McapRecorder(stream))
+                {
+                    recorder.AddChannel(1, "/module8/component", "msgpack", "", "", "");
+                    recorder.WriteMessage(1, 1UL, new byte[] { 0x91, 0x01 }, "msgpack", "module8.Component", "shape.v1");
+                    recorder.WriteMetadata(SdkWireSchemaMcapMetadata.MetadataName, metadataJson);
+                    recorder.Close();
+                }
+
+                ComponentMessagePackCodecRegistry.ResetForSubsystemRegistration();
+                using var controller = new ReplayController(new ConsoleLogger(), null, null, registry);
+                controller.Enable(path, SchemaIdentityMode.Strict);
+
+                Assert.False(controller.IsEnabled);
+                Assert.True(controller.LastEnableHadSchemaMismatch);
+                Assert.True(controller.LastEnableBlockedBySchemaMismatch);
+            }
+            finally
+            {
+                ComponentMessagePackCodecRegistry.ResetForSubsystemRegistration();
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+        [Fact]
         public void SdkWireSchemaIdentityChangesWhenRegisteredSchemaContentChanges()
         {
             var first = new DefaultSchemaRegistry();
@@ -677,7 +741,91 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal("aabbcc", legacyHash);
             Assert.Equal(1, legacyVersion);
         }
+        [Fact]
+        public void LegacyFoxRunHashFallbackUsesFullRegistry()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-sdk-legacy-hash-fallback-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var registry = new DefaultSchemaRegistry();
+            registry.Register(new SchemaEntry
+            {
+                Name = "module8.Legacy",
+                Encoding = "jsonschema",
+                Content = "{\"type\":\"integer\"}"
+            });
+            var recordedSchema = new McapSchema
+            {
+                Id = 1,
+                Name = "module8.Legacy",
+                Encoding = "jsonschema",
+                Data = Encoding.UTF8.GetBytes("{\"type\":\"integer\"}")
+            };
+            Assert.True(SdkWireSchemaIdentity.TryCompute(
+                registry,
+                new[] { recordedSchema },
+                out var recordedSchemaHash));
+            registry.Register(new SchemaEntry
+            {
+                Name = "module8.Unrelated",
+                Encoding = "jsonschema",
+                Content = "{\"type\":\"string\"}"
+            });
+            Assert.True(SdkWireSchemaIdentity.TryCompute(registry, out var recordedHash));
+            Assert.NotEqual(recordedSchemaHash, recordedHash);
+            var manifest = new FoxRunSchemaManifestInfo(
+                1,
+                "module8",
+                "FoxRunSchemaManifestGenerator",
+                1,
+                "legacy-manifest",
+                "legacy-foxrun",
+                Array.Empty<FoxRunSchemaTypeInfo>());
+            Assert.True(FoxRunSchemaMcapMetadata.TryCreateJson(manifest, recordedHash, out var foxRunJson));
 
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
+            try
+            {
+                using (var stream = File.Create(path))
+                using (var recorder = new McapRecorder(stream))
+                {
+                    recorder.AddChannel(1, "/module8/legacy", "json", "module8.Legacy", "jsonschema", "{\"type\":\"integer\"}");
+                    recorder.WriteMessage(1, 1UL, Encoding.UTF8.GetBytes("1"));
+                    recorder.WriteMetadata(FoxRunSchemaMcapMetadata.MetadataName, foxRunJson);
+                    recorder.Close();
+                }
+
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                var result = ReplaySchemaGuard.EvaluateWithMode(
+                    engine,
+                    SchemaIdentityMode.Strict,
+                    registry);
+
+                Assert.Equal(FoxRunReplaySchemaGuardState.Match, result.State);
+                Assert.False(result.IsBlocking);
+
+                registry.Register(new SchemaEntry
+                {
+                    Name = "module8.Later",
+                    Encoding = "jsonschema",
+                    Content = "{\"type\":\"boolean\"}"
+                });
+                var changed = ReplaySchemaGuard.EvaluateWithMode(
+                    engine,
+                    SchemaIdentityMode.Strict,
+                    registry);
+                Assert.Equal(FoxRunReplaySchemaGuardState.Mismatch, changed.State);
+                Assert.True(changed.IsBlocking);
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
         [Fact]
         public void RawMessagePackCannotBorrowTypedComponentChannel()
         {

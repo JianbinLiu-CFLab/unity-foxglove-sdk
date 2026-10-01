@@ -538,20 +538,12 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool TryPrepareMsgPackPublish(out uint channelId)
         {
-#if MANAGER_PRODUCTION_BOUNDARY
-            return _manager.TryPrepareMsgPackPublish(_topic, out channelId, requireDemand: true);
-#else
             return _manager.TryPrepareMsgPackPublish(this, out channelId, requireDemand: true);
-#endif
         }
 
         private void PublishMsgPackToManager(byte[] payload, ulong logTimeNs)
         {
-#if MANAGER_PRODUCTION_BOUNDARY
-            _manager.PublishMsgPack(_topic, payload, logTimeNs);
-#else
             _manager.PublishMsgPack(this, payload, logTimeNs);
-#endif
         }
         /// <summary>
         /// Publish one already captured logical value through every selected
