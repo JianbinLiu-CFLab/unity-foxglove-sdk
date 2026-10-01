@@ -212,6 +212,12 @@ namespace Unity.FoxgloveSDK.Components
             return true;
         }
 
+        internal bool TryPrepareMsgPackPublish(
+            FoxglovePublisherBase publisher,
+            out uint channelId,
+            bool requireDemand)
+            => TryPrepareMsgPackPublish(publisher?.Topic, out channelId, requireDemand);
+
         internal bool TryPrepareSchemaPublish(
             string topic,
             string schemaName,
@@ -228,6 +234,8 @@ namespace Unity.FoxgloveSDK.Components
         public void PublishFoxRunJsonBytes(string topic, string schemaName, byte[] payload, ulong logTimeNs) { }
         public void PublishFoxRunMessagePackBytes(string topic, byte[] payload, ulong logTimeNs) { }
         internal void PublishMsgPack(string topic, byte[] payload, ulong logTimeNs) { }
+        internal void PublishMsgPack(FoxglovePublisherBase publisher, byte[] payload, ulong logTimeNs)
+            => PublishMsgPack(publisher?.Topic, payload, logTimeNs);
 
         internal FoxRunOrdinaryTransportFanoutResult PublishOrdinaryTransports(
             in FoxRunOrdinaryPayloadRequest request)
