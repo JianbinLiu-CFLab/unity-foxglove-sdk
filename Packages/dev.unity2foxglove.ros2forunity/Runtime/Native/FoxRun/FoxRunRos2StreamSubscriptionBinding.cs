@@ -45,6 +45,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private int _callbacksInFlight;
         private int _stopping;
         private int _cleanupComplete;
+        private int _subscriptionRemovalInFlight;
         private int _cleanupDispatchPending;
         private int _failedRegistrationCleanupPending;
         private int _nodeReleased;
@@ -406,12 +407,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
-            IFoxRunRos2NativeSubscriptionToken token;
             var registrationPending = false;
             lock (_lifecycleLock)
             {
-                token = _token;
-                _token = null;
                 Volatile.Write(ref _activeRegistrationAttempt, 0L);
                 Volatile.Write(ref _state, (int)FoxRunRos2SubscriptionBindingState.Stopped);
                 if (!_teardownFailureRecorded)
@@ -427,19 +425,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (fatal != null)
                     ExceptionDispatchInfo.Capture(fatal).Throw();
                 return;
-            }
-
-            if (token != null)
-            {
-                try
-                {
-                    _backend.RemoveSubscription(token);
-                }
-                catch (Exception exception)
-                {
-                    fatal = exception;
-                    RecordTeardownFailure("remove stream subscription", exception);
-                }
             }
 
             var cleanupFatal = TryCompleteStoppedCleanup();
@@ -581,14 +566,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private Exception TryCompleteStoppedCleanup()
         {
-            if (Volatile.Read(ref _stopping) == 0
-                || Volatile.Read(ref _callbacksInFlight) != 0)
+            if (Volatile.Read(ref _stopping) == 0)
                 return null;
             lock (_lifecycleLock)
             {
                 if (_registrationInFlight)
                     return null;
             }
+
+            if (!TryRemoveStoppedSubscription(out var removalFailure))
+            {
+                if (removalFailure != null)
+                    RecordTeardownFailure("remove stream subscription", removalFailure);
+                RecordPendingCleanup();
+                return removalFailure;
+            }
+
+            if (Volatile.Read(ref _callbacksInFlight) != 0)
+                return null;
 
             if (Interlocked.CompareExchange(
                     ref _cleanupComplete,
@@ -621,6 +616,41 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (fatal == null)
                 MarkStoppedCleanupComplete();
             return fatal;
+        }
+
+        private bool TryRemoveStoppedSubscription(out Exception failure)
+        {
+            failure = null;
+            IFoxRunRos2NativeSubscriptionToken token;
+            lock (_lifecycleLock)
+            {
+                token = _token;
+                if (token == null
+                    || Interlocked.CompareExchange(
+                        ref _subscriptionRemovalInFlight,
+                        1,
+                        0) != 0)
+                    return token == null;
+            }
+
+            try
+            {
+                _backend.RemoveSubscription(token);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                lock (_lifecycleLock)
+                {
+                    if (failure == null && ReferenceEquals(_token, token))
+                        _token = null;
+                    Volatile.Write(ref _subscriptionRemovalInFlight, 0);
+                }
+            }
+            return failure == null;
         }
 
         private bool IsActiveGeneration()
