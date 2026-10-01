@@ -87,7 +87,37 @@ namespace Unity.FoxgloveSDK.Core
         {
             var metadata = replayEngine?.FindMetadata(SdkWireSchemaMcapMetadata.MetadataName);
             if (metadata == null)
-                return null;
+            {
+                var foxRunMetadata = replayEngine?.FindMetadata(FoxRunSchemaMcapMetadata.MetadataName);
+                if (foxRunMetadata?.Metadata == null
+                    || !foxRunMetadata.Metadata.TryGetValue("value", out var foxRunValue)
+                    || !FoxRunSchemaMcapMetadata.TryParseJson(foxRunValue, out var foxRunRecord, out _)
+                    || string.IsNullOrWhiteSpace(foxRunRecord.SdkWireSchemaHash))
+                    return null;
+                if (!SdkWireSchemaIdentity.TryCompute(schemaRegistry, out var fallbackCurrentHash))
+                    return CreateSdkResult(
+                        FoxRunReplaySchemaGuardState.MissingCurrent,
+                        identityMode,
+                        "Current runtime does not expose an SDK-wide wire-schema identity for the FoxRun metadata hash.",
+                        foxRunRecord.SdkWireSchemaHash,
+                        string.Empty);
+                if (string.Equals(foxRunRecord.SdkWireSchemaHash, fallbackCurrentHash, StringComparison.Ordinal))
+                    return new FoxRunReplaySchemaGuardResult(
+                        FoxRunReplaySchemaGuardState.Match,
+                        false,
+                        "Recorded FoxRun SDK wire-schema hash matches the current runtime.",
+                        foxRunRecord.SdkWireSchemaHash,
+                        fallbackCurrentHash);
+                return CreateSdkResult(
+                    FoxRunReplaySchemaGuardState.Mismatch,
+                    identityMode,
+                    "FoxRun SDK wire-schema hash mismatch. Recorded: "
+                    + ShortHash(foxRunRecord.SdkWireSchemaHash)
+                    + "; Current: "
+                    + ShortHash(fallbackCurrentHash),
+                    foxRunRecord.SdkWireSchemaHash,
+                    fallbackCurrentHash);
+            }
 
             if (metadata.Metadata == null || !metadata.Metadata.TryGetValue("value", out var value))
                 return CreateSdkResult(
@@ -97,7 +127,12 @@ namespace Unity.FoxgloveSDK.Core
                     string.Empty,
                     string.Empty);
 
-            if (!SdkWireSchemaMcapMetadata.TryParseJson(value, out var recordedHash, out var metadataVersion, out var error))
+            if (!SdkWireSchemaMcapMetadata.TryParseJson(
+                    value,
+                    out var recordedHash,
+                    out var metadataVersion,
+                    out var recordedComponents,
+                    out var error))
                 return CreateSdkResult(
                     FoxRunReplaySchemaGuardState.MalformedRecorded,
                     identityMode,
@@ -105,17 +140,24 @@ namespace Unity.FoxgloveSDK.Core
                     string.Empty,
                     string.Empty);
 
-            var currentIdentityAvailable = metadataVersion >= 2
+            var recordedSchemas = SelectSdkSchemaRecords(replayEngine?.Summary);
+            var currentIdentityAvailable = metadataVersion >= 3
                 ? SdkWireSchemaIdentity.TryCompute(
                     schemaRegistry,
-                    replayEngine.Summary?.Schemas,
+                    recordedSchemas,
+                    recordedComponents,
                     out var currentHash)
-                : SdkWireSchemaIdentity.TryCompute(schemaRegistry, out currentHash);
+                : metadataVersion >= 2
+                    ? SdkWireSchemaIdentity.TryCompute(
+                        schemaRegistry,
+                        recordedSchemas,
+                        out currentHash)
+                    : SdkWireSchemaIdentity.TryCompute(schemaRegistry, out currentHash);
             if (!currentIdentityAvailable)
                 return CreateSdkResult(
                     FoxRunReplaySchemaGuardState.MissingCurrent,
                     identityMode,
-                    "Current runtime does not expose an SDK-wide wire-schema identity.",
+                    "Current runtime does not expose an SDK-wide wire-schema identity or one of the recorded output contracts.",
                     recordedHash,
                     string.Empty);
 
@@ -138,6 +180,26 @@ namespace Unity.FoxgloveSDK.Core
                 currentHash);
         }
 
+        private static IReadOnlyList<McapSchema> SelectSdkSchemaRecords(McapFileSummary summary)
+        {
+            if (summary?.Schemas == null)
+                return Array.Empty<McapSchema>();
+
+            var channels = summary.Channels ?? new List<McapChannel>();
+            var hasDirection = channels.Any(channel =>
+                channel?.Metadata != null
+                && channel.Metadata.ContainsKey(McapRecorder.DataDirectionMetadataKey));
+            if (!hasDirection)
+                return summary.Schemas;
+
+            var outputSchemaIds = new HashSet<ushort>(
+                channels.Where(channel =>
+                    channel?.Metadata != null
+                    && channel.Metadata.TryGetValue(McapRecorder.DataDirectionMetadataKey, out var direction)
+                    && string.Equals(direction, "output", StringComparison.OrdinalIgnoreCase))
+                    .Select(channel => channel.SchemaId));
+            return summary.Schemas.Where(schema => outputSchemaIds.Contains(schema.Id)).ToList();
+        }
         private static FoxRunReplaySchemaGuardResult CreateSdkResult(
             FoxRunReplaySchemaGuardState state,
             SchemaIdentityMode identityMode,
@@ -170,17 +232,29 @@ namespace Unity.FoxgloveSDK.Core
             if (!(registry is ISchemaRegistrySnapshot snapshot))
                 return false;
 
-            return TryCompute(snapshot.GetSchemaSnapshot(), includeComponentSnapshot: true, out hash);
+            return TryComputeCore(
+                snapshot.GetSchemaSnapshot(),
+                Array.Empty<SdkWireSchemaComponentIdentity>(),
+                out hash,
+                includeLegacyComponentSnapshot: true);
         }
 
         internal static bool TryCompute(
             ISchemaRegistry registry,
             IReadOnlyList<McapSchema> recordedSchemas,
             out string hash)
+            => TryCompute(registry, recordedSchemas, Array.Empty<SdkWireSchemaComponentIdentity>(), out hash);
+
+        internal static bool TryCompute(
+            ISchemaRegistry registry,
+            IReadOnlyList<McapSchema> recordedSchemas,
+            IReadOnlyList<SdkWireSchemaComponentIdentity> recordedComponents,
+            out string hash)
         {
             hash = string.Empty;
             if (!(registry is ISchemaRegistrySnapshot snapshot)
-                || recordedSchemas == null)
+                || recordedSchemas == null
+                || recordedComponents == null)
                 return false;
 
             var current = snapshot.GetSchemaSnapshot() ?? Array.Empty<SchemaEntry>();
@@ -194,39 +268,59 @@ namespace Unity.FoxgloveSDK.Core
                     string.Equals(entry.Name, recorded.Name, StringComparison.Ordinal)
                     && string.Equals(entry.Encoding, recorded.Encoding, StringComparison.OrdinalIgnoreCase));
                 if (string.IsNullOrEmpty(match.Name))
-                {
-                    selected.Add(new SchemaEntry
-                    {
-                        Name = recorded.Name ?? string.Empty,
-                        Encoding = recorded.Encoding ?? string.Empty,
-                        Content = recorded.Encoding == "protobuf"
-                            ? Convert.ToBase64String(recorded.Data ?? Array.Empty<byte>())
-                            : recorded.Data == null
-                                ? string.Empty
-                                : Encoding.UTF8.GetString(recorded.Data)
-                    });
-                }
-                else
-                {
-                    selected.Add(match);
-                }
+                    return false;
+                selected.Add(match);
             }
 
-            return TryCompute(selected, includeComponentSnapshot: false, out hash);
+            var componentSnapshot = ComponentMessagePackCodecRegistry.CaptureSnapshot();
+            var selectedComponents = new List<SdkWireSchemaComponentIdentity>(recordedComponents.Count);
+            foreach (var recorded in recordedComponents)
+            {
+                if (recorded == null
+                    || !string.Equals(recorded.Encoding, "msgpack", StringComparison.OrdinalIgnoreCase)
+                    || string.IsNullOrEmpty(recorded.LogicalSchema)
+                    || string.IsNullOrEmpty(recorded.ShapeIdentity))
+                    return false;
+
+                var currentComponent = componentSnapshot.Entries.FirstOrDefault(entry =>
+                    entry.IsAvailable
+                    && entry.ClaimsLogicalSchemaKey
+                    && string.Equals(entry.LogicalSchemaName, recorded.LogicalSchema, StringComparison.Ordinal)
+                    && string.Equals(entry.ShapeIdentity, recorded.ShapeIdentity, StringComparison.Ordinal));
+                if (currentComponent == null)
+                    return false;
+
+                selectedComponents.Add(new SdkWireSchemaComponentIdentity
+                {
+                    Topic = recorded.Topic ?? string.Empty,
+                    Encoding = recorded.Encoding,
+                    LogicalSchema = currentComponent.LogicalSchemaName,
+                    ShapeIdentity = currentComponent.ShapeIdentity
+                });
+            }
+
+            return TryComputeCore(selected, selectedComponents, out hash);
         }
 
         internal static bool TryCompute(
             IEnumerable<SchemaEntry> schemaEntries,
             out string hash)
-            => TryCompute(schemaEntries, includeComponentSnapshot: false, out hash);
+            => TryCompute(schemaEntries, Array.Empty<SdkWireSchemaComponentIdentity>(), out hash);
 
-        private static bool TryCompute(
+        internal static bool TryCompute(
             IEnumerable<SchemaEntry> schemaEntries,
-            bool includeComponentSnapshot,
+            IReadOnlyList<SdkWireSchemaComponentIdentity> componentEntries,
             out string hash)
+            => TryComputeCore(schemaEntries, componentEntries, out hash);
+
+        private static bool TryComputeCore(
+            IEnumerable<SchemaEntry> schemaEntries,
+            IReadOnlyList<SdkWireSchemaComponentIdentity> componentEntries,
+            out string hash,
+            bool includeLegacyComponentSnapshot = false)
         {
             hash = string.Empty;
-            if (schemaEntries == null)
+            if (schemaEntries == null || componentEntries == null)
                 return false;
 
             var builder = new StringBuilder();
@@ -241,10 +335,9 @@ namespace Unity.FoxgloveSDK.Core
                 Append(builder, schema.RawContent == null ? string.Empty : Convert.ToBase64String(schema.RawContent));
             }
 
-            if (includeComponentSnapshot)
+            if (includeLegacyComponentSnapshot)
             {
-                var componentSnapshot = ComponentMessagePackCodecRegistry.CaptureSnapshot();
-                foreach (var entry in componentSnapshot.Entries
+                foreach (var entry in ComponentMessagePackCodecRegistry.CaptureSnapshot().Entries
                     .OrderBy(value => value.LogicalSchemaName, StringComparer.Ordinal)
                     .ThenBy(value => value.ClrType == null ? string.Empty : value.ClrType.FullName, StringComparer.Ordinal))
                 {
@@ -254,6 +347,19 @@ namespace Unity.FoxgloveSDK.Core
                     Append(builder, entry.ShapeIdentity);
                     builder.Append(entry.IsAvailable ? '1' : '0').Append(entry.ClaimsLogicalSchemaKey ? '1' : '0');
                 }
+            }
+
+            foreach (var entry in componentEntries
+                .OrderBy(value => value.Topic, StringComparer.Ordinal)
+                .ThenBy(value => value.Encoding, StringComparer.Ordinal)
+                .ThenBy(value => value.LogicalSchema, StringComparer.Ordinal)
+                .ThenBy(value => value.ShapeIdentity, StringComparer.Ordinal))
+            {
+                builder.Append("component|");
+                Append(builder, entry.Topic);
+                Append(builder, entry.Encoding);
+                Append(builder, entry.LogicalSchema);
+                Append(builder, entry.ShapeIdentity);
             }
 
             using (var sha = SHA256.Create())

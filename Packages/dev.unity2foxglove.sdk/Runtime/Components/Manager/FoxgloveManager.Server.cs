@@ -295,6 +295,8 @@ namespace Unity.FoxgloveSDK.Components
                     () =>
                     {
                         _channelCache.Clear();
+                        _componentChannelDefaults.Clear();
+                        _componentChannelIdentities.Clear();
                         _foxRunRecordingChannelCache.Clear();
                         _foxRunRawRecordingChannelCache.Clear();
                     },

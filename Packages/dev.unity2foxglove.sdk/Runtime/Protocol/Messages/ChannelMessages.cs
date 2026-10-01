@@ -94,6 +94,28 @@ namespace Unity.FoxgloveSDK.Protocol
         }
 
         private string _schema = "";
+
+        private string _componentLogicalSchemaName;
+        internal string ComponentLogicalSchemaName
+        {
+            get => _componentLogicalSchemaName;
+            set
+            {
+                EnsureWritable();
+                _componentLogicalSchemaName = value;
+            }
+        }
+        private string _componentShapeIdentity;
+        internal string ComponentShapeIdentity
+        {
+            get => _componentShapeIdentity;
+            set
+            {
+                EnsureWritable();
+                _componentShapeIdentity = value;
+            }
+        }
+
         /// <summary>Always serialized as non-null; null setter is coerced to "".</summary>
         [JsonProperty("schema")]
         public string Schema
@@ -115,7 +137,9 @@ namespace Unity.FoxgloveSDK.Protocol
                 Encoding = Encoding,
                 SchemaName = SchemaName,
                 SchemaEncoding = SchemaEncoding,
-                Schema = Schema
+                Schema = Schema,
+                ComponentLogicalSchemaName = ComponentLogicalSchemaName,
+                ComponentShapeIdentity = ComponentShapeIdentity
             };
             snapshot._readOnly = true;
             return snapshot;

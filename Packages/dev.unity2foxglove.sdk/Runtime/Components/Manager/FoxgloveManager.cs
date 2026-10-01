@@ -181,6 +181,11 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding, string schemaEncoding), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string, string, string), uint>();
+        private readonly System.Collections.Generic.Dictionary<(string topic, string encoding), uint>
+            _componentChannelDefaults =
+                new System.Collections.Generic.Dictionary<(string, string), uint>();
+        private readonly System.Collections.Generic.Dictionary<uint, (string logicalSchema, string shapeIdentity)>
+            _componentChannelIdentities = new System.Collections.Generic.Dictionary<uint, (string, string)>();
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName), uint>
             _foxRunRecordingChannelCache =
                 new System.Collections.Generic.Dictionary<(string, string), uint>();
