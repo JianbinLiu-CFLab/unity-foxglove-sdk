@@ -40,6 +40,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64");
         }
 
+        [Fact]
+        public void RuntimeIdentityValidationDoesNotHardcodeSiblingConflictCount()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/"
+                + "Ros2ForUnityRuntimeSelection.cs");
+
+            Assert.DoesNotContain("conflicts.Count != 2", source, StringComparison.Ordinal);
+            Assert.Contains("conflicts.Count == 0", source, StringComparison.Ordinal);
+            Assert.Contains("Distinct(StringComparer.Ordinal)", source, StringComparison.Ordinal);
+        }
+
         private static void AssertSiblingConflicts(string relativePath, params string[] expected)
         {
             using var document = JsonDocument.Parse(TestSources.Text(relativePath));

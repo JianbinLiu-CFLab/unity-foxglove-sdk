@@ -1049,13 +1049,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     return false;
                 var conflicts = packageJson["unity2foxgloveConflicts"] as JArray;
                 if (conflicts == null
-                    || conflicts.Count != 2
+                    || conflicts.Count == 0
                     || conflicts.Any(token =>
                         token.Type != JTokenType.String
                         || string.Equals(token.Value<string>(), packageName, StringComparison.Ordinal)
                         || !token.Value<string>().StartsWith(
                             RuntimePackagePrefix,
                             StringComparison.Ordinal)))
+                    return false;
+
+                var conflictNames = conflicts
+                    .Values<string>()
+                    .ToArray();
+                if (conflictNames.Length != conflictNames.Distinct(StringComparer.Ordinal).Count())
                     return false;
 
                 var runtimeRoot = (string)manifest["runtimeRoot"];

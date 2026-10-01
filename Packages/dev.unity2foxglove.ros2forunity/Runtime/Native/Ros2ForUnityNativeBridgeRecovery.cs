@@ -18,6 +18,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
 
             clearBindings();
+            Ros2ForUnityNativeRuntimeIdentity.ResetForRuntimeLoss();
             runtimeWasReady = false;
         }
     }

@@ -224,7 +224,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void StopStillClearsAndReleasesWhenNativeRemovalThrows()
+        public void StopRetainsNativeTokenUntilRemovalSucceeds()
         {
             var backend = new FakeBackend
             {
@@ -248,9 +248,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.Equal("native removal failed", exception.Message);
             Assert.Equal(1, backend.RemoveCount);
+            Assert.Equal(0, cleared);
+            Assert.Equal(0, backend.ReleaseCount);
+
+            backend.RemoveException = null;
+            binding.Stop();
+
+            Assert.Equal(2, backend.RemoveCount);
             Assert.Equal(1, cleared);
             Assert.Equal(1, backend.ReleaseCount);
-            Assert.Equal("remove,clear,release", string.Join(",", backend.Events));
+            Assert.Equal("remove,remove,clear,release", string.Join(",", backend.Events));
         }
 
         [Fact]

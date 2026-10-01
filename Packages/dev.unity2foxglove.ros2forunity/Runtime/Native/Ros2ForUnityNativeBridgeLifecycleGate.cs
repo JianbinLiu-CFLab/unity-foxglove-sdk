@@ -138,6 +138,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private static void ResetState()
         {
+            Ros2ForUnityNativeRuntimeIdentity.Reset();
             _applicationQuitting = false;
             _nativeReloadWindow = false;
             _isStablePlayModeScene = false;
