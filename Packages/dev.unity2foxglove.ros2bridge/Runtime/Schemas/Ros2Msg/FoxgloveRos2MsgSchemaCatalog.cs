@@ -62,7 +62,6 @@ namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg
         public const string SourceSnapshot = "third-party/foxglove-sdk/schemas/ros2";
         public const string SourceTreeSha256 = "26f35c4636df2b9ff49981f480ce0ab38da68165cc77da8082d0976fb13b9ac5";
         public const string SourceCommit = "b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba";
-        public const string StandardAuthorityLogSourceSha256 = "13566915f24162eab241ef8df32ed199c1c8748c2252b359b7bf0253cd866e44";
 
         // These generated schema strings are decoded once at type initialization so
         // publisher registration has deterministic startup cost and no first-topic hitch.
