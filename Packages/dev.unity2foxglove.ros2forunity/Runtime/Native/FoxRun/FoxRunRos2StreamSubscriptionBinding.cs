@@ -39,6 +39,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly FoxRunResolvedQos _qos;
         private readonly IFoxRunRos2NativeQosProfileFactory _qosFactory;
         private IFoxRunRos2NativeSubscriptionToken _token;
+        private IFoxRunRos2NativeSubscriptionToken _failedRegistrationRollbackToken;
+        private int _failedRegistrationRollbackInFlight;
         private FoxRunRos2RegistrationResult _lastRegistration;
         private int _state;
         private int _admissionOpen;
@@ -112,6 +114,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return Volatile.Read(ref _stopping) == 0
                            && !_registrationInFlight
                            && Volatile.Read(ref _failedRegistrationCleanupPending) == 0
+                           && Volatile.Read(ref _failedRegistrationRollbackToken) == null
                            && State == FoxRunRos2SubscriptionBindingState.Failed
                            && (_lastRegistration.Error == FoxRunRos2RegistrationError.BackendFailure
                                || _lastRegistration.Error == FoxRunRos2RegistrationError.InvalidSubscriptionToken)
@@ -129,6 +132,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         public FoxRunRos2RegistrationResult TryRegister()
         {
+            if (!TryRetryFailedRegistrationRollback())
+            {
+                lock (_lifecycleLock)
+                    return _lastRegistration;
+            }
+
             long registrationAttempt;
             lock (_lifecycleLock)
             {
@@ -574,6 +583,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return null;
             }
 
+            if (!TryRetryFailedRegistrationRollback(out var rollbackFailure))
+            {
+                if (rollbackFailure != null)
+                    RecordTeardownFailure("remove failed-registration stream subscription", rollbackFailure);
+                RecordPendingCleanup();
+                return rollbackFailure;
+            }
+
             if (!TryRemoveStoppedSubscription(out var removalFailure))
             {
                 if (removalFailure != null)
@@ -701,6 +718,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             IFoxRunRos2NativeSubscriptionToken rollbackToken)
         {
             ExceptionDispatchInfo fatal = null;
+            var rollbackRemoved = true;
             if (rollbackToken != null)
             {
                 try
@@ -710,16 +728,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 catch (Exception exception) when (
                     FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
-                    // Preserve the primary registration result.
+                    rollbackRemoved = false;
                 }
                 catch (Exception exception)
                 {
+                    rollbackRemoved = false;
                     fatal = ExceptionDispatchInfo.Capture(exception);
                 }
             }
 
             lock (_lifecycleLock)
             {
+                if (!rollbackRemoved)
+                    _failedRegistrationRollbackToken = rollbackToken;
                 _failedRegistrationFatal = fatal;
                 Interlocked.Exchange(ref _failedRegistrationCleanupPending, 1);
             }
@@ -766,7 +787,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     Volatile.Write(ref _stopping, 1);
                     Volatile.Write(ref _state, (int)FoxRunRos2SubscriptionBindingState.Failed);
                 }
-                terminalCleanup = Volatile.Read(ref _stopping) != 0;
+                terminalCleanup = Volatile.Read(ref _stopping) != 0
+                                  && Volatile.Read(ref _failedRegistrationRollbackToken) == null;
                 if (terminalCleanup)
                 {
                     terminalCleanupClaimed = Interlocked.CompareExchange(
@@ -806,6 +828,47 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             if (throwFatal)
                 fatal?.Throw();
+        }
+
+        private bool TryRetryFailedRegistrationRollback()
+            => TryRetryFailedRegistrationRollback(out _);
+
+        private bool TryRetryFailedRegistrationRollback(out Exception failure)
+        {
+            failure = null;
+            IFoxRunRos2NativeSubscriptionToken token;
+            lock (_lifecycleLock)
+            {
+                token = _failedRegistrationRollbackToken;
+                if (token == null)
+                    return true;
+                if (Interlocked.CompareExchange(
+                        ref _failedRegistrationRollbackInFlight,
+                        1,
+                        0) != 0)
+                    return false;
+            }
+
+            var removed = false;
+            try
+            {
+                _backend.RemoveSubscription(token);
+                removed = true;
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                lock (_lifecycleLock)
+                {
+                    if (removed && ReferenceEquals(_failedRegistrationRollbackToken, token))
+                        _failedRegistrationRollbackToken = null;
+                    Volatile.Write(ref _failedRegistrationRollbackInFlight, 0);
+                }
+            }
+            return removed;
         }
 
         private void RethrowRegistrationFatal(

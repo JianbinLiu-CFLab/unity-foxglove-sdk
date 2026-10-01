@@ -195,6 +195,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FailedRegistrationRetainsRollbackTokenBeforeRetrying()
+        {
+            var backend = new FakeBackend
+            {
+                Next = FoxRunRos2NativeBackendRegistration.Success(new FakeToken(false)),
+                RemoveException = new InvalidOperationException("rollback pending")
+            };
+            var binding = CreateBinding(backend, 305, () => 305, _ => { }, _ => false);
+
+            var first = binding.TryRegister();
+
+            Assert.False(first.Succeeded);
+            Assert.Equal(1, backend.RemoveCount);
+            Assert.False(binding.CanRetryRegistration);
+
+            backend.RemoveException = null;
+            backend.Next = FoxRunRos2NativeBackendRegistration.Success(new FakeToken());
+
+            var second = binding.TryRegister();
+
+            Assert.True(second.Succeeded);
+            Assert.Equal(2, backend.RegisterCount);
+            Assert.Equal(2, backend.RemoveCount);
+            binding.Stop();
+        }
+
+        [Fact]
         [Trait("Phase", "187-R2-H03-003")]
         public void RecoverableRegistrationRetryStopsAtTheFiniteAttemptBound()
         {
@@ -624,9 +651,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.Equal("rollback-primary", thrown.Message);
             Assert.Equal(
-                new[] { "remove-subscription", "release-node" },
+                new[] { "remove-subscription" },
                 events);
             Assert.Equal(1, backend.RemoveCount);
+            Assert.Equal(0, backend.ReleaseCount);
+
+            backend.RemoveException = null;
+            binding.Stop();
+
+            Assert.Equal(
+                new[] { "remove-subscription", "remove-subscription", "release-node" },
+                events);
+            Assert.Equal(2, backend.RemoveCount);
             Assert.Equal(1, backend.ReleaseCount);
         }
 

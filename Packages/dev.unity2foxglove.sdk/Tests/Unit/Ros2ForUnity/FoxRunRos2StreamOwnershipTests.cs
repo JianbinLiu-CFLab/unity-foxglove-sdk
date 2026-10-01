@@ -614,6 +614,37 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FailedRegistrationRetainsRollbackTokenUntilRemovalSucceeds()
+        {
+            var backend = new FakeBackend
+            {
+                ReturnedToken = new FakeToken(isUsable: false),
+                RemoveException = new InvalidOperationException("rollback pending")
+            };
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) => new OwnedSample(message.Data),
+                transferOwned: _ => { },
+                clearOwned: () => { });
+
+            var first = binding.TryRegister();
+
+            Assert.False(first.Succeeded);
+            Assert.Equal(1, backend.RemoveCount);
+            Assert.False(binding.CanRetryRegistration);
+
+            backend.RemoveException = null;
+            backend.ReturnedToken = new FakeToken(isUsable: true);
+
+            var second = binding.TryRegister();
+
+            Assert.True(second.Succeeded);
+            Assert.Equal(2, backend.RemoveCount);
+            binding.Stop();
+        }
+
+        [Fact]
         public void RuntimeUnavailableRegistrationCanRetryBeforeTerminalCleanup()
         {
             var backend = new FakeBackend
