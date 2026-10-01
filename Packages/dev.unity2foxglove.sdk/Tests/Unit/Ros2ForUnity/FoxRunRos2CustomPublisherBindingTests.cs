@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2ForUnity.Native;
@@ -202,7 +203,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 () => binding.TryStart());
 
             Assert.Equal("token-primary", fatal.Message);
-            Assert.Equal(new[] { "remove", "release" }, backend.StopOrder);
+            Assert.Equal(new[] { "remove" }, backend.StopOrder);
+            Assert.Equal(0, backend.ReleaseCount);
+            backend.RemoveFailure = null;
+            Assert.True(binding.TryRetryCleanup());
+            Assert.Equal(new[] { "remove", "remove", "release" }, backend.StopOrder);
             Assert.Equal(1, backend.ReleaseCount);
             Assert.False(bus.HasSubscribers("/phase181/custom"));
         }
@@ -296,6 +301,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.True(binding.TryRetryCleanup());
             Assert.False(binding.CleanupPending);
             Assert.Equal(new[] { "remove", "remove", "release" }, backend.StopOrder);
+            Assert.Equal(1, backend.ReleaseCount);
+        }
+
+        [Fact]
+        public void PersistentPublisherRemovalFailureStopsRetryingAfterTheBound()
+        {
+            var bus = new FoxTopicBus();
+            var backend = new FakePublisherBackend
+            {
+                RemoveFailure = new InvalidOperationException("native endpoint gone")
+            };
+            var binding = CreateBinding(bus, backend, initialSequence: 0UL);
+
+            Assert.True(binding.TryStart().Succeeded);
+            binding.Stop();
+
+            for (var attempt = 0; attempt < 6; attempt++)
+            {
+                Assert.False(binding.TryRetryCleanup());
+                Assert.True(binding.CleanupPending);
+            }
+
+            Assert.True(binding.TryRetryCleanup());
+            Assert.True(binding.CleanupRetryExhausted);
+            Assert.False(binding.CleanupPending);
+            Assert.Equal(8, backend.StopOrder.Count(item => item == "remove"));
             Assert.Equal(1, backend.ReleaseCount);
         }
 
