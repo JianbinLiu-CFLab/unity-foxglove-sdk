@@ -44,38 +44,6 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        internal bool TryUpdateComponentIdentity(uint channelId, string logicalSchema, string shapeIdentity)
-        {
-            lock (_lock)
-            {
-                if (!_channels.TryGetValue(channelId, out var existing))
-                    return false;
-
-                logicalSchema ??= string.Empty;
-                shapeIdentity ??= string.Empty;
-                if (!string.IsNullOrEmpty(existing.ComponentLogicalSchemaName)
-                    && (!string.Equals(existing.ComponentLogicalSchemaName, logicalSchema, StringComparison.Ordinal)
-                        || !string.Equals(existing.ComponentShapeIdentity ?? string.Empty, shapeIdentity, StringComparison.Ordinal)))
-                    return false;
-                if (string.Equals(existing.ComponentLogicalSchemaName ?? string.Empty, logicalSchema, StringComparison.Ordinal)
-                    && string.Equals(existing.ComponentShapeIdentity ?? string.Empty, shapeIdentity, StringComparison.Ordinal))
-                    return true;
-
-                _channels[channelId] = new AdvertiseChannel
-                {
-                    Id = existing.Id,
-                    Topic = existing.Topic,
-                    Encoding = existing.Encoding,
-                    SchemaName = existing.SchemaName,
-                    SchemaEncoding = existing.SchemaEncoding,
-                    Schema = existing.Schema,
-                    ComponentLogicalSchemaName = logicalSchema,
-                    ComponentShapeIdentity = shapeIdentity
-                }.CreateImmutableSnapshot();
-                return true;
-            }
-        }
-
         internal void Replace(AdvertiseChannel channel)
         {
             if (channel == null) throw new ArgumentNullException(nameof(channel));

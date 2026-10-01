@@ -432,23 +432,6 @@ namespace Unity.FoxgloveSDK.Components
             if (_channelCache.TryGetValue(key, out var id))
                 return id;
 
-            if (hasComponentIdentity)
-            {
-                var rawKey = (topic, EmptySchemaName, encoding, string.Empty);
-                if (_channelCache.TryGetValue(rawKey, out id)
-                    && TryBindComponentChannel(id, componentLogicalSchemaName, cacheShapeIdentity))
-                {
-                    _channelCache[key] = id;
-                    _componentChannelDefaults[(topic, encoding)] = id;
-                    return id;
-                }
-            }
-            else if (_componentChannelDefaults.TryGetValue((topic, encoding), out id))
-            {
-                _channelCache[key] = id;
-                return id;
-            }
-
             id = (uint)_connectionState.NextChannelId;
             _runtime.RegisterChannel(new Protocol.AdvertiseChannel
             {
@@ -462,26 +445,8 @@ namespace Unity.FoxgloveSDK.Components
             });
             _connectionState.NextChannelId++;
             _channelCache[key] = id;
-            if (hasComponentIdentity)
-            {
-                _componentChannelDefaults[(topic, encoding)] = id;
-                _componentChannelIdentities[id] = (componentLogicalSchemaName, cacheShapeIdentity);
-            }
             return id;
         }
 
-        private bool TryBindComponentChannel(
-            uint channelId,
-            string logicalSchema,
-            string shapeIdentity)
-        {
-            if (_componentChannelIdentities.TryGetValue(channelId, out var existing))
-                return string.Equals(existing.logicalSchema, logicalSchema, System.StringComparison.Ordinal)
-                       && string.Equals(existing.shapeIdentity, shapeIdentity, System.StringComparison.Ordinal);
-            if (!_runtime.TryUpdateChannelComponentIdentity(channelId, logicalSchema, shapeIdentity))
-                return false;
-            _componentChannelIdentities[channelId] = (logicalSchema, shapeIdentity);
-            return true;
-        }
     }
 }

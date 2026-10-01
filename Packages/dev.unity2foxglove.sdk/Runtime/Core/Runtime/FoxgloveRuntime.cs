@@ -540,10 +540,6 @@ namespace Unity.FoxgloveSDK.Core
             _session.RegisterChannel(channel);
         }
 
-        internal bool TryUpdateChannelComponentIdentity(uint channelId, string logicalSchema, string shapeIdentity)
-            => _session != null
-               && _session.TryUpdateChannelComponentIdentity(channelId, logicalSchema, shapeIdentity);
-
         /// <summary>Register a channel visible only to the attached MCAP recorder.</summary>
         internal void RegisterRecordingOnlyChannel(AdvertiseChannel channel)
         {

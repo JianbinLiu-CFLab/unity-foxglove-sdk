@@ -678,6 +678,44 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal(1, legacyVersion);
         }
 
+        [Fact]
+        public void RawMessagePackCannotBorrowTypedComponentChannel()
+        {
+            var source = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"));
+
+            Assert.DoesNotContain("_componentChannelDefaults.TryGetValue", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("TryBindComponentChannel", source, StringComparison.Ordinal);
+            Assert.Contains("var key = (topic, cacheSchemaName, encoding, cacheShapeIdentity);", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void TypedComponentCannotRetroactivelyBindRawMessagePackChannel()
+        {
+            var publishing = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs"));
+            var session = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs"));
+            var runtime = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs"));
+            var registry = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Core/Registries/ChannelRegistry.cs"));
+
+            Assert.DoesNotContain("TryUpdateChannelComponentIdentity", publishing, StringComparison.Ordinal);
+            Assert.DoesNotContain("TryUpdateChannelComponentIdentity", session, StringComparison.Ordinal);
+            Assert.DoesNotContain("TryUpdateChannelComponentIdentity", runtime, StringComparison.Ordinal);
+            Assert.DoesNotContain("TryUpdateComponentIdentity", registry, StringComparison.Ordinal);
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                var candidate = Path.Combine(directory.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(candidate))
+                    return candidate;
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException(relativePath);
+        }
+
         private static SchemaEncodingMatrixRow CreateProtobufMatrixRow()
         {
             var message = new Foxglove.KeyValuePair { Key = "value", Value = "8" };
