@@ -94,11 +94,14 @@ namespace Unity.FoxgloveSDK.Core
                     || !FoxRunSchemaMcapMetadata.TryParseJson(foxRunValue, out var foxRunRecord, out _)
                     || string.IsNullOrWhiteSpace(foxRunRecord.SdkWireSchemaHash))
                     return null;
-                if (!SdkWireSchemaIdentity.TryCompute(schemaRegistry, out var fallbackCurrentHash))
+                var fallbackSchemas = SelectSdkSchemaRecords(replayEngine?.Summary);
+                if (fallbackSchemas.Count == 0)
+                    return null;
+                if (!SdkWireSchemaIdentity.TryCompute(schemaRegistry, fallbackSchemas, out var fallbackCurrentHash))
                     return CreateSdkResult(
                         FoxRunReplaySchemaGuardState.MissingCurrent,
                         identityMode,
-                        "Current runtime does not expose an SDK-wide wire-schema identity for the FoxRun metadata hash.",
+                        "Current runtime does not expose the recorded output schemas required by the FoxRun metadata hash.",
                         foxRunRecord.SdkWireSchemaHash,
                         string.Empty);
                 if (string.Equals(foxRunRecord.SdkWireSchemaHash, fallbackCurrentHash, StringComparison.Ordinal))

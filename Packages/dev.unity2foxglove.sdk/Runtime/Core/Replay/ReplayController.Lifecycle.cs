@@ -104,7 +104,8 @@ namespace Unity.FoxgloveSDK.Core
                         var schemaGuard = _schemaRegistry == null
                             ? ReplaySchemaGuard.EvaluateWithMode(_replayEngine, identityMode)
                             : ReplaySchemaGuard.EvaluateWithMode(_replayEngine, identityMode, _schemaRegistry);
-                        if (schemaGuard.State == FoxRunReplaySchemaGuardState.Mismatch)
+                        if (schemaGuard.State == FoxRunReplaySchemaGuardState.Mismatch
+                            || schemaGuard.State == FoxRunReplaySchemaGuardState.MissingCurrent)
                             Volatile.Write(ref _lastEnableHadSchemaMismatch, true);
 
                         if (schemaGuard.IsBlocking)
