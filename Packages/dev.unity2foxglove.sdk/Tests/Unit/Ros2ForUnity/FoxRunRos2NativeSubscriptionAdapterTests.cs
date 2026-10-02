@@ -83,6 +83,57 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void NativeBinaryLoadFailureUsesDedicatedNonRetryableError()
+        {
+            var backend = new FakeBackend
+            {
+                RegistrationException = new TargetInvocationException(
+                    new DllNotFoundException("native surface unavailable"))
+            };
+            var binding = CreateBinding(backend, 306, () => 306, _ => { }, _ => false);
+
+            var result = binding.TryRegister();
+
+            Assert.False(result.Succeeded);
+            Assert.Equal(
+                FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable,
+                result.Error);
+            Assert.Equal("DllNotFoundException", result.FailureKind);
+            Assert.False(binding.CanRetryRegistration);
+            Assert.Equal(0, backend.RegisterCount);
+            binding.Stop();
+        }
+
+        [Fact]
+        public void InboundInspectionFailureRetainsTokenWhenRollbackFails()
+        {
+            var driver = new InspectionFailureNodeDriver
+            {
+                RemoveSubscriptionFailure = new InvalidOperationException("rollback pending")
+            };
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
+            var backend = owner.AcquireBackend();
+
+            var result = backend.Register<FakeMessage>(
+                Contract(),
+                new ManagedQosProfile(),
+                _ => { });
+
+            Assert.False(result.Succeeded);
+            Assert.Equal(FoxRunRos2RegistrationError.BackendFailure, result.Error);
+            Assert.NotNull(result.Token);
+            Assert.Equal(1, driver.CreateSubscriptionCount);
+            Assert.Equal(1, driver.RemoveSubscriptionCount);
+
+            driver.RemoveSubscriptionFailure = null;
+            backend.RemoveSubscription(result.Token);
+            Assert.Equal(2, driver.RemoveSubscriptionCount);
+
+            backend.ReleaseNodeOwnership();
+            owner.ReleaseHostOwnership();
+            Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+        [Fact]
         public void FatalInboundInspectionFailureRollsBackAndEscapesInsteadOfBecomingBackendFailure()
         {
             var driver = new InspectionFailureNodeDriver(new OutOfMemoryException("inspection fatal"));
@@ -2063,6 +2114,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public int CreateSubscriptionCount { get; private set; }
             public int RemoveSubscriptionCount { get; private set; }
             public int ReleaseNodeCount { get; private set; }
+            public Exception RemoveSubscriptionFailure { get; set; }
 
             public object CreateSubscription<T>(
                 string topic,
@@ -2080,6 +2132,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public bool RemoveSubscription(object subscription)
             {
                 RemoveSubscriptionCount++;
+                if (RemoveSubscriptionFailure != null)
+                    throw RemoveSubscriptionFailure;
                 return ReferenceEquals(subscription, _subscription);
             }
 

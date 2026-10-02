@@ -248,6 +248,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 case FoxRunRos2RegistrationError.Stopped: return "Stopped";
                 case FoxRunRos2RegistrationError.TeardownFailure: return "TeardownFailure";
                 case FoxRunRos2RegistrationError.ApplyFailure: return "ApplyFailure";
+                case FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable: return "NativeRuntimeSurfaceUnavailable";
                 default: return "Unknown";
             }
         }

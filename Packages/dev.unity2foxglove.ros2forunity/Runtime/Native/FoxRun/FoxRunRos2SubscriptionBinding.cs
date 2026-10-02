@@ -558,21 +558,29 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 else if (registrationFailure != null)
                 {
-                    result = SetRegistrationFailureUnderLock(
-                        FoxRunRos2RegistrationError.BackendFailure,
-                        registrationFailureDiagnostic);
+                    var error = FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                        registrationFailure,
+                        out _)
+                        ? FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+                        : FoxRunRos2RegistrationError.BackendFailure;
+                    result = SetRegistrationFailureUnderLock(error, registrationFailureDiagnostic);
                     rollbackToken = returnedToken;
                 }
                 else if (!backendResult.Succeeded)
                 {
                     result = SetRegistrationFailureUnderLock(backendResult.Error, backendResult.Diagnostic);
+                    rollbackToken = backendResult.Token;
                 }
                 else if (returnedToken == null || !tokenUsable || tokenInspectionFailure != null)
                 {
                     result = SetRegistrationFailureUnderLock(
                         tokenInspectionFailure == null
                             ? FoxRunRos2RegistrationError.InvalidSubscriptionToken
-                            : FoxRunRos2RegistrationError.BackendFailure,
+                            : FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                                tokenInspectionFailure,
+                                out _)
+                                ? FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+                                : FoxRunRos2RegistrationError.BackendFailure,
                         tokenInspectionFailure == null
                             ? "Native backend returned no usable subscription token."
                             : tokenInspectionDiagnostic);
@@ -1427,7 +1435,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 "Native subscription binding is stopped.");
 
         private static string DescribeException(Exception exception)
-            => exception.GetType().Name + ": " + exception.Message;
+        {
+            if (FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                exception,
+                out var failureKind))
+                return failureKind + ": " + exception.Message;
+            return exception.GetType().Name + ": " + exception.Message;
+        }
     }
 }
 #endif
