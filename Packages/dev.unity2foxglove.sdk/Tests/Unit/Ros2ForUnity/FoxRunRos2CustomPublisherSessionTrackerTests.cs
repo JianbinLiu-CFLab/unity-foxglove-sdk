@@ -16,6 +16,16 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
 {
     public sealed class FoxRunRos2CustomPublisherSessionTrackerTests
     {
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void FailedPublisherBindingRetentionFollowsCleanupOwnership(bool cleanupPending)
+        {
+            Assert.Equal(
+                cleanupPending,
+                FoxRunRos2CustomPublisherHub.ShouldTrackFailedBinding(cleanupPending));
+        }
+
         [Fact]
         public void SameSnapshotReferenceRequestsOneRebuildOnly()
         {
@@ -253,6 +263,7 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
             public int SourceInstanceId => 0;
             public bool IsStopped { get; private set; }
             public bool CleanupPending => false;
+            public bool CleanupRetryExhausted => false;
 
             public void Stop()
             {
@@ -279,6 +290,7 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
             public int SourceInstanceId => 0;
             public bool IsStopped { get; private set; }
             public bool CleanupPending => false;
+            public bool CleanupRetryExhausted => false;
 
             public void Stop()
             {

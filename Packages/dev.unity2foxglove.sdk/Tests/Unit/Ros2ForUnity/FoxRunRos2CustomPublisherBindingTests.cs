@@ -205,8 +205,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal("token-primary", fatal.Message);
             Assert.Equal(new[] { "remove" }, backend.StopOrder);
             Assert.Equal(0, backend.ReleaseCount);
+            Assert.True(binding.CleanupRetryExhausted);
+            Assert.False(binding.TryRetryCleanup());
             backend.RemoveFailure = null;
-            Assert.True(binding.TryRetryCleanup());
+            Assert.True(binding.TryForceRetryCleanup());
             Assert.Equal(new[] { "remove", "remove", "release" }, backend.StopOrder);
             Assert.Equal(1, backend.ReleaseCount);
             Assert.False(bus.HasSubscribers("/phase181/custom"));
@@ -323,10 +325,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Assert.True(binding.CleanupPending);
             }
 
-            Assert.True(binding.TryRetryCleanup());
+            Assert.False(binding.TryRetryCleanup());
             Assert.True(binding.CleanupRetryExhausted);
-            Assert.False(binding.CleanupPending);
+            Assert.True(binding.CleanupPending);
             Assert.Equal(8, backend.StopOrder.Count(item => item == "remove"));
+            Assert.Equal(0, backend.ReleaseCount);
+
+            backend.RemoveFailure = null;
+            Assert.True(binding.TryForceRetryCleanup());
+            Assert.False(binding.CleanupPending);
             Assert.Equal(1, backend.ReleaseCount);
         }
 

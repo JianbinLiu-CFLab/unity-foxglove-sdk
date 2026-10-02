@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.False(first.Succeeded);
             Assert.Equal(1, backend.RemoveCount);
-            Assert.False(binding.CanRetryRegistration);
+            Assert.True(binding.CanRetryRegistration);
 
             backend.RemoveException = null;
             backend.Next = FoxRunRos2NativeBackendRegistration.Success(new FakeToken());

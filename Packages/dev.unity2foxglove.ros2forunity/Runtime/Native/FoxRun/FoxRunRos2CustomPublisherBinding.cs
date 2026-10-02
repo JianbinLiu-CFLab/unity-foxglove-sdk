@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;
@@ -33,6 +34,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Action _onStopped;
         private readonly Func<FoxTopicEnvelope<TDto>, bool> _busCallback;
         private const int MaximumCleanupRetries = 8;
+        private static readonly long MaximumCleanupRetryDurationTicks = Stopwatch.Frequency * 4L;
         private readonly object _cleanupGate = new object();
         private IFoxRunRos2NativePublisherToken _token;
         private bool _subscribed;
@@ -40,6 +42,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private int _cleanupPending;
         private int _cleanupRetryCount;
         private int _cleanupRetryExhausted;
+        private long _cleanupRetryDeadlineTimestamp;
         private int _ownershipReleased;
         private int _completionNotified;
 
@@ -196,14 +199,31 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
 
         internal bool TryRetryCleanup()
+            => TryRetryCleanup(force: false);
+
+        internal bool TryForceRetryCleanup()
+            => TryRetryCleanup(force: true);
+
+        private bool TryRetryCleanup(bool force)
         {
             lock (_cleanupGate)
+            {
+                if (force && Volatile.Read(ref _cleanupRetryExhausted) != 0)
+                {
+                    Volatile.Write(ref _cleanupRetryExhausted, 0);
+                    Volatile.Write(ref _cleanupRetryCount, 0);
+                    Volatile.Write(ref _cleanupRetryDeadlineTimestamp, 0L);
+                    Volatile.Write(ref _cleanupPending, 1);
+                }
                 return TryRetryCleanupCore();
+            }
         }
 
         private bool TryRetryCleanupCore()
         {
             if (!IsStopped)
+                return false;
+            if (Volatile.Read(ref _cleanupRetryExhausted) != 0)
                 return false;
 
             ExceptionDispatchInfo fatal = null;
@@ -214,36 +234,35 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     if (!TryRemovePublisher(token))
                     {
-                        if (Interlocked.Increment(ref _cleanupRetryCount) < MaximumCleanupRetries)
+                        var now = Stopwatch.GetTimestamp();
+                        if (Volatile.Read(ref _cleanupRetryDeadlineTimestamp) == 0)
                         {
-                            Volatile.Write(ref _cleanupPending, 1);
-                            return false;
+                            Volatile.Write(
+                                ref _cleanupRetryDeadlineTimestamp,
+                                now + MaximumCleanupRetryDurationTicks);
                         }
-
-                        Volatile.Write(ref _cleanupRetryExhausted, 1);
-                        Interlocked.CompareExchange(ref _token, null, token);
-                        Volatile.Write(ref _cleanupPending, 0);
+                        var retryCount = Interlocked.Increment(ref _cleanupRetryCount);
+                        Volatile.Write(ref _cleanupPending, 1);
+                        if (retryCount >= MaximumCleanupRetries
+                            || now >= Volatile.Read(ref _cleanupRetryDeadlineTimestamp))
+                        {
+                            Volatile.Write(ref _cleanupRetryExhausted, 1);
+                        }
                     }
                     else
                     {
                         Interlocked.Exchange(ref _cleanupRetryCount, 0);
+                        Volatile.Write(ref _cleanupRetryDeadlineTimestamp, 0L);
+                        Volatile.Write(ref _cleanupRetryExhausted, 0);
                         Interlocked.CompareExchange(ref _token, null, token);
                         Volatile.Write(ref _cleanupPending, 0);
                     }
                 }
                 catch (Exception exception)
                 {
-                    fatal ??= ExceptionDispatchInfo.Capture(exception);
-                    if (Interlocked.Increment(ref _cleanupRetryCount) >= MaximumCleanupRetries)
-                    {
-                        Volatile.Write(ref _cleanupRetryExhausted, 1);
-                        Interlocked.CompareExchange(ref _token, null, token);
-                        Volatile.Write(ref _cleanupPending, 0);
-                    }
-                    else
-                    {
-                        Volatile.Write(ref _cleanupPending, 1);
-                    }
+                    fatal = ExceptionDispatchInfo.Capture(exception);
+                    Volatile.Write(ref _cleanupRetryExhausted, 1);
+                    Volatile.Write(ref _cleanupPending, 1);
                 }
             }
 

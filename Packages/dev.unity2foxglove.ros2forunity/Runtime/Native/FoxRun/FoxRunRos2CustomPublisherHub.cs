@@ -19,6 +19,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         int SourceInstanceId { get; }
         bool IsStopped { get; }
         bool CleanupPending { get; }
+        bool CleanupRetryExhausted { get; }
         void Stop();
         bool TryRetryCleanup();
     }
@@ -424,6 +425,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (!result.Succeeded)
                 {
                     binding.Stop();
+                    if (ShouldTrackFailedBinding(binding.CleanupPending))
+                    {
+                        _bindings.Add(new HostedBinding<TDto, TEnvelope>(
+                            identity,
+                            source.GetInstanceID(),
+                            binding));
+                        _existing.Add(identity);
+                    }
                     var failureKind = result.FailureKind;
                     WarnOnce(
                         identity + "|" + result.Error + "|" + failureKind,
@@ -452,6 +461,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 throw;
             }
         }
+
+        internal static bool ShouldTrackFailedBinding(bool cleanupPending)
+            => cleanupPending;
 
         internal static bool ObserveBindingDemand(
             string identity,
@@ -533,6 +545,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 RemoveCompletedBindings();
                 _stale.Clear();
                 _existing.Clear();
+                for (var index = 0; index < _bindings.Count; index++)
+                    if (_bindings[index].CleanupPending)
+                        _existing.Add(_bindings[index].Identity);
                 _seen.Clear();
                 _nativeDemand.Clear();
                 _observedNativeContractCount = 0;
@@ -545,8 +560,26 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             for (var index = 0; index < _bindings.Count; index++)
             {
                 var binding = _bindings[index];
-                if (binding.CleanupPending)
+                if (!binding.CleanupPending)
+                    continue;
+                try
+                {
                     binding.TryRetryCleanup();
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    WarnOnce(
+                        binding.Identity + "|cleanup-retry|" + exception.GetType().Name,
+                        "Custom native ROS2 publisher cleanup retry failed: "
+                        + exception.GetType().Name);
+                }
+                if (binding.CleanupRetryExhausted)
+                {
+                    WarnOnce(
+                        binding.Identity + "|cleanup-stalled",
+                        "Custom native ROS2 publisher cleanup is stalled; ownership is retained until native removal succeeds.");
+                }
             }
 
             RemoveCompletedBindings();
@@ -557,7 +590,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             for (var index = _bindings.Count - 1; index >= 0; index--)
             {
                 if (_bindings[index].IsStopped && !_bindings[index].CleanupPending)
+                {
+                    _existing.Remove(_bindings[index].Identity);
                     _bindings.RemoveAt(index);
+                }
             }
         }
 
@@ -844,6 +880,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             public int SourceInstanceId { get; }
             public bool IsStopped => _binding.IsStopped;
             public bool CleanupPending => _binding.CleanupPending;
+            public bool CleanupRetryExhausted => _binding.CleanupRetryExhausted;
             public void Stop() => _binding.Stop();
             public bool TryRetryCleanup() => _binding.TryRetryCleanup();
         }
