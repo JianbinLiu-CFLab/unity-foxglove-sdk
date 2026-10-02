@@ -150,13 +150,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(1, driver.ReleaseNodeCount);
         }
 
-        [Fact]
-        public void NativeBinaryLoadFailureIsolatedToThePublisherContract()
+        [Theory]
+        [InlineData("dll")]
+        [InlineData("entry-point")]
+        [InlineData("bad-image")]
+        public void NativeBinaryLoadFailuresEscapeThePublisherBoundary(string failureKind)
         {
+            Exception failure = failureKind switch
+            {
+                "dll" => new DllNotFoundException("ros2-native-path=phase181-secret"),
+                "entry-point" => new EntryPointNotFoundException("ros2-entry-point=phase181-secret"),
+                "bad-image" => new BadImageFormatException("ros2-bad-image=phase181-secret"),
+                _ => throw new ArgumentOutOfRangeException(nameof(failureKind))
+            };
             var driver = new FakeNodeDriver
             {
-                PublisherFailure = new TargetInvocationException(
-                    new DllNotFoundException("ros2-native-path=phase181-secret"))
+                PublisherFailure = new TargetInvocationException(failure)
             };
             var owner = new Ros2ForUnityFoxRunNodeOwner(
                 driver,
@@ -164,20 +173,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 new ManagedQosFactory());
             var publisher = owner.AcquirePublisherBackend();
 
-            var registration = publisher.Register<TestEnvelope>(
-                Contract(),
-                FoxRunResolvedQos.Default);
+            var thrown = Assert.Throws<TargetInvocationException>(
+                () => publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default));
 
-            Assert.False(registration.Succeeded);
-            Assert.Equal(
-                FoxRunRos2RegistrationError.PublisherBackendFailure,
-                registration.Error);
-            Assert.Equal("DllNotFoundException", registration.FailureKind);
+            Assert.Same(failure, thrown.InnerException);
+            Assert.Equal(1, driver.CreatePublisherCount);
             Assert.Equal(0, driver.RemovePublisherCount);
             publisher.ReleaseNodeOwnership();
             owner.ReleaseHostOwnership();
         }
-
         [Fact]
         public void FatalPublisherInspectionPreservesPrimaryFailureAndRollsBackTheEndpoint()
         {
