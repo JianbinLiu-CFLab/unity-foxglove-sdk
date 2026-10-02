@@ -66,6 +66,7 @@ class RemoteGatewayToolingTests(unittest.TestCase):
         )
 
     def _create_source_fixture(self, root: Path) -> tuple[Path, Path]:
+        """Create the minimal source files required by manifest generation tests."""
         source = root / "foxglove-sdk"
         header = source / "include" / "foxglove-c" / "foxglove-c.h"
         header.parent.mkdir(parents=True)
