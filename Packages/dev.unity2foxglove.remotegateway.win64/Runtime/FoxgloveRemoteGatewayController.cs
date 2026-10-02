@@ -222,7 +222,13 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
                     var error = nativeApi.GatewayStart(ref options, out var nativeGateway);
                     if (nativeGateway != IntPtr.Zero)
-                        handle = new RemoteGatewayHandle(nativeGateway);
+                    {
+                        handle = new RemoteGatewayHandle(
+                            nativeGateway,
+                            nativeApi.GatewayConnectionStatus,
+                            nativeApi.GatewaySinkId,
+                            nativeApi.GatewayStop);
+                    }
                     if (error != RemoteGatewayNativeMethods.FoxgloveError.Ok || handle == null)
                     {
                         RecordStartupFault("native gateway returned " + error);

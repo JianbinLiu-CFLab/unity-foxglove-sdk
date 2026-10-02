@@ -109,6 +109,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 expectedContextNewCalls: 1,
                 expectedGatewayStartCalls: 0,
                 expectedContextFreeCalls: 0,
+                expectedGatewayStopCalls: 0,
                 expectCallback: false);
         }
 
@@ -122,6 +123,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 expectedContextNewCalls: 1,
                 expectedGatewayStartCalls: 1,
                 expectedContextFreeCalls: 1,
+                expectedGatewayStopCalls: 0,
                 expectCallback: true);
         }
 
@@ -135,9 +137,60 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 expectedContextNewCalls: 1,
                 expectedGatewayStartCalls: 1,
                 expectedContextFreeCalls: 1,
+                expectedGatewayStopCalls: 0,
                 expectCallback: true);
         }
 
+        [Fact]
+        public void GatewayStartErrorWithHandleStopsBeforeFreeingContext()
+        {
+            var result = InvokeBehaviorProbe("GatewayStartReturnsErrorWithHandle");
+
+            AssertStartupFailure(
+                result,
+                expectedContextNewCalls: 1,
+                expectedGatewayStartCalls: 1,
+                expectedContextFreeCalls: 1,
+                expectedGatewayStopCalls: 1,
+                expectCallback: true);
+        }
+
+        [Fact]
+        public void ConnectionStatusFailureAfterHandleStopsBeforeFreeingContext()
+        {
+            var result = InvokeBehaviorProbe("ConnectionStatusThrowsAfterHandle");
+
+            AssertStartupFailure(
+                result,
+                expectedContextNewCalls: 1,
+                expectedGatewayStartCalls: 1,
+                expectedContextFreeCalls: 1,
+                expectedGatewayStopCalls: 1,
+                expectCallback: true);
+        }
+
+        [Fact]
+        public void MirrorAttachFailureAfterHandleStopsBeforeFreeingContext()
+        {
+            var result = InvokeBehaviorProbe("MirrorAttachThrowsAfterHandle");
+
+            AssertStartupFailure(
+                result,
+                expectedContextNewCalls: 1,
+                expectedGatewayStartCalls: 1,
+                expectedContextFreeCalls: 1,
+                expectedGatewayStopCalls: 1,
+                expectCallback: true);
+        }
+        [Fact]
+        public void SinkIdFailureAfterHandleIsInjectableAndStopRemainsSingle()
+        {
+            var result = InvokeBehaviorProbe("SinkIdThrowsAfterHandle");
+
+            Assert.True(ReadProperty<bool>(result, "FailureObserved"));
+            Assert.Equal(1, ReadProperty<int>(result, "SinkIdCalls"));
+            Assert.Equal(1, ReadProperty<int>(result, "GatewayStopCalls"));
+        }
         [Fact]
         public void ManagerLookupRetriesAfterBoundedDiscoveryBackoff()
         {
@@ -184,7 +237,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
             Assert.Contains("SafeHandleZeroOrMinusOneIsInvalid", source, StringComparison.Ordinal);
             Assert.Contains("protected override bool ReleaseHandle()", source, StringComparison.Ordinal);
-            Assert.Contains("RemoteGatewayNativeMethods.GatewayStop(handle)", source, StringComparison.Ordinal);
+            Assert.Contains("_stop(handle)", source, StringComparison.Ordinal);
             Assert.Contains("handle = IntPtr.Zero", source, StringComparison.Ordinal);
             Assert.Contains("RemoteGatewayNativeMethods.FoxgloveConnectionStatus", source, StringComparison.Ordinal);
             Assert.Contains("RemoteGatewayNativeMethods.FoxgloveError", source, StringComparison.Ordinal);
@@ -203,8 +256,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("GatewaySinkId(RemoteGatewayHandle gateway)", nativeMethods, StringComparison.Ordinal);
             Assert.DoesNotContain("GatewayConnectionStatus(IntPtr gateway)", nativeMethods, StringComparison.Ordinal);
             Assert.DoesNotContain("GatewaySinkId(IntPtr gateway)", nativeMethods, StringComparison.Ordinal);
-            Assert.Contains("GatewayConnectionStatus(this)", handle, StringComparison.Ordinal);
-            Assert.Contains("GatewaySinkId(this)", handle, StringComparison.Ordinal);
+            Assert.Contains("_connectionStatus(this)", handle, StringComparison.Ordinal);
+            Assert.Contains("_sinkId(this)", handle, StringComparison.Ordinal);
             Assert.DoesNotContain("GatewayConnectionStatus(handle)", handle, StringComparison.Ordinal);
             Assert.DoesNotContain("GatewaySinkId(handle)", handle, StringComparison.Ordinal);
             Assert.Contains("IsClosed || IsInvalid", handle, StringComparison.Ordinal);
@@ -398,11 +451,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             int expectedContextNewCalls,
             int expectedGatewayStartCalls,
             int expectedContextFreeCalls,
+            int expectedGatewayStopCalls,
             bool expectCallback)
         {
             Assert.Equal(expectedContextNewCalls, ReadProperty<int>(result, "ContextNewCalls"));
             Assert.Equal(expectedGatewayStartCalls, ReadProperty<int>(result, "GatewayStartCalls"));
             Assert.Equal(expectedContextFreeCalls, ReadProperty<int>(result, "ContextFreeCalls"));
+            Assert.Equal(expectedGatewayStopCalls, ReadProperty<int>(result, "GatewayStopCalls"));
             Assert.Equal(1, ReadProperty<int>(result, "DiagnosticCount"));
             Assert.True(ReadProperty<bool>(result, "StartupFaulted"));
             Assert.False(ReadProperty<bool>(result, "HasOwnedResources"));
@@ -634,7 +689,11 @@ namespace Unity.FoxgloveSDK.Components
     public sealed class FoxgloveManager : UnityEngine.MonoBehaviour
     {
         public bool IsRunning => true;
-        public void SetMirrorSink(Unity.FoxgloveSDK.Core.IFoxgloveMirrorSink sink) {}
+        public static Action<Unity.FoxgloveSDK.Core.IFoxgloveMirrorSink> SetMirrorSinkAction;
+        public void SetMirrorSink(Unity.FoxgloveSDK.Core.IFoxgloveMirrorSink sink)
+        {
+            SetMirrorSinkAction?.Invoke(sink);
+        }
     }
 }
 ";
@@ -653,11 +712,19 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         public int ContextNewCalls { get; set; }
         public int GatewayStartCalls { get; set; }
         public int ContextFreeCalls { get; set; }
+        public int GatewayStopCalls { get; set; }
         public int DiagnosticCount { get; set; }
         public bool StartupFaulted { get; set; }
         public bool HasOwnedResources { get; set; }
         public string ConnectionStatus { get; set; }
         public WeakReference Callback { get; set; }
+    }
+
+    public sealed class PostHandleProbeResult
+    {
+        public bool FailureObserved { get; set; }
+        public int SinkIdCalls { get; set; }
+        public int GatewayStopCalls { get; set; }
     }
 
     public sealed class DiscoveryProbeResult
@@ -704,6 +771,41 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         public static StartupProbeResult GatewayStartReturnsError()
             => Run(throwFromContextNew: false, returnGatewayError: true);
+
+        public static StartupProbeResult GatewayStartReturnsErrorWithHandle()
+            => Run(throwFromContextNew: false, returnGatewayError: true, returnGatewayHandle: true);
+
+        public static StartupProbeResult ConnectionStatusThrowsAfterHandle()
+            => Run(throwFromContextNew: false, returnGatewayError: false, returnGatewayHandle: true, throwConnectionStatus: true);
+
+        public static StartupProbeResult MirrorAttachThrowsAfterHandle()
+            => Run(throwFromContextNew: false, returnGatewayError: false, returnGatewayHandle: true, throwMirrorAttach: true);
+
+        public static PostHandleProbeResult SinkIdThrowsAfterHandle()
+        {
+            var nativeApi = new ThrowingStartupNativeApi(false, false, true, false, true);
+            var handle = new RemoteGatewayHandle(
+                new IntPtr(5678),
+                nativeApi.GatewayConnectionStatus,
+                nativeApi.GatewaySinkId,
+                nativeApi.GatewayStop);
+            var failureObserved = false;
+            try
+            {
+                var unused = handle.SinkId;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                failureObserved = true;
+            }
+            handle.Dispose();
+            return new PostHandleProbeResult
+            {
+                FailureObserved = failureObserved,
+                SinkIdCalls = nativeApi.SinkIdCalls,
+                GatewayStopCalls = nativeApi.GatewayStopCalls
+            };
+        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static DiscoveryProbeResult LateManagerDiscovery()
@@ -805,19 +907,27 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static StartupProbeResult Run(bool throwFromContextNew, bool returnGatewayError)
+        private static StartupProbeResult Run(bool throwFromContextNew, bool returnGatewayError, bool returnGatewayHandle = false, bool throwConnectionStatus = false, bool throwMirrorAttach = false)
         {
             UnityEngine.Debug.Reset();
-            var nativeApi = new ThrowingStartupNativeApi(throwFromContextNew, returnGatewayError);
+            Unity.FoxgloveSDK.Components.FoxgloveManager.SetMirrorSinkAction = null;
+            var nativeApi = new ThrowingStartupNativeApi(throwFromContextNew, returnGatewayError, returnGatewayHandle, throwConnectionStatus);
+            if (throwMirrorAttach)
+                Unity.FoxgloveSDK.Components.FoxgloveManager.SetMirrorSinkAction = sink => throw new EntryPointNotFoundException(""injected mirror attach failure"");
             var controller = new FoxgloveRemoteGatewayController
             {
                 StartupNativeApiForTests = nativeApi
             };
+            typeof(FoxgloveRemoteGatewayController).GetField(""_manager"", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(controller, new Unity.FoxgloveSDK.Components.FoxgloveManager());
 
-            Attempt(controller);
-            Attempt(controller);
+            try
+            {
+                Attempt(controller);
+                if (!throwMirrorAttach)
+                    Attempt(controller);
 
-            return new StartupProbeResult
+                return new StartupProbeResult
             {
                 ContextNewCalls = nativeApi.ContextNewCalls,
                 GatewayStartCalls = nativeApi.GatewayStartCalls,
@@ -826,8 +936,14 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                 StartupFaulted = controller.StartupFaultedForTests,
                 HasOwnedResources = controller.HasOwnedResourcesForTests,
                 ConnectionStatus = controller.ConnectionStatus,
-                Callback = nativeApi.Callback
-            };
+                Callback = nativeApi.Callback,
+                GatewayStopCalls = nativeApi.GatewayStopCalls
+                };
+            }
+            finally
+            {
+                Unity.FoxgloveSDK.Components.FoxgloveManager.SetMirrorSinkAction = null;
+            }
         }
 
         private static void Attempt(FoxgloveRemoteGatewayController controller)
@@ -842,22 +958,33 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             catch (EntryPointNotFoundException)
             {
             }
+            catch (InvalidOperationException)
+            {
+            }
         }
 
         private sealed class ThrowingStartupNativeApi : IRemoteGatewayStartupNativeApi
         {
             private readonly bool _throwFromContextNew;
             private readonly bool _returnGatewayError;
+            private readonly bool _returnGatewayHandle;
+            private readonly bool _throwConnectionStatus;
+            private readonly bool _throwSinkId;
 
-            internal ThrowingStartupNativeApi(bool throwFromContextNew, bool returnGatewayError)
+            internal ThrowingStartupNativeApi(bool throwFromContextNew, bool returnGatewayError, bool returnGatewayHandle = false, bool throwConnectionStatus = false, bool throwSinkId = false)
             {
                 _throwFromContextNew = throwFromContextNew;
                 _returnGatewayError = returnGatewayError;
+                _returnGatewayHandle = returnGatewayHandle;
+                _throwConnectionStatus = throwConnectionStatus;
+                _throwSinkId = throwSinkId;
             }
 
             internal int ContextNewCalls { get; private set; }
             internal int GatewayStartCalls { get; private set; }
             internal int ContextFreeCalls { get; private set; }
+            internal int GatewayStopCalls { get; private set; }
+            internal int SinkIdCalls { get; private set; }
             internal WeakReference Callback { get; private set; }
 
             public IntPtr ContextNew()
@@ -882,14 +1009,38 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                 out IntPtr gateway)
             {
                 GatewayStartCalls++;
-                gateway = IntPtr.Zero;
+                gateway = _returnGatewayHandle ? new IntPtr(5678) : IntPtr.Zero;
                 var nativeCallbacks = Marshal.PtrToStructure<RemoteGatewayNativeMethods.FoxgloveGatewayCallbacks>(
                     options.Callbacks);
                 Callback = new WeakReference(GCHandle.FromIntPtr(nativeCallbacks.Context).Target);
                 if (_returnGatewayError)
                     return RemoteGatewayNativeMethods.FoxgloveError.ConfigurationError;
 
+                if (_returnGatewayHandle)
+                    return RemoteGatewayNativeMethods.FoxgloveError.Ok;
+
                 throw new EntryPointNotFoundException(""injected gateway start failure"");
+            }
+
+            public RemoteGatewayNativeMethods.FoxgloveConnectionStatus GatewayConnectionStatus(RemoteGatewayHandle gateway)
+            {
+                if (_throwConnectionStatus)
+                    throw new EntryPointNotFoundException(""injected connection status failure"");
+                return RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Connected;
+            }
+
+            public ulong GatewaySinkId(RemoteGatewayHandle gateway)
+            {
+                SinkIdCalls++;
+                if (_throwSinkId)
+                    throw new EntryPointNotFoundException(""injected sink id failure"");
+                return 1UL;
+            }
+
+            public RemoteGatewayNativeMethods.FoxgloveError GatewayStop(IntPtr gateway)
+            {
+                GatewayStopCalls++;
+                return RemoteGatewayNativeMethods.FoxgloveError.Ok;
             }
         }
     }
