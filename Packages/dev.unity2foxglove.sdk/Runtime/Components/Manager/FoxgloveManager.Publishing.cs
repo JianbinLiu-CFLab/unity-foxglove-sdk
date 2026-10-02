@@ -5,6 +5,7 @@
 // Purpose: Provides FoxgloveManager channel registration and publish helpers.
 
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.Components.Publishing.MessagePack;
 using UnityEngine;
 #if UNITY_2020_3_OR_NEWER
 using Unity.Profiling;
@@ -421,14 +422,11 @@ namespace Unity.FoxgloveSDK.Components
             if (!IsValidPublishTopic(topic))
                 throw new System.InvalidOperationException("Foxglove publisher topic must be non-empty.");
 
-            var hasComponentIdentity = !string.IsNullOrEmpty(componentLogicalSchemaName);
-            var cacheSchemaName = hasComponentIdentity
-                ? componentLogicalSchemaName
-                : EmptySchemaName;
-            var cacheShapeIdentity = hasComponentIdentity
-                ? componentShapeIdentity ?? string.Empty
-                : string.Empty;
-            var key = (topic, cacheSchemaName, encoding, cacheShapeIdentity);
+            var key = FoxgloveMsgPackChannelIdentity.GetCacheKey(
+                topic,
+                encoding,
+                componentLogicalSchemaName,
+                componentShapeIdentity);
             if (_channelCache.TryGetValue(key, out var id))
                 return id;
 
@@ -440,8 +438,8 @@ namespace Unity.FoxgloveSDK.Components
                 Encoding = encoding,
                 SchemaName = EmptySchemaName,
                 Schema = EmptySchemaPayload,
-                ComponentLogicalSchemaName = componentLogicalSchemaName ?? string.Empty,
-                ComponentShapeIdentity = cacheShapeIdentity
+                ComponentLogicalSchemaName = key.schemaName,
+                ComponentShapeIdentity = key.shapeIdentity
             });
             _connectionState.NextChannelId++;
             _channelCache[key] = id;
