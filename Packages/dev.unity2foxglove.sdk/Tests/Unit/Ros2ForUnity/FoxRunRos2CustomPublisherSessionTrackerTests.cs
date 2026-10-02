@@ -16,6 +16,48 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
 {
     public sealed class FoxRunRos2CustomPublisherSessionTrackerTests
     {
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void FailedPublisherBindingRetentionFollowsCleanupOwnership(bool cleanupPending)
+        {
+            Assert.Equal(
+                cleanupPending,
+                FoxRunRos2CustomPublisherHub.ShouldTrackFailedBinding(cleanupPending));
+        }
+
+        [Fact]
+        public void FailedPublisherBindingIsRetainedWhenCleanupIsPending()
+        {
+            var bindings = new List<IFoxRunRos2CustomPublisherHostedBinding>();
+            var existing = new HashSet<string>(StringComparer.Ordinal);
+            var binding = new FakeHostedBinding("pending", new List<string>(), throws: false, cleanupPending: true);
+
+            Assert.True(FoxRunRos2CustomPublisherHub.TrackFailedBinding(
+                bindings,
+                existing,
+                binding.Identity,
+                binding));
+            Assert.Same(binding, Assert.Single(bindings));
+            Assert.Contains(binding.Identity, existing);
+        }
+
+        [Fact]
+        public void CompletedFailedPublisherBindingIsNotRetained()
+        {
+            var bindings = new List<IFoxRunRos2CustomPublisherHostedBinding>();
+            var existing = new HashSet<string>(StringComparer.Ordinal);
+            var binding = new FakeHostedBinding("completed", new List<string>(), throws: false);
+
+            Assert.False(FoxRunRos2CustomPublisherHub.TrackFailedBinding(
+                bindings,
+                existing,
+                binding.Identity,
+                binding));
+            Assert.Empty(bindings);
+            Assert.Empty(existing);
+        }
+
         [Fact]
         public void SameSnapshotReferenceRequestsOneRebuildOnly()
         {
@@ -241,18 +283,23 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         {
             private readonly List<string> _stopOrder;
             private readonly bool _throws;
+            private readonly bool _cleanupPending;
 
-            public FakeHostedBinding(string identity, List<string> stopOrder, bool throws)
+            public FakeHostedBinding(string identity, List<string> stopOrder, bool throws, bool cleanupPending = false)
             {
                 Identity = identity;
                 _stopOrder = stopOrder;
                 _throws = throws;
+                _cleanupPending = cleanupPending;
             }
 
             public string Identity { get; }
             public int SourceInstanceId => 0;
+            public string Topic => string.Empty;
             public bool IsStopped { get; private set; }
-            public bool CleanupPending => false;
+            public bool CleanupPending => _cleanupPending;
+            public bool CleanupRetryExhausted => false;
+            public bool CleanupRetryFatal => false;
 
             public void Stop()
             {
@@ -263,6 +310,11 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
             }
 
             public bool TryRetryCleanup() => true;
+            public bool TryForceRetryCleanup() => true;
+            public FoxRunTransportPublishResult PublishGenerated(
+                IFoxRunGeneratedMemberAccess member,
+                ulong logTimeNs)
+                => FoxRunTransportPublishResult.Rejected("not used");
         }
 
         private sealed class FatalHostedBinding : IFoxRunRos2CustomPublisherHostedBinding
@@ -277,8 +329,11 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
 
             public string Identity { get; }
             public int SourceInstanceId => 0;
+            public string Topic => string.Empty;
             public bool IsStopped { get; private set; }
             public bool CleanupPending => false;
+            public bool CleanupRetryExhausted => false;
+            public bool CleanupRetryFatal => false;
 
             public void Stop()
             {
@@ -288,6 +343,11 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
             }
 
             public bool TryRetryCleanup() => true;
+            public bool TryForceRetryCleanup() => true;
+            public FoxRunTransportPublishResult PublishGenerated(
+                IFoxRunGeneratedMemberAccess member,
+                ulong logTimeNs)
+                => FoxRunTransportPublishResult.Rejected("not used");
         }
     }
 }

@@ -262,7 +262,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private sealed class Session :
             IFoxRunTransportSession,
-            IFoxRunTransportStatusSource
+            IFoxRunTransportStatusSource,
+            IFoxRunGeneratedTransportSession,
+            IFoxRunGeneratedTransportOwnership
         {
             private FoxRunRos2TransportProvider _owner;
 
@@ -321,6 +323,36 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 in FoxRunTransportPublishRoute route)
                 => FoxRunTransportPublishResult.Rejected(
                     "R2FU routes are emitted as generated typed ROS2 bindings, not untyped byte payloads.");
+
+            public bool OwnsGeneratedTopic(
+                in FoxRunGeneratedTransportPublishRequest request)
+            {
+                var hub = ActivePublisherHub();
+                return hub != null && hub.OwnsGeneratedTopic(in request);
+            }
+
+            public FoxRunTransportPublishResult PublishGenerated(
+                in FoxRunGeneratedTransportPublishRequest request)
+            {
+                var hub = ActivePublisherHub();
+                if (hub == null)
+                {
+                    return FoxRunTransportPublishResult.Unavailable(
+                        "The R2FU Provider session is not active.");
+                }
+
+                return hub.PublishGenerated(in request);
+            }
+
+            private FoxRunRos2CustomPublisherHub ActivePublisherHub()
+            {
+                var owner = _owner;
+                return owner != null
+                       && Volatile.Read(ref owner._activeGeneration)
+                       == checked((long)Generation)
+                    ? owner._publisherHub
+                    : null;
+            }
 
             public FoxRunTransportSubscribeResult Subscribe(
                 in FoxRunTransportSubscribeRoute route)

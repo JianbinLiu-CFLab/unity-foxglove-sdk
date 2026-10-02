@@ -363,8 +363,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         public FoxRunRos2RegistrationResult TryRegister()
         {
-            if (!TryRetryRegistrationRollback())
+            if (!TryRetryRegistrationRollback(out var rollbackFailure))
             {
+                if (rollbackFailure != null
+                    && !FoxRunRos2NativeExceptionPolicy.IsRecoverable(rollbackFailure))
+                    ExceptionDispatchInfo.Capture(rollbackFailure).Throw();
                 lock (_lifecycleLock)
                     return _lastRegistration;
             }
@@ -1142,13 +1145,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
 
         private bool CanRetryRegistrationUnderLock()
-            => Volatile.Read(ref _stopping) == 0
-               && !_registrationInFlight
-               && Volatile.Read(ref _registrationRollbackToken) == null
-               && State == FoxRunRos2SubscriptionBindingState.Failed
-               && (_lastRegistration.Error == FoxRunRos2RegistrationError.BackendFailure
-                   || _lastRegistration.Error == FoxRunRos2RegistrationError.InvalidSubscriptionToken)
-               && _registrationAttemptSequence < MaximumRecoverableRegistrationAttempts;
+        {
+            if (Volatile.Read(ref _stopping) != 0 || _registrationInFlight)
+                return false;
+            if (_registrationRollbackToken != null)
+                return true;
+            return State == FoxRunRos2SubscriptionBindingState.Failed
+                   && (_lastRegistration.Error == FoxRunRos2RegistrationError.BackendFailure
+                       || _lastRegistration.Error == FoxRunRos2RegistrationError.InvalidSubscriptionToken)
+                   && _registrationAttemptSequence < MaximumRecoverableRegistrationAttempts;
+        }
 
         private bool IsActiveGeneration(long callerGeneration)
         {

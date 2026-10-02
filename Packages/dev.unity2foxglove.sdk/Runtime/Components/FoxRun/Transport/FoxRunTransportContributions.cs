@@ -53,6 +53,17 @@ namespace Unity.FoxgloveSDK.Components
             in FoxRunGeneratedTransportPublishRequest request);
     }
 
+    /// <summary>
+    /// Optional filter for a generated session that owns a physical emitter
+    /// for only some captured topics. Topics it does not own are skipped by
+    /// the fanout: they are neither published nor reported as failures.
+    /// </summary>
+    public interface IFoxRunGeneratedTransportOwnership
+    {
+        bool OwnsGeneratedTopic(
+            in FoxRunGeneratedTransportPublishRequest request);
+    }
+
     public readonly struct FoxRunGeneratedTransportTargetResult
     {
         internal FoxRunGeneratedTransportTargetResult(
@@ -161,6 +172,7 @@ namespace Unity.FoxgloveSDK.Components
                 sessions,
                 explicitTransportIds,
                 inheritedTransportIds,
+                in request,
                 suppressedTransportId,
                 suppressedGeneration);
             if (selectedCount == 0)
@@ -176,7 +188,9 @@ namespace Unity.FoxgloveSDK.Components
 
             var targetResults =
                 new FoxRunGeneratedTransportTargetResult[selectedCount];
-            for (var index = 0; index < sessions.Count; index++)
+            for (var index = 0;
+                 index < sessions.Count && matched < selectedCount;
+                 index++)
             {
                 var session = sessions[index];
                 if (!(session is IFoxRunGeneratedTransportSession generated)
@@ -187,7 +201,8 @@ namespace Unity.FoxgloveSDK.Components
                     || !Selects(
                         session.Id,
                         explicitTransportIds,
-                        inheritedTransportIds))
+                        inheritedTransportIds)
+                    || !OwnsTopic(session, in request))
                 {
                     continue;
                 }
@@ -250,6 +265,7 @@ namespace Unity.FoxgloveSDK.Components
             IReadOnlyList<IFoxRunTransportSession> sessions,
             IReadOnlyList<string> explicitTransportIds,
             IReadOnlyList<FoxRunTransportId> inheritedTransportIds,
+            in FoxRunGeneratedTransportPublishRequest request,
             string suppressedTransportId,
             ulong suppressedGeneration)
         {
@@ -268,13 +284,20 @@ namespace Unity.FoxgloveSDK.Components
                     && Selects(
                         session.Id,
                         explicitTransportIds,
-                        inheritedTransportIds))
+                        inheritedTransportIds)
+                    && OwnsTopic(session, in request))
                 {
                     count++;
                 }
             }
             return count;
         }
+
+        private static bool OwnsTopic(
+            IFoxRunTransportSession session,
+            in FoxRunGeneratedTransportPublishRequest request)
+            => !(session is IFoxRunGeneratedTransportOwnership ownership)
+               || ownership.OwnsGeneratedTopic(in request);
 
         private static bool IsSuppressed(
             IFoxRunTransportSession session,
