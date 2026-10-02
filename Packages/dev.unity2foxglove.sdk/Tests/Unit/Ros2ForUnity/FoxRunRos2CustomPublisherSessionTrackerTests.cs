@@ -59,6 +59,54 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         }
 
         [Fact]
+        public void NativeSurfaceFailureSuppressesRepeatedRegistrationUntilSessionReset()
+        {
+            var terminalFailures = new HashSet<string>(StringComparer.Ordinal);
+
+            Assert.False(
+                FoxRunRos2CustomPublisherHub.ShouldSuppressTerminalRegistrationFailure(
+                    terminalFailures,
+                    "source|contract"));
+            Assert.True(
+                FoxRunRos2CustomPublisherHub.RecordTerminalRegistrationFailure(
+                    terminalFailures,
+                    "source|contract",
+                    FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable));
+            Assert.True(
+                FoxRunRos2CustomPublisherHub.ShouldSuppressTerminalRegistrationFailure(
+                    terminalFailures,
+                    "source|contract"));
+            Assert.False(
+                FoxRunRos2CustomPublisherHub.RecordTerminalRegistrationFailure(
+                    terminalFailures,
+                    "source|contract",
+                    FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable));
+
+            terminalFailures.Clear();
+
+            Assert.False(
+                FoxRunRos2CustomPublisherHub.ShouldSuppressTerminalRegistrationFailure(
+                    terminalFailures,
+                    "source|contract"));
+        }
+
+        [Fact]
+        public void OrdinaryPublisherFailureDoesNotSuppressTheNextRegistration()
+        {
+            var terminalFailures = new HashSet<string>(StringComparer.Ordinal);
+
+            Assert.False(
+                FoxRunRos2CustomPublisherHub.RecordTerminalRegistrationFailure(
+                    terminalFailures,
+                    "source|contract",
+                    FoxRunRos2RegistrationError.PublisherBackendFailure));
+            Assert.False(
+                FoxRunRos2CustomPublisherHub.ShouldSuppressTerminalRegistrationFailure(
+                    terminalFailures,
+                    "source|contract"));
+        }
+
+        [Fact]
         public void SameSnapshotReferenceRequestsOneRebuildOnly()
         {
             var tracker = new FoxRunRos2CustomPublisherSessionTracker();

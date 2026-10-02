@@ -49,6 +49,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly HashSet<string> _existing = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _seen = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _nativeDemand = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> _terminalRegistrationFailures =
+            new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _warnings = new HashSet<string>(StringComparer.Ordinal);
         private readonly FoxRunRos2CustomPublisherSessionTracker _publishSessionTracker =
             new FoxRunRos2CustomPublisherSessionTracker();
@@ -527,6 +529,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
+            if (ShouldSuppressTerminalRegistrationFailure(
+                    _terminalRegistrationFailures,
+                    identity))
+            {
+                _nativeDemand.Add(identity);
+                return;
+            }
+
             if (!FoxRunRos2CustomNativeTransportHost.TryAcquirePublisherBackend(out var backend))
             {
                 WarnOnce(
@@ -554,6 +564,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 var result = binding.TryStart();
                 if (!result.Succeeded)
                 {
+                    RecordTerminalRegistrationFailure(
+                        _terminalRegistrationFailures,
+                        identity,
+                        result.Error);
                     binding.Stop();
                     TrackFailedBinding(
                         _bindings,
@@ -594,6 +608,22 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal static bool ShouldTrackFailedBinding(bool cleanupPending)
             => cleanupPending;
+
+        internal static bool ShouldSuppressTerminalRegistrationFailure(
+            ISet<string> terminalFailures,
+            string identity)
+            => terminalFailures != null
+               && !string.IsNullOrEmpty(identity)
+               && terminalFailures.Contains(identity);
+
+        internal static bool RecordTerminalRegistrationFailure(
+            ISet<string> terminalFailures,
+            string identity,
+            FoxRunRos2RegistrationError error)
+            => terminalFailures != null
+               && !string.IsNullOrEmpty(identity)
+               && error == FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+               && terminalFailures.Add(identity);
 
         internal static bool TrackFailedBinding(
             IList<IFoxRunRos2CustomPublisherHostedBinding> bindings,
@@ -695,6 +725,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         _existing.Add(_bindings[index].Identity);
                 _seen.Clear();
                 _nativeDemand.Clear();
+                _terminalRegistrationFailures.Clear();
                 _observedNativeContractCount = 0;
                 _scanCompleted = false;
             }
