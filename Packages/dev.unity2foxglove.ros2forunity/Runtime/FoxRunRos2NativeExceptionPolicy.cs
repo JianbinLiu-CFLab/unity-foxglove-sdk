@@ -22,9 +22,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (current is OutOfMemoryException
                     || current is StackOverflowException
                     || current is AccessViolationException
-                    || current is DllNotFoundException
-                    || current is EntryPointNotFoundException
-                    || current is BadImageFormatException
                     || current is AppDomainUnloadedException
                     || current is SEHException)
                 {
