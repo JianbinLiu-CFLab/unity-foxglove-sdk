@@ -34,6 +34,26 @@ def load_module(name: str, path: Path):
     return module
 
 
+def verify_pinned_source_manifest() -> None:
+    """Verify the committed trust anchor against the pinned source checkout."""
+    build = load_module("remote_gateway_provenance_check", BUILD_PATH)
+    manifest_path = ROOT / (
+        "Packages/dev.unity2foxglove.remotegateway.win64/Runtime/"
+        "Plugins/Windows/x86_64/foxglove-gateway-native-artifact.json"
+    )
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    actual_revision = build.foxglove_source_revision()
+    actual_header = build.sha256_pinned_source(build.FOXGLOVE_HEADER).lower()
+    actual_cargo_lock = build.sha256_pinned_source(build.FOXGLOVE_ROOT / "Cargo.lock").lower()
+    if actual_revision != payload["sourceCommit"]:
+        raise AssertionError(f"source commit mismatch: {actual_revision} != {payload['sourceCommit']}")
+    if actual_header != payload["cHeaderSha256"].lower():
+        raise AssertionError(f"C header hash mismatch: {actual_header} != {payload['cHeaderSha256']}")
+    if actual_cargo_lock != payload["cargoLockSha256"].lower():
+        raise AssertionError(f"Cargo.lock hash mismatch: {actual_cargo_lock} != {payload['cargoLockSha256']}")
+    print("REMOTE_GATEWAY_PROVENANCE_OK")
+
+
 class RemoteGatewayToolingTests(unittest.TestCase):
     """Lock artifact allow-lists, provenance, and acceptance identity."""
 
@@ -44,6 +64,28 @@ class RemoteGatewayToolingTests(unittest.TestCase):
             "remote_gateway_acceptance_under_test",
             ACCEPTANCE_PATH,
         )
+
+    def _create_source_fixture(self, root: Path) -> tuple[Path, Path]:
+        """Create the minimal source files required by manifest generation tests."""
+        source = root / "foxglove-sdk"
+        header = source / "include" / "foxglove-c" / "foxglove-c.h"
+        header.parent.mkdir(parents=True)
+        header.write_bytes(b"header fixture")
+        (source / "Cargo.lock").write_bytes(b"cargo lock fixture")
+        return source, header
+
+    def test_committed_manifest_records_pinned_source_and_provenance(self) -> None:
+        """The tracked trust anchor records the pinned source inputs."""
+        manifest_path = ROOT / (
+            "Packages/dev.unity2foxglove.remotegateway.win64/Runtime/"
+            "Plugins/Windows/x86_64/foxglove-gateway-native-artifact.json"
+        )
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(self.build.EXPECTED_FOXGLOVE_COMMIT, payload["sourceCommit"])
+        self.assertEqual(self.build.EXPECTED_FOXGLOVE_HEADER_SHA256, payload["cHeaderSha256"])
+        self.assertEqual(self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256, payload["cargoLockSha256"])
+        self.assertEqual("present", payload["environment"]["cargoLock"])
 
     def test_copy_rejects_an_unreviewed_artifact_name(self) -> None:
         """Callers cannot widen the package-copy allow-list."""
@@ -126,6 +168,7 @@ class RemoteGatewayToolingTests(unittest.TestCase):
         """Native provenance must include both C and C++ CRT controls."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            source, header = self._create_source_fixture(root)
             release = root / "target/release"
             release.mkdir(parents=True)
             (release / "foxglove.dll").write_bytes(b"dll")
@@ -137,7 +180,22 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                 "AWS_LC_SYS_PREBUILT_NASM": "1",
                 "CARGO_TARGET_DIR": str(root / "target"),
             }
-            with mock.patch.object(self.build, "STAGING", staging):
+            with mock.patch.object(
+                self.build,
+                "foxglove_source_revision",
+                return_value=self.build.EXPECTED_FOXGLOVE_COMMIT,
+            ), mock.patch.object(
+                self.build,
+                "sha256_pinned_source",
+                side_effect=[
+                    self.build.EXPECTED_FOXGLOVE_HEADER_SHA256,
+                    self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256,
+                ],
+            ), mock.patch.multiple(
+                self.build,
+                FOXGLOVE_ROOT=source,
+                FOXGLOVE_HEADER=header,
+            ), mock.patch.object(self.build, "STAGING", staging):
                 path = self.build.write_manifest(
                     root / "target",
                     environment,
@@ -151,6 +209,7 @@ class RemoteGatewayToolingTests(unittest.TestCase):
         """Selected import libraries and symbols cannot disappear silently."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            source, header = self._create_source_fixture(root)
             release = root / "target/release"
             release.mkdir(parents=True)
             (release / "foxglove.dll").write_bytes(b"dll")
@@ -161,8 +220,27 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                 "AWS_LC_SYS_PREBUILT_NASM": "1",
                 "CARGO_TARGET_DIR": str(root / "target"),
             }
-            with self.assertRaisesRegex(FileNotFoundError, "Missing selected artifact"):
-                self.build.write_manifest(root / "target", environment, self.build.APPROVED_ARTIFACTS)
+            with mock.patch.object(
+                self.build,
+                "foxglove_source_revision",
+                return_value=self.build.EXPECTED_FOXGLOVE_COMMIT,
+            ), mock.patch.object(
+                self.build,
+                "sha256_pinned_source",
+                side_effect=[
+                    self.build.EXPECTED_FOXGLOVE_HEADER_SHA256,
+                    self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256,
+                ],
+            ), mock.patch.multiple(
+                self.build,
+                FOXGLOVE_ROOT=source,
+                FOXGLOVE_HEADER=header,
+            ), self.assertRaisesRegex(FileNotFoundError, "Missing selected artifact"):
+                self.build.write_manifest(
+                    root / "target",
+                    environment,
+                    self.build.APPROVED_ARTIFACTS,
+                )
 
     def test_relative_target_dir_uses_repository_base(self) -> None:
         """Cargo and manifest paths must resolve relative targets identically."""
@@ -214,6 +292,7 @@ class RemoteGatewayToolingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            source, header = self._create_source_fixture(root)
             release = root / "target/release"
             release.mkdir(parents=True)
             (release / "foxglove.dll").write_bytes(b"dll")
@@ -227,8 +306,27 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                 "CARGO_BUILD_TARGET": "x86_64-pc-windows-msvc",
                 "RUSTUP_TOOLCHAIN": "stable-msvc",
             }
-            with mock.patch.object(self.build, "STAGING", staging):
-                path = self.build.write_manifest(root / "target", manifest_environment, ("foxglove.dll",))
+            with mock.patch.object(
+                self.build,
+                "foxglove_source_revision",
+                return_value=self.build.EXPECTED_FOXGLOVE_COMMIT,
+            ), mock.patch.object(
+                self.build,
+                "sha256_pinned_source",
+                side_effect=[
+                    self.build.EXPECTED_FOXGLOVE_HEADER_SHA256,
+                    self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256,
+                ],
+            ), mock.patch.multiple(
+                self.build,
+                FOXGLOVE_ROOT=source,
+                FOXGLOVE_HEADER=header,
+            ), mock.patch.object(self.build, "STAGING", staging):
+                path = self.build.write_manifest(
+                    root / "target",
+                    manifest_environment,
+                    ("foxglove.dll",),
+                )
             payload = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual("x86_64-pc-windows-msvc", payload["target"])
         self.assertEqual("stable-msvc", payload["environment"]["RUSTUP_TOOLCHAIN"])

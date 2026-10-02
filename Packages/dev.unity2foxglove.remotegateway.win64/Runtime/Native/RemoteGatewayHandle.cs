@@ -9,14 +9,36 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
 {
     internal sealed class RemoteGatewayHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
+        private readonly Func<RemoteGatewayHandle, RemoteGatewayNativeMethods.FoxgloveConnectionStatus> _connectionStatus;
+        private readonly Func<RemoteGatewayHandle, ulong> _sinkId;
+        private readonly Func<IntPtr, RemoteGatewayNativeMethods.FoxgloveError> _stop;
         internal RemoteGatewayHandle()
             : base(true)
         {
+            _connectionStatus = RemoteGatewayNativeMethods.GatewayConnectionStatus;
+            _sinkId = RemoteGatewayNativeMethods.GatewaySinkId;
+            _stop = RemoteGatewayNativeMethods.GatewayStop;
         }
 
         internal RemoteGatewayHandle(IntPtr nativeHandle)
+            : this(
+                nativeHandle,
+                RemoteGatewayNativeMethods.GatewayConnectionStatus,
+                RemoteGatewayNativeMethods.GatewaySinkId,
+                RemoteGatewayNativeMethods.GatewayStop)
+        {
+        }
+
+        internal RemoteGatewayHandle(
+            IntPtr nativeHandle,
+            Func<RemoteGatewayHandle, RemoteGatewayNativeMethods.FoxgloveConnectionStatus> connectionStatus,
+            Func<RemoteGatewayHandle, ulong> sinkId,
+            Func<IntPtr, RemoteGatewayNativeMethods.FoxgloveError> stop)
             : base(true)
         {
+            _connectionStatus = connectionStatus ?? throw new ArgumentNullException(nameof(connectionStatus));
+            _sinkId = sinkId ?? throw new ArgumentNullException(nameof(sinkId));
+            _stop = stop ?? throw new ArgumentNullException(nameof(stop));
             SetHandle(nativeHandle);
         }
 
@@ -31,7 +53,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
 
                 try
                 {
-                    return RemoteGatewayNativeMethods.GatewayConnectionStatus(this);
+                    return _connectionStatus(this);
                 }
                 catch (ObjectDisposedException)
                 {
@@ -51,7 +73,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
 
                 try
                 {
-                    return RemoteGatewayNativeMethods.GatewaySinkId(this);
+                    return _sinkId(this);
                 }
                 catch (ObjectDisposedException)
                 {
@@ -62,7 +84,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
 
         protected override bool ReleaseHandle()
         {
-            var result = RemoteGatewayNativeMethods.GatewayStop(handle);
+            var result = _stop(handle);
             handle = IntPtr.Zero;
             return result == RemoteGatewayNativeMethods.FoxgloveError.Ok
                    || result == RemoteGatewayNativeMethods.FoxgloveError.SinkClosed;

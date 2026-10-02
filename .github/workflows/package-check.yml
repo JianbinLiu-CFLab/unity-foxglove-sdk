@@ -21,6 +21,9 @@ jobs:
       - name: Validate release package
         run: python3 Scripts/package/validate_unity_package.py
 
+      - name: Run remote gateway tooling regressions
+        run: python3 -m unittest Scripts.remotegateway.regression_checks.test_remote_gateway_tooling
+
       - name: Validate local ROS2/R2FU entrypoints
         run: python3 Scripts/package/validate_local_entrypoints.py
 

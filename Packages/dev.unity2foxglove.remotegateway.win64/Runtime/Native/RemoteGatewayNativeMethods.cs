@@ -233,6 +233,9 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
         RemoteGatewayNativeMethods.FoxgloveError GatewayStart(
             ref RemoteGatewayNativeMethods.FoxgloveGatewayOptions options,
             out IntPtr gateway);
+        RemoteGatewayNativeMethods.FoxgloveConnectionStatus GatewayConnectionStatus(RemoteGatewayHandle gateway);
+        ulong GatewaySinkId(RemoteGatewayHandle gateway);
+        RemoteGatewayNativeMethods.FoxgloveError GatewayStop(IntPtr gateway);
     }
 
     internal sealed class RemoteGatewayStartupNativeApi : IRemoteGatewayStartupNativeApi
@@ -253,5 +256,14 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
             ref RemoteGatewayNativeMethods.FoxgloveGatewayOptions options,
             out IntPtr gateway)
             => RemoteGatewayNativeMethods.GatewayStart(ref options, out gateway);
+
+        public RemoteGatewayNativeMethods.FoxgloveConnectionStatus GatewayConnectionStatus(RemoteGatewayHandle gateway)
+            => RemoteGatewayNativeMethods.GatewayConnectionStatus(gateway);
+
+        public ulong GatewaySinkId(RemoteGatewayHandle gateway)
+            => RemoteGatewayNativeMethods.GatewaySinkId(gateway);
+
+        public RemoteGatewayNativeMethods.FoxgloveError GatewayStop(IntPtr gateway)
+            => RemoteGatewayNativeMethods.GatewayStop(gateway);
     }
 }
