@@ -558,6 +558,42 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
         [Fact]
+        public void RawMessagePackWritesDoNotClaimTypedComponentContract()
+        {
+            using var transport = new MatrixTransport();
+            using var session = new FoxgloveSession("module8-channel-ownership", transport);
+            using var stream = new MemoryStream();
+            using var recorder = new McapRecorder(stream, leaveOpen: true);
+            session.SetRecorder(recorder);
+
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 1,
+                Topic = "/same/topic",
+                Encoding = "msgpack"
+            });
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 2,
+                Topic = "/same/topic",
+                Encoding = "msgpack",
+                ComponentLogicalSchemaName = "module8.Component",
+                ComponentShapeIdentity = "shape.v1"
+            });
+
+            session.Publish(1, new byte[] { 0x91, 0x01 }, 1UL);
+            Assert.Empty(recorder.GetRecordedComponentContractSnapshot());
+
+            session.Publish(2, new byte[] { 0x91, 0x02 }, 2UL);
+            session.Publish(1, new byte[] { 0x91, 0x03 }, 3UL);
+
+            var contract = Assert.Single(recorder.GetRecordedComponentContractSnapshot());
+            Assert.Equal("/same/topic", contract.Topic);
+            Assert.Equal("module8.Component", contract.LogicalSchema);
+            Assert.Equal("shape.v1", contract.ShapeIdentity);
+        }
+
+        [Fact]
         public void SdkWireSchemaIdentityChangesWhenRegisteredSchemaContentChanges()
         {
             var first = new DefaultSchemaRegistry();
@@ -604,6 +640,29 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal(string.Empty, hash);
             Assert.Contains("module8.Missing", failureReason);
             Assert.Contains("jsonschema", failureReason);
+        }
+
+        [Fact]
+        public void MissingSchemaDiagnosticIsBounded()
+        {
+            var registry = new DefaultSchemaRegistry();
+            var recorded = new[]
+            {
+                new McapSchema
+                {
+                    Name = new string('x', 4096),
+                    Encoding = "jsonschema",
+                    Data = Array.Empty<byte>()
+                }
+            };
+
+            Assert.False(SdkWireSchemaIdentity.TryCompute(
+                registry,
+                recorded,
+                out _,
+                out var failureReason));
+            Assert.Contains("...", failureReason);
+            Assert.True(failureReason.Length < 256, failureReason.Length.ToString());
         }
 
         [Fact]
@@ -874,20 +933,6 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal("shape.v1", typed.shapeIdentity);
             Assert.NotEqual(raw, typed);
             Assert.NotEqual(typed, changedShape);
-        }
-
-        private static string RepoPath(string relativePath)
-        {
-            var directory = new DirectoryInfo(AppContext.BaseDirectory);
-            while (directory != null)
-            {
-                var candidate = Path.Combine(directory.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
-                if (File.Exists(candidate))
-                    return candidate;
-                directory = directory.Parent;
-            }
-
-            throw new DirectoryNotFoundException(relativePath);
         }
 
         private static SchemaEncodingMatrixRow CreateProtobufMatrixRow()

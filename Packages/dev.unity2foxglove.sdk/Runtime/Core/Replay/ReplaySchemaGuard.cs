@@ -243,6 +243,15 @@ namespace Unity.FoxgloveSDK.Core
 
     internal static class SdkWireSchemaIdentity
     {
+        private const int DiagnosticValueLimit = 128;
+
+        private static string LimitDiagnosticValue(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= DiagnosticValueLimit)
+                return value ?? string.Empty;
+            return value.Substring(0, DiagnosticValueLimit - 3) + "...";
+        }
+
         internal static bool TryCompute(ISchemaRegistry registry, out string hash)
         {
             hash = string.Empty;
@@ -305,7 +314,7 @@ namespace Unity.FoxgloveSDK.Core
                     && string.Equals(entry.Encoding, recorded.Encoding, StringComparison.OrdinalIgnoreCase));
                 if (string.IsNullOrEmpty(match.Name))
                 {
-                    failureReason = "Missing schema '" + recorded.Name + "' with encoding '" + recorded.Encoding + "'.";
+                    failureReason = "Missing schema '" + LimitDiagnosticValue(recorded.Name) + "' with encoding '" + LimitDiagnosticValue(recorded.Encoding) + "'.";
                     return false;
                 }
                 selected.Add(match);
@@ -325,8 +334,8 @@ namespace Unity.FoxgloveSDK.Core
                     || string.IsNullOrEmpty(recorded.ShapeIdentity))
                 {
                     failureReason = "Invalid recorded component contract for logical schema '"
-                        + (recorded.LogicalSchema ?? string.Empty)
-                        + "' and shape '" + (recorded.ShapeIdentity ?? string.Empty) + "'.";
+                        + LimitDiagnosticValue(recorded.LogicalSchema)
+                        + "' and shape '" + LimitDiagnosticValue(recorded.ShapeIdentity) + "'.";
                     return false;
                 }
 
@@ -337,8 +346,8 @@ namespace Unity.FoxgloveSDK.Core
                     && string.Equals(entry.ShapeIdentity, recorded.ShapeIdentity, StringComparison.Ordinal));
                 if (currentComponent == null)
                 {
-                    failureReason = "Missing component '" + recorded.LogicalSchema
-                        + "' with recorded shape '" + recorded.ShapeIdentity + "'.";
+                    failureReason = "Missing component '" + LimitDiagnosticValue(recorded.LogicalSchema)
+                        + "' with recorded shape '" + LimitDiagnosticValue(recorded.ShapeIdentity) + "'.";
                     return false;
                 }
 
