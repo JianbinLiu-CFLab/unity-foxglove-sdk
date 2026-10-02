@@ -65,6 +65,14 @@ class RemoteGatewayToolingTests(unittest.TestCase):
             ACCEPTANCE_PATH,
         )
 
+    def _create_source_fixture(self, root: Path) -> tuple[Path, Path]:
+        source = root / "foxglove-sdk"
+        header = source / "include" / "foxglove-c" / "foxglove-c.h"
+        header.parent.mkdir(parents=True)
+        header.write_bytes(b"header fixture")
+        (source / "Cargo.lock").write_bytes(b"cargo lock fixture")
+        return source, header
+
     def test_committed_manifest_records_pinned_source_and_provenance(self) -> None:
         """The tracked trust anchor records the pinned source inputs."""
         manifest_path = ROOT / (
@@ -159,6 +167,7 @@ class RemoteGatewayToolingTests(unittest.TestCase):
         """Native provenance must include both C and C++ CRT controls."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            source, header = self._create_source_fixture(root)
             release = root / "target/release"
             release.mkdir(parents=True)
             (release / "foxglove.dll").write_bytes(b"dll")
@@ -181,6 +190,10 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                     self.build.EXPECTED_FOXGLOVE_HEADER_SHA256,
                     self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256,
                 ],
+            ), mock.patch.multiple(
+                self.build,
+                FOXGLOVE_ROOT=source,
+                FOXGLOVE_HEADER=header,
             ), mock.patch.object(self.build, "STAGING", staging):
                 path = self.build.write_manifest(
                     root / "target",
@@ -195,6 +208,7 @@ class RemoteGatewayToolingTests(unittest.TestCase):
         """Selected import libraries and symbols cannot disappear silently."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            source, header = self._create_source_fixture(root)
             release = root / "target/release"
             release.mkdir(parents=True)
             (release / "foxglove.dll").write_bytes(b"dll")
@@ -216,6 +230,10 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                     self.build.EXPECTED_FOXGLOVE_HEADER_SHA256,
                     self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256,
                 ],
+            ), mock.patch.multiple(
+                self.build,
+                FOXGLOVE_ROOT=source,
+                FOXGLOVE_HEADER=header,
             ), self.assertRaisesRegex(FileNotFoundError, "Missing selected artifact"):
                 self.build.write_manifest(
                     root / "target",
@@ -273,6 +291,7 @@ class RemoteGatewayToolingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            source, header = self._create_source_fixture(root)
             release = root / "target/release"
             release.mkdir(parents=True)
             (release / "foxglove.dll").write_bytes(b"dll")
@@ -297,6 +316,10 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                     self.build.EXPECTED_FOXGLOVE_HEADER_SHA256,
                     self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256,
                 ],
+            ), mock.patch.multiple(
+                self.build,
+                FOXGLOVE_ROOT=source,
+                FOXGLOVE_HEADER=header,
             ), mock.patch.object(self.build, "STAGING", staging):
                 path = self.build.write_manifest(
                     root / "target",
