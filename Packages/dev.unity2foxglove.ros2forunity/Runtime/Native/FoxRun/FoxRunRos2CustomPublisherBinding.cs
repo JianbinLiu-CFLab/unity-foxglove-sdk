@@ -6,7 +6,6 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
-using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;
@@ -34,7 +33,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Action _onStopped;
         private readonly Func<FoxTopicEnvelope<TDto>, bool> _busCallback;
         private const int MaximumCleanupRetries = 8;
-        private static readonly long MaximumCleanupRetryDurationTicks = Stopwatch.Frequency * 4L;
         private readonly object _cleanupGate = new object();
         private IFoxRunRos2NativePublisherToken _token;
         private bool _subscribed;
@@ -42,7 +40,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private int _cleanupPending;
         private int _cleanupRetryCount;
         private int _cleanupRetryExhausted;
-        private long _cleanupRetryDeadlineTimestamp;
+        private int _cleanupFatal;
         private int _ownershipReleased;
         private int _completionNotified;
 
@@ -74,6 +72,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal bool IsStopped => Volatile.Read(ref _stopped) != 0;
         internal bool CleanupPending => Volatile.Read(ref _cleanupPending) != 0;
         internal bool CleanupRetryExhausted => Volatile.Read(ref _cleanupRetryExhausted) != 0;
+        internal bool CleanupRetryFatal => Volatile.Read(ref _cleanupFatal) != 0;
         internal int PublishedCount { get; private set; }
         internal int MapperFailureCount { get; private set; }
         internal int PublishFailureCount { get; private set; }
@@ -211,8 +210,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (force && Volatile.Read(ref _cleanupRetryExhausted) != 0)
                 {
                     Volatile.Write(ref _cleanupRetryExhausted, 0);
+                    Volatile.Write(ref _cleanupFatal, 0);
                     Volatile.Write(ref _cleanupRetryCount, 0);
-                    Volatile.Write(ref _cleanupRetryDeadlineTimestamp, 0L);
                     Volatile.Write(ref _cleanupPending, 1);
                 }
                 return TryRetryCleanupCore();
@@ -234,26 +233,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     if (!TryRemovePublisher(token))
                     {
-                        var now = Stopwatch.GetTimestamp();
-                        if (Volatile.Read(ref _cleanupRetryDeadlineTimestamp) == 0)
-                        {
-                            Volatile.Write(
-                                ref _cleanupRetryDeadlineTimestamp,
-                                now + MaximumCleanupRetryDurationTicks);
-                        }
                         var retryCount = Interlocked.Increment(ref _cleanupRetryCount);
                         Volatile.Write(ref _cleanupPending, 1);
-                        if (retryCount >= MaximumCleanupRetries
-                            || now >= Volatile.Read(ref _cleanupRetryDeadlineTimestamp))
-                        {
+                        if (retryCount >= MaximumCleanupRetries)
                             Volatile.Write(ref _cleanupRetryExhausted, 1);
-                        }
                     }
                     else
                     {
                         Interlocked.Exchange(ref _cleanupRetryCount, 0);
-                        Volatile.Write(ref _cleanupRetryDeadlineTimestamp, 0L);
                         Volatile.Write(ref _cleanupRetryExhausted, 0);
+                        Volatile.Write(ref _cleanupFatal, 0);
                         Interlocked.CompareExchange(ref _token, null, token);
                         Volatile.Write(ref _cleanupPending, 0);
                     }
@@ -262,6 +251,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     fatal = ExceptionDispatchInfo.Capture(exception);
                     Volatile.Write(ref _cleanupRetryExhausted, 1);
+                    Volatile.Write(ref _cleanupFatal, 1);
                     Volatile.Write(ref _cleanupPending, 1);
                 }
             }

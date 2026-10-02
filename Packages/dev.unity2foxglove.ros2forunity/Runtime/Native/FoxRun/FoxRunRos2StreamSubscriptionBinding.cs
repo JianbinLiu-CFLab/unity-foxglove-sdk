@@ -135,8 +135,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         public FoxRunRos2RegistrationResult TryRegister()
         {
-            if (!TryRetryFailedRegistrationRollback())
+            if (!TryRetryFailedRegistrationRollback(out var rollbackFailure))
             {
+                if (rollbackFailure != null
+                    && !FoxRunRos2NativeExceptionPolicy.IsRecoverable(rollbackFailure))
+                    ExceptionDispatchInfo.Capture(rollbackFailure).Throw();
                 lock (_lifecycleLock)
                     return _lastRegistration;
             }
