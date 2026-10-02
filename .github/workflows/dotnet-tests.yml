@@ -192,6 +192,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout pinned official Foxglove schema reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: foxglove/foxglove-sdk
+          ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
+          path: third-party/foxglove-sdk
+          persist-credentials: false
+
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "10.0"
@@ -218,6 +226,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
+
+      - name: Checkout pinned official Foxglove schema reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: foxglove/foxglove-sdk
+          ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
+          path: third-party/foxglove-sdk
           persist-credentials: false
 
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
@@ -258,6 +274,14 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
+
+      - name: Checkout pinned official Foxglove schema reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: foxglove/foxglove-sdk
+          ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
+          path: third-party/foxglove-sdk
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:

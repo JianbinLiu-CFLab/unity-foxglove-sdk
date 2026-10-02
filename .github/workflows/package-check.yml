@@ -18,6 +18,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout pinned official Foxglove schema reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: foxglove/foxglove-sdk
+          ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
+          path: third-party/foxglove-sdk
+          persist-credentials: false
+
       - name: Validate release package
         run: python3 Scripts/package/validate_unity_package.py
 
