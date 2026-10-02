@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase186ProvenanceTests_support:
+    """Decomposed Phase192 implementation component."""
     def test_repository_ledger_and_pre_move_inventory_are_current(self) -> None:
         """The checked-in ledgers must describe the current pre-extraction tree."""
 

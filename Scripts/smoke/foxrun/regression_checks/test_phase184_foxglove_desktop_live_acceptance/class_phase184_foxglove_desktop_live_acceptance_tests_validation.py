@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveDesktopLiveAcceptanceTests_validation:
+    """Decomposed Phase192 implementation component."""
     def test_connection_window_starts_after_current_client_readiness(self):
         """Verify connection window starts after current client readiness."""
 

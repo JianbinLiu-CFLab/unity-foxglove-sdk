@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase186ProvenanceTests_cleanup:
+    """Decomposed Phase192 implementation component."""
     def test_protocol_docs_reject_limit_value_and_error_mapping_drift(self) -> None:
         """Rehashing a document cannot rewrite frozen table semantics."""
 

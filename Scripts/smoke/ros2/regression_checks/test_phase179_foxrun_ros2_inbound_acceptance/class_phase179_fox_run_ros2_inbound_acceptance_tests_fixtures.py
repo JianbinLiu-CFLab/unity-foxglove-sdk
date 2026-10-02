@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase179FoxRunRos2InboundAcceptanceTests_fixtures:
+    """Decomposed Phase192 implementation component."""
     def test_ready_marker_baseline_requires_a_new_unseen_token_when_editor_log_is_reused(self) -> None:
         """A reused Editor.log may overwrite below EOF, so local acceptance must reject its pre-run READY token."""
 

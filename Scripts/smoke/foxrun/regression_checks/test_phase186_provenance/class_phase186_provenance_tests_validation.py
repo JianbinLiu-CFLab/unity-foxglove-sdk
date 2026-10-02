@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase186ProvenanceTests_validation:
+    """Decomposed Phase192 implementation component."""
     def test_required_authority_rejects_contained_symlink_alias(self) -> None:
         """Authority bytes belong to the lexical Git path, never its target."""
 

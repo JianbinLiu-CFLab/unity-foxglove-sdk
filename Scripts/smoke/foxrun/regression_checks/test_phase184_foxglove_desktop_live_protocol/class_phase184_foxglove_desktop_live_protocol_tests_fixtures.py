@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveDesktopLiveProtocolTests_fixtures:
+    """Decomposed Phase192 implementation component."""
     def test_receipt_rejects_drive_and_unc_namespace_aliases_in_both_directions(self):
         """Verify receipt rejects drive and unc namespace aliases in both directions."""
 

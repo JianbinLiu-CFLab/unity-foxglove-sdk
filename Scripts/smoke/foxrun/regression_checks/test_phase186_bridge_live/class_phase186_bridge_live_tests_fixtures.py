@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase186BridgeLiveTests_fixtures:
+    """Decomposed Phase192 implementation component."""
     def test_manual_wait_fails_immediately_when_live_actor_exits(self) -> None:
         """Verify that manual wait fails immediately when live actor exits."""
         with tempfile.TemporaryDirectory() as temp:

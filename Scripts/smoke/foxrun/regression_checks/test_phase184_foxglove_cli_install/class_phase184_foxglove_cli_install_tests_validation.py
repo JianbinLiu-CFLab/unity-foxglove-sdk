@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveCliInstallTests_validation:
+    """Decomposed Phase192 implementation component."""
     def test_successful_new_install_verifies_fresh_resolution_then_writes_receipt(self):
         """Verify successful new install verifies fresh resolution then writes receipt."""
 

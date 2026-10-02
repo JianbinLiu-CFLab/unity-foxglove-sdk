@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184ProfileAcceptanceOrchestratorTests_validation:
+    """Decomposed Phase192 implementation component."""
     def test_peer_graph_auditor_rejects_missing_unity_context_before_peer_budget(self):
         """The finite peer-result budget cannot start before the Play barrier."""
 

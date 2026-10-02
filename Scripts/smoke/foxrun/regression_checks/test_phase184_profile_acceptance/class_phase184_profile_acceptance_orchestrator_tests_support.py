@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184ProfileAcceptanceOrchestratorTests_support:
+    """Decomposed Phase192 implementation component."""
     @staticmethod
     def _write_observed_runtime_markers(config):
         """Write current-token Unity evidence used by summary unit tests."""

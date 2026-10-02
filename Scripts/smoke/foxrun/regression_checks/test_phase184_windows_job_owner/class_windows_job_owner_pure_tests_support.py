@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _WindowsJobOwnerPureTests_support:
+    """Decomposed Phase192 implementation component."""
     def make_owner(self, api: FakeWindowsApi | None = None, **owner_options):
         """Build owner."""
 

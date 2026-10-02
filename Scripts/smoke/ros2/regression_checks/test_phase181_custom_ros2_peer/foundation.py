@@ -34,6 +34,7 @@ def load_peer_module():
     spec.loader.exec_module(module)
     return module
 class _Phase181CustomRos2PeerTests_support:
+    """Decomposed Phase192 implementation component."""
     def test_peer_build_has_a_separate_bounded_window_from_unity_readiness(self):
         """Verify Phase181 behavior: a cold rosidl build cannot consume the Unity readiness window."""
         peer = load_peer_module()

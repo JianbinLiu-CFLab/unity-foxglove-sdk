@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _WindowsJobOwnerPureTests_validation:
+    """Decomposed Phase192 implementation component."""
     def test_breakaway_or_single_instance_handoff_fails_and_records_external(self):
         """Verify breakaway or single instance handoff fails and records external."""
 

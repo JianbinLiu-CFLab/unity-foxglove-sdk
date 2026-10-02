@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184ProfileAcceptanceOrchestratorTests_cleanup:
+    """Decomposed Phase192 implementation component."""
     def test_failed_job_registration_terminates_the_untracked_child(self):
         """Job assignment failure cannot leave the just-spawned process orphaned."""
 

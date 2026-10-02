@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase181CustomRos2PeerTests_fixtures:
+    """Decomposed Phase192 implementation component."""
     def test_one_sided_graph_or_inspector_evidence_cannot_pass(self):
         """Verify Phase181 behavior: one sided graph or inspector evidence cannot pass."""
         peer = load_peer_module()

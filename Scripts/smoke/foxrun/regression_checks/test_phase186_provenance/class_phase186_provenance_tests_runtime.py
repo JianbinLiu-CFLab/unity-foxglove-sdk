@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase186ProvenanceTests_runtime:
+    """Decomposed Phase192 implementation component."""
     def test_canonical_inventory_rejects_symlink_alias_even_when_target_is_contained(
         self,
     ) -> None:

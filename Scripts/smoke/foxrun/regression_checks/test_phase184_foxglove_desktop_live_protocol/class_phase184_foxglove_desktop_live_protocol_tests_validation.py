@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveDesktopLiveProtocolTests_validation:
+    """Decomposed Phase192 implementation component."""
     def test_desktop_client_barrier_rejects_every_malformed_schema_shape_immediately(self):
         """Verify desktop client barrier rejects every malformed schema shape immediately."""
 

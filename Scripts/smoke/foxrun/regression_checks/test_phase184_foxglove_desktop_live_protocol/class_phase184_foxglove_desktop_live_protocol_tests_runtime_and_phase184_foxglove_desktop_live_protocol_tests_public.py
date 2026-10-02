@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveDesktopLiveProtocolTests_runtime:
+    """Decomposed Phase192 implementation component."""
     def test_transport_client_markers_require_zero_one_two_in_strict_order(self):
         """Verify transport client markers require zero one two in strict order."""
 

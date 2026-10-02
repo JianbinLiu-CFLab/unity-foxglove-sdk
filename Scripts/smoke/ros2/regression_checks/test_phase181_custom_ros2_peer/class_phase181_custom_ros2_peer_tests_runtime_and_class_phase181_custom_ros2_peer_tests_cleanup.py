@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase181CustomRos2PeerTests_runtime:
+    """Decomposed Phase192 implementation component."""
     def test_streamed_owned_command_tees_live_progress_to_the_console_and_log(self):
         """Verify Phase181 behavior: cold builds visibly stream their bounded helper output."""
         peer = load_peer_module()
@@ -392,6 +393,7 @@ class _Phase181CustomRos2PeerTests_runtime:
         self.assertFalse(clean_stop)
         self.assertGreater(end_offset, offset)
 class _Phase181CustomRos2PeerTests_cleanup:
+    """Decomposed Phase192 implementation component."""
     def test_worker_main_writes_a_bounded_result_for_an_unhandled_runtime_setup_error(self):
         """Verify Phase181 behavior: worker main writes a bounded result for an unhandled runtime setup error."""
         peer = load_peer_module()

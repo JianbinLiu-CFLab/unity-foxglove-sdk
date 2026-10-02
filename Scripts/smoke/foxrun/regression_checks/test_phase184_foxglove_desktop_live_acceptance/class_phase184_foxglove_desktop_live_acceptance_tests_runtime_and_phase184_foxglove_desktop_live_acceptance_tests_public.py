@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveDesktopLiveAcceptanceTests_runtime:
+    """Decomposed Phase192 implementation component."""
     def test_desktop_process_identity_is_bound_before_lease_release(self):
         """Verify desktop process identity is bound before lease release."""
 

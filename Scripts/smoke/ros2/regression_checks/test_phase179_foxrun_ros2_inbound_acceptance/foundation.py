@@ -35,6 +35,7 @@ def load_smoke_module():
     spec.loader.exec_module(module)
     return module
 class _Phase179FoxRunRos2InboundAcceptanceTests_support:
+    """Decomposed Phase192 implementation component."""
     def setUp(self) -> None:
         """Load a fresh module for each isolated test."""
 

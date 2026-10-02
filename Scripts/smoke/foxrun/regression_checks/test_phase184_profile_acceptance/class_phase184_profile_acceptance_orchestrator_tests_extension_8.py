@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184ProfileAcceptanceOrchestratorTests_extension_8:
+    """Decomposed Phase192 implementation component."""
     def test_foxglove_connect_waits_for_optional_desktop_barrier_after_context(self):
         """Verify foxglove connect waits for optional desktop barrier after context."""
 

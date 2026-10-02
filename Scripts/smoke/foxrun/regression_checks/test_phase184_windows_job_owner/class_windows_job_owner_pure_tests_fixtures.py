@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _WindowsJobOwnerPureTests_fixtures:
+    """Decomposed Phase192 implementation component."""
     def test_require_owned_identity_rejects_path_time_membership_and_pid_reuse(self):
         """Verify require owned identity rejects path time membership and PID reuse."""
 

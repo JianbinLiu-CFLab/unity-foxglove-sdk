@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveDesktopLiveAcceptanceTests_support:
+    """Decomposed Phase192 implementation component."""
     def test_coordinator_module_exists(self):
         """Verify coordinator module exists."""
 

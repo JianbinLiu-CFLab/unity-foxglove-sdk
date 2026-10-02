@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184ProfileAcceptanceProtocolTests_validation:
+    """Decomposed Phase192 implementation component."""
     def test_progress_watchdog_uses_last_progress_age_not_total_duration(self):
         """A long progressing build survives while a silent operation fails."""
 

@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184ProfileAcceptanceProtocolTests_support:
+    """Decomposed Phase192 implementation component."""
     def test_runtime_type_hints_resolve_for_all_protocol_functions(self):
         """Keep postponed annotations resolvable by runtime tooling."""
 

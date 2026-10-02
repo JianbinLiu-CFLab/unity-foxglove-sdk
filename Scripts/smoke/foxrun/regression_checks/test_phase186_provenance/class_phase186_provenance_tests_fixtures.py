@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase186ProvenanceTests_fixtures:
+    """Decomposed Phase192 implementation component."""
     def test_fixed_source_roots_discover_untracked_protocol_sources(self) -> None:
         """Filesystem discovery must not let an untracked source evade the ledger."""
 

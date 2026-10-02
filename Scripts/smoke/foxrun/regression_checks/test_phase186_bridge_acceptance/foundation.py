@@ -24,6 +24,7 @@ from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
 from Scripts.smoke.foxrun import phase186_bridge_project as bridge_project
 HEAD = "a" * 40
 class _Phase186BridgeAcceptanceTests_support:
+    """Decomposed Phase192 implementation component."""
     def test_direct_script_bootstrap_can_import_deferred_live_runner(self) -> None:
         """Verify that direct script bootstrap can import deferred live runner."""
         repository = pathlib.Path(__file__).resolve().parents[4]

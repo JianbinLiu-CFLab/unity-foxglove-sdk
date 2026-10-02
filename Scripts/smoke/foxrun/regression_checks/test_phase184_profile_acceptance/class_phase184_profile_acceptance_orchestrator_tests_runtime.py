@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184ProfileAcceptanceOrchestratorTests_runtime:
+    """Decomposed Phase192 implementation component."""
     def test_sample_attribution_uses_duplicate_sequences_and_exact_graph_gids(self):
         """Verify sample attribution uses duplicate sequences and exact graph gids."""
 

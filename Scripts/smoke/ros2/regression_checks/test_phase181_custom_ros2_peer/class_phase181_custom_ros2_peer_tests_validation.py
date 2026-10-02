@@ -5,6 +5,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase181CustomRos2PeerTests_validation:
+    """Decomposed Phase192 implementation component."""
     def test_colcon_command_pins_ninja_release_and_cmake_safe_pixi_python(self):
         """Verify Phase181 behavior: colcon receives the portable native-interface build contract."""
         peer = load_peer_module()

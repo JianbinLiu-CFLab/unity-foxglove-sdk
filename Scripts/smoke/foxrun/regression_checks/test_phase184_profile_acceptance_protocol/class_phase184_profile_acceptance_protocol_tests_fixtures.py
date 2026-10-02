@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184ProfileAcceptanceProtocolTests_fixtures:
+    """Decomposed Phase192 implementation component."""
     def test_qos_transport_policy_mismatch_cannot_hide_behind_matches_true(self):
         """Every observed policy axis is compared with the requested contract."""
 

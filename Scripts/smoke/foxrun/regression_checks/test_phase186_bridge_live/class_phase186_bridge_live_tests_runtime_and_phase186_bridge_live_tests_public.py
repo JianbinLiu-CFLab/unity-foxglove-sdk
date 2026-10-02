@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase186BridgeLiveTests_runtime:
+    """Decomposed Phase192 implementation component."""
     def test_hostile_frames_encode_the_exact_declared_lengths(self) -> None:
         """Verify that hostile frames encode the exact declared lengths."""
         mutations = live_peer._hostile_mutations()

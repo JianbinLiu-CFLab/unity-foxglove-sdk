@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveDesktopLiveAcceptanceTests_fixtures:
+    """Decomposed Phase192 implementation component."""
     def test_pass_summary_rejects_cross_field_semantic_mutations(self):
         """Verify pass summary rejects cross field semantic mutations."""
 

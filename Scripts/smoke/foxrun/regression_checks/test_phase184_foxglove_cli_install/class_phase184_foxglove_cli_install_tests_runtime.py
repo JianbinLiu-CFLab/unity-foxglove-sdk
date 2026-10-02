@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveCliInstallTests_runtime:
+    """Decomposed Phase192 implementation component."""
     def test_receipt_windows_alias_of_backup_fails_without_overwriting_either_file(self):
         """Verify receipt windows alias of backup fails without overwriting either file."""
 

@@ -42,6 +42,7 @@ class _ChunkSocket:
         self._chunks.insert(0, value[count:])
         return value[:count]
 class _Phase186BridgeLiveTests_support:
+    """Decomposed Phase192 implementation component."""
     def test_ros_peer_shutdown_runs_when_node_creation_fails(self) -> None:
         """Verify that initialized rclpy is shut down after node creation fails."""
         rclpy = types.ModuleType("rclpy")

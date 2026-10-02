@@ -4,6 +4,7 @@ _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase179FoxRunRos2InboundAcceptanceTests_validation:
+    """Decomposed Phase192 implementation component."""
     def test_qos_negative_establishes_current_string_contract_identity_before_no_apply_proof(self) -> None:
         """A QoS rejection is full evidence only after READY and a new positive String identity baseline."""
 
@@ -394,6 +395,7 @@ class _Phase179FoxRunRos2InboundAcceptanceTests_validation:
 
         self.assertEqual("UNITY_TIMEOUT", context.exception.category)
 class _Phase179FoxRunRos2InboundAcceptanceTests_runtime:
+    """Decomposed Phase192 implementation component."""
     def test_bounded_command_terminates_only_its_owned_process_after_timeout(self) -> None:
         """Timeout cleanup targets the launched CLI process and never a global ROS process list."""
 
