@@ -34,7 +34,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Func<bool> tryAdmitInput,
             Func<TTransport, FoxRunRos2CopyContext, TSample> materializeOwned,
             Action<TSample> transferOwned,
-            Action clearOwned)
+            Action clearOwned,
+            Func<bool> cancelAdmissionCredit = null)
             where TTransport : ROS2.Message, new();
     }
 }

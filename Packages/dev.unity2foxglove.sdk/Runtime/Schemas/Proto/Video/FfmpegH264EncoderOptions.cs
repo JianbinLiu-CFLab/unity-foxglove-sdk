@@ -83,6 +83,12 @@ namespace Foxglove.Schemas.Video
 
         /// <summary>Builds the FFmpeg process start info without invoking a shell.</summary>
         public ProcessStartInfo CreateStartInfo()
+            => CreateStartInfo(null, assumeModernFfmpeg: true);
+
+        internal ProcessStartInfo CreateStartInfo(string ffmpegVersionLine)
+            => CreateStartInfo(ffmpegVersionLine, assumeModernFfmpeg: false);
+
+        private ProcessStartInfo CreateStartInfo(string ffmpegVersionLine, bool assumeModernFfmpeg)
         {
             if (!Validate(out var error))
                 throw new ArgumentException(error, nameof(FfmpegH264EncoderOptions));
@@ -94,6 +100,9 @@ namespace Foxglove.Schemas.Video
             var keyframeInterval = KeyframeInterval;
             var ffmpeg = FfmpegExecutableResolver.ResolveExecutablePath(FfmpegPath);
             var preset = string.IsNullOrWhiteSpace(Preset) ? "ultrafast" : Preset.Trim();
+            var fpsModeArgument = assumeModernFfmpeg || FfmpegExecutableCheck.SupportsFpsModePassthrough(ffmpegVersionLine)
+                ? "-fps_mode passthrough"
+                : "-vsync passthrough";
 
             var args = string.Join(" ", new[]
             {
@@ -113,7 +122,14 @@ namespace Foxglove.Schemas.Video
                 "-g " + keyframeInterval.ToString(CultureInfo.InvariantCulture),
                 "-b:v " + bitrate.ToString(CultureInfo.InvariantCulture) + "k",
                 "-x264-params aud=1:repeat-headers=1:bframes=0",
-                "-f h264",
+                fpsModeArgument,
+                "-copyts",
+                "-start_at_zero",
+                "-mpegts_copyts 1",
+                "-muxdelay 0",
+                "-muxpreload 0",
+                "-flush_packets 1",
+                "-f mpegts",
                 "pipe:1"
             });
 

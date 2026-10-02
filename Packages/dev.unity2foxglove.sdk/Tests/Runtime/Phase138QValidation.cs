@@ -65,13 +65,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(helper.Contains("internal sealed class FoxgloveSharedSensorClock", StringComparison.Ordinal)
                   && helper.Contains("GetUnixTime(double physicsTimeSeconds", StringComparison.Ordinal)
                   && helper.Contains("Reset()", StringComparison.Ordinal),
-                "138Q-1A: manager shared sensor clock state lives in a focused helper");
+                "architecture guard: 138Q-1A: manager shared sensor clock state lives in a focused helper");
             Check(manager.Contains("FoxgloveSharedSensorClock _sharedSensorClock", StringComparison.Ordinal)
                   && manager.Contains("_sharedSensorClock.GetUnixTime(physicsTimeSeconds, NowNs)", StringComparison.Ordinal)
                   && !manager.Contains("_sensorClockInitialized", StringComparison.Ordinal)
                   && !manager.Contains("_sensorClockEpochUnixNs", StringComparison.Ordinal)
                   && !manager.Contains("_sensorClockEpochPhysSeconds", StringComparison.Ordinal),
-                "138Q-1B: FoxgloveManager delegates shared sensor clock state");
+                "architecture guard: 138Q-1B: FoxgloveManager delegates shared sensor clock state");
         }
 
         private static void VirtualLidarDelegatesScanDiagnostics()
@@ -83,14 +83,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(helper.Contains("internal sealed class LidarScanDiagnostics", StringComparison.Ordinal)
                   && helper.Contains("Record(", StringComparison.Ordinal)
                   && helper.Contains("Reset()", StringComparison.Ordinal),
-                "138Q-2A: LiDAR scan diagnostics live in a focused helper");
+                "architecture guard: 138Q-2A: LiDAR scan diagnostics live in a focused helper");
             Check(scheduler.Contains("LidarScanDiagnostics _scanDiagnostics", StringComparison.Ordinal)
                   && scheduler.Contains("_scanDiagnostics.Record(", StringComparison.Ordinal)
                   && !lidar.Contains("_diagnosticScans", StringComparison.Ordinal)
                   && !lidar.Contains("_diagnosticCompleteMsTotal", StringComparison.Ordinal)
                   && !lidar.Contains("_diagnosticBuildMsTotal", StringComparison.Ordinal)
                   && !lidar.Contains("_diagnosticAppendMsTotal", StringComparison.Ordinal),
-                "138Q-2B: VirtualLidar delegates scan diagnostic counters");
+                "architecture guard: 138Q-2B: VirtualLidar delegates scan diagnostic counters");
         }
 
         private static void CameraPublisherDelegatesVideoSidecarOptions()
@@ -104,7 +104,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("CreateH265Options", StringComparison.Ordinal)
                   && helper.Contains("CreateOpenH264Options", StringComparison.Ordinal)
                   && helper.Contains("CreateMediaFoundationH264Options", StringComparison.Ordinal),
-                "138Q-3A: camera video sidecar options live in a focused factory");
+                "architecture guard: 138Q-3A: camera video sidecar options live in a focused factory");
             Check(session.Contains("CameraVideoSidecarOptionsFactory.CreateH264Options", StringComparison.Ordinal)
                   && session.Contains("CameraVideoSidecarOptionsFactory.CreateH265Options", StringComparison.Ordinal)
                   && session.Contains("CameraVideoSidecarOptionsFactory.CreateOpenH264Options", StringComparison.Ordinal)
@@ -114,7 +114,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private FfmpegH265EncoderOptions CreateH265Options", StringComparison.Ordinal)
                   && !camera.Contains("private OpenH264EncoderOptions CreateOpenH264Options", StringComparison.Ordinal)
                   && !camera.Contains("private MediaFoundationH264EncoderOptions CreateMediaFoundationH264Options", StringComparison.Ordinal),
-                "138Q-3B: camera video sidecar session delegates option construction");
+                "architecture guard: 138Q-3B: camera video sidecar session delegates option construction");
         }
 
         private static void CameraPublisherDelegatesVideoSidecarConfigFactory()
@@ -127,12 +127,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("ResolveDimension(", StringComparison.Ordinal)
                   && helper.Contains("ResolveFrameRate(", StringComparison.Ordinal)
                   && helper.Contains("CameraVideoSidecarConfig", StringComparison.Ordinal),
-                "138Q-3E: camera video sidecar config and frame-rate resolution live in a focused factory");
+                "architecture guard: 138Q-3E: camera video sidecar config and frame-rate resolution live in a focused factory");
             Check(camera.Contains("CameraVideoSidecarConfigFactory.Create(", StringComparison.Ordinal)
                   && camera.Contains("CameraVideoSidecarConfigFactory.ResolveDimension(", StringComparison.Ordinal)
                   && !camera.Contains("private CameraVideoSidecarConfig CreateVideoSidecarConfig", StringComparison.Ordinal)
                   && !camera.Contains("private int ResolveEncoderFrameRate", StringComparison.Ordinal),
-                "138Q-3F: FoxgloveCameraPublisher delegates sidecar config creation");
+                "architecture guard: 138Q-3F: FoxgloveCameraPublisher delegates sidecar config creation");
         }
 
         private static void CameraPublisherDelegatesVideoFrameValidation()
@@ -145,13 +145,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("TryValidateCapturedFrame(", StringComparison.Ordinal)
                   && helper.Contains("CameraVideoFrameGeometry.TryGetRgb24FrameByteCount", StringComparison.Ordinal)
                   && helper.Contains("dimensionMismatch=sidecar", StringComparison.Ordinal),
-                "138Q-3G: camera video readback/frame geometry validation lives in a focused helper");
+                "architecture guard: 138Q-3G: camera video readback/frame geometry validation lives in a focused helper");
             Check(pipeline.Contains("CameraVideoFrameValidator.TryValidateCapturedFrame(", StringComparison.Ordinal)
                   && camera.Contains("CameraVideoPublishPipeline _videoPublishPipeline", StringComparison.Ordinal)
                   && !camera.Contains("private bool ValidateCapturedVideoFrame", StringComparison.Ordinal)
                   && !camera.Contains("CameraVideoFrameGeometry.TryGetRgb24FrameByteCount", StringComparison.Ordinal)
                   && !camera.Contains("dimensionMismatch=byteCount", StringComparison.Ordinal),
-                "138Q-3H: FoxgloveCameraPublisher delegates video frame validation");
+                "architecture guard: 138Q-3H: FoxgloveCameraPublisher delegates video frame validation");
         }
 
         private static void CameraPublisherDelegatesVideoSidecarLifecycle()
@@ -165,7 +165,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && session.Contains("EnsureMatchesMode(", StringComparison.Ordinal)
                   && session.Contains("Stop(", StringComparison.Ordinal)
                   && session.Contains("TryDrain(", StringComparison.Ordinal),
-                "138Q-3C: camera video sidecar lifecycle lives in a focused session helper");
+                "architecture guard: 138Q-3C: camera video sidecar lifecycle lives in a focused session helper");
             Check(pipeline.Contains("CameraVideoSidecarSession _videoSidecarSession", StringComparison.Ordinal)
                   && pipeline.Contains("_videoSidecarSession.EnsureStarted(", StringComparison.Ordinal)
                   && pipeline.Contains("_videoSidecarSession.EnsureMatchesMode(", StringComparison.Ordinal)
@@ -176,7 +176,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("CameraOutputMode _videoSidecarMode", StringComparison.Ordinal)
                   && !camera.Contains("_videoSidecarWidth", StringComparison.Ordinal)
                   && !camera.Contains("_videoSidecarHeight", StringComparison.Ordinal),
-                "138Q-3D: FoxgloveCameraPublisher delegates video sidecar lifecycle state");
+                "architecture guard: 138Q-3D: FoxgloveCameraPublisher delegates video sidecar lifecycle state");
             var drain = SliceMethod(camera, "private void DrainEncodedAccessUnits()");
             var submit = SliceMethod(camera, "private void SubmitVideoFrame(");
             Check(camera.Contains("private CameraVideoPublishPipeline EnsureVideoPublishPipeline()", StringComparison.Ordinal)
@@ -184,7 +184,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && IndexOf(drain, "var pipeline = EnsureVideoPublishPipeline();") < IndexOf(drain, "pipeline.TryDrainEncodedAccessUnits(")
                   && IndexOf(submit, "EnsureVideoPublishPipeline();") >= 0
                   && IndexOf(submit, "EnsureVideoPublishPipeline();") < IndexOf(submit, "_videoPublishPipeline.SubmitVideoFrame("),
-                "138Q-3D2: camera video pipeline is lazily restored before runtime drain/submit use");
+                "architecture guard: 138Q-3D2: camera video pipeline is lazily restored before runtime drain/submit use");
         }
 
         private static void CameraPublisherDelegatesOutputModeRuntimeLock()
@@ -197,14 +197,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("Lock(", StringComparison.Ordinal)
                   && helper.Contains("Unlock(", StringComparison.Ordinal)
                   && helper.Contains("Camera output mode changes during Play Mode are ignored", StringComparison.Ordinal),
-                "138Q-20A: camera runtime output-mode lock state lives in a focused helper");
+                "architecture guard: 138Q-20A: camera runtime output-mode lock state lives in a focused helper");
             Check(camera.Contains("CameraOutputModeRuntimeLock _outputModeRuntimeLock", StringComparison.Ordinal)
                   && camera.Contains("_outputModeRuntimeLock.Resolve(", StringComparison.Ordinal)
                   && camera.Contains("_outputModeRuntimeLock.Lock(", StringComparison.Ordinal)
                   && camera.Contains("_outputModeRuntimeLock.Unlock(", StringComparison.Ordinal)
                   && !camera.Contains("private CameraOutputMode _runtimeOutputMode", StringComparison.Ordinal)
                   && !camera.Contains("_warnedRuntimeOutputModeSwitch", StringComparison.Ordinal),
-                "138Q-20B: FoxgloveCameraPublisher delegates Play Mode output-mode locking");
+                "architecture guard: 138Q-20B: FoxgloveCameraPublisher delegates Play Mode output-mode locking");
         }
 
         private static void PointCloudPublisherDelegatesWorkerPayloadTypes()
@@ -216,7 +216,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("internal sealed class DracoEncodeResult", StringComparison.Ordinal)
                   && helper.Contains("internal sealed class PackedPointCloudRequest", StringComparison.Ordinal)
                   && helper.Contains("internal sealed class PackedPointCloudResult", StringComparison.Ordinal),
-                "138Q-4A: point-cloud worker payload records live outside the publisher");
+                "architecture guard: 138Q-4A: point-cloud worker payload records live outside the publisher");
             Check(pointcloud.Contains("DracoEncodeRequest(", StringComparison.Ordinal)
                   && pointcloud.Contains("PackedPointCloudRequest(", StringComparison.Ordinal)
                   && pointcloud.Contains("DracoEncodeResult", StringComparison.Ordinal)
@@ -225,7 +225,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !pointcloud.Contains("private sealed class DracoEncodeResult", StringComparison.Ordinal)
                   && !pointcloud.Contains("private sealed class PackedPointCloudRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private sealed class PackedPointCloudResult", StringComparison.Ordinal),
-                "138Q-4B: FoxglovePointCloudPublisher uses external worker payload records");
+                "architecture guard: 138Q-4B: FoxglovePointCloudPublisher uses external worker payload records");
         }
 
         private static void CameraPublisherDelegatesJpegWorkerPayloads()
@@ -238,7 +238,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("internal sealed class JpegEncodeResult", StringComparison.Ordinal)
                   && helper.Contains("internal static class CameraJpegWorkerEncoder", StringComparison.Ordinal)
                   && helper.Contains("EncodeJpegRequest(", StringComparison.Ordinal),
-                "138Q-5A: camera JPEG worker payload and encoder logic live outside the publisher");
+                "architecture guard: 138Q-5A: camera JPEG worker payload and encoder logic live outside the publisher");
             Check(camera.Contains("CameraJpegPublishPipeline _jpegPublishPipeline", StringComparison.Ordinal)
                   && camera.Contains("_jpegPublishPipeline.TryQueueFrame(", StringComparison.Ordinal)
                   && publishPipeline.Contains("JpegEncodeRequest(", StringComparison.Ordinal)
@@ -247,7 +247,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private sealed class JpegEncodeRequest", StringComparison.Ordinal)
                   && !camera.Contains("private sealed class JpegEncodeResult", StringComparison.Ordinal)
                   && !camera.Contains("private static JpegEncodeResult EncodeJpegRequest", StringComparison.Ordinal),
-                "138Q-5B: FoxgloveCameraPublisher delegates JPEG worker payload and encode details");
+                "architecture guard: 138Q-5B: FoxgloveCameraPublisher delegates JPEG worker payload and encode details");
         }
 
         private static void CameraPublisherDelegatesJpegPipelineLifecycle()
@@ -265,7 +265,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && pipeline.Contains("Queue(", StringComparison.Ordinal)
                   && pipeline.Contains("Drain(", StringComparison.Ordinal)
                   && pipeline.Contains("Stop(", StringComparison.Ordinal),
-                "138Q-5C: camera JPEG queue/thread lifecycle lives in a focused pipeline");
+                "architecture guard: 138Q-5C: camera JPEG queue/thread lifecycle lives in a focused pipeline");
             Check(camera.Contains("CameraJpegPublishPipeline _jpegPublishPipeline", StringComparison.Ordinal)
                   && camera.Contains("_jpegPublishPipeline.EnsureWorkerStarted(", StringComparison.Ordinal)
                   && camera.Contains("_jpegPublishPipeline.TryQueueFrame(", StringComparison.Ordinal)
@@ -280,7 +280,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("DropOldestBoundedQueue<JpegEncodeResult> _completedJpegQueue", StringComparison.Ordinal)
                   && !camera.Contains("private Thread _jpegWorker", StringComparison.Ordinal)
                   && !camera.Contains("EncodeJpegWorkerLoop", StringComparison.Ordinal),
-                "138Q-5D: FoxgloveCameraPublisher delegates repeated JPEG worker lifecycle code");
+                "architecture guard: 138Q-5D: FoxgloveCameraPublisher delegates repeated JPEG worker lifecycle code");
             var queue = SliceMethod(camera, "private void QueueJpegFrame(");
             var drain = SliceMethod(camera, "private void DrainCompletedJpegFrames()");
             Check(camera.Contains("private CameraJpegPublishPipeline EnsureJpegPublishPipeline()", StringComparison.Ordinal)
@@ -288,10 +288,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && IndexOf(queue, "EnsureJpegPublishPipeline();") < IndexOf(queue, "_jpegPublishPipeline.TryQueueFrame(")
                   && IndexOf(drain, "EnsureJpegPublishPipeline();") >= 0
                   && IndexOf(drain, "EnsureJpegPublishPipeline();") < IndexOf(drain, "_jpegPublishPipeline.DrainCompleted("),
-                "138Q-5D2: camera JPEG pipeline is lazily restored before runtime queue/drain use");
-            Check(publishPipeline.Contains("return !dropped;", StringComparison.Ordinal)
-                  && !publishPipeline.Contains("return dropped;", StringComparison.Ordinal),
-                "138Q-5D3: camera JPEG TryQueueFrame follows true-means-queued Try semantics");
+                "architecture guard: 138Q-5D2: camera JPEG pipeline is lazily restored before runtime queue/drain use");
+            Check(pipeline.Contains("private readonly object _queueGate", StringComparison.Ordinal)
+                  && CountOccurrences(pipeline, "lock (_queueGate)") >= 4,
+                "architecture guard: 138Q-5D4: camera JPEG queue migration and worker admission share one synchronization gate");
         }
 
         private static void CameraPublisherDelegatesPublishDiagnostics()
@@ -308,7 +308,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && diagnostics.Contains("RecordVideoDimensionMismatchDrop(", StringComparison.Ordinal)
                   && diagnostics.Contains("LogVideoIfNeeded(", StringComparison.Ordinal)
                   && diagnostics.Contains("ResetVideoState(", StringComparison.Ordinal),
-                "138Q-11A: camera publish diagnostics live in a focused helper");
+                "architecture guard: 138Q-11A: camera publish diagnostics live in a focused helper");
             Check(camera.Contains("CameraPublishDiagnostics _diagnostics", StringComparison.Ordinal)
                   && camera.Contains("_diagnostics.RecordJpegEncodeResult(", StringComparison.Ordinal)
                   && camera.Contains("_diagnostics.LogCameraIfNeeded(", StringComparison.Ordinal)
@@ -322,7 +322,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("_videoSubmitFailureCount", StringComparison.Ordinal)
                   && !camera.Contains("private void LogCameraDiagnosticsIfNeeded", StringComparison.Ordinal)
                   && !camera.Contains("private void LogVideoDiagnosticsIfNeeded", StringComparison.Ordinal),
-                "138Q-11B: FoxgloveCameraPublisher delegates camera/video diagnostic counters");
+                "architecture guard: 138Q-11B: FoxgloveCameraPublisher delegates camera/video diagnostic counters");
         }
 
         private static void CameraPublisherDelegatesBackpressureGate()
@@ -335,7 +335,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && gate.Contains("AllowCapture(", StringComparison.Ordinal)
                   && gate.Contains("ResetSkipLogCount(", StringComparison.Ordinal)
                   && gate.Contains("Reset()", StringComparison.Ordinal),
-                "138Q-13A: camera backpressure runtime state lives in a focused helper");
+                "architecture guard: 138Q-13A: camera backpressure runtime state lives in a focused helper");
             Check(camera.Contains("CameraBackpressureGate _backpressureGate", StringComparison.Ordinal)
                   && camera.Contains("_backpressureGate.AllowCapture(", StringComparison.Ordinal)
                   && camera.Contains("_backpressureGate.ResetSkipLogCount()", StringComparison.Ordinal)
@@ -345,7 +345,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("_backpressureSkipLogCount", StringComparison.Ordinal)
                   && !camera.Contains("_backpressureBaselineInitialized", StringComparison.Ordinal)
                   && !camera.Contains("private void LogBackpressureSkip", StringComparison.Ordinal),
-                "138Q-13B: FoxgloveCameraPublisher delegates backpressure baseline, cooldown, and skip logging state");
+                "architecture guard: 138Q-13B: FoxgloveCameraPublisher delegates backpressure baseline, cooldown, and skip logging state");
         }
 
         private static void CameraPublisherDelegatesReadbackTiming()
@@ -360,7 +360,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && timing.Contains("Clear(", StringComparison.Ordinal)
                   && timing.Contains("MaxTrackedRequests", StringComparison.Ordinal)
                   && !timing.Contains("Dictionary<ulong, long>", StringComparison.Ordinal),
-                "138Q-16A: camera readback timing state lives in a focused helper");
+                "architecture guard: 138Q-16A: camera readback timing state lives in a focused helper");
             Check(camera.Contains("CameraJpegPublishPipeline _jpegPublishPipeline", StringComparison.Ordinal)
                   && camera.Contains("EnsureJpegPublishPipeline();", StringComparison.Ordinal)
                   && camera.Contains("_jpegPublishPipeline.RememberReadbackStart(", StringComparison.Ordinal)
@@ -372,7 +372,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && jpegPipeline.Contains("_readbackTiming.Clear()", StringComparison.Ordinal)
                   && !camera.Contains("_readbackTimingGate", StringComparison.Ordinal)
                   && !camera.Contains("_readbackRequestTicks", StringComparison.Ordinal),
-                "138Q-16B: FoxgloveCameraPublisher delegates readback latency bookkeeping");
+                "architecture guard: 138Q-16B: FoxgloveCameraPublisher delegates readback latency bookkeeping");
         }
 
         private static void CameraPublisherDelegatesCaptureResources()
@@ -386,7 +386,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && resources.Contains("Ensure(", StringComparison.Ordinal)
                   && resources.Contains("Cleanup()", StringComparison.Ordinal)
                   && resources.Contains("EncodeJpeg(", StringComparison.Ordinal),
-                "138Q-18A: camera Unity capture resources live in a focused helper");
+                "architecture guard: 138Q-18A: camera Unity capture resources live in a focused helper");
             Check(camera.Contains("CameraCaptureResources _captureResources", StringComparison.Ordinal)
                   && camera.Contains("_captureResources.Ensure(", StringComparison.Ordinal)
                   && camera.Contains("_captureResources.Cleanup()", StringComparison.Ordinal)
@@ -397,7 +397,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private Camera _captureCam", StringComparison.Ordinal)
                   && !camera.Contains("private RenderTexture _captureRT", StringComparison.Ordinal)
                   && !camera.Contains("private Texture2D _texture2D", StringComparison.Ordinal),
-                "138Q-18B: FoxgloveCameraPublisher delegates Unity capture object ownership");
+                "architecture guard: 138Q-18B: FoxgloveCameraPublisher delegates Unity capture object ownership");
         }
 
         private static void CameraPublisherDelegatesSensorProfileResolver()
@@ -408,20 +408,23 @@ namespace Unity.FoxgloveSDK.Tests
             Check(helper.Contains("internal static class CameraSensorProfileResolver", StringComparison.Ordinal)
                   && helper.Contains("ResolveProfile(", StringComparison.Ordinal)
                   && helper.Contains("ResolveFrameId(", StringComparison.Ordinal)
+                  && helper.Contains("ResolveCompressedImageTopic(", StringComparison.Ordinal)
+                  && helper.Contains("ResolveRawImageTopic(", StringComparison.Ordinal)
                   && helper.Contains("ResolveImageTopic(", StringComparison.Ordinal)
                   && helper.Contains("ApplyDefaults(", StringComparison.Ordinal)
                   && helper.Contains("HasCompressedImageDemand(", StringComparison.Ordinal)
-                  && helper.Contains("SerializeCompressedImage(", StringComparison.Ordinal),
-                "138Q-22A: camera sensor profile/topic/frame/ROS image helpers live outside the publisher");
+                  && helper.Contains("HasRawImageDemand(", StringComparison.Ordinal),
+                "architecture guard: 138Q-22A: camera sensor profile, topic, frame, and demand helpers live outside the publisher");
             Check(camera.Contains("CameraSensorProfileResolver.ResolveProfile(", StringComparison.Ordinal)
                   && camera.Contains("CameraSensorProfileResolver.ResolveFrameId(", StringComparison.Ordinal)
                   && camera.Contains("CameraSensorProfileResolver.ResolveImageTopic(", StringComparison.Ordinal)
+                  && camera.Contains("CameraSensorProfileResolver.ResolveRawImageTopic(", StringComparison.Ordinal)
                   && camera.Contains("CameraSensorProfileResolver.ApplyDefaults(", StringComparison.Ordinal)
                   && camera.Contains("CameraSensorProfileResolver.HasCompressedImageDemand(", StringComparison.Ordinal)
-                  && camera.Contains("CameraSensorProfileResolver.SerializeCompressedImage(", StringComparison.Ordinal)
+                  && camera.Contains("CameraSensorProfileResolver.HasRawImageDemand(", StringComparison.Ordinal)
                   && !camera.Contains("Ros2CdrSensorCompressedImageBuilder.Serialize", StringComparison.Ordinal)
                   && !camera.Contains("Ros2CdrCompressedImageBuilder.Serialize", StringComparison.Ordinal),
-                "138Q-22B: FoxgloveCameraPublisher delegates sensor camera profile resolution");
+                "architecture guard: 138Q-22B: FoxgloveCameraPublisher delegates sensor camera profile resolution");
         }
 
         private static void PointCloudPublisherDelegatesWorkerEncoders()
@@ -432,14 +435,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(helper.Contains("internal static class PointCloudWorkerEncoders", StringComparison.Ordinal)
                   && helper.Contains("EncodeDracoRequest(", StringComparison.Ordinal)
                   && helper.Contains("EncodePackedPointCloudRequest(", StringComparison.Ordinal)
-                  && helper.Contains("BuildPackedPointCloudPayload(", StringComparison.Ordinal),
-                "138Q-6A: point-cloud worker encode/build logic lives outside the publisher");
+                  && helper.Contains("BuildPackedPointCloudFrame(", StringComparison.Ordinal)
+                  && helper.Contains("BuildDracoPublishPayloads(", StringComparison.Ordinal),
+                "architecture guard: 138Q-6A: point-cloud worker encode/build logic lives outside the publisher");
             Check(pointcloud.Contains("PointCloudWorkerEncoders.EncodeDracoRequest", StringComparison.Ordinal)
                   && pointcloud.Contains("PointCloudWorkerEncoders.EncodePackedPointCloudRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private static DracoEncodeResult EncodeDracoRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private static PackedPointCloudResult EncodePackedPointCloudRequest", StringComparison.Ordinal)
                   && !pointcloud.Contains("private static byte[] BuildPackedPointCloudPayload", StringComparison.Ordinal),
-                "138Q-6B: FoxglovePointCloudPublisher delegates worker encode/build details");
+                "architecture guard: 138Q-6B: FoxglovePointCloudPublisher delegates worker encode/build details");
         }
 
         private static void PointCloudPublisherDelegatesBackgroundEncodePipelines()
@@ -454,7 +458,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && pipeline.Contains("Enqueue(", StringComparison.Ordinal)
                   && pipeline.Contains("Drain(", StringComparison.Ordinal)
                   && pipeline.Contains("Stop(", StringComparison.Ordinal),
-                "138Q-7A: reusable background encode pipeline owns worker queue lifecycle");
+                "architecture guard: 138Q-7A: reusable background encode pipeline owns worker queue lifecycle");
             Check(pointcloudPipeline.Contains("internal sealed class PointCloudEncodePipeline<TRequest, TResult>", StringComparison.Ordinal)
                   && pointcloudPipeline.Contains("BackgroundEncodePipeline<TRequest, TResult> _pipeline", StringComparison.Ordinal)
                   && pointcloudPipeline.Contains("_pipeline.Enqueue(request,", StringComparison.Ordinal)
@@ -468,7 +472,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !pointcloud.Contains("RunPackedPointCloudWorker", StringComparison.Ordinal)
                   && !pointcloud.Contains("BackgroundWorkerLifecycle _dracoEncodeWorker", StringComparison.Ordinal)
                   && !pointcloud.Contains("BackgroundWorkerLifecycle _packedPointCloudWorker", StringComparison.Ordinal),
-                "138Q-7B: FoxglovePointCloudPublisher delegates repeated worker lifecycle code");
+                "architecture guard: 138Q-7B: FoxglovePointCloudPublisher delegates repeated worker lifecycle code");
         }
 
         private static void PointCloudPublisherDelegatesPublishDiagnostics()
@@ -482,7 +486,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && diagnostics.Contains("RecordEncodeResult(", StringComparison.Ordinal)
                   && diagnostics.Contains("RecordPackedPointCloudResult(", StringComparison.Ordinal)
                   && diagnostics.Contains("LogIfReady(", StringComparison.Ordinal),
-                "138Q-9A: point-cloud publish diagnostics live in a focused helper");
+                "architecture guard: 138Q-9A: point-cloud publish diagnostics live in a focused helper");
             Check(pointcloud.Contains("PointCloudPublishDiagnostics _diagnostics", StringComparison.Ordinal)
                   && pointcloud.Contains("_diagnostics.RecordPrepared(", StringComparison.Ordinal)
                   && pointcloud.Contains("_diagnostics.RecordDrop(", StringComparison.Ordinal)
@@ -493,7 +497,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !pointcloud.Contains("_diagnosticDrops", StringComparison.Ordinal)
                   && !pointcloud.Contains("private void RecordPointCloudPrepared", StringComparison.Ordinal)
                   && !pointcloud.Contains("private void LogPointCloudDiagnosticsIfReady", StringComparison.Ordinal),
-                "138Q-9B: FoxglovePointCloudPublisher delegates publish diagnostic counters");
+                "architecture guard: 138Q-9B: FoxglovePointCloudPublisher delegates publish diagnostic counters");
         }
 
         private static void PointCloudPublisherDelegatesTransformFallbackBuilder()
@@ -505,15 +509,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && builder.Contains("CreateFrameFromTransforms(", StringComparison.Ordinal)
                   && builder.Contains("AddPoint(", StringComparison.Ordinal)
                   && builder.Contains("CoordinateConverter.UnityToFoxglovePosition", StringComparison.Ordinal),
-                "138Q-12A: point-cloud transform fallback frame builder lives in a focused helper");
+                "architecture guard: 138Q-12A: point-cloud transform fallback frame builder lives in a focused helper");
             Check(builder.IndexOf("if (child == null)", StringComparison.Ordinal)
                   < builder.IndexOf("child.gameObject.activeInHierarchy", StringComparison.Ordinal),
-                "138Q-12A2: transform fallback null-checks children before active-state access");
+                "architecture guard: 138Q-12A2: transform fallback null-checks children before active-state access");
             Check(pointcloud.Contains("TransformPointCloudSource _transformPointCloudSource", StringComparison.Ordinal)
                   && pointcloud.Contains("_transformPointCloudSource.CreateFrameFromTransforms(", StringComparison.Ordinal)
                   && !pointcloud.Contains("private PointCloudFrame CreateFrameFromTransforms", StringComparison.Ordinal)
                   && !pointcloud.Contains("private void AddPoint", StringComparison.Ordinal),
-                "138Q-12B: FoxglovePointCloudPublisher delegates transform fallback scan and point append");
+                "architecture guard: 138Q-12B: FoxglovePointCloudPublisher delegates transform fallback scan and point append");
         }
 
         private static void PointCloudPublisherDelegatesRosTfMath()
@@ -524,11 +528,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(math.Contains("public static class RosTransformMath", StringComparison.Ordinal)
                   && math.Contains("RollPitchYawDegreesToQuaternion(", StringComparison.Ordinal)
                   && math.Contains("System.Numerics", StringComparison.Ordinal),
-                "138Q-14A: ROS roll/pitch/yaw quaternion math lives in a Unity-free helper");
+                "architecture guard: 138Q-14A: ROS roll/pitch/yaw quaternion math lives in a Unity-free helper");
             Check(pointcloud.Contains("RosTransformMath.RollPitchYawDegreesToQuaternion", StringComparison.Ordinal)
                   && pointcloud.Contains("new Quaternion(q.X, q.Y, q.Z, q.W)", StringComparison.Ordinal)
                   && !pointcloud.Contains("private static Quaternion RosRollPitchYawDegreesToQuaternion", StringComparison.Ordinal),
-                "138Q-14B: FoxglovePointCloudPublisher delegates ROS RPY math and only adapts to Unity Quaternion");
+                "architecture guard: 138Q-14B: FoxglovePointCloudPublisher delegates ROS RPY math and only adapts to Unity Quaternion");
         }
 
         private static void PointCloudPublisherDelegatesPublishState()
@@ -542,7 +546,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && state.Contains("ShouldSuppressTransformFallback(", StringComparison.Ordinal)
                   && state.Contains("SetPreparedDemand(", StringComparison.Ordinal)
                   && state.Contains("TryGetPreparedDemand(", StringComparison.Ordinal),
-                "138Q-15A: point-cloud source/fallback and prepared-demand state lives in a focused helper");
+                "architecture guard: 138Q-15A: point-cloud source/fallback and prepared-demand state lives in a focused helper");
             Check(pointcloud.Contains("PointCloudPublishState _publishState", StringComparison.Ordinal)
                   && pointcloud.Contains("_publishState.MarkSourceDriven()", StringComparison.Ordinal)
                   && pointcloud.Contains("_publishState.ShouldSuppressTransformFallback(", StringComparison.Ordinal)
@@ -550,7 +554,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && pointcloud.Contains("_publishState.TryGetPreparedDemand(", StringComparison.Ordinal)
                   && !pointcloud.Contains("_hasPreparedPublishDemand", StringComparison.Ordinal)
                   && !pointcloud.Contains("_hasSourceDrivenFrames", StringComparison.Ordinal),
-                "138Q-15B: FoxglovePointCloudPublisher delegates source/fallback and prepared-demand state");
+                "architecture guard: 138Q-15B: FoxglovePointCloudPublisher delegates source/fallback and prepared-demand state");
         }
 
         private static void PointCloudPublisherDelegatesPendingFrameSlot()
@@ -564,7 +568,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && slot.Contains("Take()", StringComparison.Ordinal)
                   && slot.Contains("ResetReplacementWarning()", StringComparison.Ordinal)
                   && slot.Contains("PointCloud pending frame replaced", StringComparison.Ordinal),
-                "138Q-21A: point-cloud pending frame slot and replacement warning state live in a focused helper");
+                "architecture guard: 138Q-21A: point-cloud pending frame slot and replacement warning state live in a focused helper");
             Check(pointcloud.Contains("PointCloudPendingFrameSlot _pendingFrameSlot", StringComparison.Ordinal)
                   && pointcloud.Contains("_pendingFrameSlot.SetFrame(", StringComparison.Ordinal)
                   && pointcloud.Contains("_pendingFrameSlot.Take()", StringComparison.Ordinal)
@@ -572,13 +576,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && !pointcloud.Contains("private PointCloudFrame _pendingFrame", StringComparison.Ordinal)
                   && !pointcloud.Contains("_pendingFrameGate", StringComparison.Ordinal)
                   && !pointcloud.Contains("_warnedPendingDrop", StringComparison.Ordinal),
-                "138Q-21B: FoxglovePointCloudPublisher delegates pending frame ownership");
+                "architecture guard: 138Q-21B: FoxglovePointCloudPublisher delegates pending frame ownership");
 
             var update = SliceMethod(pointcloud, "protected virtual void Update()");
             Check(IndexOf(update, "ShouldPreparePublishPayload()") >= 0
                   && IndexOf(update, "_pendingFrameSlot.Take()") >= 0
                   && IndexOf(update, "ShouldPreparePublishPayload()") < IndexOf(update, "_pendingFrameSlot.Take()"),
-                "138Q-21C: point-cloud pending frame is consumed only after demand preflight");
+                "architecture guard: 138Q-21C: point-cloud pending frame is consumed only after demand preflight");
         }
 
         private static void VirtualLidarDelegatesScanLayout()
@@ -592,13 +596,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("Build(", StringComparison.Ordinal)
                   && helper.Contains("ColumnRays", StringComparison.Ordinal)
                   && helper.Contains("MaxRaysPerColumn", StringComparison.Ordinal),
-                "138Q-8A: virtual LiDAR scan layout calculation lives in a focused helper");
+                "architecture guard: 138Q-8A: virtual LiDAR scan layout calculation lives in a focused helper");
             Check(buffers.Contains("VirtualLidarScanLayout.Build(", StringComparison.Ordinal)
                   && buffers.Contains("layout.ColumnRays", StringComparison.Ordinal)
                   && scheduler.Contains("scanBuffers.ColumnRays[scanColumnCursor]", StringComparison.Ordinal)
                   && !lidar.Contains("var columnCounts = new int[_scanColumnCount]", StringComparison.Ordinal)
                   && !lidar.Contains("Bucket ray indices by column once", StringComparison.Ordinal),
-                "138Q-8B: VirtualLidar delegates scan column bucketing");
+                "architecture guard: 138Q-8B: VirtualLidar delegates scan column bucketing");
         }
 
         private static void VirtualLidarDelegatesScanBuffers()
@@ -615,7 +619,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("NativeArray<ushort>", StringComparison.Ordinal)
                   && helper.Contains("NativeArray<VirtualLidarPointData>", StringComparison.Ordinal)
                   && helper.Contains("VirtualLidarScanLayout.Build(", StringComparison.Ordinal),
-                "138Q-19A: VirtualLidar persistent scan buffers live in a focused disposable helper");
+                "architecture guard: 138Q-19A: VirtualLidar persistent scan buffers live in a focused disposable helper");
             Check(lidar.Contains("VirtualLidarScanBuffers _scanBuffers", StringComparison.Ordinal)
                   && lidar.Contains("_scanBuffers.Allocate(", StringComparison.Ordinal)
                   && lidar.Contains("_scanBuffers.Dispose()", StringComparison.Ordinal)
@@ -628,7 +632,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !lidar.Contains("private NativeArray<float> _rayTimeOffsets", StringComparison.Ordinal)
                   && !lidar.Contains("private NativeArray<ushort> _rayRings", StringComparison.Ordinal)
                   && !lidar.Contains("private NativeArray<VirtualLidarPointData> _pointData", StringComparison.Ordinal),
-                "138Q-19B: VirtualLidar delegates NativeArray ownership and budget/profile math");
+                "architecture guard: 138Q-19B: VirtualLidar delegates NativeArray ownership and budget/profile math");
         }
 
         private static void VirtualLidarDelegatesScanClock()
@@ -641,7 +645,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("EnsureInitialized(", StringComparison.Ordinal)
                   && helper.Contains("GetScanStartUnixNs(", StringComparison.Ordinal)
                   && helper.Contains("FoxgloveTimeUtil.NowUnixTimeNs()", StringComparison.Ordinal),
-                "138Q-10A: virtual LiDAR scan clock epoch state lives in a focused helper");
+                "architecture guard: 138Q-10A: virtual LiDAR scan clock epoch state lives in a focused helper");
             Check(lidar.Contains("VirtualLidarScanClock _scanClock", StringComparison.Ordinal)
                   && lidar.Contains("_scanClock.IsInitialized", StringComparison.Ordinal)
                   && lidar.Contains("_scanClock.EnsureInitialized(", StringComparison.Ordinal)
@@ -650,7 +654,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !lidar.Contains("_scanEpochUnixNs", StringComparison.Ordinal)
                   && !lidar.Contains("_scanEpochPhysSeconds", StringComparison.Ordinal)
                   && !lidar.Contains("private ulong ComputeScanStartUnixNs", StringComparison.Ordinal),
-                "138Q-10B: VirtualLidar delegates scan clock epoch and timestamp math");
+                "architecture guard: 138Q-10B: VirtualLidar delegates scan clock epoch and timestamp math");
         }
 
         private static void VirtualLidarDelegatesUnityNumericsConversions()
@@ -665,7 +669,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("ToUnityQuaternion(", StringComparison.Ordinal)
                   && helper.Contains("ToCleanUnityQuaternion(", StringComparison.Ordinal)
                   && helper.Contains("ToNumericsQuaternion(", StringComparison.Ordinal),
-                "138Q-17A: LiDAR Unity/Numerics conversion math lives in a focused helper");
+                "architecture guard: 138Q-17A: LiDAR Unity/Numerics conversion math lives in a focused helper");
             Check(lidar.Contains("LidarUnityNumericsConversions.ToUnityVector3", StringComparison.Ordinal)
                   && lidar.Contains("LidarUnityNumericsConversions.ToUnityQuaternion", StringComparison.Ordinal)
                   && lidar.Contains("LidarUnityNumericsConversions.ToNumericsVector3", StringComparison.Ordinal)
@@ -673,7 +677,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && sensorUnit.Contains("LidarUnityNumericsConversions.ToCleanUnityQuaternion", StringComparison.Ordinal)
                   && !lidar.Contains("new System.Numerics.Vector3(value.x, value.y, value.z)", StringComparison.Ordinal)
                   && !sensorUnit.Contains("private static float CleanNearZero", StringComparison.Ordinal),
-                "138Q-17B: VirtualLidar and SensorUnitProfile delegate duplicated Unity/Numerics conversions");
+                "architecture guard: 138Q-17B: VirtualLidar and SensorUnitProfile delegate duplicated Unity/Numerics conversions");
         }
 
         private static string Read(string relativePath)
@@ -755,6 +759,19 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return source.Substring(index);
+        }
+
+        private static int CountOccurrences(string source, string value)
+        {
+            var count = 0;
+            var offset = 0;
+            while ((offset = source.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                offset += value.Length;
+            }
+
+            return count;
         }
 
         private static void Check(bool condition, string label)

@@ -83,19 +83,7 @@ namespace Unity.FoxgloveSDK.Components
             using (ScheduleScanMarker.Auto())
             {
                 if (_pendingScanState == PendingScanState.Scheduled)
-                {
-                    RecordLidarDiagnostics(
-                        logPerformanceDiagnostics,
-                        0,
-                        0,
-                        0d,
-                        0d,
-                        0d,
-                        asyncOverrun: true,
-                        profileInvalidation: false,
-                        fixedDeltaTimeSeconds);
                     return;
-                }
 
                 // Rays are cast from the current tick pose. The build job always keeps
                 // active scan-reference coordinates and only computes acquisition-time
@@ -201,6 +189,7 @@ namespace Unity.FoxgloveSDK.Components
                 };
                 using (BuildPointsScheduleMarker.Auto())
                     _pendingScanHandle = buildJob.Schedule(batchCount, 64, raycastHandle);
+                JobHandle.ScheduleBatchedJobs();
                 _pendingScanState = PendingScanState.Scheduled;
             }
         }
@@ -219,8 +208,24 @@ namespace Unity.FoxgloveSDK.Components
             ref int activeScanValidPoints,
             LidarScanBoundaryHandler onScanBoundary)
         {
-            if (_pendingScanState != PendingScanState.Scheduled || _pendingBatchCount <= 0)
+            var scheduled = _pendingScanState == PendingScanState.Scheduled;
+            if (!scheduled || _pendingBatchCount <= 0)
                 return;
+
+            if (!LidarPendingScanCompletionPolicy.IsReady(scheduled, _pendingScanHandle.IsCompleted, _pendingBatchCount))
+            {
+                RecordLidarDiagnostics(
+                    logPerformanceDiagnostics,
+                    _pendingBatchCount,
+                    0,
+                    0d,
+                    0d,
+                    0d,
+                    asyncOverrun: true,
+                    profileInvalidation: false,
+                    fixedDeltaTime);
+                return;
+            }
 
             var completeStart = _scanDiagnostics.Start(logPerformanceDiagnostics);
             _pendingScanHandle.Complete();

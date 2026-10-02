@@ -395,6 +395,52 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Copies all active subscriptions for one client.</summary>
+        public void CopySubscriptionsForClient(
+            uint clientId,
+            List<(uint subscriptionId, uint channelId)> destination)
+        {
+            if (destination == null) return;
+            lock (_lock)
+            {
+                destination.Clear();
+                if (!_clients.TryGetValue(clientId, out var subscriptions))
+                    return;
+
+                foreach (var pair in subscriptions)
+                    destination.Add((pair.Key, pair.Value));
+            }
+        }
+
+        /// <summary>Copies channel ids subscribed by one client.</summary>
+        public void CopySubscribedChannelIds(
+            uint clientId,
+            HashSet<uint> destination)
+        {
+            if (destination == null) return;
+            lock (_lock)
+            {
+                destination.Clear();
+                if (!_clients.TryGetValue(clientId, out var subscriptions))
+                    return;
+
+                foreach (var channelId in subscriptions.Values)
+                    destination.Add(channelId);
+            }
+        }
+
+        /// <summary>Copies ids of clients with at least one active subscription.</summary>
+        public void CopyClientIds(HashSet<uint> destination)
+        {
+            if (destination == null) return;
+            lock (_lock)
+            {
+                destination.Clear();
+                foreach (var clientId in _clients.Keys)
+                    destination.Add(clientId);
+            }
+        }
+
         /// <summary>Remove all state.</summary>
         public void Clear()
         {

@@ -194,6 +194,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static string _cachedManifestProjectDirectory;
         private static DateTime _cachedManifestWriteTimeUtc;
         private static long _cachedManifestLength = -1;
+        private static DateTime _cachedLockWriteTimeUtc;
+        private static long _cachedLockLength = -1;
         private static IReadOnlyList<string> _cachedManifestRuntimePackages;
         private static readonly Dictionary<string, string> ZenohPayloadDiagnostics =
             new Dictionary<string, string>(StringComparer.Ordinal);
@@ -827,45 +829,70 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         public static IReadOnlyList<string> ReadManifestRuntimePackages(string projectDirectory)
         {
             var manifestPath = ManifestPath(projectDirectory);
+            var lockPath = Path.Combine(projectDirectory, "Packages", "packages-lock.json");
             if (!File.Exists(manifestPath))
             {
                 _cachedManifestProjectDirectory = projectDirectory;
                 _cachedManifestWriteTimeUtc = DateTime.MinValue;
                 _cachedManifestLength = -1;
+                _cachedLockWriteTimeUtc = DateTime.MinValue;
+                _cachedLockLength = -1;
                 _cachedManifestRuntimePackages = Array.Empty<string>();
                 return _cachedManifestRuntimePackages;
             }
 
             var manifestInfo = new FileInfo(manifestPath);
+            var lockInfo = File.Exists(lockPath) ? new FileInfo(lockPath) : null;
             if (_cachedManifestRuntimePackages != null
                 && string.Equals(_cachedManifestProjectDirectory, projectDirectory, StringComparison.Ordinal)
                 && _cachedManifestWriteTimeUtc == manifestInfo.LastWriteTimeUtc
-                && _cachedManifestLength == manifestInfo.Length)
+                && _cachedManifestLength == manifestInfo.Length
+                && _cachedLockWriteTimeUtc == (lockInfo?.LastWriteTimeUtc ?? DateTime.MinValue)
+                && _cachedLockLength == (lockInfo?.Length ?? -1))
             {
                 return _cachedManifestRuntimePackages;
             }
 
+            var packages = new HashSet<string>(StringComparer.Ordinal);
             var dependencies = ReadManifestDependencies(File.ReadAllText(manifestPath), manifestPath);
             if (dependencies == null)
             {
                 _cachedManifestProjectDirectory = projectDirectory;
                 _cachedManifestWriteTimeUtc = manifestInfo.LastWriteTimeUtc;
                 _cachedManifestLength = manifestInfo.Length;
-                _cachedManifestRuntimePackages = Array.Empty<string>();
-                return _cachedManifestRuntimePackages;
+            }
+            else
+            {
+                AddRuntimePackageNames(dependencies, packages);
             }
 
-            var packages = dependencies
-                .Properties()
-                .Select(property => property.Name)
-                .Where(name => name.StartsWith(RuntimePackagePrefix, StringComparison.Ordinal))
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
+            if (lockInfo != null)
+            {
+                var lockDependencies = ReadManifestDependencies(
+                    File.ReadAllText(lockPath),
+                    lockPath);
+                if (lockDependencies != null)
+                    AddRuntimePackageNames(lockDependencies, packages);
+            }
+
             _cachedManifestProjectDirectory = projectDirectory;
             _cachedManifestWriteTimeUtc = manifestInfo.LastWriteTimeUtc;
             _cachedManifestLength = manifestInfo.Length;
-            _cachedManifestRuntimePackages = packages;
-            return packages;
+            _cachedLockWriteTimeUtc = lockInfo?.LastWriteTimeUtc ?? DateTime.MinValue;
+            _cachedLockLength = lockInfo?.Length ?? -1;
+            _cachedManifestRuntimePackages = packages.ToArray();
+            return _cachedManifestRuntimePackages;
+        }
+
+        private static void AddRuntimePackageNames(
+            JObject dependencies,
+            ISet<string> destination)
+        {
+            foreach (var property in dependencies.Properties())
+            {
+                if (property.Name.StartsWith(RuntimePackagePrefix, StringComparison.Ordinal))
+                    destination.Add(property.Name);
+            }
         }
 
         public static bool HasManifestRuntimePackage(string projectDirectory)
@@ -879,6 +906,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             _cachedManifestProjectDirectory = null;
             _cachedManifestWriteTimeUtc = DateTime.MinValue;
             _cachedManifestLength = -1;
+            _cachedLockWriteTimeUtc = DateTime.MinValue;
+            _cachedLockLength = -1;
             _cachedManifestRuntimePackages = null;
             ZenohPayloadDiagnostics.Clear();
         }
@@ -902,6 +931,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var packagePlatform = string.Join(".", parts.Skip(1));
             var capabilities = ReadRuntimeCapabilities(packageDirectory);
             if (!capabilities.IsValid || capabilities.CommunicationModes.Count == 0)
+                return null;
+
+            if (!HasCanonicalRuntimeIdentity(
+                    packageDirectory,
+                    packageName,
+                    packageRosDistro,
+                    packagePlatform))
                 return null;
 
             var pluginsRoot = Path.Combine(packageDirectory, "Runtime", "Ros2ForUnity", "Plugins");
@@ -971,6 +1007,87 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             catch
             {
                 return Ros2ForUnityRuntimeCapabilityParser.Parse(string.Empty);
+            }
+        }
+
+        private static bool HasCanonicalRuntimeIdentity(
+            string packageDirectory,
+            string packageName,
+            string packageRosDistro,
+            string packagePlatform)
+        {
+            var manifestPath = Path.Combine(
+                packageDirectory,
+                "RuntimeSupport",
+                "runtime-manifest.json");
+            if (!File.Exists(manifestPath))
+                return false;
+
+            try
+            {
+                var manifest = JObject.Parse(File.ReadAllText(manifestPath));
+                var packageJsonPath = Path.Combine(packageDirectory, "package.json");
+                var packageJson = JObject.Parse(File.ReadAllText(packageJsonPath));
+                var runtimeId = (string)manifest["runtimeId"];
+                if (!string.Equals(
+                        (string)manifest["packageName"],
+                        packageName,
+                        StringComparison.Ordinal)
+                    || !string.Equals(
+                        (string)manifest["rosDistro"],
+                        packageRosDistro,
+                        StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(
+                        (string)manifest["platform"],
+                        packagePlatform,
+                        StringComparison.OrdinalIgnoreCase))
+                    return false;
+                if (!string.Equals(
+                        (string)packageJson["unity2foxgloveRuntimeId"],
+                        runtimeId,
+                        StringComparison.Ordinal))
+                    return false;
+                var conflicts = packageJson["unity2foxgloveConflicts"] as JArray;
+                if (conflicts == null
+                    || conflicts.Count == 0
+                    || conflicts.Any(token =>
+                        token.Type != JTokenType.String
+                        || string.Equals(token.Value<string>(), packageName, StringComparison.Ordinal)
+                        || !token.Value<string>().StartsWith(
+                            RuntimePackagePrefix,
+                            StringComparison.Ordinal)))
+                    return false;
+
+                var conflictNames = conflicts
+                    .Values<string>()
+                    .ToArray();
+                if (conflictNames.Length != conflictNames.Distinct(StringComparer.Ordinal).Count())
+                    return false;
+
+                var runtimeRoot = (string)manifest["runtimeRoot"];
+                var criticalFiles = manifest["criticalRuntimeFiles"] as JArray;
+                if (string.IsNullOrWhiteSpace(runtimeRoot)
+                    || criticalFiles == null
+                    || criticalFiles.Count == 0)
+                    return false;
+
+                var root = Path.Combine(packageDirectory, runtimeRoot);
+                foreach (var token in criticalFiles)
+                {
+                    var fileName = token?.Value<string>();
+                    if (string.IsNullOrWhiteSpace(fileName)
+                        || !Directory.EnumerateFiles(
+                            root,
+                            fileName,
+                            SearchOption.AllDirectories).Any())
+                        return false;
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 

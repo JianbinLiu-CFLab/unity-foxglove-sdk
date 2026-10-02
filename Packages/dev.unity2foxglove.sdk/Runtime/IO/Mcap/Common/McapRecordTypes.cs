@@ -59,6 +59,11 @@ namespace Unity.FoxgloveSDK.IO
         public ulong PublishTime;
         /// <summary>Message payload bytes.</summary>
         public byte[] Data;
+
+        /// <summary>Absolute outer record offset used for deterministic tie-breaking.</summary>
+        internal ulong SourceOffset;
+        /// <summary>Record offset within a chunk; zero for a top-level message.</summary>
+        internal ulong SourceRecordOffset;
     }
 
     /// <summary>MCAP private record with an application-defined opcode in the 0x80-0xFF range.</summary>

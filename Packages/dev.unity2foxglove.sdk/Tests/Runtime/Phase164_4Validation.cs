@@ -88,9 +88,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(registry.Contains("public void CopyPendingCallsTo(List<FoxgloveServiceCall> destination)", StringComparison.Ordinal)
                   && registry.Contains("public void DrainCompletedTo(List<FoxgloveServiceCall> destination)", StringComparison.Ordinal)
-                  && session.Contains("_pendingServiceCallsScratch", StringComparison.Ordinal)
-                  && session.Contains("_completedServiceCallsScratch", StringComparison.Ordinal)
-                  && !session.Contains("_services.GetPendingCalls()", StringComparison.Ordinal)
+                   && session.Contains("_pendingServiceCallsScratch", StringComparison.Ordinal)
+                   && session.Contains("_completedServiceCallsScratch", StringComparison.Ordinal)
+                   && session.Contains("_services.CopyPendingCallsToInternal(_pendingServiceCallsScratch)", StringComparison.Ordinal)
+                   && session.Contains("_services.DrainCompletedToInternal(_completedServiceCallsScratch)", StringComparison.Ordinal)
+                   && !session.Contains("_services.GetPendingCalls()", StringComparison.Ordinal)
                   && !session.Contains("_services.DrainCompleted()", StringComparison.Ordinal),
                 "164-4D: service drain reuses caller-owned pending/completed scratch lists");
         }

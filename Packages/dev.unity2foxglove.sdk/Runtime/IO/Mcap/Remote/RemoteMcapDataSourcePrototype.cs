@@ -6,8 +6,12 @@
 
 using System;
 using System.IO;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using Microsoft.Win32.SafeHandles;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.IO
@@ -19,24 +23,35 @@ namespace Unity.FoxgloveSDK.IO
         public const long DefaultMaxInMemoryDataBytes = 16L * 1024L * 1024L;
 
         private readonly string _mcapPath;
-        private readonly string _sourceId;
+        private readonly string _baseSourceId;
+        private string _generationSourceId;
+        private FileStamp _identityStamp;
+        private bool _hasIdentityStamp;
         private readonly string _manifestName;
         private readonly string _requiredBearerToken;
         private readonly byte[] _requiredBearerTokenBytes;
         private readonly string _dataRoute;
         private readonly string _directFileRoute;
         private readonly long _maxInMemoryDataBytes;
+        private readonly Func<string> _generationVersionProvider;
+        private readonly object _fileStampGate = new object();
         private readonly object _manifestCacheGate = new object();
+        private FileStamp _observedStamp;
+        private bool _hasObservedStamp;
+        private int _fullContentHashComputations;
         private RemoteMcapManifest _cachedManifest;
         private byte[] _cachedManifestBytes;
         private DateTime _cachedManifestLastWriteUtc;
         private long _cachedManifestLength = -1L;
+        private string _cachedManifestContentHash = string.Empty;
 
         private struct FileStamp
         {
             public bool Exists;
             public long Length;
             public DateTime LastWriteUtc;
+            public string ContentHash;
+            public string FileChangeToken;
         }
 
         /// <summary>Creates a single-file Remote Data Loader prototype around one local MCAP path.</summary>
@@ -47,22 +62,24 @@ namespace Unity.FoxgloveSDK.IO
             string requiredBearerToken,
             long maxInMemoryDataBytes = DefaultMaxInMemoryDataBytes,
             string dataRoute = null,
-            string directFileRoute = null)
+            string directFileRoute = null,
+            Func<string> generationVersionProvider = null)
         {
             _mcapPath = mcapPath ?? throw new ArgumentNullException(nameof(mcapPath));
-            _sourceId = string.IsNullOrEmpty(sourceId) ? "local-mcap" : sourceId;
-            _manifestName = string.IsNullOrEmpty(manifestName) ? _sourceId : manifestName;
+            _baseSourceId = string.IsNullOrEmpty(sourceId) ? "local-mcap" : sourceId;
+            _manifestName = string.IsNullOrEmpty(manifestName) ? _baseSourceId : manifestName;
             _requiredBearerToken = requiredBearerToken ?? string.Empty;
             _requiredBearerTokenBytes = string.IsNullOrEmpty(_requiredBearerToken)
                 ? Array.Empty<byte>()
                 : Encoding.UTF8.GetBytes(_requiredBearerToken);
             _dataRoute = string.IsNullOrEmpty(dataRoute)
-                ? "/data?sourceId=" + Uri.EscapeDataString(_sourceId)
+                ? "/data"
                 : dataRoute;
             _directFileRoute = string.IsNullOrEmpty(directFileRoute)
-                ? "/v1/files/" + Uri.EscapeDataString(_sourceId) + ".mcap"
+                ? "/v1/files/" + Uri.EscapeDataString(_baseSourceId) + ".mcap"
                 : directFileRoute;
             _maxInMemoryDataBytes = maxInMemoryDataBytes;
+            _generationVersionProvider = generationVersionProvider;
         }
 
         /// <summary>Relative direct-file route accepted by Foxglove's stock Remote files dialog.</summary>
@@ -133,7 +150,8 @@ namespace Unity.FoxgloveSDK.IO
                 return DataProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
                     "Phase 119 prototype supports one local MCAP source only.");
 
-            if (!string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
+            var sourceId = GetCurrentSourceId();
+            if (!string.Equals(request.SourceId, sourceId, StringComparison.Ordinal))
                 return DataProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
                     "Requested MCAP source id is not available in this prototype.");
 
@@ -161,7 +179,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
-                SourceId = _sourceId,
+                SourceId = sourceId,
                 Data = data
             };
         }
@@ -190,7 +208,8 @@ namespace Unity.FoxgloveSDK.IO
                 return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
                     "Phase 119 prototype supports one local MCAP source only.");
 
-            if (!string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
+            var sourceId = GetCurrentSourceId();
+            if (!string.Equals(request.SourceId, sourceId, StringComparison.Ordinal))
                 return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
                     "Requested MCAP source id is not available in this prototype.");
 
@@ -234,7 +253,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
-                SourceId = _sourceId,
+                SourceId = sourceId,
                 Length = slice.Length,
                 DataStream = slice
             };
@@ -257,8 +276,9 @@ namespace Unity.FoxgloveSDK.IO
                 return DataStreamProblem(RemoteMcapResponseStatus.Unsupported, "UnsupportedMultiSource",
                     "Phase 119 prototype supports one local MCAP source only.");
 
+            var sourceId = GetCurrentSourceId();
             if (!string.IsNullOrEmpty(request.SourceId)
-                && !string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
+                && !string.Equals(request.SourceId, sourceId, StringComparison.Ordinal))
                 return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
                     "Requested MCAP source id is not available in this prototype.");
 
@@ -271,7 +291,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
-                SourceId = _sourceId,
+                SourceId = sourceId,
                 Length = info.Length,
                 ContentType = "application/octet-stream",
                 DataStream = new FileStream(
@@ -324,8 +344,8 @@ namespace Unity.FoxgloveSDK.IO
                 manifest = RemoteMcapManifestMapper.FromInitialization(
                     loader.Initialize(),
                     _manifestName,
-                    _sourceId,
-                    _dataRoute);
+                    GetCurrentSourceId(loadStamp),
+                    BuildDataRoute(GetCurrentSourceId(loadStamp)));
             }
             catch (IOException)
             {
@@ -350,6 +370,7 @@ namespace Unity.FoxgloveSDK.IO
                 _cachedManifestBytes = null;
                 _cachedManifestLength = loadStamp.Length;
                 _cachedManifestLastWriteUtc = loadStamp.LastWriteUtc;
+                _cachedManifestContentHash = loadStamp.ContentHash;
                 return _cachedManifest;
             }
         }
@@ -377,34 +398,417 @@ namespace Unity.FoxgloveSDK.IO
                     return _cachedManifestBytes;
                 }
 
-                if (!storeStamp.Equals(stamp))
+                if (!SameStamp(storeStamp, stamp))
                     return bytes;
 
                 _cachedManifestBytes = bytes;
                 _cachedManifestLength = storeStamp.Length;
                 _cachedManifestLastWriteUtc = storeStamp.LastWriteUtc;
+                _cachedManifestContentHash = storeStamp.ContentHash;
                 return _cachedManifestBytes;
             }
         }
 
-        private FileStamp ReadFileStamp()
+        private string GetCurrentSourceId()
+            => GetCurrentSourceId(ReadFileStamp());
+
+        private string GetCurrentSourceId(FileStamp stamp)
         {
-            var info = new FileInfo(_mcapPath);
-            return new FileStamp
+            if (!stamp.Exists)
+                return _baseSourceId;
+
+            lock (_manifestCacheGate)
             {
-                Exists = info.Exists,
-                Length = info.Exists ? info.Length : 0L,
-                LastWriteUtc = info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue
-            };
+                if (!_hasIdentityStamp)
+                {
+                    _identityStamp = stamp;
+                    _generationSourceId = _baseSourceId
+                        + "@"
+                        + stamp.ContentHash;
+                    _hasIdentityStamp = true;
+                }
+                else if (!SameStamp(_identityStamp, stamp))
+                {
+                    _identityStamp = stamp;
+                    _generationSourceId = _baseSourceId
+                        + "@"
+                        + stamp.ContentHash;
+                }
+
+                return _generationSourceId;
+            }
         }
 
+        private string BuildDataRoute(string sourceId)
+        {
+            var effectiveSourceId = Uri.EscapeDataString(sourceId ?? _baseSourceId);
+            var queryStart = _dataRoute.IndexOf('?');
+            if (queryStart < 0)
+                return _dataRoute + "?sourceId=" + effectiveSourceId;
+
+            var path = _dataRoute.Substring(0, queryStart);
+            var query = _dataRoute.Substring(queryStart + 1);
+            var parts = query.Split('&');
+            var replaced = false;
+            for (var i = 0; i < parts.Length; i++)
+            {
+                var equals = parts[i].IndexOf('=');
+                var key = equals >= 0 ? parts[i].Substring(0, equals) : parts[i];
+                if (!string.Equals(key, "recordingId", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(key, "sourceId", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                parts[i] = key + "=" + effectiveSourceId;
+                replaced = true;
+            }
+
+            if (!replaced)
+                query = query.Length == 0
+                    ? "sourceId=" + effectiveSourceId
+                    : query + "&sourceId=" + effectiveSourceId;
+            else
+                query = string.Join("&", parts);
+
+            return path + "?" + query;
+        }
+
+        private FileStamp ReadFileStamp()
+        {
+            var initialInfo = new FileInfo(_mcapPath);
+            if (!initialInfo.Exists)
+            {
+                lock (_fileStampGate)
+                    _hasObservedStamp = false;
+                return new FileStamp
+                {
+                    Exists = false,
+                    Length = 0L,
+                    LastWriteUtc = DateTime.MinValue,
+                    ContentHash = string.Empty,
+                    FileChangeToken = string.Empty
+                };
+            }
+
+            var generationVersion = _generationVersionProvider?.Invoke();
+            if (!string.IsNullOrEmpty(generationVersion))
+            {
+                lock (_fileStampGate)
+                    _hasObservedStamp = false;
+                return new FileStamp
+                {
+                    Exists = true,
+                    Length = initialInfo.Length,
+                    LastWriteUtc = initialInfo.LastWriteTimeUtc,
+                    ContentHash = "generation:" + generationVersion,
+                    FileChangeToken = string.Empty
+                };
+            }
+
+            lock (_fileStampGate)
+            {
+                var info = new FileInfo(_mcapPath);
+                if (!info.Exists)
+                {
+                    _hasObservedStamp = false;
+                    return new FileStamp
+                    {
+                        Exists = false,
+                        Length = 0L,
+                        LastWriteUtc = DateTime.MinValue,
+                        ContentHash = string.Empty,
+                        FileChangeToken = string.Empty
+                    };
+                }
+
+                var lastWriteUtc = info.LastWriteTimeUtc;
+                using var input = new FileStream(
+                    _mcapPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete);
+                var hasFileChangeToken = TryGetFileChangeToken(input.SafeFileHandle, out var fileChangeToken);
+                if (hasFileChangeToken
+                    && _hasObservedStamp
+                    && _observedStamp.Exists
+                    && _observedStamp.Length == info.Length
+                    && _observedStamp.LastWriteUtc == lastWriteUtc
+                    && string.Equals(
+                        _observedStamp.FileChangeToken,
+                        fileChangeToken,
+                        StringComparison.Ordinal))
+                {
+                    return _observedStamp;
+                }
+
+                System.Threading.Interlocked.Increment(ref _fullContentHashComputations);
+                using var sha = SHA256.Create();
+                var hash = sha.ComputeHash(input);
+                var stamp = new FileStamp
+                {
+                    Exists = true,
+                    Length = info.Length,
+                    LastWriteUtc = lastWriteUtc,
+                    ContentHash = ToHex(hash),
+                    FileChangeToken = hasFileChangeToken ? fileChangeToken : string.Empty
+                };
+                _observedStamp = stamp;
+                _hasObservedStamp = hasFileChangeToken;
+                return stamp;
+            }
+        }
+        private static bool TryGetFileChangeToken(SafeFileHandle handle, out string token)
+        {
+            token = string.Empty;
+            if (handle == null || handle.IsInvalid)
+                return false;
+
+            try
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    if (!GetFileInformationByHandle(handle, out var information)
+                        || !GetFileInformationByHandleEx(
+                            handle,
+                            FileBasicInfoClass,
+                            out var basicInfo,
+                            (uint)Marshal.SizeOf(typeof(FileBasicInfo)))
+                        || !TryGetWindowsUsn(handle, out var usn))
+                        return false;
+
+                    var fileIndex = ((ulong)information.FileIndexHigh << 32) | information.FileIndexLow;
+                    token = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "windows:{0:x8}:{1:x16}:{2}:{3}",
+                        information.VolumeSerialNumber,
+                        fileIndex,
+                        basicInfo.ChangeTime,
+                        usn);
+                    return true;
+                }
+
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    var descriptor = checked((int)handle.DangerousGetHandle().ToInt64());
+                    var buffer = Marshal.AllocHGlobal(256);
+                    try
+                    {
+                        if (Statx(descriptor, string.Empty, AtEmptyPath, StatxIno | StatxCtime | StatxMtime, buffer) != 0)
+                            return false;
+
+                        var inode = unchecked((ulong)Marshal.ReadInt64(buffer, StatxInodeOffset));
+                        var changeSeconds = Marshal.ReadInt64(buffer, StatxCtimeSecondsOffset);
+                        var changeNanoseconds = unchecked((uint)Marshal.ReadInt32(buffer, StatxCtimeNanosecondsOffset));
+                        var modifiedSeconds = Marshal.ReadInt64(buffer, StatxMtimeSecondsOffset);
+                        var modifiedNanoseconds = unchecked((uint)Marshal.ReadInt32(buffer, StatxMtimeNanosecondsOffset));
+                        token = string.Format(
+                            CultureInfo.InvariantCulture,
+                            "linux:{0:x16}:{1}:{2}:{3}:{4}",
+                            inode,
+                            changeSeconds,
+                            changeNanoseconds,
+                            modifiedSeconds,
+                            modifiedNanoseconds);
+                        return true;
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal(buffer);
+                    }
+                }
+            }
+            catch (Exception ex) when (
+                ex is DllNotFoundException
+                || ex is EntryPointNotFoundException
+                || ex is BadImageFormatException
+                || ex is OverflowException)
+            {
+                return false;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetWindowsUsn(SafeFileHandle handle, out long usn)
+        {
+            usn = 0;
+            var request = Marshal.AllocHGlobal(4);
+            var output = Marshal.AllocHGlobal(1024);
+            try
+            {
+                Marshal.WriteInt16(request, 0, 2);
+                Marshal.WriteInt16(request, 2, 3);
+                if (!DeviceIoControl(
+                    handle,
+                    FsctlReadFileUsnData,
+                    request,
+                    4,
+                    output,
+                    1024,
+                    out var bytesReturned,
+                    IntPtr.Zero)
+                    || bytesReturned < 6)
+                    return false;
+
+                return TryParseWindowsUsnRecord(output, bytesReturned, out usn);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(request);
+                Marshal.FreeHGlobal(output);
+            }
+        }
+
+        internal static bool TryParseWindowsUsnRecord(
+            IntPtr record,
+            uint bytesReturned,
+            out long usn)
+        {
+            usn = 0;
+            if (record == IntPtr.Zero || bytesReturned < 6)
+                return false;
+
+            var majorVersion = Marshal.ReadInt16(record, 4);
+            if (!TryGetWindowsUsnOffset(majorVersion, bytesReturned, out var usnOffset))
+                return false;
+
+            usn = Marshal.ReadInt64(record, usnOffset);
+            return usn != 0;
+        }
+
+        internal static bool TryGetWindowsUsnOffset(
+            short majorVersion,
+            uint bytesReturned,
+            out int usnOffset)
+        {
+            usnOffset = majorVersion switch
+            {
+                2 => 24,
+                3 => 40,
+                _ => 0
+            };
+            return usnOffset > 0
+                && bytesReturned >= (uint)(usnOffset + sizeof(long));
+        }
+
+        internal static bool TryParseWindowsUsnRecord(
+            ReadOnlySpan<byte> record,
+            out long usn)
+        {
+            usn = 0;
+            if (record.Length < 6)
+                return false;
+
+            var majorVersion = (short)(record[4] | (record[5] << 8));
+            if (!TryGetWindowsUsnOffset(
+                    majorVersion,
+                    (uint)record.Length,
+                    out var usnOffset))
+                return false;
+
+            ulong value = 0;
+            for (var index = 0; index < sizeof(long); index++)
+                value |= (ulong)record[usnOffset + index] << (index * 8);
+            usn = unchecked((long)value);
+            return usn != 0;
+        }
+
+        private const uint FsctlReadFileUsnData = 0x000900EB;
+        private const int FileBasicInfoClass = 0;
+        private const int AtEmptyPath = 0x1000;
+        private const uint StatxIno = 0x0100;
+        private const uint StatxCtime = 0x0800;
+        private const uint StatxMtime = 0x0040;
+        private const int StatxInodeOffset = 32;
+        private const int StatxCtimeSecondsOffset = 96;
+        private const int StatxCtimeNanosecondsOffset = 104;
+        private const int StatxMtimeSecondsOffset = 112;
+        private const int StatxMtimeNanosecondsOffset = 120;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeFileTime
+        {
+            internal uint Low;
+            internal uint High;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ByHandleFileInformation
+        {
+            internal uint FileAttributes;
+            internal NativeFileTime CreationTime;
+            internal NativeFileTime LastAccessTime;
+            internal NativeFileTime LastWriteTime;
+            internal uint VolumeSerialNumber;
+            internal uint FileSizeHigh;
+            internal uint FileSizeLow;
+            internal uint NumberOfLinks;
+            internal uint FileIndexHigh;
+            internal uint FileIndexLow;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FileBasicInfo
+        {
+            internal long CreationTime;
+            internal long LastAccessTime;
+            internal long LastWriteTime;
+            internal long ChangeTime;
+            internal uint FileAttributes;
+            internal uint Reserved;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetFileInformationByHandle(
+            SafeFileHandle file,
+            out ByHandleFileInformation information);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool DeviceIoControl(
+            SafeFileHandle device,
+            uint controlCode,
+            IntPtr inputBuffer,
+            uint inputBufferSize,
+            IntPtr outputBuffer,
+            uint outputBufferSize,
+            out uint bytesReturned,
+            IntPtr overlapped);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetFileInformationByHandleEx(
+            SafeFileHandle file,
+            int fileInformationClass,
+            out FileBasicInfo fileInformation,
+            uint bufferSize);
+
+        [DllImport("libc", EntryPoint = "statx", SetLastError = true)]
+        private static extern int Statx(
+            int directoryFileDescriptor,
+            string path,
+            int flags,
+            uint mask,
+            IntPtr buffer);
+
         private bool MatchesCachedStamp(FileStamp stamp)
-            => _cachedManifestLength == stamp.Length && _cachedManifestLastWriteUtc == stamp.LastWriteUtc;
+            => _cachedManifestLength == stamp.Length
+               && _cachedManifestLastWriteUtc == stamp.LastWriteUtc
+               && string.Equals(_cachedManifestContentHash, stamp.ContentHash, StringComparison.Ordinal);
 
         private static bool SameStamp(FileStamp left, FileStamp right)
             => left.Exists == right.Exists
                && left.Length == right.Length
-               && left.LastWriteUtc == right.LastWriteUtc;
+               && left.LastWriteUtc == right.LastWriteUtc
+               && string.Equals(left.ContentHash, right.ContentHash, StringComparison.Ordinal);
+
+        private static string ToHex(byte[] bytes)
+        {
+            var builder = new StringBuilder(bytes.Length * 2);
+            foreach (var value in bytes)
+                builder.Append(value.ToString("x2", CultureInfo.InvariantCulture));
+            return builder.ToString();
+        }
 
         private static byte[] ReadAllBytesWithinCap(string path, long maxBytes)
         {
@@ -436,11 +840,12 @@ namespace Unity.FoxgloveSDK.IO
         private RemoteMcapManifest CreateMissingManifest()
         {
             var missing = new RemoteMcapManifest { Name = _manifestName };
+            var sourceId = GetCurrentSourceId(ReadFileStamp());
             var source = new RemoteMcapSource
             {
-                Id = _sourceId,
+                Id = sourceId,
                 Name = _manifestName,
-                DataUrl = _dataRoute
+                DataUrl = BuildDataRoute(sourceId)
             };
             source.Problems.Add(new RemoteMcapProblem(
                 RemoteMcapProblemSeverity.Error,

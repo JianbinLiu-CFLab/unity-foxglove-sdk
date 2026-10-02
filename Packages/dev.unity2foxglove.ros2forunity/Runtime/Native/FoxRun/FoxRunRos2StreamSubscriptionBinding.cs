@@ -29,6 +29,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Func<long> _activeGeneration;
         private readonly long _maximumCopyBytes;
         private readonly Func<bool> _tryAdmitInput;
+        private readonly Func<bool> _cancelAdmissionCredit;
         private readonly Func<TTransport, FoxRunRos2CopyContext, TSample> _materializeOwned;
         private readonly Action<TSample> _transferOwned;
         private readonly Action _clearOwned;
@@ -38,12 +39,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly FoxRunResolvedQos _qos;
         private readonly IFoxRunRos2NativeQosProfileFactory _qosFactory;
         private IFoxRunRos2NativeSubscriptionToken _token;
+        private IFoxRunRos2NativeSubscriptionToken _failedRegistrationRollbackToken;
+        private int _failedRegistrationRollbackInFlight;
         private FoxRunRos2RegistrationResult _lastRegistration;
         private int _state;
         private int _admissionOpen;
         private int _callbacksInFlight;
         private int _stopping;
         private int _cleanupComplete;
+        private int _subscriptionRemovalInFlight;
         private int _cleanupDispatchPending;
         private int _failedRegistrationCleanupPending;
         private int _nodeReleased;
@@ -70,7 +74,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             IFoxRunRos2NativeBackend backend,
             FoxRunResolvedQos? qos = null,
             IFoxRunRos2NativeQosProfileFactory qosFactory = null,
-            Func<TTransport, bool> dropBorrowed = null)
+            Func<TTransport, bool> dropBorrowed = null,
+            Func<bool> cancelAdmissionCredit = null)
         {
             Contract = contract ?? throw new ArgumentNullException(nameof(contract));
             if (sessionGeneration < 0)
@@ -81,6 +86,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _activeGeneration = activeGeneration ?? throw new ArgumentNullException(nameof(activeGeneration));
             _maximumCopyBytes = maximumCopyBytes;
             _tryAdmitInput = tryAdmitInput ?? throw new ArgumentNullException(nameof(tryAdmitInput));
+            _cancelAdmissionCredit = cancelAdmissionCredit;
             _materializeOwned = materializeOwned ?? throw new ArgumentNullException(nameof(materializeOwned));
             _transferOwned = transferOwned ?? throw new ArgumentNullException(nameof(transferOwned));
             _clearOwned = clearOwned ?? throw new ArgumentNullException(nameof(clearOwned));
@@ -105,13 +111,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             get
             {
                 lock (_lifecycleLock)
-                    return Volatile.Read(ref _stopping) == 0
-                           && !_registrationInFlight
-                           && Volatile.Read(ref _failedRegistrationCleanupPending) == 0
+                {
+                    if (Volatile.Read(ref _stopping) != 0 || _registrationInFlight)
+                        return false;
+                    if (Volatile.Read(ref _failedRegistrationRollbackToken) != null)
+                        return true;
+                    return Volatile.Read(ref _failedRegistrationCleanupPending) == 0
                            && State == FoxRunRos2SubscriptionBindingState.Failed
                            && (_lastRegistration.Error == FoxRunRos2RegistrationError.BackendFailure
                                || _lastRegistration.Error == FoxRunRos2RegistrationError.InvalidSubscriptionToken)
                            && _registrationAttemptSequence < MaximumRecoverableRegistrationAttempts;
+                }
             }
         }
 
@@ -125,6 +135,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         public FoxRunRos2RegistrationResult TryRegister()
         {
+            if (!TryRetryFailedRegistrationRollback(out var rollbackFailure))
+            {
+                if (rollbackFailure != null
+                    && !FoxRunRos2NativeExceptionPolicy.IsRecoverable(rollbackFailure))
+                    ExceptionDispatchInfo.Capture(rollbackFailure).Throw();
+                lock (_lifecycleLock)
+                    return _lastRegistration;
+            }
+
             long registrationAttempt;
             lock (_lifecycleLock)
             {
@@ -268,9 +287,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 else if (generationAfterFailure != null || registrationFailure != null)
                 {
-                    result = SetRegistrationFailureUnderLock(
-                        FoxRunRos2RegistrationError.BackendFailure,
-                        (generationAfterFailure ?? registrationFailure).GetType().Name);
+                    var failure = generationAfterFailure ?? registrationFailure;
+                    var error = generationAfterFailure == null
+                        && FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(failure, out _)
+                        ? FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+                        : FoxRunRos2RegistrationError.BackendFailure;
+                    result = SetRegistrationFailureUnderLock(error, DescribeException(failure));
                     rollbackToken = returnedToken;
                 }
                 else if (generationAfter != SessionGeneration)
@@ -285,14 +307,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     result = SetRegistrationFailureUnderLock(
                         backendResult.Error,
                         backendResult.Diagnostic);
+                    rollbackToken = backendResult.Token;
                 }
                 else if (returnedToken == null || !tokenUsable || tokenInspectionFailure != null)
                 {
                     result = SetRegistrationFailureUnderLock(
                         tokenInspectionFailure == null
                             ? FoxRunRos2RegistrationError.InvalidSubscriptionToken
-                            : FoxRunRos2RegistrationError.BackendFailure,
-                        tokenInspectionFailure?.GetType().Name ?? string.Empty);
+                            : FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                                tokenInspectionFailure,
+                                out _)
+                                ? FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+                                : FoxRunRos2RegistrationError.BackendFailure,
+                        tokenInspectionFailure == null ? string.Empty : DescribeException(tokenInspectionFailure));
                     rollbackToken = returnedToken;
                 }
                 else
@@ -403,12 +430,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
-            IFoxRunRos2NativeSubscriptionToken token;
             var registrationPending = false;
             lock (_lifecycleLock)
             {
-                token = _token;
-                _token = null;
                 Volatile.Write(ref _activeRegistrationAttempt, 0L);
                 Volatile.Write(ref _state, (int)FoxRunRos2SubscriptionBindingState.Stopped);
                 if (!_teardownFailureRecorded)
@@ -424,19 +448,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (fatal != null)
                     ExceptionDispatchInfo.Capture(fatal).Throw();
                 return;
-            }
-
-            if (token != null)
-            {
-                try
-                {
-                    _backend.RemoveSubscription(token);
-                }
-                catch (Exception exception)
-                {
-                    fatal = exception;
-                    RecordTeardownFailure("remove stream subscription", exception);
-                }
             }
 
             var cleanupFatal = TryCompleteStoppedCleanup();
@@ -509,6 +520,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
                     Interlocked.Increment(ref _copyFailed);
+                    _cancelAdmissionCredit?.Invoke();
                     return;
                 }
                 finally
@@ -577,14 +589,32 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private Exception TryCompleteStoppedCleanup()
         {
-            if (Volatile.Read(ref _stopping) == 0
-                || Volatile.Read(ref _callbacksInFlight) != 0)
+            if (Volatile.Read(ref _stopping) == 0)
                 return null;
             lock (_lifecycleLock)
             {
                 if (_registrationInFlight)
                     return null;
             }
+
+            if (!TryRetryFailedRegistrationRollback(out var rollbackFailure))
+            {
+                if (rollbackFailure != null)
+                    RecordTeardownFailure("remove failed-registration stream subscription", rollbackFailure);
+                RecordPendingCleanup();
+                return rollbackFailure;
+            }
+
+            if (!TryRemoveStoppedSubscription(out var removalFailure))
+            {
+                if (removalFailure != null)
+                    RecordTeardownFailure("remove stream subscription", removalFailure);
+                RecordPendingCleanup();
+                return removalFailure;
+            }
+
+            if (Volatile.Read(ref _callbacksInFlight) != 0)
+                return null;
 
             if (Interlocked.CompareExchange(
                     ref _cleanupComplete,
@@ -617,6 +647,41 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (fatal == null)
                 MarkStoppedCleanupComplete();
             return fatal;
+        }
+
+        private bool TryRemoveStoppedSubscription(out Exception failure)
+        {
+            failure = null;
+            IFoxRunRos2NativeSubscriptionToken token;
+            lock (_lifecycleLock)
+            {
+                token = _token;
+                if (token == null
+                    || Interlocked.CompareExchange(
+                        ref _subscriptionRemovalInFlight,
+                        1,
+                        0) != 0)
+                    return token == null;
+            }
+
+            try
+            {
+                _backend.RemoveSubscription(token);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                lock (_lifecycleLock)
+                {
+                    if (failure == null && ReferenceEquals(_token, token))
+                        _token = null;
+                    Volatile.Write(ref _subscriptionRemovalInFlight, 0);
+                }
+            }
+            return failure == null;
         }
 
         private bool IsActiveGeneration()
@@ -667,6 +732,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             IFoxRunRos2NativeSubscriptionToken rollbackToken)
         {
             ExceptionDispatchInfo fatal = null;
+            var rollbackRemoved = true;
             if (rollbackToken != null)
             {
                 try
@@ -676,16 +742,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 catch (Exception exception) when (
                     FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
-                    // Preserve the primary registration result.
+                    rollbackRemoved = false;
                 }
                 catch (Exception exception)
                 {
+                    rollbackRemoved = false;
                     fatal = ExceptionDispatchInfo.Capture(exception);
                 }
             }
 
             lock (_lifecycleLock)
             {
+                if (!rollbackRemoved)
+                    _failedRegistrationRollbackToken = rollbackToken;
                 _failedRegistrationFatal = fatal;
                 Interlocked.Exchange(ref _failedRegistrationCleanupPending, 1);
             }
@@ -732,7 +801,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     Volatile.Write(ref _stopping, 1);
                     Volatile.Write(ref _state, (int)FoxRunRos2SubscriptionBindingState.Failed);
                 }
-                terminalCleanup = Volatile.Read(ref _stopping) != 0;
+                terminalCleanup = Volatile.Read(ref _stopping) != 0
+                                  && Volatile.Read(ref _failedRegistrationRollbackToken) == null;
                 if (terminalCleanup)
                 {
                     terminalCleanupClaimed = Interlocked.CompareExchange(
@@ -774,6 +844,47 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 fatal?.Throw();
         }
 
+        private bool TryRetryFailedRegistrationRollback()
+            => TryRetryFailedRegistrationRollback(out _);
+
+        private bool TryRetryFailedRegistrationRollback(out Exception failure)
+        {
+            failure = null;
+            IFoxRunRos2NativeSubscriptionToken token;
+            lock (_lifecycleLock)
+            {
+                token = _failedRegistrationRollbackToken;
+                if (token == null)
+                    return true;
+                if (Interlocked.CompareExchange(
+                        ref _failedRegistrationRollbackInFlight,
+                        1,
+                        0) != 0)
+                    return false;
+            }
+
+            var removed = false;
+            try
+            {
+                _backend.RemoveSubscription(token);
+                removed = true;
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                lock (_lifecycleLock)
+                {
+                    if (removed && ReferenceEquals(_failedRegistrationRollbackToken, token))
+                        _failedRegistrationRollbackToken = null;
+                    Volatile.Write(ref _failedRegistrationRollbackInFlight, 0);
+                }
+            }
+            return removed;
+        }
+
         private void RethrowRegistrationFatal(
             Exception exception,
             IFoxRunRos2NativeSubscriptionToken rollbackToken)
@@ -804,6 +915,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             if (Interlocked.CompareExchange(ref _nodeReleased, 1, 0) == 0)
                 _backend.ReleaseNodeOwnership();
+        }
+
+        private static string DescribeException(Exception exception)
+        {
+            if (FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                exception,
+                out var failureKind))
+                return failureKind + ": " + exception.Message;
+            return exception.GetType().Name + ": " + exception.Message;
         }
 
         private void RecordTeardownFailure(string stage, Exception exception)

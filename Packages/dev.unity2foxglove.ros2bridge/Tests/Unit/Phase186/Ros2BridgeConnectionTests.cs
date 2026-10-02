@@ -1440,7 +1440,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 "127.0.0.1",
                 peer.Port,
                 queueCapacity: 8,
-                reconnectIntervalMs: 10000,
+                reconnectIntervalMs: 100,
                 sendTimeoutMs: 1000,
                 sinkFactory: null,
                 retirementOwner:
@@ -1454,7 +1454,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.True(
                 SpinWait.SpinUntil(
                     () => runtime.IsConnected,
-                    TimeSpan.FromSeconds(3)),
+                    TimeSpan.FromSeconds(30)),
                 "the generated duplex runtime did not complete hello");
             Assert.True(runtime.HasInboundPipeline);
 

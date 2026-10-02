@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -23,8 +24,21 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<uint, int> _pendingCountByClient = new();
         private readonly List<(uint clientId, uint callId)> _completedKeysScratch = new();
         private readonly object _lock = new();
+        private readonly Func<long> _monotonicTimestampProvider;
         private uint _nextServiceId = 1;
         private readonly Dictionary<uint, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken>> _handlers = new();
+
+        /// <summary>Create a service registry using the process monotonic clock.</summary>
+        public FoxgloveServiceRegistry()
+            : this(Stopwatch.GetTimestamp)
+        {
+        }
+
+        /// <summary>Create a service registry with a deterministic monotonic timestamp provider.</summary>
+        internal FoxgloveServiceRegistry(Func<long> monotonicTimestampProvider)
+        {
+            _monotonicTimestampProvider = monotonicTimestampProvider ?? throw new ArgumentNullException(nameof(monotonicTimestampProvider));
+        }
 
         /// <summary>Register a service. Returns the assigned service ID.</summary>
         public uint Register(ServiceDescriptor descriptor)
@@ -220,6 +234,51 @@ namespace Unity.FoxgloveSDK.Core
             out FoxgloveServiceCall call,
             out string error)
         {
+            return TryEnqueueCore(
+                serviceId,
+                callId,
+                clientId,
+                encoding,
+                payload,
+                jsonPayload,
+                createSnapshot: true,
+                out call,
+                out error);
+        }
+
+        /// <summary>Enqueue a service call for the internal dispatch pipeline without creating a caller snapshot.</summary>
+        internal bool TryEnqueueInternal(
+            uint serviceId,
+            uint callId,
+            uint clientId,
+            string encoding,
+            byte[] payload,
+            JToken jsonPayload,
+            out string error)
+        {
+            return TryEnqueueCore(
+                serviceId,
+                callId,
+                clientId,
+                encoding,
+                payload,
+                jsonPayload,
+                createSnapshot: false,
+                out _,
+                out error);
+        }
+
+        private bool TryEnqueueCore(
+            uint serviceId,
+            uint callId,
+            uint clientId,
+            string encoding,
+            byte[] payload,
+            JToken jsonPayload,
+            bool createSnapshot,
+            out FoxgloveServiceCall call,
+            out string error)
+        {
             if (payload != null && payload.Length > MaxPayloadBytes)
             {
                 call = null;
@@ -252,18 +311,21 @@ namespace Unity.FoxgloveSDK.Core
                     return false;
                 }
 
-                call = new FoxgloveServiceCall
+                var authority = new FoxgloveServiceCall
                 {
                     ServiceId = serviceId,
                     CallId = callId,
                     ClientId = clientId,
                     Encoding = encoding,
-                    Payload = payload,
-                    JsonPayload = jsonPayload,
-                    CreatedAt = DateTime.UtcNow
+                    Payload = payload == null ? null : (byte[])payload.Clone(),
+                    JsonPayload = jsonPayload?.DeepClone(),
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedTimestamp = _monotonicTimestampProvider(),
+                    HasCreatedTimestamp = true
                 };
-                _pending[key] = call;
+                _pending[key] = authority;
                 _pendingCountByClient[clientId] = clientPending + 1;
+                call = createSnapshot ? authority.CreateSnapshot() : null;
                 error = null;
                 return true;
             }
@@ -275,7 +337,10 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 if (_pending.TryGetValue((clientId, callId), out var call))
-                    call.Complete(encoding, payload);
+                {
+                    var ownedPayload = payload == null ? null : (byte[])payload.Clone();
+                    call.Complete(encoding, ownedPayload);
+                }
             }
         }
 
@@ -308,6 +373,21 @@ namespace Unity.FoxgloveSDK.Core
                 destination.Clear();
                 foreach (var call in _pending.Values)
                     if (!call.IsCompleted)
+                        destination.Add(call.CreateSnapshot());
+            }
+        }
+
+        /// <summary>Copy authoritative pending calls for the internal dispatch pipeline.</summary>
+        internal void CopyPendingCallsToInternal(List<FoxgloveServiceCall> destination)
+        {
+            if (destination == null)
+                throw new ArgumentNullException(nameof(destination));
+
+            lock (_lock)
+            {
+                destination.Clear();
+                foreach (var call in _pending.Values)
+                    if (!call.IsCompleted)
                         destination.Add(call);
             }
         }
@@ -323,8 +403,43 @@ namespace Unity.FoxgloveSDK.Core
             return completed;
         }
 
-        /// <summary>Drain all completed calls into a caller-owned list and remove them from pending.</summary>
+        /// <summary>
+        /// Drain completed call snapshots into a caller-owned list and remove them from pending.
+        /// Ownership of the returned snapshots transfers to the caller, which is responsible for
+        /// delivering or discarding them after the registry forgets the calls.
+        /// The session cannot send responses for calls already drained by another consumer.
+        /// </summary>
         public void DrainCompletedTo(List<FoxgloveServiceCall> destination)
+        {
+            if (destination == null)
+                throw new ArgumentNullException(nameof(destination));
+
+            lock (_lock)
+            {
+                destination.Clear();
+                _completedKeysScratch.Clear();
+                foreach (var (key, call) in _pending)
+                {
+                    if (call.IsCompleted)
+                    {
+                        destination.Add(call.CreateSnapshot());
+                        _completedKeysScratch.Add(key);
+                    }
+                }
+                try
+                {
+                    foreach (var key in _completedKeysScratch)
+                        RemovePendingCall(key);
+                }
+                finally
+                {
+                    _completedKeysScratch.Clear();
+                }
+            }
+        }
+
+        /// <summary>Drain authoritative completed calls for the internal delivery pipeline.</summary>
+        internal void DrainCompletedToInternal(List<FoxgloveServiceCall> destination)
         {
             if (destination == null)
                 throw new ArgumentNullException(nameof(destination));
@@ -362,9 +477,10 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_lock)
             {
+                var nowTimestamp = _monotonicTimestampProvider();
                 foreach (var (_, call) in _pending)
                 {
-                    if (!call.IsCompleted && call.IsTimedOut(timeout))
+                    if (!call.IsCompleted && call.IsTimedOut(timeout, nowTimestamp))
                         call.Fail($"Service call timed out after {timeout.TotalSeconds:F0}s");
                 }
             }

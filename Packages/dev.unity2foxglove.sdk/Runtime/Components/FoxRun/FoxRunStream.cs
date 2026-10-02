@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading;
 
@@ -57,6 +58,8 @@ namespace Unity.FoxgloveSDK.Components
         private bool _disposed;
         private long _nextReservationIdentity;
         private long _activeReservationIdentity;
+        private readonly Dictionary<int, long> _pendingAdmissionCreditsByThread
+            = new Dictionary<int, long>();
 
         private long _received;
         private long _admitted;
@@ -135,11 +138,14 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Applies the stream's finite monotonic admission ceiling before the
         /// provider performs avoidable decode, allocation, or deep-copy work.
+        /// The resulting compatibility credit belongs to the calling producer
+        /// thread; generated providers that cross threads must use a reservation.
         /// </summary>
         public bool TryAdmitInput()
         {
             SaturatingIncrement(ref _received);
             var now = _getTimestamp();
+            var producerThreadId = Environment.CurrentManagedThreadId;
             lock (_gate)
             {
                 if (_disposed)
@@ -154,6 +160,17 @@ namespace Unity.FoxgloveSDK.Components
 
                 _lastAdmissionTimestamp = now;
                 _hasAdmissionTimestamp = true;
+                if (_pendingAdmissionCreditsByThread.TryGetValue(
+                        producerThreadId,
+                        out var pendingCredits))
+                {
+                    if (pendingCredits != long.MaxValue)
+                        _pendingAdmissionCreditsByThread[producerThreadId] = pendingCredits + 1;
+                }
+                else
+                {
+                    _pendingAdmissionCreditsByThread[producerThreadId] = 1;
+                }
                 SaturatingIncrement(ref _admitted);
                 return true;
             }
@@ -273,17 +290,48 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// After validating the non-null disposer, unconditionally takes
-        /// ownership at the call boundary. A false result means the value was
-        /// rejected and already disposed by this stream. Generated providers
-        /// acquire this sample's admission through <see cref="TryAdmitInput"/>
-        /// before performing avoidable materialization work.
+        /// Consumes a prior admission credit or applies the public input-rate
+        /// gate before taking ownership. A false result means the value was
+        /// rejected and already disposed by this stream.
         /// </summary>
         public bool TryEnqueueOwned(T value, Action<T> disposer)
         {
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
+            if (ConsumeAdmissionCredit())
+                return TryEnqueueOwnedAfterCredit(value, disposer);
 
+            if (!TryAdmitInput())
+            {
+                DisposeValue(value, disposer);
+                return false;
+            }
+            return TryEnqueueOwnedAfterAdmission(value, disposer);
+        }
+
+        /// <summary>
+        /// Transfers an owned sample after generated infrastructure has already
+        /// admitted the input and performed its decode work.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public bool TryEnqueueOwnedAfterAdmission(T value, Action<T> disposer)
+        {
+            if (disposer == null)
+                throw new ArgumentNullException(nameof(disposer));
+
+            if (!ConsumeAdmissionCredit())
+            {
+                DisposeValue(value, disposer);
+                return false;
+            }
+
+            return TryEnqueueOwnedAfterCredit(value, disposer);
+        }
+
+        private bool TryEnqueueOwnedAfterCredit(
+            T value,
+            Action<T> disposer)
+        {
             DirectOwnedSample owned;
             try
             {
@@ -318,6 +366,62 @@ namespace Unity.FoxgloveSDK.Components
                 throw new ArgumentNullException(nameof(stateDisposer));
             if (disposer == null)
                 throw new ArgumentNullException(nameof(disposer));
+            if (ConsumeAdmissionCredit())
+                return TryEnqueueDeferredOwnedAfterCredit(
+                    state,
+                    materializer,
+                    stateDisposer,
+                    disposer);
+
+            if (!TryAdmitInput())
+            {
+                DisposeState(state, stateDisposer);
+                return false;
+            }
+            return TryEnqueueDeferredOwnedAfterAdmission(
+                state,
+                materializer,
+                stateDisposer,
+                disposer);
+        }
+
+        /// <summary>
+        /// Transfers deferred owned state after generated infrastructure has
+        /// already admitted the input.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public bool TryEnqueueDeferredOwnedAfterAdmission<TState>(
+            TState state,
+            Func<TState, T> materializer,
+            Action<TState> stateDisposer,
+            Action<T> disposer)
+        {
+            if (materializer == null)
+                throw new ArgumentNullException(nameof(materializer));
+            if (stateDisposer == null)
+                throw new ArgumentNullException(nameof(stateDisposer));
+            if (disposer == null)
+                throw new ArgumentNullException(nameof(disposer));
+
+            if (!ConsumeAdmissionCredit())
+            {
+                DisposeState(state, stateDisposer);
+                return false;
+            }
+
+            return TryEnqueueDeferredOwnedAfterCredit(
+                state,
+                materializer,
+                stateDisposer,
+                disposer);
+        }
+
+        private bool TryEnqueueDeferredOwnedAfterCredit<TState>(
+            TState state,
+            Func<TState, T> materializer,
+            Action<TState> stateDisposer,
+            Action<T> disposer)
+        {
 
             DeferredOwnedSample<TState> owned;
             try
@@ -334,6 +438,50 @@ namespace Unity.FoxgloveSDK.Components
                 throw;
             }
             return TryEnqueueOwnedCore(owned);
+        }
+
+        /// <summary>
+        /// Return one admission credit for the calling producer thread when decode or staging rejects an admitted input.
+        /// The admission timestamp and counters remain consumed so cancellation
+        /// cannot reopen the rate window for another input.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public bool CancelAdmissionCredit()
+        {
+            lock (_gate)
+            {
+                var producerThreadId = Environment.CurrentManagedThreadId;
+                if (!_pendingAdmissionCreditsByThread.TryGetValue(
+                        producerThreadId,
+                        out var pendingCredits)
+                    || pendingCredits == 0)
+                    return false;
+                RemoveAdmissionCredit(producerThreadId, pendingCredits);
+                return true;
+            }
+        }
+
+        private bool ConsumeAdmissionCredit()
+        {
+            lock (_gate)
+            {
+                var producerThreadId = Environment.CurrentManagedThreadId;
+                if (!_pendingAdmissionCreditsByThread.TryGetValue(
+                        producerThreadId,
+                        out var pendingCredits)
+                    || pendingCredits == 0)
+                    return false;
+                RemoveAdmissionCredit(producerThreadId, pendingCredits);
+                return true;
+            }
+        }
+
+        private void RemoveAdmissionCredit(int producerThreadId, long pendingCredits)
+        {
+            if (pendingCredits == 1)
+                _pendingAdmissionCreditsByThread.Remove(producerThreadId);
+            else
+                _pendingAdmissionCreditsByThread[producerThreadId] = pendingCredits - 1;
         }
 
         private bool TryEnqueueOwnedCore(OwnedSample owned)

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.IO;
@@ -72,6 +73,47 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.True(transportUnlocked);
             Assert.Equal(1, sink.PublishCount);
             Assert.Equal(1, transport.BinaryCount);
+        }
+
+        [Fact]
+        public void ReplayBackfillRequestDoesNotHoldChannelLifecycleLock()
+        {
+            using var transport = new ProbeTransport();
+            using var session = new FoxgloveSession("replay-lock-order", transport);
+            session.RegisterChannel(new AdvertiseChannel { Id = 7, Topic = "/replay-lock-order", Encoding = "json" });
+            var runtime = new BlockingBackfillContext();
+            session.SetRuntimeContext(runtime);
+            transport.Connect(1);
+
+            var subscribe = Task.Run(() => transport.Text(
+                1,
+                "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":10,\"channelId\":7}]}"));
+            Assert.True(runtime.Entered.Wait(TimeSpan.FromSeconds(5)));
+
+            var publish = Task.Run(() => session.Publish(7, new byte[] { 1 }, 10));
+            Assert.True(publish.Wait(TimeSpan.FromSeconds(2)), "Replay backfill callback still holds channel lifecycle lock.");
+
+            runtime.Release.Set();
+            Assert.True(subscribe.Wait(TimeSpan.FromSeconds(5)));
+        }
+
+        [Fact]
+        public void ClientDisconnectRequestsReplayCleanupAfterChannelLifecycleLock()
+        {
+            using var transport = new ProbeTransport();
+            using var session = new FoxgloveSession("replay-disconnect-cleanup", transport);
+            var runtime = new DisconnectAwareRuntimeContext
+            {
+                IsLifecycleLockAvailable = () => LockAvailableOnAnotherThread(
+                    GetField(session, "_channelLifecycleLock"))
+            };
+            session.SetRuntimeContext(runtime);
+
+            transport.Connect(7);
+            transport.Disconnect(7);
+
+            Assert.Equal((uint)7, runtime.DisconnectedClientId);
+            Assert.True(runtime.IsLifecycleLockAvailableDuringCallback);
         }
 
         [Theory]
@@ -235,6 +277,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             public event Action<uint, string> OnTextReceived;
             public event Action<uint, byte[]> OnBinaryReceived;
             public void Connect(uint id) => OnClientConnected?.Invoke(id);
+            public void Disconnect(uint id) => OnClientDisconnected?.Invoke(id);
             public void Text(uint id, string text) => OnTextReceived?.Invoke(id, text);
             public void Start(string host, int port) { }
             public void Stop() { }
@@ -244,6 +287,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             public void SendText(uint id, string text) => TextSend?.Invoke(id, text);
             public void SendBinary(uint id, byte[] data) { BinaryCount++; Binary?.Invoke(id, data); }
         }
+
+        private sealed class BlockingBackfillContext : IRuntimeContext
+        {
+            internal readonly ManualResetEventSlim Entered = new();
+            internal readonly ManualResetEventSlim Release = new();
+            public bool PlaybackEnabled => true;
+            public FoxgloveAssetRegistry Assets { get; } = new();
+            public ulong GetPlaybackStartNs() => 0;
+            public ulong GetPlaybackEndNs() => ulong.MaxValue;
+            public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs) { }
+            public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId) => default;
+            public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId) => default;
+            public void ReplaySeek(ulong timeNs) { }
+            public void ReplayPlay() { }
+            public void ReplayPause() { }
+            public void RequestReplaySubscriberBackfill()
+            {
+                Entered.Set();
+                Release.Wait(TimeSpan.FromSeconds(5));
+            }
+        }
+
+        private sealed class DisconnectAwareRuntimeContext : IRuntimeContext, IClientReplayDisconnectContext
+        {
+            internal Func<bool> IsLifecycleLockAvailable { get; set; }
+            internal uint DisconnectedClientId { get; private set; }
+            internal bool IsLifecycleLockAvailableDuringCallback { get; private set; }
+            public bool PlaybackEnabled => true;
+            public FoxgloveAssetRegistry Assets { get; } = new();
+            public ulong GetPlaybackStartNs() => 0;
+            public ulong GetPlaybackEndNs() => ulong.MaxValue;
+            public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs) { }
+            public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId) => default;
+            public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId) => default;
+            public void ReplaySeek(ulong timeNs) { }
+            public void ReplayPlay() { }
+            public void ReplayPause() { }
+            public void RequestReplaySubscriberBackfill() { }
+
+            public void CancelReplayForClient(uint clientId)
+            {
+                DisconnectedClientId = clientId;
+                IsLifecycleLockAvailableDuringCallback = IsLifecycleLockAvailable?.Invoke() == true;
+            }
+        }
     }
 }
-

@@ -698,6 +698,43 @@ def check_sample_meta(
     )
 
 
+def check_sdk_script_meta(results: list[CheckResult], sdk_files: list[Path] | None = None) -> None:
+    """Ensure every C# source shipped in the SDK package has a Unity meta sidecar."""
+    files = sdk_files if sdk_files is not None else list(PACKAGE.rglob("*.cs"))
+    missing: list[str] = []
+    malformed: list[str] = []
+    guids: dict[str, str] = {}
+    for path in files:
+        if not path.is_file() or path.suffix.casefold() != ".cs":
+            continue
+        meta = Path(str(path) + ".meta")
+        if not meta.is_file():
+            missing.append(rel(path))
+            continue
+        try:
+            text = meta.read_text(encoding="utf-8")
+        except OSError:
+            malformed.append(rel(meta))
+            continue
+        match = META_GUID_RE.search(text)
+        if match is None:
+            malformed.append(rel(meta))
+            continue
+        guid = match.group(1).lower()
+        if guid in guids:
+            malformed.append(f"{rel(meta)} duplicates {guids[guid]}")
+        else:
+            guids[guid] = rel(meta)
+
+    offenders = missing[:MAX_REPORTED_MISSING_META] + malformed[:MAX_REPORTED_MISSING_META]
+    add(
+        results,
+        "SDK C# source .meta files",
+        not missing and not malformed,
+        "; ".join(offenders) if offenders else f"{len(guids)} SDK C# sources have valid unique metas",
+    )
+
+
 def check_sample_boundaries(results: list[CheckResult]) -> None:
     """Verify Basic and FullDemo sample boundaries remain intentional."""
     basic = SAMPLES / "BasicVisualization"
@@ -999,6 +1036,7 @@ def main() -> int:
     check_required_files(results)
     bridge_files = iter_bridge_asset_files()
     check_sample_meta(results, samples_files, bridge_files)
+    check_sdk_script_meta(results, package_files)
     check_sample_boundaries(results)
     check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)

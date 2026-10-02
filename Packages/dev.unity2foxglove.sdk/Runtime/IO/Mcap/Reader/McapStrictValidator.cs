@@ -30,6 +30,9 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Maximum accepted uncompressed Chunk records payload size.</summary>
         public ulong ChunkUncompressedSizeLimit = McapReader.DefaultChunkUncompressedSizeLimit;
 
+        /// <summary>Maximum cumulative summary section size.</summary>
+        public ulong SummarySizeLimit = McapReader.DefaultSummarySizeLimit;
+
         /// <summary>Maximum number of Chunk validation states retained during one validation.</summary>
         public int MaxValidatedChunks = 100000;
     }
@@ -61,6 +64,8 @@ namespace Unity.FoxgloveSDK.IO
                 throw new ArgumentOutOfRangeException(nameof(options), "RecordSizeLimit must be greater than zero.");
             if (options.ChunkUncompressedSizeLimit == 0)
                 throw new ArgumentOutOfRangeException(nameof(options), "ChunkUncompressedSizeLimit must be greater than zero.");
+            if (options.SummarySizeLimit == 0)
+                throw new ArgumentOutOfRangeException(nameof(options), "SummarySizeLimit must be greater than zero.");
             if (options.MaxValidatedChunks <= 0)
                 throw new ArgumentOutOfRangeException(nameof(options), "MaxValidatedChunks must be greater than zero.");
 
@@ -74,7 +79,8 @@ namespace Unity.FoxgloveSDK.IO
                     summary = reader.ReadSummary(
                         options.RecordSizeLimit,
                         options.ValidateCrcs,
-                        options.ChunkUncompressedSizeLimit);
+                        options.ChunkUncompressedSizeLimit,
+                        options.SummarySizeLimit);
                 }
 
                 stream.Position = 0;

@@ -623,7 +623,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
-        public void FailedCursorApplyIsRetainedForRetry()
+        public void FailedCursorApplyIsNotRetainedAfterPartialMutation()
         {
             var controller = new ExternalReplayCursorController { Enabled = true };
             var request = ReplayCursorRequest.CreateForTests(
@@ -644,9 +644,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.Throws<InvalidOperationException>(() =>
                 controller.TryDrainLatest(_ => throw new InvalidOperationException("simulated apply failure")));
 
-            Assert.True(controller.TryDrainLatest(out var retry));
-            Assert.Equal(1, retry.Sequence);
-            Assert.Equal(request.TimeNs, retry.TimeNs);
+            Assert.False(controller.TryDrainLatest(out _));
         }
 
         [Fact]

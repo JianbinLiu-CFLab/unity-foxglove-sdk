@@ -27,7 +27,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         InvalidPublisherToken = 11,
         PublisherBackendFailure = 12,
         PublishFailure = 13,
-        TypesupportUnavailable = 14
+        TypesupportUnavailable = 14,
+        NativeRuntimeSurfaceUnavailable = 15
     }
 
     /// <summary>
@@ -73,6 +74,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return "The native ROS2 publisher could not publish the mapped message.";
                 case FoxRunRos2RegistrationError.TypesupportUnavailable:
                     return "The selected custom ROS2 typesupport add-on is not ready.";
+                case FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable:
+                    return "The selected native ROS2 runtime surface is unavailable for this contract.";
                 default:
                     return "The native ROS2 subscription failed.";
             }
@@ -182,6 +185,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2RegistrationError error,
             string diagnostic)
             => new FoxRunRos2NativeBackendRegistration(false, null, error, diagnostic);
+        public static FoxRunRos2NativeBackendRegistration Failure(
+            FoxRunRos2RegistrationError error,
+            string diagnostic,
+            IFoxRunRos2NativeSubscriptionToken token)
+            => new FoxRunRos2NativeBackendRegistration(false, token, error, diagnostic);
     }
 
     /// <summary>Backend-only result that carries a typed publisher token.</summary>
@@ -219,6 +227,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2RegistrationError error,
             string diagnostic)
             => new FoxRunRos2NativePublisherRegistration(false, null, error, diagnostic);
+
+        public static FoxRunRos2NativePublisherRegistration Failure(
+            FoxRunRos2RegistrationError error,
+            string diagnostic,
+            IFoxRunRos2NativePublisherToken token)
+            => new FoxRunRos2NativePublisherRegistration(false, token, error, diagnostic);
     }
 
     /// <summary>

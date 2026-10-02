@@ -151,7 +151,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             using var ms2 = new MemoryStream(allBytes);
             var reader = new McapReader(ms2);
-            var attachment = reader.ReadAttachmentAt(index.Offset);
+            var attachment = reader.ReadAttachmentAt(index.Offset, validateCrcs: false);
 
             Check(!attachment.CrcValid, "34A-3: corrupted attachment CRC is detected as invalid");
         }

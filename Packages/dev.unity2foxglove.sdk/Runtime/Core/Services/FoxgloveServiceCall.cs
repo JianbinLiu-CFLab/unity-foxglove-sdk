@@ -6,6 +6,7 @@
 // Complete/Fail methods used by the service drain pipeline.
 
 using System;
+using System.Diagnostics;
 using Newtonsoft.Json.Linq;
 
 namespace Unity.FoxgloveSDK.Core
@@ -31,6 +32,10 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>UTC timestamp when the call was created.</summary>
         public DateTime CreatedAt { get; set; }
 
+        /// <summary>Monotonic timestamp captured when the call was enqueued.</summary>
+        internal long CreatedTimestamp { get; set; }
+        internal bool HasCreatedTimestamp { get; set; }
+
         /// <summary>Whether the call has been completed (success or failure).</summary>
         public bool IsCompleted { get; private set; }
         /// <summary>Response payload when completed successfully; null on failure.</summary>
@@ -41,7 +46,41 @@ namespace Unity.FoxgloveSDK.Core
         public string FailureMessage { get; private set; }
 
         /// <summary>Check whether the call has exceeded the given timeout.</summary>
-        public bool IsTimedOut(TimeSpan timeout) => DateTime.UtcNow - CreatedAt > timeout;
+        public bool IsTimedOut(TimeSpan timeout)
+            => IsTimedOut(timeout, Stopwatch.GetTimestamp());
+
+        internal bool IsTimedOut(TimeSpan timeout, long nowTimestamp)
+        {
+            if (!HasCreatedTimestamp)
+                return DateTime.UtcNow - CreatedAt > timeout;
+            if (nowTimestamp <= CreatedTimestamp)
+                return false;
+
+            var timeoutTicks = timeout <= TimeSpan.Zero
+                ? 0L
+                : (long)Math.Ceiling(timeout.TotalSeconds * Stopwatch.Frequency);
+            return nowTimestamp - CreatedTimestamp > timeoutTicks;
+        }
+
+        internal FoxgloveServiceCall CreateSnapshot()
+        {
+            return new FoxgloveServiceCall
+            {
+                ServiceId = ServiceId,
+                CallId = CallId,
+                ClientId = ClientId,
+                Encoding = Encoding,
+                Payload = Payload == null ? null : (byte[])Payload.Clone(),
+                JsonPayload = JsonPayload?.DeepClone(),
+                CreatedAt = CreatedAt,
+                CreatedTimestamp = CreatedTimestamp,
+                HasCreatedTimestamp = HasCreatedTimestamp,
+                IsCompleted = IsCompleted,
+                ResponsePayload = ResponsePayload == null ? null : (byte[])ResponsePayload.Clone(),
+                ResponseEncoding = ResponseEncoding,
+                FailureMessage = FailureMessage
+            };
+        }
 
         /// <summary>Mark the call as completed with a success response.</summary>
         internal bool Complete(string encoding, byte[] payload)

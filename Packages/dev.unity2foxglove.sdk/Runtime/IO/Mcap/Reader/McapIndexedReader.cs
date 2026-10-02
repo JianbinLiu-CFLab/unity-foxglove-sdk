@@ -24,6 +24,8 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapSequentialReadLimits _sequentialReadLimits;
         private readonly object _chunkIndexCacheGate = new object();
         private List<McapChunkIndex> _chunkIndexesByDescendingEndTime;
+        private Dictionary<string, McapReader.McapMetadataRecordIndex> _metadataFallbackCache;
+        private bool _metadataFallbackScanComplete;
         private int _disposed;
 
         /// <summary>
@@ -74,7 +76,8 @@ namespace Unity.FoxgloveSDK.IO
             var summaryOptions = readOptions ?? new McapReadOptions();
             _summary = _reader.ReadSummary(
                 validateCrcs: summaryOptions.ValidateCrcs,
-                chunkUncompressedSizeLimit: summaryOptions.ChunkUncompressedSizeLimit);
+                chunkUncompressedSizeLimit: summaryOptions.ChunkUncompressedSizeLimit,
+                summarySizeLimit: summaryOptions.SummarySizeLimit);
         }
 
         /// <summary>
@@ -349,7 +352,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (!crcValid && options.ValidateCrcs)
                     throw new InvalidDataException("MCAP chunk CRC mismatch.");
 
-                foreach (var message in _reader.EnumerateChunkMessages(uncompressed))
+                foreach (var message in _reader.EnumerateChunkMessages(uncompressed, chunkStartOffset: chunkIndex.ChunkStartOffset))
                 {
                     ThrowIfDisposed();
                     if (!McapLatestAtQuery.IsInTimeRange(message.LogTime, options))
@@ -442,7 +445,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (!crcValid && options.ValidateCrcs)
                     throw new InvalidDataException("MCAP chunk CRC mismatch.");
 
-                foreach (var message in _reader.EnumerateChunkMessages(uncompressed))
+                foreach (var message in _reader.EnumerateChunkMessages(uncompressed, chunkStartOffset: chunkIndex.ChunkStartOffset))
                     McapLatestAtQuery.ConsiderLatestCandidate(message, options, selectedChannelIds, latestByChannel);
             }
         }
@@ -481,7 +484,8 @@ namespace Unity.FoxgloveSDK.IO
                 AllowLinearFallback = true,
                 UseOfficialEndTimeSemantics = options.UseOfficialEndTimeSemantics,
                 ValidateCrcs = options.ValidateCrcs,
-                ChunkUncompressedSizeLimit = options.ChunkUncompressedSizeLimit
+                ChunkUncompressedSizeLimit = options.ChunkUncompressedSizeLimit,
+                SummarySizeLimit = options.SummarySizeLimit
             };
 
             _stream.Seek(0, SeekOrigin.Begin);
@@ -503,12 +507,16 @@ namespace Unity.FoxgloveSDK.IO
         /// <param name="index">Attachment index entry from <see cref="AttachmentIndexes"/>.</param>
         /// <returns>The decoded attachment.</returns>
         public McapAttachment ReadAttachment(McapAttachmentIndex index)
+            => ReadAttachment(index, validateCrcs: true);
+
+        /// <summary>Reads an attachment with an explicit CRC validation policy.</summary>
+        public McapAttachment ReadAttachment(McapAttachmentIndex index, bool validateCrcs)
         {
             ThrowIfDisposed();
             if (index == null)
                 throw new ArgumentNullException(nameof(index));
 
-            return _reader.ReadAttachmentAt(index.Offset);
+            return _reader.ReadAttachmentAt(index.Offset, validateCrcs);
         }
 
         /// <summary>
@@ -536,17 +544,80 @@ namespace Unity.FoxgloveSDK.IO
                 return null;
 
             var indexes = _summary.MetadataIndexes;
+            var matchingIndex = false;
             for (var i = 0; indexes != null && i < indexes.Count; i++)
             {
                 var index = indexes[i];
                 if (index != null && string.Equals(index.Name, name, StringComparison.Ordinal))
-                    return _reader.ReadMetadataAt(index.Offset);
+                {
+                    matchingIndex = true;
+                    var metadata = _reader.ReadMetadataAt(index.Offset);
+                    if (metadata != null && string.Equals(metadata.Name, name, StringComparison.Ordinal))
+                        return metadata;
+                }
             }
 
-            if (indexes != null && indexes.Count > 0)
+            if (!matchingIndex && HasCompleteMetadataIndex())
                 return null;
 
-            return _reader.FindMetadataInDataSection(name, _summary.DataSectionEndOffset);
+            if (indexes != null && indexes.Count > 0)
+            {
+                if (!_metadataFallbackScanComplete)
+                {
+                    _metadataFallbackCache = _reader.BuildMetadataIndexInDataSection(_summary.DataSectionEndOffset);
+                    _metadataFallbackScanComplete = true;
+                }
+
+                return _metadataFallbackCache.TryGetValue(name, out var fallback)
+                    ? _reader.ReadMetadataAt(fallback.Offset)
+                    : null;
+            }
+
+            if (HasCompleteMetadataIndex())
+                return null;
+
+            if (!_metadataFallbackScanComplete)
+            {
+                _metadataFallbackCache = _reader.BuildMetadataIndexInDataSection(_summary.DataSectionEndOffset);
+                _metadataFallbackScanComplete = true;
+            }
+
+            return _metadataFallbackCache.TryGetValue(name, out var fallbackIndex)
+                ? _reader.ReadMetadataAt(fallbackIndex.Offset)
+                : null;
+        }
+
+        private bool HasCompleteMetadataIndex()
+        {
+            var metadataCount = _summary.Statistics?.MetadataCount;
+            var indexes = _summary.MetadataIndexes;
+            if (!metadataCount.HasValue
+                || (ulong)(indexes?.Count ?? 0) != metadataCount.Value)
+                return false;
+            if (indexes == null || indexes.Count == 0)
+                return true;
+
+            var offsets = new HashSet<ulong>();
+            try
+            {
+                for (var i = 0; i < indexes.Count; i++)
+                {
+                    var index = indexes[i];
+                    if (index == null
+                        || !offsets.Add(index.Offset))
+                        return false;
+                    var metadata = _reader.ReadMetadataAt(index.Offset);
+                    if (metadata == null
+                        || !string.Equals(metadata.Name, index.Name, StringComparison.Ordinal))
+                        return false;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -559,6 +630,8 @@ namespace Unity.FoxgloveSDK.IO
 
             _reader.Dispose();
             _chunkIndexesByDescendingEndTime = null;
+            _metadataFallbackCache = null;
+            _metadataFallbackScanComplete = false;
             if (_ownsStream)
                 _stream.Dispose();
         }

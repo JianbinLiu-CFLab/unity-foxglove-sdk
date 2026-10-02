@@ -101,7 +101,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyFoxgloveManagerUsesBoundedClientEventQueue()
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs")
+                         + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.RuntimeForwarders.cs");
             var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
 
             Check(clientEvents.Contains("MaxQueuedClientEvents", StringComparison.Ordinal)

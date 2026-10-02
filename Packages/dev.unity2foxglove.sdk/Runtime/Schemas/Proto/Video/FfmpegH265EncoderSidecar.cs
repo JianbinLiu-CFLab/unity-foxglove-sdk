@@ -14,6 +14,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.FoxgloveSDK.Components;
 
 namespace Foxglove.Schemas.Video
 {
@@ -21,7 +22,7 @@ namespace Foxglove.Schemas.Video
     /// Encodes RGB24 frames through an external FFmpeg process and exposes completed
     /// HEVC Annex B access units through a thread-safe bounded output queue.
     /// </summary>
-    public sealed class FfmpegH265EncoderSidecar : IFfmpegVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
+    public sealed class FfmpegH265EncoderSidecar : IFfmpegVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar, ICameraVideoFrameSourceSidecar
     {
         private const int ShutdownTimeoutMs = 500;
 
@@ -40,6 +41,8 @@ namespace Foxglove.Schemas.Video
         private long _sessionId;
         private FfmpegH265EncoderOptions _options;
         private H265AnnexBAccessUnitPacketizer _packetizer;
+        private MpegTsVideoDemuxer _mpegTsDemuxer;
+        private FfmpegTimestampMatcher _timestampMatcher;
         private int _maxInputQueue = 2;
         private int _maxOutputQueue = 4;
         private int _inputCount;
@@ -78,7 +81,7 @@ namespace Foxglove.Schemas.Video
         public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
         public int InputQueueDepth => Volatile.Read(ref _inputCount);
         public int MaxInputQueue => Volatile.Read(ref _maxInputQueue);
-        internal int PendingTimestampCountForTests => _encodedFrameTimestamps.Count;
+        internal int PendingTimestampCountForTests => _encodedFrameTimestamps.Count + (_timestampMatcher?.PendingCount ?? 0);
         public string LastStderrLine
         {
             get => Volatile.Read(ref _lastStderrLine);
@@ -107,6 +110,9 @@ namespace Foxglove.Schemas.Video
 
             _options = options ?? new FfmpegH265EncoderOptions();
             _packetizer = new H265AnnexBAccessUnitPacketizer();
+            _mpegTsDemuxer = new MpegTsVideoDemuxer();
+            _timestampMatcher = new FfmpegTimestampMatcher();
+            _timestampMatcher.Reset(_options.FrameRate);
             LastError = null;
 
             if (!_options.Validate(out var validationError))
@@ -120,9 +126,10 @@ namespace Foxglove.Schemas.Video
 
             try
             {
+                var executableCheck = FfmpegExecutableCheck.Check(_options.FfmpegPath, 1000);
                 var process = new Process
                 {
-                    StartInfo = _options.CreateStartInfo(),
+                    StartInfo = _options.CreateStartInfo(executableCheck.VersionLine),
                     EnableRaisingEvents = true
                 };
                 Volatile.Write(ref _process, process);
@@ -191,10 +198,28 @@ namespace Foxglove.Schemas.Video
 
         public bool TrySubmitFrame(byte[] rgb24Frame, ulong timestampNs)
         {
-            var submittingProcess = Volatile.Read(ref _process);
-            if (rgb24Frame == null || rgb24Frame.Length == 0 || !IsProcessRunning(submittingProcess))
+            var process = Volatile.Read(ref _process);
+            if (rgb24Frame == null || rgb24Frame.Length == 0 || !IsProcessRunning(process))
                 return false;
 
+            return TryEnqueueFrame(process, new CameraVideoArrayFrameBytesSource(rgb24Frame), timestampNs);
+        }
+
+        bool ICameraVideoFrameSourceSidecar.TrySubmitFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
+        {
+            var process = Volatile.Read(ref _process);
+            if (frame.Length <= 0 || !IsProcessRunning(process))
+                return false;
+
+            return TryEnqueueFrame(process, frame, timestampNs);
+        }
+
+        private bool TryEnqueueFrame<TFrameBytes>(
+            Process submittingProcess,
+            TFrameBytes frame,
+            ulong timestampNs)
+            where TFrameBytes : struct, ICameraVideoFrameBytesSource
+        {
             var expectedBytes = _options != null ? _options.FrameByteCount : 0;
             if (expectedBytes <= 0)
             {
@@ -202,21 +227,38 @@ namespace Foxglove.Schemas.Video
                 return false;
             }
 
-            if (rgb24Frame.Length != expectedBytes)
+            if (frame.Length != expectedBytes)
             {
                 LastError = "RGB24 frame byte count does not match encoder dimensions.";
                 return false;
             }
 
-            var copy = ArrayPool<byte>.Shared.Rent(rgb24Frame.Length);
-            Buffer.BlockCopy(rgb24Frame, 0, copy, 0, rgb24Frame.Length);
+            var copy = ArrayPool<byte>.Shared.Rent(expectedBytes);
+            try
+            {
+                frame.CopyTo(copy);
+            }
+            catch
+            {
+                ArrayPool<byte>.Shared.Return(copy);
+                throw;
+            }
 
+            return EnqueueCopiedFrame(submittingProcess, copy, timestampNs, expectedBytes);
+        }
+
+        private bool EnqueueCopiedFrame(
+            Process submittingProcess,
+            byte[] copy,
+            ulong timestampNs,
+            int expectedBytes)
+        {
             lock (_inputLock)
             {
                 if (!ReferenceEquals(submittingProcess, Volatile.Read(ref _process))
                     || !IsProcessRunning(submittingProcess))
                 {
-                    ReturnInputFrameBuffer(new QueuedVideoFrame(copy, timestampNs));
+                    ReturnInputFrameBuffer(new QueuedVideoFrame(copy, timestampNs, pooled: true, length: expectedBytes));
                     return false;
                 }
 
@@ -227,14 +269,14 @@ namespace Foxglove.Schemas.Video
                 }
 
                 // Pending raw frames and written-but-unpaired frames share one finite budget.
-                if ((long)_inputCount + _encodedFrameTimestamps.Count >= (long)_maxInputQueue + _maxOutputQueue)
+                if ((long)_inputCount + PendingTimestampCountForTests >= (long)_maxInputQueue + _maxOutputQueue)
                 {
-                    ReturnInputFrameBuffer(new QueuedVideoFrame(copy, timestampNs));
+                    ReturnInputFrameBuffer(new QueuedVideoFrame(copy, timestampNs, pooled: true, length: expectedBytes));
                     return false;
                 }
 
                 var signalInput = _inputCount == 0;
-                _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs));
+                _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs, pooled: true, length: expectedBytes));
                 _inputCount++;
                 if (signalInput)
                     _inputSignal.Release();
@@ -380,15 +422,18 @@ namespace Foxglove.Schemas.Video
         private async Task RunStdoutReaderForSession(Process process, CancellationToken token, long sessionId)
         {
             var buffer = new byte[16 * 1024];
+            var outputEnded = false;
             try
             {
                 var stream = process.StandardOutput.BaseStream;
-                while (!token.IsCancellationRequested && IsProcessRunning(process))
+                // End of stream, not process exit, ends the loop: an exited encoder can still
+                // have its final MPEG-TS bytes buffered in the pipe.
+                while (!token.IsCancellationRequested)
                 {
                     var read = await stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
                     if (read <= 0)
                     {
-                        RetireFailedProcess(process, token, "Encoder stdout ended unexpectedly.");
+                        outputEnded = true;
                         break;
                     }
 
@@ -396,8 +441,16 @@ namespace Foxglove.Schemas.Video
                     {
                         if (!IsCurrentSessionForTests(process, sessionId))
                             return;
-                        _packetizer.Append(buffer, 0, read);
-                        DrainPacketizer();
+                        if (_mpegTsDemuxer != null)
+                        {
+                            _mpegTsDemuxer.Append(buffer, 0, read);
+                            DrainMpegTs();
+                        }
+                        else
+                        {
+                            _packetizer.Append(buffer, 0, read);
+                            DrainPacketizer();
+                        }
                     }
                 }
 
@@ -405,9 +458,22 @@ namespace Foxglove.Schemas.Video
                 {
                     if (!IsCurrentSessionForTests(process, sessionId))
                         return;
-                    _packetizer.FlushPendingEvents();
-                    DrainPacketizer();
+                    if (_mpegTsDemuxer != null)
+                    {
+                        _mpegTsDemuxer.Flush();
+                        DrainMpegTs();
+                    }
+                    else
+                    {
+                        _packetizer.FlushPendingEvents();
+                        DrainPacketizer();
+                    }
                 }
+
+                // Retire only after the final access unit left the demuxer: retirement ends the
+                // session asynchronously and would otherwise discard the tail.
+                if (outputEnded)
+                    RetireFailedProcess(process, token, "Encoder stdout ended unexpectedly.");
             }
             catch (OperationCanceledException)
             {
@@ -488,6 +554,22 @@ namespace Foxglove.Schemas.Video
             publishLine(truncated ? text + " [truncated]" : text);
         }
 
+        private void DrainMpegTs()
+        {
+            while (_mpegTsDemuxer != null && _mpegTsDemuxer.TryDequeue(out var accessUnit))
+            {
+                if (!H265AnnexBAccessUnitPacketizer.LooksLikeDecodableH265AccessUnit(accessUnit.Data))
+                {
+                    _timestampMatcher?.TryResolve(accessUnit.Pts90k, out _);
+                    LastStderrLine = "FFmpeg MPEG-TS emitted a non-decodable H265 access unit.";
+                    Interlocked.Increment(ref _accessUnitsDropped);
+                    continue;
+                }
+
+                EnqueueAccessUnit(accessUnit.Data, accessUnit.Pts90k);
+            }
+        }
+
         private void DrainPacketizer()
         {
             while (_packetizer.TryDequeueEvent(out var accessUnit, out var dropped))
@@ -509,15 +591,11 @@ namespace Foxglove.Schemas.Video
 
             lock (_outputLock)
             {
-                // FFmpeg's rawvideo pipe carries no per-frame PTS. With zerolatency
-                // and B-frames disabled, output order is expected to match input order;
-                // consume one capture timestamp for every parsed access unit, including
-                // an access unit dropped because the bounded output queue is full. This
-                // remains an approximation until a PTS-bearing sidecar protocol exists.
+                // Test-only legacy packetizer path; production output carries PTS in MPEG-TS.
                 var hasTimestamp = _encodedFrameTimestamps.TryDequeue(out var capturedNs);
                 if (_outputCount >= _maxOutputQueue)
                 {
-                    LastStderrLine = "FFmpeg H.265 output queue full; capture admission is holding new frames.";
+                    LastStderrLine = "FFmpeg H.265 output queue full; encoded frame was dropped.";
                     Interlocked.Increment(ref _accessUnitsDropped);
                     return;
                 }
@@ -534,6 +612,35 @@ namespace Foxglove.Schemas.Video
                     Interlocked.Increment(ref _accessUnitsDropped);
                     return;
                 }
+                _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
+                _outputCount++;
+                Interlocked.Increment(ref _accessUnitsProduced);
+            }
+        }
+
+        private void EnqueueAccessUnit(byte[] accessUnit, long pts90k)
+        {
+            if (accessUnit == null || accessUnit.Length == 0)
+                return;
+
+            lock (_outputLock)
+            {
+                if (_outputCount >= _maxOutputQueue)
+                {
+                    _timestampMatcher?.TryResolve(pts90k, out _);
+                    LastStderrLine = "FFmpeg H.265 output queue full; encoded frame was dropped.";
+                    Interlocked.Increment(ref _accessUnitsDropped);
+                    return;
+                }
+
+                if (_timestampMatcher == null || !_timestampMatcher.TryResolve(pts90k, out var timestampNs))
+                {
+                    Interlocked.Increment(ref _timestampQueueUnderflows);
+                    LastStderrLine = "FFmpeg H.265 MPEG-TS access unit had no matching capture timestamp.";
+                    Interlocked.Increment(ref _accessUnitsDropped);
+                    return;
+                }
+
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
                 _outputCount++;
                 Interlocked.Increment(ref _accessUnitsProduced);
@@ -579,6 +686,7 @@ namespace Foxglove.Schemas.Video
             while (_encodedFrameTimestamps.TryDequeue(out _))
             {
             }
+            _timestampMatcher?.Clear();
         }
 
         private bool TryDequeueInputFrame(Process process, CancellationToken token, out QueuedVideoFrame frame)
@@ -593,14 +701,17 @@ namespace Foxglove.Schemas.Video
 
                 if (_inputCount > 0)
                     _inputCount--;
-                _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
+                if (_mpegTsDemuxer != null)
+                    _timestampMatcher.Track(frame.TimestampNs);
+                else
+                    _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
                 return true;
             }
         }
 
         private static void ReturnInputFrameBuffer(QueuedVideoFrame frame)
         {
-            if (frame.Data != null && frame.Data.Length > 0)
+            if (frame.Pooled && frame.Data != null && frame.Data.Length > 0)
                 ArrayPool<byte>.Shared.Return(frame.Data);
         }
 

@@ -170,7 +170,7 @@ namespace Unity.FoxgloveSDK.Tests
             CheckContains(command, "aud=1", "76C-16: command emits HEVC AUD NAL units");
             CheckContains(command, "repeat-headers=1", "76C-17: command repeats VPS/SPS/PPS headers");
             CheckContains(command, "bframes=0", "76C-18: command disables x265 B frames");
-            CheckContains(command, "-f hevc", "76C-19: command outputs HEVC elementary stream");
+            CheckContains(command, "-f mpegts", "76C-19: command outputs PTS-bearing MPEG-TS");
             CheckContains(command, "pipe:1", "76C-20: command writes Annex B stream to stdout");
 
             var sidecarType = Type.GetType("Foxglove.Schemas.Video.FfmpegH265EncoderSidecar, FoxgloveSdk.Tests");

@@ -9,6 +9,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -25,17 +26,21 @@ namespace Unity.FoxgloveSDK.Transport
     /// Pure C# WebSocket server backend using TcpListener + manual WebSocket protocol.
     /// No http.sys dependency; works on all platforms without admin rights.
     /// </summary>
-    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
+    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IFoxgloveTransportCapacityProvider, IDisposable
     {
         private const int CloseDrainTimeoutMs = 250;
+        private const int CloseHandshakeTimeoutMs = 1000;
         private const int StopAcceptLoopWaitMs = 500;
         private const int StopDisconnectWaitMs = 2000;
         private const int StopForcedCloseWaitMs = 1000;
         private const int StopPendingHandshakeWaitMs = 1000;
+        private const int StopClientHandlersWaitMs = 5000;
         private const int HandshakeTimeoutMs = 5000;
+        private const int CapacityRequestDrainTimeoutMs = 250;
+        private const int MaxCapacityRequestBytes = 64 * 1024;
         private const int MaxQueuedCapacityResponses = 64;
         private const int MaxFragmentedMessageBytes = 4 * 1024 * 1024;
-        private const int MaxFragmentedMessageFrames = ManagedWebSocketOptions.DefaultMaxQueuedFrames;
+        private const ushort GoingAwayCloseCode = 1001;
         private const ushort ProtocolErrorCloseCode = 1002;
         private const ushort InvalidPayloadDataCloseCode = 1007;
         private const ushort MessageTooBigCloseCode = 1009;
@@ -56,6 +61,8 @@ namespace Unity.FoxgloveSDK.Transport
         /// </summary>
         private readonly ConcurrentDictionary<TcpClient, TaskCompletionSource<bool>> _pendingClients =
             new ConcurrentDictionary<TcpClient, TaskCompletionSource<bool>>();
+        private readonly ConcurrentDictionary<TcpClient, ClientHandler> _clientHandlers =
+            new ConcurrentDictionary<TcpClient, ClientHandler>();
         /// <summary>Shared managed WebSocket options for queue capacity and token gate.</summary>
         private readonly ManagedWebSocketOptions _options;
         private readonly WsHandshakeHandler _handshakeHandler;
@@ -90,8 +97,38 @@ namespace Unity.FoxgloveSDK.Transport
             internal bool CallbackCompleted;
             internal int CallbackThreadId;
             internal bool Cancelled;
+            internal bool StopDisconnectRequested;
+            internal readonly List<PendingPublicationFrame> PendingControlFrames =
+                new List<PendingPublicationFrame>();
+            internal int PendingControlBytes;
+            internal bool ControlOverflowed;
             internal readonly TaskCompletionSource<bool> Completion =
                 new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        private readonly struct PendingPublicationFrame
+        {
+            internal PendingPublicationFrame(bool text, byte[] payload)
+            {
+                Text = text;
+                Payload = payload ?? Array.Empty<byte>();
+            }
+
+            internal bool Text { get; }
+            internal byte[] Payload { get; }
+        }
+
+        private sealed class ClientHandler
+        {
+            internal readonly TcpClient TcpClient;
+            internal readonly TaskCompletionSource<bool> Completion =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            internal int ThreadId;
+
+            internal ClientHandler(TcpClient tcpClient)
+            {
+                TcpClient = tcpClient;
+            }
         }
 
         // Aggregate health counters
@@ -113,6 +150,9 @@ namespace Unity.FoxgloveSDK.Transport
 
         /// <summary>Whether the TCP listener is actively accepting connections.</summary>
         public bool IsRunning => Volatile.Read(ref _listener) != null;
+
+        /// <summary>Current admission capacity, reflecting mutable options before Start.</summary>
+        public int MaxClients => ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients);
 
         /// <summary>
         /// Whether a capacity rejection can safely write a plaintext HTTP
@@ -157,6 +197,7 @@ namespace Unity.FoxgloveSDK.Transport
                 {
                     if (_clients.Count != 0
                         || _pendingClients.Count != 0
+                        || _clientHandlers.Count != 0
                         || _clientPublications.Count != 0)
                         throw new InvalidOperationException(
                             "Server shutdown is still retaining client resources.");
@@ -204,6 +245,7 @@ namespace Unity.FoxgloveSDK.Transport
             TcpListener listener = null;
             Task[] publicationTasks = null;
             KeyValuePair<uint, WsConnection>[] clients = null;
+            ClientHandler[] clientHandlers = null;
 
             // Claim the lifecycle handles under the same gate used by Start,
             // then release that gate before running user callbacks or waiting
@@ -233,18 +275,19 @@ namespace Unity.FoxgloveSDK.Transport
                     // Keep the source contract literal while taking the
                     // snapshot under the admission gate.
                     clients = _clients.ToArray();
+                    clientHandlers = SnapshotClientHandlers();
                     publicationTasks = SnapshotPublicationTasks();
                 }
             }
 
             try
             {
-                try { cts?.Cancel(); } catch { }
                 try { listener?.Stop(); } catch { }
                 WaitForShutdownTask(acceptLoopTask, StopAcceptLoopWaitMs, "accept loop");
+                DrainCapacityResponseWorkers();
 
                 var disconnects = clients
-                    .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value)))
+                    .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value, initiateGracefulClose: true)))
                     .ToArray();
                 if (disconnects.Length > 0)
                 {
@@ -272,6 +315,11 @@ namespace Unity.FoxgloveSDK.Transport
                     }
                 }
 
+                // Keep established send loops alive until their bounded
+                // graceful-close window has completed. The cancellation also
+                // stops receive/liveness loops before the remaining handlers
+                // are joined below.
+                try { cts?.Cancel(); } catch { }
                 WaitForPublicationTasks(publicationTasks);
 
                 // Give established clients their bounded graceful-close
@@ -296,7 +344,7 @@ namespace Unity.FoxgloveSDK.Transport
                     }
                 }
 
-                DrainCapacityResponseWorkers();
+                WaitForClientHandlers(clientHandlers);
             }
             finally
             {
@@ -348,29 +396,90 @@ namespace Unity.FoxgloveSDK.Transport
         public void BroadcastText(string json)
         {
             var payload = Encoding.UTF8.GetBytes(json ?? string.Empty);
-            foreach (var (id, conn) in _clients)
+            foreach (var (id, conn) in SnapshotAnnouncedClients(FramePriority.Control, true, payload))
                 HandleEnqueueResult(id, conn, conn.SendTextEncoded(payload, FramePriority.Control), "BroadcastText");
         }
 
         /// <summary>Send a binary frame to every connected client.</summary>
         public void BroadcastBinary(byte[] data)
         {
-            foreach (var (id, conn) in _clients)
+            foreach (var (id, conn) in SnapshotAnnouncedClients(FramePriority.Control, false, data))
                 HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Control), "BroadcastBinary");
         }
 
         /// <summary>Send droppable live data binary frames to every connected client.</summary>
         public void BroadcastDataBinary(byte[] data)
         {
-            foreach (var (id, conn) in _clients)
+            foreach (var (id, conn) in SnapshotAnnouncedClients(FramePriority.Data, false, data))
                 HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Data), "BroadcastDataBinary");
+        }
+
+        private KeyValuePair<uint, WsConnection>[] SnapshotAnnouncedClients(
+            FramePriority priority,
+            bool text,
+            byte[] payload)
+        {
+            lock (_clientAdmissionLock)
+            {
+                var clients = new List<KeyValuePair<uint, WsConnection>>(_clients.Count);
+                foreach (var pair in _clients)
+                {
+                    if (_clientPublications.TryGetValue(pair.Key, out var publication)
+                        && !publication.CallbackCompleted)
+                    {
+                        if (priority == FramePriority.Control)
+                            DeferPublicationControlLocked(publication, text, payload);
+                        continue;
+                    }
+
+                    clients.Add(pair);
+                }
+
+                return clients.ToArray();
+            }
+        }
+
+        private void DeferPublicationControlLocked(
+            ClientPublication publication,
+            bool text,
+            byte[] payload)
+        {
+            var bytes = payload ?? Array.Empty<byte>();
+            var maxFrames = ManagedWebSocketOptions.NormalizeMaxQueuedFrames(_options.MaxQueuedFramesPerClient);
+            var maxBytes = ManagedWebSocketOptions.NormalizeMaxQueuedBytes(_options.MaxQueuedBytesPerClient);
+            if (publication.PendingControlFrames.Count >= maxFrames
+                || bytes.Length > maxBytes - publication.PendingControlBytes)
+            {
+                if (!publication.ControlOverflowed)
+                {
+                    publication.ControlOverflowed = true;
+                    Interlocked.Increment(ref _totalControlOverflowDisconnects);
+                }
+                return;
+            }
+
+            publication.PendingControlFrames.Add(
+                new PendingPublicationFrame(text, (byte[])bytes.Clone()));
+            publication.PendingControlBytes += bytes.Length;
+        }
+
+        private static List<PendingPublicationFrame> TakePendingPublicationControlsLocked(
+            ClientPublication publication)
+        {
+            if (publication.PendingControlFrames.Count == 0)
+                return null;
+
+            var pending = new List<PendingPublicationFrame>(publication.PendingControlFrames);
+            publication.PendingControlFrames.Clear();
+            publication.PendingControlBytes = 0;
+            return pending;
         }
 
         /// <summary>Drop queued data frames for all clients while preserving protocol control frames.</summary>
         public void ClearDataQueues()
         {
             foreach (var (_, conn) in _clients)
-                conn.ClearDataFrames();
+                RecordDroppedDataFrames(conn.ClearDataFrames());
         }
 
         /// <summary>
@@ -382,7 +491,7 @@ namespace Unity.FoxgloveSDK.Transport
         public void ClearDataQueue(uint clientId)
         {
             if (_clients.TryGetValue(clientId, out var conn))
-                conn.ClearDataFrames();
+                RecordDroppedDataFrames(conn.ClearDataFrames());
         }
 
         /// <summary>Stop the server and release the cancellation token source.</summary>
@@ -395,26 +504,23 @@ namespace Unity.FoxgloveSDK.Transport
 
         /// <summary>
         /// Produce an immutable snapshot of current transport health.
-        /// Drop totals are best-effort under concurrent disconnects: a client
-        /// can move from the active set to the retained aggregate during the snapshot.
+        /// Drop totals are lifetime counters updated at the point each data
+        /// frame is rejected or cleared.
         /// </summary>
         public TransportStatsSnapshot GetStatsSnapshot()
         {
             var clientList = new List<TransportClientStats>();
             long totalQueuedFrames = 0;
             long totalQueuedBytes = 0;
-            long activeDropped = 0;
-
             foreach (var kv in _clients)
             {
                 var cs = kv.Value.GetClientStats(kv.Key);
                 clientList.Add(cs);
                 totalQueuedFrames += cs.QueuedFrames;
                 totalQueuedBytes += cs.QueuedBytes;
-                activeDropped += cs.DroppedDataFrames;
             }
 
-            var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames) + activeDropped;
+            var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames);
 
             return new TransportStatsSnapshot
             {
@@ -494,7 +600,7 @@ namespace Unity.FoxgloveSDK.Transport
                         break;
                     }
 
-                    if (!TryReservePendingClient(tcpClient))
+                    if (!TryReservePendingClient(tcpClient, out var handler))
                     {
                         QueueRejectedClient(tcpClient);
                         continue;
@@ -502,10 +608,12 @@ namespace Unity.FoxgloveSDK.Transport
 
                     try
                     {
-                        _ = Task.Run(() => HandleClient(tcpClient, ct));
+                        _ = Task.Run(() => RunClientHandler(handler, ct));
                     }
                     catch
                     {
+                        _clientHandlers.TryRemove(tcpClient, out _);
+                        handler.Completion.TrySetResult(true);
                         ReleasePendingClient(tcpClient);
                         CloseUnregisteredClient(tcpClient, null);
                         throw;
@@ -513,7 +621,7 @@ namespace Unity.FoxgloveSDK.Transport
                 }
                 catch (ObjectDisposedException) when (ct.IsCancellationRequested) { break; }
                 catch (NullReferenceException) when (ct.IsCancellationRequested || IsStopping) { break; }
-                catch (Exception) when (ct.IsCancellationRequested) { break; }
+                catch (Exception) when (ct.IsCancellationRequested || IsStopping) { break; }
                 catch (Exception ex)
                 {
                     _logger.LogError($"Accept error: {ex.Message}");
@@ -574,11 +682,11 @@ namespace Unity.FoxgloveSDK.Transport
                     return;
                 }
 
-                if (stream.CanTimeout)
-                {
-                    stream.ReadTimeout = Timeout.Infinite;
-                    stream.WriteTimeout = Timeout.Infinite;
-                }
+                // Established connections must not inherit the handshake's
+                // inactivity deadline. Frame progress is bounded by
+                // WsConnection after the first frame byte arrives, while the
+                // liveness monitor sends pings and waits for peer activity.
+                ConfigureStreamTimeouts(stream, Timeout.Infinite, Timeout.Infinite);
 
                 conn = new WsConnection(
                     tcpClient,
@@ -586,7 +694,7 @@ namespace Unity.FoxgloveSDK.Transport
                     _options.MaxQueuedFramesPerClient,
                     _options.MaxQueuedBytesPerClient,
                     _options.MaxInboundFrameBytes);
-                if (!TryRegisterClient(conn, out clientId, out var stopped))
+                if (!TryRegisterClient(conn, ct, out clientId, out var stopped))
                 {
                     if (stopped)
                         CloseUnannouncedClient(conn);
@@ -603,7 +711,7 @@ namespace Unity.FoxgloveSDK.Transport
                 // exactly once.
                 ReleasePendingClient(tcpClient);
 
-                if (ct.IsCancellationRequested || !BeginClientPublication(clientId, conn, ct))
+                if (ct.IsCancellationRequested || !BeginClientPublication(clientId, conn))
                 {
                     RemoveUnannouncedClient(clientId, conn);
                     conn = null;
@@ -619,6 +727,11 @@ namespace Unity.FoxgloveSDK.Transport
                     // after user notification. Stop takes that same gate before
                     // snapshotting clients, so it cannot publish a canceled
                     // connection or resurrect one after shutdown.
+                    conn.StartLivenessMonitor(
+                        ManagedWebSocketOptions.NormalizeEstablishedIdleTimeoutMs(_options.EstablishedIdleTimeoutMs),
+                        () => DisconnectClient(clientId, conn),
+                        RecordLivenessEnqueueResult,
+                        ct);
                     ReceiveLoop(clientId, conn, ct);
                 }
                 finally
@@ -688,8 +801,9 @@ namespace Unity.FoxgloveSDK.Transport
             return false;
         }
 
-        private bool TryReservePendingClient(TcpClient tcpClient)
+        private bool TryReservePendingClient(TcpClient tcpClient, out ClientHandler handler)
         {
+            handler = null;
             if (tcpClient == null)
                 return false;
 
@@ -699,9 +813,32 @@ namespace Unity.FoxgloveSDK.Transport
                 if (IsStopping || _clients.Count + _pendingClients.Count >= maxClients)
                     return false;
 
-                return _pendingClients.TryAdd(
+                if (!_pendingClients.TryAdd(
                     tcpClient,
-                    new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously));
+                    new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)))
+                    return false;
+
+                handler = new ClientHandler(tcpClient);
+                _clientHandlers[tcpClient] = handler;
+                return true;
+            }
+        }
+
+        private void RunClientHandler(ClientHandler handler, CancellationToken ct)
+        {
+            Volatile.Write(ref handler.ThreadId, Environment.CurrentManagedThreadId);
+            try
+            {
+                HandleClient(handler.TcpClient, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"WebSocket client handler failed: {FormatExceptionChain(ex)}");
+            }
+            finally
+            {
+                _clientHandlers.TryRemove(handler.TcpClient, out _);
+                handler.Completion.TrySetResult(true);
             }
         }
 
@@ -719,7 +856,11 @@ namespace Unity.FoxgloveSDK.Transport
                     stream = tcpClient?.GetStream();
                     ConfigureStreamTimeouts(stream, HandshakeTimeoutMs, HandshakeTimeoutMs);
                     if (stream != null)
+                    {
+                        DrainCapacityRequest(stream);
                         WsHandshakeHandler.WriteCapacityResponse(stream);
+                        stream.Flush();
+                    }
                 }
             }
             catch (Exception ex)
@@ -828,7 +969,11 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
-        private bool TryRegisterClient(WsConnection conn, out uint clientId, out bool stopped)
+        private bool TryRegisterClient(
+            WsConnection conn,
+            CancellationToken cancellationToken,
+            out uint clientId,
+            out bool stopped)
         {
             lock (_clientAdmissionLock)
             {
@@ -847,7 +992,11 @@ namespace Unity.FoxgloveSDK.Transport
                     return false;
                 }
 
-                clientId = AllocateClientId();
+                var allocatedClientId = AllocateClientId();
+                conn.StartSendLoop(
+                    () => DisconnectClient(allocatedClientId, conn),
+                    cancellationToken);
+                clientId = allocatedClientId;
                 _clients[clientId] = conn;
                 _clientPublications[clientId] = new ClientPublication();
                 stopped = false;
@@ -862,8 +1011,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// </summary>
         private bool BeginClientPublication(
             uint clientId,
-            WsConnection expectedConnection,
-            CancellationToken cancellationToken)
+            WsConnection expectedConnection)
         {
             ClientPublication publication;
             var acceptedCounted = false;
@@ -892,6 +1040,7 @@ namespace Unity.FoxgloveSDK.Transport
             // that case no connect callback is emitted after cancellation.
             lock (publication.CallbackGate)
             {
+                var stopOwnsConnection = false;
                 lock (_clientAdmissionLock)
                 {
                     if (IsStopping
@@ -905,8 +1054,13 @@ namespace Unity.FoxgloveSDK.Transport
                             acceptedCounted = false;
                         }
                         publication.Cancelled = true;
-                        _clients.TryRemove(clientId, out _);
-                        _clientPublications.Remove(clientId);
+                        if (!(IsStopping
+                            && _clients.TryGetValue(clientId, out var stoppingConnection)
+                            && ReferenceEquals(stoppingConnection, expectedConnection)))
+                        {
+                            _clients.TryRemove(clientId, out _);
+                            _clientPublications.Remove(clientId);
+                        }
                         publication.Completion.TrySetResult(true);
                         return false;
                     }
@@ -923,33 +1077,102 @@ namespace Unity.FoxgloveSDK.Transport
                     if (InvokeClientObservers(OnClientConnected, clientId, "connected"))
                         disconnectAfterCallback = true;
 
+                    List<PendingPublicationFrame> pendingControls = null;
+                    var publicationReady = false;
                     lock (_clientAdmissionLock)
                     {
-                        publication.CallbackCompleted = true;
                         publication.CallbackThreadId = 0;
                         if (disconnectAfterCallback
                             || publication.Cancelled
+                            || publication.ControlOverflowed
                             || IsStopping
                             || !_clients.TryGetValue(clientId, out var current)
                             || !ReferenceEquals(current, expectedConnection))
                         {
+                            publication.CallbackCompleted = true;
+                            publication.PendingControlFrames.Clear();
+                            publication.PendingControlBytes = 0;
                             // A concurrent Stop/DisconnectClient marked the
                             // publication cancelled while the callback was
                             // running. Leave the entry in place and finish it
                             // through the normal disconnect path after
                             // releasing the lock, so the disconnect event
                             // cannot overtake OnClientConnected.
-                            disconnectAfterCallback = publication.Announced
+                            stopOwnsConnection = IsStopping
+                                && !publication.StopDisconnectRequested
                                 && _clients.TryGetValue(clientId, out current)
                                 && ReferenceEquals(current, expectedConnection);
+                            disconnectAfterCallback = publication.StopDisconnectRequested
+                                || (!stopOwnsConnection
+                                    && publication.Announced
+                                    && _clients.TryGetValue(clientId, out current)
+                                    && ReferenceEquals(current, expectedConnection));
                         }
                         else
                         {
-                            expectedConnection.StartSendLoop(
-                                () => DisconnectClient(clientId, expectedConnection),
-                                cancellationToken);
-                            return true;
+                            pendingControls = TakePendingPublicationControlsLocked(publication);
+                            publicationReady = true;
                         }
+                    }
+
+                    while (publicationReady)
+                    {
+                        if (pendingControls != null)
+                        {
+                            foreach (var pending in pendingControls)
+                            {
+                                var result = pending.Text
+                                    ? expectedConnection.SendTextEncoded(pending.Payload, FramePriority.Control)
+                                    : expectedConnection.SendBinary(pending.Payload, FramePriority.Control);
+                                HandleEnqueueResult(
+                                    clientId,
+                                    expectedConnection,
+                                    result,
+                                    pending.Text ? "FlushPublicationText" : "FlushPublicationBinary");
+                                if (result.ShouldDisconnect)
+                                    break;
+                            }
+                        }
+
+                        lock (_clientAdmissionLock)
+                        {
+                            if (publication.Cancelled
+                                || IsStopping
+                                || publication.ControlOverflowed
+                                || !_clients.TryGetValue(clientId, out var current)
+                                || !ReferenceEquals(current, expectedConnection))
+                            {
+                                publication.CallbackCompleted = true;
+                                publication.PendingControlFrames.Clear();
+                                publication.PendingControlBytes = 0;
+                                stopOwnsConnection = IsStopping
+                                    && !publication.StopDisconnectRequested
+                                    && _clients.TryGetValue(clientId, out current)
+                                    && ReferenceEquals(current, expectedConnection);
+                                disconnectAfterCallback = publication.StopDisconnectRequested
+                                    || (!stopOwnsConnection
+                                        && publication.Announced
+                                        && _clients.TryGetValue(clientId, out current)
+                                        && ReferenceEquals(current, expectedConnection));
+                                publicationReady = false;
+                            }
+                            else
+                            {
+                                pendingControls = TakePendingPublicationControlsLocked(publication);
+                                if (pendingControls == null)
+                                {
+                                    publication.CallbackCompleted = true;
+                                    publicationReady = false;
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (stopOwnsConnection)
+                    {
+                        CompleteClientPublication(clientId);
+                        return false;
                     }
 
                     if (disconnectAfterCallback)
@@ -1007,6 +1230,41 @@ namespace Unity.FoxgloveSDK.Transport
                 tasks.Add(publication.Completion.Task);
             }
             return tasks.ToArray();
+        }
+
+        private ClientHandler[] SnapshotClientHandlers()
+        {
+            return _clientHandlers.Values.ToArray();
+        }
+
+        private void WaitForClientHandlers(ClientHandler[] handlers)
+        {
+            if (handlers == null || handlers.Length == 0)
+                return;
+
+            var currentThreadId = Environment.CurrentManagedThreadId;
+            var tasks = handlers
+                .Where(handler => Volatile.Read(ref handler.ThreadId) != currentThreadId)
+                .Select(handler => handler.Completion.Task)
+                .ToArray();
+            if (tasks.Length == 0)
+            {
+                _logger.LogWarning("Client handler stop wait is reentrant; current handler will complete after Stop returns.");
+                return;
+            }
+
+            try
+            {
+                if (!Task.WaitAll(tasks, StopClientHandlersWaitMs))
+                {
+                    _logger.LogWarning(
+                        $"Client handlers did not finish within {StopClientHandlersWaitMs}ms during stop; retaining them until completion.");
+                }
+            }
+            catch (AggregateException ex)
+            {
+                _logger.LogError($"Client handler stop error: {FormatExceptionChain(ex)}");
+            }
         }
 
         private void WaitForPublicationTasks(Task[] tasks)
@@ -1103,6 +1361,49 @@ namespace Unity.FoxgloveSDK.Transport
             stream.WriteTimeout = writeTimeout;
         }
 
+        private static void DrainCapacityRequest(Stream stream)
+        {
+            if (stream == null || !stream.CanRead)
+                return;
+
+            try
+            {
+                var deadline = Stopwatch.GetTimestamp()
+                    + Stopwatch.Frequency * CapacityRequestDrainTimeoutMs / 1000;
+                var matched = 0;
+                for (var count = 0; count < MaxCapacityRequestBytes; count++)
+                {
+                    var remainingTicks = deadline - Stopwatch.GetTimestamp();
+                    if (remainingTicks <= 0)
+                        return;
+                    if (stream.CanTimeout)
+                    {
+                        var remainingMs = (int)Math.Min(
+                            CapacityRequestDrainTimeoutMs,
+                            Math.Max(1, remainingTicks * 1000 / Stopwatch.Frequency));
+                        stream.ReadTimeout = remainingMs;
+                    }
+
+                    var value = stream.ReadByte();
+                    if (value < 0)
+                        return;
+
+                    if (matched == 0 && value == '\r')
+                        matched = 1;
+                    else if (matched == 1 && value == '\n')
+                        matched = 2;
+                    else if (matched == 2 && value == '\r')
+                        matched = 3;
+                    else if (matched == 3 && value == '\n')
+                        return;
+                    else
+                        matched = value == '\r' ? 1 : 0;
+                }
+            }
+            catch (IOException) { }
+            catch (SocketException) { }
+        }
+
         private bool IsStopping => Volatile.Read(ref _stopping) != 0;
 
         private void WaitForShutdownTask(Task task, int timeoutMs, string description)
@@ -1168,12 +1469,16 @@ namespace Unity.FoxgloveSDK.Transport
             byte fragmentedOpcode = 0;
             var fragmentedBytes = 0;
             var fragmentedFrames = 0;
+            var maxFragmentedMessageFrames = ManagedWebSocketOptions.NormalizeMaxFragmentedMessageFrames(
+                _options.MaxFragmentedMessageFrames);
 
             try
             {
                 while (!ct.IsCancellationRequested)
                 {
-                    var frame = conn.ReadFrame(out var readResult);
+                    var frame = conn.ReadFrame(
+                        out var readResult,
+                        ManagedWebSocketOptions.NormalizeEstablishedIdleTimeoutMs(_options.EstablishedIdleTimeoutMs));
                     if (frame == null)
                     {
                         if (readResult == WsFrameReadResult.ProtocolError)
@@ -1185,7 +1490,14 @@ namespace Unity.FoxgloveSDK.Transport
                         break;
                     }
 
-                    conn.TouchActivity();
+                    if (conn.IsClosing
+                        && frame.Opcode != WsOpcode.Close
+                        && frame.Opcode != WsOpcode.Ping)
+                    {
+                        continue;
+                    }
+
+                    conn.TouchInboundActivity();
                     switch (frame.Opcode)
                     {
                         case WsOpcode.Text:
@@ -1227,7 +1539,7 @@ namespace Unity.FoxgloveSDK.Transport
                             }
 
                             fragmentedFrames++;
-                            if (fragmentedFrames > MaxFragmentedMessageFrames)
+                            if (fragmentedFrames > maxFragmentedMessageFrames)
                             {
                                 CloseProtocolError(clientId, conn, MessageTooBigCloseCode);
                                 return;
@@ -1259,8 +1571,13 @@ namespace Unity.FoxgloveSDK.Transport
                             break;
 
                         case WsOpcode.Close:
-                            HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
-                            conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
+                            conn.BeginClosing();
+                            conn.MarkCloseReceived();
+                            if (!conn.CloseFrameSent)
+                            {
+                                HandleEnqueueResult(clientId, conn, conn.SendClose(), "SendClose");
+                                conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
+                            }
                             return;
                         case WsOpcode.Ping:
                             HandleEnqueueResult(clientId, conn, conn.SendPong(frame.Payload), "SendPong");
@@ -1309,13 +1626,35 @@ namespace Unity.FoxgloveSDK.Transport
             WsConnection conn,
             ushort statusCode = ProtocolErrorCloseCode)
         {
+            conn.BeginClosing();
             HandleEnqueueResult(clientId, conn, conn.SendClose(statusCode), "SendClose");
             conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
         }
 
         /// <summary>Remove the client from the dictionary, fire the disconnected event, and dispose the connection.</summary>
-        private void DisconnectClient(uint clientId, WsConnection conn)
+        private void DisconnectClient(uint clientId, WsConnection conn, bool initiateGracefulClose = false)
         {
+            if (initiateGracefulClose && conn != null)
+            {
+                conn.BeginClosing();
+                if (!conn.CloseFrameSent)
+                {
+                    var closeResult = conn.SendClose(GoingAwayCloseCode);
+                    RecordDroppedDataFrames(closeResult.DroppedDataFrames);
+                    if (closeResult.ShouldLogDataDrop)
+                    {
+                        _logger.LogWarning(
+                            $"Client {clientId} send queue dropped {closeResult.DroppedDataFrames} stale data frame(s) while stopping; total dropped={closeResult.TotalDroppedDataFrames}.");
+                    }
+                }
+                conn.WaitForPendingSends(TimeSpan.FromMilliseconds(CloseDrainTimeoutMs));
+                if (!conn.WaitForCloseReceived(TimeSpan.FromMilliseconds(CloseHandshakeTimeoutMs)))
+                {
+                    _logger.LogWarning(
+                        $"Client {clientId} did not complete the WebSocket close handshake within {CloseHandshakeTimeoutMs}ms; forcing close.");
+                }
+            }
+
             // Do not remove or dispose a connection while its connect callback
             // is still executing.  Stop and receive-loop teardown can race this
             // method; deferring the decision preserves connect-before-disconnect
@@ -1328,7 +1667,6 @@ namespace Unity.FoxgloveSDK.Transport
                 try { conn?.Dispose(); } catch { }
                 return;
             }
-            Interlocked.Add(ref _totalDroppedDataFrames, conn.DroppedDataFrames);
             if (announced)
                 Interlocked.Increment(ref _totalDisconnectedClients);
             try
@@ -1393,18 +1731,39 @@ namespace Unity.FoxgloveSDK.Transport
                 }
 
                 publication.Cancelled = true;
+                publication.StopDisconnectRequested = true;
                 return true;
             }
         }
 
         private void RemoveUnannouncedClient(uint clientId, WsConnection conn)
         {
+            if (IsStopping)
+            {
+                lock (_clientAdmissionLock)
+                {
+                    if (_clients.TryGetValue(clientId, out var current)
+                        && ReferenceEquals(current, conn))
+                    {
+                        // Stop owns the registered connection snapshot and
+                        // must send its graceful close before disposal. Mark
+                        // the publication complete without closing the socket;
+                        // Stop will remove and dispose it after the close drain.
+                        if (_clientPublications.TryGetValue(clientId, out var publication))
+                        {
+                            publication.Cancelled = true;
+                            publication.Completion.TrySetResult(true);
+                        }
+                        return;
+                    }
+                }
+            }
+
             if (!TryRemoveClient(clientId, conn, out _))
             {
                 CloseUnannouncedClient(conn);
                 return;
             }
-            Interlocked.Add(ref _totalDroppedDataFrames, conn.DroppedDataFrames);
             CloseUnannouncedClient(conn);
         }
 
@@ -1445,8 +1804,14 @@ namespace Unity.FoxgloveSDK.Transport
             try { conn?.Dispose(); } catch { }
         }
 
+        internal void RecordLivenessEnqueueResult(EnqueueResult result)
+        {
+            RecordDroppedDataFrames(result.DroppedDataFrames);
+        }
+
         private void HandleEnqueueResult(uint clientId, WsConnection conn, EnqueueResult result, string operation)
         {
+            RecordDroppedDataFrames(result.DroppedDataFrames);
             if (result.ShouldLogDataDrop)
             {
                 _logger.LogWarning(
@@ -1459,6 +1824,12 @@ namespace Unity.FoxgloveSDK.Transport
                 _logger.LogWarning($"Client {clientId} send queue overflowed on control frame during {operation}; disconnecting.");
                 DisconnectClient(clientId, conn);
             }
+        }
+
+        private void RecordDroppedDataFrames(int count)
+        {
+            if (count > 0)
+                Interlocked.Add(ref _totalDroppedDataFrames, count);
         }
 
     }

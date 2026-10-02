@@ -17,8 +17,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     {
         string Identity { get; }
         int SourceInstanceId { get; }
+        string Topic { get; }
         bool IsStopped { get; }
+        bool CleanupPending { get; }
+        bool CleanupRetryExhausted { get; }
+        bool CleanupRetryFatal { get; }
         void Stop();
+        bool TryRetryCleanup();
+        bool TryForceRetryCleanup();
+        FoxRunTransportPublishResult PublishGenerated(
+            IFoxRunGeneratedMemberAccess member,
+            ulong logTimeNs);
     }
 
     /// <summary>
@@ -40,12 +49,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly HashSet<string> _existing = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _seen = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _nativeDemand = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> _terminalRegistrationFailures =
+            new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _warnings = new HashSet<string>(StringComparer.Ordinal);
         private readonly FoxRunRos2CustomPublisherSessionTracker _publishSessionTracker =
             new FoxRunRos2CustomPublisherSessionTracker();
         private FoxgloveManager _manager;
         private FoxRunRos2TransportProvider _provider;
         private float _scanCooldown;
+        private float _cleanupRetryCooldown;
         private bool _stopping;
         private bool _providerSessionActive;
         private bool _scanCompleted;
@@ -67,6 +79,123 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (!active)
                 StopBindings();
             _scanCooldown = 0f;
+            _cleanupRetryCooldown = 0f;
+        }
+
+        /// <summary>
+        /// Reports whether a started typed binding exists for the captured
+        /// source component and topic. Topics without one are not R2FU output.
+        /// </summary>
+        internal bool OwnsGeneratedTopic(
+            in FoxRunGeneratedTransportPublishRequest request)
+        {
+            if (_stopping || !_providerSessionActive)
+                return false;
+            var source = request.Source as UnityEngine.Object;
+            return source != null
+                   && FindGeneratedBinding(
+                       _bindings,
+                       source.GetInstanceID(),
+                       request.Topic) != null;
+        }
+
+        /// <summary>
+        /// Publishes one captured generated topic through the typed binding
+        /// registered for the same source component and topic.
+        /// </summary>
+        internal FoxRunTransportPublishResult PublishGenerated(
+            in FoxRunGeneratedTransportPublishRequest request)
+        {
+            if (_stopping || !_providerSessionActive)
+            {
+                return FoxRunTransportPublishResult.Unavailable(
+                    "The R2FU custom publisher hub is stopped.");
+            }
+
+            var source = request.Source as UnityEngine.Object;
+            if (source == null)
+            {
+                return FoxRunTransportPublishResult.Rejected(
+                    "The generated source is not a live Unity component.");
+            }
+
+            return PublishGenerated(
+                _bindings,
+                source.GetInstanceID(),
+                in request);
+        }
+
+        internal static IFoxRunRos2CustomPublisherHostedBinding FindGeneratedBinding(
+            IReadOnlyList<IFoxRunRos2CustomPublisherHostedBinding> bindings,
+            int sourceInstanceId,
+            string topic)
+        {
+            var count = bindings == null ? 0 : bindings.Count;
+            for (var index = 0; index < count; index++)
+            {
+                var binding = bindings[index];
+                if (binding != null
+                    && !binding.IsStopped
+                    && binding.SourceInstanceId == sourceInstanceId
+                    && string.Equals(
+                        binding.Topic,
+                        topic,
+                        StringComparison.Ordinal))
+                {
+                    return binding;
+                }
+            }
+
+            return null;
+        }
+
+        internal static FoxRunTransportPublishResult PublishGenerated(
+            IReadOnlyList<IFoxRunRos2CustomPublisherHostedBinding> bindings,
+            int sourceInstanceId,
+            in FoxRunGeneratedTransportPublishRequest request)
+        {
+            var selected = FindGeneratedBinding(
+                bindings,
+                sourceInstanceId,
+                request.Topic);
+            if (selected == null)
+            {
+                return FoxRunTransportPublishResult.Unavailable(
+                    "The R2FU custom publisher for this topic is not ready.");
+            }
+
+            IFoxRunGeneratedMemberAccess member = null;
+            var memberCount = request.Source.FoxRunTransport_MemberCount;
+            for (var index = 0; index < memberCount; index++)
+            {
+                var candidate = request.Source.FoxRunTransport_GetMember(index);
+                if (candidate == null
+                    || !candidate.CanRead
+                    || (candidate.Flow != FoxRunFlow.Publish
+                        && candidate.Flow != FoxRunFlow.PublishAndSubscribe)
+                    || !string.Equals(
+                        candidate.Topic,
+                        request.Topic,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (member != null)
+                {
+                    return FoxRunTransportPublishResult.Rejected(
+                        "R2FU custom publishing requires exactly one generated member per topic.");
+                }
+                member = candidate;
+            }
+
+            if (member == null)
+            {
+                return FoxRunTransportPublishResult.Rejected(
+                    "The generated source has no readable R2FU member for this topic.");
+            }
+
+            return selected.PublishGenerated(member, request.LogTimeNs);
         }
 
         internal FoxRunTransportDirectionStatus CaptureTransportStatus()
@@ -141,6 +270,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void Update()
         {
+            _cleanupRetryCooldown -= Time.deltaTime;
+            if (_cleanupRetryCooldown <= 0f)
+            {
+                _cleanupRetryCooldown = ScanIntervalSeconds;
+                RetryPendingBindings();
+            }
+
             if (_stopping)
             {
                 StopBindings();
@@ -240,6 +376,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             StopBindings();
             _scanCooldown = 0f;
+            _cleanupRetryCooldown = 0f;
         }
 
         private void ScanAndReconcile(
@@ -392,6 +529,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
+            if (ShouldSuppressTerminalRegistrationFailure(
+                    _terminalRegistrationFailures,
+                    identity))
+            {
+                _nativeDemand.Add(identity);
+                return;
+            }
+
             if (!FoxRunRos2CustomNativeTransportHost.TryAcquirePublisherBackend(out var backend))
             {
                 WarnOnce(
@@ -419,7 +564,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 var result = binding.TryStart();
                 if (!result.Succeeded)
                 {
+                    RecordTerminalRegistrationFailure(
+                        _terminalRegistrationFailures,
+                        identity,
+                        result.Error);
                     binding.Stop();
+                    TrackFailedBinding(
+                        _bindings,
+                        _existing,
+                        identity,
+                        new HostedBinding<TDto, TEnvelope>(
+                            identity,
+                            source.GetInstanceID(),
+                            binding));
                     var failureKind = result.FailureKind;
                     WarnOnce(
                         identity + "|" + result.Error + "|" + failureKind,
@@ -447,6 +604,40 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         : null);
                 throw;
             }
+        }
+
+        internal static bool ShouldTrackFailedBinding(bool cleanupPending)
+            => cleanupPending;
+
+        internal static bool ShouldSuppressTerminalRegistrationFailure(
+            ISet<string> terminalFailures,
+            string identity)
+            => terminalFailures != null
+               && !string.IsNullOrEmpty(identity)
+               && terminalFailures.Contains(identity);
+
+        internal static bool RecordTerminalRegistrationFailure(
+            ISet<string> terminalFailures,
+            string identity,
+            FoxRunRos2RegistrationError error)
+            => terminalFailures != null
+               && !string.IsNullOrEmpty(identity)
+               && error == FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+               && terminalFailures.Add(identity);
+
+        internal static bool TrackFailedBinding(
+            IList<IFoxRunRos2CustomPublisherHostedBinding> bindings,
+            ISet<string> existing,
+            string identity,
+            IFoxRunRos2CustomPublisherHostedBinding binding)
+        {
+            if (bindings == null || existing == null || binding == null
+                || string.IsNullOrEmpty(identity)
+                || !ShouldTrackFailedBinding(binding.CleanupPending))
+                return false;
+            bindings.Add(binding);
+            existing.Add(identity);
+            return true;
         }
 
         internal static bool ObserveBindingDemand(
@@ -526,13 +717,62 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             finally
             {
-                _bindings.Clear();
+                RemoveCompletedBindings();
                 _stale.Clear();
                 _existing.Clear();
+                for (var index = 0; index < _bindings.Count; index++)
+                    if (_bindings[index].CleanupPending)
+                        _existing.Add(_bindings[index].Identity);
                 _seen.Clear();
                 _nativeDemand.Clear();
+                _terminalRegistrationFailures.Clear();
                 _observedNativeContractCount = 0;
                 _scanCompleted = false;
+            }
+        }
+
+        private void RetryPendingBindings()
+        {
+            for (var index = 0; index < _bindings.Count; index++)
+            {
+                var binding = _bindings[index];
+                if (!binding.CleanupPending)
+                    continue;
+                try
+                {
+                    if (binding.CleanupRetryExhausted && !binding.CleanupRetryFatal)
+                        binding.TryForceRetryCleanup();
+                    else
+                        binding.TryRetryCleanup();
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    WarnOnce(
+                        binding.Identity + "|cleanup-retry|" + exception.GetType().Name,
+                        "Custom native ROS2 publisher cleanup retry failed: "
+                        + exception.GetType().Name);
+                }
+                if (binding.CleanupRetryExhausted)
+                {
+                    WarnOnce(
+                        binding.Identity + "|cleanup-stalled",
+                        "Custom native ROS2 publisher cleanup is stalled; ownership is retained until native removal succeeds.");
+                }
+            }
+
+            RemoveCompletedBindings();
+        }
+
+        private void RemoveCompletedBindings()
+        {
+            for (var index = _bindings.Count - 1; index >= 0; index--)
+            {
+                if (_bindings[index].IsStopped && !_bindings[index].CleanupPending)
+                {
+                    _existing.Remove(_bindings[index].Identity);
+                    _bindings.RemoveAt(index);
+                }
             }
         }
 
@@ -618,7 +858,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 finally
                 {
-                    if (binding != null)
+                    if (binding != null && !binding.CleanupPending)
                     {
                         bindings?.Remove(binding);
                         existing?.Remove(binding.Identity);
@@ -800,7 +1040,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     dispose);
         }
 
-        private sealed class HostedBinding<TDto, TEnvelope> : IFoxRunRos2CustomPublisherHostedBinding
+        internal sealed class HostedBinding<TDto, TEnvelope> : IFoxRunRos2CustomPublisherHostedBinding
             where TEnvelope : ROS2.Message, new()
         {
             private readonly FoxRunRos2CustomPublisherBinding<TDto, TEnvelope> _binding;
@@ -817,8 +1057,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             public string Identity { get; }
             public int SourceInstanceId { get; }
+            public string Topic => _binding.Topic;
             public bool IsStopped => _binding.IsStopped;
+            public bool CleanupPending => _binding.CleanupPending;
+            public bool CleanupRetryExhausted => _binding.CleanupRetryExhausted;
+            public bool CleanupRetryFatal => _binding.CleanupRetryFatal;
             public void Stop() => _binding.Stop();
+            public bool TryRetryCleanup() => _binding.TryRetryCleanup();
+            public bool TryForceRetryCleanup() => _binding.TryForceRetryCleanup();
+
+            public FoxRunTransportPublishResult PublishGenerated(
+                IFoxRunGeneratedMemberAccess member,
+                ulong logTimeNs)
+            {
+                if (!(member is FoxRunGeneratedMemberAccess<TDto> typed))
+                {
+                    return FoxRunTransportPublishResult.Rejected(
+                        "The generated member type does not match the R2FU custom publisher DTO.");
+                }
+
+                return _binding.TryPublishCaptured(typed.Read(), logTimeNs)
+                    ? FoxRunTransportPublishResult.Accepted()
+                    : FoxRunTransportPublishResult.Failed(
+                        "The R2FU custom publisher did not publish the captured DTO.");
+            }
         }
     }
 

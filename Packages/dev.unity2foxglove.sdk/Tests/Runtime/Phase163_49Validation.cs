@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-49A-1: Phase81 validates I420 chroma and null-safe converter errors");
 
             var phase82 = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase82Validation.cs");
-            Check(phase82.Contains("Native H.264 produced zero access units", StringComparison.Ordinal)
+            Check(phase82.Contains("Native H.264 produced only ", StringComparison.Ordinal)
                   && phase82.Contains("OrderBy(field => field.Name", StringComparison.Ordinal)
                   && phase82.Contains("82C-31-\" + count.ToString(\"D2\")", StringComparison.Ordinal),
                 "163-49A-2: Phase82 reports zero-output native smoke and stable GUID checks");

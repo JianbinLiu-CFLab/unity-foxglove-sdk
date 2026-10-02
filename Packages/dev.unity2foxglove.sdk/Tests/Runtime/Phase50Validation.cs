@@ -124,10 +124,13 @@ namespace Unity.FoxgloveSDK.Tests
             var connectionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsConnection.cs");
             Check(!backendSource.Contains("using (tcpClient)"),
                 "50B-1: HandleClient does not dispose TcpClient before the send loop owns shutdown");
-            Check(connectionSource.Contains("WaitForSendLoop") && connectionSource.Contains(".Wait(timeout)"),
-                "50B-2: WsConnection waits for send loop completion before closing stream/socket");
-            Check(backendSource.Contains("stream.WriteTimeout = Timeout.Infinite"),
-                "50B-3: handshake write timeout is reset after upgrade");
+            Check(connectionSource.Contains("WaitForSendLoop(TimeSpan.FromMilliseconds(DisposeWaitTimeoutMs))")
+                  && connectionSource.Contains("WaitForLivenessMonitor(TimeSpan.FromMilliseconds(DisposeWaitTimeoutMs))"),
+                "50B-2: WsConnection closes owned sockets and joins background loops with a bounded wait");
+            Check(backendSource.Contains("EstablishedIdleTimeoutMs")
+                  && backendSource.Contains("ConfigureStreamTimeouts(stream, Timeout.Infinite, Timeout.Infinite)")
+                  && connectionSource.Contains("ReadFrameAfterFirstHeaderByte"),
+                "50B-3: established connections keep idle reads open while bounding partial-frame progress");
         }
 
         private static void VerifyManagedWebSocketHandshakeBounds()

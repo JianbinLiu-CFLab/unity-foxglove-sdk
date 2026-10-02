@@ -24,6 +24,45 @@ namespace Unity.FoxgloveSDK.IO
             ulong uncompressedSizeLimit)
             => DecodeChunkRecordsContent(content, 0, content?.Length ?? 0, out crcValid, uncompressedSizeLimit);
 
+        internal static bool TryGetUncompressedChunkData(
+            byte[] content,
+            int offset,
+            int contentLen,
+            out int dataOffset,
+            out int dataLength,
+            out bool crcValid,
+            ulong uncompressedSizeLimit)
+        {
+            var end = ValidateRecordSegment(content, offset, contentLen, "chunk");
+            var off = offset;
+            ReadU64LE(content, ref off, end, "chunk message_start_time");
+            ReadU64LE(content, ref off, end, "chunk message_end_time");
+            var uncompSize = ReadU64LE(content, ref off, end, "chunk uncompressed_size");
+            var crc = ReadU32LE(content, ref off, end, "chunk uncompressed_crc");
+            var compression = ReadString(content, ref off, end, "chunk compression");
+            var compSize = ReadU64LE(content, ref off, end, "chunk compressed_size");
+            if (compSize > int.MaxValue || uncompSize > int.MaxValue)
+                throw new InvalidDataException("Chunk compressed/uncompressed size exceeds int.MaxValue");
+            if (uncompressedSizeLimit > 0 && uncompSize > uncompressedSizeLimit)
+                throw new InvalidDataException($"Chunk uncompressed size {uncompSize} exceeds limit {uncompressedSizeLimit}");
+            if (compSize != uncompSize || !string.IsNullOrEmpty(compression))
+            {
+                dataOffset = 0;
+                dataLength = 0;
+                crcValid = false;
+                return false;
+            }
+
+            if ((int)compSize > end - off)
+                throw new InvalidDataException("Chunk compressed data is truncated");
+
+            dataOffset = off;
+            dataLength = (int)compSize;
+            crcValid = crc == 0
+                || Crc32Helper.Compute(new ReadOnlySpan<byte>(content, dataOffset, dataLength)) == crc;
+            return true;
+        }
+
         internal static byte[] DecodeChunkRecordsContent(
             byte[] content,
             int offset,
@@ -488,6 +527,14 @@ namespace Unity.FoxgloveSDK.IO
                     "MCAP " + fieldName + " byte length must be a multiple of " + U16U64PairSize + ".");
         }
 
+        internal static void ValidateSizedU64PairVectorLength(uint sizeBytes, string fieldName)
+        {
+            const int pairSize = sizeof(ulong) + sizeof(ulong);
+            if (sizeBytes % pairSize != 0)
+                throw new InvalidDataException(
+                    "MCAP " + fieldName + " byte length must be a multiple of " + pairSize + ".");
+        }
+
         /// <summary>
         /// Decodes an MCAP chunk index record from raw content bytes.
         /// </summary>
@@ -519,6 +566,34 @@ namespace Unity.FoxgloveSDK.IO
             ci.CompressedSize = ReadU64LE(content, ref off, end, "chunk index compressed_size");
             ci.UncompressedSize = ReadU64LE(content, ref off, end, "chunk index uncompressed_size");
             return ci;
+        }
+
+        /// <summary>
+        /// Decodes an MCAP message index record from raw content bytes.
+        /// </summary>
+        internal static McapMessageIndex DecodeMessageIndex(byte[] content, int offset, int contentLen)
+        {
+            var end = ValidateRecordSegment(content, offset, contentLen, "message index");
+            var off = offset;
+            var index = new McapMessageIndex
+            {
+                ChannelId = ReadU16LE(content, ref off, end, "message index channel id")
+            };
+            var recordsLength = ReadU32LE(content, ref off, end, "message index records length");
+            ValidateSizedU64PairVectorLength(recordsLength, "message index records");
+            if (recordsLength > end - off)
+                throw new InvalidDataException("Message index records extend past the record segment.");
+
+            var recordsEnd = off + checked((int)recordsLength);
+            while (off < recordsEnd)
+            {
+                var timestamp = ReadU64LE(content, ref off, recordsEnd, "message index timestamp");
+                var recordOffset = ReadU64LE(content, ref off, recordsEnd, "message index record offset");
+                index.Records.Add((timestamp, recordOffset));
+            }
+
+            RequireExactSegmentEnd(recordsEnd, end, "message index");
+            return index;
         }
 
         /// <summary>

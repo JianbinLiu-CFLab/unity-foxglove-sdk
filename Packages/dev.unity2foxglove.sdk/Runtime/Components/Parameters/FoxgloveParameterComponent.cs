@@ -28,8 +28,8 @@ namespace Unity.FoxgloveSDK.Components
             /// <summary>Foxglove parameter name, e.g. <c>/my_param</c>.</summary>
             [Tooltip("Foxglove parameter name, e.g. /my_param")]
             public string Name;
-            /// <summary>JSON type hint: <c>number</c>, <c>string</c>, <c>boolean</c>, <c>number[]</c>.</summary>
-            [Tooltip("JSON type hint: number, string, boolean, number[]")]
+            /// <summary>JSON type hint supported by the Foxglove parameter protocol.</summary>
+            [Tooltip("JSON type hint: number, string, boolean, arrays, byte_array, float64")]
             public string Type;
             /// <summary>Default value as JSON, e.g. <c>1.0</c>, <c>"hello"</c>, <c>[1,0,0,1]</c>.</summary>
             [TextArea(1, 2)]

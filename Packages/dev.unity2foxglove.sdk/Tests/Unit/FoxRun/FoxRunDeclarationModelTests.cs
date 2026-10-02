@@ -2493,6 +2493,37 @@ namespace Demo
         }
 
         [Fact]
+        public void SameTopicMembersMustShareProviderAndDeliveryAuthority()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class ConflictingTopicAuthority
+    {
+        [FoxRun(""/phase192/authority"",
+            PublishTransportIds = new[] { ""unity2foxglove.alpha"" },
+            Reliability = FoxRunDeliveryReliability.Reliable)]
+        private int _first;
+
+        [FoxRun(""/phase192/authority"",
+            PublishTransportIds = new[] { ""unity2foxglove.beta"" },
+            Reliability = FoxRunDeliveryReliability.BestEffort)]
+        private int _second;
+    }
+}";
+
+            var diagnostics = RunGenerator(source).Diagnostics;
+            Assert.Contains(
+                diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN621");
+            Assert.Contains(
+                diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN622");
+        }
+
+        [Fact]
         [Trait("Phase", "186-A")]
         public void TransportProviderSelectionFailsClosedForInvalidDirection()
         {

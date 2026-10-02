@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Tests
             ExplicitQueryCapStillWins();
             ExplicitUnlimitedQueryRemainsAvailable();
             ReplayTickBudgetPreservesUnlimitedZero();
-            ReplayChunkCrcPolicyUsesWithWarningByDefault();
+            ReplayChunkCrcPolicyThrowsByDefault();
             ReplayChunkCrcPolicyEmitsWarningsAndThrows();
             ReplayChunkIndexesAreSortedOnLoad();
             TryDecodeMessageReusesDecoderRegistry();
@@ -108,7 +108,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-10D-4: replay tick cap helper treats negative values as unlimited");
         }
 
-        private static void ReplayChunkCrcPolicyUsesWithWarningByDefault()
+        private static void ReplayChunkCrcPolicyThrowsByDefault()
         {
             var path = TempMcapPath();
             try
@@ -118,9 +118,11 @@ namespace Unity.FoxgloveSDK.Tests
                 using (var engine = new McapReplayEngine())
                 {
                     engine.Load(path);
-                    var result = engine.Snapshot(100, new List<McapMessage>());
-                    Check(result.Count == 1,
-                        "134-10E-1: replay preserves legacy corrupt-chunk reads by default");
+                    var threw = false;
+                    try { engine.Snapshot(100, new List<McapMessage>()); }
+                    catch (InvalidDataException) { threw = true; }
+                    Check(threw,
+                        "134-10E-1: replay rejects corrupt chunks by default");
                 }
 
                 using (var strict = new McapReplayEngine
@@ -148,7 +150,10 @@ namespace Unity.FoxgloveSDK.Tests
                 File.WriteAllBytes(path, BuildChunkMcap(badCrc: true, reverseChunkIndexOrder: false));
 
                 var logger = new RecordingLogger();
-                using (var engine = new McapReplayEngine(logger))
+                using (var engine = new McapReplayEngine(logger)
+                       {
+                           CrcMismatchPolicy = McapReplayEngine.CorruptChunkPolicy.UseWithWarning
+                       })
                 {
                     engine.Load(path);
                     var result = engine.Snapshot(ulong.MaxValue, new List<McapMessage>());

@@ -168,6 +168,11 @@ namespace Unity.FoxgloveSDK.Editor
                     + " = __foxRunRos2CustomStream_" + index
                     + " == null ? null : new global::System.Func<bool>(__foxRunRos2CustomStream_"
                     + index + ".TryAdmitInput);");
+                sb.AppendLine(
+                    pad + "        var __foxRunRos2CustomCancelAdmission_" + index
+                    + " = __foxRunRos2CustomStream_" + index
+                    + " == null ? null : new global::System.Func<bool>(__foxRunRos2CustomStream_"
+                    + index + ".CancelAdmissionCredit);");
             }
             sb.AppendLine(
                 pad + "        registrar."
@@ -209,13 +214,14 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2CustomCopyEnvelope_" + index + "(source, budget),");
                 sb.AppendLine(pad + "            owned =>");
                 sb.AppendLine(pad + "            {");
-                sb.AppendLine(pad + "                __foxRunRos2CustomStream_" + index + ".TryEnqueueDeferredOwned(");
+                sb.AppendLine(pad + "                __foxRunRos2CustomStream_" + index + ".TryEnqueueDeferredOwnedAfterAdmission(");
                 sb.AppendLine(pad + "                    owned,");
                 sb.AppendLine(pad + "                    static value => __FoxRunRos2CustomMaterialize_" + index + "(value),");
                 sb.AppendLine(pad + "                    static value => __FoxRunRos2CustomDisposeEnvelope_" + index + "(value),");
                 sb.AppendLine(pad + "                    static _ => { });");
                 sb.AppendLine(pad + "            },");
-                sb.AppendLine(pad + "            () => __foxRunRos2CustomStream_" + index + ".Clear());");
+                sb.AppendLine(pad + "            () => __foxRunRos2CustomStream_" + index + ".Clear(),");
+                sb.AppendLine(pad + "            __foxRunRos2CustomCancelAdmission_" + index + ");");
                 return;
             }
             sb.AppendLine(pad + "            static owned => __FoxRunRos2CustomDisposeEnvelope_" + index + "(owned),");

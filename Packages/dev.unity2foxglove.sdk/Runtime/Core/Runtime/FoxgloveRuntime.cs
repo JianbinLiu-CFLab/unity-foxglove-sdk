@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Core
     /// <para>Call <c>Tick</c> periodically (every frame from Unity) to
     /// drain service calls, tick replay, and broadcast time.</para>
     /// </summary>
-    public partial class FoxgloveRuntime : IDisposable, IRuntimeContext
+    public partial class FoxgloveRuntime : IDisposable, IRuntimeContext, IClientReplayBackfillContext, IClientReplayDisconnectContext
     {
         /// <summary>
         /// Active session; null before Start or after Stop. Runtime lifecycle APIs
@@ -136,10 +136,26 @@ namespace Unity.FoxgloveSDK.Core
                 () => _sessionPendingCleanup == null);
             FoxgloveSchemaDefinitions.RegisterCoreSchemas(_schemaRegistry);
             TryRegisterProtobufSchemas();
-            _recording = new RecordingController(_logger, _playbackClock);
-            _replay = new ReplayController(_logger, _recording, _playbackClock);
+            _recording = new RecordingController(_logger, _playbackClock, _schemaRegistry);
+            _replay = new ReplayController(_logger, _recording, _playbackClock, _schemaRegistry);
             _replayOrchestrator = new ReplayOrchestrator(_logger);
-            _tickCoordinator = new TickCoordinator(new ReplaySnapshotStateMachine());
+            _tickCoordinator = new TickCoordinator(
+                new ReplaySnapshotStateMachine(ResolveReplaySnapshotCapacity(_transport)));
+        }
+
+        private static int ResolveReplaySnapshotCapacity(IFoxgloveTransport transport)
+        {
+            if (transport is IFoxgloveTransportCapacityProvider capacityProvider
+                && capacityProvider.MaxClients > 0)
+                return capacityProvider.MaxClients;
+            if (transport is IFoxgloveTransportStatsProvider provider)
+            {
+                var snapshot = provider.GetStatsSnapshot();
+                if (snapshot != null && snapshot.MaxClients > 0)
+                    return snapshot.MaxClients;
+            }
+
+            return int.MaxValue;
         }
 
         /// <summary>Active session; null before Start or after Stop.</summary>
@@ -252,6 +268,8 @@ namespace Unity.FoxgloveSDK.Core
         public bool TrySetParameter(string name, JToken value)
         {
             ThrowIfSessionCleanupPending();
+            if (value == null || value.Type == JTokenType.Null)
+                return false;
             if (!_parameters.TrySetFromClient(name, value))
                 return false;
             _singleParameterBroadcastName[0] = name;
@@ -388,6 +406,7 @@ namespace Unity.FoxgloveSDK.Core
                     Volatile.Read(ref _mirrorSink));
                 beforeTransportStart?.Invoke(session);
                 _session = session;
+                _tickCoordinator.UpdateReplaySnapshotCapacity(ResolveReplaySnapshotCapacity(_transport));
                 session.Start(host, port);
                 ClearReplaySuppressionWarnings();
                 _replayOrchestrator.Attach(_replay, session);
@@ -859,6 +878,15 @@ namespace Unity.FoxgloveSDK.Core
             _tickCoordinator.RequestReplaySubscriberBackfill(_replay, _playbackClock, _wallClock);
         }
 
+        void IClientReplayBackfillContext.RequestReplaySubscriberBackfill(uint clientId)
+        {
+            ThrowIfSessionCleanupPending();
+            _tickCoordinator.RequestReplaySubscriberBackfill(_replay, _playbackClock, _wallClock, clientId);
+        }
+
+        void IClientReplayDisconnectContext.CancelReplayForClient(uint clientId)
+            => _tickCoordinator.CancelReplayForClient(_replay, clientId);
+
         /// <summary>Internal: get the list of replay channels for test/runtime introspection.</summary>
         internal IReadOnlyList<McapChannel> GetReplayChannels() => _replay.GetChannels();
 
@@ -872,7 +900,10 @@ namespace Unity.FoxgloveSDK.Core
         /// replay engine when active, or broadcasts wall-clock time.
         /// </summary>
         public void Tick()
-            => _tickCoordinator.Tick(_session, _playbackClock, _replay, _wallClock, _externalReplayCursorController);
+        {
+            _tickCoordinator.UpdateReplaySnapshotCapacity(ResolveReplaySnapshotCapacity(_transport));
+            _tickCoordinator.Tick(_session, _playbackClock, _replay, _wallClock, _externalReplayCursorController);
+        }
 
         // ── Transport Health ──
 
@@ -1031,7 +1062,7 @@ namespace Unity.FoxgloveSDK.Core
         /// registration cannot mutate the next-session definition set until the
         /// retired session has finished cleanup.
         /// </summary>
-        private sealed class GuardedSchemaRegistry : IEncodingAwareSchemaRegistry
+        private sealed class GuardedSchemaRegistry : IEncodingAwareSchemaRegistry, ISchemaRegistrySnapshot
         {
             private readonly ISchemaRegistry _inner;
             private readonly Func<bool> _mutationAllowed;
@@ -1063,6 +1094,11 @@ namespace Unity.FoxgloveSDK.Core
                         "Schema registry mutations are unavailable while session cleanup is pending.");
                 _inner.Register(entry);
             }
+
+            public IReadOnlyList<SchemaEntry> GetSchemaSnapshot()
+                => _inner is ISchemaRegistrySnapshot snapshot
+                    ? snapshot.GetSchemaSnapshot()
+                    : Array.Empty<SchemaEntry>();
         }
 
     }

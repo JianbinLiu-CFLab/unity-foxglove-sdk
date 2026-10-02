@@ -54,4 +54,16 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>The asset registry for fetchAsset requests.</summary>
         FoxgloveAssetRegistry Assets { get; }
     }
+
+    /// <summary>Optional context extension for client-scoped replay backfill.</summary>
+    internal interface IClientReplayBackfillContext
+    {
+        void RequestReplaySubscriberBackfill(uint clientId);
+    }
+
+    /// <summary>Optional context extension for client-scoped replay cleanup.</summary>
+    internal interface IClientReplayDisconnectContext
+    {
+        void CancelReplayForClient(uint clientId);
+    }
 }

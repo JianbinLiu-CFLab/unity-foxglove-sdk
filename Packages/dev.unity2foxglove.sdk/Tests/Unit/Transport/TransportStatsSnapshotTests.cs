@@ -7,7 +7,12 @@
 //          (TestDisconnectedClientDropsRetained, TestRuntimeAccessorLifecycle)
 //          intentionally remain in the console runner as integration tests.
 
+using System;
+using System.Collections.Concurrent;
+using System.IO;
+using System.Net.Sockets;
 using System.Reflection;
+using System.Threading;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
@@ -147,6 +152,66 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void LifetimeDroppedDataFramesAreCountedOnceAcrossActiveAndRetiredClient()
+        {
+            using var backend = new ManagedWsBackend(new ManagedWebSocketOptions
+            {
+                MaxQueuedFramesPerClient = 1,
+                MaxQueuedBytesPerClient = 1024
+            });
+            using var connection = new WsConnection(new TcpClient(), new MemoryStream(), 1, 1024);
+            var clients = Clients(backend);
+            clients[1] = connection;
+
+            backend.SendDataBinary(1, new byte[] { 1 });
+            backend.SendDataBinary(1, new byte[] { 2 });
+            Assert.Equal(1, backend.GetStatsSnapshot().TotalDroppedDataFrames);
+
+            backend.ClearDataQueue(1);
+            Assert.Equal(2, backend.GetStatsSnapshot().TotalDroppedDataFrames);
+
+            var disconnect = typeof(ManagedWsBackend).GetMethod(
+                "DisconnectClient",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(disconnect);
+            disconnect.Invoke(backend, new object[] { 1u, connection, false });
+
+            Assert.Equal(2, backend.GetStatsSnapshot().TotalDroppedDataFrames);
+            Assert.Empty(clients);
+        }
+
+        [Fact]
+        public void LivenessPingEvictionUpdatesLifetimeDropCounter()
+        {
+            using var backend = new ManagedWsBackend(new ManagedWebSocketOptions
+            {
+                MaxQueuedFramesPerClient = 1,
+                MaxQueuedBytesPerClient = 1024
+            });
+            using var connection = new WsConnection(new TcpClient(), new MemoryStream(), 1, 1024);
+            using var cancellation = new CancellationTokenSource();
+            using var pingObserved = new ManualResetEventSlim(false);
+            var droppedByPing = -1;
+
+            Assert.True(connection.SendBinary(new byte[] { 1 }, FramePriority.Data).Accepted);
+            connection.StartLivenessMonitor(
+                timeoutMs: 30,
+                onTimeout: cancellation.Cancel,
+                onPingEnqueued: result =>
+                {
+                    droppedByPing = result.DroppedDataFrames;
+                    backend.RecordLivenessEnqueueResult(result);
+                    pingObserved.Set();
+                    cancellation.Cancel();
+                },
+                parentToken: cancellation.Token);
+
+            Assert.True(pingObserved.Wait(TimeSpan.FromSeconds(2)));
+            Assert.Equal(1, droppedByPing);
+            Assert.Equal(1, backend.GetStatsSnapshot().TotalDroppedDataFrames);
+        }
+
+        [Fact]
         public void AllowedOriginsReturnsIndependentSnapshot()
         {
             using var backend = new ManagedWsBackend();
@@ -165,6 +230,15 @@ namespace Unity.FoxgloveSDK.UnitTests
 
         private static QueuedFrame C(byte b) =>
             new(WsOpcode.Text, new[] { b }, FramePriority.Control);
+
+        private static ConcurrentDictionary<uint, WsConnection> Clients(ManagedWsBackend backend)
+        {
+            var field = typeof(ManagedWsBackend).GetField(
+                "_clients",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            return Assert.IsType<ConcurrentDictionary<uint, WsConnection>>(field.GetValue(backend));
+        }
 
         private sealed class Phase36FakeTransport : IFoxgloveTransport
         {

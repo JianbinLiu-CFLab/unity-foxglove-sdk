@@ -90,29 +90,43 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 pendingPublisher = null;
                 if (!pendingToken.IsUsable)
                 {
-                    pendingToken.TryRemove();
+                    if (pendingToken.TryRemove())
+                    {
+                        return FoxRunRos2NativePublisherRegistration.Failure(
+                            FoxRunRos2RegistrationError.InvalidPublisherToken,
+                            "R2FU returned no usable native publisher token.");
+                    }
+
                     return FoxRunRos2NativePublisherRegistration.Failure(
                         FoxRunRos2RegistrationError.InvalidPublisherToken,
-                        "R2FU returned no usable native publisher token.");
+                        "R2FU returned no usable native publisher token.",
+                        pendingToken);
                 }
 
                 return FoxRunRos2NativePublisherRegistration.Success(pendingToken);
             }
             catch (NotSupportedException exception)
             {
-                TryRollbackPublisher(pendingToken, pendingPublisher);
+                var retained = !TryRollbackPublisher(pendingToken, pendingPublisher);
                 return FoxRunRos2NativePublisherRegistration.Failure(
                     FoxRunRos2RegistrationError.UnsupportedMessageType,
-                    Describe(exception));
+                    Describe(exception),
+                    retained ? pendingToken : null);
             }
             catch (Exception exception)
             {
-                TryRollbackPublisher(pendingToken, pendingPublisher);
+                var retained = !TryRollbackPublisher(pendingToken, pendingPublisher);
                 if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                     ExceptionDispatchInfo.Capture(exception).Throw();
+                var error = FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                    exception,
+                    out _)
+                    ? FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+                    : FoxRunRos2RegistrationError.PublisherBackendFailure;
                 return FoxRunRos2NativePublisherRegistration.Failure(
-                    FoxRunRos2RegistrationError.PublisherBackendFailure,
-                    Describe(exception));
+                    error,
+                    Describe(exception),
+                    retained ? pendingToken : null);
             }
         }
 
@@ -139,7 +153,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _owner.ReleaseBindingOwnership();
         }
 
-        private void TryRollbackPublisher<T>(
+        private bool TryRollbackPublisher<T>(
             PublisherToken<T> token,
             object publisher)
             where T : ROS2.Message, new()
@@ -147,14 +161,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             try
             {
                 if (token != null)
-                    token.TryRemove();
-                else if (publisher != null)
-                    _driver.RemovePublisher<T>(publisher);
+                    return token.TryRemove();
+                return publisher == null || _driver.RemovePublisher<T>(publisher);
             }
             catch
             {
-                // Preserve the registration failure while making exactly one
-                // best-effort removal attempt for the newly created endpoint.
+                return false;
             }
         }
 

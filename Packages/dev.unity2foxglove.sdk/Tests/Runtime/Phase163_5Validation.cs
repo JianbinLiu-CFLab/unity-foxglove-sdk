@@ -32,8 +32,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(backend.Contains("private Task _acceptLoopTask;", StringComparison.Ordinal)
                   && backend.Contains("Interlocked.Exchange(ref _stopping, 1);", StringComparison.Ordinal)
                   && backend.Contains("WaitForShutdownTask(acceptLoopTask, StopAcceptLoopWaitMs, \"accept loop\");", StringComparison.Ordinal)
-                  && backend.Contains("Task.Run(() => HandleClient(tcpClient, ct))", StringComparison.Ordinal),
-                "163-5A: managed WebSocket stop closes the accept window before disconnect snapshots");
+                  && backend.Contains("RunClientHandler(handler, ct)", StringComparison.Ordinal)
+                  && backend.Contains("WaitForClientHandlers(clientHandlers)", StringComparison.Ordinal),
+                "163-5A: managed WebSocket stop closes the accept window and joins tracked client handlers");
 
             Check(backend.Contains("TryRegisterClient(conn, out clientId, out var stopped)", StringComparison.Ordinal)
                   && backend.Contains("RemoveUnannouncedClient(clientId, conn)", StringComparison.Ordinal)
@@ -42,22 +43,29 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(backend.Contains("Interlocked.Increment(ref _nextClientId)", StringComparison.Ordinal)
                   && !backend.Contains("Interlocked.Exchange(ref _nextClientId, 0);", StringComparison.Ordinal)
-                  && stop.Contains("var clients = _clients.ToArray();", StringComparison.Ordinal)
+                  && stop.Contains("clients = _clients.ToArray();", StringComparison.Ordinal)
                   && broadcastText.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal)
                   && broadcastBinary.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal)
                   && broadcastDataBinary.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal)
                   && !broadcastText.Contains("ToArray()", StringComparison.Ordinal)
                   && !broadcastBinary.Contains("ToArray()", StringComparison.Ordinal)
                   && !broadcastDataBinary.Contains("ToArray()", StringComparison.Ordinal)
-                  && backend.Contains("long activeDropped = 0;", StringComparison.Ordinal)
-                  && backend.Contains("Interlocked.Read(ref _totalDroppedDataFrames) + activeDropped", StringComparison.Ordinal),
-                "163-5C: client ids stay process-monotonic, Stop snapshots clients, broadcasts enumerate live clients, and dropped-frame stats remain stable");
+                  && backend.Contains("var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames);", StringComparison.Ordinal)
+                  && !backend.Contains("activeDropped", StringComparison.Ordinal)
+                  && backend.Contains("conn.SendClose(GoingAwayCloseCode)", StringComparison.Ordinal)
+                  && backend.Contains("NormalizeMaxFragmentedMessageFrames(", StringComparison.Ordinal)
+                  && backend.Contains("_options.MaxFragmentedMessageFrames", StringComparison.Ordinal),
+                "163-5C: client ids stay process-monotonic, Stop snapshots clients, broadcasts enumerate live clients, and transport limits and dropped-frame stats remain independent");
 
             Check(queue.Contains("frame.SizeBytes <= _maxQueuedBytes - _queuedBytes", StringComparison.Ordinal)
                   && unitTests.Contains("QueueByteCapacityCheckDoesNotOverflowNearIntMax", StringComparison.Ordinal),
                 "163-5D: send-queue byte accounting avoids signed integer overflow");
 
-            Check(handshake.Contains("string.Equals(origin, \"null\", StringComparison.OrdinalIgnoreCase)", StringComparison.Ordinal)
+            Check(backend.Contains("EstablishedIdleTimeoutMs", StringComparison.Ordinal)
+                  && backend.Contains("StartLivenessMonitor", StringComparison.Ordinal),
+                "163-5D2: established clients have an explicit idle/frame-progress deadline");
+
+            Check(handshake.Contains("string.Equals(origin, \"null\", StringComparison.Ordinal)", StringComparison.Ordinal)
                   && phase28.Contains("TestOpaqueFileOriginAllowed", StringComparison.Ordinal),
                 "163-5E: local file clients with opaque Origin null are accepted explicitly");
 
@@ -71,7 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && registry.Contains("Phase163_5Validation.Validate, includeInDefault: false)", StringComparison.Ordinal),
                 "163-5G: PhaseValidationRegistry wires --phase163-5");
 
-            Console.WriteLine("Phase 163-5: 7 checks passed.");
+            Console.WriteLine("Phase 163-5: 8 checks passed.");
             Console.WriteLine();
         }
 

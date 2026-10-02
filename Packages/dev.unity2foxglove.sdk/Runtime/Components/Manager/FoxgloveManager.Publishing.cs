@@ -5,6 +5,7 @@
 // Purpose: Provides FoxgloveManager channel registration and publish helpers.
 
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.Components.Publishing.MessagePack;
 using UnityEngine;
 #if UNITY_2020_3_OR_NEWER
 using Unity.Profiling;
@@ -116,6 +117,23 @@ namespace Unity.FoxgloveSDK.Components
             string topic,
             out uint channelId,
             bool requireDemand = true)
+            => TryPrepareMsgPackPublishCore(topic, out channelId, requireDemand, string.Empty, string.Empty);
+
+        internal bool TryPrepareMsgPackPublish(
+            FoxglovePublisherBase publisher,
+            out uint channelId,
+            bool requireDemand = true)
+        {
+            GetComponentMessagePackIdentity(publisher, out var logicalSchema, out var shapeIdentity);
+            return TryPrepareMsgPackPublishCore(publisher?.Topic, out channelId, requireDemand, logicalSchema, shapeIdentity);
+        }
+
+        private bool TryPrepareMsgPackPublishCore(
+            string topic,
+            out uint channelId,
+            bool requireDemand,
+            string logicalSchema,
+            string shapeIdentity)
         {
             channelId = 0;
 
@@ -128,7 +146,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!TryValidatePublishTopic(topic, "prepare MsgPack publish"))
                 return false;
 
-            channelId = GetOrRegisterChannel(topic, MsgPackEncoding);
+            channelId = GetOrRegisterChannel(topic, MsgPackEncoding, logicalSchema, shapeIdentity);
             return !requireDemand || _runtime.HasChannelDemand(channelId);
         }
 
@@ -295,6 +313,38 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="payload">Serialized MessagePack payload.</param>
         /// <param name="logTimeNs">Nanosecond log timestamp.</param>
         public void PublishMsgPack(string topic, byte[] payload, ulong logTimeNs)
+            => PublishMsgPackCore(topic, payload, logTimeNs, string.Empty, string.Empty);
+
+        internal void PublishMsgPack(FoxglovePublisherBase publisher, byte[] payload, ulong logTimeNs)
+        {
+            GetComponentMessagePackIdentity(publisher, out var logicalSchema, out var shapeIdentity);
+            PublishMsgPackCore(publisher?.Topic, payload, logTimeNs, logicalSchema, shapeIdentity);
+        }
+
+        private void GetComponentMessagePackIdentity(
+            FoxglovePublisherBase publisher,
+            out string logicalSchema,
+            out string shapeIdentity)
+        {
+            logicalSchema = string.Empty;
+            shapeIdentity = string.Empty;
+            if (publisher != null
+                && TryGetActiveComponentPublisherSessionEntry(publisher, out var entry)
+                && entry.EffectiveEncoding == PublisherEffectiveEncoding.MsgPack
+                && entry.MessagePackEntry != null
+                && entry.MessagePackEntry.IsAvailable)
+            {
+                logicalSchema = entry.MessagePackEntry.LogicalSchemaName;
+                shapeIdentity = entry.MessagePackEntry.ShapeIdentity;
+            }
+        }
+
+        private void PublishMsgPackCore(
+            string topic,
+            byte[] payload,
+            ulong logTimeNs,
+            string componentLogicalSchemaName,
+            string componentShapeIdentity)
         {
 #if UNITY_2020_3_OR_NEWER
             PublishMsgPackMarker.Begin();
@@ -320,7 +370,11 @@ namespace Unity.FoxgloveSDK.Components
             if (!TryValidatePublishTopic(topic, "publish MsgPack"))
                 return;
 
-            var channelId = GetOrRegisterChannel(topic, MsgPackEncoding);
+            var channelId = GetOrRegisterChannel(
+                topic,
+                MsgPackEncoding,
+                componentLogicalSchemaName,
+                componentShapeIdentity);
             _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), logTimeNs);
             RecordPublishCadence(topic, MsgPackEncoding);
 #if UNITY_2020_3_OR_NEWER
@@ -357,15 +411,24 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="encoding">Foxglove message encoding.</param>
         /// <returns>The channel identifier associated with the topic and encoding.</returns>
         private uint GetOrRegisterChannel(string topic, string encoding)
+            => GetOrRegisterChannel(topic, encoding, null, null);
+
+        private uint GetOrRegisterChannel(
+            string topic,
+            string encoding,
+            string componentLogicalSchemaName,
+            string componentShapeIdentity)
         {
             if (!IsValidPublishTopic(topic))
                 throw new System.InvalidOperationException("Foxglove publisher topic must be non-empty.");
 
-            var key = (topic, EmptySchemaName, encoding, "");
+            var key = FoxgloveMsgPackChannelIdentity.GetCacheKey(
+                topic,
+                encoding,
+                componentLogicalSchemaName,
+                componentShapeIdentity);
             if (_channelCache.TryGetValue(key, out var id))
-            {
                 return id;
-            }
 
             id = (uint)_connectionState.NextChannelId;
             _runtime.RegisterChannel(new Protocol.AdvertiseChannel
@@ -374,7 +437,9 @@ namespace Unity.FoxgloveSDK.Components
                 Topic = topic,
                 Encoding = encoding,
                 SchemaName = EmptySchemaName,
-                Schema = EmptySchemaPayload
+                Schema = EmptySchemaPayload,
+                ComponentLogicalSchemaName = key.schemaName,
+                ComponentShapeIdentity = key.shapeIdentity
             });
             _connectionState.NextChannelId++;
             _channelCache[key] = id;

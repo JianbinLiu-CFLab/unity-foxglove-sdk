@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections;
+using System.Reflection;
 using Foxglove;
 using Google.Protobuf;
 using Unity.FoxgloveSDK.Core;
@@ -46,6 +48,60 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.Contains("ParseFromArguments = new object[1];", source, StringComparison.Ordinal);
             Assert.Contains("return binding.Parse(payload);", source, StringComparison.Ordinal);
             Assert.DoesNotContain("new object[] { payload }", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ReplayProtobufParserCachesUnsupportedTypeFailures()
+        {
+            const string typeName = "Missing.ReplayTypeForNegativeCache";
+            var first = Assert.Throws<InvalidOperationException>(() =>
+                ReplayProtobufParser.Parse(typeName, Array.Empty<byte>()));
+            var second = Assert.Throws<InvalidOperationException>(() =>
+                ReplayProtobufParser.Parse(typeName, Array.Empty<byte>()));
+
+            Assert.Equal(first.Message, second.Message);
+            var cache = typeof(ReplayProtobufParser).GetField(
+                "ProtobufParserCache",
+                BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null) as IDictionary;
+            Assert.NotNull(cache);
+            Assert.True(cache.Contains(typeName));
+            var entry = cache[typeName];
+            Assert.NotNull(entry);
+            Assert.Null(entry.GetType().GetProperty("Binding")?.GetValue(entry));
+        }
+
+        [Fact]
+        public void ReplayProtobufParserBoundsNegativeCacheEntries()
+        {
+            var maxEntries = (int)typeof(ReplayProtobufParser)
+                .GetField("MaxNegativeCacheEntries", BindingFlags.Static | BindingFlags.NonPublic)
+                .GetRawConstantValue();
+
+            for (var index = 0; index < maxEntries + 16; index++)
+            {
+                var typeName = "Missing.ReplayTypeForBoundedNegativeCache" + index;
+                Assert.Throws<InvalidOperationException>(() =>
+                    ReplayProtobufParser.Parse(typeName, Array.Empty<byte>()));
+            }
+
+            var cache = typeof(ReplayProtobufParser).GetField(
+                "ProtobufParserCache",
+                BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null) as IDictionary;
+            Assert.NotNull(cache);
+            var gate = typeof(ReplayProtobufParser).GetField(
+                "ReflectionCacheGate",
+                BindingFlags.Static | BindingFlags.NonPublic)?.GetValue(null);
+            Assert.NotNull(gate);
+            lock (gate)
+            {
+                var negativeEntries = 0;
+                foreach (DictionaryEntry pair in cache)
+                {
+                    if (pair.Value.GetType().GetProperty("Binding")?.GetValue(pair.Value) == null)
+                        negativeEntries++;
+                }
+                Assert.True(negativeEntries <= maxEntries);
+            }
         }
     }
 }

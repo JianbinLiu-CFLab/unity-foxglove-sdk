@@ -80,6 +80,30 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertFalse(results[-1].ok)
         self.assertIn("Demo.asmdef", results[-1].detail)
 
+    def test_sdk_meta_checks_csharp_files(self) -> None:
+        """SDK C# sources need stable Unity .meta sidecars."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            sdk = root / "Packages" / "dev.unity2foxglove.sdk"
+            sdk.mkdir(parents=True)
+            source = sdk / "Runtime" / "Example.cs"
+            source.parent.mkdir(parents=True)
+            source.write_text("class Example {}", encoding="utf-8")
+
+            self.validator.PACKAGE = sdk
+            results = []
+            self.validator.check_sdk_script_meta(results)
+            self.assertFalse(results[-1].ok)
+            self.assertIn("Example.cs", results[-1].detail)
+
+            (Path(str(source) + ".meta")).write_text(
+                "fileFormatVersion: 2\nguid: 0123456789abcdef0123456789abcdef\n",
+                encoding="utf-8",
+            )
+            results = []
+            self.validator.check_sdk_script_meta(results)
+            self.assertTrue(results[-1].ok)
+
     def test_sample_meta_checks_prefab_files(self) -> None:
         """Common Unity assets such as prefabs need stable .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:

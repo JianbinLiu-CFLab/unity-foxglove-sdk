@@ -105,6 +105,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             EnsureJpegPublishPipeline();
             var copyStart = Stopwatch.GetTimestamp();
+            // AsyncGPUReadback memory is callback-scoped; the worker receives an independent
+            // byte[] so later subscriber or Unity mutations cannot alter queued JPEG input.
             frameBytes ??= req.GetData<byte>().ToArray();
             var copyMs = ElapsedMs(copyStart);
             _diagnostics.RecordReadbackCopy(
@@ -173,6 +175,9 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void PublishCompletedJpegFrame(JpegEncodeResult result)
         {
+            if (IsReplaySuppressed)
+                return;
+
             if (result.Request.Generation != Volatile.Read(ref _captureGeneration))
                 return;
 
@@ -327,6 +332,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private void InvokeCompressedSubscribers(SensorCompressedImageFrame frame)
         {
+            if (IsReplaySuppressed)
+                return;
+
             var handlers = SensorCompressedImageReady;
             if (handlers == null)
                 return;

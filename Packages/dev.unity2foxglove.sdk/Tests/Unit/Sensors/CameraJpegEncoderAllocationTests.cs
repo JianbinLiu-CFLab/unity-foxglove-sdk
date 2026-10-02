@@ -74,6 +74,87 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void CameraReadbackTimingKeepsTheNewestRequestsAndClearForgetsThem()
+        {
+            var timing = new CameraReadbackTiming();
+            var oneSecondAgo = System.Diagnostics.Stopwatch.GetTimestamp() - System.Diagnostics.Stopwatch.Frequency;
+            for (var request = 1UL; request <= 9UL; request++)
+                timing.Remember(request, oneSecondAgo);
+
+            Assert.Equal(0d, timing.TakeLatencyMs(1UL));
+            Assert.True(timing.TakeLatencyMs(2UL) >= 1_000d);
+            Assert.Equal(0d, timing.TakeLatencyMs(2UL));
+            Assert.True(timing.TakeLatencyMs(9UL) >= 1_000d);
+
+            timing.Clear();
+            Assert.Equal(0d, timing.TakeLatencyMs(3UL));
+            timing.Remember(10UL, oneSecondAgo);
+            Assert.True(timing.TakeLatencyMs(10UL) >= 1_000d);
+        }
+
+        [Fact]
+        public void CameraPipelineResizeMigratesNewestRequestsUnderOneQueueGate()
+        {
+            using var pipeline = new CameraJpegPipeline(() => 1, workerStopWaitMs: 1);
+            pipeline.Configure(3, 1);
+            pipeline.Queue(Request(1));
+            pipeline.Queue(Request(2));
+            pipeline.Queue(Request(3));
+
+            pipeline.Configure(2, 1);
+
+            var queueField = typeof(CameraJpegPipeline).GetField(
+                "_encodeQueue",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(queueField);
+            var queue = (DropOldestBoundedQueue<JpegEncodeRequest>)queueField.GetValue(pipeline);
+            var pending = queue.DrainSnapshot();
+            Assert.Equal(2, pending.Length);
+            Assert.Equal(2UL, pending[0].CaptureUnixNs);
+            Assert.Equal(3UL, pending[1].CaptureUnixNs);
+        }
+
+        [Fact]
+        public void JpegQueueAdmitsNewestFrameAndReportsReplacedFrame()
+        {
+            using var pipeline = new CameraJpegPublishPipeline(() => 1, new CameraPublishDiagnostics());
+            pipeline.EnsureQueues(1, 1);
+            var drops = 0;
+
+            Assert.True(pipeline.TryQueueFrame(
+                new byte[] { 1, 2, 3 },
+                1UL,
+                1,
+                1,
+                publishWebSocket: false,
+                publishProvider: false,
+                publishNativeFrame: false,
+                PublisherEffectiveEncoding.Json,
+                readbackLatencyMs: 0d,
+                jpegQuality: 90,
+                frameId: "frame",
+                maxEncodedBytes: 0,
+                onEncodeQueueDrop: () => drops++));
+            Assert.True(pipeline.TryQueueFrame(
+                new byte[] { 4, 5, 6 },
+                2UL,
+                1,
+                1,
+                publishWebSocket: false,
+                publishProvider: false,
+                publishNativeFrame: false,
+                PublisherEffectiveEncoding.Json,
+                readbackLatencyMs: 0d,
+                jpegQuality: 90,
+                frameId: "frame",
+                maxEncodedBytes: 0,
+                onEncodeQueueDrop: () => drops++));
+
+            Assert.Equal(1, drops);
+            Assert.Equal(1, pipeline.EncodeQueueDepth);
+        }
+
+        [Fact]
         public void ResizingBoundedQueueRetainsNewestItemsForMigration()
         {
             var queue = new DropOldestBoundedQueue<int>(3);
@@ -93,6 +174,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             });
             Assert.Equal(0, queue.Count);
         }
+
+        private static JpegEncodeRequest Request(ulong timestampNs)
+            => new JpegEncodeRequest(
+                new byte[3],
+                1,
+                1,
+                90,
+                timestampNs,
+                "frame",
+                publishWebSocket: false,
+                publishProvider: false,
+                publishNativeFrame: false,
+                PublisherEffectiveEncoding.Json,
+                maxEncodedBytes: 0,
+                generation: 1,
+                jpegWorkerGeneration: 0);
 
         private static int Dequeue(DropOldestBoundedQueue<int> queue)
         {

@@ -96,6 +96,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             Assert.Null(Dequeue(sidecar));
             Assert.Equal(0, PendingTimestampCount(sidecar));
+            if (codec == 0)
+                Assert.Equal(1, ((FfmpegH264EncoderSidecar)sidecar).TimestampQueueUnderflows);
+            else if (codec == 1)
+                Assert.Equal(1, ((FfmpegH265EncoderSidecar)sidecar).TimestampQueueUnderflows);
         }
 
         [Fact]

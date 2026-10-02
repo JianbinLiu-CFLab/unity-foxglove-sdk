@@ -8,6 +8,9 @@
 //          TestHandlerDelegateSuccessAndFailure) stay in the console runner.
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using Newtonsoft.Json.Linq;
 using System.Linq;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
@@ -62,6 +65,112 @@ namespace Unity.FoxgloveSDK.UnitTests
             var pending = reg.GetPendingCalls();
             Assert.True(!pending.Any(c => c.ClientId == 1), "Client 1 calls removed directly from pending");
             Assert.True(pending.Any(c => c.ClientId == 2), "Client 2 calls still pending");
+        }
+
+        [Fact]
+        public void PendingCallSnapshotsProtectRegistryAuthorityAndUseMonotonicTimeouts()
+        {
+            var timestamp = Stopwatch.Frequency;
+            var reg = new FoxgloveServiceRegistry(() => timestamp);
+            reg.Register(new ServiceDescriptor { Name = "/snapshot", Type = "/snapshot" });
+            reg.Enqueue(1, 7, 11, "json", new byte[] { 1 });
+
+            var snapshot = Assert.Single(reg.GetPendingCalls());
+            snapshot.ClientId = 99;
+            snapshot.Payload[0] = 9;
+
+            var copied = new System.Collections.Generic.List<FoxgloveServiceCall>();
+            reg.CopyPendingCallsTo(copied);
+            copied[0].CallId = 88;
+
+            var authority = Assert.Single(reg.GetPendingCalls());
+            Assert.Equal(11u, authority.ClientId);
+            Assert.Equal(7u, authority.CallId);
+            Assert.Equal(1, authority.Payload[0]);
+
+            timestamp += Stopwatch.Frequency * 2;
+            reg.SweepTimeouts(TimeSpan.FromSeconds(1));
+
+            var completed = Assert.Single(reg.DrainCompleted());
+            Assert.Equal(11u, completed.ClientId);
+            Assert.Contains("timed out", completed.FailureMessage, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void EnqueueClonesCallerOwnedPayloadAndJson()
+        {
+            var reg = new FoxgloveServiceRegistry();
+            var payload = new byte[] { 1 };
+            var jsonPayload = new JObject { ["value"] = 1 };
+
+            Assert.True(reg.TryEnqueue(1, 1, 1, "json", payload, jsonPayload, out var snapshot, out var error), error);
+
+            payload[0] = 9;
+            jsonPayload["value"] = 9;
+            snapshot.Payload[0] = 8;
+            snapshot.JsonPayload["value"] = 8;
+
+            var pending = Assert.Single(reg.GetPendingCalls());
+            Assert.Equal(1, pending.Payload[0]);
+            Assert.Equal(1, pending.JsonPayload.Value<int>("value"));
+        }
+
+        [Fact]
+        public void InternalEnqueueClonesIngressPayloadAndJson()
+        {
+            var reg = new FoxgloveServiceRegistry();
+            var payload = new byte[] { 1 };
+            var jsonPayload = new JObject { ["value"] = 1 };
+
+            Assert.True(
+                reg.TryEnqueueInternal(1, 1, 1, "json", payload, jsonPayload, out var error),
+                error);
+
+            payload[0] = 9;
+            jsonPayload["value"] = 9;
+
+            var pending = Assert.Single(reg.GetPendingCalls());
+            Assert.Equal(1, pending.Payload[0]);
+            Assert.Equal(1, pending.JsonPayload.Value<int>("value"));
+        }
+
+        [Fact]
+        public void DrainCompletedToTransfersSnapshotsAndRemovesPending()
+        {
+            var reg = new FoxgloveServiceRegistry();
+            reg.Enqueue(1, 1, 1, "json", new byte[] { 1 });
+            var authoritative = new List<FoxgloveServiceCall>();
+            reg.CopyPendingCallsToInternal(authoritative);
+            reg.CompleteResponse(1, 1, "json", new byte[] { 2 });
+
+            var completed = new List<FoxgloveServiceCall>();
+            reg.DrainCompletedTo(completed);
+
+            var call = Assert.Single(completed);
+            Assert.True(call.IsCompleted);
+            Assert.NotSame(authoritative[0], call);
+            call.Payload[0] = 8;
+            call.ResponsePayload[0] = 9;
+            Assert.Equal(1, authoritative[0].Payload[0]);
+            Assert.Equal(2, authoritative[0].ResponsePayload[0]);
+
+            reg.DrainCompletedTo(completed);
+            Assert.Empty(completed);
+            Assert.True(reg.TryEnqueue(1, 1, 1, "json", new byte[] { 3 }, out _, out var error), error);
+        }
+
+        [Fact]
+        public void CompleteResponseClonesCallerOwnedPayload()
+        {
+            var reg = new FoxgloveServiceRegistry();
+            reg.Enqueue(1, 1, 1, "json", new byte[] { 1 });
+            var response = new byte[] { 1 };
+
+            reg.CompleteResponse(1, 1, "json", response);
+            response[0] = 9;
+
+            var completed = Assert.Single(reg.DrainCompleted());
+            Assert.Equal(1, completed.ResponsePayload[0]);
         }
 
         [Fact]

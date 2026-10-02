@@ -96,7 +96,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(response.Manifest.Name == "phase119-indexed", "119-C2: manifest name is preserved");
 
             var source = SingleSource(response);
-            Check(source.Id == SourceId && source.DataUrl.Contains(SourceId, StringComparison.Ordinal),
+            Check(source.Id.StartsWith(SourceId + "@", StringComparison.Ordinal)
+                  && source.DataUrl.Contains(Uri.EscapeDataString(source.Id), StringComparison.Ordinal),
                 "119-C3: indexed source exposes stable source id and data route");
             Check(source.HasTimeRange && source.StartTimeNs == 10 && source.EndTimeNs == 40,
                 "119-C4: indexed source maps inclusive time range");
@@ -158,7 +159,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = CreateIndexedFixture("data");
             var service = new RemoteMcapDataSourcePrototype(path, SourceId, "phase119-data", Token);
-            var response = service.GetData(AuthorizedRequest());
+            var manifest = service.GetManifest(AuthorizedRequest());
+            var response = service.GetData(AuthorizedRequest(SingleSource(manifest).Id));
             Check(response.Status == RemoteMcapResponseStatus.Ok && response.Data.Length == new FileInfo(path).Length,
                 "119-F1: authorized data request returns exact MCAP bytes");
 
@@ -194,12 +196,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "119-G2: runtime test project compiles Phase119Validation");
         }
 
-        private static RemoteMcapRequest AuthorizedRequest()
+        private static RemoteMcapRequest AuthorizedRequest(string sourceId = SourceId)
         {
             return new RemoteMcapRequest
             {
                 BearerToken = "Bearer " + Token,
-                SourceId = SourceId
+                SourceId = sourceId
             };
         }
 

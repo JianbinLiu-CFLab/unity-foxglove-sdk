@@ -14,6 +14,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
@@ -31,6 +32,7 @@ namespace Unity.FoxgloveSDK.Core
         private RecordingConfiguration _recordingConfiguration;
         private readonly IFoxgloveLogger _logger;
         private readonly IFoxgloveClock _clock;
+        private readonly ISchemaRegistry _schemaRegistry;
         private readonly object _lifecycleGate = new object();
         private FoxgloveParameterStore _parameters;
         private FoxgloveSession _session;
@@ -55,15 +57,25 @@ namespace Unity.FoxgloveSDK.Core
         /// Creates a recording controller with the provided logger.
         /// Uses a default <see cref="Transport.SystemClock"/> for timestamp generation.
         /// </summary>
-        public RecordingController(IFoxgloveLogger logger) : this(logger, new Transport.SystemClock()) { }
+        public RecordingController(IFoxgloveLogger logger) : this(logger, new Transport.SystemClock(), null) { }
 
         /// <summary>
         /// Creates a recording controller with the provided logger and clock.
         /// </summary>
         public RecordingController(IFoxgloveLogger logger, IFoxgloveClock clock)
+            : this(logger, clock, null) { }
+
+        /// <summary>
+        /// Creates a recording controller with the provided logger and clock.
+        /// </summary>
+        public RecordingController(
+            IFoxgloveLogger logger,
+            IFoxgloveClock clock,
+            ISchemaRegistry schemaRegistry = null)
         {
             _logger = logger;
             _clock = clock;
+            _schemaRegistry = schemaRegistry;
         }
 
         /// <summary>
@@ -250,12 +262,38 @@ namespace Unity.FoxgloveSDK.Core
 
             try
             {
-                if (FoxRunSchemaMcapMetadata.TryCreateJson(FoxRunSchemaInfoRegistry.Current, out var json))
+                var sdkHash = SdkWireSchemaIdentity.TryCompute(_schemaRegistry, out var computedHash)
+                    ? computedHash
+                    : string.Empty;
+                if (FoxRunSchemaMcapMetadata.TryCreateJson(
+                    FoxRunSchemaInfoRegistry.Current,
+                    sdkHash,
+                    out var json))
                     recorder.WriteMetadata(FoxRunSchemaMcapMetadata.MetadataName, json);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning($"Skipping FoxRun schema metadata for MCAP recording: {ex.Message}");
+            }
+        }
+
+        private void TryWriteSdkWireSchemaMetadata(McapRecorder recorder)
+        {
+            var schemas = recorder?.GetRecordedSchemaSnapshot();
+            var components = recorder?.GetRecordedComponentContractSnapshot();
+            if (schemas == null
+                || components == null
+                || !SdkWireSchemaIdentity.TryCompute(schemas, components, out var hash)
+                || !SdkWireSchemaMcapMetadata.TryCreateJson(hash, components, out var json))
+                return;
+
+            try
+            {
+                recorder.WriteMetadata(SdkWireSchemaMcapMetadata.MetadataName, json);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Skipping SDK wire-schema metadata for MCAP recording: {ex.Message}");
             }
         }
 
@@ -280,7 +318,10 @@ namespace Unity.FoxgloveSDK.Core
             if (parameters != null) parameters.OnParameterChanged -= OnParameterChanged;
 
             if (recorder != null)
+            {
+                TryWriteSdkWireSchemaMetadata(recorder);
                 DisposeRecorderBestEffort(recorder);
+            }
         }
 
         private void DisposeRecorderBestEffort(McapRecorder recorder)

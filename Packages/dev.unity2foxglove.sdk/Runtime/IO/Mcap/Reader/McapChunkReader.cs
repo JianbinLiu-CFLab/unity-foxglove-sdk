@@ -54,21 +54,29 @@ namespace Unity.FoxgloveSDK.IO
                 throw new InvalidDataException("MCAP chunk CRC mismatch.");
         }
 
-        internal static List<McapMessage> ReadMessages(byte[] uncompressedRecords, ushort? filterChannelId = null)
+        internal static List<McapMessage> ReadMessages(
+            byte[] uncompressedRecords,
+            ushort? filterChannelId = null,
+            ulong chunkStartOffset = 0)
         {
             var messages = new List<McapMessage>();
-            foreach (var message in EnumerateMessages(uncompressedRecords, filterChannelId))
+            foreach (var message in EnumerateMessages(uncompressedRecords, filterChannelId, chunkStartOffset))
                 messages.Add(message);
             return messages;
         }
 
-        internal static IEnumerable<McapMessage> EnumerateMessages(byte[] uncompressedRecords, ushort? filterChannelId = null)
+        internal static IEnumerable<McapMessage> EnumerateMessages(
+            byte[] uncompressedRecords,
+            ushort? filterChannelId = null,
+            ulong chunkStartOffset = 0)
         {
             foreach (var record in EnumerateRawRecords(uncompressedRecords))
             {
                 if (record.Opcode == McapWriter.OpcodeMessage)
                 {
                     var msg = McapRecordDecoder.DecodeMessage(uncompressedRecords, record.Offset, record.Length);
+                    msg.SourceOffset = chunkStartOffset;
+                    msg.SourceRecordOffset = (ulong)record.Offset;
                     if (!filterChannelId.HasValue || msg.ChannelId == filterChannelId.Value)
                         yield return msg;
                 }

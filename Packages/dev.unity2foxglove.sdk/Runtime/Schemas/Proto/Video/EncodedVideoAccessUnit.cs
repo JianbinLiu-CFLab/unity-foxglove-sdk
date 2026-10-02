@@ -29,17 +29,19 @@ namespace Foxglove.Schemas.Video
     /// </summary>
     internal readonly struct QueuedVideoFrame
     {
-        public QueuedVideoFrame(byte[] data, ulong timestampNs, bool pooled = false, int length = 0)
+        public QueuedVideoFrame(byte[] data, ulong timestampNs, bool pooled = false, int length = 0, bool isRgb24 = false)
         {
             Data = data ?? System.Array.Empty<byte>();
             TimestampNs = timestampNs;
             Pooled = pooled;
             Length = length > 0 ? length : Data.Length;
+            IsRgb24 = isRgb24;
         }
 
         public byte[] Data { get; }
         public ulong TimestampNs { get; }
         public bool Pooled { get; }
         public int Length { get; }
+        public bool IsRgb24 { get; }
     }
 }

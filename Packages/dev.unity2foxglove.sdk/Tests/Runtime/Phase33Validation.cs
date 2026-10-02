@@ -109,9 +109,9 @@ namespace Unity.FoxgloveSDK.Tests
             var result = queue.Enqueue(Data(2, length: 5));
             Check(!result.Accepted, "33A-3j: data larger than byte limit is rejected");
             Check(!result.ShouldDisconnect, "33A-3k: oversized data rejection does not request disconnect");
-            Check(result.DroppedDataFrames == 2, "33A-3l: stale queued data and oversized data are both counted dropped");
-            Check(queue.Count == 0, "33A-3m: byte-limit rejection leaves queue empty");
-            Check(queue.DroppedDataFramesSnapshot == 2, "33A-3n: cumulative byte-limit drop count is updated");
+            Check(result.DroppedDataFrames == 1, "33A-3l: only the impossible incoming data frame is counted dropped");
+            Check(queue.Count == 1, "33A-3m: byte-limit rejection preserves existing queued data");
+            Check(queue.DroppedDataFramesSnapshot == 1, "33A-3n: cumulative byte-limit drop count is updated");
         }
 
         private static void TestWebSocketHeaderLengths()

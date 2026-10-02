@@ -5,6 +5,7 @@
 // Purpose: Shared fatal-exception boundary for adapter and native ROS 2 ownership.
 
 using System;
+using System.Runtime.InteropServices;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
@@ -14,10 +15,40 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     /// </summary>
     internal static class FoxRunRos2NativeExceptionPolicy
     {
+        internal static bool TryGetNativeRuntimeSurfaceFailure(
+            Exception exception,
+            out string failureKind)
+        {
+            for (var current = exception; current != null; current = current.InnerException)
+            {
+                if (current is DllNotFoundException
+                    || current is EntryPointNotFoundException
+                    || current is BadImageFormatException)
+                {
+                    failureKind = current.GetType().Name;
+                    return true;
+                }
+            }
+
+            failureKind = string.Empty;
+            return false;
+        }
+
         internal static bool IsRecoverable(Exception exception)
-            => !(exception is OutOfMemoryException)
-               && !(exception is StackOverflowException)
-               && !(exception is AccessViolationException)
-               && !(exception is AppDomainUnloadedException);
+        {
+            for (var current = exception; current != null; current = current.InnerException)
+            {
+                if (current is OutOfMemoryException
+                    || current is StackOverflowException
+                    || current is AccessViolationException
+                    || current is AppDomainUnloadedException
+                    || current is SEHException)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
     }
 }

@@ -88,6 +88,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void MaterializerFailureReturnsAdmissionCreditToTheStream()
+        {
+            var backend = new FakeBackend();
+            var disposed = new System.Collections.Generic.List<int>();
+            using var stream = new FoxRunStream<int>(
+                new FoxRunStreamOptions(2, 1d, 2),
+                () => 0L,
+                1L);
+            var binding = Binding(
+                backend,
+                tryAdmitInput: stream.TryAdmitInput,
+                materializeOwned: (_, __) => throw new InvalidOperationException("copy failed"),
+                transferOwned: _ => throw new InvalidOperationException("must not transfer"),
+                cancelAdmissionCredit: stream.CancelAdmissionCredit);
+
+            Assert.True(binding.TryRegister().Succeeded);
+            backend.Invoke(new FakeMessage());
+
+            Assert.False(stream.TryEnqueueOwned(1, disposed.Add));
+            Assert.Equal(new[] { 1 }, disposed);
+            Assert.Equal(1, stream.Stats.RateDropped);
+            binding.Stop();
+        }
+
+        [Fact]
         public void NullMaterializerResultIsRejectedBeforeOwnershipTransfer()
         {
             var backend = new FakeBackend();
@@ -199,7 +224,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void StopStillClearsAndReleasesWhenNativeRemovalThrows()
+        public void StopRetainsNativeTokenUntilRemovalSucceeds()
         {
             var backend = new FakeBackend
             {
@@ -223,9 +248,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.Equal("native removal failed", exception.Message);
             Assert.Equal(1, backend.RemoveCount);
+            Assert.Equal(0, cleared);
+            Assert.Equal(0, backend.ReleaseCount);
+
+            backend.RemoveException = null;
+            binding.Stop();
+
+            Assert.Equal(2, backend.RemoveCount);
             Assert.Equal(1, cleared);
             Assert.Equal(1, backend.ReleaseCount);
-            Assert.Equal("remove,clear,release", string.Join(",", backend.Events));
+            Assert.Equal("remove,remove,clear,release", string.Join(",", backend.Events));
         }
 
         [Fact]
@@ -243,14 +275,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 throw new InvalidOperationException("owned disposal failed");
             var binding = Binding(
                 backend,
-                tryAdmitInput: () => true,
+                tryAdmitInput: stream.TryAdmitInput,
                 materializeOwned: (message, _) =>
                 {
                     materializeEntered.Set();
                     Assert.True(finishMaterialize.Wait(TimeSpan.FromSeconds(5)));
                     return new OwnedSample(message.Data);
                 },
-                transferOwned: owned => stream.TryEnqueueOwned(owned, throwingDisposer),
+                transferOwned: owned => stream.TryEnqueueOwnedAfterAdmission(owned, throwingDisposer),
                 clearOwned: () => stream.Clear());
 
             Assert.True(binding.TryRegister().Succeeded);
@@ -547,9 +579,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var stream = new FoxRunStream<OwnedSample>();
             var binding = Binding(
                 backend,
-                tryAdmitInput: () => true,
+                tryAdmitInput: stream.TryAdmitInput,
                 materializeOwned: (message, _) => new OwnedSample(message.Data),
-                transferOwned: owned => stream.TryEnqueueOwned(
+                transferOwned: owned => stream.TryEnqueueOwnedAfterAdmission(
                     owned,
                     _ => Interlocked.Increment(ref disposed)),
                 clearOwned: () =>
@@ -582,6 +614,37 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FailedRegistrationRetainsRollbackTokenUntilRemovalSucceeds()
+        {
+            var backend = new FakeBackend
+            {
+                ReturnedToken = new FakeToken(isUsable: false),
+                RemoveException = new InvalidOperationException("rollback pending")
+            };
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) => new OwnedSample(message.Data),
+                transferOwned: _ => { },
+                clearOwned: () => { });
+
+            var first = binding.TryRegister();
+
+            Assert.False(first.Succeeded);
+            Assert.Equal(1, backend.RemoveCount);
+            Assert.True(binding.CanRetryRegistration);
+
+            backend.RemoveException = null;
+            backend.ReturnedToken = new FakeToken(isUsable: true);
+
+            var second = binding.TryRegister();
+
+            Assert.True(second.Succeeded);
+            Assert.Equal(2, backend.RemoveCount);
+            binding.Stop();
+        }
+
+        [Fact]
         public void RuntimeUnavailableRegistrationCanRetryBeforeTerminalCleanup()
         {
             var backend = new FakeBackend
@@ -591,12 +654,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             };
             var disposed = 0;
             var cleared = 0;
-            var stream = new FoxRunStream<OwnedSample>();
+            long ticks = 0;
+            var stream = new FoxRunStream<OwnedSample>(
+                new FoxRunStreamOptions(),
+                () => Interlocked.Increment(ref ticks),
+                1000L);
             var binding = Binding(
                 backend,
-                tryAdmitInput: () => true,
+                tryAdmitInput: stream.TryAdmitInput,
                 materializeOwned: (message, _) => new OwnedSample(message.Data),
-                transferOwned: owned => stream.TryEnqueueOwned(
+                transferOwned: owned => stream.TryEnqueueOwnedAfterAdmission(
                     owned,
                     _ => Interlocked.Increment(ref disposed)),
                 clearOwned: () =>
@@ -841,7 +908,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Func<FakeMessage, FoxRunRos2CopyContext, OwnedSample> materializeOwned,
             Action<OwnedSample> transferOwned,
             Action clearOwned = null,
-            Action<Action> dispatchCleanup = null)
+            Action<Action> dispatchCleanup = null,
+            Func<bool> cancelAdmissionCredit = null)
             => new FoxRunRos2StreamSubscriptionBinding<FakeMessage, OwnedSample>(
                 Contract(),
                 7,
@@ -854,7 +922,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 dispatchCleanup ?? (action => action()),
                 backend,
                 FoxRunResolvedQos.Default,
-                new ManagedQosFactory());
+                new ManagedQosFactory(),
+                cancelAdmissionCredit: cancelAdmissionCredit);
 
         private static FoxRunRos2GeneratedContract Contract()
             => new FoxRunRos2GeneratedContract(

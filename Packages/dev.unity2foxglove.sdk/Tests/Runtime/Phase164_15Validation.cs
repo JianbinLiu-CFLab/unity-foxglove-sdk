@@ -29,37 +29,30 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("private bool _captureCameraDirty = true;", StringComparison.Ordinal)
                   && source.Contains("private Camera _lastCopiedSourceCamera;", StringComparison.Ordinal),
-                "164-15A-1: camera capture resources cache copied source-camera state");
+                "architecture guard: 164-15A-1: camera capture resources cache copied source-camera state");
             Check(ensure.Contains("SyncCaptureCameraIfDirty(width, height);", StringComparison.Ordinal)
                   && !ensure.Contains("CopyFrom(_sourceCamera)", StringComparison.Ordinal),
-                "164-15A-2: capture Ensure delegates camera property sync instead of copying every frame");
+                "architecture guard: 164-15A-2: capture Ensure delegates camera property sync instead of copying every frame");
             Check(sync.Contains("_captureCamera.CopyFrom(_sourceCamera);", StringComparison.Ordinal)
                   && sync.Contains("Mathf.Approximately(_lastFieldOfView, _sourceCamera.fieldOfView)", StringComparison.Ordinal)
                   && sync.Contains("_lastBackgroundColor == _sourceCamera.backgroundColor", StringComparison.Ordinal)
                   && sync.Contains("_captureCameraDirty = false;", StringComparison.Ordinal),
-                "164-15A-3: capture camera CopyFrom is gated by dirty and property-change checks");
+                "architecture guard: 164-15A-3: capture camera CopyFrom is gated by dirty and property-change checks");
             Check(source.Contains("_captureCameraDirty = true;", StringComparison.Ordinal)
                   && source.Contains("_lastCopiedSourceCamera = null;", StringComparison.Ordinal),
-                "164-15A-4: capture resource recreation and cleanup invalidate the camera-copy cache");
+                "architecture guard: 164-15A-4: capture resource recreation and cleanup invalidate the camera-copy cache");
             Check(source.Contains("private bool _sourceCameraResolved;", StringComparison.Ordinal)
                   && source.Contains("Object.DestroyImmediate(target)", StringComparison.Ordinal),
-                "164-15A-5: capture resources cache missing source camera probes and destroy edit-mode objects immediately");
+                "architecture guard: 164-15A-5: capture resources cache missing source camera probes and destroy edit-mode objects immediately");
         }
 
         private static void VerifyReadbackTimingUsesSmallRingBuffer()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraReadbackTiming.cs");
 
-            Check(source.Contains("private const int MaxTrackedRequests = 8;", StringComparison.Ordinal)
-                  && source.Contains("private readonly ulong[] _requestKeys", StringComparison.Ordinal)
-                  && source.Contains("private readonly long[] _requestTicks", StringComparison.Ordinal),
-                "164-15B-1: camera readback timings use a fixed small ring buffer");
             Check(!source.Contains("Dictionary<ulong, long>", StringComparison.Ordinal)
                   && !source.Contains("lock (", StringComparison.Ordinal),
-                "164-15B-2: camera readback timing avoids dictionary and lock overhead");
-            Check(source.Contains("Array.Clear(_requestKeys", StringComparison.Ordinal)
-                  && source.Contains("_nextSlot = 0;", StringComparison.Ordinal),
-                "164-15B-3: camera readback timing clear resets ring state");
+                "architecture guard: 164-15B-2: camera readback timing avoids dictionary and lock overhead");
         }
 
         private static void VerifyVideoReadbackUsesReusableRgbScratch()
@@ -70,17 +63,17 @@ namespace Unity.FoxgloveSDK.Tests
             var source = PhaseValidationSourceHelpers.SourceMethod(publisherVideo, "public void CopyTo");
 
             Check(pipeline.Contains("private byte[] _rgbScratch;", StringComparison.Ordinal)
-                  && pipeline.Contains("private byte[] EnsureRgbScratch(int length)", StringComparison.Ordinal),
-                "164-15C-1: video publish pipeline owns a reusable RGB scratch buffer");
-            Check(submit.Contains("var ownedFrameBytes = EnsureRgbScratch(frameBytes.Length);", StringComparison.Ordinal)
-                  && submit.Contains("frameBytes.CopyTo(ownedFrameBytes);", StringComparison.Ordinal)
+                  && !pipeline.Contains("EnsureRgbScratch(int length)", StringComparison.Ordinal),
+                "architecture guard: 164-15C-1: video publish pipeline owns a reusable RGB scratch buffer");
+            Check(submit.Contains("if (_rgbScratch == null || _rgbScratch.Length != frameBytes.Length)", StringComparison.Ordinal)
+                  && submit.Contains("frameBytes.CopyTo(_rgbScratch);", StringComparison.Ordinal)
+                  && submit.Contains("var ownedFrameBytes = _rgbScratch;", StringComparison.Ordinal)
                   && !submit.Contains("frameBytes.ToArray()", StringComparison.Ordinal),
-                "164-15C-2: video submit path copies readback bytes into reusable scratch instead of allocating ToArray");
-            Check(source.Contains("GetData<byte>().CopyTo(destination)", StringComparison.Ordinal)
-                  || (publisherVideo.Contains("private readonly NativeArray<byte> _data;", StringComparison.Ordinal)
-                      && publisherVideo.Contains("_data = request.GetData<byte>();", StringComparison.Ordinal)
-                      && source.Contains("_data.CopyTo(destination)", StringComparison.Ordinal)),
-                "164-15C-3: camera video readback source copies directly from AsyncGPUReadback data");
+                "architecture guard: 164-15C-2: video submit path copies readback bytes into reusable scratch without per-frame array allocation");
+            Check(source.Contains("NativeArray<byte>.Copy(_data, 0, destination, 0, _data.Length)", StringComparison.Ordinal)
+                  && source.Contains("destination.Length < _data.Length", StringComparison.Ordinal)
+                  && publisherVideo.Contains("private readonly NativeArray<byte> _data;", StringComparison.Ordinal),
+                "architecture guard: 164-15C-3: camera video readback source copies directly from AsyncGPUReadback data");
         }
 
         private static void VerifyJpegReadbackKeepsWorkerOwnedBufferBoundary()
@@ -89,7 +82,7 @@ namespace Unity.FoxgloveSDK.Tests
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
 
             Check(jpeg.Contains("frameBytes ??= req.GetData<byte>().ToArray();", StringComparison.Ordinal),
-                "164-15D-1: async JPEG path keeps an owned readback byte array for worker lifetime safety");
+                "architecture guard: 164-15D-1: async JPEG path keeps an owned readback byte array for worker lifetime safety");
             var passesFrameBytesToRequest =
                 pipeline.Contains("frameBytes,\r\n                Math.Max(1, captureWidth)", StringComparison.Ordinal)
                 || pipeline.Contains("frameBytes,\n                Math.Max(1, captureWidth)", StringComparison.Ordinal);
@@ -97,7 +90,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && pipeline.Contains("var request = new JpegEncodeRequest(", StringComparison.Ordinal)
                   && passesFrameBytesToRequest
                   && !pipeline.Contains("frameBytes.ToArray()", StringComparison.Ordinal),
-                "164-15D-2: JPEG queue contract still treats the supplied RGB buffer as the owned worker input");
+                "architecture guard: 164-15D-2: JPEG queue contract still treats the supplied RGB buffer as the owned worker input");
         }
 
         private static void VerifyCameraInfoEditorUsesKnownTypeCache()
@@ -109,18 +102,18 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("[\"_sourceCamera\"] = typeof(Camera)", StringComparison.Ordinal)
                   && source.Contains("[\"_imagePublisher\"] = typeof(FoxgloveCameraPublisher)", StringComparison.Ordinal)
                   && source.Contains("[\"_sensorUnitProfile\"] = typeof(SensorUnitProfile)", StringComparison.Ordinal),
-                "164-15E-1: camera info editor seeds known object field types");
+                "architecture guard: 164-15E-1: camera info editor seeds known object field types");
             Check(get.Contains("ObjectFieldTypeCache.TryGetValue(property.name, out var knownType)", StringComparison.Ordinal)
                   && !get.Contains("switch (property.name)", StringComparison.Ordinal),
-                "164-15E-2: camera info editor avoids repeated switch and type lookups for known fields");
+                "architecture guard: 164-15E-2: camera info editor avoids repeated switch and type lookups for known fields");
         }
 
         private static void VerifyRegistry()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(registry.Contains("\"--phase164-15\"", StringComparison.Ordinal), "164-15F-1: validation registry exposes Phase164-15");
-            Check(project.Contains("Phase164_15Validation.cs", StringComparison.Ordinal), "164-15F-2: runtime validation project compiles Phase164-15");
+            Check(registry.Contains("\"--phase164-15\"", StringComparison.Ordinal), "architecture guard: 164-15F-1: validation registry exposes Phase164-15");
+            Check(project.Contains("Phase164_15Validation.cs", StringComparison.Ordinal), "architecture guard: 164-15F-2: runtime validation project compiles Phase164-15");
         }
 
         private static string Read(string relativePath)

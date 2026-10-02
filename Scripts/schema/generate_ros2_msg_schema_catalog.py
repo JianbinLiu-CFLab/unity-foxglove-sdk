@@ -211,7 +211,7 @@ def canonical_source_bytes(data: bytes) -> bytes:
 
 
 def source_file_sha(data: bytes) -> str:
-    """Hash one source file after canonical line-ending normalization."""
+    """Hash one canonical merged schema after line-ending normalization."""
 
     return hashlib.sha256(canonical_source_bytes(data)).hexdigest()
 
@@ -285,13 +285,15 @@ def generate(input_dir: Path, output: Path) -> str:
     local_sources = {path.stem: decode_schema_text(file_bytes[path]) for path in files}
     tree_sha = source_tree_sha(files, file_bytes)
     source_commit = try_source_commit(input_dir)
+    log_file = next(path for path in files if path.stem == "Log")
+    standard_authority_log_sha = source_file_sha(file_bytes[log_file])
 
     entry_blocks: list[str] = []
     for path in files:
         name = path.stem
         schema_name = f"foxglove_msgs/msg/{name}"
         content = merged_schema(local_sources[name], local_sources, root_name=name)
-        source_sha = source_file_sha(file_bytes[path])
+        source_sha = source_file_sha(content.encode("utf-8"))
         category = CATEGORIES.get(name, "")
         has_publisher = "true" if name in DEDICATED_JSON_OR_PROTOBUF_PUBLISHERS else "false"
         content_literal = csharp_base64_literal(content, "                    ")
@@ -354,7 +356,7 @@ namespace {CSHARP_NAMESPACE}
         /// <summary>Source root .msg filename from the Foxglove SDK snapshot.</summary>
         public string SourceFile {{ get; }}
 
-        /// <summary>SHA-256 of the source root .msg text after LF line-ending normalization.</summary>
+        /// <summary>SHA-256 of the merged schema text, including transitive dependencies.</summary>
         public string SourceSha256 {{ get; }}
 
         /// <summary>Coarse schema category used for documentation.</summary>
@@ -372,6 +374,7 @@ namespace {CSHARP_NAMESPACE}
         public const string SourceSnapshot = "third-party/foxglove-sdk/schemas/ros2";
         public const string SourceTreeSha256 = "{tree_sha}";
         public const string SourceCommit = "{source_commit}";
+        public const string StandardAuthorityLogSourceSha256 = "{standard_authority_log_sha}";
 
         // These generated schema strings are decoded once at type initialization so
         // publisher registration has deterministic startup cost and no first-topic hitch.

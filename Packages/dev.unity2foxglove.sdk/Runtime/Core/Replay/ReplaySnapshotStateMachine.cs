@@ -5,6 +5,8 @@
 // Purpose: Tracks pending replay panel and scene snapshot requests for
 // FoxgloveRuntime without owning replay publication.
 
+using System.Collections.Generic;
+
 namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>
@@ -16,32 +18,104 @@ namespace Unity.FoxgloveSDK.Core
         private readonly object _panelSnapshotLock = new();
         private readonly object _sceneSnapshotLock = new();
 
-        private bool _panelSnapshotPending;
-        private ulong _panelSnapshotTimeNs;
-        private ulong _panelSnapshotReadyWallNs;
+        private const int DefaultMaxPendingTargetedPanelSnapshots = 64;
+        private int _maxPendingTargetedPanelSnapshots;
+        private readonly Dictionary<uint, PendingPanelSnapshot> _targetedPanelSnapshots = new();
+        private bool _globalPanelSnapshotPending;
+        private ulong _globalPanelSnapshotTimeNs;
+        private ulong _globalPanelSnapshotReadyWallNs;
+        private long _nextTargetedPanelSnapshotSequence;
         private bool _sceneSnapshotPending;
         private ulong _sceneSnapshotTimeNs;
 
-        public void RequestPanelSnapshot(ulong timeNs, ulong readyWallNs)
+        internal ReplaySnapshotStateMachine(
+            int maxPendingTargetedPanelSnapshots = DefaultMaxPendingTargetedPanelSnapshots)
         {
+            _maxPendingTargetedPanelSnapshots = maxPendingTargetedPanelSnapshots > 0
+                ? maxPendingTargetedPanelSnapshots
+                : DefaultMaxPendingTargetedPanelSnapshots;
+        }
+
+        internal void UpdateCapacity(int capacity)
+        {
+            var normalized = capacity > 0 ? capacity : DefaultMaxPendingTargetedPanelSnapshots;
             lock (_panelSnapshotLock)
             {
-                _panelSnapshotTimeNs = timeNs;
-                _panelSnapshotReadyWallNs = readyWallNs;
-                _panelSnapshotPending = true;
+                _maxPendingTargetedPanelSnapshots = normalized;
             }
         }
 
-        public bool TryConsumePanelSnapshot(ulong wallNowNs, out ulong timeNs)
+        public void RequestPanelSnapshot(ulong timeNs, ulong readyWallNs, uint? clientId = null)
         {
             lock (_panelSnapshotLock)
             {
-                timeNs = _panelSnapshotTimeNs;
-                if (!_panelSnapshotPending)
+                if (!clientId.HasValue)
+                {
+                    _targetedPanelSnapshots.Clear();
+                    _globalPanelSnapshotTimeNs = timeNs;
+                    _globalPanelSnapshotReadyWallNs = readyWallNs;
+                    _globalPanelSnapshotPending = true;
+                    return;
+                }
+
+                // A global seek is authoritative for the current timeline. A
+                // targeted request arriving during its debounce must not replace it.
+                if (_globalPanelSnapshotPending)
+                    return;
+
+                if (!_targetedPanelSnapshots.ContainsKey(clientId.Value)
+                    && _targetedPanelSnapshots.Count >= _maxPendingTargetedPanelSnapshots)
+                {
+                    RemoveOldestTargetedSnapshot();
+                }
+
+                _targetedPanelSnapshots[clientId.Value] = new PendingPanelSnapshot(
+                    timeNs,
+                    readyWallNs,
+                    ++_nextTargetedPanelSnapshotSequence);
+            }
+        }
+
+        public bool TryConsumePanelSnapshot(
+            ulong wallNowNs,
+            out ulong timeNs,
+            out uint? clientId)
+        {
+            lock (_panelSnapshotLock)
+            {
+                timeNs = 0;
+                clientId = null;
+                if (_globalPanelSnapshotPending)
+                {
+                    timeNs = _globalPanelSnapshotTimeNs;
+                    if (wallNowNs < _globalPanelSnapshotReadyWallNs)
+                        return false;
+
+                    _globalPanelSnapshotPending = false;
+                    return true;
+                }
+
+                var selectedClientId = 0u;
+                PendingPanelSnapshot selected = default;
+                var hasSelected = false;
+                foreach (var pair in _targetedPanelSnapshots)
+                {
+                    if (wallNowNs < pair.Value.ReadyWallNs)
+                        continue;
+                    if (!hasSelected || pair.Value.Sequence < selected.Sequence)
+                    {
+                        selectedClientId = pair.Key;
+                        selected = pair.Value;
+                        hasSelected = true;
+                    }
+                }
+
+                if (!hasSelected)
                     return false;
-                if (wallNowNs < _panelSnapshotReadyWallNs)
-                    return false;
-                _panelSnapshotPending = false;
+
+                _targetedPanelSnapshots.Remove(selectedClientId);
+                timeNs = selected.TimeNs;
+                clientId = selectedClientId;
                 return true;
             }
         }
@@ -71,9 +145,18 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_panelSnapshotLock)
             {
-                _panelSnapshotPending = false;
-                _panelSnapshotTimeNs = 0;
-                _panelSnapshotReadyWallNs = 0;
+                _globalPanelSnapshotPending = false;
+                _globalPanelSnapshotTimeNs = 0;
+                _globalPanelSnapshotReadyWallNs = 0;
+                _targetedPanelSnapshots.Clear();
+            }
+        }
+
+        public void ClearPanelSnapshot(uint clientId)
+        {
+            lock (_panelSnapshotLock)
+            {
+                _targetedPanelSnapshots.Remove(clientId);
             }
         }
 
@@ -90,6 +173,36 @@ namespace Unity.FoxgloveSDK.Core
         {
             ClearPanelSnapshot();
             ClearSceneSnapshot();
+        }
+
+        private void RemoveOldestTargetedSnapshot()
+        {
+            var oldestClientId = 0u;
+            var oldestSequence = long.MaxValue;
+            foreach (var pair in _targetedPanelSnapshots)
+            {
+                if (pair.Value.Sequence >= oldestSequence)
+                    continue;
+                oldestClientId = pair.Key;
+                oldestSequence = pair.Value.Sequence;
+            }
+
+            if (oldestSequence != long.MaxValue)
+                _targetedPanelSnapshots.Remove(oldestClientId);
+        }
+
+        private readonly struct PendingPanelSnapshot
+        {
+            internal PendingPanelSnapshot(ulong timeNs, ulong readyWallNs, long sequence)
+            {
+                TimeNs = timeNs;
+                ReadyWallNs = readyWallNs;
+                Sequence = sequence;
+            }
+
+            internal ulong TimeNs { get; }
+            internal ulong ReadyWallNs { get; }
+            internal long Sequence { get; }
         }
     }
 }

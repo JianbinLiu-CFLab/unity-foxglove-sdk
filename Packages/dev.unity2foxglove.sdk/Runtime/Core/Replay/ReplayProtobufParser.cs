@@ -13,13 +13,20 @@ namespace Unity.FoxgloveSDK.Core
 {
     internal static class ReplayProtobufParser
     {
+        private const int MaxNegativeCacheEntries = 256;
         private static readonly object ReflectionCacheGate = new();
-        private static readonly Dictionary<string, ProtobufParserBinding> ProtobufParserCache = new();
+        private static readonly Dictionary<string, ProtobufParserCacheEntry> ProtobufParserCache = new();
+        private static readonly Queue<string> NegativeCacheOrder = new();
         private static readonly string[] PreferredAssemblyNames =
         {
             "Unity.FoxgloveSDK.Proto",
             "Unity.FoxgloveSDK.Proto.Generated"
         };
+
+        static ReplayProtobufParser()
+        {
+            AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
+        }
 
         public static object Parse(string typeName, byte[] payload)
         {
@@ -40,30 +47,71 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (ReflectionCacheGate)
             {
-                if (ProtobufParserCache.TryGetValue(typeName, out var binding))
+                if (ProtobufParserCache.TryGetValue(typeName, out var entry))
+                {
+                    if (entry.Binding != null)
+                        return entry.Binding;
+                    throw new InvalidOperationException(entry.FailureMessage);
+                }
+
+                try
+                {
+                    var type = ResolveType(typeName);
+                    if (type == null)
+                        throw new InvalidOperationException($"Optional protobuf type '{typeName}' is not available.");
+
+                    var parser = ReplayPropertyCache.Resolve(type, "Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+                    if (parser == null)
+                        throw new InvalidOperationException($"Optional protobuf type '{typeName}' does not expose a Parser.");
+
+                    var parseFrom = parser.GetType().GetMethod(
+                        "ParseFrom",
+                        BindingFlags.Public | BindingFlags.Instance,
+                        null,
+                        new[] { typeof(byte[]) },
+                        null);
+                    if (parseFrom == null)
+                        throw new InvalidOperationException($"Optional protobuf parser for '{typeName}' does not support ParseFrom(byte[]).");
+
+                    var binding = new ProtobufParserBinding(parser, parseFrom);
+                    ProtobufParserCache[typeName] = new ProtobufParserCacheEntry(binding, null);
                     return binding;
-
-                var type = ResolveType(typeName);
-                if (type == null)
-                    throw new InvalidOperationException($"Optional protobuf type '{typeName}' is not available.");
-
-                var parser = ReplayPropertyCache.Resolve(type, "Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-                if (parser == null)
-                    throw new InvalidOperationException($"Optional protobuf type '{typeName}' does not expose a Parser.");
-
-                var parseFrom = parser.GetType().GetMethod(
-                    "ParseFrom",
-                    BindingFlags.Public | BindingFlags.Instance,
-                    null,
-                    new[] { typeof(byte[]) },
-                    null);
-                if (parseFrom == null)
-                    throw new InvalidOperationException($"Optional protobuf parser for '{typeName}' does not support ParseFrom(byte[]).");
-
-                binding = new ProtobufParserBinding(parser, parseFrom);
-                ProtobufParserCache[typeName] = binding;
-                return binding;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    CacheNegativeResult(typeName, ex.Message);
+                    throw;
+                }
             }
+        }
+
+        private static void OnAssemblyLoad(object sender, AssemblyLoadEventArgs args)
+        {
+            lock (ReflectionCacheGate)
+            {
+                var negativeKeys = new List<string>();
+                foreach (var pair in ProtobufParserCache)
+                {
+                    if (pair.Value.Binding == null)
+                        negativeKeys.Add(pair.Key);
+                }
+
+                foreach (var key in negativeKeys)
+                    ProtobufParserCache.Remove(key);
+                NegativeCacheOrder.Clear();
+            }
+        }
+
+        private static void CacheNegativeResult(string typeName, string failureMessage)
+        {
+            while (NegativeCacheOrder.Count >= MaxNegativeCacheEntries)
+            {
+                var oldest = NegativeCacheOrder.Dequeue();
+                ProtobufParserCache.Remove(oldest);
+            }
+
+            ProtobufParserCache[typeName] = new ProtobufParserCacheEntry(null, failureMessage);
+            NegativeCacheOrder.Enqueue(typeName);
         }
 
         private static Type ResolveType(string typeName)
@@ -114,6 +162,18 @@ namespace Unity.FoxgloveSDK.Core
                     }
                 }
             }
+        }
+
+        private sealed class ProtobufParserCacheEntry
+        {
+            public ProtobufParserCacheEntry(ProtobufParserBinding binding, string failureMessage)
+            {
+                Binding = binding;
+                FailureMessage = failureMessage;
+            }
+
+            public ProtobufParserBinding Binding { get; }
+            public string FailureMessage { get; }
         }
     }
 }

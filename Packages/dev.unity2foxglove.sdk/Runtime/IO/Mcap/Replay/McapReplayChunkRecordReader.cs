@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.IO
             uint sequence,
             ulong logTime,
             ulong publishTime,
+            int recordOffset,
             int dataOffset,
             int dataLength)
         {
@@ -23,6 +24,7 @@ namespace Unity.FoxgloveSDK.IO
             Sequence = sequence;
             LogTime = logTime;
             PublishTime = publishTime;
+            RecordOffset = recordOffset;
             DataOffset = dataOffset;
             DataLength = dataLength;
         }
@@ -32,6 +34,7 @@ namespace Unity.FoxgloveSDK.IO
         internal uint Sequence { get; }
         internal ulong LogTime { get; }
         internal ulong PublishTime { get; }
+        internal int RecordOffset { get; }
         internal int DataOffset { get; }
         internal int DataLength { get; }
     }
@@ -43,6 +46,7 @@ namespace Unity.FoxgloveSDK.IO
     {
         internal static McapReplayChunkRecord ReadNext(byte[] chunk, ref int offset)
         {
+            var recordOffset = offset;
             var opcode = chunk[offset++];
             if (opcode == 0x00)
                 throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
@@ -76,6 +80,7 @@ namespace Unity.FoxgloveSDK.IO
                 sequence,
                 logTime,
                 publishTime,
+                recordOffset,
                 dataOffset,
                 dataLength);
         }

@@ -535,11 +535,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(
                 stream.TryAdmitInput(),
                 "Behavioral 184E-4: the next admission boundary is accepted");
-            stream.TryEnqueueOwned(1, disposed.Add);
-            stream.TryEnqueueOwned(2, disposed.Add);
+            stream.TryEnqueueOwnedAfterAdmission(1, disposed.Add);
+            stream.TryEnqueueOwnedAfterAdmission(2, disposed.Add);
             ticks = 20;
             var boundaryAdmitted = stream.TryAdmitInput();
-            stream.TryEnqueueOwned(3, disposed.Add);
+            stream.TryEnqueueOwnedAfterAdmission(3, disposed.Add);
 
             Check(
                 boundaryAdmitted

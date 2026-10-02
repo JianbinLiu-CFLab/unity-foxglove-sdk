@@ -58,6 +58,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void ManagerWiresCaptureAndEndpointPoliciesThroughBehavioralStateBoundaries()
+        {
+            var capture = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ComponentPublishContracts.cs");
+            var remoteMcap = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.RemoteMcap.cs");
+            var replayCursor = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.ReplayCursor.cs");
+
+            Assert.Contains("ComponentPublisherSessionCaptureState.SelectOwned", capture, StringComparison.Ordinal);
+            Assert.Contains("_remoteMcapFileServerRetry.TryExecute", remoteMcap, StringComparison.Ordinal);
+            Assert.Contains("_replayCursorEndpointRetry.TryExecute", replayCursor, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RecordingRuntimeStateOwnsPendingSidecarWithoutMovingSerializedFields()
         {
             var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");

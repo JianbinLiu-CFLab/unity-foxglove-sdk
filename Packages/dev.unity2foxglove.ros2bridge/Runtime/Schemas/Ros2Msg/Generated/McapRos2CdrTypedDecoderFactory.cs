@@ -5,6 +5,7 @@
 // Purpose: Packaged Foxglove ROS 2 CDR typed decoder factory for MCAP DataLoader.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Google.Protobuf;
@@ -33,9 +34,14 @@ namespace Unity2Foxglove.Ros2Bridge
             if (!Ros2CdrDeserializerRegistry.TryGetBySchemaName(schema?.Name ?? string.Empty, out var entry))
                 return null;
             if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schema.Name, out var catalogEntry)
-                || schema.Data == null
-                || (schema.Data.Length > 0
-                    && !SchemaContentEqual(schema.Data, catalogEntry.Content)))
+                || schema.Data == null)
+                return null;
+
+            // Empty schema data is a supported legacy MCAP form. When content
+            // is present, compare the complete merged ros2msg definition so a
+            // same-name schema cannot select the wrong typed deserializer.
+            if (schema.Data.Length > 0
+                && !SchemaContentEqual(schema.Data, catalogEntry.Content))
                 return null;
 
             return new Decoder(schema.Name, channel.Topic, entry);
@@ -45,12 +51,63 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             if (recorded == null || string.IsNullOrEmpty(bundled))
                 return false;
-            var recordedText = NormalizeSchema(Encoding.UTF8.GetString(recorded));
-            return string.Equals(recordedText, NormalizeSchema(bundled), StringComparison.Ordinal);
+            var recordedText = CanonicalizeSchema(Encoding.UTF8.GetString(recorded));
+            return string.Equals(recordedText, CanonicalizeSchema(bundled), StringComparison.Ordinal);
         }
 
-        private static string NormalizeSchema(string value)
-            => (value ?? string.Empty).TrimStart('\uFEFF').Replace("\r\n", "\n").Replace('\r', '\n');
+        private static string CanonicalizeSchema(string value)
+        {
+            var normalized = (value ?? string.Empty)
+                .TrimStart('\uFEFF')
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n');
+            var lines = normalized.Split('\n');
+            var meaningfulLines = new List<string>(lines.Length);
+            foreach (var line in lines)
+            {
+                var canonicalLine = CanonicalizeLine(line);
+                if (canonicalLine.Length == 0 || canonicalLine.StartsWith("#", StringComparison.Ordinal))
+                    continue;
+                meaningfulLines.Add(canonicalLine);
+            }
+
+            return string.Join("\n", meaningfulLines);
+        }
+
+        private static string CanonicalizeLine(string line)
+        {
+            var builder = new StringBuilder();
+            var inQuotes = false;
+            var pendingWhitespace = false;
+            foreach (var character in line ?? string.Empty)
+            {
+                if (character == '"')
+                {
+                    if (pendingWhitespace && builder.Length > 0)
+                        builder.Append(' ');
+                    pendingWhitespace = false;
+                    inQuotes = !inQuotes;
+                    builder.Append(character);
+                    continue;
+                }
+
+                if (!inQuotes && character == '#')
+                    break;
+
+                if (!inQuotes && (character == ' ' || character == '\t'))
+                {
+                    pendingWhitespace = true;
+                    continue;
+                }
+
+                if (pendingWhitespace && builder.Length > 0)
+                    builder.Append(' ');
+                pendingWhitespace = false;
+                builder.Append(character);
+            }
+
+            return builder.ToString().Trim();
+        }
 
         private sealed class Decoder :
             IMcapMessageDecoder,

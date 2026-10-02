@@ -149,6 +149,153 @@ namespace Unity.FoxgloveSDK.Components
 
         [JsonProperty("contracts", Order = 9)]
         public List<FoxRunSchemaMcapContractMetadata> Contracts { get; set; }
+
+        [JsonProperty("sdkWireSchemaHash", Order = 10)]
+        public string SdkWireSchemaHash { get; set; }
+    }
+
+    /// <summary>One schemaless Component MessagePack contract actually written to a recording.</summary>
+    internal sealed class SdkWireSchemaComponentIdentity
+    {
+        [JsonProperty("topic", Order = 0)]
+        public string Topic { get; set; }
+
+        [JsonProperty("encoding", Order = 1)]
+        public string Encoding { get; set; }
+
+        [JsonProperty("logicalSchema", Order = 2)]
+        public string LogicalSchema { get; set; }
+
+        [JsonProperty("shapeIdentity", Order = 3)]
+        public string ShapeIdentity { get; set; }
+    }
+
+    /// <summary>SDK-wide wire-schema identity stored alongside recording metadata.</summary>
+    public static class SdkWireSchemaMcapMetadata
+    {
+        public const string MetadataName = "unity2foxglove.sdk.wire-schema";
+        private const int LegacyMetadataVersion = 1;
+        private const int SchemaOnlyMetadataVersion = 2;
+        private const int MetadataVersion = 3;
+
+        private sealed class Envelope
+        {
+            [JsonProperty("version", Order = 0)]
+            public int Version { get; set; }
+
+            [JsonProperty("hash", Order = 1)]
+            public string Hash { get; set; }
+
+            [JsonProperty("components", Order = 2)]
+            public List<SdkWireSchemaComponentIdentity> Components { get; set; }
+        }
+
+        public static bool TryCreateJson(string hash, out string json)
+        {
+            json = null;
+            if (string.IsNullOrWhiteSpace(hash))
+                return false;
+
+            json = JsonConvert.SerializeObject(new Envelope
+            {
+                Version = SchemaOnlyMetadataVersion,
+                Hash = hash
+            }, Formatting.None);
+            return true;
+        }
+
+        internal static bool TryCreateJson(
+            string hash,
+            IReadOnlyList<SdkWireSchemaComponentIdentity> components,
+            out string json)
+        {
+            json = null;
+            if (string.IsNullOrWhiteSpace(hash))
+                return false;
+
+            var copiedComponents = components == null
+                ? null
+                : components
+                    .Where(component => component != null)
+                    .Select(component => new SdkWireSchemaComponentIdentity
+                    {
+                        Topic = component.Topic ?? string.Empty,
+                        Encoding = component.Encoding ?? string.Empty,
+                        LogicalSchema = component.LogicalSchema ?? string.Empty,
+                        ShapeIdentity = component.ShapeIdentity ?? string.Empty
+                    })
+                    .ToList();
+            json = JsonConvert.SerializeObject(new Envelope
+            {
+                Version = copiedComponents != null && copiedComponents.Count > 0
+                    ? MetadataVersion
+                    : SchemaOnlyMetadataVersion,
+                Hash = hash,
+                Components = copiedComponents != null && copiedComponents.Count > 0
+                    ? copiedComponents
+                    : null
+            }, Formatting.None);
+            return true;
+        }
+
+        public static bool TryParseJson(string json, out string hash, out string error)
+            => TryParseJson(json, out hash, out _, out error);
+
+        public static bool TryParseJson(
+            string json,
+            out string hash,
+            out int version,
+            out string error)
+            => TryParseJson(json, out hash, out version, out _, out error);
+
+        internal static bool TryParseJson(
+            string json,
+            out string hash,
+            out int version,
+            out IReadOnlyList<SdkWireSchemaComponentIdentity> components,
+            out string error)
+        {
+            hash = string.Empty;
+            version = 0;
+            components = Array.Empty<SdkWireSchemaComponentIdentity>();
+            error = string.Empty;
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                error = "metadata value is empty";
+                return false;
+            }
+
+            Envelope envelope;
+            try
+            {
+                envelope = JsonConvert.DeserializeObject<Envelope>(json);
+            }
+            catch (Exception ex) when (ex is JsonException || ex is ArgumentException)
+            {
+                error = ex.Message;
+                return false;
+            }
+
+            if (envelope == null
+                || (envelope.Version != LegacyMetadataVersion
+                    && envelope.Version != SchemaOnlyMetadataVersion
+                    && envelope.Version != MetadataVersion))
+            {
+                error = "unsupported SDK wire-schema metadata version";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(envelope.Hash))
+            {
+                error = "hash is missing";
+                return false;
+            }
+
+            version = envelope.Version;
+            hash = envelope.Hash;
+            components = envelope.Components ?? new List<SdkWireSchemaComponentIdentity>();
+            return true;
+        }
     }
 
     /// <summary>
@@ -161,17 +308,25 @@ namespace Unity.FoxgloveSDK.Components
         public const int SchemaMetadataVersion = 3;
 
         public static bool TryCreateJson(FoxRunSchemaManifestInfo manifest, out string json)
+            => TryCreateJson(manifest, string.Empty, out json);
+
+        public static bool TryCreateJson(
+            FoxRunSchemaManifestInfo manifest,
+            string sdkWireSchemaHash,
+            out string json)
         {
             json = null;
             if (!HasUsableHash(manifest))
                 return false;
 
-            var record = CreateRecord(manifest);
+            var record = CreateRecord(manifest, sdkWireSchemaHash);
             json = JsonConvert.SerializeObject(record, Formatting.None);
             return true;
         }
 
-        public static FoxRunSchemaMcapMetadataRecord CreateRecord(FoxRunSchemaManifestInfo manifest)
+        public static FoxRunSchemaMcapMetadataRecord CreateRecord(
+            FoxRunSchemaManifestInfo manifest,
+            string sdkWireSchemaHash = "")
         {
             if (!HasUsableHash(manifest))
                 throw new ArgumentException("FoxRun schema manifest info is missing a global manifest hash.", nameof(manifest));
@@ -216,7 +371,8 @@ namespace Unity.FoxgloveSDK.Components
                 TypeCount = manifest.TypeCount,
                 ContractCount = manifest.ContractCount,
                 FieldCount = manifest.FieldCount,
-                Contracts = contracts
+                Contracts = contracts,
+                SdkWireSchemaHash = sdkWireSchemaHash ?? string.Empty
             };
         }
 
@@ -365,17 +521,40 @@ namespace Unity.FoxgloveSDK.Components
             => new FoxRunReplaySchemaGuardResult(
                 FoxRunReplaySchemaGuardState.MalformedRecorded,
                 false,
-                "Recorded FoxRun schema metadata is malformed; replay will continue without schema hash enforcement. " +
+                "Recorded FoxRun schema metadata is malformed. " +
                 (string.IsNullOrWhiteSpace(detail) ? string.Empty : detail),
                 string.Empty,
                 string.Empty);
+
+        public static FoxRunReplaySchemaGuardResult CreateMalformedRecordedResult(
+            string detail,
+            SchemaIdentityMode identityMode)
+            => ApplyMalformedPolicy(
+                CreateMalformedRecordedResult(detail),
+                identityMode);
+
+        private static FoxRunReplaySchemaGuardResult ApplyMalformedPolicy(
+            FoxRunReplaySchemaGuardResult malformed,
+            SchemaIdentityMode identityMode)
+        {
+            var isBlocking = identityMode == SchemaIdentityMode.Strict;
+            return new FoxRunReplaySchemaGuardResult(
+                malformed.State,
+                isBlocking,
+                malformed.Message
+                + (isBlocking
+                    ? " Replay blocked by strict schema identity policy."
+                    : " Replay will continue without schema hash enforcement."),
+                malformed.RecordedGlobalManifestHash,
+                malformed.CurrentGlobalManifestHash);
+        }
 
         public static FoxRunReplaySchemaGuardResult EvaluateRecordedJson(
             string recordedJson,
             FoxRunSchemaManifestInfo current)
         {
             if (!TryParseJson(recordedJson, out var recorded, out var error))
-                return CreateMalformedRecordedResult(error);
+                return CreateMalformedRecordedResult(error, SchemaIdentityMode.Warn);
 
             return Evaluate(recorded, current);
         }
@@ -386,17 +565,7 @@ namespace Unity.FoxgloveSDK.Components
             SchemaIdentityMode identityMode)
         {
             if (!TryParseJson(recordedJson, out var recorded, out var error))
-            {
-                var malformed = CreateMalformedRecordedResult(error);
-                if (identityMode != SchemaIdentityMode.Strict)
-                    return malformed;
-                return new FoxRunReplaySchemaGuardResult(
-                    malformed.State,
-                    true,
-                    malformed.Message + " Replay blocked by strict schema identity policy.",
-                    malformed.RecordedGlobalManifestHash,
-                    malformed.CurrentGlobalManifestHash);
-            }
+                return CreateMalformedRecordedResult(error, identityMode);
             return Evaluate(recorded, current, identityMode);
         }
 
@@ -457,7 +626,9 @@ namespace Unity.FoxgloveSDK.Components
 
             var recordedHash = recorded.GlobalManifestHash ?? string.Empty;
             if (string.IsNullOrWhiteSpace(recordedHash))
-                return CreateMalformedRecordedResult("globalManifestHash is missing");
+                return CreateMalformedRecordedResult(
+                    "globalManifestHash is missing",
+                    SchemaIdentityMode.Warn);
 
             if (!HasUsableHash(current))
             {

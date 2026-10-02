@@ -31,6 +31,7 @@ namespace Foxglove.Schemas.Video
 
         /// <summary>Returns the expected I420/YUV420 byte count for one raw helper input frame.</summary>
         public int FrameByteCount => CameraVideoFrameGeometry.GetYuv420FrameByteCountOrZero(Width, Height);
+        public int Rgb24FrameByteCount => CameraVideoFrameGeometry.GetRgb24FrameByteCountOrZero(Width, Height);
 
         public bool Validate(out string error)
         {
@@ -95,7 +96,7 @@ namespace Foxglove.Schemas.Video
                 "--keyint " + KeyframeInterval.ToString(CultureInfo.InvariantCulture)
             });
 
-            return new ProcessStartInfo
+            var startInfo = new ProcessStartInfo
             {
                 FileName = HelperExecutablePath,
                 Arguments = args,
@@ -105,6 +106,8 @@ namespace Foxglove.Schemas.Video
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            startInfo.Environment["OPENH264_PROBE_PROTOCOL"] = "2";
+            return startInfo;
         }
 
         private static string QuoteArgument(string value)

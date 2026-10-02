@@ -13,6 +13,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.FoxgloveSDK.Components;
 
 namespace Foxglove.Schemas.Video
 {
@@ -20,10 +21,20 @@ namespace Foxglove.Schemas.Video
     /// Encodes I420 frames through an external OpenH264 helper process and
     /// exposes completed H.264 Annex B access units.
     /// </summary>
-    public sealed class OpenH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar
+    public sealed class OpenH264EncoderSidecar : ICameraVideoEncoderSidecar, ITimestampedCameraVideoEncoderSidecar, ICameraVideoRgbFrameSourceSidecar
     {
         private const int MaxAccessUnitBytes = 16 * 1024 * 1024;
         private const int ShutdownTimeoutMs = 500;
+        private const string ProtocolMarker = "OPENH264_PROBE_PROTOCOL 2";
+        // Only a legacy helper waits the full window; v2 helpers advertise before loading OpenH264.
+        private const int DefaultProtocolNegotiationTimeoutMs = 2000;
+        private const string ProtocolMismatchError =
+            "OpenH264 helper advertised protocol 2 after legacy framing was selected; stopping the encoder session.";
+        private int _protocolNegotiationTimeoutMs = DefaultProtocolNegotiationTimeoutMs;
+        private int _helperProtocolVersion = 1;
+        private int _protocolNegotiationState;
+        private readonly object _protocolNegotiationLock = new object();
+        private TaskCompletionSource<bool> _helperProtocolReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         private readonly ConcurrentQueue<QueuedVideoFrame> _inputFrames = new ConcurrentQueue<QueuedVideoFrame>();
         private readonly ConcurrentQueue<ulong> _encodedFrameTimestamps = new ConcurrentQueue<ulong>();
@@ -47,6 +58,8 @@ namespace Foxglove.Schemas.Video
         private long _skippedAccessUnits;
         private long _droppedInputFrames;
         private long _droppedOutputFrames;
+        private long _writtenFrameCount;
+        private long _processingFrameCount;
         private string _lastDiagnosticLine;
         private string _lastError;
 
@@ -70,7 +83,10 @@ namespace Foxglove.Schemas.Video
         public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
         public int InputQueueDepth => Volatile.Read(ref _inputCount);
         public int MaxInputQueue => Volatile.Read(ref _maxInputQueue);
-        internal int PendingTimestampCountForTests => _encodedFrameTimestamps.Count;
+        internal int PendingTimestampCountForTests
+            => _encodedFrameTimestamps.Count
+                + (int)Math.Min(int.MaxValue, Interlocked.Read(ref _writtenFrameCount))
+                + (int)Math.Min(int.MaxValue, Interlocked.Read(ref _processingFrameCount));
         public string LastDiagnosticLine
         {
             get => Volatile.Read(ref _lastDiagnosticLine);
@@ -120,12 +136,17 @@ namespace Foxglove.Schemas.Video
                     }
 
                     _stop = new CancellationTokenSource();
+                    Volatile.Write(ref _helperProtocolVersion, 1);
+                    Volatile.Write(ref _protocolNegotiationState, 0);
+                    _helperProtocolReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    Interlocked.Exchange(ref _writtenFrameCount, 0);
+                    Interlocked.Exchange(ref _processingFrameCount, 0);
                     var process = _process;
                     var token = _stop.Token;
                     var sessionId = Interlocked.Increment(ref _sessionId);
                     _stdinTask = Task.Run(() => RunStdinWriter(process, token));
                     _stdoutTask = Task.Run(() => RunStdoutReaderForSession(process, token, sessionId));
-                    _stderrTask = Task.Run(() => RunStderrReader(process, token));
+                    _stderrTask = Task.Run(() => RunStderrReaderForSession(process, token, sessionId));
                     return true;
                 }
                 catch (Win32Exception ex)
@@ -185,7 +206,7 @@ namespace Foxglove.Schemas.Video
                 }
 
                 // Pending raw frames and written-but-unpaired frames share one finite budget.
-                if ((long)_inputCount + _encodedFrameTimestamps.Count >= (long)_maxInputQueue + _maxOutputQueue)
+                if ((long)_inputCount + PendingTimestampCountForTests >= (long)_maxInputQueue + _maxOutputQueue)
                 {
                     ArrayPool<byte>.Shared.Return(copy);
                     return false;
@@ -198,6 +219,67 @@ namespace Foxglove.Schemas.Video
             Interlocked.Increment(ref _framesSubmitted);
             return true;
         }
+
+        bool ICameraVideoRgbFrameSourceSidecar.TrySubmitRgbFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
+        {
+            var submittingProcess = Volatile.Read(ref _process);
+            if (frame.Length <= 0 || !IsProcessRunning(submittingProcess))
+                return false;
+
+            var expectedBytes = _options != null ? _options.Rgb24FrameByteCount : 0;
+            if (expectedBytes <= 0)
+            {
+                LastError = "OpenH264 encoder dimensions produce an invalid RGB24 frame size.";
+                return false;
+            }
+
+            if (frame.Length != expectedBytes)
+            {
+                LastError = "RGB24 frame byte count does not match OpenH264 encoder dimensions.";
+                return false;
+            }
+
+            var copy = ArrayPool<byte>.Shared.Rent(expectedBytes);
+            try
+            {
+                frame.CopyTo(copy);
+            }
+            catch
+            {
+                ArrayPool<byte>.Shared.Return(copy);
+                throw;
+            }
+
+            lock (_inputLock)
+            {
+                if (!ReferenceEquals(submittingProcess, Volatile.Read(ref _process))
+                    || !IsProcessRunning(submittingProcess))
+                {
+                    ArrayPool<byte>.Shared.Return(copy);
+                    return false;
+                }
+
+                while (_inputCount >= _maxInputQueue && _inputFrames.TryDequeue(out var dropped))
+                {
+                    ReturnInputFrameBuffer(dropped);
+                    _inputCount--;
+                    Interlocked.Increment(ref _droppedInputFrames);
+                }
+
+                if ((long)_inputCount + PendingTimestampCountForTests >= (long)_maxInputQueue + _maxOutputQueue)
+                {
+                    ArrayPool<byte>.Shared.Return(copy);
+                    return false;
+                }
+
+                _inputFrames.Enqueue(new QueuedVideoFrame(copy, timestampNs, pooled: true, length: expectedBytes, isRgb24: true));
+                _inputCount++;
+            }
+
+            Interlocked.Increment(ref _framesSubmitted);
+            return true;
+        }
+
 
         public bool TryDequeueAccessUnit(out byte[] accessUnit)
         {
@@ -305,14 +387,75 @@ namespace Foxglove.Schemas.Video
                 {
                     if (TryDequeueInputFrame(process, token, out var frame))
                     {
+                        byte[] converted = null;
                         try
                         {
-                            await stream.WriteAsync(frame.Data, 0, frame.Length, token).ConfigureAwait(false);
-                            await stream.FlushAsync(token).ConfigureAwait(false);
+                            var data = frame.Data;
+                            var length = frame.Length;
+                            if (frame.IsRgb24)
+                            {
+                                var options = _options;
+                                var i420Length = options != null ? options.FrameByteCount : 0;
+                                if (i420Length <= 0)
+                                {
+                                    LastError = "OpenH264 encoder dimensions produce an invalid I420 frame size.";
+                                    LastDiagnosticLine = LastError;
+                                    Interlocked.Increment(ref _droppedInputFrames);
+                                    continue;
+                                }
+
+                                converted = ArrayPool<byte>.Shared.Rent(i420Length);
+                                string conversionError;
+                                if (!Rgb24ToI420Converter.TryConvertRgb24ToI420(
+                                        frame.Data,
+                                        options.Width,
+                                        options.Height,
+                                        converted,
+                                        flipVertical: true,
+                                        out conversionError))
+                                {
+                                    LastError = conversionError ?? "OpenH264 RGB24 conversion failed.";
+                                    LastDiagnosticLine = LastError;
+                                    Interlocked.Increment(ref _droppedInputFrames);
+                                    continue;
+                                }
+
+                                data = converted;
+                                length = i420Length;
+                            }
+
+                            await WaitForProtocolNegotiation(token).ConfigureAwait(false);
+                            var protocolV2 = Volatile.Read(ref _helperProtocolVersion) >= 2;
+                            var countedWrittenFrame = false;
+                            try
+                            {
+                                if (protocolV2)
+                                {
+                                    Interlocked.Increment(ref _writtenFrameCount);
+                                    countedWrittenFrame = true;
+                                    await WriteProtocolHeaderAsync(stream, frame.TimestampNs, length, token).ConfigureAwait(false);
+                                }
+                                else
+                                {
+                                    _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
+                                }
+
+                                await stream.WriteAsync(data, 0, length, token).ConfigureAwait(false);
+                                await stream.FlushAsync(token).ConfigureAwait(false);
+                            }
+                            catch
+                            {
+                                if (countedWrittenFrame)
+                                    ConsumeWrittenFrame();
+                                throw;
+                            }
                         }
                         finally
                         {
+                            if (converted != null)
+                                ArrayPool<byte>.Shared.Return(converted);
                             ReturnInputFrameBuffer(frame);
+                            Interlocked.Decrement(ref _processingFrameCount);
                         }
                     }
                     else
@@ -335,52 +478,103 @@ namespace Foxglove.Schemas.Video
 
         private async Task RunStdoutReaderForSession(Process process, CancellationToken token, long sessionId)
         {
-            var header = new byte[4];
             try
             {
+                await WaitForProtocolNegotiation(token).ConfigureAwait(false);
                 var stream = process.StandardOutput.BaseStream;
-                while (!token.IsCancellationRequested)
+                if (Volatile.Read(ref _helperProtocolVersion) >= 2)
                 {
-                    var readLength = await ReadLittleEndianLength(stream, header, token).ConfigureAwait(false);
-                    if (!readLength.Success)
+                    var header = new byte[12];
+                    while (!token.IsCancellationRequested)
                     {
-                        RetireFailedProcess(process, token, "Encoder stdout ended unexpectedly.");
-                        break;
-                    }
-
-                    var length = readLength.Length;
-                    lock (_outputLock)
-                    {
-                        if (!IsCurrentSessionForTests(process, sessionId))
-                            return;
-
-                        if (length == 0)
+                        if (!await ReadExact(stream, header, token).ConfigureAwait(false))
                         {
-                            AcceptHelperSkippedAccessUnit();
-                            continue;
+                            RetireFailedProcess(process, token, "Encoder stdout ended unexpectedly.");
+                            return;
                         }
 
+                        var timestampNs = ReadUInt64LittleEndian(header, 0);
+                        var length = ReadInt32LittleEndian(header, 8);
                         if (length < 0 || length > MaxAccessUnitBytes)
                         {
                             LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
                             RetireFailedProcess(process, token, LastError);
                             return;
                         }
-                    }
 
-                    var payload = new byte[length];
-                    if (!await ReadExact(stream, payload, token).ConfigureAwait(false))
-                    {
-                        LastError = "OpenH264 helper stdout ended mid access unit.";
-                        RetireFailedProcess(process, token, LastError);
-                        return;
-                    }
+                        if (length == 0)
+                        {
+                            lock (_outputLock)
+                            {
+                                if (!IsCurrentSessionForTests(process, sessionId))
+                                    return;
+                                AcceptHelperSkippedAccessUnit(timestampNs);
+                            }
+                            continue;
+                        }
 
-                    lock (_outputLock)
-                    {
-                        if (!IsCurrentSessionForTests(process, sessionId))
+                        var payload = new byte[length];
+                        if (!await ReadExact(stream, payload, token).ConfigureAwait(false))
+                        {
+                            LastError = "OpenH264 helper stdout ended mid access unit.";
+                            RetireFailedProcess(process, token, LastError);
                             return;
-                        AcceptHelperAccessUnit(payload);
+                        }
+
+                        lock (_outputLock)
+                        {
+                            if (!IsCurrentSessionForTests(process, sessionId))
+                                return;
+                            AcceptHelperAccessUnit(payload, timestampNs);
+                        }
+                    }
+                }
+                else
+                {
+                    var header = new byte[4];
+                    while (!token.IsCancellationRequested)
+                    {
+                        var readLength = await ReadLittleEndianLength(stream, header, token).ConfigureAwait(false);
+                        if (!readLength.Success)
+                        {
+                            RetireFailedProcess(process, token, "Encoder stdout ended unexpectedly.");
+                            return;
+                        }
+
+                        var length = readLength.Length;
+                        lock (_outputLock)
+                        {
+                            if (!IsCurrentSessionForTests(process, sessionId))
+                                return;
+
+                            if (length == 0)
+                            {
+                                AcceptHelperSkippedAccessUnit();
+                                continue;
+                            }
+
+                            if (length < 0 || length > MaxAccessUnitBytes)
+                            {
+                                LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
+                                RetireFailedProcess(process, token, LastError);
+                                return;
+                            }
+                        }
+
+                        var payload = new byte[length];
+                        if (!await ReadExact(stream, payload, token).ConfigureAwait(false))
+                        {
+                            LastError = "OpenH264 helper stdout ended mid access unit.";
+                            RetireFailedProcess(process, token, LastError);
+                            return;
+                        }
+
+                        lock (_outputLock)
+                        {
+                            if (!IsCurrentSessionForTests(process, sessionId))
+                                return;
+                            AcceptHelperAccessUnit(payload);
+                        }
                     }
                 }
             }
@@ -393,13 +587,13 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private async Task RunStderrReader(Process process, CancellationToken token)
+        private async Task RunStderrReaderForSession(Process process, CancellationToken token, long sessionId)
         {
             try
             {
                 await ReadBoundedDiagnosticStream(
                     process.StandardError.BaseStream,
-                    line => LastDiagnosticLine = line,
+                    line => HandleDiagnosticLine(process, sessionId, line, token),
                     token,
                     Math.Max(1, _options?.MaxStderrLineBytes ?? 8192),
                     Math.Max(1, _options?.MaxStderrRetainedBytes ?? 8192)).ConfigureAwait(false);
@@ -410,6 +604,108 @@ namespace Foxglove.Schemas.Video
                     RetireFailedProcess(process, token, ex.Message);
             }
         }
+
+        private void HandleDiagnosticLine(Process process, long sessionId, string line, CancellationToken token)
+        {
+            if (!IsCurrentSessionForTests(process, sessionId))
+                return;
+
+            LastDiagnosticLine = line;
+            if (string.Equals(line, ProtocolMarker, StringComparison.Ordinal)
+                && !TryAcceptProtocolMarker())
+            {
+                // Legacy framing was already chosen, but the helper is framing v2.
+                // Continuing would desynchronize both pipes, so fail the session.
+                RetireFailedProcess(process, token, ProtocolMismatchError);
+            }
+        }
+
+        /// <summary>
+        /// Records the helper's v2 advertisement. Returns false when the negotiation
+        /// already fell back to legacy framing, which is a protocol mismatch.
+        /// </summary>
+        private bool TryAcceptProtocolMarker()
+        {
+            lock (_protocolNegotiationLock)
+            {
+                if (_protocolNegotiationState == 1)
+                    return false;
+
+                if (_protocolNegotiationState == 0)
+                {
+                    Volatile.Write(ref _helperProtocolVersion, 2);
+                    _protocolNegotiationState = 2;
+                    _helperProtocolReady.TrySetResult(true);
+                }
+
+                return true;
+            }
+        }
+
+        private async Task WaitForProtocolNegotiation(CancellationToken token)
+        {
+            lock (_protocolNegotiationLock)
+            {
+                if (_protocolNegotiationState != 0)
+                    return;
+            }
+
+            try
+            {
+                var completed = await Task.WhenAny(
+                    _helperProtocolReady.Task,
+                    Task.Delay(Volatile.Read(ref _protocolNegotiationTimeoutMs), token)).ConfigureAwait(false);
+                if (completed != _helperProtocolReady.Task
+                    && !token.IsCancellationRequested
+                    && TrySelectLegacyProtocol())
+                {
+                    _helperProtocolReady.TrySetResult(false);
+                    LastDiagnosticLine = "OpenH264 helper did not advertise protocol 2; using legacy framing. Reinstall or rebuild the helper to enable timestamp framing.";
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        private bool TrySelectLegacyProtocol()
+        {
+            lock (_protocolNegotiationLock)
+            {
+                if (_protocolNegotiationState != 0)
+                    return false;
+
+                Volatile.Write(ref _helperProtocolVersion, 1);
+                _protocolNegotiationState = 1;
+                return true;
+            }
+        }
+
+        private static async Task WriteProtocolHeaderAsync(Stream stream, ulong timestampNs, int length, CancellationToken token)
+        {
+            var header = new byte[12];
+            for (var i = 0; i < 8; i++)
+                header[i] = (byte)(timestampNs >> (8 * i));
+            header[8] = (byte)length;
+            header[9] = (byte)(length >> 8);
+            header[10] = (byte)(length >> 16);
+            header[11] = (byte)(length >> 24);
+            await stream.WriteAsync(header, 0, header.Length, token).ConfigureAwait(false);
+        }
+
+        private static ulong ReadUInt64LittleEndian(byte[] buffer, int offset)
+        {
+            ulong value = 0;
+            for (var i = 0; i < 8; i++)
+                value |= ((ulong)buffer[offset + i]) << (8 * i);
+            return value;
+        }
+
+        private static int ReadInt32LittleEndian(byte[] buffer, int offset)
+            => buffer[offset]
+                | (buffer[offset + 1] << 8)
+                | (buffer[offset + 2] << 16)
+                | (buffer[offset + 3] << 24);
 
         private static async Task ReadBoundedDiagnosticStream(
             Stream stream,
@@ -471,7 +767,7 @@ namespace Foxglove.Schemas.Video
                 {
                     _encodedFrameTimestamps.TryDequeue(out _);
                     Interlocked.Increment(ref _droppedOutputFrames);
-                    LastDiagnosticLine = "OpenH264 output queue full; capture admission is holding new frames.";
+                    LastDiagnosticLine = "OpenH264 output queue full; encoded frame was dropped.";
                     return;
                 }
 
@@ -480,6 +776,23 @@ namespace Foxglove.Schemas.Video
                     LastDiagnosticLine = "OpenH264 access unit had no queued capture timestamp.";
                     return;
                 }
+                _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
+                _outputCount++;
+                Interlocked.Increment(ref _accessUnitsReceived);
+            }
+        }
+
+        private void EnqueueAccessUnit(byte[] accessUnit, ulong timestampNs)
+        {
+            lock (_outputLock)
+            {
+                if (_outputCount >= _maxOutputQueue)
+                {
+                    Interlocked.Increment(ref _droppedOutputFrames);
+                    LastDiagnosticLine = "OpenH264 output queue full; encoded frame was dropped.";
+                    return;
+                }
+
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
                 _outputCount++;
                 Interlocked.Increment(ref _accessUnitsReceived);
@@ -497,9 +810,28 @@ namespace Foxglove.Schemas.Video
             EnqueueAccessUnit(accessUnit);
         }
 
+        private void AcceptHelperAccessUnit(byte[] accessUnit, ulong timestampNs)
+        {
+            ConsumeWrittenFrame();
+            if (accessUnit == null || accessUnit.Length == 0)
+            {
+                Interlocked.Increment(ref _skippedAccessUnits);
+                return;
+            }
+
+            EnqueueAccessUnit(accessUnit, timestampNs);
+        }
+
         internal void AcceptHelperSkippedAccessUnit()
         {
             _encodedFrameTimestamps.TryDequeue(out _);
+            Interlocked.Increment(ref _skippedAccessUnits);
+            LastDiagnosticLine = "OpenH264 helper skipped an access unit.";
+        }
+
+        private void AcceptHelperSkippedAccessUnit(ulong timestampNs)
+        {
+            ConsumeWrittenFrame();
             Interlocked.Increment(ref _skippedAccessUnits);
             LastDiagnosticLine = "OpenH264 helper skipped an access unit.";
         }
@@ -550,6 +882,8 @@ namespace Foxglove.Schemas.Video
             }
 
             while (_encodedFrameTimestamps.TryDequeue(out _)) { }
+            Interlocked.Exchange(ref _writtenFrameCount, 0);
+            Interlocked.Exchange(ref _processingFrameCount, 0);
         }
 
         private static void ReturnInputFrameBuffer(QueuedVideoFrame frame)
@@ -570,8 +904,20 @@ namespace Foxglove.Schemas.Video
 
                 if (_inputCount > 0)
                     _inputCount--;
-                _encodedFrameTimestamps.Enqueue(frame.TimestampNs);
+                Interlocked.Increment(ref _processingFrameCount);
                 return true;
+            }
+        }
+
+        private void ConsumeWrittenFrame()
+        {
+            while (true)
+            {
+                var current = Volatile.Read(ref _writtenFrameCount);
+                if (current <= 0)
+                    return;
+                if (Interlocked.CompareExchange(ref _writtenFrameCount, current - 1, current) == current)
+                    return;
             }
         }
 

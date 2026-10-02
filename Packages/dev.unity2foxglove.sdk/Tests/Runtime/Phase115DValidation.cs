@@ -172,8 +172,10 @@ namespace Unity.FoxgloveSDK.Tests
             var controller = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var orchestrator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayOrchestrator.cs");
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs")
+                          + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ReplayForwarders.cs");
+            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs")
+                         + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.RuntimeForwarders.cs");
 
             Check(controller.Contains("event Action<ReplayMessageContext> OnReplayMessageContext", StringComparison.Ordinal)
                   && runtime.Contains("event Action<ReplayMessageContext> OnReplayMessageContext", StringComparison.Ordinal)
@@ -187,7 +189,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "115D-D2: replay behavior summary is keyed by channel id, not topic");
 
             Check(controller.Contains("CreateReplayMessageContext", StringComparison.Ordinal)
-                  && controller.Contains("ForwardReplayMessageToScene", StringComparison.Ordinal)
+                  && controller.Contains("QueueReplaySceneBatch", StringComparison.Ordinal)
                   && controller.Contains("logTimeNs:", StringComparison.Ordinal)
                   && controller.Contains("StartTimeNs", StringComparison.Ordinal),
                 "115D-D3: tick and snapshot forwarding share context construction using replay log time");

@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             VerifySharedLifecycleGateShape();
+            VerifyRuntimeIdentityObservationIsCachedAndDiagnosed();
             VerifyBridgeHotPathsUseCheapLifecycleReads();
             VerifyPointCloud2PublishersPrewarmOutsideFrameCallback();
             VerifyReadyLogsAvoidEditorStackTraceExtraction();
@@ -82,9 +83,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "165-A6: lifecycle gate exposes cheap bridge-facing lifecycle state");
             Check(!source.Contains("Time.frameCount", StringComparison.Ordinal),
                 "165-A7: lifecycle gate does not rely on per-frame scene-query memoization");
-            Check(source.Contains("EditorPlayModeStableDelaySeconds = 3.0", StringComparison.Ordinal)
-                  && source.Contains("early Editor Play Mode", StringComparison.Ordinal),
-                "165-A8: lifecycle gate documents the intentional early Play Mode native bootstrap delay");
+            Check(!source.Contains("EditorPlayModeStableDelaySeconds", StringComparison.Ordinal)
+                  && source.Contains("OnEditorUpdateUntilPlayModeStable", StringComparison.Ordinal)
+                  && source.Contains("_isStablePlayModeScene", StringComparison.Ordinal),
+                "165-A8: lifecycle gate waits for scene readiness instead of a fixed Play Mode delay");
             CheckHotPathFreeOfSceneQueries(RequiredMethod(source, "internal static bool IsShuttingDownForBridge", "Ros2ForUnityNativeBridgeLifecycleGate.cs")
                                           + "\n" + RequiredMethod(source, "internal static bool IsBridgeSceneUnsafe", "Ros2ForUnityNativeBridgeLifecycleGate.cs"),
                 "165-A9: lifecycle gate bridge-facing methods stay allocation-free scene-handle reads");
@@ -116,6 +118,20 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("EnsureUnsafeSceneHandleCapacity", StringComparison.Ordinal)
                   && !source.Contains("new int[Math.Max(SceneManager.sceneCount, 1)]", StringComparison.Ordinal),
                 "173-055-E1: lifecycle gate reuses unsafe-scene handle storage and avoids getter-time array churn");
+        }
+
+        private static void VerifyRuntimeIdentityObservationIsCachedAndDiagnosed()
+        {
+            var source = ReadRepoText(
+                NativeDir + "/Ros2ForUnityNativeRuntimeIdentity.cs");
+            Check(source.Contains("_cachedObservationKey", StringComparison.Ordinal)
+                  && source.Contains("BuildObservationKey", StringComparison.Ordinal)
+                  && source.Contains("FileStamp", StringComparison.Ordinal)
+                  && source.Contains("ResetForRuntimeLoss", StringComparison.Ordinal),
+                "165-A14: native runtime identity observations are cached and reset after runtime loss");
+            Check(source.Contains("Debug.LogWarning", StringComparison.Ordinal)
+                  && source.Contains("runtime manifest validation failed", StringComparison.Ordinal),
+                "165-A15: native runtime identity failures emit a one-time diagnostic");
         }
 
         private static void VerifyBridgeHotPathsUseCheapLifecycleReads()

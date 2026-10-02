@@ -3,9 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
@@ -16,48 +19,57 @@ namespace Unity.FoxgloveSDK.Tests.Replay
     public sealed class ReplayPanelHistoryBufferTests
     {
         [Fact]
-        public void HistoryStartUsesCompletedWatermarkUntilDebounceReset()
+        public void HistoryStartUsesCompletedClientWatermarkUntilDebounceReset()
         {
             var buffer = new ReplayPanelHistoryBuffer();
 
-            Assert.Equal(70UL, buffer.GetHistoryFromTime(startNs: 0, clampedToNs: 100, windowNs: 30));
+            Assert.Equal(70UL, buffer.GetHistoryFromTime(1, 0, 100, 30));
 
-            buffer.BeginDrain(100);
-            buffer.MarkDrainComplete();
+            CompleteClientDrain(buffer, 1, 100);
 
-            Assert.Equal(101UL, buffer.GetHistoryFromTime(startNs: 0, clampedToNs: 150, windowNs: 30));
+            Assert.Equal(101UL, buffer.GetHistoryFromTime(1, 0, 150, 30));
 
-            buffer.ResetDebounce();
+            buffer.ResetDebounce(1);
 
-            Assert.Equal(120UL, buffer.GetHistoryFromTime(startNs: 0, clampedToNs: 150, windowNs: 30));
+            Assert.Equal(120UL, buffer.GetHistoryFromTime(1, 0, 150, 30));
         }
 
         [Fact]
-        public void CancelClearsDrainWithoutForgettingCompletedWatermark()
+        public void CancelClientDrainRetiresOnlyRequestedClient()
         {
             var buffer = new ReplayPanelHistoryBuffer();
-            buffer.BeginDrain(100);
-            buffer.MarkDrainComplete();
+            var clientOneMessages = new List<McapMessage>
+            {
+                new McapMessage { ChannelId = 1, LogTime = 140, Data = new byte[] { 1 } }
+            };
+            var clientTwoMessages = new List<McapMessage>
+            {
+                new McapMessage { ChannelId = 1, LogTime = 150, Data = new byte[] { 2 } }
+            };
 
-            buffer.Buffer.Add(new McapMessage { ChannelId = 1, LogTime = 140, Data = new byte[] { 1 } });
-            buffer.BeginDrain(150);
-            buffer.CancelDrain();
+            buffer.BeginClientDrains(
+                150,
+                new Dictionary<uint, List<McapMessage>>
+                {
+                    [1] = clientOneMessages,
+                    [2] = clientTwoMessages
+                });
+            buffer.CancelDrain(1);
 
-            Assert.False(buffer.DebugActive);
-            Assert.Equal(0, buffer.DebugBufferedCount);
-            Assert.Equal(101UL, buffer.GetHistoryFromTime(startNs: 0, clampedToNs: 130, windowNs: 30));
+            Assert.Equal(1, buffer.DebugClientDrainCount);
+            Assert.Null(buffer.DebugGetClientBuffer(1));
+            Assert.Same(clientTwoMessages, buffer.DebugGetClientBuffer(2));
         }
 
         [Fact]
-        public void CompletedMaximumWatermarkDoesNotOverflowHistoryStart()
+        public void CompletedMaximumClientWatermarkDoesNotOverflowHistoryStart()
         {
             var buffer = new ReplayPanelHistoryBuffer();
-            buffer.BeginDrain(ulong.MaxValue);
-            buffer.MarkDrainComplete();
+            CompleteClientDrain(buffer, 1, ulong.MaxValue);
 
             Assert.Equal(
                 ulong.MaxValue,
-                buffer.GetHistoryFromTime(startNs: 0, clampedToNs: ulong.MaxValue, windowNs: 30));
+                buffer.GetHistoryFromTime(1, 0, ulong.MaxValue, 30));
         }
 
         [Fact]
@@ -65,7 +77,7 @@ namespace Unity.FoxgloveSDK.Tests.Replay
         {
             var buffer = new ReplayPanelHistoryBuffer();
 
-            Assert.Equal(40UL, buffer.GetHistoryFromTime(startNs: 40, clampedToNs: 50, windowNs: 100));
+            Assert.Equal(40UL, buffer.GetHistoryFromTime(1, 40, 50, 100));
         }
 
         [Fact]
@@ -78,7 +90,7 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                     Supported = true,
                     MaxQueuedFramesPerClient = 4,
                     MaxQueuedBytesPerClient = 100,
-                    Clients = new[] { new TransportClientStats() }
+                    Clients = new[] { new TransportClientStats { ClientId = 1 } }
                 }
             };
             using var session = new FoxgloveSession("history-oversized", transport);
@@ -92,15 +104,22 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             });
 
             var buffer = new ReplayPanelHistoryBuffer();
-            buffer.Buffer.Add(new McapMessage
-            {
-                ChannelId = 1,
-                LogTime = 10,
-                Data = new byte[200]
-            });
-            buffer.BeginDrain(10);
+            buffer.BeginClientDrains(
+                10,
+                new Dictionary<uint, List<McapMessage>>
+                {
+                    [1] = new List<McapMessage>
+                    {
+                        new McapMessage
+                        {
+                            ChannelId = 1,
+                            LogTime = 10,
+                            Data = new byte[200]
+                        }
+                    }
+                });
 
-            buffer.DrainLocked(
+            buffer.DrainClientsLocked(
                 session,
                 new Dictionary<ushort, string> { [1] = "/history" },
                 new ConsoleLogger(),
@@ -108,13 +127,532 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                 queueReserveFrames: 0,
                 queueReserveBytes: 0);
 
-            Assert.False(buffer.DebugActive);
-            Assert.Equal(0, buffer.DebugBufferedCount);
+            Assert.Null(buffer.DebugGetClientBuffer(1));
         }
 
-        private sealed class StatsTransport : IFoxgloveTransport, IFoxgloveTransportStatsProvider
+        [Fact]
+        public void SlowClientDoesNotThrottleAnotherClientsHistoryDrain()
+        {
+            var transport = new StatsTransport
+            {
+                Snapshot = new TransportStatsSnapshot
+                {
+                    Supported = true,
+                    MaxQueuedFramesPerClient = 4,
+                    MaxQueuedBytesPerClient = 4096,
+                    Clients = new[]
+                    {
+                        new TransportClientStats { ClientId = 1, QueuedFrames = 4 },
+                        new TransportClientStats { ClientId = 2, QueuedFrames = 0 }
+                    }
+                }
+            };
+            using var session = new FoxgloveSession("history-per-client", transport);
+            var replayChannelId = (uint)McapReplayEngine.ReplayChannelIdBase | 1u;
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = replayChannelId,
+                Topic = "/history-per-client",
+                Encoding = "json",
+                SchemaName = "",
+                Schema = ""
+            });
+            transport.ReceiveText(1, string.Format(
+                "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":11,\"channelId\":{0}}}]}}",
+                replayChannelId));
+            transport.ReceiveText(2, string.Format(
+                "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":21,\"channelId\":{0}}}]}}",
+                replayChannelId));
+
+            var buffer = new ReplayPanelHistoryBuffer();
+            buffer.BeginClientDrains(
+                10,
+                new Dictionary<uint, List<McapMessage>>
+                {
+                    [1] = new List<McapMessage>
+                    {
+                        new McapMessage { ChannelId = 1, LogTime = 10, Data = new byte[] { 1 } }
+                    },
+                    [2] = new List<McapMessage>
+                    {
+                        new McapMessage { ChannelId = 1, LogTime = 10, Data = new byte[] { 2 } }
+                    }
+                });
+
+            buffer.DrainClientsLocked(
+                session,
+                new Dictionary<ushort, string> { [1] = "/history-per-client" },
+                new ConsoleLogger(),
+                maxMessagesPerTick: 4,
+                queueReserveFrames: 0,
+                queueReserveBytes: 0);
+
+            Assert.DoesNotContain((uint)1, transport.SentClientIds);
+            Assert.Contains((uint)2, transport.SentClientIds);
+        }
+
+        [Fact]
+        public void DisconnectedClientHistoryDrainCanBeRetiredWithoutAffectingOthers()
+        {
+            using var controller = new ReplayController(new ConsoleLogger(), null, null);
+            var panelHistory = (ReplayPanelHistoryBuffer)typeof(ReplayController)
+                .GetField("_panelHistory", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(controller);
+            panelHistory.BeginClientDrains(
+                10,
+                new Dictionary<uint, List<McapMessage>>
+                {
+                    [1] = new List<McapMessage>
+                    {
+                        new McapMessage { ChannelId = 1, LogTime = 10, Data = new byte[] { 1 } }
+                    },
+                    [2] = new List<McapMessage>
+                    {
+                        new McapMessage { ChannelId = 1, LogTime = 10, Data = new byte[] { 2 } }
+                    }
+                });
+
+            controller.CancelPanelHistory(1);
+
+            Assert.Equal(1, panelHistory.DebugClientDrainCount);
+            controller.CancelPanelHistory(2);
+            Assert.Equal(0, panelHistory.DebugClientDrainCount);
+        }
+
+        [Fact]
+        public void BeginClientDrainsTransfersHistoryListOwnership()
+        {
+            var buffer = new ReplayPanelHistoryBuffer();
+            var messages = new List<McapMessage>
+            {
+                new McapMessage { ChannelId = 1, LogTime = 10, Data = new byte[] { 1 } }
+            };
+
+            buffer.BeginClientDrains(
+                10,
+                new Dictionary<uint, List<McapMessage>> { [1] = messages });
+
+            Assert.Same(messages, buffer.DebugGetClientBuffer(1));
+        }
+
+        [Fact]
+        public void TwoTargetedSnapshotsWithinDebounceAreBothConsumed()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 250, 1);
+            state.RequestPanelSnapshot(200, 350, 2);
+
+            Assert.False(state.TryConsumePanelSnapshot(249, out _, out _));
+            Assert.True(state.TryConsumePanelSnapshot(250, out var firstTime, out var firstClient));
+            Assert.Equal(100UL, firstTime);
+            Assert.Equal((uint)1, firstClient);
+            Assert.True(state.TryConsumePanelSnapshot(350, out var secondTime, out var secondClient));
+            Assert.Equal(200UL, secondTime);
+            Assert.Equal((uint)2, secondClient);
+            Assert.False(state.TryConsumePanelSnapshot(350, out _, out _));
+        }
+
+        [Fact]
+        public void ClearingOnePendingTargetedSnapshotPreservesTheOther()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 250, 1);
+            state.RequestPanelSnapshot(200, 250, 2);
+            state.ClearPanelSnapshot(1);
+
+            Assert.True(state.TryConsumePanelSnapshot(250, out var time, out var clientId));
+            Assert.Equal(200UL, time);
+            Assert.Equal((uint)2, clientId);
+            Assert.False(state.TryConsumePanelSnapshot(250, out _, out _));
+        }
+
+        [Fact]
+        public void RepeatedTargetedSnapshotForOneClientCoalescesToLatestRequest()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 250, 1);
+            state.RequestPanelSnapshot(200, 350, 1);
+
+            Assert.False(state.TryConsumePanelSnapshot(250, out _, out _));
+            Assert.True(state.TryConsumePanelSnapshot(350, out var time, out var clientId));
+            Assert.Equal(200UL, time);
+            Assert.Equal((uint)1, clientId);
+            Assert.False(state.TryConsumePanelSnapshot(350, out _, out _));
+        }
+
+        [Fact]
+        public void ReplaySnapshotCapacityFollowsConfiguredTransportMaxClients()
+        {
+            using var transport = new ManagedWsBackend(new ManagedWebSocketOptions { MaxClients = 128 });
+            using var runtime = new FoxgloveRuntime(
+                transport,
+                new SystemClock(),
+                new DefaultSchemaRegistry());
+            Assert.Equal(128, transport.GetStatsSnapshot().MaxClients);
+
+            var coordinator = (TickCoordinator)typeof(FoxgloveRuntime)
+                .GetField("_tickCoordinator", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(runtime);
+            var state = (ReplaySnapshotStateMachine)typeof(TickCoordinator)
+                .GetField("_replaySnapshots", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(coordinator);
+
+            for (uint clientId = 1; clientId <= 65; clientId++)
+                state.RequestPanelSnapshot(clientId, clientId, clientId);
+
+            for (uint clientId = 1; clientId <= 65; clientId++)
+            {
+                Assert.True(state.TryConsumePanelSnapshot(65, out var timeNs, out var consumedClientId));
+                Assert.Equal(clientId, timeNs);
+                Assert.Equal(clientId, consumedClientId);
+            }
+
+            Assert.False(state.TryConsumePanelSnapshot(65, out _, out _));
+        }
+
+        [Fact]
+        public void ReplayCapacityRefreshesWhenTransportAuthorityChanges()
+        {
+            var transport = new StatsTransport
+            {
+                Snapshot = new TransportStatsSnapshot { MaxClients = 64 },
+                MaxClients = 64
+            };
+            using var runtime = new FoxgloveRuntime(
+                transport,
+                new SystemClock(),
+                new DefaultSchemaRegistry());
+            transport.MaxClients = 128;
+            runtime.Tick();
+
+            var coordinator = (TickCoordinator)typeof(FoxgloveRuntime)
+                .GetField("_tickCoordinator", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(runtime);
+            var state = (ReplaySnapshotStateMachine)typeof(TickCoordinator)
+                .GetField("_replaySnapshots", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(coordinator);
+            for (uint clientId = 1; clientId <= 65; clientId++)
+                state.RequestPanelSnapshot(clientId, clientId, clientId);
+
+            for (uint clientId = 1; clientId <= 65; clientId++)
+            {
+                Assert.True(state.TryConsumePanelSnapshot(65, out var timeNs, out var consumedClientId));
+                Assert.Equal(clientId, timeNs);
+                Assert.Equal(clientId, consumedClientId);
+            }
+        }
+
+        [Fact]
+        public void ReplayCapacityShrinkDoesNotDropAlreadyAcceptedClientBackfills()
+        {
+            var state = new ReplaySnapshotStateMachine(128);
+            for (uint clientId = 1; clientId <= 65; clientId++)
+                state.RequestPanelSnapshot(clientId, clientId, clientId);
+
+            state.UpdateCapacity(64);
+
+            for (uint clientId = 1; clientId <= 65; clientId++)
+            {
+                Assert.True(state.TryConsumePanelSnapshot(65, out var timeNs, out var consumedClientId));
+                Assert.Equal(clientId, timeNs);
+                Assert.Equal(clientId, consumedClientId);
+            }
+
+            Assert.False(state.TryConsumePanelSnapshot(65, out _, out _));
+        }
+
+        [Fact]
+        public void GlobalSnapshotSupersedesPendingTargetedSnapshots()
+        {
+            var state = new ReplaySnapshotStateMachine();
+            state.RequestPanelSnapshot(100, 100, 1);
+            state.RequestPanelSnapshot(900, 200);
+            state.RequestPanelSnapshot(300, 0, 2);
+
+            Assert.False(state.TryConsumePanelSnapshot(199, out _, out _));
+            Assert.True(state.TryConsumePanelSnapshot(200, out var time, out var clientId));
+            Assert.Equal(900UL, time);
+            Assert.Null(clientId);
+            Assert.False(state.TryConsumePanelSnapshot(200, out _, out _));
+        }
+
+        [Fact]
+        public void ReplaySnapshotHistoryIsFilteredPerClientSubscription()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "phase187-replay-history-filter-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = File.Create(path))
+                using (var recorder = new McapRecorder(stream))
+                {
+                    recorder.AddChannel(1, "/history-filter/a", "json", "", "", "");
+                    recorder.AddChannel(2, "/history-filter/b", "json", "", "", "");
+                    recorder.WriteMessage(1, 1, new byte[] { 1 });
+                    recorder.WriteMessage(2, 2, new byte[] { 2 });
+                    recorder.Close();
+                }
+
+                using var transport = new StatsTransport();
+                using var session = new FoxgloveSession("history-filter", transport);
+                using var controller = new ReplayController(new ConsoleLogger(), null, null);
+                controller.Enable(path, SchemaIdentityMode.Off);
+                Assert.True(controller.IsEnabled, controller.LastEnableFailureMessage);
+                controller.RegisterChannels(session);
+                var channelAId = (uint)McapReplayEngine.ReplayChannelIdBase | 1u;
+                var channelBId = (uint)McapReplayEngine.ReplayChannelIdBase | 2u;
+                transport.ReceiveText(
+                    1,
+                    string.Format(
+                        "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":11,\"channelId\":{0}}}]}}",
+                        channelAId));
+                transport.ReceiveText(
+                    2,
+                    string.Format(
+                        "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":21,\"channelId\":{0}}}]}}",
+                        channelBId));
+
+                controller.PublishSnapshot(session, 2);
+
+                var decoded = new List<(uint clientId, uint subscriptionId, byte[] payload)>();
+                foreach (var frame in transport.SentFrames)
+                {
+                    if (BinaryEncoding.TryDecodeServerMessageData(
+                        frame.data,
+                        out var subscriptionId,
+                        out _,
+                        out var payload))
+                        decoded.Add((frame.clientId, subscriptionId, payload));
+                }
+
+                Assert.Equal(2, decoded.Count);
+                Assert.Equal(new byte[] { 1 }, decoded.Find(item => item.clientId == 1).payload);
+                Assert.Equal(new byte[] { 2 }, decoded.Find(item => item.clientId == 2).payload);
+                Assert.Equal((uint)11, decoded.Find(item => item.clientId == 1).subscriptionId);
+                Assert.Equal((uint)21, decoded.Find(item => item.clientId == 2).subscriptionId);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Theory]
+        [InlineData(true, false)]
+        [InlineData(true, true)]
+        [InlineData(false, true)]
+        public void ReplaySnapshotSkipsHistoryForClientWithoutReplaySubscription(
+            bool targeted,
+            bool subscribeLive)
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "phase192-replay-history-no-subscription-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = File.Create(path))
+                using (var recorder = new McapRecorder(
+                    stream,
+                    null,
+                    new McapWriterOptions
+                    {
+                        Compression = "lz4",
+                        IndexTypes = McapIndexTypes.Chunk
+                    }))
+                {
+                    recorder.AddChannel(1, "/history-no-subscription", "json", "", "", "");
+                    recorder.WriteMessage(1, 1, new byte[] { 1 });
+                    recorder.Close();
+                }
+
+                using var transport = new StatsTransport();
+                using var session = new FoxgloveSession("history-no-subscription", transport);
+                using var controller = new ReplayController(new ConsoleLogger(), null, null);
+                controller.Enable(path, SchemaIdentityMode.Off);
+                Assert.True(controller.IsEnabled, controller.LastEnableFailureMessage);
+                controller.RegisterChannels(session);
+                Assert.True(controller.Engine.CanSeek);
+                Assert.All(controller.Engine.Summary.ChunkIndexes,
+                    chunk => Assert.Empty(chunk.MessageIndexOffsets));
+                if (subscribeLive)
+                {
+                    session.RegisterChannel(new AdvertiseChannel
+                    {
+                        Id = 2,
+                        Topic = "/live-only",
+                        Encoding = "json"
+                    });
+                    transport.ReceiveText(1,
+                        "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":11,\"channelId\":2}]}");
+                }
+
+                controller.PublishSnapshot(session, 1, targetClientId: targeted ? 1u : (uint?)null);
+
+                Assert.Equal(0, controller.Engine.LastHistoryMetrics.CandidateCount);
+                Assert.Equal(0, controller.Engine.LastHistoryMetrics.DecompressedChunkReads);
+                Assert.DoesNotContain(transport.SentFrames,
+                    frame => BinaryEncoding.TryDecodeServerMessageData(frame.data, out _, out _, out _));
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void ReplaySnapshotReusesHistoryQueryForEquivalentClientSubscriptions()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "phase192-replay-history-query-cache-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = File.Create(path))
+                using (var recorder = new McapRecorder(stream))
+                {
+                    recorder.AddChannel(1, "/history-query-cache", "json", "", "", "");
+                    recorder.WriteMessage(1, 1, new byte[] { 1 });
+                    recorder.Close();
+                }
+
+                using var transport = new StatsTransport
+                {
+                    Snapshot = new TransportStatsSnapshot
+                    {
+                        Supported = true,
+                        MaxQueuedFramesPerClient = 4,
+                        MaxQueuedBytesPerClient = 4096,
+                        Clients = new[]
+                        {
+                            new TransportClientStats { ClientId = 1, QueuedFrames = 4 },
+                            new TransportClientStats { ClientId = 2, QueuedFrames = 4 }
+                        }
+                    }
+                };
+                using var session = new FoxgloveSession("history-query-cache", transport);
+                using var controller = new ReplayController(new ConsoleLogger(), null, null);
+                controller.Enable(path, SchemaIdentityMode.Off);
+                Assert.True(controller.IsEnabled, controller.LastEnableFailureMessage);
+                controller.RegisterChannels(session);
+                var replayChannelId = (uint)McapReplayEngine.ReplayChannelIdBase | 1u;
+                transport.ReceiveText(1, string.Format(
+                    "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":11,\"channelId\":{0}}}]}}",
+                    replayChannelId));
+                transport.ReceiveText(2, string.Format(
+                    "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":21,\"channelId\":{0}}}]}}",
+                    replayChannelId));
+
+                controller.PublishSnapshot(session, 1);
+
+                var panelHistory = (ReplayPanelHistoryBuffer)typeof(ReplayController)
+                    .GetField("_panelHistory", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(controller);
+                Assert.Same(
+                    panelHistory.DebugGetClientBuffer(1),
+                    panelHistory.DebugGetClientBuffer(2));
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void ReplaySnapshotHistoryCapIsAppliedPerClientSubscription()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "phase192-replay-history-per-client-cap-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = File.Create(path))
+                using (var recorder = new McapRecorder(stream))
+                {
+                    recorder.AddChannel(1, "/history-cap/a", "json", "", "", "");
+                    recorder.AddChannel(2, "/history-cap/b", "json", "", "", "");
+                    recorder.WriteMessage(2, 1, new byte[] { 0xB });
+                    for (ulong timeNs = 2; timeNs <= 5002; timeNs++)
+                        recorder.WriteMessage(1, timeNs, new byte[] { 0xA });
+                    recorder.Close();
+                }
+
+                using var transport = new StatsTransport();
+                using var session = new FoxgloveSession("history-cap", transport);
+                using var controller = new ReplayController(new ConsoleLogger(), null, null);
+                controller.Enable(path, SchemaIdentityMode.Off);
+                Assert.True(controller.IsEnabled, controller.LastEnableFailureMessage);
+                controller.RegisterChannels(session);
+                var channelAId = (uint)McapReplayEngine.ReplayChannelIdBase | 1u;
+                var channelBId = (uint)McapReplayEngine.ReplayChannelIdBase | 2u;
+                transport.ReceiveText(
+                    1,
+                    string.Format(
+                        "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":11,\"channelId\":{0}}}]}}",
+                        channelAId));
+                transport.ReceiveText(
+                    2,
+                    string.Format(
+                        "{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":21,\"channelId\":{0}}}]}}",
+                        channelBId));
+
+                controller.PublishSnapshot(session, 5002);
+
+                var clientBData = new List<byte[]>();
+                foreach (var frame in transport.SentFrames)
+                {
+                    if (frame.clientId == 2
+                        && BinaryEncoding.TryDecodeServerMessageData(
+                            frame.data,
+                            out var subscriptionId,
+                            out _,
+                            out var payload))
+                    {
+                        Assert.Equal((uint)21, subscriptionId);
+                        clientBData.Add(payload);
+                    }
+                }
+
+                Assert.Single(clientBData);
+                Assert.Equal(new byte[] { 0xB }, clientBData[0]);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        private static void CompleteClientDrain(
+            ReplayPanelHistoryBuffer buffer,
+            uint clientId,
+            ulong parkTimeNs)
+        {
+            using var session = new FoxgloveSession("history-watermark", new StatsTransport());
+            buffer.BeginClientDrains(
+                parkTimeNs,
+                new Dictionary<uint, List<McapMessage>>
+                {
+                    [clientId] = new List<McapMessage>()
+                });
+            buffer.DrainClientsLocked(
+                session,
+                new Dictionary<ushort, string>(),
+                new ConsoleLogger(),
+                maxMessagesPerTick: 256,
+                queueReserveFrames: 0,
+                queueReserveBytes: 0);
+        }
+
+        private sealed class StatsTransport : IFoxgloveTransport, IFoxgloveTransportStatsProvider, IFoxgloveTransportCapacityProvider
         {
             public TransportStatsSnapshot Snapshot { get; set; } = TransportStatsSnapshot.Unsupported;
+            public int MaxClients { get; set; }
+            public List<uint> SentClientIds { get; } = new();
+            public List<(uint clientId, byte[] data)> SentFrames { get; } = new();
             public bool IsRunning => false;
             public event Action<uint> OnClientConnected;
             public event Action<uint> OnClientDisconnected;
@@ -125,9 +663,14 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             public void BroadcastText(string json) { }
             public void BroadcastBinary(byte[] data) { }
             public void SendText(uint clientId, string json) { }
-            public void SendBinary(uint clientId, byte[] data) { }
+            public void SendBinary(uint clientId, byte[] data)
+            {
+                SentClientIds.Add(clientId);
+                SentFrames.Add((clientId, data));
+            }
             public TransportStatsSnapshot GetStatsSnapshot() => Snapshot;
             public void Dispose() { }
+            public void ReceiveText(uint clientId, string text) => OnTextReceived?.Invoke(clientId, text);
         }
     }
 }

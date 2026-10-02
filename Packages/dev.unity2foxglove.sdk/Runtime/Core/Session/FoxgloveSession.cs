@@ -62,6 +62,8 @@ namespace Unity.FoxgloveSDK.Core
         [ThreadStatic]
         private static List<(uint clientId, uint subscriptionId)> s_publishSubscriberScratch;
         [ThreadStatic]
+        private static List<(uint subscriptionId, uint channelId)> s_clientReplaySubscriptionScratch;
+        [ThreadStatic]
         private static List<AdvertiseChannel> s_singleAdvertiseChannels;
         [ThreadStatic]
         private static List<uint> s_singleUnadvertiseChannelIds;
@@ -74,6 +76,8 @@ namespace Unity.FoxgloveSDK.Core
         private bool _protobufEnabled;
         private readonly HashSet<string> _additionalMessageEncodings =
             new HashSet<string>(StringComparer.Ordinal);
+        private readonly object _encodingConfigurationLock = new object();
+        private bool _encodingConfigurationFrozen;
 
         // Session holds references via interface
         /// <summary>Runtime context for playback, assets, and lifecycle control.</summary>
@@ -100,7 +104,6 @@ namespace Unity.FoxgloveSDK.Core
 
         private McapRecorder _recorder;
         private IFoxgloveMirrorSink _mirrorSink;
-        private bool _channelOverwrittenSubscribed;
         private bool _clientConnectedSubscribed;
         private bool _clientDisconnectedSubscribed;
         private bool _textReceivedSubscribed;
@@ -110,7 +113,6 @@ namespace Unity.FoxgloveSDK.Core
         private bool _disposeClientDisconnectedComplete;
         private bool _disposeTextReceivedComplete;
         private bool _disposeBinaryReceivedComplete;
-        private bool _disposeChannelOverwrittenComplete;
         private int _disposed;
 
         /// <summary>Server name sent in serverInfo.</summary>
@@ -284,9 +286,7 @@ namespace Unity.FoxgloveSDK.Core
                     OnClientMessage?.Invoke(clientId, chId, topic, payload);
                     OnClientMessageWithEncoding?.Invoke(clientId, chId, topic, encoding, payload);
                 },
-                encoding => string.Equals(encoding, "json", StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(encoding, "protobuf", StringComparison.OrdinalIgnoreCase)
-                            || IsMessageEncodingEnabled(encoding));
+                IsClientPublishEncodingSupported);
             _assets = new SessionAssetHandler(() => Volatile.Read(ref _runtime), _transport);
 
             try
@@ -294,8 +294,6 @@ namespace Unity.FoxgloveSDK.Core
                 // Mark ownership before each add. A custom event accessor may add
                 // the delegate and then throw, in which case constructor rollback
                 // must still attempt to detach it.
-                _channelOverwrittenSubscribed = true;
-                _channels.ChannelOverwritten += OnChannelOverwritten;
                 _clientConnectedSubscribed = true;
                 _transport.OnClientConnected += OnClientConnected;
                 _clientDisconnectedSubscribed = true;
@@ -315,7 +313,15 @@ namespace Unity.FoxgloveSDK.Core
         // ── Lifecycle ──
 
         /// <summary>Start the WebSocket transport on the given host and port.</summary>
-        public void Start(string host, int port) => _transport.Start(host, port);
+        public void Start(string host, int port)
+        {
+            lock (_encodingConfigurationLock)
+            {
+                // Freeze before transport start so synchronous callbacks observe final encoding authority.
+                _encodingConfigurationFrozen = true;
+            }
+            _transport.Start(host, port);
+        }
         /// <summary>Stop the WebSocket transport.</summary>
         public void Stop() => _transport.Stop();
 
@@ -350,7 +356,6 @@ namespace Unity.FoxgloveSDK.Core
             TryCleanup(DetachClientDisconnected, ref _disposeClientDisconnectedComplete, ref firstFailure);
             TryCleanup(DetachTextReceived, ref _disposeTextReceivedComplete, ref firstFailure);
             TryCleanup(DetachBinaryReceived, ref _disposeBinaryReceivedComplete, ref firstFailure);
-            TryCleanup(DetachChannelOverwritten, ref _disposeChannelOverwrittenComplete, ref firstFailure);
 
             // Make the session's downstream callback graph inert even when a
             // custom event accessor refused one of the detach attempts. The
@@ -365,8 +370,7 @@ namespace Unity.FoxgloveSDK.Core
                 && _disposeClientConnectedComplete
                 && _disposeClientDisconnectedComplete
                 && _disposeTextReceivedComplete
-                && _disposeBinaryReceivedComplete
-                && _disposeChannelOverwrittenComplete)
+                && _disposeBinaryReceivedComplete)
             {
                 Volatile.Write(ref _disposed, 1);
             }
@@ -425,21 +429,12 @@ namespace Unity.FoxgloveSDK.Core
             _binaryReceivedSubscribed = false;
         }
 
-        private void DetachChannelOverwritten()
-        {
-            if (!_channelOverwrittenSubscribed)
-                return;
-            _channels.ChannelOverwritten -= OnChannelOverwritten;
-            _channelOverwrittenSubscribed = false;
-        }
-
         private void RollBackConstructorSubscriptions()
         {
             TryRollback(DetachBinaryReceived);
             TryRollback(DetachTextReceived);
             TryRollback(DetachClientDisconnected);
             TryRollback(DetachClientConnected);
-            TryRollback(DetachChannelOverwritten);
         }
 
         private static void TryRollback(Action rollback)
@@ -578,41 +573,88 @@ namespace Unity.FoxgloveSDK.Core
             if (recorder != null && !recorderHasChannel && allowMcapRecording)
                 EnsureRecorderChannel(recorder, channel);
 
-            if (recordingOnly)
-                _recordingOnlyChannels.Add(channel.Id);
-            else
-                _recordingOnlyChannels.Remove(channel.Id);
-
-            var liveAllowed = AllowLiveWebSocket(channel);
-            if (previousLiveAllowed && (topicChanged || !liveAllowed))
-                _graph.RemoveUnityPublishedTopic(previous.Topic);
-
+            var liveAllowed = !recordingOnly && _channelFilter.AllowLiveWebSocket(channel);
             if (previous != null && wasRecordingOnly != recordingOnly)
                 _channels.Replace(channel);
             else
                 _channels.Register(channel);
 
-            var mirrorSink = Volatile.Read(ref _mirrorSink);
-            if (mirrorSink != null)
+            var removedSubscriptions = new List<(uint clientId, uint subscriptionId, uint channelId)>();
+            var graphChanged = false;
+            var advertiseAttempted = false;
+            var unadvertiseAttempted = false;
+            var preexistingLiveAdvertisement = previousLiveAllowed
+                                                && liveAllowed;
+            try
             {
-                if (previous != null && !wasRecordingOnly && recordingOnly)
-                    TryUnregisterMirrorChannel(mirrorSink, channel.Id);
-                if (!recordingOnly)
-                    TryRegisterMirrorChannel(mirrorSink, channel);
-            }
+                if (recordingOnly)
+                    _recordingOnlyChannels.Add(channel.Id);
+                else
+                    _recordingOnlyChannels.Remove(channel.Id);
 
-            if (liveAllowed)
-            {
-                _graph.SetUnityPublishedTopic(channel.Topic);
-                _transport.BroadcastText(SerializeSingleAdvertise(channel));
-                _graph.BroadcastUpdate();
+                if (previousLiveAllowed && (topicChanged || !liveAllowed))
+                {
+                    _graph.RemoveUnityPublishedTopic(previous.Topic);
+                    graphChanged = true;
+                }
+
+                if (liveAllowed)
+                {
+                    _graph.SetUnityPublishedTopic(channel.Topic);
+                    graphChanged = true;
+                }
+                else if (previousLiveAllowed)
+                {
+                    removedSubscriptions.AddRange(_subscriptions.RemoveChannel(channel.Id));
+                    foreach (var (clientId, subId, _) in removedSubscriptions)
+                        _graph.RemoveSubscribedTopic(clientId, subId, previous.Topic);
+                    graphChanged = true;
+                }
+
+                if (liveAllowed)
+                {
+                    advertiseAttempted = true;
+                    _transport.BroadcastText(SerializeSingleAdvertise(channel));
+                }
+                else if (previousLiveAllowed)
+                {
+                    unadvertiseAttempted = true;
+                    _transport.BroadcastText(SerializeSingleUnadvertise(channel.Id));
+                }
+
+                if (graphChanged)
+                    _graph.BroadcastUpdate();
+
+                var mirrorSink = Volatile.Read(ref _mirrorSink);
+                if (mirrorSink != null)
+                {
+                    if (previous != null && !wasRecordingOnly && recordingOnly)
+                        TryUnregisterMirrorChannel(mirrorSink, channel.Id);
+                    if (!recordingOnly)
+                        TryRegisterMirrorChannel(mirrorSink, channel);
+                }
             }
-            else if (previousLiveAllowed)
+            catch
             {
-                foreach (var (clientId, subId, _) in _subscriptions.RemoveChannel(channel.Id))
-                    _graph.RemoveSubscribedTopic(clientId, subId, previous.Topic);
-                _transport.BroadcastText(SerializeSingleUnadvertise(channel.Id));
-                _graph.BroadcastUpdate();
+                if (advertiseAttempted && !preexistingLiveAdvertisement)
+                    TryBroadcastChannelCompensation(
+                        SerializeSingleUnadvertise(channel.Id),
+                        "unadvertise");
+                else if (unadvertiseAttempted)
+                    TryBroadcastChannelCompensation(
+                        SerializeSingleAdvertise(previous),
+                        "advertise");
+
+                RestoreChannelRegistration(
+                    channel,
+                    previous,
+                    wasRecordingOnly,
+                    previousLiveAllowed,
+                    liveAllowed,
+                    removedSubscriptions);
+                if (graphChanged)
+                    TryBroadcastChannelGraphCompensation();
+                throw;
             }
         }
 
@@ -678,25 +720,128 @@ namespace Unity.FoxgloveSDK.Core
             lock (_channelLifecycleLock)
             {
                 var ch = _channels.Get(channelId);
-                Volatile.Read(ref _recorder)?.ClearServerChannelAdmissionRejection(channelId);
+                if (ch == null)
+                    return;
+
+                var wasRecordingOnly = _recordingOnlyChannels.Contains(channelId);
                 var liveAllowed = ch != null && AllowLiveWebSocket(ch);
-                if (ch != null && liveAllowed)
-                    _graph.RemoveUnityPublishedTopic(ch.Topic);
-                if (!_channels.Remove(channelId)) return;
-                var mirrorSink = Volatile.Read(ref _mirrorSink);
-                if (!_recordingOnlyChannels.Contains(channelId) && mirrorSink != null)
-                    TryUnregisterMirrorChannel(mirrorSink, channelId);
-                foreach (var (clientId, subId, _) in _subscriptions.RemoveChannel(channelId))
-                {
-                    if (ch != null && liveAllowed)
-                        _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
-                }
-                if (liveAllowed)
-                {
-                    _transport.BroadcastText(SerializeSingleUnadvertise(channelId));
-                    _graph.BroadcastUpdate();
-                }
+                var removedSubscriptions = new List<(uint clientId, uint subscriptionId, uint channelId)>();
+                var graphChanged = false;
+                var unadvertiseAttempted = false;
+                _channels.Remove(channelId);
                 _recordingOnlyChannels.Remove(channelId);
+                try
+                {
+                    if (liveAllowed)
+                    {
+                        _graph.RemoveUnityPublishedTopic(ch.Topic);
+                        removedSubscriptions.AddRange(_subscriptions.RemoveChannel(channelId));
+                        foreach (var (clientId, subId, _) in removedSubscriptions)
+                            _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
+                        graphChanged = true;
+                        _graph.BroadcastUpdate();
+
+                        unadvertiseAttempted = true;
+                        _transport.BroadcastText(SerializeSingleUnadvertise(channelId));
+                    }
+
+                    var mirrorSink = Volatile.Read(ref _mirrorSink);
+                    if (!wasRecordingOnly && mirrorSink != null)
+                        TryUnregisterMirrorChannel(mirrorSink, channelId);
+                    Volatile.Read(ref _recorder)?.ClearServerChannelAdmissionRejection(channelId);
+                }
+                catch
+                {
+                    if (unadvertiseAttempted)
+                        TryBroadcastChannelCompensation(
+                            SerializeSingleAdvertise(ch),
+                            "advertise");
+
+                    _channels.Replace(ch);
+                    if (wasRecordingOnly)
+                        _recordingOnlyChannels.Add(channelId);
+                    if (liveAllowed)
+                    {
+                        _graph.SetUnityPublishedTopic(ch.Topic);
+                        foreach (var (clientId, subId, restoredChannelId) in removedSubscriptions)
+                        {
+                            if (_subscriptions.TryAddSubscription(clientId, subId, restoredChannelId, out _))
+                                _graph.AddSubscribedTopic(clientId, subId, ch.Topic);
+                        }
+                    }
+                    if (graphChanged)
+                        TryBroadcastChannelGraphCompensation();
+                    throw;
+                }
+            }
+        }
+
+        private void RestoreChannelRegistration(
+            AdvertiseChannel attempted,
+            AdvertiseChannel previous,
+            bool previousRecordingOnly,
+            bool previousLiveAllowed,
+            bool attemptedLiveAllowed,
+            List<(uint clientId, uint subscriptionId, uint channelId)> removedSubscriptions)
+        {
+            if (previous == null)
+                _channels.Remove(attempted.Id);
+            else
+                _channels.Replace(previous);
+
+            if (previousRecordingOnly)
+                _recordingOnlyChannels.Add(attempted.Id);
+            else
+                _recordingOnlyChannels.Remove(attempted.Id);
+
+            if (attemptedLiveAllowed && (!previousLiveAllowed
+                                         || !string.Equals(
+                                             attempted.Topic,
+                                             previous?.Topic,
+                                             StringComparison.Ordinal)))
+                _graph.RemoveUnityPublishedTopic(attempted.Topic);
+            if (previousLiveAllowed && (!attemptedLiveAllowed
+                                        || !string.Equals(
+                                            attempted.Topic,
+                                            previous?.Topic,
+                                            StringComparison.Ordinal)))
+                _graph.SetUnityPublishedTopic(previous.Topic);
+
+            if (removedSubscriptions != null)
+            {
+                foreach (var (clientId, subId, channelId) in removedSubscriptions)
+                {
+                    if (_subscriptions.TryAddSubscription(clientId, subId, channelId, out _))
+                        _graph.AddSubscribedTopic(clientId, subId, previous.Topic);
+                }
+            }
+        }
+
+        private void TryBroadcastChannelCompensation(string json, string operation)
+        {
+            try
+            {
+                _transport.BroadcastText(json);
+            }
+            catch (Exception compensationFailure)
+            {
+                _logger.LogWarning(
+                    $"Channel {operation} compensation failed: " +
+                    $"{compensationFailure.GetType().Name}: {compensationFailure.Message}");
+            }
+        }
+
+        private void TryBroadcastChannelGraphCompensation()
+        {
+            try
+            {
+                _graph.BroadcastUpdate();
+            }
+            catch (Exception compensationFailure)
+            {
+                _logger.LogWarning(
+                    "Channel graph rollback failed: " +
+                    $"{compensationFailure.GetType().Name}: {compensationFailure.Message}");
             }
         }
 
@@ -834,7 +979,7 @@ namespace Unity.FoxgloveSDK.Core
             payload ??= Array.Empty<byte>();
             var recorder = Volatile.Read(ref _recorder);
             if (recorder != null && AllowMcapRecording(channel) && recorder.HasServerChannel(channelId))
-                WriteMessageSafely(recorder, channelId, logTimeNs, payload);
+                WriteMessageSafely(recorder, channel, logTimeNs, payload);
             var mirrorSink = Volatile.Read(ref _mirrorSink);
             if (!recordingOnly && mirrorSink != null)
                 TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
@@ -866,11 +1011,17 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        private void WriteMessageSafely(McapRecorder recorder, uint channelId, ulong logTimeNs, byte[] payload)
+        private void WriteMessageSafely(McapRecorder recorder, AdvertiseChannel channel, ulong logTimeNs, byte[] payload)
         {
             try
             {
-                recorder.WriteMessage(channelId, logTimeNs, payload);
+                recorder.WriteMessage(
+                    channel.Id,
+                    logTimeNs,
+                    payload,
+                    channel.Encoding,
+                    channel.ComponentLogicalSchemaName,
+                    channel.ComponentShapeIdentity);
             }
             catch (Exception ex)
             {
@@ -948,6 +1099,67 @@ namespace Unity.FoxgloveSDK.Core
             finally
             {
                 subscribers.Clear();
+            }
+        }
+
+        /// <summary>
+        /// Publish replay data to one client without allowing another client's
+        /// queue headroom to throttle this client's history drain.
+        /// </summary>
+        internal void PublishReplayToClient(
+            uint clientId,
+            uint channelId,
+            byte[] payload,
+            ulong logTimeNs,
+            string source = "Replay",
+            string topic = null)
+        {
+            AdvertiseChannel channel;
+            lock (_channelLifecycleLock)
+            {
+                channel = _channels.Get(channelId);
+                if (channel == null) return;
+            }
+
+            var subscriptions = s_clientReplaySubscriptionScratch;
+            if (subscriptions == null)
+            {
+                subscriptions = new List<(uint subscriptionId, uint channelId)>();
+                s_clientReplaySubscriptionScratch = subscriptions;
+            }
+
+            lock (_subscriberScratchLock)
+            {
+                _subscriptions.CopySubscriptionsForClient(clientId, subscriptions);
+            }
+
+            payload ??= Array.Empty<byte>();
+            topic ??= channel.Topic;
+            try
+            {
+                foreach (var (subscriptionId, subscribedChannelId) in subscriptions)
+                {
+                    if (subscribedChannelId != channelId)
+                        continue;
+
+                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                    if (_prioritizedTransport != null)
+                    {
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                            _logger.LogWarning(trace);
+                        _prioritizedTransport.SendDataBinary(clientId, frame);
+                    }
+                    else
+                    {
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                            _logger.LogWarning(trace);
+                        _transport.SendBinary(clientId, frame);
+                    }
+                }
+            }
+            finally
+            {
+                subscriptions.Clear();
             }
         }
 
@@ -1201,11 +1413,42 @@ namespace Unity.FoxgloveSDK.Core
             BroadcastDataBinary(data);
         }
 
+        /// <summary>Send a replay time frame to one client.</summary>
+        internal void SendReplayTimeToClient(uint clientId, ulong timeNs)
+        {
+            var frame = BinaryEncoding.EncodeTime(timeNs);
+            if (_prioritizedTransport != null)
+                _prioritizedTransport.SendDataBinary(clientId, frame);
+            else
+                _transport.SendBinary(clientId, frame);
+        }
+
         /// <summary>
         /// Return per-client queue headroom for replay history pacing when the
         /// transport exposes managed queue statistics.
         /// </summary>
         internal bool TryGetReplayQueueHeadroom(
+            int reserveFrames,
+            int reserveBytes,
+            out int frameHeadroom,
+            out int byteHeadroom,
+            out int maxFrameCapacity,
+            out int maxByteCapacity)
+            => TryGetReplayQueueHeadroom(
+                clientId: null,
+                reserveFrames,
+                reserveBytes,
+                out frameHeadroom,
+                out byteHeadroom,
+                out maxFrameCapacity,
+                out maxByteCapacity);
+
+        /// <summary>
+        /// Return queue headroom for one client, or the minimum across all
+        /// clients when <paramref name="clientId"/> is null.
+        /// </summary>
+        internal bool TryGetReplayQueueHeadroom(
+            uint? clientId,
             int reserveFrames,
             int reserveBytes,
             out int frameHeadroom,
@@ -1243,10 +1486,22 @@ namespace Unity.FoxgloveSDK.Core
             var byteReserve = Math.Max(0, reserveBytes);
             maxFrameCapacity = stats.MaxQueuedFramesPerClient;
             maxByteCapacity = stats.MaxQueuedBytesPerClient;
+            var foundClient = false;
             foreach (var client in stats.Clients)
             {
+                if (clientId.HasValue && client.ClientId != clientId.Value)
+                    continue;
+
+                foundClient = true;
                 minFrames = Math.Min(minFrames, stats.MaxQueuedFramesPerClient - client.QueuedFrames - frameReserve);
                 minBytes = Math.Min(minBytes, stats.MaxQueuedBytesPerClient - client.QueuedBytes - byteReserve);
+            }
+
+            if (clientId.HasValue && !foundClient)
+            {
+                frameHeadroom = 0;
+                byteHeadroom = 0;
+                return true;
             }
 
             frameHeadroom = Math.Max(0, minFrames);
@@ -1262,8 +1517,36 @@ namespace Unity.FoxgloveSDK.Core
             return result;
         }
 
-        /// <summary>Enable protobuf encoding support, updating supportedEncodings to include "protobuf".</summary>
-        public void EnableProtobuf() => _protobufEnabled = true;
+        internal HashSet<uint> SnapshotSubscribedChannelIds(uint clientId)
+        {
+            var result = new HashSet<uint>();
+            lock (_channelLifecycleLock)
+                _subscriptions.CopySubscribedChannelIds(clientId, result);
+            return result;
+        }
+
+        internal HashSet<uint> SnapshotSubscribedClientIds()
+        {
+            var result = new HashSet<uint>();
+            lock (_channelLifecycleLock)
+                _subscriptions.CopyClientIds(result);
+            return result;
+        }
+
+        /// <summary>
+        /// Enable protobuf encoding support. Repeating an already enabled value
+        /// after the session starts is an idempotent no-op.
+        /// </summary>
+        public void EnableProtobuf()
+        {
+            lock (_encodingConfigurationLock)
+            {
+                if (_protobufEnabled)
+                    return;
+                ThrowIfEncodingConfigurationFrozen();
+                _protobufEnabled = true;
+            }
+        }
 
         /// <summary>Whether protobuf encoding support is enabled.</summary>
         public bool IsProtobufEnabled => _protobufEnabled;
@@ -1277,12 +1560,62 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (string.IsNullOrWhiteSpace(encoding))
                 throw new ArgumentException("Message encoding cannot be empty.", nameof(encoding));
-            _additionalMessageEncodings.Add(encoding.Trim().ToLowerInvariant());
+
+            var normalizedEncoding = encoding.Trim().ToLowerInvariant();
+            if (string.Equals(normalizedEncoding, "protobuf", StringComparison.Ordinal))
+            {
+                EnableProtobuf();
+                return;
+            }
+
+            lock (_encodingConfigurationLock)
+            {
+                if (string.Equals(normalizedEncoding, "json", StringComparison.Ordinal)
+                    || _additionalMessageEncodings.Contains(normalizedEncoding))
+                    return;
+                ThrowIfEncodingConfigurationFrozen();
+                _additionalMessageEncodings.Add(normalizedEncoding);
+            }
+        }
+
+        private void ThrowIfEncodingConfigurationFrozen()
+        {
+            if (_encodingConfigurationFrozen)
+                throw new InvalidOperationException(
+                    "Message encodings must be configured before the session starts.");
         }
 
         public bool IsMessageEncodingEnabled(string encoding)
-            => !string.IsNullOrWhiteSpace(encoding)
-               && _additionalMessageEncodings.Contains(encoding.Trim().ToLowerInvariant());
+        {
+            if (string.IsNullOrWhiteSpace(encoding))
+                return false;
+
+            var normalizedEncoding = encoding.Trim().ToLowerInvariant();
+            lock (_encodingConfigurationLock)
+            {
+                if (string.Equals(normalizedEncoding, "json", StringComparison.Ordinal))
+                    return true;
+
+                if (string.Equals(normalizedEncoding, "protobuf", StringComparison.Ordinal))
+                    return _protobufEnabled;
+
+                return _additionalMessageEncodings.Contains(normalizedEncoding);
+            }
+        }
+
+        private bool IsClientPublishEncodingSupported(string encoding)
+        {
+            if (string.IsNullOrWhiteSpace(encoding))
+                return false;
+
+            foreach (var supportedEncoding in GetSupportedEncodings())
+            {
+                if (string.Equals(supportedEncoding, encoding.Trim(), StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
 
         /// <summary>Force a test log message for diagnostic verification.</summary>
         internal void ForceLoggerTest() => _logger.LogWarning("logger test");
@@ -1302,16 +1635,7 @@ namespace Unity.FoxgloveSDK.Core
 
         private ServerInfo CreateServerInfo()
         {
-            var supportedEncodings = new List<string> { "json" };
-            if (_protobufEnabled)
-                supportedEncodings.Add("protobuf");
-            foreach (var encoding in _additionalMessageEncodings)
-            {
-                if (!supportedEncodings.Contains(encoding))
-                    supportedEncodings.Add(encoding);
-            }
-            supportedEncodings.Sort(StringComparer.Ordinal);
-
+            var supportedEncodings = GetSupportedEncodings();
             var info = new ServerInfo
             {
                 Name = Name,
@@ -1341,6 +1665,20 @@ namespace Unity.FoxgloveSDK.Core
                 info.Capabilities.Add(Capability.Assets);
 
             return info;
+        }
+
+        private List<string> GetSupportedEncodings()
+        {
+            var supportedEncodings = new List<string> { "json" };
+            if (_protobufEnabled)
+                supportedEncodings.Add("protobuf");
+            foreach (var encoding in _additionalMessageEncodings)
+            {
+                if (!supportedEncodings.Contains(encoding))
+                    supportedEncodings.Add(encoding);
+            }
+            supportedEncodings.Sort(StringComparer.Ordinal);
+            return supportedEncodings;
         }
 
         private static string SerializeServerInfo(ServerInfo info)
@@ -1512,14 +1850,10 @@ namespace Unity.FoxgloveSDK.Core
             }
             lock (_subscriptionBudgetWarnedClientsLock)
                 _subscriptionBudgetWarnedClients.Remove(clientId);
-        }
 
-        private void OnChannelOverwritten(AdvertiseChannel previous, AdvertiseChannel replacement)
-        {
-            _logger.LogWarning(
-                $"Channel id {replacement?.Id ?? previous?.Id ?? 0} overwritten: " +
-                $"'{previous?.Topic ?? string.Empty}'/{previous?.SchemaName ?? string.Empty} -> " +
-                $"'{replacement?.Topic ?? string.Empty}'/{replacement?.SchemaName ?? string.Empty}.");
+            var runtime = Volatile.Read(ref _runtime);
+            if (runtime is IClientReplayDisconnectContext replayDisconnect)
+                replayDisconnect.CancelReplayForClient(clientId);
         }
 
         /// <summary>

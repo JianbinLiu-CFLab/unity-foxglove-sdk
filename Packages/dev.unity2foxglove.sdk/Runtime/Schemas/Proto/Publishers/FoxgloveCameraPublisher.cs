@@ -301,6 +301,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 // Equivalent to generation != _captureGeneration, but with a cross-thread visible read.
                 if (_destroyed || !isActiveAndEnabled || generation != Volatile.Read(ref _captureGeneration)) return;
+                if (IsReplaySuppressed) return;
                 if (req.hasError)
                 {
                     Debug.LogWarning("[Foxglove] Camera AsyncGPUReadback failed.");

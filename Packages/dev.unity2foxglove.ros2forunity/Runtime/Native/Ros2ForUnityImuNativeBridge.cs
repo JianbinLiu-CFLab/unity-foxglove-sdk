@@ -183,7 +183,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     if (_ros2RuntimeWasReady)
                     {
-                        BeginShutdown();
+                        Ros2ForUnityNativeBridgeRecovery.ResetAfterRuntimeLoss(
+                            ref _ros2RuntimeWasReady,
+                            ClearBindings);
                         return false;
                     }
 
@@ -197,7 +199,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 if (_ros2RuntimeWasReady)
                 {
-                    BeginShutdown();
+                    Ros2ForUnityNativeBridgeRecovery.ResetAfterRuntimeLoss(
+                        ref _ros2RuntimeWasReady,
+                        ClearBindings);
                     return false;
                 }
 

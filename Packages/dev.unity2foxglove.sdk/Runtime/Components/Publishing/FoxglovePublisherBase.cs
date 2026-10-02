@@ -57,8 +57,9 @@ namespace Unity.FoxgloveSDK.Components
         private string _lastOrdinaryTransportWarningKey;
         private string _supportedEncodingSummaryCache;
         private bool _managerWasResolved;
-        private bool _replayDisableOwned;
-        private bool _replayDisableInProgress;
+        private volatile bool _replaySuppressed;
+        private readonly ReplayDisableOwnershipState _replayDisableOwnership =
+            new ReplayDisableOwnershipState();
         private double _nextManagerResolveTime;
         private ulong _ordinaryTransportSequence;
 
@@ -162,6 +163,9 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public FoxgloveManager ConfiguredManager => _manager;
 
+        protected bool IsReplaySuppressed =>
+            _replaySuppressed || _manager?.SuppressLivePublishersForReplay == true;
+
         internal FoxgloveManager ResolveManagerForComponentSession()
         {
             ResolveManager();
@@ -183,8 +187,6 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual void OnEnable()
         {
-            if (!_replayDisableInProgress)
-                _replayDisableOwned = false;
             // Re-enable starts a fresh cadence window, so the first scheduled
             // tick can publish immediately instead of waiting one full period.
             _publishRateState = default;
@@ -201,41 +203,21 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <remarks>
         /// Derived publishers overriding this callback must call the base implementation
-        /// so replay-disable ownership is cleared when a publisher is disabled manually.
+        /// so future base lifecycle hooks remain composable. Replay suppression is owned
+        /// by the Manager and is cleared only by its RestoreAfterReplay path.
         /// </remarks>
         protected virtual void OnDisable()
         {
-            if (!_replayDisableInProgress)
-                _replayDisableOwned = false;
         }
 
         internal bool TryDisableForReplay()
-        {
-            if (!enabled)
-                return false;
-
-            _replayDisableInProgress = true;
-            try
-            {
-                enabled = false;
-                _replayDisableOwned = true;
-                return true;
-            }
-            finally
-            {
-                _replayDisableInProgress = false;
-            }
-        }
+            => _replayDisableOwnership.TryAcquire(
+                () => enabled,
+                () => _replaySuppressed = true);
 
         internal void RestoreAfterReplay()
-        {
-            if (!_replayDisableOwned)
-                return;
-
-            _replayDisableOwned = false;
-            if (!enabled)
-                enabled = true;
-        }
+            => _replayDisableOwnership.TryRestoreOwned(
+                () => _replaySuppressed = false);
 
         protected virtual void OnValidate()
         {
@@ -327,7 +309,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True if enough time has elapsed since last publish.</summary>
         protected bool ShouldPublishNow()
         {
-            if (!_publishOnEnable)
+            if (!_publishOnEnable || IsReplaySuppressed)
                 return false;
 
 #if UNITY_2020_3_OR_NEWER
@@ -351,7 +333,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool ShouldPublishNowFixed()
         {
-            if (!_publishOnEnable)
+            if (!_publishOnEnable || IsReplaySuppressed)
                 return false;
 
 #if UNITY_2020_3_OR_NEWER
@@ -380,6 +362,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool ShouldPreparePublishPayload()
         {
+            if (IsReplaySuppressed)
+                return false;
             return TryPreparePublishPayload(out _);
         }
 
@@ -436,6 +420,7 @@ namespace Unity.FoxgloveSDK.Components
             PublisherEncodingResolution resolution,
             PublisherEffectiveEncoding attemptedEncoding)
         {
+            if (IsReplaySuppressed) return false;
             if (!EnsureManagerAvailable()) return false;
             if (!ValidateConfiguredTopic("publish")) return false;
 
@@ -449,7 +434,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (attemptedEncoding == PublisherEffectiveEncoding.MsgPack)
             {
-                return _manager.TryPrepareMsgPackPublish(_topic, out _, requireDemand: true);
+                return TryPrepareMsgPackPublish(out _);
             }
 
             var wireEncoding = PublisherEncodingPolicy.ToProtocolEncoding(attemptedEncoding);
@@ -462,6 +447,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool ShouldPrepareOrdinaryTransportPayload()
         {
+            if (IsReplaySuppressed) return false;
             if (!EnsureManagerAvailable()) return false;
             if (!ValidateConfiguredTopic("Provider publish")) return false;
             return _manager.HasOrdinaryTransportDemand;
@@ -485,6 +471,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publish a message using a previously resolved encoding. Safe no-op if manager is null.</summary>
         protected void Publish(object message, ulong logTimeNs, PublisherEncodingResolution resolution)
         {
+            if (IsReplaySuppressed) return;
             if (!EnsureManagerAvailable()) return;
             if (!ValidateConfiguredTopic("publish")) return;
 
@@ -509,6 +496,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publish protobuf bytes through the manager using an already resolved encoding. Safe no-op if manager is null.</summary>
         protected void PublishProto(byte[] payload, ulong logTimeNs, PublisherEncodingResolution resolution)
         {
+            if (IsReplaySuppressed) return;
             if (!EnsureManagerAvailable()) return;
             if (!ValidateConfiguredTopic("publish")) return;
 
@@ -533,6 +521,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publish MessagePack bytes through the manager using an already resolved encoding. Safe no-op if manager is null.</summary>
         protected void PublishMsgPack(byte[] payload, ulong logTimeNs, PublisherEncodingResolution resolution)
         {
+            if (IsReplaySuppressed) return;
             if (!EnsureManagerAvailable()) return;
             if (!ValidateConfiguredTopic("publish")) return;
 
@@ -544,9 +533,18 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            _manager.PublishMsgPack(_topic, payload, logTimeNs);
+            PublishMsgPackToManager(payload, logTimeNs);
         }
 
+        private bool TryPrepareMsgPackPublish(out uint channelId)
+        {
+            return _manager.TryPrepareMsgPackPublish(this, out channelId, requireDemand: true);
+        }
+
+        private void PublishMsgPackToManager(byte[] payload, ulong logTimeNs)
+        {
+            _manager.PublishMsgPack(this, payload, logTimeNs);
+        }
         /// <summary>
         /// Publish one already captured logical value through every selected
         /// ordinary-payload Provider.
@@ -556,6 +554,8 @@ namespace Unity.FoxgloveSDK.Components
             string logicalSchemaName,
             ulong logTimeNs)
         {
+            if (IsReplaySuppressed)
+                return default;
             if (!EnsureManagerAvailable()
                 || !ValidateConfiguredTopic("Provider publish"))
             {

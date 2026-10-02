@@ -132,6 +132,7 @@ namespace Unity.FoxgloveSDK.Components
         private const float ManagerSearchIntervalSeconds = 3f;
         private const float ScanIntervalSeconds = 2f;
         private const float MaxScanIntervalSeconds = 30f;
+        private const int MaximumReportedFailures = 256;
 
         private static FoxgloveLogHub _instance;
         private static readonly object PendingGate = new object();
@@ -159,6 +160,8 @@ namespace Unity.FoxgloveSDK.Components
             new FoxTopicSinkRouter();
         private readonly HashSet<string> _reportedFailures =
             new HashSet<string>(StringComparer.Ordinal);
+        private readonly Queue<string> _reportedFailureOrder =
+            new Queue<string>();
 
         private FoxgloveManager _manager;
         private bool _iterating;
@@ -1117,22 +1120,32 @@ namespace Unity.FoxgloveSDK.Components
             IFoxgloveLogSource source,
             int topicIndex,
             Exception exception)
-            => WarnOnce(
-                (source?.GetType().FullName
-                 ?? "unknown")
-                + "|"
-                + topicIndex
-                + "|"
-                + exception.GetType().FullName
-                + "|"
-                + exception.Message);
+        {
+            var sourceType = source?.GetType().FullName ?? "unknown";
+            var exceptionType = exception?.GetType().FullName ?? typeof(Exception).FullName;
+            var key = sourceType + "|" + topicIndex + "|" + exceptionType;
+            var message = key + "|" + (exception?.Message ?? string.Empty);
+            WarnOnce(key, message);
+        }
 
         private void WarnOnce(string message)
+            => WarnOnce(message, message);
+
+        private void WarnOnce(string key, string message)
         {
-            if (string.IsNullOrWhiteSpace(message)
-                || !_reportedFailures.Add(message))
+            if (string.IsNullOrWhiteSpace(key))
             {
                 return;
+            }
+
+            lock (_reportedFailures)
+            {
+                if (!_reportedFailures.Add(key))
+                    return;
+
+                _reportedFailureOrder.Enqueue(key);
+                if (_reportedFailureOrder.Count > MaximumReportedFailures)
+                    _reportedFailures.Remove(_reportedFailureOrder.Dequeue());
             }
 
             Debug.LogWarning("[FoxRun] " + message);

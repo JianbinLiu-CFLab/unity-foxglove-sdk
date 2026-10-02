@@ -26,6 +26,11 @@ import time
 import uuid
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(errors="replace")
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -34,9 +39,11 @@ from Scripts.unity_build.unity_il2cpp import start_owned_process, await_tree_qui
 CI_ONLY_CHOICES = (
     "dotnet",
     "dotnet-runtime",
+    "mediafoundation-native-smoke",
     "xunit",
     "xunit-adapter",
     "xunit-native",
+    "xunit-manager-boundary",
     "ros2bridge-xunit",
     "performance-regression",
     "phase188-replay-regression",
@@ -390,10 +397,15 @@ UNIT_NATIVE_TEST_PROPS = [
     *dotnet_msbuild_props("unit-tests-native"),
     "-p:IncludeRos2ForUnityNative=true",
 ]
+UNIT_MANAGER_BOUNDARY_TEST_PROPS = [
+    *dotnet_msbuild_props("unit-tests-manager-boundary"),
+    "-p:IncludeManagerProductionBoundary=true",
+]
 ANALYZER_OUTPUT_DIR = ISOLATED_DOTNET_ROOT / "analyzer-output"
 UNIT_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit"
 UNIT_ADAPTER_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-adapter"
 UNIT_NATIVE_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-native"
+UNIT_MANAGER_BOUNDARY_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-manager-boundary"
 ROS2_BRIDGE_TEST_PROPS = dotnet_msbuild_props("ros2bridge-unit-tests")
 
 
@@ -545,6 +557,11 @@ def build_dotnet_ci_jobs() -> list[CiJob]:
             exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
         ),
         CiJob(
+            "mediafoundation-native-smoke",
+            [sys.executable, script, "--only", "mediafoundation-native-smoke"],
+            exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+        ),
+        CiJob(
             "xunit",
             [sys.executable, script, "--only", "xunit"],
             exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
@@ -557,6 +574,11 @@ def build_dotnet_ci_jobs() -> list[CiJob]:
         CiJob(
             "xunit-native",
             [sys.executable, script, "--only", "xunit-native"],
+            exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+        ),
+        CiJob(
+            "xunit-manager-boundary",
+            [sys.executable, script, "--only", "xunit-manager-boundary"],
             exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
         ),
         CiJob(
@@ -860,6 +882,48 @@ def run_with_restore_fallback(
     return run(fallback_cmd, f"{label} (retry with restore)", fatal=False)
 
 
+def run_mediafoundation_native_smoke(
+    project_cmd: list[str],
+    fallback_cmd: list[str],
+    label: str,
+) -> tuple[bool, bool]:
+    """Run the native smoke and return (passed, environment_skipped)."""
+    def finish(result: CapturedCommandResult) -> tuple[bool, bool]:
+        """Echo captured output and classify the smoke result."""
+        if result.stdout:
+            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        if result.stderr:
+            print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", file=sys.stderr)
+        if not result.ok:
+            if result.timeout_seconds is not None:
+                print(red(f"{FAIL} {label} timed out after {result.timeout_seconds}s ({result.elapsed_seconds:.1f}s)"))
+            else:
+                print(red(f"{FAIL} {label} (exit {result.returncode}) ({result.elapsed_seconds:.1f}s)"))
+            return False, False
+
+        output = f"{result.stdout}\n{result.stderr}"
+        if "NATIVE_SMOKE_SKIPPED:" in output:
+            print(f"{SKIP} {label} ({result.elapsed_seconds:.1f}s)")
+            return True, True
+
+        print(green(f"{PASS} {label} ({result.elapsed_seconds:.1f}s)"))
+        return True, False
+
+    first = run_captured(project_cmd, label)
+    if first.ok:
+        return finish(first)
+    if first.stdout:
+        print(first.stdout, end="" if first.stdout.endswith("\n") else "\n")
+    if first.stderr:
+        print(first.stderr, end="" if first.stderr.endswith("\n") else "\n", file=sys.stderr)
+    if first.timeout_seconds is not None:
+        print(red(f"{FAIL} {label} timed out after {first.timeout_seconds}s ({first.elapsed_seconds:.1f}s)"))
+        return False, False
+    if not _is_restore_state_failure(first):
+        print(red(f"{FAIL} {label}: refusing restore retry for non-restore failure"))
+        return False, False
+    return finish(run_captured(fallback_cmd, f"{label} (retry with restore)"))
+
 def _check_boundary() -> bool:
     """Verify no tracked Plan/ or Developer/ files (matches repository-boundary-check)."""
     try:
@@ -937,10 +1001,10 @@ def main() -> int:
         "--only",
         choices=CI_ONLY_CHOICES,
         help=(
-            "Run only one suite: dotnet, dotnet-runtime, xunit, xunit-adapter, xunit-native, "
+            "Run only one suite: dotnet, dotnet-runtime, mediafoundation-native-smoke, xunit, xunit-adapter, xunit-native, "
             "analyzer, foxrun-publish-panel, phase179-ros2-regression, "
             "phase181-ros2-regression, phase188-replay-regression, phase184-acceptance-tooling, "
-            "ros2bridge-xunit, performance-regression, phase186-bridge-tooling, phase186-bridge-windows-live, "
+            "ros2bridge-xunit, xunit-manager-boundary, performance-regression, phase186-bridge-tooling, phase186-bridge-windows-live, "
             "mcap-conformance, packages, boundary"
         ),
     )
@@ -1026,6 +1090,36 @@ def main() -> int:
                 )
 
     # --- independent dotnet validation lanes ---
+    if args.only == "mediafoundation-native-smoke":
+        results["mediafoundation-native-smoke-restore"] = restore_with_ignoring_failed_sources(
+            RUNTIME_TESTS_PROJ,
+            "Restore runtime test project for Media Foundation native smoke",
+            RUNTIME_TEST_PROPS,
+            fatal=False,
+        )
+        if results["mediafoundation-native-smoke-restore"]:
+            smoke_ok, smoke_skipped = run_mediafoundation_native_smoke(
+                [
+                    "dotnet", "run", "--no-restore",
+                    "--project", RUNTIME_TESTS_PROJ,
+                    *RUNTIME_TEST_PROPS,
+                    "--", "--phase82-native-smoke",
+                ],
+                [
+                    "dotnet", "run",
+                    "--project", RUNTIME_TESTS_PROJ,
+                    *RUNTIME_TEST_PROPS,
+                    "--", "--phase82-native-smoke",
+                ],
+                "Media Foundation native smoke (--phase82-native-smoke)",
+            )
+            if smoke_skipped:
+                skipped_lanes = (*skipped_lanes, "mediafoundation-native-smoke")
+            else:
+                results["mediafoundation-native-smoke"] = smoke_ok
+        else:
+            results["mediafoundation-native-smoke"] = False
+
     if args.only == "dotnet-runtime":
         results["dotnet-runtime-restore"] = restore_with_ignoring_failed_sources(
             RUNTIME_TESTS_PROJ,
@@ -1171,6 +1265,32 @@ def main() -> int:
                 "xUnit Native ROS2 compilation unit tests",
             )
             if results["xunit-native-restore"]
+            else False
+        )
+
+    if args.only == "xunit-manager-boundary":
+        results["xunit-manager-boundary-restore"] = restore_with_ignoring_failed_sources(
+            UNIT_TESTS_PROJ,
+            "Restore Manager production-boundary xUnit lane",
+            UNIT_MANAGER_BOUNDARY_TEST_PROPS,
+            fatal=False,
+        )
+        results["xunit-manager-boundary"] = (
+            run(
+                [
+                    "dotnet",
+                    "test",
+                    "--no-restore",
+                    UNIT_TESTS_PROJ,
+                    *UNIT_MANAGER_BOUNDARY_TEST_PROPS,
+                    "--logger",
+                    "trx;LogFileName=unit-tests-manager-boundary.trx",
+                    "--results-directory",
+                    str(UNIT_MANAGER_BOUNDARY_TEST_RESULTS_DIR),
+                ],
+                "xUnit Manager production-boundary tests",
+            )
+            if results["xunit-manager-boundary-restore"]
             else False
         )
 

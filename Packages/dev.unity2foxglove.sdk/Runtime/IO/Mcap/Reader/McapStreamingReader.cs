@@ -190,8 +190,12 @@ namespace Unity.FoxgloveSDK.IO
                     break;
                 }
                 case McapWriter.OpcodeMessage:
-                    AddMessage(result, options, filter, McapRecordDecoder.DecodeMessage(content, 0, contentLength), ref retainedPayloadBytes);
+                {
+                    var message = McapRecordDecoder.DecodeMessage(content, 0, contentLength);
+                    message.SourceOffset = recordStart;
+                    AddMessage(result, options, filter, message, ref retainedPayloadBytes);
                     break;
+                }
                 case McapWriter.OpcodeChunk:
                     result.Summary.Statistics ??= new McapStatistics();
                     result.Summary.Statistics.ChunkCount++;
@@ -208,6 +212,7 @@ namespace Unity.FoxgloveSDK.IO
                         options,
                         filter,
                         records,
+                        recordStart,
                         ref retainedPayloadBytes,
                         ref retainedMetadataBytes,
                         ref retainedAttachmentBytes);
@@ -324,6 +329,7 @@ namespace Unity.FoxgloveSDK.IO
             McapReadOptions options,
             StreamingReadFilter filter,
             byte[] uncompressedRecords,
+            ulong chunkStartOffset,
             ref long retainedPayloadBytes,
             ref long retainedMetadataBytes,
             ref long retainedAttachmentBytes)
@@ -334,6 +340,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (uncompressedRecords.Length - off < McapWriter.RecordHeaderLength)
                     throw new InvalidDataException("Chunk inner record is truncated.");
 
+                var recordOffset = off;
                 var opcode = uncompressedRecords[off++];
                 if (opcode == 0)
                     throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
@@ -355,8 +362,13 @@ namespace Unity.FoxgloveSDK.IO
                         break;
                     }
                     case McapWriter.OpcodeMessage:
-                        AddMessage(result, options, filter, McapRecordDecoder.DecodeMessage(uncompressedRecords, off, recordLength), ref retainedPayloadBytes);
+                    {
+                        var message = McapRecordDecoder.DecodeMessage(uncompressedRecords, off, recordLength);
+                        message.SourceOffset = chunkStartOffset;
+                        message.SourceRecordOffset = (ulong)recordOffset;
+                        AddMessage(result, options, filter, message, ref retainedPayloadBytes);
                         break;
+                    }
                     case McapWriter.OpcodeMetadata:
                     {
                         AddMetadata(result, McapRecordDecoder.DecodeMetadata(uncompressedRecords, off, recordLength), ref retainedMetadataBytes);

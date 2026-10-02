@@ -63,6 +63,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!EnsureManagerAvailable()) return;
             if (!_publishOnEnable) return;
+            if (IsReplaySuppressed) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
 
             var effectiveRateHz = Mathf.Min(EffectivePublishRateHz, MaxPublishRateHz);

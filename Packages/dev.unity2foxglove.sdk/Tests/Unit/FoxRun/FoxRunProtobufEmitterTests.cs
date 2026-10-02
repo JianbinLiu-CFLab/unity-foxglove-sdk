@@ -63,6 +63,63 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void StreamInputDecodeFailuresReturnAdmissionCredit()
+        {
+            var member = new FoxgloveSourceEmitter.TopicMember(
+                "_count",
+                "System.Int32",
+                "/phase175/stream-input",
+                10f,
+                "Demo.Count",
+                (int)FoxRunPolicy.FixedRate,
+                0f,
+                mode: (int)FoxRunFlow.Subscribe,
+                encoding: "protobuf",
+                typeShape: FoxRunTypeShape.Canonical("int32"),
+                isStream: true);
+
+            var source = FoxgloveSourceEmitter.EmitClass("Demo", "StreamInput", new[] { member });
+
+            Assert.Contains("CancelAdmissionCredit()", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PartialSchemaNameDeclarationsAreRejectedByEmitterSafetyNet()
+        {
+            var members = new[]
+            {
+                new FoxgloveSourceEmitter.TopicMember(
+                    "_count",
+                    "System.Int32",
+                    "/phase175/partial_schema",
+                    10f,
+                    "Demo.Count",
+                    (int)FoxRunPolicy.FixedRate,
+                    0f,
+                    encoding: "protobuf",
+                    typeShape: FoxRunTypeShape.Canonical("int32")),
+                new FoxgloveSourceEmitter.TopicMember(
+                    "_enabled",
+                    "System.Boolean",
+                    "/phase175/partial_schema",
+                    10f,
+                    "",
+                    (int)FoxRunPolicy.FixedRate,
+                    0f,
+                    encoding: "protobuf",
+                    typeShape: FoxRunTypeShape.Canonical("bool"))
+            };
+
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                FoxgloveSourceEmitter.EmitClass(
+                    "Demo",
+                    "PartialSchemaTelemetry",
+                    members));
+
+            Assert.Contains("share one schema", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void InheritedTopicWithoutSchemaPublishesUsingItsDescriptorSchemaName()
         {
             var member = new FoxgloveSourceEmitter.TopicMember(

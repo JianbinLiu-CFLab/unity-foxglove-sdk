@@ -57,6 +57,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void EstablishedIdleTimeoutHasABoundedDefault()
+        {
+            Assert.Equal(
+                ManagedWebSocketOptions.DefaultEstablishedIdleTimeoutMs,
+                new ManagedWebSocketOptions().EstablishedIdleTimeoutMs);
+            Assert.Equal(
+                ManagedWebSocketOptions.DefaultEstablishedIdleTimeoutMs,
+                ManagedWebSocketOptions.NormalizeEstablishedIdleTimeoutMs(0));
+            Assert.Equal(
+                125,
+                ManagedWebSocketOptions.NormalizeEstablishedIdleTimeoutMs(125));
+        }
+
+        [Fact]
         public void DeclaredOversizedFrameIsRejectedBeforePayloadRead()
         {
             var bytes = new byte[2 + 8 + 4];
@@ -104,7 +118,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void OversizedDataDropsStaleDataWithoutDisconnecting()
+        public void OversizedDataPreservesExistingQueueWithoutDisconnecting()
         {
             var queue = new WsSendQueue(4, 8);
             var first = queue.Enqueue(new QueuedFrame(2, new byte[] { 1, 2 }, FramePriority.Data));
@@ -112,9 +126,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.True(first.Accepted);
             Assert.False(oversized.Accepted);
             Assert.False(oversized.ShouldDisconnect);
-            Assert.Equal(0, queue.GetSnapshot().QueuedDataFrames);
-            Assert.Equal(0, queue.QueuedBytes);
-            Assert.Equal(2, oversized.DroppedDataFrames);
+            Assert.Equal(1, queue.GetSnapshot().QueuedDataFrames);
+            Assert.Equal(2, queue.QueuedBytes);
+            Assert.Equal(1, oversized.DroppedDataFrames);
         }
 
         [Fact]
@@ -179,6 +193,116 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Equal(id, await disconnected.Task.WaitAsync(timeout.Token));
         }
 
+        [Fact]
+        public async Task BroadcastDoesNotPrecedeServerInfoDuringClientPublication()
+        {
+            using var backend = new ManagedWsBackend();
+            var callbackStarted = new TaskCompletionSource<uint>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseCallback = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            backend.OnClientConnected += id =>
+            {
+                callbackStarted.TrySetResult(id);
+                releaseCallback.Task.GetAwaiter().GetResult();
+                backend.SendText(id, "{\"op\":\"serverInfo\"}");
+            };
+
+            backend.Start("127.0.0.1", 0);
+            var listener = (TcpListener)typeof(ManagedWsBackend).GetField("_listener", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(backend);
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            using var client = new ClientWebSocket();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            client.Options.AddSubProtocol("foxglove.websocket.v1");
+            await client.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), timeout.Token);
+            await callbackStarted.Task.WaitAsync(timeout.Token);
+
+            var firstFrameTask = ReceiveMessageAsync(client, timeout.Token);
+            backend.BroadcastDataBinary(new byte[] { 0x01 });
+            backend.BroadcastText("{\"op\":\"advertise\",\"topic\":\"/during-publication\"}");
+            await Task.WhenAny(firstFrameTask, Task.Delay(1000));
+            var prePublicationFrame = firstFrameTask.Status == TaskStatus.RanToCompletion;
+
+            releaseCallback.TrySetResult(true);
+            var firstFrame = await firstFrameTask.WaitAsync(timeout.Token);
+            Assert.False(prePublicationFrame);
+            Assert.Equal(WebSocketMessageType.Text, firstFrame.Type);
+            Assert.Contains("\"op\":\"serverInfo\"", Encoding.UTF8.GetString(firstFrame.Payload), StringComparison.Ordinal);
+            var controlFrame = await ReceiveMessageAsync(client, timeout.Token);
+            Assert.Equal(WebSocketMessageType.Text, controlFrame.Type);
+            Assert.Contains("/during-publication", Encoding.UTF8.GetString(controlFrame.Payload), StringComparison.Ordinal);
+            client.Abort();
+        }
+
+        [Fact]
+        public async Task PublicationControlOverflowDisconnectsTheClient()
+        {
+            using var backend = new ManagedWsBackend(new ManagedWebSocketOptions
+            {
+                MaxQueuedFramesPerClient = 1,
+                MaxQueuedBytesPerClient = 1024
+            });
+            var callbackStarted = new TaskCompletionSource<uint>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseCallback = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var disconnected = new TaskCompletionSource<uint>(TaskCreationOptions.RunContinuationsAsynchronously);
+            backend.OnClientConnected += id =>
+            {
+                callbackStarted.TrySetResult(id);
+                releaseCallback.Task.GetAwaiter().GetResult();
+            };
+            backend.OnClientDisconnected += id => disconnected.TrySetResult(id);
+
+            backend.Start("127.0.0.1", 0);
+            var listener = (TcpListener)typeof(ManagedWsBackend).GetField("_listener", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(backend);
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            using var client = new ClientWebSocket();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            client.Options.AddSubProtocol("foxglove.websocket.v1");
+            await client.ConnectAsync(new Uri($"ws://127.0.0.1:{port}/"), timeout.Token);
+            var clientId = await callbackStarted.Task.WaitAsync(timeout.Token);
+
+            backend.BroadcastText("{\"op\":\"advertise\",\"topic\":\"/first\"}");
+            backend.BroadcastText("{\"op\":\"advertise\",\"topic\":\"/overflow\"}");
+            backend.BroadcastText("{\"op\":\"advertise\",\"topic\":\"/overflow-again\"}");
+            releaseCallback.TrySetResult(true);
+
+            Assert.Equal(clientId, await disconnected.Task.WaitAsync(timeout.Token));
+            Assert.Equal(1, backend.GetStatsSnapshot().ControlOverflowDisconnects);
+        }
+
+        [Fact]
+        public void DisposeCompletesPendingCloseWait()
+        {
+            using var stream = new ProbeStream(Array.Empty<byte>());
+            using var connection = new WsConnection(null, stream, 8, 1024);
+            connection.Dispose();
+            Assert.False(connection.WaitForCloseReceived(TimeSpan.Zero));
+        }
+
+        [Fact]
+        public void PeerCloseCompletesCloseWaitSuccessfully()
+        {
+            using var stream = new ProbeStream(Array.Empty<byte>());
+            using var connection = new WsConnection(null, stream, 8, 1024);
+            connection.MarkCloseReceived();
+            Assert.True(connection.WaitForCloseReceived(TimeSpan.Zero));
+        }
+
+        private static async Task<(WebSocketMessageType Type, byte[] Payload)> ReceiveMessageAsync(
+            ClientWebSocket client,
+            CancellationToken cancellationToken)
+        {
+            var buffer = new byte[1024];
+            using var payload = new MemoryStream();
+            WebSocketReceiveResult result;
+            do
+            {
+                result = await client.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+                payload.Write(buffer, 0, result.Count);
+            }
+            while (!result.EndOfMessage);
+
+            return (result.MessageType, payload.ToArray());
+        }
+
         private static string HandshakeRequest(string target = "/", string extraHeaders = "") =>
             $"GET {target} HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n" +
             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n" +
@@ -226,4 +350,3 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
     }
 }
-

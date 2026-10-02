@@ -10,8 +10,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Util;
 using ZstdSharp;
 
@@ -39,6 +42,8 @@ namespace Unity.FoxgloveSDK.IO
         private readonly List<ChannelWriteState> _allChannelWriteStates = new();
         private readonly Dictionary<ushort, ulong> _messageIndexOffsetsScratch = new();
         private readonly List<SchemaRecordState> _schemas = new();
+        private readonly HashSet<ushort> _outputSchemaIds = new();
+        private readonly List<SdkWireSchemaComponentIdentity> _recordedComponentContracts = new();
         private readonly List<ChannelRecordState> _channels = new();
         private readonly List<ChunkIndexState> _chunkIdx = new();
         private readonly List<MetadataIndexState> _metaIdx = new();
@@ -237,6 +242,7 @@ namespace Unity.FoxgloveSDK.IO
                     return;
                 }
                 var sid = GetOrCreateSchema(sName, sEnc, sContent);
+                if (sid != 0) _outputSchemaIds.Add(sid);
                 if (_recordingFailed) return;
                 ushort mCid;
                 if (explicitMcapChannelId.HasValue)
@@ -494,6 +500,82 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
+        private void RecordComponentContract(
+            string topic,
+            string encoding,
+            string logicalSchema,
+            string shapeIdentity)
+        {
+            if (string.IsNullOrEmpty(topic)
+                || !string.Equals(encoding, "msgpack", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrEmpty(logicalSchema)
+                || string.IsNullOrEmpty(shapeIdentity))
+                return;
+
+            lock (_lock)
+            {
+                if (_recordingFailed || _closed) return;
+                foreach (var existing in _recordedComponentContracts)
+                {
+                    if (string.Equals(existing.Topic, topic, StringComparison.Ordinal)
+                        && string.Equals(existing.Encoding, encoding, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(existing.LogicalSchema, logicalSchema, StringComparison.Ordinal)
+                        && string.Equals(existing.ShapeIdentity, shapeIdentity, StringComparison.Ordinal))
+                        return;
+                }
+
+                _recordedComponentContracts.Add(new SdkWireSchemaComponentIdentity
+                {
+                    Topic = topic,
+                    Encoding = encoding,
+                    LogicalSchema = logicalSchema,
+                    ShapeIdentity = shapeIdentity
+                });
+            }
+        }
+
+        internal IReadOnlyList<SdkWireSchemaComponentIdentity> GetRecordedComponentContractSnapshot()
+        {
+            lock (_lock)
+            {
+                return _recordedComponentContracts
+                    .Select(component => new SdkWireSchemaComponentIdentity
+                    {
+                        Topic = component.Topic,
+                        Encoding = component.Encoding,
+                        LogicalSchema = component.LogicalSchema,
+                        ShapeIdentity = component.ShapeIdentity
+                    })
+                    .ToList();
+            }
+        }
+
+        internal IReadOnlyList<SchemaEntry> GetRecordedSchemaSnapshot()
+        {
+            lock (_lock)
+            {
+                var snapshot = new List<SchemaEntry>(_schemas.Count);
+                foreach (var schema in _schemas)
+                {
+                    if (!_outputSchemaIds.Contains(schema.Id))
+                        continue;
+                    snapshot.Add(new SchemaEntry
+                    {
+                        Name = schema.Name,
+                        Encoding = schema.Encoding,
+                        Content = schema.Encoding == "protobuf"
+                            ? Convert.ToBase64String(schema.Data ?? Array.Empty<byte>())
+                            : System.Text.Encoding.UTF8.GetString(schema.Data ?? Array.Empty<byte>()),
+                        RawContent = schema.Encoding == "protobuf" && schema.Data != null
+                            ? (byte[])schema.Data.Clone()
+                            : null
+                    });
+                }
+
+                return snapshot;
+            }
+        }
+
         /// <summary>
         /// Write an attachment outside chunks. Flushes the active chunk first.
         /// Safe no-op if recording failed or already closed.
@@ -524,11 +606,23 @@ namespace Unity.FoxgloveSDK.IO
         /// Write a server-side message by Foxglove channel ID to the current chunk.
         /// </summary>
         public void WriteMessage(uint fId, ulong logNs, byte[] payload)
+            => WriteMessage(fId, logNs, payload, string.Empty, string.Empty, string.Empty);
+
+        internal void WriteMessage(
+            uint fId,
+            ulong logNs,
+            byte[] payload,
+            string encoding,
+            string logicalSchema,
+            string shapeIdentity)
         {
             lock (_lock)
             {
                 if (_recordingFailed || _closed || !_serverChannelWriteStates.TryGetValue(fId, out var map)) return;
+                var previousCount = map.MsgCount;
                 WriteMessageToChannelWriteState(map, logNs, payload);
+                if (map.MsgCount > previousCount)
+                    RecordComponentContract(map.Topic, encoding, logicalSchema, shapeIdentity);
             }
         }
 

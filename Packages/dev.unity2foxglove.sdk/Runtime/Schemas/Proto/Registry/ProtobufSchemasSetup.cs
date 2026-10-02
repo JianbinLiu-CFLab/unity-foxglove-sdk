@@ -35,8 +35,8 @@ namespace Foxglove.Schemas
 
         /// <summary>
         /// Register all bundled official Foxglove protobuf schemas into the given registry.
-        /// Re-registering is safe because schema registries overwrite existing
-        /// entries for the same schema name and encoding.
+        /// Re-registering an identical schema is idempotent; conflicting content
+        /// for an existing schema name and encoding is rejected by the registry.
         /// </summary>
         public static void RegisterSchemas(ISchemaRegistry schemaRegistry)
         {

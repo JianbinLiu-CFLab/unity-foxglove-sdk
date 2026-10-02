@@ -109,8 +109,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(queue.Count == 2 && queue.DroppedCount == 1,
                 "163-18D-1: IMU queue reports overwritten oldest samples");
             queue.Resize(3, minCapacity: 2);
-            Check(queue.DroppedCount == 0,
-                "163-18D-2: IMU queue drop counter resets on capacity changes");
+            Check(queue.DroppedCount == 1,
+                "163-18D-2: IMU queue drop counter remains cumulative across capacity changes");
         }
 
         private static void ImuSubStepTimestampsRoundFractionalNanoseconds()
@@ -178,9 +178,10 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
             var schedule = ExtractMethod(source, "public void SchedulePendingScan");
 
-            Check(schedule.Contains("batchCount + rays.Length > scanBuffers.EffectiveRayCount", StringComparison.Ordinal)
-                  && CheckOrdered(schedule, "batchCount + rays.Length > scanBuffers.EffectiveRayCount", "scanColumnCursor++;"),
-                "163-18H-1: VirtualLidar scheduler stops before consuming a partial column at the batch cap");
+            Check(schedule.Contains("var commandBudget = Math.Max(1, maxRaycastCommandsPerFixedUpdate);", StringComparison.Ordinal)
+                  && schedule.Contains("batchCount < commandBudget", StringComparison.Ordinal)
+                  && schedule.Contains("scanColumnCursor++;", StringComparison.Ordinal),
+                "163-18H-1: VirtualLidar scheduler caps commands without advancing a partial column");
             Check(source.Contains("profileInvalidation: true", StringComparison.Ordinal)
                   && source.Contains("timingOverrun={8} profileInvalidation={9}", StringComparison.Ordinal),
                 "163-18H-2: VirtualLidar scheduler reports profile invalidations separately from timing overruns");
@@ -190,19 +191,12 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var fixedUpdate = ExtractMethod(source, "private void FixedUpdate");
-            var applyOverride = ExtractMethod(source, "private void ApplyGlobalPhysicsRateOverride");
-            var restore = ExtractMethod(source, "private void RestoreFixedDeltaTime");
             var update = ExtractMethod(source, "private void Update");
 
-            Check(source.Contains("private static int _fixedDeltaOverrideTargetHz;", StringComparison.Ordinal)
-                  && source.Contains("private static bool _warnedFixedDeltaOverrideConflict;", StringComparison.Ordinal),
-                "163-18I-1: VirtualImu stores the active fixed-delta override target");
-            Check(applyOverride.Contains("ignoring conflicting request", StringComparison.Ordinal)
-                  && applyOverride.Contains("_fixedDeltaOverrideTargetHz", StringComparison.Ordinal),
-                "163-18I-2: VirtualImu warns and keeps the first active physics-rate override");
-            Check(restore.Contains("_fixedDeltaOverrideTarget = 0f;", StringComparison.Ordinal)
-                  && restore.Contains("_warnedFixedDeltaOverrideConflict = false;", StringComparison.Ordinal),
-                "163-18I-3: VirtualImu clears override-conflict state when the last user exits");
+            Check(source.Contains("NormalizeRateHz(_globalPhysicsRateHzOverride)", StringComparison.Ordinal)
+                  && !source.Contains("_fixedDeltaOverrideTargetHz", StringComparison.Ordinal)
+                  && !source.Contains("Time.fixedDeltaTime =", StringComparison.Ordinal),
+                "163-18I-1: VirtualImu treats the configured rate as local sampling state without global conflict ownership");
             Check(fixedUpdate.Contains("initializedEpochThisTick", StringComparison.Ordinal)
                   && fixedUpdate.Contains("initializedEpochThisTick ? linearBody : _lastBodyAcceleration", StringComparison.Ordinal),
                 "163-18I-4: VirtualImu first sub-step starts from the current tick sample instead of zero");

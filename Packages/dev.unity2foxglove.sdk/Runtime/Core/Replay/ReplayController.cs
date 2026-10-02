@@ -8,10 +8,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
@@ -69,7 +71,11 @@ namespace Unity.FoxgloveSDK.Core
         private readonly object _replayEngineLock = new();
         private readonly IFoxgloveLogger _logger;
         private readonly BoundedEventQueue<ReplayCallbackDispatch> _pendingReplayCallbacks =
-            new(MaxPendingReplayCallbacks, MaxPendingReplayCallbackPayloadBytes, MeasureReplayCallbackPayloadBytes);
+            new(
+                MaxPendingReplayCallbacks,
+                MaxPendingReplayCallbackPayloadBytes,
+                MeasureReplayCallbackPayloadBytes,
+                MeasureReplayCallbackMessageCount);
         private readonly List<ReplayCallbackDispatch> _drainBuffer = new();
         private readonly object _replayCallbackDrainGate = new();
         private long _lastReplayCallbackOverflowWarningTicks;
@@ -197,11 +203,25 @@ namespace Unity.FoxgloveSDK.Core
         /// playback diagnostics. Uses the supplied recording state reader for
         /// mutual-exclusion checks and the clock for playback range control.
         /// </summary>
-        public ReplayController(IFoxgloveLogger logger, IRecordingStateReader recordingState, IRangePlaybackClock clock)
+        public ReplayController(
+            IFoxgloveLogger logger,
+            IRecordingStateReader recordingState,
+            IRangePlaybackClock clock)
+            : this(logger, recordingState, clock, null) { }
+
+        /// <summary>
+        /// Creates a replay controller with an optional SDK schema registry.
+        /// </summary>
+        public ReplayController(
+            IFoxgloveLogger logger,
+            IRecordingStateReader recordingState,
+            IRangePlaybackClock clock,
+            ISchemaRegistry schemaRegistry)
         {
             _logger = logger;
             _recordingState = recordingState;
             _clock = clock;
+            _schemaRegistry = schemaRegistry;
         }
 
         /// <summary>
@@ -209,10 +229,11 @@ namespace Unity.FoxgloveSDK.Core
         /// playback diagnostics.
         /// </summary>
         [Obsolete("Use ReplayController(IFoxgloveLogger, IRecordingStateReader, IRangePlaybackClock) instead.")]
-        public ReplayController(IFoxgloveLogger logger) : this(logger, null, null) { }
+        public ReplayController(IFoxgloveLogger logger) : this(logger, null, null, null) { }
 
         private readonly IRecordingStateReader _recordingState;
         private readonly IRangePlaybackClock _clock;
+        private readonly ISchemaRegistry _schemaRegistry;
 
         /// <summary>Register replay channels on the session with replay ID prefix.</summary>
         public void RegisterChannels(FoxgloveSession session)
@@ -310,21 +331,7 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     var messages = _replayEngine.Tick(timeNs, _replayTickBuffer);
                     if (messages == null || messages.Count == 0) return;
-                    var expectedSceneCallbacks = 0;
-                    var queuedSceneCallbacks = 0;
-                    foreach (var msg in messages)
-                        if (TryGetReplayTopic(msg.ChannelId, out _))
-                        {
-                            expectedSceneCallbacks++;
-                            if (ForwardReplayMessageToScene(msg))
-                                queuedSceneCallbacks++;
-                        }
-                    FireReplayBatchCompleted(
-                        messages,
-                        messages[messages.Count - 1].LogTime,
-                        "ExternalCursor",
-                        expectedSceneCallbacks,
-                        queuedSceneCallbacks);
+                    QueueReplaySceneBatch(messages, messages[messages.Count - 1].LogTime, "ExternalCursor");
                 }
                 finally
                 {
@@ -341,7 +348,7 @@ namespace Unity.FoxgloveSDK.Core
         /// Foxglove panels can rebuild time-series views after a paused seek.
         /// The scene uses a separate latest-state snapshot path.
         /// </summary>
-        public void PublishSnapshot(FoxgloveSession session, ulong timeNs)
+        public void PublishSnapshot(FoxgloveSession session, ulong timeNs, uint? targetClientId = null)
         {
             lock (_replayEngineLock)
             {
@@ -352,21 +359,64 @@ namespace Unity.FoxgloveSDK.Core
 
                 lock (_panelHistoryLock)
                 {
-                    var fromNs = _panelHistory.GetHistoryFromTime(startNs, clampedTo, ScrubHistoryWindowNs);
-                    var subscribed = session.SnapshotSubscribedChannelIds();
-                    var replayChannels = new HashSet<ushort>();
-                    foreach (var channelId in subscribed)
+                    var subscribedClients = new HashSet<uint>();
+                    if (targetClientId.HasValue)
+                        subscribedClients.Add(targetClientId.Value);
+                    else
+                        subscribedClients = session.SnapshotSubscribedClientIds();
+
+                    if (subscribedClients.Count == 0)
                     {
-                        if ((channelId & (uint)McapReplayEngine.ReplayChannelIdBase) != 0)
-                            replayChannels.Add((ushort)(channelId & 0xFFFF));
+                        _panelHistory.CancelDrain();
                     }
-                    _replayEngine.History(
-                        fromNs,
-                        clampedTo,
-                        _panelHistory.Buffer,
-                        ScrubHistoryMaxMessagesPerRequest,
-                        replayChannels);
-                    _panelHistory.BeginDrain(clampedTo);
+                    else
+                    {
+                        var clientBuffers = new Dictionary<uint, List<McapMessage>>();
+                        var historyQueryCache = new Dictionary<HistoryQueryKey, List<McapMessage>>();
+                        foreach (var clientId in subscribedClients)
+                        {
+                            var clientChannels = session.SnapshotSubscribedChannelIds(clientId);
+                            var replayChannels = new HashSet<ushort>();
+                            foreach (var channelId in clientChannels)
+                            {
+                                if ((channelId & (uint)McapReplayEngine.ReplayChannelIdBase) != 0)
+                                    replayChannels.Add((ushort)(channelId & 0xFFFF));
+                            }
+
+                            if (replayChannels.Count == 0)
+                            {
+                                clientBuffers[clientId] = new List<McapMessage>();
+                                continue;
+                            }
+
+                            var clientFromNs = _panelHistory.GetHistoryFromTime(
+                                clientId,
+                                startNs,
+                                clampedTo,
+                                ScrubHistoryWindowNs);
+                            var queryKey = new HistoryQueryKey(
+                                clientFromNs,
+                                clampedTo,
+                                BuildHistoryChannelKey(replayChannels));
+                            if (!historyQueryCache.TryGetValue(queryKey, out var clientBuffer))
+                            {
+                                clientBuffer = new List<McapMessage>();
+                                _replayEngine.History(
+                                    clientFromNs,
+                                    clampedTo,
+                                    clientBuffer,
+                                    ScrubHistoryMaxMessagesPerRequest,
+                                    replayChannels);
+                                historyQueryCache.Add(queryKey, clientBuffer);
+                            }
+                            clientBuffers[clientId] = clientBuffer;
+                        }
+
+                        _panelHistory.BeginClientDrains(
+                            clampedTo,
+                            clientBuffers,
+                            replaceExisting: !targetClientId.HasValue);
+                    }
                 }
             }
 
@@ -381,7 +431,7 @@ namespace Unity.FoxgloveSDK.Core
         public void DrainPanelHistory(FoxgloveSession session)
         {
             lock (_panelHistoryLock)
-                DrainPanelHistoryLocked(session);
+                DrainPanelHistoryClientsLocked(session);
         }
 
         /// <summary>
@@ -394,6 +444,13 @@ namespace Unity.FoxgloveSDK.Core
                 _panelHistory.CancelDrain();
         }
 
+        /// <summary>Cancel history for one client without disturbing other clients.</summary>
+        public void CancelPanelHistory(uint clientId)
+        {
+            lock (_panelHistoryLock)
+                _panelHistory.CancelDrain(clientId);
+        }
+
         /// <summary>
         /// Clears panel-history progress and debounce state after replay stops or
         /// the active replay source changes.
@@ -404,9 +461,16 @@ namespace Unity.FoxgloveSDK.Core
                 _panelHistory.ResetDebounce();
         }
 
-        private void DrainPanelHistoryLocked(FoxgloveSession session)
+        /// <summary>Reset history progress for one client.</summary>
+        public void ResetPanelHistoryProgress(uint clientId)
         {
-            _panelHistory.DrainLocked(
+            lock (_panelHistoryLock)
+                _panelHistory.ResetDebounce(clientId);
+        }
+
+        private void DrainPanelHistoryClientsLocked(FoxgloveSession session)
+        {
+            _panelHistory.DrainClientsLocked(
                 session,
                 _channelTopicMap,
                 _logger,
@@ -434,17 +498,7 @@ namespace Unity.FoxgloveSDK.Core
                 if (!Volatile.Read(ref _replayEnabled) || _replayEngine == null) return;
                 var messages = _replayEngine.Snapshot(timeNs, _replaySnapshotBuffer);
                 if (messages == null) return;
-                var queuedSceneCallbacks = 0;
-                foreach (var msg in messages)
-                    if (ForwardReplayMessageToScene(msg))
-                        queuedSceneCallbacks++;
-
-                FireReplayBatchCompleted(
-                    messages,
-                    timeNs,
-                    "Snapshot",
-                    messages.Count,
-                    queuedSceneCallbacks);
+                QueueReplaySceneBatch(messages, timeNs, "Snapshot");
             }
 
             if (!deferCallbacks)
@@ -463,8 +517,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             ulong latestLogTime = 0;
-            var expectedSceneCallbacks = 0;
-            var queuedSceneCallbacks = 0;
+            var sceneContexts = forwardToScene ? new List<ReplayMessageContext>() : null;
             if (messages != null)
             {
                 foreach (var msg in messages)
@@ -475,20 +528,11 @@ namespace Unity.FoxgloveSDK.Core
                     if (msg.LogTime > latestLogTime) latestLogTime = msg.LogTime;
 
                     if (forwardToScene && topic != null)
-                    {
-                        expectedSceneCallbacks++;
-                        if (ForwardReplayMessageToScene(msg))
-                            queuedSceneCallbacks++;
-                    }
+                        sceneContexts.Add(CreateReplayMessageContext(msg));
                 }
 
                 if (forwardToScene)
-                    FireReplayBatchCompleted(
-                        messages,
-                        latestLogTime,
-                        source,
-                        expectedSceneCallbacks,
-                        queuedSceneCallbacks);
+                    QueueReplaySceneBatch(sceneContexts, latestLogTime, source);
             }
 
             if (!broadcastTimeNs.HasValue && latestLogTime > 0)
@@ -499,10 +543,46 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        private bool ForwardReplayMessageToScene(McapMessage message)
+        private void QueueReplaySceneBatch(
+            IReadOnlyList<McapMessage> messages,
+            ulong batchLogTimeNs,
+            string source)
         {
-            var context = CreateReplayMessageContext(message);
-            return TryQueueReplayCallback(ReplayCallbackDispatch.ForMessage(context));
+            if (messages == null)
+                return;
+
+            var contexts = new List<ReplayMessageContext>(messages.Count);
+            foreach (var message in messages)
+            {
+                if (TryGetReplayTopic(message.ChannelId, out _))
+                    contexts.Add(CreateReplayMessageContext(message));
+            }
+
+            QueueReplaySceneBatch(contexts, batchLogTimeNs, source);
+        }
+
+        private void QueueReplaySceneBatch(
+            IReadOnlyList<ReplayMessageContext> contexts,
+            ulong batchLogTimeNs,
+            string source)
+        {
+            if (contexts == null || contexts.Count == 0)
+                return;
+
+            var batch = new ReplayBatchContext(
+                batchLogTimeNs,
+                _replayEngine?.StartTimeNs ?? 0UL,
+                contexts.Count,
+                source,
+                replaySessionId: _replaySessionId);
+            if (!TryQueueReplayCallback(ReplayCallbackDispatch.ForMessageBatch(contexts, batch)))
+            {
+                _logger?.LogWarning(
+                    "Skipped replay scene message batch because callback admission was incomplete. expected="
+                    + contexts.Count
+                    + " source="
+                    + source);
+            }
         }
 
         private bool TryGetReplayTopic(ushort channelId, out string topic)
@@ -518,36 +598,6 @@ namespace Unity.FoxgloveSDK.Core
 
             topic = null;
             return false;
-        }
-
-        private void FireReplayBatchCompleted(
-            IReadOnlyList<McapMessage> messages,
-            ulong batchLogTimeNs,
-            string source,
-            int expectedMessageCount,
-            int queuedMessageCount)
-        {
-            if (messages == null || expectedMessageCount <= 0)
-                return;
-
-            if (queuedMessageCount != expectedMessageCount)
-            {
-                _logger?.LogWarning(
-                    "Skipped replay batch completion because scene callback admission was incomplete. expected="
-                    + expectedMessageCount
-                    + " queued="
-                    + queuedMessageCount
-                    + " source="
-                    + source);
-                return;
-            }
-
-            TryQueueReplayCallback(ReplayCallbackDispatch.ForBatch(new ReplayBatchContext(
-                batchLogTimeNs,
-                _replayEngine?.StartTimeNs ?? 0UL,
-                expectedMessageCount,
-                source,
-                replaySessionId: _replaySessionId)));
         }
 
         /// <summary>
@@ -587,6 +637,33 @@ namespace Unity.FoxgloveSDK.Core
                         if (callback.IsBatch)
                         {
                             InvokeReplayBatchCompleted(callback.BatchContext.Value, callback.Generation);
+                            continue;
+                        }
+
+                        if (callback.MessageBatch != null)
+                        {
+                            var delivered = true;
+                            for (var messageIndex = 0; messageIndex < callback.MessageBatch.Count; messageIndex++)
+                            {
+                                if (!IsReplayCallbackCurrent(callback.Generation))
+                                {
+                                    delivered = false;
+                                    break;
+                                }
+
+                                var messageContext = callback.MessageBatch[messageIndex];
+                                InvokeReplayMessageContext(messageContext, callback.Generation);
+                                if (IsReplayCallbackCurrent(callback.Generation))
+                                    InvokeReplayMessage(messageContext.Topic, messageContext.Payload, callback.Generation);
+                                else
+                                {
+                                    delivered = false;
+                                    break;
+                                }
+                            }
+
+                            if (delivered && IsReplayCallbackCurrent(callback.Generation))
+                                InvokeReplayBatchCompleted(callback.BatchContext.Value, callback.Generation);
                             continue;
                         }
 
@@ -639,6 +716,8 @@ namespace Unity.FoxgloveSDK.Core
                 + " rejectedPayloadBytes="
                 + overflow.RejectedBytes
                 + " droppedCallbacks="
+                + overflow.DroppedFrames
+                + " droppedBatches="
                 + overflow.DroppedCount
                 + " droppedPayloadBytes="
                 + overflow.DroppedBytes
@@ -651,10 +730,80 @@ namespace Unity.FoxgloveSDK.Core
 
         private static int MeasureReplayCallbackPayloadBytes(ReplayCallbackDispatch dispatch)
         {
-            if (dispatch.IsBatch || !dispatch.MessageContext.HasValue)
+            if (dispatch.IsBatch)
+                return 0;
+
+            if (dispatch.MessageBatch != null)
+            {
+                long total = 0;
+                foreach (var context in dispatch.MessageBatch)
+                    total += context.Payload?.Length ?? 0;
+                return total > int.MaxValue ? int.MaxValue : (int)total;
+            }
+
+            if (!dispatch.MessageContext.HasValue)
                 return 0;
 
             return dispatch.MessageContext.Value.Payload?.Length ?? 0;
+        }
+
+        private static int MeasureReplayCallbackMessageCount(ReplayCallbackDispatch dispatch)
+        {
+            if (dispatch.MessageBatch != null)
+                return Math.Max(1, dispatch.MessageBatch.Count);
+
+            return dispatch.MessageContext.HasValue || dispatch.IsBatch ? 1 : 0;
+        }
+
+        private static string BuildHistoryChannelKey(ISet<ushort> channelIds)
+        {
+            if (channelIds == null || channelIds.Count == 0)
+                return string.Empty;
+
+            var sorted = new List<ushort>(channelIds);
+            sorted.Sort();
+            var builder = new StringBuilder(sorted.Count * 6);
+            for (var i = 0; i < sorted.Count; i++)
+            {
+                if (i > 0)
+                    builder.Append(',');
+                builder.Append(sorted[i]);
+            }
+
+            return builder.ToString();
+        }
+
+        private readonly struct HistoryQueryKey : IEquatable<HistoryQueryKey>
+        {
+            public HistoryQueryKey(ulong fromNs, ulong toNs, string channelKey)
+            {
+                FromNs = fromNs;
+                ToNs = toNs;
+                ChannelKey = channelKey ?? string.Empty;
+            }
+
+            private ulong FromNs { get; }
+            private ulong ToNs { get; }
+            private string ChannelKey { get; }
+
+            public bool Equals(HistoryQueryKey other)
+                => FromNs == other.FromNs
+                   && ToNs == other.ToNs
+                   && string.Equals(ChannelKey, other.ChannelKey, StringComparison.Ordinal);
+
+            public override bool Equals(object obj)
+                => obj is HistoryQueryKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = FromNs.GetHashCode();
+                    hash = (hash * 397) ^ ToNs.GetHashCode();
+                    hash = (hash * 397) ^ StringComparer.Ordinal.GetHashCode(ChannelKey);
+                    return hash;
+                }
+            }
         }
 
         private bool IsReplayCallbackCurrent(long generation)

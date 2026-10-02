@@ -40,6 +40,8 @@ ALLOWED_ARTIFACTS = frozenset((*APPROVED_ARTIFACTS, PDB_ARTIFACT))
 TARGET_TRIPLE = "x86_64-pc-windows-msvc"
 NATIVE_LOCK_WAIT_SECONDS = 30.0
 EXPECTED_FOXGLOVE_COMMIT = "b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba"
+EXPECTED_FOXGLOVE_HEADER_SHA256 = "2de697436f8d561ed37dfda9bb5933ed98be88e43bbbcf51aa8ac68425a2690d"
+EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256 = "e3780e30521aadc30035464aabf7d2206c572fea6559155f7e3c6ded33816bc4"
 FOXGLOVE_ROOT = CRATE.parent
 FOXGLOVE_HEADER = CRATE / "include" / "foxglove-c" / "foxglove-c.h"
 
@@ -96,6 +98,23 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest().upper()
+
+
+def sha256_pinned_source(path: Path) -> str:
+    """Compute a digest from the pinned Git blob, not checkout newline conversion."""
+    relative = path.resolve().relative_to(FOXGLOVE_ROOT.resolve()).as_posix()
+    completed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(FOXGLOVE_ROOT),
+            "show",
+            f"{EXPECTED_FOXGLOVE_COMMIT}:{relative}",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return hashlib.sha256(completed.stdout).hexdigest().upper()
 
 
 def foxglove_source_revision() -> str:
@@ -234,8 +253,8 @@ def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[
         "target": env.get("CARGO_BUILD_TARGET", TARGET_TRIPLE),
         "source": "third-party/foxglove-sdk/c",
         "sourceCommit": source_commit,
-        "cHeaderSha256": sha256(FOXGLOVE_HEADER),
-        "cargoLockSha256": sha256(cargo_lock),
+        "cHeaderSha256": sha256_pinned_source(FOXGLOVE_HEADER),
+        "cargoLockSha256": sha256_pinned_source(cargo_lock),
         "features": "remote-access",
         "rustflags": env["RUSTFLAGS"],
         "cflags": env["CFLAGS_x86_64_pc_windows_msvc"],

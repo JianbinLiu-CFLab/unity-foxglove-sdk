@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Core
             _services.SweepTimeouts(FoxgloveServiceRegistry.DefaultTimeout);
 
             _pendingServiceCallsScratch.Clear();
-            _services.CopyPendingCallsTo(_pendingServiceCallsScratch);
+            _services.CopyPendingCallsToInternal(_pendingServiceCallsScratch);
             try
             {
                 foreach (var call in _pendingServiceCallsScratch)
@@ -74,7 +74,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             _completedServiceCallsScratch.Clear();
-            _services.DrainCompletedTo(_completedServiceCallsScratch);
+            _services.DrainCompletedToInternal(_completedServiceCallsScratch);
             try
             {
                 foreach (var call in _completedServiceCallsScratch)
@@ -164,14 +164,13 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     error = $"Unknown service: {serviceId}";
                 }
-                else if (_services.TryEnqueue(
+                else if (_services.TryEnqueueInternal(
                     serviceId,
                     callId,
                     clientId,
                     encoding,
                     payload,
                     parsedPayload,
-                    out _,
                     out error))
                 {
                     error = null;

@@ -21,40 +21,53 @@ namespace Unity.FoxgloveSDK.Core
         private readonly object _lock = new();
         private readonly Queue<QueuedItem> _queue = new();
         private readonly Func<T, int> _measureBytes;
+        private readonly Func<T, int> _measureFrames;
         private readonly int _maxFrames;
         private readonly long _maxBytes;
         private readonly bool _hasByteBudget;
+        private int _queuedFrames;
         private long _queuedBytes;
         private long _droppedCount;
+        private long _droppedFrames;
         private long _droppedBytes;
 
-        public BoundedEventQueue(int maxFrames, long maxBytes, Func<T, int> measureBytes)
+        public BoundedEventQueue(
+            int maxFrames,
+            long maxBytes,
+            Func<T, int> measureBytes,
+            Func<T, int> measureFrames = null)
         {
             _maxFrames = Math.Max(1, maxFrames);
             _maxBytes = Math.Max(0, maxBytes);
             _hasByteBudget = maxBytes > 0;
             _measureBytes = measureBytes ?? (_ => 0);
+            _measureFrames = measureFrames ?? (_ => 1);
         }
 
         public bool TryEnqueue(T item, out BoundedEventQueueOverflow overflow)
         {
             var itemBytes = Math.Max(0, _measureBytes(item));
+            var itemFrames = Math.Max(1, _measureFrames(item));
             lock (_lock)
             {
-                if (_queue.Count + 1 > _maxFrames || (_hasByteBudget && _queuedBytes + itemBytes > _maxBytes))
+                if (itemFrames > _maxFrames - _queuedFrames
+                    || (_hasByteBudget && _queuedBytes + itemBytes > _maxBytes))
                 {
                     _droppedCount++;
+                    _droppedFrames += itemFrames;
                     _droppedBytes += itemBytes;
                     overflow = new BoundedEventQueueOverflow(
-                        _queue.Count,
+                        _queuedFrames,
                         _queuedBytes,
                         itemBytes,
                         _droppedCount,
+                        _droppedFrames,
                         _droppedBytes);
                     return false;
                 }
 
-                _queue.Enqueue(new QueuedItem(item, itemBytes));
+                _queue.Enqueue(new QueuedItem(item, itemFrames, itemBytes));
+                _queuedFrames += itemFrames;
                 _queuedBytes += itemBytes;
                 overflow = default;
                 return true;
@@ -73,6 +86,7 @@ namespace Unity.FoxgloveSDK.Core
 
                 var queued = _queue.Dequeue();
                 item = queued.Item;
+                _queuedFrames = Math.Max(0, _queuedFrames - queued.SizeFrames);
                 _queuedBytes = Math.Max(0, _queuedBytes - queued.SizeBytes);
                 return true;
             }
@@ -89,6 +103,7 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     var queued = _queue.Dequeue();
                     destination.Add(queued.Item);
+                    _queuedFrames = Math.Max(0, _queuedFrames - queued.SizeFrames);
                     _queuedBytes = Math.Max(0, _queuedBytes - queued.SizeBytes);
                 }
             }
@@ -99,8 +114,10 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 _queue.Clear();
+                _queuedFrames = 0;
                 _queuedBytes = 0;
                 _droppedCount = 0;
+                _droppedFrames = 0;
                 _droppedBytes = 0;
             }
         }
@@ -132,6 +149,15 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        public long DroppedFrames
+        {
+            get
+            {
+                lock (_lock)
+                    return _droppedFrames;
+            }
+        }
+
         public long DroppedBytes
         {
             get
@@ -143,13 +169,15 @@ namespace Unity.FoxgloveSDK.Core
 
         private readonly struct QueuedItem
         {
-            public QueuedItem(T item, int sizeBytes)
+            public QueuedItem(T item, int sizeFrames, int sizeBytes)
             {
                 Item = item;
+                SizeFrames = sizeFrames;
                 SizeBytes = sizeBytes;
             }
 
             public T Item { get; }
+            public int SizeFrames { get; }
             public int SizeBytes { get; }
         }
     }
@@ -164,12 +192,14 @@ namespace Unity.FoxgloveSDK.Core
             long queuedBytes,
             long rejectedBytes,
             long droppedCount,
+            long droppedFrames,
             long droppedBytes)
         {
             QueuedFrames = queuedFrames;
             QueuedBytes = queuedBytes;
             RejectedBytes = rejectedBytes;
             DroppedCount = droppedCount;
+            DroppedFrames = droppedFrames;
             DroppedBytes = droppedBytes;
         }
 
@@ -177,6 +207,8 @@ namespace Unity.FoxgloveSDK.Core
         public long QueuedBytes { get; }
         public long RejectedBytes { get; }
         public long DroppedCount { get; }
+        /// <summary>Total weighted frames rejected by the queue.</summary>
+        public long DroppedFrames { get; }
         public long DroppedBytes { get; }
     }
 }

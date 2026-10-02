@@ -8,6 +8,8 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Foxglove.Schemas.Video;
 
@@ -94,9 +96,33 @@ namespace Unity.FoxgloveSDK.Editor
                     }
 
                     var stdoutTask = ReadAllBytesAsync(process.StandardOutput.BaseStream);
-                    var stderrTask = process.StandardError.ReadToEndAsync();
+                    var protocolMarker = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    var stderrTask = ReadDiagnosticLinesAsync(process.StandardError, protocolMarker);
+                    var protocolV2 = false;
+                    try
+                    {
+                        // Same window as the runtime sidecar: v2 helpers advertise before
+                        // loading OpenH264, so only a legacy helper waits the full time.
+                        protocolV2 = protocolMarker.Task.Wait(2000) && protocolMarker.Task.Result;
+                    }
+                    catch
+                    {
+                    }
 
                     var frame = CreateBlackI420Frame(options.Width, options.Height);
+                    var length = frame.Length;
+                    if (protocolV2)
+                    {
+                        var protocolHeader = new byte[12];
+                        ulong timestampNs = 1;
+                        for (var i = 0; i < 8; i++)
+                            protocolHeader[i] = (byte)(timestampNs >> (8 * i));
+                        protocolHeader[8] = (byte)length;
+                        protocolHeader[9] = (byte)(length >> 8);
+                        protocolHeader[10] = (byte)(length >> 16);
+                        protocolHeader[11] = (byte)(length >> 24);
+                        process.StandardInput.BaseStream.Write(protocolHeader, 0, protocolHeader.Length);
+                    }
                     process.StandardInput.BaseStream.Write(frame, 0, frame.Length);
                     process.StandardInput.BaseStream.Flush();
                     process.StandardInput.Close();
@@ -113,9 +139,11 @@ namespace Unity.FoxgloveSDK.Editor
 
                     var streamError = WaitForStreamDrain(stdoutTask, stderrTask, 500);
                     var stdout = GetCompletedOutput(stdoutTask, out var stdoutReadError);
-                    var hasAccessUnit = TryValidateLengthPrefixedAccessUnit(stdout, out var stdoutError);
+                    var hasAccessUnit = TryValidateLengthPrefixedAccessUnit(stdout, protocolV2, out var stdoutError);
                     var stderr = GetCompletedOutput(stderrTask, out var stderrError);
                     var diagnostic = LastNonEmptyLine(stderr);
+                    if (!protocolV2 && process.ExitCode == 0)
+                        diagnostic = "OpenH264 helper uses legacy protocol; reinstall or rebuild to enable timestamp protocol 2.";
                     var streamReadError = FirstNonEmpty(streamError, stdoutReadError, stderrError);
                     if (!string.IsNullOrEmpty(streamReadError))
                     {
@@ -172,6 +200,23 @@ namespace Unity.FoxgloveSDK.Editor
                 dllPath,
                 diagnosticLine,
                 errorMessage);
+
+        private static Task<string> ReadDiagnosticLinesAsync(StreamReader reader, TaskCompletionSource<bool> protocolMarker)
+            => Task.Run(async () =>
+            {
+                var builder = new StringBuilder();
+                string line;
+                while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
+                {
+                    if (builder.Length > 0)
+                        builder.AppendLine();
+                    builder.Append(line);
+                    if (string.Equals(line.Trim(), "OPENH264_PROBE_PROTOCOL 2", StringComparison.Ordinal))
+                        protocolMarker.TrySetResult(true);
+                }
+
+                return builder.ToString();
+            });
 
         private static Task<byte[]> ReadAllBytesAsync(Stream stream)
             => Task.Run(() =>
@@ -304,19 +349,22 @@ namespace Unity.FoxgloveSDK.Editor
             return "OpenH264 helper reported stderr during validation:\n" + trimmed;
         }
 
-        private static bool TryValidateLengthPrefixedAccessUnit(byte[] stdout, out string error)
+        private static bool TryValidateLengthPrefixedAccessUnit(byte[] stdout, bool protocolV2, out string error)
         {
             error = "";
-            if (stdout == null || stdout.Length < 4)
+            var headerBytes = protocolV2 ? 12 : 4;
+            if (stdout == null || stdout.Length < headerBytes)
             {
                 error = "OpenH264 helper did not emit a length-prefixed H.264 access unit.";
                 return false;
             }
 
-            var length = stdout[0]
-                | (stdout[1] << 8)
-                | (stdout[2] << 16)
-                | (stdout[3] << 24);
+            var lengthOffset = protocolV2 ? 8 : 0;
+            var length = stdout[lengthOffset]
+                | (stdout[lengthOffset + 1] << 8)
+                | (stdout[lengthOffset + 2] << 16)
+                | (stdout[lengthOffset + 3] << 24);
+
             if (length <= 0)
             {
                 error = "OpenH264 helper emitted a skip sentinel instead of a validation access unit.";
@@ -329,14 +377,14 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
 
-            if (stdout.Length < 4 + length)
+            if (stdout.Length < headerBytes + length)
             {
                 error = "OpenH264 helper stdout ended before the advertised access unit payload.";
                 return false;
             }
 
             var payload = new byte[length];
-            Buffer.BlockCopy(stdout, 4, payload, 0, length);
+            Buffer.BlockCopy(stdout, headerBytes, payload, 0, length);
             if (!H264AnnexBAccessUnitPacketizer.LooksLikeDecodableH264AccessUnit(payload))
             {
                 error = "OpenH264 helper emitted a length-prefixed payload that does not look like a decodable H.264 access unit.";

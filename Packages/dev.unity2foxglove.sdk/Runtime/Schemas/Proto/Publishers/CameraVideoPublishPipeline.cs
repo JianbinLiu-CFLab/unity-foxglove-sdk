@@ -45,6 +45,31 @@ namespace Unity.FoxgloveSDK.Components
         void CopyTo(byte[] destination);
     }
 
+    internal readonly struct CameraVideoArrayFrameBytesSource : ICameraVideoFrameBytesSource
+    {
+        private readonly byte[] _data;
+
+        internal CameraVideoArrayFrameBytesSource(byte[] data) => _data = data;
+        public int Length => _data?.Length ?? 0;
+        public void CopyTo(byte[] destination) => Buffer.BlockCopy(_data, 0, destination, 0, Length);
+    }
+
+    internal interface ICameraVideoFrameSourceSidecar
+    {
+        /// <summary>
+        /// Accepts a struct frame source and performs the single required handoff copy
+        /// on the encoder side, so the caller remains independent of the asynchronous worker.
+        /// </summary>
+        bool TrySubmitFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
+            where TFrameBytes : struct, ICameraVideoFrameBytesSource;
+    }
+
+    internal interface ICameraVideoRgbFrameSourceSidecar
+    {
+        bool TrySubmitRgbFrame<TFrameBytes>(TFrameBytes frame, ulong timestampNs)
+            where TFrameBytes : struct, ICameraVideoFrameBytesSource;
+    }
+
     internal sealed class CameraVideoPublishPipeline : IDisposable
     {
         private readonly CameraPublishDiagnostics _diagnostics;
@@ -65,6 +90,8 @@ namespace Unity.FoxgloveSDK.Components
         public int SidecarHeight => _videoSidecarSession.Height;
         public CameraOutputMode Mode => _videoSidecarSession.Mode;
         public bool IsOpenH264Mode => _videoSidecarSession.IsOpenH264Mode;
+        public bool SupportsFrameSource => _videoSidecarSession.SupportsFrameSource;
+        public bool SupportsRgbFrameSource => _videoSidecarSession.SupportsRgbFrameSource;
         public int OutputQueueDepth => _videoSidecarSession.OutputQueueDepth;
         public int MaxOutputQueue => _videoSidecarSession.MaxOutputQueue;
         public int InputQueueDepth => _videoSidecarSession.InputQueueDepth;
@@ -102,6 +129,10 @@ namespace Unity.FoxgloveSDK.Components
             return false;
         }
 
+        /// <summary>
+        /// Makes one durable ArrayPool-backed handoff copy for asynchronous encoders; format
+        /// conversion remains on the worker side whenever the sidecar supports frame sources.
+        /// </summary>
         public CameraVideoSubmitResult SubmitVideoFrame<TFrameBytes>(
             TFrameBytes frameBytes,
             ulong renderUnixNs,
@@ -153,6 +184,48 @@ namespace Unity.FoxgloveSDK.Components
                 return result;
             }
 
+            if (_videoSidecarSession.IsOpenH264Mode
+                && _videoSidecarSession.SupportsRgbFrameSource)
+            {
+                if (!_videoSidecarSession.TrySubmitRgbFrame(frameBytes, renderUnixNs))
+                {
+                    _diagnostics.RecordVideoSubmitFailure();
+                    var result = new CameraVideoSubmitResult(
+                        CameraVideoSubmitOutcome.SubmitRejected,
+                        _videoSidecarSession.DescribeFailure("Video encoder refused the RGB frame."),
+                        ElapsedMs(submitStart));
+                    _diagnostics.RecordVideoSubmitMs(result.SubmitMs);
+                    return result;
+                }
+
+                _diagnostics.RecordVideoFrameSubmitted();
+                var rgbSourceSubmitted = new CameraVideoSubmitResult(CameraVideoSubmitOutcome.Submitted, "", ElapsedMs(submitStart));
+                _diagnostics.RecordVideoSubmitMs(rgbSourceSubmitted.SubmitMs);
+                return rgbSourceSubmitted;
+            }
+
+            if (!_videoSidecarSession.IsOpenH264Mode
+                && _videoSidecarSession.SupportsFrameSource)
+            {
+                if (!_videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs))
+                {
+                    _diagnostics.RecordVideoSubmitFailure();
+                    var result = new CameraVideoSubmitResult(
+                        CameraVideoSubmitOutcome.SubmitRejected,
+                        _videoSidecarSession.DescribeFailure("Video encoder refused the frame."),
+                        ElapsedMs(submitStart));
+                    _diagnostics.RecordVideoSubmitMs(result.SubmitMs);
+                    return result;
+                }
+
+                _diagnostics.RecordVideoFrameSubmitted();
+                var sourceSubmitted = new CameraVideoSubmitResult(CameraVideoSubmitOutcome.Submitted, "", ElapsedMs(submitStart));
+                _diagnostics.RecordVideoSubmitMs(sourceSubmitted.SubmitMs);
+                return sourceSubmitted;
+            }
+
+            // The readback source is only valid for this callback. Keep one owned handoff
+            // buffer for the asynchronous encoder and never expose the caller's storage.
             if (_rgbScratch == null || _rgbScratch.Length != frameBytes.Length)
                 _rgbScratch = new byte[frameBytes.Length];
             frameBytes.CopyTo(_rgbScratch);

@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Protocol
         public string Name { get; set; }
 
         /// <summary>Parameter value as a JSON token.</summary>
-        [JsonProperty("value")]
+        [JsonProperty("value", NullValueHandling = NullValueHandling.Ignore)]
         public JToken Value { get; set; }
 
         /// <summary>Type hint (e.g. "float64", "string"), omit if unknown.</summary>

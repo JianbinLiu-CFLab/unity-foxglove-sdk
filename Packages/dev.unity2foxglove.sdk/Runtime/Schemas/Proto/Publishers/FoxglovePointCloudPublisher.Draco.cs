@@ -176,18 +176,12 @@ namespace Unity.FoxgloveSDK.Components
 
             if (result.Request.PublishWebSocket)
             {
-                if (result.Request.WebSocketEncoding == PublisherEffectiveEncoding.MsgPack
-                    && TryPublishComponentMessagePackDraco(
+                DracoWebSocketPublicationPolicy.Publish(
+                    result.Request.WebSocketEncoding,
+                    () => TryPublishComponentMessagePackDraco(
                         result.ProtobufMessage,
-                        result.Request.UnixNs))
-                {
-                    // MessagePack was serialized from the worker's neutral
-                    // compressed-point-cloud value with the requested encoding.
-                }
-                else
-                {
-                    PublishProto(result.WebSocketPayload, result.Request.UnixNs);
-                }
+                        result.Request.UnixNs),
+                    () => PublishProto(result.WebSocketPayload, result.Request.UnixNs));
             }
 
             if (result.Request.PublishProvider)

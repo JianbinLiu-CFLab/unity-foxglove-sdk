@@ -376,9 +376,11 @@ namespace Unity.FoxgloveSDK.Components
 
             if (recordedSchemaVersion == 2)
             {
-                // Version 2 recorded only the original four field properties. Compare that
-                // projection exactly and do not treat newly added version-3 properties as false.
-                return left.Ordinal == right.Ordinal;
+                // Version 2 recorded only the original four field properties. JSON and
+                // MessagePack identify members by name, so an inserted field must not
+                // renumber unchanged members. Protobuf still uses its ordinal projection.
+                return !IsProtobufEncoding(left.Encoding)
+                       || left.Ordinal == right.Ordinal;
             }
 
             if (left.Nullable != right.Nullable

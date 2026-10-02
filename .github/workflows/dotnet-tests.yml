@@ -46,6 +46,9 @@ jobs:
       - name: Install pinned Phase186 Python runtime dependency
         run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0
 
+      - name: Verify remote gateway manifest against pinned source
+        run: python3 -c "from Scripts.remotegateway.regression_checks.test_remote_gateway_tooling import verify_pinned_source_manifest; verify_pinned_source_manifest()"
+
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "10.0"
@@ -56,6 +59,14 @@ jobs:
       - name: Run xUnit unit tests
         if: always()
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
+
+      - name: Restore Manager production-boundary xUnit lane
+        if: always()
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeManagerProductionBoundary=true
+
+      - name: Run Manager production-boundary xUnit lane
+        if: always()
+        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeManagerProductionBoundary=true --logger "trx;LogFileName=unit-tests-manager-boundary.trx" --results-directory build/TestResults/ManagerProductionBoundary
 
       - name: Restore ROS2 Bridge behavioral xUnit tests
         if: always()
@@ -160,6 +171,14 @@ jobs:
           path: build/TestResults/Unit
           if-no-files-found: error
 
+      - name: Upload Manager production-boundary test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: manager-production-boundary-test-results
+          path: build/TestResults/ManagerProductionBoundary
+          if-no-files-found: error
+
       - name: Upload MCAP differential report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -256,6 +275,11 @@ jobs:
       - name: Run Windows runtime validation
         shell: pwsh
         run: python -B Scripts/release/run_ci.py --only dotnet-runtime
+
+      - name: Run Media Foundation native smoke
+        if: always()
+        shell: pwsh
+        run: python -B Scripts/release/run_ci.py --only mediafoundation-native-smoke
 
       - name: Run Windows core xUnit tests
         shell: pwsh

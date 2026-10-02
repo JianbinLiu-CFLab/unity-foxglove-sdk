@@ -29,6 +29,9 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public TickCoordinator(ReplaySnapshotStateMachine snapshots) { _replaySnapshots = snapshots; }
 
+        public void UpdateReplaySnapshotCapacity(int capacity)
+            => _replaySnapshots.UpdateCapacity(capacity);
+
         /// <summary>
         /// Per-frame tick: drains pending service/playback-control calls, advances
         /// the clock, and dispatches replay work (scene snapshot, panel snapshot,
@@ -67,8 +70,8 @@ namespace Unity.FoxgloveSDK.Core
 
                     if (TryConsumeReplaySceneSnapshot(out var sceneSnapshotTimeNs))
                         replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true);
-                    if (TryConsumeReplaySnapshot(out var snapshotTimeNs, wallClock))
-                        replay.PublishSnapshot(session, snapshotTimeNs);
+                    if (TryConsumeReplaySnapshot(out var snapshotTimeNs, out var snapshotClientId, wallClock))
+                        replay.PublishSnapshot(session, snapshotTimeNs, snapshotClientId);
                     else
                         replay.DrainPanelHistory(session);
                     replay.Tick(session, playbackClock.NowNs, deferCallbacks: true);
@@ -82,16 +85,27 @@ namespace Unity.FoxgloveSDK.Core
             replay.DrainReplayCallbacks();
         }
 
-        private void QueueReplaySnapshot(ulong timeNs, ReplayController replay, IFoxgloveClock wallClock)
+        private void QueueReplaySnapshot(
+            ulong timeNs,
+            ReplayController replay,
+            IFoxgloveClock wallClock,
+            uint? targetClientId = null)
         {
-            replay.CancelPanelHistory();
+            if (targetClientId.HasValue)
+                replay.CancelPanelHistory(targetClientId.Value);
+            else
+                replay.CancelPanelHistory();
             _replaySnapshots.RequestPanelSnapshot(
                 timeNs,
-                wallClock.NowNs + ReplayController.ScrubHistoryDebounceNs);
+                wallClock.NowNs + ReplayController.ScrubHistoryDebounceNs,
+                targetClientId);
         }
 
-        private bool TryConsumeReplaySnapshot(out ulong timeNs, IFoxgloveClock wallClock)
-            => _replaySnapshots.TryConsumePanelSnapshot(wallClock.NowNs, out timeNs);
+        private bool TryConsumeReplaySnapshot(
+            out ulong timeNs,
+            out uint? clientId,
+            IFoxgloveClock wallClock)
+            => _replaySnapshots.TryConsumePanelSnapshot(wallClock.NowNs, out timeNs, out clientId);
 
         private void QueueReplaySceneSnapshot(ulong timeNs)
             => _replaySnapshots.RequestSceneSnapshot(timeNs);
@@ -285,15 +299,34 @@ namespace Unity.FoxgloveSDK.Core
         /// cursor is left untouched so Unity scene playback continues.
         /// </summary>
         public void RequestReplaySubscriberBackfill(
-            ReplayController replay, PlaybackClock playbackClock, IFoxgloveClock wallClock)
+            ReplayController replay,
+            PlaybackClock playbackClock,
+            IFoxgloveClock wallClock,
+            uint? clientId = null)
         {
             lock (_playbackControlLock)
             {
                 if (!replay.IsEnabled || !playbackClock.PlaybackEnabled)
                     return;
 
-                replay.ResetPanelHistoryProgress();
-                QueueReplaySnapshot(playbackClock.NowNs, replay, wallClock);
+                if (clientId.HasValue)
+                    replay.ResetPanelHistoryProgress(clientId.Value);
+                else
+                    replay.ResetPanelHistoryProgress();
+                QueueReplaySnapshot(playbackClock.NowNs, replay, wallClock, clientId);
+            }
+        }
+
+        /// <summary>Cancel pending and active replay history for one disconnected client.</summary>
+        public void CancelReplayForClient(ReplayController replay, uint clientId)
+        {
+            if (replay == null)
+                return;
+
+            lock (_playbackControlLock)
+            {
+                replay.CancelPanelHistory(clientId);
+                _replaySnapshots.ClearPanelSnapshot(clientId);
             }
         }
 

@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 
+using System;
+using System.Collections.Generic;
 using Unity.FoxgloveSDK.IO;
 
 namespace Unity.FoxgloveSDK.Core
@@ -25,27 +27,39 @@ namespace Unity.FoxgloveSDK.Core
 
         private readonly struct ReplayCallbackDispatch
         {
-            private ReplayCallbackDispatch(ReplayMessageContext? messageContext, ReplayBatchContext? batchContext, bool isBatch, long generation = 0)
+            private ReplayCallbackDispatch(
+                ReplayMessageContext? messageContext,
+                IReadOnlyList<ReplayMessageContext> messageBatch,
+                ReplayBatchContext? batchContext,
+                bool isBatch,
+                long generation = 0)
             {
                 MessageContext = messageContext;
+                MessageBatch = messageBatch;
                 BatchContext = batchContext;
                 IsBatch = isBatch;
                 Generation = generation;
             }
 
             public ReplayMessageContext? MessageContext { get; }
+            public IReadOnlyList<ReplayMessageContext> MessageBatch { get; }
             public ReplayBatchContext? BatchContext { get; }
             public bool IsBatch { get; }
             public long Generation { get; }
 
             public ReplayCallbackDispatch WithGeneration(long generation)
-                => new ReplayCallbackDispatch(MessageContext, BatchContext, IsBatch, generation);
+                => new ReplayCallbackDispatch(MessageContext, MessageBatch, BatchContext, IsBatch, generation);
 
             public static ReplayCallbackDispatch ForMessage(ReplayMessageContext context)
-                => new ReplayCallbackDispatch(context, null, isBatch: false);
+                => new ReplayCallbackDispatch(context, null, null, isBatch: false);
+
+            public static ReplayCallbackDispatch ForMessageBatch(
+                IReadOnlyList<ReplayMessageContext> messages,
+                ReplayBatchContext batchContext)
+                => new ReplayCallbackDispatch(null, messages, batchContext, isBatch: false);
 
             public static ReplayCallbackDispatch ForBatch(ReplayBatchContext context)
-                => new ReplayCallbackDispatch(null, context, isBatch: true);
+                => new ReplayCallbackDispatch(null, null, context, isBatch: true);
         }
     }
 }

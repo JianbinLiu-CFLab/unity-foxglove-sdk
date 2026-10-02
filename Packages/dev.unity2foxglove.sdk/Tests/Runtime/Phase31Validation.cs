@@ -187,7 +187,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var members = new List<FoxgloveSourceEmitter.TopicMember>
             {
-                new("_a", "System.Int32", "/t", 10f, ""),
+                new("_a", "System.Int32", "/t", 10f, "my.Schema"),
                 new("_b", "System.Int32", "/t", 10f, "my.Schema")
             };
             var output = FoxgloveSourceEmitter.EmitClass("NS", "C", members);
