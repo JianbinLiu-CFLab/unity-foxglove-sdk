@@ -170,7 +170,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.False(registration.Succeeded);
             Assert.Equal(
-                FoxRunRos2RegistrationError.PublisherBackendFailure,
+                FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable,
                 registration.Error);
             Assert.Equal("DllNotFoundException", registration.FailureKind);
             Assert.Equal(0, driver.RemovePublisherCount);

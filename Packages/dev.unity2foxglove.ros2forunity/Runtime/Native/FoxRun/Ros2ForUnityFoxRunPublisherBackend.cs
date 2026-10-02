@@ -118,8 +118,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 var retained = !TryRollbackPublisher(pendingToken, pendingPublisher);
                 if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                     ExceptionDispatchInfo.Capture(exception).Throw();
+                var error = FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                    exception,
+                    out _)
+                    ? FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+                    : FoxRunRos2RegistrationError.PublisherBackendFailure;
                 return FoxRunRos2NativePublisherRegistration.Failure(
-                    FoxRunRos2RegistrationError.PublisherBackendFailure,
+                    error,
                     Describe(exception),
                     retained ? pendingToken : null);
             }

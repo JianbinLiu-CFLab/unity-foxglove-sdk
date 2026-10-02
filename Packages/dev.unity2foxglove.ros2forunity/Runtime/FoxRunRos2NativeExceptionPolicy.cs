@@ -15,6 +15,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     /// </summary>
     internal static class FoxRunRos2NativeExceptionPolicy
     {
+        internal static bool TryGetNativeRuntimeSurfaceFailure(
+            Exception exception,
+            out string failureKind)
+        {
+            for (var current = exception; current != null; current = current.InnerException)
+            {
+                if (current is DllNotFoundException
+                    || current is EntryPointNotFoundException
+                    || current is BadImageFormatException)
+                {
+                    failureKind = current.GetType().Name;
+                    return true;
+                }
+            }
+
+            failureKind = string.Empty;
+            return false;
+        }
+
         internal static bool IsRecoverable(Exception exception)
         {
             for (var current = exception; current != null; current = current.InnerException)

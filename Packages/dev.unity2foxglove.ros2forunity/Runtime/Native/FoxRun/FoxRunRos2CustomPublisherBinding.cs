@@ -120,6 +120,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 tokenUsable = _token.IsUsable;
             }
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+            {
+                try
+                {
+                    Stop();
+                }
+                catch (Exception)
+                {
+                }
+                var error = FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                    exception,
+                    out _)
+                    ? FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+                    : FoxRunRos2RegistrationError.PublisherBackendFailure;
+                return FoxRunRos2RegistrationResult.Failure(
+                    error,
+                    exception.GetType().Name + ": " + exception.Message);
+            }
             catch (Exception exception)
             {
                 var primary = ExceptionDispatchInfo.Capture(exception);
@@ -129,8 +148,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 catch (Exception)
                 {
-                    // Stop completes all mandatory teardown stages before
-                    // throwing. Preserve the token getter as the primary fault.
                 }
                 primary.Throw();
                 throw;

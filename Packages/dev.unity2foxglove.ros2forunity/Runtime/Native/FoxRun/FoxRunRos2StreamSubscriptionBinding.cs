@@ -287,9 +287,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
                 else if (generationAfterFailure != null || registrationFailure != null)
                 {
-                    result = SetRegistrationFailureUnderLock(
-                        FoxRunRos2RegistrationError.BackendFailure,
-                        (generationAfterFailure ?? registrationFailure).GetType().Name);
+                    var failure = generationAfterFailure ?? registrationFailure;
+                    var error = generationAfterFailure == null
+                        && FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(failure, out _)
+                        ? FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+                        : FoxRunRos2RegistrationError.BackendFailure;
+                    result = SetRegistrationFailureUnderLock(error, DescribeException(failure));
                     rollbackToken = returnedToken;
                 }
                 else if (generationAfter != SessionGeneration)
@@ -304,14 +307,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     result = SetRegistrationFailureUnderLock(
                         backendResult.Error,
                         backendResult.Diagnostic);
+                    rollbackToken = backendResult.Token;
                 }
                 else if (returnedToken == null || !tokenUsable || tokenInspectionFailure != null)
                 {
                     result = SetRegistrationFailureUnderLock(
                         tokenInspectionFailure == null
                             ? FoxRunRos2RegistrationError.InvalidSubscriptionToken
-                            : FoxRunRos2RegistrationError.BackendFailure,
-                        tokenInspectionFailure?.GetType().Name ?? string.Empty);
+                            : FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                                tokenInspectionFailure,
+                                out _)
+                                ? FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+                                : FoxRunRos2RegistrationError.BackendFailure,
+                        tokenInspectionFailure == null ? string.Empty : DescribeException(tokenInspectionFailure));
                     rollbackToken = returnedToken;
                 }
                 else
@@ -907,6 +915,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             if (Interlocked.CompareExchange(ref _nodeReleased, 1, 0) == 0)
                 _backend.ReleaseNodeOwnership();
+        }
+
+        private static string DescribeException(Exception exception)
+        {
+            if (FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                exception,
+                out var failureKind))
+                return failureKind + ": " + exception.Message;
+            return exception.GetType().Name + ": " + exception.Message;
         }
 
         private void RecordTeardownFailure(string stage, Exception exception)

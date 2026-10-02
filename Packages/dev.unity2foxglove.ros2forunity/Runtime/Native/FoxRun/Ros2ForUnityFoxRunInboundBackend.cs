@@ -200,45 +200,53 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 token = new SubscriptionToken(_driver, subscription);
                 if (!token.IsUsable)
                 {
-                    token.TryRemove();
+                    var retained = !TryRollbackAfterRegistrationFailure(token);
                     return FoxRunRos2NativeBackendRegistration.Failure(
                         FoxRunRos2RegistrationError.InvalidSubscriptionToken,
-                        "R2FU returned no usable native subscription token.");
+                        "R2FU returned no usable native subscription token.",
+                        retained ? token : null);
                 }
 
                 return FoxRunRos2NativeBackendRegistration.Success(token);
             }
             catch (NotSupportedException exception)
             {
-                RollbackAfterRegistrationFailure(token);
+                var retained = !TryRollbackAfterRegistrationFailure(token);
                 return FoxRunRos2NativeBackendRegistration.Failure(
                     FoxRunRos2RegistrationError.UnsupportedMessageType,
-                    Describe(exception));
+                    Describe(exception),
+                    retained ? token : null);
             }
             catch (Exception exception)
             {
-                RollbackAfterRegistrationFailure(token);
+                var retained = !TryRollbackAfterRegistrationFailure(token);
                 if (!FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                     throw;
+                var error = FoxRunRos2NativeExceptionPolicy.TryGetNativeRuntimeSurfaceFailure(
+                    exception,
+                    out _)
+                    ? FoxRunRos2RegistrationError.NativeRuntimeSurfaceUnavailable
+                    : FoxRunRos2RegistrationError.BackendFailure;
                 return FoxRunRos2NativeBackendRegistration.Failure(
-                    FoxRunRos2RegistrationError.BackendFailure,
-                    Describe(exception));
+                    error,
+                    Describe(exception),
+                    retained ? token : null);
             }
         }
 
-        private static void RollbackAfterRegistrationFailure(SubscriptionToken token)
+        private static bool TryRollbackAfterRegistrationFailure(SubscriptionToken token)
         {
             if (token == null)
-                return;
+                return true;
             try
             {
                 token.TryRemove();
+                return true;
             }
             catch (Exception cleanupException) when (
                 FoxRunRos2NativeExceptionPolicy.IsRecoverable(cleanupException))
             {
-                // Preserve the registration failure as the primary result while
-                // still attempting the exact token rollback.
+                return false;
             }
         }
 
