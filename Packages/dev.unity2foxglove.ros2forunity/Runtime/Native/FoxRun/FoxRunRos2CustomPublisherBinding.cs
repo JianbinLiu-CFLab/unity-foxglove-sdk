@@ -69,6 +69,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _busCallback = OnBusEnvelope;
         }
 
+        internal string Topic => _contract.Topic;
         internal bool IsStopped => Volatile.Read(ref _stopped) != 0;
         internal bool CleanupPending => Volatile.Read(ref _cleanupPending) != 0;
         internal bool CleanupRetryExhausted => Volatile.Read(ref _cleanupRetryExhausted) != 0;
@@ -296,13 +297,31 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return Volatile.Read(ref _token) == null;
         }
 
+        /// <summary>
+        /// Publishes one DTO captured by the generated Provider seam. The
+        /// binding owns the envelope sequence and stamps its registered origin.
+        /// </summary>
+        internal bool TryPublishCaptured(TDto payload, ulong timestampNs)
+            => PublishPayload(payload, _origin, 0UL, timestampNs);
+
         private bool OnBusEnvelope(FoxTopicEnvelope<TDto> envelope)
+            => PublishPayload(
+                envelope.Payload,
+                envelope.Origin,
+                envelope.Sequence,
+                envelope.TimestampNs);
+
+        private bool PublishPayload(
+            TDto payload,
+            string origin,
+            ulong sequence,
+            ulong timestampNs)
         {
             if (IsStopped)
                 return false;
 
-            var ownsSequence = envelope.Sequence == 0;
-            var candidateSequence = envelope.Sequence;
+            var ownsSequence = sequence == 0;
+            var candidateSequence = sequence;
             if (ownsSequence && !_sequence.TryPeek(out candidateSequence))
             {
                 SequenceExhaustedCount++;
@@ -316,10 +335,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             try
             {
                 mapped = _map(
-                    envelope.Payload,
-                    string.IsNullOrWhiteSpace(envelope.Origin) ? _origin : envelope.Origin,
+                    payload,
+                    string.IsNullOrWhiteSpace(origin) ? _origin : origin,
                     candidateSequence,
-                    envelope.TimestampNs,
+                    timestampNs,
                     FoxRunRos2CustomOutboundMappingPolicy.CreateContext());
                 if (ReferenceEquals(mapped, null))
                     return false;

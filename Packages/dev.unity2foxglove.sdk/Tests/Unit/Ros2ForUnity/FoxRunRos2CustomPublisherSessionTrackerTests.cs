@@ -295,6 +295,7 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
 
             public string Identity { get; }
             public int SourceInstanceId => 0;
+            public string Topic => string.Empty;
             public bool IsStopped { get; private set; }
             public bool CleanupPending => _cleanupPending;
             public bool CleanupRetryExhausted => false;
@@ -310,6 +311,10 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
 
             public bool TryRetryCleanup() => true;
             public bool TryForceRetryCleanup() => true;
+            public FoxRunTransportPublishResult PublishGenerated(
+                IFoxRunGeneratedMemberAccess member,
+                ulong logTimeNs)
+                => FoxRunTransportPublishResult.Rejected("not used");
         }
 
         private sealed class FatalHostedBinding : IFoxRunRos2CustomPublisherHostedBinding
@@ -324,6 +329,7 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
 
             public string Identity { get; }
             public int SourceInstanceId => 0;
+            public string Topic => string.Empty;
             public bool IsStopped { get; private set; }
             public bool CleanupPending => false;
             public bool CleanupRetryExhausted => false;
@@ -338,6 +344,10 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
 
             public bool TryRetryCleanup() => true;
             public bool TryForceRetryCleanup() => true;
+            public FoxRunTransportPublishResult PublishGenerated(
+                IFoxRunGeneratedMemberAccess member,
+                ulong logTimeNs)
+                => FoxRunTransportPublishResult.Rejected("not used");
         }
     }
 }

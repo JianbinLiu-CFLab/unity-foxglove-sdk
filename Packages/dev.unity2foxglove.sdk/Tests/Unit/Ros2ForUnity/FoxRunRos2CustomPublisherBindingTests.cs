@@ -363,6 +363,180 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(1, originCleanupCount);
         }
 
+        [Fact]
+        public void GeneratedProviderSeamPublishesTheCapturedDtoThroughItsTypedBinding()
+        {
+            var backend = new FakePublisherBackend();
+            var binding = CreateBinding(new FoxTopicBus(), backend, initialSequence: 3UL);
+            Assert.True(binding.TryStart().Succeeded);
+            var bindings = Hosted(17, binding);
+            var source = new GeneratedSource(new TestDto { Value = 42 });
+            var request = new FoxRunGeneratedTransportPublishRequest(
+                source,
+                topicIndex: 0,
+                "/phase181/custom",
+                logTimeNs: 123UL);
+
+            var result = FoxRunRos2CustomPublisherHub.PublishGenerated(
+                bindings,
+                17,
+                in request);
+
+            Assert.Equal(FoxRunTransportRouteResultState.Accepted, result.State);
+            var published = Assert.Single(backend.Published);
+            Assert.Equal("local-origin", published.Origin);
+            Assert.Equal(3UL, published.Sequence);
+            Assert.Equal(123UL, published.TimestampNs);
+            Assert.Equal(42, published.Value);
+            Assert.Equal(1, published.DisposeCount);
+            Assert.Equal(1, binding.PublishedCount);
+
+            source.State = new TestDto { Value = 43 };
+            var next = new FoxRunGeneratedTransportPublishRequest(
+                source,
+                topicIndex: 0,
+                "/phase181/custom",
+                logTimeNs: 124UL);
+            Assert.Equal(
+                FoxRunTransportRouteResultState.Accepted,
+                FoxRunRos2CustomPublisherHub.PublishGenerated(bindings, 17, in next).State);
+
+            Assert.Equal(2, backend.Published.Count);
+            Assert.Equal(4UL, backend.Published[1].Sequence);
+            Assert.Equal(43, backend.Published[1].Value);
+            Assert.Equal(2, binding.PublishedCount);
+            binding.Stop();
+        }
+
+        [Fact]
+        public void GeneratedProviderSeamOwnsOnlyStartedBindingsForTheSameSourceAndTopic()
+        {
+            var backend = new FakePublisherBackend();
+            var binding = CreateBinding(new FoxTopicBus(), backend, initialSequence: 0UL);
+            Assert.True(binding.TryStart().Succeeded);
+            var bindings = Hosted(17, binding);
+            var request = new FoxRunGeneratedTransportPublishRequest(
+                new GeneratedSource(new TestDto { Value = 1 }),
+                topicIndex: 0,
+                "/phase181/custom",
+                logTimeNs: 1UL);
+
+            Assert.NotNull(FoxRunRos2CustomPublisherHub.FindGeneratedBinding(bindings, 17, "/phase181/custom"));
+            Assert.Null(FoxRunRos2CustomPublisherHub.FindGeneratedBinding(bindings, 18, "/phase181/custom"));
+            Assert.Null(FoxRunRos2CustomPublisherHub.FindGeneratedBinding(bindings, 17, "/phase181/other"));
+            Assert.Equal(
+                FoxRunTransportRouteResultState.Unavailable,
+                FoxRunRos2CustomPublisherHub.PublishGenerated(bindings, 18, in request).State);
+
+            binding.Stop();
+
+            Assert.Null(FoxRunRos2CustomPublisherHub.FindGeneratedBinding(bindings, 17, "/phase181/custom"));
+            Assert.Equal(
+                FoxRunTransportRouteResultState.Unavailable,
+                FoxRunRos2CustomPublisherHub.PublishGenerated(bindings, 17, in request).State);
+            Assert.Empty(backend.Published);
+        }
+
+        [Fact]
+        public void GeneratedProviderSeamReportsMismatchedMembersAndFailedPublishes()
+        {
+            var backend = new FakePublisherBackend { PublishSucceeds = false };
+            var binding = CreateBinding(new FoxTopicBus(), backend, initialSequence: 0UL);
+            Assert.True(binding.TryStart().Succeeded);
+            var bindings = Hosted(17, binding);
+            var failed = new FoxRunGeneratedTransportPublishRequest(
+                new GeneratedSource(new TestDto { Value = 5 }),
+                topicIndex: 0,
+                "/phase181/custom",
+                logTimeNs: 1UL);
+            var mismatched = new FoxRunGeneratedTransportPublishRequest(
+                new GeneratedSource(
+                    new FoxRunGeneratedMemberAccess<string>(
+                        "mismatched",
+                        "/phase181/custom",
+                        "Phase181.State",
+                        FoxRunFlow.Publish,
+                        new[] { "unity2foxglove.r2fu" },
+                        null,
+                        default,
+                        FoxRunDeliveryPolicy.ProviderDefault,
+                        () => "not a DTO")),
+                topicIndex: 0,
+                "/phase181/custom",
+                logTimeNs: 2UL);
+            var unreadable = new FoxRunGeneratedTransportPublishRequest(
+                new GeneratedSource(),
+                topicIndex: 0,
+                "/phase181/custom",
+                logTimeNs: 3UL);
+
+            Assert.Equal(
+                FoxRunTransportRouteResultState.Failed,
+                FoxRunRos2CustomPublisherHub.PublishGenerated(bindings, 17, in failed).State);
+            Assert.Equal(1, binding.PublishFailureCount);
+            Assert.Equal(
+                FoxRunTransportRouteResultState.Rejected,
+                FoxRunRos2CustomPublisherHub.PublishGenerated(bindings, 17, in mismatched).State);
+            Assert.Equal(
+                FoxRunTransportRouteResultState.Rejected,
+                FoxRunRos2CustomPublisherHub.PublishGenerated(bindings, 17, in unreadable).State);
+            Assert.Equal(0, binding.PublishedCount);
+            binding.Stop();
+        }
+
+        private static List<IFoxRunRos2CustomPublisherHostedBinding> Hosted(
+            int sourceInstanceId,
+            FoxRunRos2CustomPublisherBinding<TestDto, TestEnvelope> binding)
+            => new List<IFoxRunRos2CustomPublisherHostedBinding>
+            {
+                new FoxRunRos2CustomPublisherHub.HostedBinding<TestDto, TestEnvelope>(
+                    sourceInstanceId + "|publisher-contract",
+                    sourceInstanceId,
+                    binding)
+            };
+
+        private sealed class GeneratedSource : IFoxRunGeneratedTransportSource
+        {
+            private readonly IFoxRunGeneratedMemberAccess[] _members;
+
+            internal GeneratedSource()
+            {
+                _members = Array.Empty<IFoxRunGeneratedMemberAccess>();
+            }
+
+            internal GeneratedSource(TestDto state)
+            {
+                State = state;
+                _members = new IFoxRunGeneratedMemberAccess[]
+                {
+                    new FoxRunGeneratedMemberAccess<TestDto>(
+                        "Phase181.Source\nfield\nState\n/phase181/custom\n1\nstate",
+                        "/phase181/custom",
+                        "Phase181.State",
+                        FoxRunFlow.Publish,
+                        new[] { "unity2foxglove.r2fu" },
+                        null,
+                        default,
+                        FoxRunDeliveryPolicy.ProviderDefault,
+                        () => State)
+                };
+            }
+
+            internal GeneratedSource(IFoxRunGeneratedMemberAccess member)
+            {
+                _members = new[] { member };
+            }
+
+            internal TestDto State { get; set; }
+
+            public int FoxRunTransport_MemberCount => _members.Length;
+
+            public IFoxRunGeneratedMemberAccess FoxRunTransport_GetMember(int index)
+                => _members[index];
+
+            public ulong FoxRunTransport_GetCaptureSequence(int topicIndex) => 0UL;
+        }
+
         private static FoxRunRos2CustomPublisherBinding<TestDto, TestEnvelope> CreateBinding(
             FoxTopicBus bus,
             FakePublisherBackend backend,

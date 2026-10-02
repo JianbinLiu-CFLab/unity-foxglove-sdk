@@ -495,6 +495,68 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         [Fact]
+        public void GeneratedFanoutSkipsSessionsThatDoNotOwnTheCapturedTopic()
+        {
+            var calls = new System.Collections.Generic.List<string>();
+            var sessions = new IFoxRunTransportSession[]
+            {
+                new OwnershipSession(
+                    "unity2foxglove.alpha",
+                    calls,
+                    ownedTopic: "/phase181/other"),
+                new OwnershipSession(
+                    "unity2foxglove.bravo",
+                    calls,
+                    ownedTopic: "/phase181/owned")
+            };
+            var request = new FoxRunGeneratedTransportPublishRequest(
+                new GeneratedSource(),
+                topicIndex: 0,
+                "/phase181/owned",
+                logTimeNs: 181);
+
+            var result = FoxRunGeneratedTransportFanout.Publish(
+                sessions,
+                explicitTransportIds: null,
+                inheritedTransportIds: new[]
+                {
+                    new FoxRunTransportId("unity2foxglove.alpha"),
+                    new FoxRunTransportId("unity2foxglove.bravo")
+                },
+                in request);
+
+            Assert.Equal(new[] { "unity2foxglove.bravo" }, calls);
+            Assert.Equal(1, result.Matched);
+            Assert.Equal(1, result.Accepted);
+            Assert.Equal(0, result.Rejected + result.Unavailable + result.Failed);
+            var target = Assert.Single(result.TargetResults);
+            Assert.Equal(
+                new FoxRunTransportId("unity2foxglove.bravo"),
+                target.TransportId);
+
+            calls.Clear();
+            var unowned = new FoxRunGeneratedTransportPublishRequest(
+                new GeneratedSource(),
+                topicIndex: 0,
+                "/phase181/unowned",
+                logTimeNs: 182);
+            var skipped = FoxRunGeneratedTransportFanout.Publish(
+                sessions,
+                explicitTransportIds: null,
+                inheritedTransportIds: new[]
+                {
+                    new FoxRunTransportId("unity2foxglove.alpha"),
+                    new FoxRunTransportId("unity2foxglove.bravo")
+                },
+                in unowned);
+
+            Assert.Empty(calls);
+            Assert.Equal(0, skipped.Matched);
+            Assert.False(skipped.AnyAccepted);
+            Assert.Empty(skipped.TargetResults);
+        }
+
+        [Fact]
         public void GeneratedProviderFailureDiagnosticPreservesTargetReason()
         {
             var calls = new System.Collections.Generic.List<string>();
@@ -1843,6 +1905,56 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 _calls.Add(Id.Value);
                 return _result;
+            }
+
+            public FoxRunTransportPublishResult Publish(
+                in FoxRunTransportPublishRoute route)
+                => throw new NotSupportedException();
+
+            public FoxRunTransportSubscribeResult Subscribe(
+                in FoxRunTransportSubscribeRoute route)
+                => FoxRunTransportSubscribeResult.Rejected("not used");
+
+            public void Dispose()
+            {
+            }
+        }
+
+        private sealed class OwnershipSession :
+            IFoxRunTransportSession,
+            IFoxRunGeneratedTransportSession,
+            IFoxRunGeneratedTransportOwnership
+        {
+            private readonly System.Collections.Generic.IList<string> _calls;
+            private readonly string _ownedTopic;
+
+            internal OwnershipSession(
+                string id,
+                System.Collections.Generic.IList<string> calls,
+                string ownedTopic)
+            {
+                Id = new FoxRunTransportId(id);
+                _calls = calls;
+                _ownedTopic = ownedTopic;
+            }
+
+            public FoxRunTransportId Id { get; }
+            public FoxRunTransportCapabilities Capabilities =>
+                FoxRunTransportCapabilities.Publish;
+            public ulong Generation => 181;
+
+            public bool OwnsGeneratedTopic(
+                in FoxRunGeneratedTransportPublishRequest request)
+                => string.Equals(
+                    request.Topic,
+                    _ownedTopic,
+                    StringComparison.Ordinal);
+
+            public FoxRunTransportPublishResult PublishGenerated(
+                in FoxRunGeneratedTransportPublishRequest request)
+            {
+                _calls.Add(Id.Value);
+                return FoxRunTransportPublishResult.Accepted();
             }
 
             public FoxRunTransportPublishResult Publish(
