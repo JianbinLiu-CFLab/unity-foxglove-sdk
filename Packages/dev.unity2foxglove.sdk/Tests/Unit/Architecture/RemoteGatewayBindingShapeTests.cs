@@ -77,6 +77,36 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
+        public void ManagedGatewayLayoutsMatchPinnedX64Header()
+        {
+            Assert.Equal(8, IntPtr.Size);
+
+            var header = Text("third-party/foxglove-sdk/c/include/foxglove-c/foxglove-c.h");
+            Assert.Contains("typedef uint8_t foxglove_reliability;", header, StringComparison.Ordinal);
+            Assert.Contains("typedef struct foxglove_qos_profile", header, StringComparison.Ordinal);
+            Assert.Contains("foxglove_reliability reliability;", header, StringComparison.Ordinal);
+            Assert.Contains("typedef struct foxglove_gateway_callbacks", header, StringComparison.Ordinal);
+            Assert.Contains("typedef struct foxglove_gateway_options", header, StringComparison.Ordinal);
+
+            Assert.Equal(1, Marshal.SizeOf<RemoteGatewayNativeMethods.FoxgloveQosProfile>());
+            Assert.Equal(0, Marshal.OffsetOf<RemoteGatewayNativeMethods.FoxgloveQosProfile>(
+                nameof(RemoteGatewayNativeMethods.FoxgloveQosProfile.Reliability)).ToInt32());
+            Assert.Equal(16, Marshal.SizeOf<RemoteGatewayNativeMethods.FoxgloveString>());
+            Assert.Equal(104, Marshal.SizeOf<RemoteGatewayNativeMethods.FoxgloveGatewayCallbacks>());
+            Assert.Equal(168, Marshal.SizeOf<RemoteGatewayNativeMethods.FoxgloveGatewayOptions>());
+            Assert.Equal(48, Marshal.OffsetOf<RemoteGatewayNativeMethods.FoxgloveGatewayOptions>(
+                nameof(RemoteGatewayNativeMethods.FoxgloveGatewayOptions.Capabilities)).ToInt32());
+            Assert.Equal(56, Marshal.OffsetOf<RemoteGatewayNativeMethods.FoxgloveGatewayOptions>(
+                nameof(RemoteGatewayNativeMethods.FoxgloveGatewayOptions.SupportedEncodings)).ToInt32());
+            Assert.Equal(136, Marshal.OffsetOf<RemoteGatewayNativeMethods.FoxgloveGatewayOptions>(
+                nameof(RemoteGatewayNativeMethods.FoxgloveGatewayOptions.FoxgloveApiUrl)).ToInt32());
+            Assert.Equal(152, Marshal.OffsetOf<RemoteGatewayNativeMethods.FoxgloveGatewayOptions>(
+                nameof(RemoteGatewayNativeMethods.FoxgloveGatewayOptions.FoxgloveApiTimeoutSecs)).ToInt32());
+            Assert.Equal(160, Marshal.OffsetOf<RemoteGatewayNativeMethods.FoxgloveGatewayOptions>(
+                nameof(RemoteGatewayNativeMethods.FoxgloveGatewayOptions.MessageBacklogSize)).ToInt32());
+        }
+
+        [Fact]
         public void RuntimeSourcesCompileWithMinimalUnitySurface()
         {
             var compilation = CreateRuntimeCompilation("RemoteGatewayRuntimeProbe");
