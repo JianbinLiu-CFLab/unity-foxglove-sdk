@@ -78,16 +78,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
-        public void ManagedGatewayLayoutsMatchPinnedX64Header()
+        public void ManagedGatewayLayoutsMatchExpectedX64Snapshot()
         {
             Assert.Equal(8, IntPtr.Size);
-
-            var header = Text("third-party/foxglove-sdk/c/include/foxglove-c/foxglove-c.h");
-            Assert.Contains("typedef uint8_t foxglove_reliability;", header, StringComparison.Ordinal);
-            Assert.Contains("typedef struct foxglove_qos_profile", header, StringComparison.Ordinal);
-            Assert.Contains("foxglove_reliability reliability;", header, StringComparison.Ordinal);
-            Assert.Contains("typedef struct foxglove_gateway_callbacks", header, StringComparison.Ordinal);
-            Assert.Contains("typedef struct foxglove_gateway_options", header, StringComparison.Ordinal);
 
             var compilation = CreateRuntimeCompilation("RemoteGatewayLayoutProbe");
             using var image = new MemoryStream();

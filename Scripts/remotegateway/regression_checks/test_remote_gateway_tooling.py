@@ -34,6 +34,26 @@ def load_module(name: str, path: Path):
     return module
 
 
+def verify_pinned_source_manifest() -> None:
+    """Verify the committed trust anchor against the pinned source checkout."""
+    build = load_module("remote_gateway_provenance_check", BUILD_PATH)
+    manifest_path = ROOT / (
+        "Packages/dev.unity2foxglove.remotegateway.win64/Runtime/"
+        "Plugins/Windows/x86_64/foxglove-gateway-native-artifact.json"
+    )
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    actual_revision = build.foxglove_source_revision()
+    actual_header = build.sha256_pinned_source(build.FOXGLOVE_HEADER).lower()
+    actual_cargo_lock = build.sha256_pinned_source(build.FOXGLOVE_ROOT / "Cargo.lock").lower()
+    if actual_revision != payload["sourceCommit"]:
+        raise AssertionError(f"source commit mismatch: {actual_revision} != {payload['sourceCommit']}")
+    if actual_header != payload["cHeaderSha256"].lower():
+        raise AssertionError(f"C header hash mismatch: {actual_header} != {payload['cHeaderSha256']}")
+    if actual_cargo_lock != payload["cargoLockSha256"].lower():
+        raise AssertionError(f"Cargo.lock hash mismatch: {actual_cargo_lock} != {payload['cargoLockSha256']}")
+    print("REMOTE_GATEWAY_PROVENANCE_OK")
+
+
 class RemoteGatewayToolingTests(unittest.TestCase):
     """Lock artifact allow-lists, provenance, and acceptance identity."""
 
@@ -53,15 +73,9 @@ class RemoteGatewayToolingTests(unittest.TestCase):
         )
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(self.build.foxglove_source_revision(), payload["sourceCommit"])
-        self.assertEqual(
-            self.build.sha256(self.build.FOXGLOVE_HEADER).lower(),
-            payload["cHeaderSha256"].lower(),
-        )
-        self.assertEqual(
-            self.build.sha256(self.build.FOXGLOVE_ROOT / "Cargo.lock").lower(),
-            payload["cargoLockSha256"].lower(),
-        )
+        self.assertEqual(self.build.EXPECTED_FOXGLOVE_COMMIT, payload["sourceCommit"])
+        self.assertEqual(self.build.EXPECTED_FOXGLOVE_HEADER_SHA256, payload["cHeaderSha256"])
+        self.assertEqual(self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256, payload["cargoLockSha256"])
         self.assertEqual("present", payload["environment"]["cargoLock"])
 
     def test_copy_rejects_an_unreviewed_artifact_name(self) -> None:
@@ -156,7 +170,18 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                 "AWS_LC_SYS_PREBUILT_NASM": "1",
                 "CARGO_TARGET_DIR": str(root / "target"),
             }
-            with mock.patch.object(self.build, "STAGING", staging):
+            with mock.patch.object(
+                self.build,
+                "foxglove_source_revision",
+                return_value=self.build.EXPECTED_FOXGLOVE_COMMIT,
+            ), mock.patch.object(
+                self.build,
+                "sha256_pinned_source",
+                side_effect=[
+                    self.build.EXPECTED_FOXGLOVE_HEADER_SHA256,
+                    self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256,
+                ],
+            ), mock.patch.object(self.build, "STAGING", staging):
                 path = self.build.write_manifest(
                     root / "target",
                     environment,
@@ -180,8 +205,23 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                 "AWS_LC_SYS_PREBUILT_NASM": "1",
                 "CARGO_TARGET_DIR": str(root / "target"),
             }
-            with self.assertRaisesRegex(FileNotFoundError, "Missing selected artifact"):
-                self.build.write_manifest(root / "target", environment, self.build.APPROVED_ARTIFACTS)
+            with mock.patch.object(
+                self.build,
+                "foxglove_source_revision",
+                return_value=self.build.EXPECTED_FOXGLOVE_COMMIT,
+            ), mock.patch.object(
+                self.build,
+                "sha256_pinned_source",
+                side_effect=[
+                    self.build.EXPECTED_FOXGLOVE_HEADER_SHA256,
+                    self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256,
+                ],
+            ), self.assertRaisesRegex(FileNotFoundError, "Missing selected artifact"):
+                self.build.write_manifest(
+                    root / "target",
+                    environment,
+                    self.build.APPROVED_ARTIFACTS,
+                )
 
     def test_relative_target_dir_uses_repository_base(self) -> None:
         """Cargo and manifest paths must resolve relative targets identically."""
@@ -246,8 +286,23 @@ class RemoteGatewayToolingTests(unittest.TestCase):
                 "CARGO_BUILD_TARGET": "x86_64-pc-windows-msvc",
                 "RUSTUP_TOOLCHAIN": "stable-msvc",
             }
-            with mock.patch.object(self.build, "STAGING", staging):
-                path = self.build.write_manifest(root / "target", manifest_environment, ("foxglove.dll",))
+            with mock.patch.object(
+                self.build,
+                "foxglove_source_revision",
+                return_value=self.build.EXPECTED_FOXGLOVE_COMMIT,
+            ), mock.patch.object(
+                self.build,
+                "sha256_pinned_source",
+                side_effect=[
+                    self.build.EXPECTED_FOXGLOVE_HEADER_SHA256,
+                    self.build.EXPECTED_FOXGLOVE_CARGO_LOCK_SHA256,
+                ],
+            ), mock.patch.object(self.build, "STAGING", staging):
+                path = self.build.write_manifest(
+                    root / "target",
+                    manifest_environment,
+                    ("foxglove.dll",),
+                )
             payload = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual("x86_64-pc-windows-msvc", payload["target"])
         self.assertEqual("stable-msvc", payload["environment"]["RUSTUP_TOOLCHAIN"])
