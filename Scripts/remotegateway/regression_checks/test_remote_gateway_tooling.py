@@ -45,6 +45,25 @@ class RemoteGatewayToolingTests(unittest.TestCase):
             ACCEPTANCE_PATH,
         )
 
+    def test_committed_manifest_records_pinned_source_and_provenance(self) -> None:
+        """The tracked trust anchor records the pinned source inputs."""
+        manifest_path = ROOT / (
+            "Packages/dev.unity2foxglove.remotegateway.win64/Runtime/"
+            "Plugins/Windows/x86_64/foxglove-gateway-native-artifact.json"
+        )
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(self.build.foxglove_source_revision(), payload["sourceCommit"])
+        self.assertEqual(
+            self.build.sha256(self.build.FOXGLOVE_HEADER).lower(),
+            payload["cHeaderSha256"].lower(),
+        )
+        self.assertEqual(
+            self.build.sha256(self.build.FOXGLOVE_ROOT / "Cargo.lock").lower(),
+            payload["cargoLockSha256"].lower(),
+        )
+        self.assertEqual("present", payload["environment"]["cargoLock"])
+
     def test_copy_rejects_an_unreviewed_artifact_name(self) -> None:
         """Callers cannot widen the package-copy allow-list."""
         with tempfile.TemporaryDirectory() as temp:

@@ -2,6 +2,9 @@
   "artifact": "foxglove.dll",
   "platform": "windows-x64",
   "source": "third-party/foxglove-sdk/c",
+  "sourceCommit": "b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba",
+  "cHeaderSha256": "9fee4cc6d334e55679ee950dfccf4001dd6a7976dde172fe5b433971989d5c80",
+  "cargoLockSha256": "15c6bb3c0a3a6719ac84a41d4b87a716ebf90778fad43fdf05f9bf7c92ca8b00",
   "features": "remote-access",
   "rustToolchain": "rustc 1.96.1 (31fca3adb 2026-06-26)",
   "cargoToolchain": "cargo 1.96.1 (356927216 2026-06-26)",
@@ -9,7 +12,8 @@
   "cflags": "/MT",
   "environment": {
     "AWS_LC_SYS_PREBUILT_NASM": "1",
-    "CARGO_TARGET_DIR": "<build-local>"
+    "CARGO_TARGET_DIR": "<build-local>",
+    "cargoLock": "present"
   },
   "sha256": "53baa160a0bcb0d77132b75a74154a318ce5aba279fae0413ace7f9cd9677814",
   "sizeBytes": 40777216,
