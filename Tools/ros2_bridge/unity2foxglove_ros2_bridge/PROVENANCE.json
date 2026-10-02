@@ -124,13 +124,13 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance.py",
-      "sha256": "d9f7414f225426bc580e208c320146ffce461fcce5d6b5a0fbbe81dddaf843f0",
+      "sha256": "d0d4b6f6eb4b58546290c818828b95db487919cdb0c9e34d863be65da240a67e",
       "classification": "original",
       "influence": "Original fail-closed Git-object, provenance, overlap, path, and inventory validator."
     },
     {
       "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance.py",
-      "sha256": "cb5c42187533fa1946452f0364dd067a46631522a3744e4d7e9f6f35eb104adf",
+      "sha256": "038892179f51f621bdff24cb138826f7f77bc29a331def595869e07b787d15b7",
       "classification": "original",
       "influence": "Original negative and repository integration tests for the provenance gate."
     },
