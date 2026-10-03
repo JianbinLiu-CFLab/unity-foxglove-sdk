@@ -368,8 +368,11 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         public void RealTcpDisconnectWakesBlockedPreparationBeforeFinalDispose()
         {
             const int joinTimeoutMs = 1000;
-            const int ioTimeoutMs = 5000;
+            const int ioTimeoutMs = 20000;
             Assert.True(ioTimeoutMs > joinTimeoutMs * 4);
+            Assert.True(
+                ioTimeoutMs > RealTcpWaitTimeout.TotalMilliseconds * 2,
+                "The I/O timeout must remain well above the real TCP rendezvous budget");
             using var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start(1);
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -459,12 +462,10 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     "Stop exceeded the bounded real TCP wake interval");
                 Wait(
                     sink.ExchangeExited,
-                    "real TCP preparation exchange did not exit",
-                    RealTcpWaitTimeout);
+                    "real TCP preparation exchange did not exit");
                 Wait(
                     peerClosed,
-                    "loopback peer did not observe TCP close",
-                    RealTcpWaitTimeout);
+                    "loopback peer did not observe TCP close");
                 Assert.True(serverDone.Wait(TimeSpan.FromSeconds(5)));
                 Assert.True(server.Join(TimeSpan.FromSeconds(5)));
                 Assert.Null(serverFailure);
