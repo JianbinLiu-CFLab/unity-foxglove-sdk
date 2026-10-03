@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 MODULE_PATH = ROOT / "Scripts/smoke/foxrun/phase186_provenance.py"
@@ -55,13 +56,7 @@ V1_TOP_LEVEL_KEYS = [
 def load_module():
     """Load the provenance gate from its repository path."""
 
-    spec = importlib.util.spec_from_file_location("phase186_provenance", MODULE_PATH)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Could not load the Phase186 provenance gate.")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return __load_fresh_module("phase186_provenance", MODULE_PATH)
 def sha256_text(value: str) -> str:
     """Return the exact UTF-8 SHA-256 used by synthetic ledger records."""
 

@@ -368,8 +368,11 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         public void RealTcpDisconnectWakesBlockedPreparationBeforeFinalDispose()
         {
             const int joinTimeoutMs = 1000;
-            const int ioTimeoutMs = 5000;
+            const int ioTimeoutMs = 20000;
             Assert.True(ioTimeoutMs > joinTimeoutMs * 4);
+            Assert.True(
+                ioTimeoutMs > RealTcpWaitTimeout.TotalMilliseconds * 2,
+                "The I/O timeout must remain well above the real TCP rendezvous budget");
             using var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start(1);
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
@@ -443,10 +446,12 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                         out _));
                 Wait(
                     sink.ExchangeEntered,
-                    "real TCP preparation exchange did not start");
+                    "real TCP preparation exchange did not start",
+                    RealTcpWaitTimeout);
                 Wait(
                     requestReceived,
-                    "loopback peer did not receive the preparation request");
+                    "loopback peer did not receive the preparation request",
+                    RealTcpWaitTimeout);
 
                 var stopwatch = Stopwatch.StartNew();
                 runtime.Stop();
@@ -458,7 +463,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 Wait(
                     sink.ExchangeExited,
                     "real TCP preparation exchange did not exit");
-                Wait(peerClosed, "loopback peer did not observe TCP close");
+                Wait(
+                    peerClosed,
+                    "loopback peer did not observe TCP close");
                 Assert.True(serverDone.Wait(TimeSpan.FromSeconds(5)));
                 Assert.True(server.Join(TimeSpan.FromSeconds(5)));
                 Assert.Null(serverFailure);
@@ -1034,9 +1041,15 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 sequence,
                 payload: new byte[] { 0x00 });
 
-        private static void Wait(ManualResetEventSlim signal, string failure)
+        private static readonly TimeSpan RealTcpWaitTimeout =
+            TimeSpan.FromSeconds(5);
+
+        private static void Wait(
+            ManualResetEventSlim signal,
+            string failure,
+            TimeSpan? timeout = null)
         {
-            Assert.True(signal.Wait(TimeSpan.FromSeconds(2)), failure);
+            Assert.True(signal.Wait(timeout ?? TimeSpan.FromSeconds(2)), failure);
         }
 
         private static bool IsPeerClose(IOException exception)

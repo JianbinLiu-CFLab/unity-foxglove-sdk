@@ -15,6 +15,7 @@ import sys
 import tempfile
 import typing
 import unittest
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 PROTOCOL_PATH = (
     ROOT
@@ -27,16 +28,10 @@ PHASE184_TEST_ROOT = ROOT / "build" / "Tests" / "Phase184"
 def load_protocol_module():
     """Load the Phase184-G protocol module under test."""
 
-    spec = importlib.util.spec_from_file_location(
+    return __load_fresh_module(
         "phase184_profile_acceptance_protocol",
         PROTOCOL_PATH,
     )
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Could not load the Phase184-G acceptance protocol module.")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 def temporary_directory(prefix: str):
     """Return a Phase184-owned temporary directory context."""
 

@@ -47,8 +47,55 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyGeneratedStandardCdrBehavior();
             VerifyPhysicalLeaseSharingBehavior();
             VerifyGeneratedDuplexProbeAuthority();
+            VerifySplitPythonSourceUsesDeclaredExports();
 
             Console.WriteLine($"Phase 186: {_passed} checks passed.");
+        }
+
+        private static void VerifySplitPythonSourceUsesDeclaredExports()
+        {
+            var root = Path.Combine(
+                Path.GetTempPath(),
+                "unity2foxglove-phase186-source-layout-" + Guid.NewGuid().ToString("N"));
+            var package = Path.Combine(root, "fixture");
+            Directory.CreateDirectory(package);
+            var facade = Path.Combine(root, "fixture.py");
+            try
+            {
+                File.WriteAllText(facade, "LIVE_AUTHORITY\n");
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import live\n");
+                File.WriteAllText(Path.Combine(package, "live.py"), "LIVE_SECTION\n");
+                File.WriteAllText(Path.Combine(package, "obsolete.py"), "ORPHAN_SECTION\n");
+
+                var source = PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    source.Contains("LIVE_SECTION", StringComparison.Ordinal)
+                    && !source.Contains("ORPHAN_SECTION", StringComparison.Ordinal),
+                    "186-F7: split-source validation follows __init__.py exports and ignores orphan sections");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import live\nfrom . import missing\n");
+                var missingSectionRejected = false;
+                try
+                {
+                    PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                }
+                catch (FileNotFoundException)
+                {
+                    missingSectionRejected = true;
+                }
+                Check(
+                    missingSectionRejected,
+                    "186-F8: split-source validation rejects missing declared sections");
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, recursive: true);
+            }
         }
 
         private static void VerifyProtocolAuthority()
@@ -426,28 +473,7 @@ namespace Unity.FoxgloveSDK.Tests
                 relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
         private static string ReadSplitPythonSource(string relativePath)
-        {
-            var facadePath = Path.Combine(
-                Root(),
-                relativePath.Replace('/', Path.DirectorySeparatorChar));
-            var packagePath = Path.Combine(
-                Path.GetDirectoryName(facadePath)
-                    ?? throw new DirectoryNotFoundException(facadePath),
-                Path.GetFileNameWithoutExtension(facadePath));
-            if (!Directory.Exists(packagePath))
-                return File.ReadAllText(facadePath);
-
-            var sections = Directory.EnumerateFiles(packagePath, "*.py")
-                .Where(path => !string.Equals(
-                    Path.GetFileName(path),
-                    "__init__.py",
-                    StringComparison.OrdinalIgnoreCase))
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .Select(File.ReadAllText);
-            return File.ReadAllText(facadePath)
-                   + Environment.NewLine
-                   + string.Join(Environment.NewLine, sections);
-        }
+            => PhaseValidationSourceHelpers.ReadSplitPythonSource(relativePath);
 
         private static string Root()
             => Phase16Validation.FindRepoRoot()

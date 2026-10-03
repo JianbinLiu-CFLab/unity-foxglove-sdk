@@ -20,6 +20,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 ROOT = Path(__file__).resolve().parents[4]
 SMOKE_PATH = ROOT / "Scripts" / "smoke" / "ros2" / "phase179_foxrun_ros2_inbound_acceptance.py"
 def load_smoke_module():
@@ -28,12 +29,10 @@ def load_smoke_module():
     smoke_dir = str(SMOKE_PATH.parent)
     if smoke_dir not in sys.path:
         sys.path.insert(0, smoke_dir)
-    spec = importlib.util.spec_from_file_location("phase179_foxrun_ros2_inbound_acceptance", SMOKE_PATH)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    return __load_fresh_module(
+        "phase179_foxrun_ros2_inbound_acceptance",
+        SMOKE_PATH,
+    )
 class _Phase179FoxRunRos2InboundAcceptanceTests_support:
     """Decomposed Phase192 implementation component."""
     def setUp(self) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from .discover_protocol_sources_and_phase186b_introduced_sources import *
+from .foundation import __decomposed_authority_paths
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase186_provenance.py"
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
@@ -156,10 +157,17 @@ def validate_repository_provenance(
                 + ", ".join(extra)
             )
 
+    decomposed_authorities = __decomposed_authority_paths(repository)
     expected_implementation_paths = (
-        discovered_sources | set(_REQUIRED_RECORDED_AUTHORITIES)
+        discovered_sources
+        | set(_REQUIRED_RECORDED_AUTHORITIES)
+        | set(decomposed_authorities)
     )
-    for relative in (*_REQUIRED_RECORDED_AUTHORITIES, *_REQUIRED_UNRECORDED_AUTHORITIES):
+    for relative in (
+        *_REQUIRED_RECORDED_AUTHORITIES,
+        *_REQUIRED_UNRECORDED_AUTHORITIES,
+        *decomposed_authorities,
+    ):
         try:
             _resolve_regular_file_contained(
                 repository,

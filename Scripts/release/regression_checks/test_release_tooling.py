@@ -648,6 +648,7 @@ class RunCiTests(unittest.TestCase):
             "- name: Run Phase179 ROS2 acceptance helper regressions",
             "- name: Run Phase181 custom ROS2 acceptance helper regressions",
             "- name: Run Phase186 Bridge tooling and package-composition gate",
+            "- name: Run Phase192 base-head identity equivalence gate",
             "- name: Run official MCAP differential conformance",
             "- name: Validate local entrypoints",
         ):
@@ -658,6 +659,17 @@ class RunCiTests(unittest.TestCase):
                 step,
             )
 
+    def test_dotnet_workflow_identity_gate_uses_pull_request_base_and_head(self) -> None:
+        """The required workflow must compare the actual PR base and head refs."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        start = active_workflow_line_index(
+            workflow,
+            "- name: Run Phase192 base-head identity equivalence gate",
+        )
+        joined = "\n".join(workflow.splitlines()[start : start + 10])
+        self.assertIn("github.event.pull_request.base.sha", joined)
+        self.assertIn("github.event.pull_request.head.sha", joined)
+        self.assertIn("Scripts/phase192/compare_identity_surfaces.py", joined)
     def test_dotnet_workflow_runs_xunit_before_panel_lane(self) -> None:
         """The unit-test gate must run even when the panel lane fails first."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")

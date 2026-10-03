@@ -4,9 +4,11 @@
 // Purpose: Shared source inspection helpers for runtime validation phases.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -34,6 +36,78 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static string ReadRequiredRepoText(string relativePath)
             => File.ReadAllText(RepoPath(relativePath));
+
+        public static string ReadSplitPythonSource(string relativePath)
+            => ReadSplitPythonSourcePath(RepoPath(relativePath));
+
+        internal static string ReadSplitPythonSourcePath(string facadePath)
+        {
+            var packagePath = Path.Combine(
+                Path.GetDirectoryName(facadePath)
+                    ?? throw new DirectoryNotFoundException(facadePath),
+                Path.GetFileNameWithoutExtension(facadePath));
+            if (!Directory.Exists(packagePath))
+                return File.ReadAllText(facadePath);
+
+            var sections = EnumeratePythonSectionPaths(packagePath).ToArray();
+            if (sections.Length == 0)
+                throw new InvalidOperationException(
+                    "No exported Python source sections found in "
+                    + Path.Combine(packagePath, "__init__.py"));
+
+            var source = new StringBuilder(File.ReadAllText(facadePath));
+            foreach (var section in sections)
+            {
+                source.Append(Environment.NewLine);
+                source.Append(File.ReadAllText(section));
+            }
+
+            return source.ToString();
+        }
+
+        private static IEnumerable<string> EnumeratePythonSectionPaths(string packagePath)
+        {
+            var initPath = Path.Combine(packagePath, "__init__.py");
+            if (!File.Exists(initPath))
+                throw new FileNotFoundException("Missing Python package initializer.", initPath);
+
+            foreach (var rawLine in File.ReadLines(initPath))
+            {
+                if (rawLine.Length != rawLine.TrimStart().Length)
+                    continue;
+
+                var line = rawLine.Trim();
+                if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
+                    continue;
+
+                var match = Regex.Match(
+                    line,
+                    @"^from\s+\.(?<module>[A-Za-z_]\w*)?\s+import\s+(?<names>.+?)(?:\s+#.*)?$",
+                    RegexOptions.CultureInvariant);
+                if (!match.Success)
+                    continue;
+
+                var module = match.Groups["module"].Value;
+                var names = module.Length > 0
+                    ? new[] { module }
+                    : match.Groups["names"].Value
+                        .Trim('(', ')')
+                        .Split(',')
+                        .Select(name => name.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)[0]);
+                foreach (var name in names)
+                {
+                    if (string.Equals(name, "__init__", StringComparison.Ordinal))
+                        continue;
+
+                    var candidate = Path.Combine(packagePath, name + ".py");
+                    if (!File.Exists(candidate))
+                        throw new FileNotFoundException(
+                            "Declared Python source section is missing.",
+                            candidate);
+                    yield return candidate;
+                }
+            }
+        }
 
         public static string ReadCameraPublisherSources()
         {
