@@ -7,7 +7,6 @@
 // WebSocket server, coordinate mode, asset roots, playback control, MCAP
 // recording, and MCAP replay.
 
-using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Core;
@@ -179,50 +178,6 @@ namespace Unity.FoxgloveSDK.Components
         /// Fires when a client-published message arrives with its advertised wire encoding.
         /// </summary>
         public event System.Action<uint, uint, string, string, byte[]> OnClientMessageWithEncoding;
-
-        private readonly object _replaySubscriberLock = new object();
-        private System.Action<string, byte[]> _onReplayMessage;
-        private System.Action<ReplayMessageContext> _onReplayMessageContext;
-        private System.Action<ReplayBatchContext> _onReplayBatchCompleted;
-        private System.Delegate[] _replayMessageSubscribers = Array.Empty<System.Delegate>();
-        private System.Delegate[] _replayMessageContextSubscribers = Array.Empty<System.Delegate>();
-        private System.Delegate[] _replayBatchSubscribers = Array.Empty<System.Delegate>();
-
-        /// <summary>Fires when a replay message is forwarded on the main thread.</summary>
-        public event System.Action<string, byte[]> OnReplayMessage
-        {
-            add => UpdateReplaySubscribers(ref _onReplayMessage, ref _replayMessageSubscribers, value, true);
-            remove => UpdateReplaySubscribers(ref _onReplayMessage, ref _replayMessageSubscribers, value, false);
-        }
-
-        /// <summary>Fires when replay data is forwarded with channel, schema, and log-time context.</summary>
-        public event System.Action<ReplayMessageContext> OnReplayMessageContext
-        {
-            add => UpdateReplaySubscribers(ref _onReplayMessageContext, ref _replayMessageContextSubscribers, value, true);
-            remove => UpdateReplaySubscribers(ref _onReplayMessageContext, ref _replayMessageContextSubscribers, value, false);
-        }
-
-        /// <summary>Fires after a replay batch has been forwarded to scene listeners.</summary>
-        public event System.Action<ReplayBatchContext> OnReplayBatchCompleted
-        {
-            add => UpdateReplaySubscribers(ref _onReplayBatchCompleted, ref _replayBatchSubscribers, value, true);
-            remove => UpdateReplaySubscribers(ref _onReplayBatchCompleted, ref _replayBatchSubscribers, value, false);
-        }
-
-        private void UpdateReplaySubscribers<T>(
-            ref T handlers,
-            ref System.Delegate[] snapshot,
-            T subscriber,
-            bool add) where T : System.Delegate
-        {
-            lock (_replaySubscriberLock)
-            {
-                handlers = (T)(add
-                    ? System.Delegate.Combine(handlers, subscriber)
-                    : System.Delegate.Remove(handlers, subscriber));
-                snapshot = handlers?.GetInvocationList() ?? Array.Empty<System.Delegate>();
-            }
-        }
 
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding, string schemaEncoding), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string, string, string), uint>();
