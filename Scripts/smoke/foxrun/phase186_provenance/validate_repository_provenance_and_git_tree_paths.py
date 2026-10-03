@@ -156,10 +156,17 @@ def validate_repository_provenance(
                 + ", ".join(extra)
             )
 
+    decomposed_authorities = _decomposed_authority_paths(repository)
     expected_implementation_paths = (
-        discovered_sources | set(_REQUIRED_RECORDED_AUTHORITIES)
+        discovered_sources
+        | set(_REQUIRED_RECORDED_AUTHORITIES)
+        | set(decomposed_authorities)
     )
-    for relative in (*_REQUIRED_RECORDED_AUTHORITIES, *_REQUIRED_UNRECORDED_AUTHORITIES):
+    for relative in (
+        *_REQUIRED_RECORDED_AUTHORITIES,
+        *_REQUIRED_UNRECORDED_AUTHORITIES,
+        *decomposed_authorities,
+    ):
         try:
             _resolve_regular_file_contained(
                 repository,

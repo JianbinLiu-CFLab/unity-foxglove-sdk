@@ -154,6 +154,12 @@ jobs:
       - name: Run Phase186 Bridge tooling and package-composition gate
         if: always()
         run: python3 Scripts/release/run_ci.py --only phase186-bridge-tooling
+      - name: Run Phase192 base-head identity equivalence gate
+        if: always()
+        env:
+          PHASE192_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PHASE192_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 Scripts/phase192/compare_identity_surfaces.py --base "$PHASE192_BASE_SHA" --head "$PHASE192_HEAD_SHA"
 
       - name: Run official MCAP differential conformance
         if: always()

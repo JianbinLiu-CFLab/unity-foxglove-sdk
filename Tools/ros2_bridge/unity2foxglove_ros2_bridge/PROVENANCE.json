@@ -129,10 +129,100 @@
       "influence": "Original fail-closed Git-object, provenance, overlap, path, and inventory validator."
     },
     {
+      "path": "Scripts/smoke/foxrun/phase186_provenance/__init__.py",
+      "sha256": "67b9977477988a8a1eb7455ce1ac90c2de2df03c942ffc6f9861969f3f732eea",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator implementation."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/phase186_provenance/__main__.py",
+      "sha256": "4510e4037345a9d67e726e707abbd918516ae2da55c68436da5a5369e5d62caf",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator implementation."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/phase186_provenance/discover_protocol_sources_and_phase186b_introduced_sources.py",
+      "sha256": "1a915e0764a1054706b04bee4e801c081626a6200fe71e6ef693bcd386e2301f",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator implementation."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/phase186_provenance/foundation.py",
+      "sha256": "a67e380c735575a286856bc90400b0691cb26fc9821fe1774de98a444bb71395",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator implementation."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/phase186_provenance/reject_json_constant_and_strict_json_loads.py",
+      "sha256": "f5e458e135c5c2ab9837fdb3a7e1cfb618620e14258e255217914cf3fed52367",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator implementation."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/phase186_provenance/validate_ledger_payload_and_read_json.py",
+      "sha256": "ecb5aff5850c1ea200d3b9bc87fd2043204de668afa9288f2689879085b643d9",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator implementation."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/phase186_provenance/validate_pre_move_inventory_and_default_paths.py",
+      "sha256": "016c00a9cf2ab476c4f4e65834af2b0e9b640c3e4dd4e1e29508e392a2799fca",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator implementation."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/phase186_provenance/validate_repository_provenance_and_git_tree_paths.py",
+      "sha256": "ffb2bc91892cb8ff8dd79078a7be0ce1d5e064973374564e149da04410ede04d",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator implementation."
+    },
+    {
       "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance.py",
       "sha256": "038892179f51f621bdff24cb138826f7f77bc29a331def595869e07b787d15b7",
       "classification": "original",
       "influence": "Original negative and repository integration tests for the provenance gate."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/__init__.py",
+      "sha256": "e3140e5a6f539642db8bf8ed0c2108f8d665d055e9df003353c387f200875946",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator regression coverage."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/class_phase186_provenance_tests_cleanup_and_phase186_provenance_tests_public.py",
+      "sha256": "17b09c8b99142c846c73e4e8a644c5d4ffbc88fc655d719373ab34ff5af68fea",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator regression coverage."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/class_phase186_provenance_tests_fixtures.py",
+      "sha256": "cb5f4ab4cb5e8801598b3169bd72f4dc0879824dc1f5a2f8757050e9ca64e438",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator regression coverage."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/class_phase186_provenance_tests_runtime.py",
+      "sha256": "ac60e8831c7338fa34de96b187fb10b63a587dd9a19fa796371305a32b4335a9",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator regression coverage."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/class_phase186_provenance_tests_support.py",
+      "sha256": "c9d12fc64c635ff7210c7e31590d722b50ae731b1be95f7da3b1df5318b28084",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator regression coverage."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/class_phase186_provenance_tests_validation.py",
+      "sha256": "2cae4add06de11c371de5464a7c51c521152da282b9fbf4ae280190974a4ce3d",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator regression coverage."
+    },
+    {
+      "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/foundation.py",
+      "sha256": "b57f7fef8359d65ba03cbfdfa0b0703a259b7cee254ba113eb73a74995ff8d0f",
+      "classification": "original",
+      "influence": "Original decomposed Phase186 provenance validator regression coverage."
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/U2R2_PROTOCOL.md",

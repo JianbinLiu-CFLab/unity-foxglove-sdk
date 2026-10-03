@@ -6,8 +6,10 @@ import argparse
 import ast
 import csv
 import hashlib
+import importlib
 import re
 import sys
+import unittest
 from pathlib import Path
 
 
@@ -102,14 +104,65 @@ def python_annotation_rows(path: str, text: str) -> list[list[str]]:
     return rows
 
 
-def python_test_rows(path: str, text: str) -> list[list[str]]:
-    """Phase192 python test rows."""
-    tree = ast.parse(text, filename=path)
-    return [
-        [path, node.name, "python-method"]
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test")
-    ]
+def _flatten_test_suite(suite: unittest.TestSuite):
+    """Yield every concrete test case from a unittest suite."""
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            yield from _flatten_test_suite(item)
+        else:
+            yield item
+
+
+def _module_name_for_path(path: str) -> str:
+    """Convert a repository-relative Python path to its import name."""
+    normalized = path.replace("\\", "/")
+    if not normalized.endswith(".py"):
+        raise ValueError(f"Python test path must end in .py: {path}")
+    return normalized[:-3].replace("/", ".").rstrip(".")
+
+
+def python_test_rows(
+    path: str,
+    text: str,
+    root: Path | None = None,
+) -> list[list[str]]:
+    """Return fully-qualified tests discovered by unittest, not AST-looking names."""
+    del text
+    if root is None:
+        raise ValueError("A repository root is required for unittest discovery")
+
+    module_name = _module_name_for_path(path)
+    prefixes = (module_name,)
+    for loaded_name in tuple(sys.modules):
+        if any(
+            loaded_name == prefix or loaded_name.startswith(prefix + ".")
+            for prefix in prefixes
+        ):
+            sys.modules.pop(loaded_name, None)
+    importlib.invalidate_caches()
+
+    root_text = str(root.resolve())
+    inserted = root_text not in sys.path
+    if inserted:
+        sys.path.insert(0, root_text)
+    try:
+        suite = unittest.defaultTestLoader.loadTestsFromName(module_name)
+    finally:
+        if inserted:
+            sys.path.remove(root_text)
+
+    rows: list[list[str]] = []
+    for case in _flatten_test_suite(suite):
+        if case.__class__.__name__ == "_FailedTest":
+            raise RuntimeError(
+                f"unittest discovery failed for {module_name}: {case.id()}"
+            )
+        method_name = getattr(case, "_testMethodName", None)
+        if not method_name:
+            continue
+        class_name = type(case).__name__
+        rows.append([path, f"{module_name}.{class_name}.{method_name}", "unittest"] )
+    return sorted(rows)
 
 
 def cpp_rows(path: str, text: str) -> list[list[str]]:
@@ -177,21 +230,57 @@ def check_hash_manifest(manifest: Path, root: Path) -> int:
 def check_source_map(source_map: Path, root: Path) -> int:
     """Phase192 check source map."""
     with source_map.open(encoding="utf-8", newline="") as handle:
-        rows = list(csv.DictReader(handle, delimiter="\t"))
+        reader = csv.DictReader(handle, delimiter="\t")
+        fieldnames = reader.fieldnames or []
+        rows = list(reader)
     required = {"old_path", "new_path", "original_hash", "moved_symbol"}
-    if rows and not required.issubset(rows[0]):
+    if not required.issubset(fieldnames):
         print("SOURCE_MAP_SCHEMA_DIFF")
         return 1
+    if not rows:
+        print("SOURCE_MAP_EMPTY")
+        return 1
+    try:
+        root_resolved = root.resolve(strict=True)
+    except OSError:
+        print("SOURCE_MAP_PATH_DIFF root")
+        return 1
     for row in rows:
-        if not (root / row["old_path"]).exists() or not (root / row["new_path"]).exists():
-            print(f"SOURCE_MAP_PATH_DIFF {row.get('old_path', '')} {row.get('new_path', '')}")
-            return 1
-        if not row["original_hash"] or not row["moved_symbol"]:
+        old_name = (row.get("old_path") or "").strip()
+        new_name = (row.get("new_path") or "").strip()
+        original_hash = (row.get("original_hash") or "").strip()
+        moved_symbol = (row.get("moved_symbol") or "").strip()
+        if not old_name or not new_name or not original_hash or not moved_symbol:
             print("SOURCE_MAP_EMPTY_FIELD")
+            return 1
+        old_path = root / old_name
+        new_path = root / new_name
+        try:
+            old_path = old_path.resolve(strict=True)
+            new_path = new_path.resolve(strict=True)
+        except OSError:
+            print(f"SOURCE_MAP_PATH_DIFF {old_name} {new_name}")
+            return 1
+        if (not old_path.is_file() or not new_path.is_file()
+                or not old_path.is_relative_to(root_resolved)
+                or not new_path.is_relative_to(root_resolved)):
+            print(f"SOURCE_MAP_PATH_DIFF {old_name} {new_name}")
+            return 1
+        if not re.fullmatch(r"[0-9a-fA-F]{64}", original_hash):
+            print(f"SOURCE_MAP_HASH_DIFF {old_name}")
+            return 1
+        actual_hash = hashlib.sha256(old_path.read_bytes()).hexdigest()
+        if actual_hash.casefold() != original_hash.casefold():
+            print(f"SOURCE_MAP_HASH_DIFF {old_name}")
+            return 1
+        old_text = old_path.read_text(encoding="utf-8", errors="replace")
+        target_text = new_path.read_text(encoding="utf-8", errors="replace")
+        symbol_pattern = rf"(?<!\w){re.escape(moved_symbol)}(?!\w)"
+        if not re.search(symbol_pattern, old_text) or not re.search(symbol_pattern, target_text):
+            print(f"SOURCE_MAP_SYMBOL_DIFF {old_name} {new_name} {moved_symbol}")
             return 1
     print(f"SOURCE_MAP_VALID rows={len(rows)}")
     return 0
-
 
 def files_from_manifest(path: Path) -> list[str]:
     """Phase192 files from manifest."""
@@ -240,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
             rows.extend(cpp_rows(path, item.read_text(encoding="utf-8", errors="replace")))
         else:
             text = item.read_text(encoding="utf-8", errors="replace")
-            rows.extend(csharp_test_rows(path, text) if path.endswith(".cs") else python_test_rows(path, text))
+            rows.extend(csharp_test_rows(path, text) if path.endswith(".cs") else python_test_rows(path, text, root))
     headers = {
         "managed": ["path", "line", "visibility", "declaration"],
         "python": ["path", "all", "exports"],

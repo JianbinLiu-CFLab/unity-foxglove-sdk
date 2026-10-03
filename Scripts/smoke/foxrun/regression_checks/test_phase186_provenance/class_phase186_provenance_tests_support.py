@@ -21,6 +21,21 @@ class _Phase186ProvenanceTests_support:
         )
         self.assertEqual([], provenance_errors)
         self.assertEqual([], inventory_errors)
+    def test_decomposed_authority_sections_are_all_ledgered_with_exact_hashes(self) -> None:
+        """Every split implementation and test section must have a matching ledger record."""
+
+        module = load_module()
+        ledger = json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
+        records = {record["path"]: record for record in ledger["implementations"]}
+        expected = module._decomposed_authority_paths(ROOT)
+        self.assertTrue(expected)
+        self.assertEqual([], [path for path in expected if path not in records])
+        for relative in expected:
+            path = ROOT / pathlib.PurePosixPath(relative)
+            observed = hashlib.sha256(
+                module._canonical_source_bytes(path.read_bytes())
+            ).hexdigest()
+            self.assertEqual(observed, records[relative]["sha256"], relative)
     def test_dotnet_ci_materializes_exact_provenance_authorities(self) -> None:
         """The Linux release gate must own history and both pinned references."""
 

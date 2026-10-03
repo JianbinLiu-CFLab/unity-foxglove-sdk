@@ -12,6 +12,8 @@ import sys
 import unittest
 from pathlib import Path
 
+from Scripts.phase192.source_layout import load_fresh_module
+
 
 ROOT = Path(__file__).resolve().parents[4]
 PROBE_PATH = (
@@ -40,15 +42,10 @@ ACCEPTANCE_SOURCES = (
 
 def load_probe():
     """Load the maintained probe from its CLI path."""
-    spec = importlib.util.spec_from_file_location(
+    return load_fresh_module(
         "phase185_foxrun_messagepack_probe_under_test",
         PROBE_PATH,
     )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 class Phase185FoxRunMessagePackProbeTests(unittest.TestCase):

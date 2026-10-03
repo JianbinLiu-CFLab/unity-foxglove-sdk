@@ -33,6 +33,36 @@ class _Phase186BridgeAcceptanceTests_support:
         with tempfile.TemporaryDirectory() as temp:
             completed = subprocess.run([sys.executable, '-I', '-c', probe, str(script_directory)], cwd=temp, capture_output=True, text=True, check=False)
         self.assertEqual(0, completed.returncode, completed.stderr)
+    def test_decomposed_smoke_packages_support_module_execution(self) -> None:
+        """Verify every decomposed smoke package has a working module entrypoint."""
+        repository = pathlib.Path(__file__).resolve().parents[4]
+        modules = (
+            'phase184_foxglove_cli_install',
+            'phase184_foxglove_desktop_live_protocol',
+            'phase184_profile_acceptance',
+            'phase184_profile_acceptance_protocol',
+            'phase186_bridge_acceptance',
+            'phase186_bridge_acceptance_protocol',
+            'phase186_bridge_build',
+            'phase186_bridge_capability_probe',
+            'phase186_bridge_live',
+            'phase186_bridge_live_peer',
+            'phase186_provenance',
+        )
+        for module in modules:
+            with self.subTest(module=module):
+                completed = subprocess.run(
+                    [sys.executable, '-m', f'Scripts.smoke.foxrun.{module}', '--help'],
+                    cwd=repository,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(
+                    0,
+                    completed.returncode,
+                    f'{module}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}',
+                )
     def test_reporter_handoff_precedes_pass_fail_not_run_machine_markers(self) -> None:
         """Verify that reporter handoff precedes pass fail not run machine markers."""
         for verdict, reason in (('PASS', 'cleanup complete'), ('FAIL', 'FAIL_RUNTIME: peer stopped'), ('NOT RUN', 'Unity license unavailable')):

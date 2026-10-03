@@ -5,6 +5,24 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184ProfileAcceptanceOrchestratorTests_additional:
     """Decomposed Phase192 implementation component."""
+    def test_load_module_clears_split_implementation_state(self):
+        """A fresh facade load must also reload its implementation package."""
+
+        first = load_module()
+        first._PROCESS_IMPORTED_UNIX_SECONDS = -1.0
+        second = load_module()
+
+        self.assertNotEqual(-1.0, second._PROCESS_IMPORTED_UNIX_SECONDS)
+
+        qualified = __import__(
+            "Scripts.smoke.foxrun.phase184_profile_acceptance",
+            fromlist=["*"],
+        )
+        qualified._PROCESS_IMPORTED_UNIX_SECONDS = -2.0
+        third = load_module()
+
+        self.assertNotEqual(-2.0, third._PROCESS_IMPORTED_UNIX_SECONDS)
+
     def test_unity_routes_emit_native_gate_before_full_bridge_readiness(self):
         """Verify unity routes emit native gate before full bridge readiness."""
 
