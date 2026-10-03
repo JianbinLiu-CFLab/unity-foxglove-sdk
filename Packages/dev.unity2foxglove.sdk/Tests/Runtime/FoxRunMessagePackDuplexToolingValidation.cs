@@ -248,28 +248,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static string Read(string path) => FoxRunMessagePackPublicContractValidation.Read(path);
 
         private static string ReadSplitPythonSource(string relativePath)
-        {
-            var facadePath = Path.Combine(
-                PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
-                relativePath.Replace('/', Path.DirectorySeparatorChar));
-            var packagePath = Path.Combine(
-                Path.GetDirectoryName(facadePath)
-                    ?? throw new DirectoryNotFoundException(facadePath),
-                Path.GetFileNameWithoutExtension(facadePath));
-            if (!Directory.Exists(packagePath))
-                return File.ReadAllText(facadePath);
-
-            var sections = Directory.EnumerateFiles(packagePath, "*.py")
-                .Where(path => !string.Equals(
-                    Path.GetFileName(path),
-                    "__init__.py",
-                    StringComparison.OrdinalIgnoreCase))
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .Select(File.ReadAllText);
-            return File.ReadAllText(facadePath)
-                   + Environment.NewLine
-                   + string.Join(Environment.NewLine, sections);
-        }
+            => PhaseValidationSourceHelpers.ReadSplitPythonSource(relativePath);
 
         private static bool ContainsAll(string source, params string[] values)
             => FoxRunMessagePackPublicContractValidation.ContainsAll(source, values);
