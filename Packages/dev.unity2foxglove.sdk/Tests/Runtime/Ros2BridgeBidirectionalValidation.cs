@@ -211,8 +211,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPortableOriginProbe()
         {
-            var build = Read("Scripts/smoke/foxrun/phase186_bridge_build.py");
-            var probe = Read("Scripts/smoke/foxrun/phase186_bridge_capability_probe.py");
+            var build = ReadSplitPythonSource("Scripts/smoke/foxrun/phase186_bridge_build.py");
+            var probe = ReadSplitPythonSource("Scripts/smoke/foxrun/phase186_bridge_capability_probe.py");
             var nativeProbe = Read(
                 "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_origin_suppression.cpp");
             var rows = new[]
@@ -385,7 +385,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyGeneratedDuplexProbeAuthority()
         {
-            var build = Read(
+            var build = ReadSplitPythonSource(
                 "Scripts/smoke/foxrun/phase186_bridge_build.py");
             var cmake = Read(
                 "Tools/ros2_bridge/unity2foxglove_ros2_bridge/CMakeLists.txt");
@@ -424,6 +424,30 @@ namespace Unity.FoxgloveSDK.Tests
             => File.ReadAllText(Path.Combine(
                 Root(),
                 relativePath.Replace('/', Path.DirectorySeparatorChar)));
+
+        private static string ReadSplitPythonSource(string relativePath)
+        {
+            var facadePath = Path.Combine(
+                Root(),
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var packagePath = Path.Combine(
+                Path.GetDirectoryName(facadePath)
+                    ?? throw new DirectoryNotFoundException(facadePath),
+                Path.GetFileNameWithoutExtension(facadePath));
+            if (!Directory.Exists(packagePath))
+                return File.ReadAllText(facadePath);
+
+            var sections = Directory.EnumerateFiles(packagePath, "*.py")
+                .Where(path => !string.Equals(
+                    Path.GetFileName(path),
+                    "__init__.py",
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(File.ReadAllText);
+            return File.ReadAllText(facadePath)
+                   + Environment.NewLine
+                   + string.Join(Environment.NewLine, sections);
+        }
 
         private static string Root()
             => Phase16Validation.FindRepoRoot()

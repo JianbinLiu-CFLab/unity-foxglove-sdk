@@ -49,6 +49,22 @@ class ValidatePackageTests(unittest.TestCase):
             self.validator.check_package_build_artifacts(results, [offender])
         self.assertFalse(results[0].ok)
 
+    def test_bridge_asset_inventory_excludes_build_artifacts(self) -> None:
+        """Bridge package build outputs must not enter the Unity meta gate."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+            generated = package / "Tests" / "Unit" / "obj" / "project.assets.json"
+            generated.parent.mkdir(parents=True)
+            generated.write_text("{}", encoding="utf-8")
+            ordinary = package / "Samples~" / "Demo" / "Route.json"
+            ordinary.parent.mkdir(parents=True)
+            ordinary.write_text("{}", encoding="utf-8")
+
+            assets = self.validator.iter_bridge_asset_files(package)
+
+        self.assertNotIn(generated, assets)
+        self.assertIn(ordinary, assets)
+
     def test_sample_meta_checks_asmdef_files(self) -> None:
         """Sample asmdef files need stable Unity .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:

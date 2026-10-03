@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             var panel = Read("Tools/foxglove-extensions/foxrun-publish-panel/src/index.ts");
             var protocol = Read("Tools/foxglove-extensions/foxrun-publish-panel/src/protocol.ts");
             var codec = Read("Tools/foxglove-extensions/foxrun-publish-panel/src/msgpack.ts");
-            var probe = Read("Scripts/smoke/websocket/phase185_foxrun_messagepack_probe.py");
+            var probe = ReadSplitPythonSource("Scripts/smoke/websocket/phase185_foxrun_messagepack_probe.py");
 
             Check(
                 catalog.Contains("IsWebSocketEncoding", StringComparison.Ordinal)
@@ -246,6 +246,31 @@ namespace Unity.FoxgloveSDK.Tests
             => string.Concat(bytes.Select(value => value.ToString("x2", CultureInfo.InvariantCulture)));
 
         private static string Read(string path) => FoxRunMessagePackPublicContractValidation.Read(path);
+
+        private static string ReadSplitPythonSource(string relativePath)
+        {
+            var facadePath = Path.Combine(
+                PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var packagePath = Path.Combine(
+                Path.GetDirectoryName(facadePath)
+                    ?? throw new DirectoryNotFoundException(facadePath),
+                Path.GetFileNameWithoutExtension(facadePath));
+            if (!Directory.Exists(packagePath))
+                return File.ReadAllText(facadePath);
+
+            var sections = Directory.EnumerateFiles(packagePath, "*.py")
+                .Where(path => !string.Equals(
+                    Path.GetFileName(path),
+                    "__init__.py",
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(File.ReadAllText);
+            return File.ReadAllText(facadePath)
+                   + Environment.NewLine
+                   + string.Join(Environment.NewLine, sections);
+        }
+
         private static bool ContainsAll(string source, params string[] values)
             => FoxRunMessagePackPublicContractValidation.ContainsAll(source, values);
 
