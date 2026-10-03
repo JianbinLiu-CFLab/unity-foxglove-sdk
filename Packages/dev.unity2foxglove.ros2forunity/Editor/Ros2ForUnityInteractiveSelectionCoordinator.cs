@@ -88,7 +88,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             if (pending.IsExpired(DateTime.UtcNow))
             {
-                Fail(pending, "Package Manager registration timed out.");
+                Fail(
+                    pending,
+                    "Package Manager registration timed out; the selected manifest was left in place for the Editor to finish resolving.",
+                    rollbackManifest: false);
                 return;
             }
 
@@ -148,7 +151,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             return addOn != null && addOn.isDirectDependency;
         }
 
-        private static void Fail(Ros2ForUnityInteractiveSelectionState pending, string reason)
+        private static void Fail(
+            Ros2ForUnityInteractiveSelectionState pending,
+            string reason,
+            bool rollbackManifest = true)
         {
             if (_pending != pending || !pending.TryFail(pending.Generation))
                 return;
@@ -156,18 +162,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             DetachCallbacks();
             _pending = null;
             ClearPending();
-            try
+            if (rollbackManifest)
             {
-                Ros2ForUnityCustomTypesupportSelectionTransaction.RestoreManifest(
-                    pending.ProjectDirectory,
-                    pending.OriginalManifest);
-                Client.Resolve();
-            }
-            catch (Exception restoreException)
-            {
-                Debug.LogError(
-                    "ROS2 For Unity package selection failed and manifest rollback also failed: "
-                    + restoreException.GetType().Name + ": " + restoreException.Message);
+                try
+                {
+                    Ros2ForUnityCustomTypesupportSelectionTransaction.RestoreManifest(
+                        pending.ProjectDirectory,
+                        pending.OriginalManifest);
+                    Client.Resolve();
+                }
+                catch (Exception restoreException)
+                {
+                    Debug.LogError(
+                        "ROS2 For Unity package selection failed and manifest rollback also failed: "
+                        + restoreException.GetType().Name + ": " + restoreException.Message);
+                }
             }
 
             Debug.LogError("ROS2 For Unity package selection failed: " + reason);

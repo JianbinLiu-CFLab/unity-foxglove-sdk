@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Editor
     /// Before Player build, generates real .g.cs files for [FoxRun] annotated classes
     /// so IL2CPP has the IFoxgloveLogSource implementation without relying on Roslyn analyzer.
     /// </summary>
+    [InitializeOnLoad]
     public class FoxrunBuildPreprocess : IPreprocessBuildWithReport, IPostprocessBuildWithReport, IProcessSceneWithReport
     {
         private const int ReplaceAttempts = 3;
@@ -180,7 +181,6 @@ namespace Unity.FoxgloveSDK.Editor
             try
             {
                 linkXml = FoxrunCodeGenerator.EmitLinkXml(types);
-                linkXml = GeneratedLinkMarker + Environment.NewLine + linkXml;
             }
             catch (Exception ex)
             {

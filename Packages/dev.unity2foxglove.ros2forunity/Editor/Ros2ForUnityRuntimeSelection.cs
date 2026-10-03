@@ -363,7 +363,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             Ros2ForUnityInteractiveSelectionKind kind)
         {
             InvalidateStatusCache();
-            FoxrunCodeGenerator.InvalidateReflectionDiscoveryCache();
             if (kind == Ros2ForUnityInteractiveSelectionKind.Runtime)
                 ApplyCommunicationModeEnvironment(projectDirectory);
             Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();

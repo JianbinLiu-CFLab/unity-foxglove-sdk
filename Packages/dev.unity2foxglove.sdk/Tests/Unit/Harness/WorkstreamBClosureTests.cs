@@ -34,6 +34,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("IsExpired", coordinator, StringComparison.Ordinal);
             Assert.Contains("TryFail", coordinator, StringComparison.Ordinal);
             Assert.Contains("RestoreManifest", coordinator, StringComparison.Ordinal);
+            Assert.Contains("rollbackManifest: false", coordinator, StringComparison.Ordinal);
+            Assert.Contains("if (rollbackManifest)", coordinator, StringComparison.Ordinal);
             Assert.Contains("CompleteInteractiveSelection", selection, StringComparison.Ordinal);
             Assert.DoesNotContain(
                 "Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();",
@@ -159,14 +161,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
             var camera = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
+            var batch = TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Phase181Ros2RuntimeBatchSelection.cs");
 
             Assert.Contains("GeneratedLinkMarker", build, StringComparison.Ordinal);
-            Assert.Contains("GeneratedLinkMarker + Environment.NewLine", build, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "GeneratedLinkMarker + Environment.NewLine + linkXml",
+                build,
+                StringComparison.Ordinal);
+            Assert.Contains("[InitializeOnLoad]", build, StringComparison.Ordinal);
             Assert.Contains("MonitorBuildLifecycle", build, StringComparison.Ordinal);
             Assert.Contains("IsOwnedGeneratedLinkXml", build, StringComparison.Ordinal);
             Assert.Contains("BuildPipeline.isBuildingPlayer", build, StringComparison.Ordinal);
             Assert.Contains("IsAutomaticInstallSupported", installer, StringComparison.Ordinal);
             Assert.Contains("DisabledScope(!OpenH264OfficialBinaryInstaller.IsAutomaticInstallSupported)", camera, StringComparison.Ordinal);
+            Assert.Contains("ResolvePending", batch, StringComparison.Ordinal);
+            Assert.Contains("selection.Code != Ros2ForUnityCustomTypesupportSelectionCode.ResolvePending", batch, StringComparison.Ordinal);
         }
+
     }
 }
