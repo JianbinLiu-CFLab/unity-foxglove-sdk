@@ -87,38 +87,64 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void IncompleteDiscoveryThroughPublicGenerationLeavesCanonicalArtifactsUnchanged()
         {
+            var previousEvidenceRoot = Unity2FoxgloveSchemaEvidenceSettings.CurrentEvidenceRoot;
+            var testEvidenceRoot = "Assets/Generated/WorkstreamBClosure-" + Guid.NewGuid().ToString("N");
+            Unity2FoxgloveSchemaEvidenceSettings.CurrentEvidenceRoot = testEvidenceRoot;
+            Unity2FoxgloveSchemaEvidencePaths.InvalidateCurrentEvidenceRootCache();
             var outputDirectory = Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory();
-            var before = SnapshotArtifactTree(outputDirectory);
-            var scannerType = typeof(FoxrunCodeGenerator);
-            var resultType = scannerType.GetNestedType("FoxRunScanResult", BindingFlags.NonPublic);
-            Assert.NotNull(resultType);
-            var constructor = resultType.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                .Single(candidate => candidate.GetParameters().Length == 4);
-            var incomplete = constructor.Invoke(new object[]
+            var artifactNames = new[]
             {
-                new Dictionary<(string Ns, string ClassName), List<FoxrunCodeGenerator.MemberData>>(),
-                new List<FoxRunManifestMember>(),
-                new List<FoxRunReflectionGenerationMember>(),
-                false
-            });
-            var fingerprintMethod = scannerType.GetMethod(
-                "GetLoadedAssemblyFingerprint",
-                BindingFlags.Static | BindingFlags.NonPublic);
-            Assert.NotNull(fingerprintMethod);
-            var fingerprint = Assert.IsType<string>(fingerprintMethod.Invoke(null, null));
-            var cacheField = scannerType.GetField(
-                "_cachedFoxRunScan",
-                BindingFlags.Static | BindingFlags.NonPublic);
-            var fingerprintField = scannerType.GetField(
-                "_scanAssemblyFingerprint",
-                BindingFlags.Static | BindingFlags.NonPublic);
-            Assert.NotNull(cacheField);
-            Assert.NotNull(fingerprintField);
-            cacheField.SetValue(null, incomplete);
-            fingerprintField.SetValue(null, fingerprint);
+                FoxrunManifestWriter.ManifestJsonFileName,
+                FoxrunManifestWriter.ManifestHashFileName,
+                FoxrunManifestWriter.ManifestReportFileName,
+                FoxRunSchemaInfoWriter.SchemaInfoFileName,
+                FoxRunSchemaInfoWriter.SchemaInfoMetaFileName,
+                FoxRunGenerationDescriptorConstants.DescriptorFileName
+            };
 
             try
             {
+                Directory.CreateDirectory(outputDirectory);
+                foreach (var artifactName in artifactNames)
+                {
+                    File.WriteAllText(
+                        Path.Combine(outputDirectory, artifactName),
+                        "seed-" + artifactName);
+                }
+
+                var before = SnapshotArtifactTree(outputDirectory);
+                Assert.NotEmpty(before);
+                foreach (var artifactName in artifactNames)
+                    Assert.Contains(artifactName, before.Keys);
+
+                var scannerType = typeof(FoxrunCodeGenerator);
+                var resultType = scannerType.GetNestedType("FoxRunScanResult", BindingFlags.NonPublic);
+                Assert.NotNull(resultType);
+                var constructor = resultType.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Single(candidate => candidate.GetParameters().Length == 4);
+                var incomplete = constructor.Invoke(new object[]
+                {
+                    new Dictionary<(string Ns, string ClassName), List<FoxrunCodeGenerator.MemberData>>(),
+                    new List<FoxRunManifestMember>(),
+                    new List<FoxRunReflectionGenerationMember>(),
+                    false
+                });
+                var fingerprintMethod = scannerType.GetMethod(
+                    "GetLoadedAssemblyFingerprint",
+                    BindingFlags.Static | BindingFlags.NonPublic);
+                Assert.NotNull(fingerprintMethod);
+                var fingerprint = Assert.IsType<string>(fingerprintMethod.Invoke(null, null));
+                var cacheField = scannerType.GetField(
+                    "_cachedFoxRunScan",
+                    BindingFlags.Static | BindingFlags.NonPublic);
+                var fingerprintField = scannerType.GetField(
+                    "_scanAssemblyFingerprint",
+                    BindingFlags.Static | BindingFlags.NonPublic);
+                Assert.NotNull(cacheField);
+                Assert.NotNull(fingerprintField);
+                cacheField.SetValue(null, incomplete);
+                fingerprintField.SetValue(null, fingerprint);
+
                 var error = Assert.Throws<InvalidOperationException>(
                     () => FoxrunCodeGenerator.GenerateManifestAndSchemaInfoFilesOnlyWithResult());
 
@@ -133,6 +159,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             finally
             {
                 FoxrunCodeGenerator.InvalidateReflectionDiscoveryCache();
+                if (Directory.Exists(outputDirectory))
+                    Directory.Delete(outputDirectory, recursive: true);
+                Unity2FoxgloveSchemaEvidenceSettings.CurrentEvidenceRoot = previousEvidenceRoot;
+                Unity2FoxgloveSchemaEvidencePaths.InvalidateCurrentEvidenceRootCache();
             }
         }
         [Fact]
