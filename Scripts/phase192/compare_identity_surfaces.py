@@ -26,6 +26,7 @@ SPLIT_ROOTS = (
 
 
 def _git(repository: Path, *args: str) -> str:
+    """Run Git and return standard output."""
     completed = subprocess.run(["git", *args], cwd=repository, text=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     if completed.returncode != 0:
@@ -35,6 +36,7 @@ def _git(repository: Path, *args: str) -> str:
 
 @contextmanager
 def _revision_checkout(repository: Path, revision: str) -> Iterator[Path]:
+    """Check out a revision in a temporary worktree."""
     with tempfile.TemporaryDirectory(prefix="phase192-identity-") as temporary:
         checkout = Path(temporary) / "tree"
         try:
@@ -52,6 +54,7 @@ def _revision_checkout(repository: Path, revision: str) -> Iterator[Path]:
 
 
 def _split_facades(root: Path) -> tuple[Path, ...]:
+    """Return split facade paths under supported roots."""
     paths: list[Path] = []
     for relative_root in SPLIT_ROOTS:
         root_path = root / relative_root
@@ -70,6 +73,7 @@ def _top_level_names(tree: ast.Module) -> set[str]:
     names: set[str] = set()
 
     def add_target(target: ast.AST) -> None:
+        """Collect names bound by an assignment target."""
         if isinstance(target, ast.Name):
             names.add(target.id)
         elif isinstance(target, (ast.Tuple, ast.List)):
@@ -77,6 +81,7 @@ def _top_level_names(tree: ast.Module) -> set[str]:
                 add_target(item)
 
     def visit(statements: list[ast.stmt]) -> None:
+        """Collect names from supported statement forms."""
         for node in statements:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 names.add(node.name)
@@ -175,6 +180,7 @@ def _section_exports(source: str, path: str) -> frozenset[str]:
 
 
 def _surface(root: Path, facade: Path) -> tuple[frozenset[str], tuple[str, ...], str]:
+    """Return symbols, section order, and initializer hash for a facade."""
     relative = facade.relative_to(root).as_posix()
     package = facade.with_suffix("")
     sections = section_modules(package)
@@ -194,6 +200,7 @@ def _surface(root: Path, facade: Path) -> tuple[frozenset[str], tuple[str, ...],
 
 
 def _surfaces(root: Path) -> dict[str, tuple[frozenset[str], tuple[str, ...], str]]:
+    """Build identity surfaces for all split facades."""
     result: dict[str, tuple[frozenset[str], tuple[str, ...], str]] = {}
     for facade in _split_facades(root):
         relative = facade.relative_to(root).as_posix()
@@ -258,6 +265,7 @@ def compare_revisions(repository: Path, base: str, head: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the identity comparison CLI."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
     parser.add_argument("--head", required=True)
