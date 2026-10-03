@@ -81,6 +81,39 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void SerializedManagerProfileMutationStaysDeferredUntilFoxRunSessionRestart()
+        {
+            var manager = new FoxgloveManager
+            {
+                DefaultPublishRateHz = 11f,
+                DefaultFoxRunPublishEncoding = FoxRunEncoding.JSON
+            };
+            manager.BeginFoxRunPublishSessionForTest();
+            var first = manager.ActiveFoxRunPublishSessionPolicy;
+            Assert.True(first.SessionActive);
+            Assert.Equal(FoxRunEncoding.JSON, first.WebSocketEncoding);
+            Assert.Equal(11f, first.DefaultPublishRateHz);
+
+            var serializedObject = new BoundaryManagerSerializedObject(manager);
+            serializedObject.FindProperty("_defaultFoxRunPublishEncoding").enumValueIndex =
+                (int)FoxRunEncoding.MessagePack;
+            serializedObject.FindProperty("_defaultPublishRateHz").floatValue = 42f;
+            Assert.True(serializedObject.ApplyModifiedProperties());
+
+            var active = manager.ActiveFoxRunPublishSessionPolicy;
+            Assert.Same(first, active);
+            Assert.Equal(FoxRunEncoding.JSON, active.WebSocketEncoding);
+            Assert.Equal(11f, active.DefaultPublishRateHz);
+
+            manager.EndFoxRunPublishSessionForTest();
+            manager.BeginFoxRunPublishSessionForTest();
+            var recaptured = manager.ActiveFoxRunPublishSessionPolicy;
+            Assert.NotSame(first, recaptured);
+            Assert.Equal(FoxRunEncoding.MessagePack, recaptured.WebSocketEncoding);
+            Assert.Equal(42f, recaptured.DefaultPublishRateHz);
+        }
+
+        [Fact]
         public void ManagerAttachStampsClientEventsAndActivatesAdmissionForTheSameGeneration()
         {
             UnityEngine.Object.ResetRegistry();
@@ -550,6 +583,90 @@ namespace Unity.FoxgloveSDK.Tests.Manager
 
             public void RestoreAfterReplayForTest()
                 => RestoreAfterReplay();
+        }
+
+        private sealed class BoundaryManagerSerializedObject
+        {
+            private readonly FoxgloveManager _target;
+            private readonly BoundaryManagerSerializedProperty _encoding;
+            private readonly BoundaryManagerSerializedProperty _rate;
+            private bool _dirty;
+
+            public BoundaryManagerSerializedObject(FoxgloveManager target)
+            {
+                _target = target;
+                _encoding = BoundaryManagerSerializedProperty.Enum(
+                    (int)target.DefaultFoxRunPublishEncoding,
+                    () => _dirty = true);
+                _rate = BoundaryManagerSerializedProperty.Float(
+                    target.DefaultPublishRateHz,
+                    () => _dirty = true);
+            }
+
+            public BoundaryManagerSerializedProperty FindProperty(string propertyName)
+            {
+                switch (propertyName)
+                {
+                    case "_defaultFoxRunPublishEncoding": return _encoding;
+                    case "_defaultPublishRateHz": return _rate;
+                    default: throw new ArgumentException("Unknown serialized property: " + propertyName);
+                }
+            }
+
+            public bool ApplyModifiedProperties()
+            {
+                if (!_dirty)
+                    return false;
+
+                _target.DefaultFoxRunPublishEncoding =
+                    (FoxRunEncoding)_encoding.enumValueIndex;
+                _target.DefaultPublishRateHz = _rate.floatValue;
+                _dirty = false;
+                return true;
+            }
+        }
+
+        private sealed class BoundaryManagerSerializedProperty
+        {
+            private readonly Action _onChanged;
+            private int _enumValueIndex;
+            private float _floatValue;
+
+            private BoundaryManagerSerializedProperty(
+                int enumValueIndex,
+                float floatValue,
+                Action onChanged)
+            {
+                _enumValueIndex = enumValueIndex;
+                _floatValue = floatValue;
+                _onChanged = onChanged;
+            }
+
+            public int enumValueIndex
+            {
+                get => _enumValueIndex;
+                set
+                {
+                    _enumValueIndex = value;
+                    _onChanged?.Invoke();
+                }
+            }
+
+            public float floatValue
+            {
+                get => _floatValue;
+                set
+                {
+                    _floatValue = value;
+                    _onChanged?.Invoke();
+                }
+            }
+
+            public static BoundaryManagerSerializedProperty Enum(int value, Action onChanged)
+                => new BoundaryManagerSerializedProperty(value, 0f, onChanged);
+
+            public static BoundaryManagerSerializedProperty Float(float value, Action onChanged)
+                => new BoundaryManagerSerializedProperty(0, value, onChanged);
         }
     }
 }

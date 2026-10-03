@@ -54,6 +54,7 @@
              Condition="'$(IncludeClientEventManagerSurface)' != 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Publishing/FoxglovePublisherBase.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.ComponentPublishContracts.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.FoxRunPublishing.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.ComponentSessionWiring.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.ReplayForwarders.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.RuntimeForwarders.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />

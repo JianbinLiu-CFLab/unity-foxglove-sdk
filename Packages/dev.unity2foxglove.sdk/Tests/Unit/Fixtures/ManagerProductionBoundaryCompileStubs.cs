@@ -70,6 +70,8 @@ namespace UnityEngine
             LastWarning = message;
         }
 
+        public static void LogException(Exception exception) { }
+
         public static void LogError(string message)
         {
             ErrorCount++;
@@ -202,6 +204,8 @@ namespace Unity.FoxgloveSDK.Components
         public GlobalEncoding DefaultPublisherEncoding { get; set; } = GlobalEncoding.Json;
         public bool AllowPublisherOverride { get; set; } = true;
         public float DefaultPublishRateHz { get; set; } = 10f;
+        internal IReadOnlyList<FoxRunTransportId> ConfiguredFoxRunPublishTransportIds
+            => new[] { FoxgloveWebSocketTransport.TransportId };
         public bool HasOrdinaryTransportDemand { get; set; }
         public bool SuppressLivePublishersForReplay { get; set; }
         public int OrdinaryTransportPublishCalls { get; private set; }
@@ -330,6 +334,14 @@ namespace Unity.FoxgloveSDK.Components
         internal void RefreshRemoteForTest() => RefreshRemoteMcapFileServerIfNeeded();
         internal void StartCursorForTest() => StartReplayCursorEndpointIfNeeded();
         internal void RefreshCursorForTest() => RefreshReplayCursorEndpointIfNeeded();
+        internal void BeginFoxRunPublishSessionForTest()
+            => BeginFoxRunPublishSessionIfNeeded();
+
+        internal void EndFoxRunPublishSessionForTest()
+            => EndFoxRunPublishSession();
+
+        internal void EndFoxRunTransportSession() { }
+
         internal void StopSidecarsForTest()
         {
             StopRemoteMcapFileServer();
