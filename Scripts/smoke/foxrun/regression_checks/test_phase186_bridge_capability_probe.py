@@ -9,10 +9,19 @@ import pathlib
 import sys
 import unittest
 
+from Scripts.phase192.source_layout import read_split_source
+
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parents[1]
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
+
+PROBE_SOURCE_PATH = SCRIPT_DIR / "phase186_bridge_capability_probe.py"
+
+def read_probe_source() -> str:
+    """Read the facade and exported capability-probe package sections."""
+
+    return read_split_source(PROBE_SOURCE_PATH)
 
 import phase186_bridge_build as build
 import phase186_bridge_acceptance_protocol as acceptance_protocol
@@ -178,7 +187,7 @@ class Phase186BridgeCapabilityProbeTests(unittest.TestCase):
 
     def test_owned_cleanup_controls_the_process_group(self) -> None:
         """Owned cleanup must signal the process group, not only the root PID."""
-        source = (probe.__file__ and pathlib.Path(probe.__file__).read_text(encoding="utf-8"))
+        source = read_probe_source()
         self.assertIn("os.killpg", source)
         self.assertIn('"/T", "/F"', source)
 

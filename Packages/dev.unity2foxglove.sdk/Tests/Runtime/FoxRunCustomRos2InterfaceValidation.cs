@@ -5,6 +5,7 @@
 // Purpose: Structural guard for the Phase181 custom ROS2 DTO interface boundary.
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using Unity.FoxgloveSDK.Components;
@@ -206,7 +207,7 @@ namespace Unity.FoxgloveSDK.Tests
             var typesupportPluginImporterBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(TypesupportPluginImporterBuilderPath);
             var runtimeBatchSelection = PhaseValidationSourceHelpers.ReadRequiredRepoText(RuntimeBatchSelectionPath);
             var peerProtocol = PhaseValidationSourceHelpers.ReadRequiredRepoText(PeerProtocolPath);
-            var peerHelper = PhaseValidationSourceHelpers.ReadRequiredRepoText(PeerHelperPath);
+            var peerHelper = ReadSplitPythonSource(PeerHelperPath);
             var linuxPeer = PhaseValidationSourceHelpers.ReadRequiredRepoText(LinuxPeerPath);
             var matrixProfiles = PhaseValidationSourceHelpers.ReadRequiredRepoText(MatrixProfilesPath);
             var runCi = PhaseValidationSourceHelpers.ReadRequiredRepoText(RunCiPath);
@@ -1046,6 +1047,30 @@ namespace Unity.FoxgloveSDK.Tests
                   && dotnetWorkflow.Contains("Run Phase181 custom ROS2 acceptance helper regressions", StringComparison.Ordinal)
                   && packageWorkflow.Contains("Validate Phase181 custom ROS2 typesupport add-ons", StringComparison.Ordinal),
                 "181F-10: public CI runs protocol regressions and all tracked custom typesupport preflight validators");
+        }
+
+        private static string ReadSplitPythonSource(string relativePath)
+        {
+            var facadePath = Path.Combine(
+                PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var packagePath = Path.Combine(
+                Path.GetDirectoryName(facadePath)
+                    ?? throw new DirectoryNotFoundException(facadePath),
+                Path.GetFileNameWithoutExtension(facadePath));
+            if (!Directory.Exists(packagePath))
+                return File.ReadAllText(facadePath);
+
+            var sections = Directory.EnumerateFiles(packagePath, "*.py")
+                .Where(path => !string.Equals(
+                    Path.GetFileName(path),
+                    "__init__.py",
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(File.ReadAllText);
+            return File.ReadAllText(facadePath)
+                   + Environment.NewLine
+                   + string.Join(Environment.NewLine, sections);
         }
 
         private static void VerifyRuntimeBatchSelection(string runtimeBatchSelection)
