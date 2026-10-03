@@ -65,6 +65,7 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         public void OnPreprocessBuild(BuildReport report)
         {
+            _buildWasActive = true;
             RemoveStaleGeneratedLinkXmlAtStartup();
             Debug.Log("[FoxrunBuildPreprocess] Generating FoxRun source files...");
             List<string> files;

@@ -46,6 +46,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             ReconcileCompileSymbolSafely();
         }
+        internal static void ReconcileCompileSymbolForInteractiveSelection()
+        {
+            ReconcileCompileSymbol();
+        }
 
         private static void ReconcileCompileSymbolSafely()
         {
