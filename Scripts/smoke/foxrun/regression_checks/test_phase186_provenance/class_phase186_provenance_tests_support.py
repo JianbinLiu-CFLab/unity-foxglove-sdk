@@ -27,7 +27,8 @@ class _Phase186ProvenanceTests_support:
         module = load_module()
         ledger = json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
         records = {record["path"]: record for record in ledger["implementations"]}
-        expected = module._decomposed_authority_paths(ROOT)
+        from Scripts.smoke.foxrun.phase186_provenance import foundation as _provenance_foundation
+        expected = getattr(_provenance_foundation, "__decomposed_authority_paths")(ROOT)
         self.assertTrue(expected)
         self.assertEqual([], [path for path in expected if path not in records])
         for relative in expected:

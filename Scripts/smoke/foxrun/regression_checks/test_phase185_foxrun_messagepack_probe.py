@@ -12,7 +12,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from Scripts.phase192.source_layout import load_fresh_module
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -42,7 +42,7 @@ ACCEPTANCE_SOURCES = (
 
 def load_probe():
     """Load the maintained probe from its CLI path."""
-    return load_fresh_module(
+    return __load_fresh_module(
         "phase185_foxrun_messagepack_probe_under_test",
         PROBE_PATH,
     )

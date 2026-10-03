@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
-from Scripts.phase192.source_layout import load_fresh_module
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -31,7 +31,7 @@ def load_profile_module():
     smoke_dir = str(PROFILE_PATH.parent)
     if smoke_dir not in sys.path:
         sys.path.insert(0, smoke_dir)
-    return load_fresh_module("phase179_foxrun_ros2_matrix_profiles", PROFILE_PATH)
+    return __load_fresh_module("phase179_foxrun_ros2_matrix_profiles", PROFILE_PATH)
 
 
 class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):

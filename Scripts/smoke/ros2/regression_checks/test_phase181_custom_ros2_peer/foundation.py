@@ -18,7 +18,7 @@ import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
-from Scripts.phase192.source_layout import load_fresh_module
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 from Scripts.test_support.phase181_scratch import temporary_directory
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 PEER_PATH = ROOT / "Scripts" / "smoke" / "ros2" / "phase181_custom_ros2_peer.py"
@@ -27,7 +27,7 @@ def load_peer_module():
     script_directory = str(PEER_PATH.parent)
     if script_directory not in sys.path:
         sys.path.insert(0, script_directory)
-    return load_fresh_module("phase181_custom_ros2_peer", PEER_PATH)
+    return __load_fresh_module("phase181_custom_ros2_peer", PEER_PATH)
 class _Phase181CustomRos2PeerTests_support:
     """Decomposed Phase192 implementation component."""
     def test_peer_build_has_a_separate_bounded_window_from_unity_readiness(self):

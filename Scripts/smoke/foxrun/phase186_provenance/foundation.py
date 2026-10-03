@@ -77,16 +77,16 @@ _REQUIRED_RECORDED_AUTHORITIES = (
     _INVENTORY_RELATIVE,
     *_PROTOCOL_DOCS,
 )
-_DECOMPOSED_AUTHORITY_ROOTS = (
+__DECOMPOSED_AUTHORITY_ROOTS = (
     "Scripts/smoke/foxrun/phase186_provenance",
     "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance",
 )
 _REQUIRED_UNRECORDED_AUTHORITIES = (_LEDGER_RELATIVE,)
 
-def _decomposed_authority_paths(repository: pathlib.Path) -> tuple[str, ...]:
+def __decomposed_authority_paths(repository: pathlib.Path) -> tuple[str, ...]:
     """Return every tracked Python section in the decomposed authority packages."""
     paths: list[str] = []
-    for relative_root in _DECOMPOSED_AUTHORITY_ROOTS:
+    for relative_root in __DECOMPOSED_AUTHORITY_ROOTS:
         root = repository.joinpath(*pathlib.PurePosixPath(relative_root).parts)
         if not root.is_dir():
             continue
