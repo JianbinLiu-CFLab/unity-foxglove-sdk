@@ -277,9 +277,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 + "It is required before custom native ROS2 contracts can enter Play Mode.",
                 MessageType.Info);
 
+            if (Ros2ForUnityInteractiveSelectionCoordinator.HasPending)
+            {
+                EditorGUILayout.HelpBox(
+                    Ros2ForUnityInteractiveSelectionCoordinator.PendingMessage,
+                    MessageType.Info);
+            }
+
             var selectionChangeBlocked = EditorApplication.isPlayingOrWillChangePlaymode
                 || EditorApplication.isCompiling
-                || EditorApplication.isUpdating;
+                || EditorApplication.isUpdating
+                || Ros2ForUnityInteractiveSelectionCoordinator.HasPending;
             if (selectionChangeBlocked)
             {
                 EditorGUILayout.HelpBox(
@@ -332,17 +340,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 Ros2ForUnityRuntimeSelection.SwitchActiveCustomTypesupportPackage(
                     projectDirectory,
                     packageName);
-                Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
-                Ros2ForUnityCustomTypesupportDiscovery.InvalidateCache();
+                if (!Ros2ForUnityInteractiveSelectionCoordinator.HasPending)
+                    Ros2ForUnityCustomTypesupportDiscovery.InvalidateCache();
             }
             catch (InvalidOperationException exception)
             {
+                Ros2ForUnityEditorDiagnostics.ReportSelectorFailure(
+                    exception,
+                    value => Debug.LogException(value));
                 Debug.LogError(
-                    "Unity2Foxglove could not select the requested custom ROS2 typesupport add-on: "
-                    + exception.Message);
+                    "Unity2Foxglove could not select the requested custom ROS2 typesupport add-on. "
+                    + "Inspect the bounded readiness status above and choose a matching verified add-on.");
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                Ros2ForUnityEditorDiagnostics.ReportSelectorFailure(
+                    exception,
+                    value => Debug.LogException(value));
                 Debug.LogError(
                     "Unity2Foxglove could not select the requested custom ROS2 typesupport add-on. "
                     + "Inspect the bounded readiness status above and choose a matching verified add-on.");

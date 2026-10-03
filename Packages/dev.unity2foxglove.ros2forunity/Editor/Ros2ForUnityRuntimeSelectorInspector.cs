@@ -177,7 +177,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var selectedIndex = Math.Max(0, IndexOfMode(modes, selectedMode));
             var labels = Ros2ForUnityRuntimeSelection.GetCommunicationModeLabels(selectedRuntime);
 
-            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+            using (new EditorGUI.DisabledScope(
+                       EditorApplication.isPlayingOrWillChangePlaymode
+                       || Ros2ForUnityInteractiveSelectionCoordinator.HasPending))
             {
                 EditorGUI.BeginChangeCheck();
                 var changedIndex = EditorGUILayout.Popup("Communication Mode", selectedIndex, labels);
@@ -212,7 +214,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 selectedIndex = 0;
             }
 
-            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+            using (new EditorGUI.DisabledScope(
+                       EditorApplication.isPlayingOrWillChangePlaymode
+                       || Ros2ForUnityInteractiveSelectionCoordinator.HasPending))
             {
                 EditorGUI.BeginChangeCheck();
                 var changedIndex = EditorGUILayout.Popup("Active Runtime", selectedIndex, popupLabels);
@@ -233,15 +237,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             _pendingResolveMessage =
                 "Unity is resolving the selected runtime package. Restart Unity only if this Editor session already entered Play Mode with a different ROS2 runtime.";
             Ros2ForUnityRuntimeSelection.SwitchActiveRuntimePackage(projectDirectory, runtime.PackageName);
-            Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
         }
 
         private static void DrawPendingResolveMessage()
         {
-            if (string.IsNullOrWhiteSpace(_pendingResolveMessage))
+            var message = !string.IsNullOrWhiteSpace(_pendingResolveMessage)
+                ? _pendingResolveMessage
+                : Ros2ForUnityInteractiveSelectionCoordinator.PendingMessage;
+            if (string.IsNullOrWhiteSpace(message))
                 return;
 
-            EditorGUILayout.HelpBox(_pendingResolveMessage, MessageType.Info);
+            EditorGUILayout.HelpBox(message, MessageType.Info);
             _pendingResolveMessage = string.Empty;
         }
 

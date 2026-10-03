@@ -215,6 +215,23 @@ namespace Unity.FoxgloveSDK.Tests
                 alpha.LastCapturedSession,
                 snapshot.PublishTransports.Single());
             snapshot.Dispose();
+
+            registry.Register(alpha);
+            var recapturedSelection = new FoxRunTransportSelection(
+                new[] { bravo.Id.Value },
+                subscriptionsEnabled: false,
+                subscribeTransportId: null);
+            Assert.True(registry.TryCaptureSession(
+                recapturedSelection,
+                generation: 187,
+                out var recaptured,
+                out _));
+            Assert.Equal(
+                new[] { bravo.Id.Value },
+                recaptured.PublishTransportIds.Select(id => id.Value));
+            Assert.Same(bravo.LastCapturedSession, recaptured.PublishTransports.Single());
+            Assert.NotSame(alpha.LastCapturedSession, recaptured.PublishTransports.Single());
+            recaptured.Dispose();
         }
 
         [Fact]

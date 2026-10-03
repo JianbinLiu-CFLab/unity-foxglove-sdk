@@ -42,6 +42,61 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ReflectionGenerationModelIsCachedUntilDiscoveryIsInvalidated()
+        {
+            _ = ProbeAssembly.Value;
+            FoxrunCodeGenerator.InvalidateReflectionDiscoveryCache();
+
+            var first = FoxrunCodeGenerator.CollectReflectionGenerationModelForTransportProviders();
+            var second = FoxrunCodeGenerator.CollectReflectionGenerationModelForTransportProviders();
+
+            Assert.Same(first, second);
+
+            FoxrunCodeGenerator.InvalidateReflectionDiscoveryCache();
+            var afterInvalidation = FoxrunCodeGenerator.CollectReflectionGenerationModelForTransportProviders();
+            Assert.NotSame(first, afterInvalidation);
+        }
+
+        [Fact]
+        public void IncompleteCanonicalArtifactGateFailsBeforeExistingArtifactsCanChange()
+        {
+            var root = Path.Combine(
+                RepositoryBuildTestRoot(),
+                "u2f-phase181-canonical-gate-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var sentinelPath = Path.Combine(root, "foxrun.manifest.json");
+            const string sentinel = "canonical-sentinel";
+            File.WriteAllText(sentinelPath, sentinel);
+            try
+            {
+                var error = Assert.Throws<InvalidOperationException>(
+                    () => FoxrunCodeGenerator.EnsureCanonicalArtifactGenerationAllowed(false));
+
+                Assert.Contains("FOXRUN901", error.Message, StringComparison.Ordinal);
+                Assert.Equal(sentinel, File.ReadAllText(sentinelPath));
+                Assert.Empty(Directory.GetFiles(root, "*.tmp*", SearchOption.TopDirectoryOnly));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, recursive: true);
+            }
+        }
+
+        [Fact]
+        public void IncompleteCanonicalArtifactGateNeverInvokesWriter()
+        {
+            var invoked = false;
+            var error = Assert.Throws<InvalidOperationException>(
+                () => FoxrunCodeGenerator.GenerateCanonicalArtifactsIfComplete(
+                    false,
+                    () => invoked = true));
+
+            Assert.Contains("FOXRUN901", error.Message, StringComparison.Ordinal);
+            Assert.False(invoked);
+        }
+
+        [Fact]
         public void BestEffortCombinedScanSkipsUnsupportedServiceHostAndKeepsValidService()
         {
             var scan = InvokeCombinedScan(bestEffort: true);
@@ -157,6 +212,23 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             }
 
             return topics;
+        }
+
+        private static string RepositoryBuildTestRoot()
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "README.md"))
+                    && Directory.Exists(Path.Combine(directory.FullName, "Packages")))
+                {
+                    return Path.Combine(directory.FullName, "build", "Tests", "Phase181");
+                }
+
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate the repository root.");
         }
 
         private static readonly Lazy<Assembly> ProbeAssembly =

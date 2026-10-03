@@ -130,6 +130,7 @@ namespace Unity.FoxgloveSDK.Editor
             // entries before IL2CPP sees them.
             var editorScan = ScanFoxRunMembersAndServices(ignoreReflectionTypeLoadExceptions: false);
             var scan = editorScan.FoxRun;
+            EnsureCanonicalArtifactGenerationAllowed(scan.IsComplete);
             var serviceScan = editorScan.Services;
             foxRunTypes = editorScan.FoxRunTypes;
             var byClass = scan.ByClass;
@@ -280,15 +281,19 @@ namespace Unity.FoxgloveSDK.Editor
         public static FoxRunManifestRefreshResult GenerateManifestAndSchemaInfoFilesOnlyWithResult()
         {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
-            if (!scan.IsComplete)
-                throw new InvalidOperationException(
-                    "FOXRUN901 Error: reflection discovery was incomplete; canonical schema evidence was not written.");
+            EnsureCanonicalArtifactGenerationAllowed(scan.IsComplete);
             var model = LowerReflectionMembers(scan.ReflectionMembers);
             ValidateGenerationModel(model);
             ValidateGenerationIdentities(model, null);
-            var manifest = WriteManifestFiles(scan.ManifestMembers);
-            var schemaInfo = WriteSchemaInfoFiles(manifest);
-            WriteDescriptorFile(model);
+
+            FoxRunCanonicalManifest manifest = null;
+            FoxRunSchemaInfoWriteResult schemaInfo = null;
+            GenerateCanonicalArtifactsIfComplete(scan.IsComplete, () =>
+            {
+                manifest = WriteManifestFiles(scan.ManifestMembers);
+                schemaInfo = WriteSchemaInfoFiles(manifest);
+                WriteDescriptorFile(model);
+            });
             return new FoxRunManifestRefreshResult(manifest, schemaInfo);
         }
 
@@ -307,6 +312,13 @@ namespace Unity.FoxgloveSDK.Editor
         public static FoxRunGenerationModel
             CollectReflectionGenerationModelForTransportProviders()
         {
+            var fingerprint = GetLoadedAssemblyFingerprint();
+            if (_cachedReflectionGenerationModel != null
+                && string.Equals(_reflectionModelFingerprint, fingerprint, StringComparison.Ordinal))
+            {
+                return _cachedReflectionGenerationModel;
+            }
+
             var scan = ScanFoxRunMembers(
                 ignoreReflectionTypeLoadExceptions: true);
             var model = LowerReflectionMembers(
@@ -315,6 +327,11 @@ namespace Unity.FoxgloveSDK.Editor
                 model,
                 logWarnings: false);
             ValidateGenerationIdentities(model, null);
+            if (scan.IsComplete)
+            {
+                _reflectionModelFingerprint = fingerprint;
+                _cachedReflectionGenerationModel = model;
+            }
             return model;
         }
 
@@ -343,6 +360,24 @@ namespace Unity.FoxgloveSDK.Editor
             if (!verification.IsValid)
                 throw new InvalidOperationException(string.Join("; ", verification.Errors));
             return verification;
+        }
+
+        internal static void EnsureCanonicalArtifactGenerationAllowed(bool complete)
+        {
+            if (!complete)
+                throw new InvalidOperationException(
+                    "FOXRUN901 Error: reflection discovery was incomplete; canonical artifacts were not written.");
+        }
+
+        internal static void GenerateCanonicalArtifactsIfComplete(
+            bool complete,
+            Action writeArtifacts)
+        {
+            if (writeArtifacts == null)
+                throw new ArgumentNullException(nameof(writeArtifacts));
+
+            EnsureCanonicalArtifactGenerationAllowed(complete);
+            writeArtifacts();
         }
 
         private static FoxRunCanonicalManifest WriteManifestFiles(IReadOnlyList<FoxRunManifestMember> members)
