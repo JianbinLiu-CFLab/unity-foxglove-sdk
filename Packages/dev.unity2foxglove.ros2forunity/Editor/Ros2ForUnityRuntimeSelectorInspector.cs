@@ -28,6 +28,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (installed.Length == 0)
             {
                 EditorGUILayout.HelpBox(status.Diagnostic, MessageType.Warning);
+                DrawPendingResolveMessage();
                 return;
             }
 
@@ -241,13 +242,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static void DrawPendingResolveMessage()
         {
-            var message = !string.IsNullOrWhiteSpace(_pendingResolveMessage)
-                ? _pendingResolveMessage
-                : Ros2ForUnityInteractiveSelectionCoordinator.PendingMessage;
-            if (string.IsNullOrWhiteSpace(message))
+            if (Ros2ForUnityInteractiveSelectionCoordinator.HasPending)
+            {
+                Ros2ForUnityInteractiveSelectionCoordinator.DrawPendingResolveControls();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_pendingResolveMessage))
                 return;
 
-            EditorGUILayout.HelpBox(message, MessageType.Info);
+            EditorGUILayout.HelpBox(_pendingResolveMessage, MessageType.Info);
             _pendingResolveMessage = string.Empty;
         }
 

@@ -9,7 +9,7 @@ namespace Unity.FoxgloveSDK.Editor
 {
     internal static class Unity2FoxgloveSchemaEvidenceSettings
     {
-        internal static string CurrentEvidenceRoot =>
+        internal static string CurrentEvidenceRoot { get; set; } =
             Unity2FoxgloveSchemaEvidencePaths.DefaultCurrentEvidenceRoot;
     }
 }

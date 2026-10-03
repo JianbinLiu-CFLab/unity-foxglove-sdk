@@ -301,9 +301,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     resolve: () => Client.Resolve());
                 if (result.Code == Ros2ForUnityCustomTypesupportSelectionCode.ResolvePending)
                     return;
-                Ros2ForUnityInteractiveSelectionCoordinator.Cancel();
                 ThrowIfCustomTypesupportTransactionFailed(result, "switching ROS2 For Unity runtime");
                 CompleteInteractiveSelection(projectDirectory, Ros2ForUnityInteractiveSelectionKind.Runtime);
+                Ros2ForUnityInteractiveSelectionCoordinator.Complete();
             }
             catch
             {
@@ -347,9 +347,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     resolve: () => Client.Resolve());
                 if (result.Code == Ros2ForUnityCustomTypesupportSelectionCode.ResolvePending)
                     return;
-                Ros2ForUnityInteractiveSelectionCoordinator.Cancel();
                 ThrowIfCustomTypesupportTransactionFailed(result, "selecting FoxRun custom ROS2 typesupport");
                 CompleteInteractiveSelection(projectDirectory, Ros2ForUnityInteractiveSelectionKind.CustomTypesupport);
+                Ros2ForUnityInteractiveSelectionCoordinator.Complete();
             }
             catch
             {
@@ -365,7 +365,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             InvalidateStatusCache();
             if (kind == Ros2ForUnityInteractiveSelectionKind.Runtime)
                 ApplyCommunicationModeEnvironment(projectDirectory);
-            Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
+            Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForInteractiveSelection();
             if (kind == Ros2ForUnityInteractiveSelectionKind.CustomTypesupport)
                 Ros2ForUnityCustomTypesupportDiscovery.InvalidateCache();
         }

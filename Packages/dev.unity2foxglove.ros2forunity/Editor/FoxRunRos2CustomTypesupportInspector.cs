@@ -256,7 +256,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             var candidates = result.CandidateAddOnPackages ?? Array.Empty<string>();
             if (candidates.Count == 0)
+            {
+                if (Ros2ForUnityInteractiveSelectionCoordinator.HasPending)
+                    Ros2ForUnityInteractiveSelectionCoordinator.DrawPendingResolveControls();
                 return;
+            }
 
             EditorGUILayout.LabelField("Typesupport Add-On", EditorStyles.boldLabel);
             var matchingCandidates = FilterCandidatesForRuntime(candidates, runtime);
@@ -266,6 +270,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     "No unique typesupport add-on matches the active ROS2 For Unity runtime. "
                     + "Keep exactly one validated add-on for its distribution and platform in the repository Packages directory.",
                     MessageType.Warning);
+                if (Ros2ForUnityInteractiveSelectionCoordinator.HasPending)
+                    Ros2ForUnityInteractiveSelectionCoordinator.DrawPendingResolveControls();
                 return;
             }
 
@@ -278,11 +284,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 MessageType.Info);
 
             if (Ros2ForUnityInteractiveSelectionCoordinator.HasPending)
-            {
-                EditorGUILayout.HelpBox(
-                    Ros2ForUnityInteractiveSelectionCoordinator.PendingMessage,
-                    MessageType.Info);
-            }
+                Ros2ForUnityInteractiveSelectionCoordinator.DrawPendingResolveControls();
 
             var selectionChangeBlocked = EditorApplication.isPlayingOrWillChangePlaymode
                 || EditorApplication.isCompiling

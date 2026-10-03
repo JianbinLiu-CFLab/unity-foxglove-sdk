@@ -14,6 +14,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         CustomTypesupport
     }
 
+    internal enum Ros2ForUnitySelectionLifecycleStatus
+    {
+        Pending,
+        TimedOut,
+        Failed,
+        Completed,
+        Cancelled
+    }
+
+    internal static class Ros2ForUnitySelectionLifecycleDefaults
+    {
+        internal const double ResolveTimeoutSeconds = 300.0;
+        internal static TimeSpan ResolveTimeout => TimeSpan.FromSeconds(ResolveTimeoutSeconds);
+    }
+
     /// <summary>
     /// Pure state and persistence boundary for an interactive Package Manager
     /// selection. Unity callbacks remain in the coordinator; this type owns
@@ -139,6 +154,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         internal bool IsExpired(DateTime nowUtc)
             => IsPending && nowUtc.ToUniversalTime() >= DeadlineUtc;
 
+        internal Ros2ForUnityInteractiveSelectionState CreateRetry(
+            DateTime nowUtc,
+            TimeSpan timeout)
+        {
+            return Begin(
+                checked(Generation + 1),
+                ProjectDirectory,
+                RuntimePackage,
+                AddOnPackage,
+                OriginalManifest,
+                Kind,
+                nowUtc,
+                timeout);
+        }
+
+        internal bool TryCancel(long generation)
+            => TryComplete(generation);
         internal bool TryComplete(long generation)
         {
             if (!IsCurrent(generation))
@@ -150,5 +182,265 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         internal bool TryFail(long generation)
             => TryComplete(generation);
+    }
+
+    /// <summary>
+    /// Unity-free lifecycle core for interactive and batch package selection.
+    /// The Unity adapter owns callbacks, persistence, manifest I/O, and UI.
+    /// </summary>
+    internal sealed class Ros2ForUnitySelectionLifecycle
+    {
+        private Ros2ForUnityInteractiveSelectionState _state;
+        private Ros2ForUnitySelectionLifecycleStatus _status;
+
+        internal Ros2ForUnityInteractiveSelectionState State => _state;
+        internal Ros2ForUnitySelectionLifecycleStatus Status => _status;
+        internal bool HasOwner
+            => _state != null
+                && _status != Ros2ForUnitySelectionLifecycleStatus.Completed
+                && _status != Ros2ForUnitySelectionLifecycleStatus.Cancelled;
+
+        internal void Begin(Ros2ForUnityInteractiveSelectionState state)
+        {
+            if (state == null || !state.IsPending)
+                throw new InvalidOperationException("A live selection state is required.");
+            if (HasOwner)
+                throw new InvalidOperationException("A selection lifecycle already owns a transaction.");
+
+            _state = state;
+            _status = Ros2ForUnitySelectionLifecycleStatus.Pending;
+        }
+
+        internal void Restore(
+            Ros2ForUnityInteractiveSelectionState state,
+            DateTime nowUtc,
+            Ros2ForUnitySelectionLifecycleStatus restoredStatus = Ros2ForUnitySelectionLifecycleStatus.Pending)
+        {
+            if (state == null || !state.IsPending)
+                throw new InvalidOperationException("A live selection state is required.");
+            if (restoredStatus == Ros2ForUnitySelectionLifecycleStatus.Completed
+                || restoredStatus == Ros2ForUnitySelectionLifecycleStatus.Cancelled)
+                throw new InvalidOperationException("A terminal selection status cannot own a transaction.");
+
+            _state = state;
+            _status = restoredStatus;
+            if (_status == Ros2ForUnitySelectionLifecycleStatus.Pending
+                && _state.IsExpired(nowUtc))
+            {
+                _status = Ros2ForUnitySelectionLifecycleStatus.TimedOut;
+            }
+        }
+
+        internal bool MarkTimedOut(DateTime nowUtc)
+        {
+            if (!HasOwner
+                || _status != Ros2ForUnitySelectionLifecycleStatus.Pending)
+                return false;
+            if (!_state.IsExpired(nowUtc))
+                return false;
+
+            _status = Ros2ForUnitySelectionLifecycleStatus.TimedOut;
+            return true;
+        }
+
+        internal bool MarkFailed()
+        {
+            if (!HasOwner)
+                return false;
+            _status = Ros2ForUnitySelectionLifecycleStatus.Failed;
+            return true;
+        }
+
+        internal bool Tick(
+            DateTime nowUtc,
+            Func<Ros2ForUnityInteractiveSelectionState, bool> isRegistered,
+            Func<Ros2ForUnityInteractiveSelectionState, bool> isValid,
+            Action<Ros2ForUnityInteractiveSelectionState> commit)
+        {
+            if (!HasOwner
+                || _status != Ros2ForUnitySelectionLifecycleStatus.Pending)
+                return false;
+
+            if (MarkTimedOut(nowUtc))
+                return false;
+            if (!isRegistered(_state))
+                return false;
+            if (!isValid(_state))
+            {
+                _status = Ros2ForUnitySelectionLifecycleStatus.Failed;
+                return false;
+            }
+
+            commit(_state);
+            _status = Ros2ForUnitySelectionLifecycleStatus.Completed;
+            _state.TryComplete(_state.Generation);
+            return true;
+        }
+
+        internal bool TryComplete(long generation)
+        {
+            if (!HasOwner || _state == null || _state.Generation != generation)
+                return false;
+            if (!_state.TryComplete(generation))
+                return false;
+
+            _status = Ros2ForUnitySelectionLifecycleStatus.Completed;
+            return true;
+        }
+        internal bool Retry(DateTime nowUtc, TimeSpan timeout, Action resolve)
+        {
+            if (!HasOwner
+                || (_status != Ros2ForUnitySelectionLifecycleStatus.TimedOut
+                    && _status != Ros2ForUnitySelectionLifecycleStatus.Failed))
+                return false;
+
+            var previous = _state;
+            var retry = previous.CreateRetry(nowUtc, timeout);
+            previous.TryCancel(previous.Generation);
+            _state = retry;
+            _status = Ros2ForUnitySelectionLifecycleStatus.Pending;
+            try
+            {
+                resolve();
+                return true;
+            }
+            catch
+            {
+                _status = Ros2ForUnitySelectionLifecycleStatus.Failed;
+                throw;
+            }
+        }
+
+        internal bool Cancel(Action rollback)
+        {
+            if (!HasOwner)
+                return false;
+
+            rollback();
+            _state.TryCancel(_state.Generation);
+            _status = Ros2ForUnitySelectionLifecycleStatus.Cancelled;
+            return true;
+        }
+
+        internal bool Complete()
+        {
+            if (!HasOwner)
+                return false;
+
+            _state.TryComplete(_state.Generation);
+            _status = Ros2ForUnitySelectionLifecycleStatus.Completed;
+            return true;
+        }
+    }
+
+    internal interface IRos2ForUnitySelectionBackend
+    {
+        bool IsRegistered(Ros2ForUnityInteractiveSelectionState state);
+        bool IsValid(Ros2ForUnityInteractiveSelectionState state);
+        void Commit(Ros2ForUnityInteractiveSelectionState state);
+        void Resolve();
+        void Rollback(Ros2ForUnityInteractiveSelectionState state);
+    }
+
+    /// <summary>
+    /// Unity-free coordinator adapter used by the Editor callbacks and by
+    /// lifecycle tests. It owns no Unity state; the backend supplies package
+    /// registration, validation, resolve, commit, and rollback operations.
+    /// </summary>
+    internal sealed class Ros2ForUnityInteractiveSelectionCoordinatorCore
+    {
+        private readonly Ros2ForUnitySelectionLifecycle _lifecycle =
+            new Ros2ForUnitySelectionLifecycle();
+
+        internal Ros2ForUnityInteractiveSelectionState State
+            => _lifecycle.State;
+        internal Ros2ForUnitySelectionLifecycleStatus Status
+            => _lifecycle.Status;
+        internal bool HasOwner
+            => _lifecycle.HasOwner;
+
+        internal void Begin(Ros2ForUnityInteractiveSelectionState state)
+            => _lifecycle.Begin(state);
+
+        internal void Restore(
+            Ros2ForUnityInteractiveSelectionState state,
+            DateTime nowUtc,
+            Ros2ForUnitySelectionLifecycleStatus status =
+                Ros2ForUnitySelectionLifecycleStatus.Pending)
+            => _lifecycle.Restore(state, nowUtc, status);
+
+        internal bool MarkTimedOut(DateTime nowUtc)
+            => _lifecycle.MarkTimedOut(nowUtc);
+
+        internal bool Tick(
+            DateTime nowUtc,
+            IRos2ForUnitySelectionBackend backend,
+            Action<Exception> failureSink)
+        {
+            if (backend == null)
+                throw new ArgumentNullException(nameof(backend));
+
+            try
+            {
+                return _lifecycle.Tick(
+                    nowUtc,
+                    backend.IsRegistered,
+                    backend.IsValid,
+                    backend.Commit);
+            }
+            catch (Exception exception)
+            {
+                _lifecycle.MarkFailed();
+                failureSink?.Invoke(exception);
+                return false;
+            }
+        }
+
+        internal bool Retry(
+            DateTime nowUtc,
+            TimeSpan timeout,
+            IRos2ForUnitySelectionBackend backend,
+            Action<Exception> failureSink)
+        {
+            if (backend == null)
+                throw new ArgumentNullException(nameof(backend));
+
+            try
+            {
+                return _lifecycle.Retry(nowUtc, timeout, backend.Resolve);
+            }
+            catch (Exception exception)
+            {
+                _lifecycle.MarkFailed();
+                failureSink?.Invoke(exception);
+                return false;
+            }
+        }
+
+        internal bool Cancel(
+            IRos2ForUnitySelectionBackend backend,
+            Action<Exception> failureSink)
+        {
+            if (backend == null)
+                throw new ArgumentNullException(nameof(backend));
+
+            try
+            {
+                return _lifecycle.Cancel(
+                    () => backend.Rollback(_lifecycle.State));
+            }
+            catch (Exception exception)
+            {
+                _lifecycle.MarkFailed();
+                failureSink?.Invoke(exception);
+                return false;
+            }
+        }
+
+        internal bool Fail()
+            => _lifecycle.MarkFailed();
+
+        internal bool Complete()
+            => _lifecycle.Complete();
     }
 }
