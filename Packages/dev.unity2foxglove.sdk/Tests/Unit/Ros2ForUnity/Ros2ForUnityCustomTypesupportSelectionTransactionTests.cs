@@ -23,6 +23,39 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
     public sealed class Ros2ForUnityCustomTypesupportSelectionTransactionTests
     {
         [Fact]
+        public void ActionResolveOverloadReportsPendingInsteadOfSynchronousCompletion()
+        {
+            using var fixture = new SelectionFixture();
+            fixture.WriteManifest(fixture.HumbleRuntimePackage);
+            var resolveCalls = 0;
+            Action resolve = () => resolveCalls++;
+
+            var result = Ros2ForUnityCustomTypesupportSelectionTransaction.Apply(
+                fixture.ProjectDirectory,
+                fixture.HumbleRuntimePackage,
+                requestedAddOnPackage: null,
+                resolve);
+
+            Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.ResolvePending, result.Code);
+            Assert.Equal(1, resolveCalls);
+        }
+
+        [Fact]
+        public void RestoreManifestRestoresTheExactOriginalText()
+        {
+            using var fixture = new SelectionFixture();
+            fixture.WriteManifest(fixture.JazzyRuntimePackage);
+            var original = File.ReadAllText(fixture.ManifestPath);
+            fixture.WriteManifest(fixture.HumbleRuntimePackage);
+
+            Ros2ForUnityCustomTypesupportSelectionTransaction.RestoreManifest(
+                fixture.ProjectDirectory,
+                original);
+
+            Assert.Equal(original, File.ReadAllText(fixture.ManifestPath));
+        }
+
+        [Fact]
         public void BaseOnlyTransactionRemovesStaleCustomAddOnAndResolvesOnce()
         {
             using var fixture = new SelectionFixture();
@@ -36,7 +69,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 fixture.ProjectDirectory,
                 fixture.HumbleRuntimePackage,
                 requestedAddOnPackage: null,
-                resolve: () => resolveCalls++);
+                resolveAndConfirm: () => { resolveCalls++; return true; });
 
             Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly, result.Code);
             Assert.Equal(1, resolveCalls);
@@ -54,7 +87,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 fixture.ProjectDirectory,
                 fixture.HumbleRuntimePackage,
                 requestedAddOnPackage: null,
-                resolve: () => resolveCalls++);
+                resolveAndConfirm: () => { resolveCalls++; return true; });
 
             Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly, result.Code);
             Assert.Equal(1, resolveCalls);
@@ -85,7 +118,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 fixture.ProjectDirectory,
                 fixture.HumbleRuntimePackage,
                 addOn,
-                resolve: () => { });
+                resolveAndConfirm: () => true);
 
             Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.Ready, result.Code);
             Assert.Equal(addOn, result.ActiveAddOnPackage);
@@ -111,7 +144,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 fixture.ProjectDirectory,
                 fixture.HumbleRuntimePackage,
                 addOn,
-                () => { });
+                resolveAndConfirm: () => true);
 
             Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.Ready, result.Code);
             Assert.Equal(addOn, result.ActiveAddOnPackage);
@@ -183,7 +216,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 fixture.ProjectDirectory,
                 fixture.HumbleRuntimePackage,
                 requestedAddOnPackage: null,
-                resolve: () => { });
+                resolveAndConfirm: () => true);
 
             Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly, result.Code);
             Assert.Equal(new[] { fixture.HumbleRuntimePackage }, fixture.ManifestDependencyNames());
@@ -201,7 +234,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 fixture.ProjectDirectory,
                 fixture.HumbleRuntimePackage,
                 addOn,
-                resolve: () => throw new InvalidOperationException("test resolve failure"));
+                resolveAndConfirm: () => throw new InvalidOperationException("test resolve failure"));
 
             Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.ResolveFailed, result.Code);
             Assert.Equal(original, File.ReadAllText(fixture.ManifestPath));

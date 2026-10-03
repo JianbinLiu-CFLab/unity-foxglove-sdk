@@ -36,6 +36,8 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private const int DownloadBodyTimeoutMs = 60000;
 
+        public static bool IsAutomaticInstallSupported => IsWindowsEditor;
+
         public static OpenH264InstallResult Install(string installRoot)
             => Install(installRoot, GetPackageRoot());
 

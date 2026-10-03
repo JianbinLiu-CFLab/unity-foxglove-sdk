@@ -451,10 +451,20 @@ namespace Unity.FoxgloveSDK.Editor
             var licenseRequested = false;
             var revealPath = GetRevealOpenH264Path(openH264DllPath.stringValue, openH264HelperPath.stringValue);
 
+            if (!OpenH264OfficialBinaryInstaller.IsAutomaticInstallSupported)
+            {
+                EditorGUILayout.HelpBox(
+                    "Automatic OpenH264 installation is supported only in the Windows Unity Editor. Use Manual Download and select the helper and DLL paths.",
+                    MessageType.Warning);
+            }
+
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("Install OpenH264 Runtime..."))
-                    installRequested = true;
+                using (new EditorGUI.DisabledScope(!OpenH264OfficialBinaryInstaller.IsAutomaticInstallSupported))
+                {
+                    if (GUILayout.Button("Install OpenH264 Runtime..."))
+                        installRequested = true;
+                }
 
                 if (GUILayout.Button("Check OpenH264"))
                     checkRequested = true;
@@ -1081,6 +1091,12 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.HelpBox(
                     "Cisco's DLL is downloaded by this machine as an explicit user action. The helper executable is built locally and does not bundle OpenH264 codec code.",
                     MessageType.Warning);
+                if (!OpenH264OfficialBinaryInstaller.IsAutomaticInstallSupported)
+                {
+                    EditorGUILayout.HelpBox(
+                        "Automatic installation is unavailable on this Editor platform. Use Manual Download and configure both paths.",
+                        MessageType.Warning);
+                }
 
                 EditorGUILayout.Space();
                 EditorGUILayout.LabelField("Source", OpenH264OfficialBinaryManifest.DownloadUrl);
@@ -1120,7 +1136,8 @@ namespace Unity.FoxgloveSDK.Editor
                     if (GUILayout.Button("Manual Download"))
                         Application.OpenURL(OpenH264OfficialBinaryManifest.ReleasePageUrl);
 
-                    using (new EditorGUI.DisabledScope(IsInstalling))
+                    using (new EditorGUI.DisabledScope(
+                               IsInstalling || !OpenH264OfficialBinaryInstaller.IsAutomaticInstallSupported))
                     {
                         if (GUILayout.Button(IsInstalling ? "Installing..." : "Install OpenH264 Runtime"))
                             Install();

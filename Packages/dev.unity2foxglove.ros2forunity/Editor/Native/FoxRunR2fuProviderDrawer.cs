@@ -100,6 +100,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native.Editor
                 .DrawFoxRunNativeSubscriptionDiagnostics();
         }
 
+        private static FoxRunGenerationModel _cachedContractModel;
+        private static IReadOnlyList<Ros2ForUnityCustomTypesupportContract> _cachedContracts;
+
         private static IReadOnlyList<
             Ros2ForUnityCustomTypesupportContract>
             CollectCustomTypesupportContracts()
@@ -107,7 +110,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native.Editor
             var model =
                 FoxrunCodeGenerator
                     .CollectReflectionGenerationModelForTransportProviders();
-            return model.Types
+            if (ReferenceEquals(_cachedContractModel, model)
+                && _cachedContracts != null)
+            {
+                return _cachedContracts;
+            }
+
+            _cachedContractModel = model;
+            _cachedContracts = model.Types
                 .SelectMany(type => type.Members)
                 .Select(FoxRunR2fuTopicMember.Create)
                 .Where(member =>
@@ -141,6 +151,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native.Editor
                         contract.DirectionalPolicy,
                     StringComparer.Ordinal)
                 .ToArray();
+            return _cachedContracts;
         }
 
         private static string DirectionalPolicyLabel(

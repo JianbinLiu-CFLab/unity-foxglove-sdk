@@ -17,6 +17,16 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private static string _scanAssemblyFingerprint;
         private static FoxRunScanResult _cachedFoxRunScan;
+        private static string _reflectionModelFingerprint;
+        private static FoxRunGenerationModel _cachedReflectionGenerationModel;
+
+        internal static void InvalidateReflectionDiscoveryCache()
+        {
+            _scanAssemblyFingerprint = null;
+            _cachedFoxRunScan = null;
+            _reflectionModelFingerprint = null;
+            _cachedReflectionGenerationModel = null;
+        }
 
         private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices(bool ignoreReflectionTypeLoadExceptions)
         {
@@ -100,7 +110,7 @@ namespace Unity.FoxgloveSDK.Editor
             }, out complete);
 
             var result = new FoxRunScanResult(byClass, manifestMembers, reflectionMembers, complete);
-            if (ignoreReflectionTypeLoadExceptions)
+            if (ignoreReflectionTypeLoadExceptions && complete)
             {
                 _scanAssemblyFingerprint = fingerprint;
                 _cachedFoxRunScan = result;
@@ -165,7 +175,20 @@ namespace Unity.FoxgloveSDK.Editor
         private static string GetLoadedAssemblyFingerprint()
         {
             return string.Join("\u001f", AppDomain.CurrentDomain.GetAssemblies()
-                .Select(assembly => assembly.FullName ?? assembly.GetName().Name)
+                .Select(assembly =>
+                {
+                    var name = assembly.FullName ?? assembly.GetName().Name ?? string.Empty;
+                    string moduleVersionId;
+                    try
+                    {
+                        moduleVersionId = assembly.ManifestModule.ModuleVersionId.ToString("D");
+                    }
+                    catch
+                    {
+                        moduleVersionId = string.Empty;
+                    }
+                    return name + "|" + moduleVersionId;
+                })
                 .OrderBy(name => name, StringComparer.Ordinal));
         }
 

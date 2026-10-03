@@ -43,9 +43,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                       && !(exception is AccessViolationException)
                       && !(exception is ExitGUIException))
             {
+                Ros2ForUnityEditorDiagnostics.ReportSelectorFailure(
+                    exception,
+                    value => Debug.LogException(value));
                 EditorGUILayout.HelpBox(
-                    "ROS2 For Unity runtime selection failed. "
-                    + "Check the Unity package manifest and installed runtime packages.",
+                    Ros2ForUnityEditorDiagnostics.SelectorFailureMessage,
                     MessageType.Warning);
             }
         }

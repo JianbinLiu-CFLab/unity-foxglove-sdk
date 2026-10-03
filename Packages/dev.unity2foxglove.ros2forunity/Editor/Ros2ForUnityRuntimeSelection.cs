@@ -285,14 +285,31 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (candidate == null)
                 throw new InvalidOperationException("Runtime package is not a repository candidate: " + packageName);
 
-            var result = Ros2ForUnityCustomTypesupportSelectionTransaction.Apply(
+            var originalManifest = Ros2ForUnityCustomTypesupportSelectionTransaction.ReadManifestText(projectDirectory);
+            Ros2ForUnityInteractiveSelectionCoordinator.Begin(
                 projectDirectory,
                 candidate.PackageName,
-                requestedAddOnPackage: null,
-                resolve: () => Client.Resolve());
-            ThrowIfCustomTypesupportTransactionFailed(result, "switching ROS2 For Unity runtime");
-            InvalidateStatusCache();
-            ApplyCommunicationModeEnvironment(projectDirectory);
+                string.Empty,
+                Ros2ForUnityInteractiveSelectionKind.Runtime,
+                originalManifest);
+            try
+            {
+                var result = Ros2ForUnityCustomTypesupportSelectionTransaction.Apply(
+                    projectDirectory,
+                    candidate.PackageName,
+                    requestedAddOnPackage: null,
+                    resolve: () => Client.Resolve());
+                if (result.Code == Ros2ForUnityCustomTypesupportSelectionCode.ResolvePending)
+                    return;
+                Ros2ForUnityInteractiveSelectionCoordinator.Cancel();
+                ThrowIfCustomTypesupportTransactionFailed(result, "switching ROS2 For Unity runtime");
+                CompleteInteractiveSelection(projectDirectory, Ros2ForUnityInteractiveSelectionKind.Runtime);
+            }
+            catch
+            {
+                Ros2ForUnityInteractiveSelectionCoordinator.Cancel();
+                throw;
+            }
         }
 
         /// <summary>
@@ -314,13 +331,43 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (status.SelectedRuntime == null)
                 throw new InvalidOperationException("Select one valid ROS2 For Unity runtime before selecting custom ROS2 typesupport.");
 
-            var result = Ros2ForUnityCustomTypesupportSelectionTransaction.Apply(
+            var originalManifest = Ros2ForUnityCustomTypesupportSelectionTransaction.ReadManifestText(projectDirectory);
+            Ros2ForUnityInteractiveSelectionCoordinator.Begin(
                 projectDirectory,
                 status.SelectedRuntime.PackageName,
                 packageName,
-                () => Client.Resolve());
-            ThrowIfCustomTypesupportTransactionFailed(result, "selecting FoxRun custom ROS2 typesupport");
+                Ros2ForUnityInteractiveSelectionKind.CustomTypesupport,
+                originalManifest);
+            try
+            {
+                var result = Ros2ForUnityCustomTypesupportSelectionTransaction.Apply(
+                    projectDirectory,
+                    status.SelectedRuntime.PackageName,
+                    packageName,
+                    resolve: () => Client.Resolve());
+                if (result.Code == Ros2ForUnityCustomTypesupportSelectionCode.ResolvePending)
+                    return;
+                Ros2ForUnityInteractiveSelectionCoordinator.Cancel();
+                ThrowIfCustomTypesupportTransactionFailed(result, "selecting FoxRun custom ROS2 typesupport");
+                CompleteInteractiveSelection(projectDirectory, Ros2ForUnityInteractiveSelectionKind.CustomTypesupport);
+            }
+            catch
+            {
+                Ros2ForUnityInteractiveSelectionCoordinator.Cancel();
+                throw;
+            }
+        }
+
+        internal static void CompleteInteractiveSelection(
+            string projectDirectory,
+            Ros2ForUnityInteractiveSelectionKind kind)
+        {
             InvalidateStatusCache();
+            if (kind == Ros2ForUnityInteractiveSelectionKind.Runtime)
+                ApplyCommunicationModeEnvironment(projectDirectory);
+            Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
+            if (kind == Ros2ForUnityInteractiveSelectionKind.CustomTypesupport)
+                Ros2ForUnityCustomTypesupportDiscovery.InvalidateCache();
         }
 
         public static string GetSessionRuntimePackage()

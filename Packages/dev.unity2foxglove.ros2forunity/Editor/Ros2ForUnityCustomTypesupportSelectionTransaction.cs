@@ -107,8 +107,37 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 () =>
                 {
                     resolve();
-                    return true;
+                    // An Action can start Package Manager resolution, but it
+                    // cannot prove that the requested packages are registered.
+                    // Treat it as pending instead of claiming synchronous
+                    // completion.
+                    return false;
                 });
+        }
+
+        internal static string ReadManifestText(string projectDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(projectDirectory))
+                throw new InvalidOperationException("Could not resolve the Unity project directory.");
+
+            var manifestPath = Path.Combine(projectDirectory, "Packages", "manifest.json");
+            var text = File.ReadAllText(manifestPath);
+            ParseManifestJson(text);
+            return text;
+        }
+
+        internal static void RestoreManifest(string projectDirectory, string originalManifest)
+        {
+            if (string.IsNullOrWhiteSpace(projectDirectory)
+                || string.IsNullOrEmpty(originalManifest))
+            {
+                throw new InvalidOperationException("The original Unity package manifest is unavailable.");
+            }
+
+            ParseManifestJson(originalManifest);
+            var manifestPath = Path.Combine(projectDirectory, "Packages", "manifest.json");
+            WriteAtomically(manifestPath, originalManifest);
+            ParseManifestJson(File.ReadAllText(manifestPath));
         }
 
         public static Ros2ForUnityCustomTypesupportSelectionResult Apply(
