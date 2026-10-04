@@ -1224,6 +1224,40 @@ class RunCiTests(unittest.TestCase):
         """The captured runner must terminate a child that outlives its parent."""
         self._assert_runner_timeout_terminates_descendant(captured=True)
 
+    def test_owned_command_keeps_success_after_residual_tree_is_cleaned(self) -> None:
+        """A transient descendant must not turn a successful command into exit 125 after cleanup."""
+        process = mock.Mock(returncode=0)
+        process.communicate.return_value = ("output\n", "")
+        tree = mock.Mock(process=process)
+        tree.terminate.return_value = []
+
+        with mock.patch.object(self.run_ci, "start_owned_process", return_value=tree):
+            with mock.patch.object(self.run_ci, "await_tree_quiescence", return_value=[424242]):
+                result = self.run_ci._run_owned_command(
+                    ["tool"], capture_output=True, timeout_seconds=10
+                )
+
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("output\n", result.stdout)
+        self.assertEqual((), result.residual_pids)
+        tree.terminate.assert_called_once_with()
+
+    def test_owned_command_fails_closed_when_cleanup_leaves_residual_tree(self) -> None:
+        """A descendant that survives termination must retain the fail-closed result."""
+        process = mock.Mock(returncode=0)
+        process.communicate.return_value = ("output\n", "")
+        tree = mock.Mock(process=process)
+        tree.terminate.return_value = [424242]
+
+        with mock.patch.object(self.run_ci, "start_owned_process", return_value=tree):
+            with mock.patch.object(self.run_ci, "await_tree_quiescence", return_value=[424242]):
+                result = self.run_ci._run_owned_command(
+                    ["tool"], capture_output=True, timeout_seconds=10
+                )
+
+        self.assertEqual(125, result.returncode)
+        self.assertEqual((424242,), result.residual_pids)
+
     def _assert_runner_timeout_terminates_descendant(self, *, captured: bool) -> None:
         """Verify timeout cleanup reaches descendants for both runner surfaces."""
         with tempfile.TemporaryDirectory() as temp:

@@ -473,16 +473,18 @@ def _run_owned_command(
                 residual_pids=residual,
             )
 
+        returncode = tree.process.returncode or 0
         residual = tuple(await_tree_quiescence(tree, 1.0))
         if residual:
             residual = tuple(tree.terminate())
-            return OwnedCommandResult(
-                125,
-                stdout or "",
-                stderr or "",
-                residual_pids=residual,
-            )
-        return OwnedCommandResult(tree.process.returncode or 0, stdout or "", stderr or "")
+            if residual:
+                return OwnedCommandResult(
+                    125,
+                    stdout or "",
+                    stderr or "",
+                    residual_pids=residual,
+                )
+        return OwnedCommandResult(returncode, stdout or "", stderr or "")
     except OSError as exc:
         return OwnedCommandResult(125, "", str(exc))
     finally:
