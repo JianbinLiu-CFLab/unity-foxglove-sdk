@@ -23,6 +23,7 @@ namespace Unity2Foxglove.Ros2Bridge
         public Ros2BridgeProbeResult Ping(string host, int port, int timeoutMs, CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
+            var totalTimeoutMs = Math.Max(1, timeoutMs);
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -32,25 +33,28 @@ namespace Unity2Foxglove.Ros2Bridge
 
                 using var client = new TcpClient();
                 var connect = client.ConnectAsync(host, port);
-                if (!WaitOrCancel(connect, Math.Max(1, timeoutMs), cancellationToken))
+                if (!WaitOrCancel(connect, RemainingMilliseconds(stopwatch, totalTimeoutMs), cancellationToken))
                     throw new TimeoutException("Timed out connecting to ROS2 Bridge sidecar.");
                 connect.GetAwaiter().GetResult();
 
                 cancellationToken.ThrowIfCancellationRequested();
                 client.NoDelay = true;
-                client.ReceiveTimeout = Math.Max(1, timeoutMs);
-                client.SendTimeout = Math.Max(1, timeoutMs);
+                client.ReceiveTimeout = RemainingMilliseconds(stopwatch, totalTimeoutMs);
+                client.SendTimeout = RemainingMilliseconds(stopwatch, totalTimeoutMs);
 
                 var requestId = RequestIdPrefix + Guid.NewGuid().ToString("N");
                 var request = Ros2BridgeU2R2HealthCodec.WriteHealthPing(requestId);
                 var stream = client.GetStream();
                 cancellationToken.ThrowIfCancellationRequested();
+                stream.WriteTimeout = RemainingMilliseconds(stopwatch, totalTimeoutMs);
                 stream.Write(request, 0, request.Length);
+                stream.WriteTimeout = RemainingMilliseconds(stopwatch, totalTimeoutMs);
                 stream.Flush();
 
                 var responseHeader = ReadU2R2Header(
                     stream,
-                    Math.Max(1, timeoutMs),
+                    totalTimeoutMs,
+                    stopwatch,
                     cancellationToken);
                 var pong = Ros2BridgeU2R2HealthCodec.ParseHealthPongHeader(responseHeader, requestId);
                 stopwatch.Stop();
@@ -87,9 +91,10 @@ namespace Unity2Foxglove.Ros2Bridge
         private static byte[] ReadU2R2Header(
             Stream stream,
             int timeoutMs,
+            Stopwatch deadline,
             CancellationToken cancellationToken)
         {
-            var fixedHeader = ReadExact(stream, 16, timeoutMs, cancellationToken);
+            var fixedHeader = ReadExact(stream, 16, timeoutMs, deadline, cancellationToken);
             if (fixedHeader[0] != 'U' || fixedHeader[1] != '2' || fixedHeader[2] != 'R' || fixedHeader[3] != '2')
                 throw new FormatException("U2R2 response magic is invalid.");
             if (ReadUInt16LE(fixedHeader, 4) != 1)
@@ -108,6 +113,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 stream,
                 checked((int)headerLength),
                 timeoutMs,
+                deadline,
                 cancellationToken);
             if (payloadLength != 0)
                 throw new FormatException("Health pong payload must be empty.");
@@ -119,15 +125,15 @@ namespace Unity2Foxglove.Ros2Bridge
             Stream stream,
             int count,
             int timeoutMs,
+            Stopwatch deadline,
             CancellationToken cancellationToken)
         {
             var bytes = new byte[count];
             var offset = 0;
-            var deadline = Stopwatch.StartNew();
             while (offset < count)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var remaining = timeoutMs - deadline.ElapsedMilliseconds;
+                var remaining = RemainingMilliseconds(deadline, timeoutMs);
                 if (remaining <= 0)
                     throw new TimeoutException("Timed out reading ROS2 Bridge health response.");
                 stream.ReadTimeout = (int)Math.Min(int.MaxValue, remaining);
@@ -137,6 +143,14 @@ namespace Unity2Foxglove.Ros2Bridge
                 offset += read;
             }
             return bytes;
+        }
+
+        private static int RemainingMilliseconds(Stopwatch deadline, int timeoutMs)
+        {
+            var remaining = timeoutMs - deadline.ElapsedMilliseconds;
+            if (remaining <= 0)
+                throw new TimeoutException("ROS2 Bridge health probe exceeded its total deadline.");
+            return (int)Math.Min(int.MaxValue, remaining);
         }
 
         private static uint ReadUInt32LE(byte[] data, int offset)

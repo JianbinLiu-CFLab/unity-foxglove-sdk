@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  linux-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository with provenance history
@@ -150,6 +150,30 @@ jobs:
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_sync_foxrun_custom_typesupport_addon
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_h07_health_deadline_contract
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_h02_subst_cleanup_contract
+
+      - name: Run complete Python regression inventory
+        if: always()
+        run: |
+          python3 -B Scripts/release/regression_inventory.py
+          python3 -B -m unittest \
+            Scripts.native.regression_checks.test_native_sources \
+            Scripts.package.regression_checks.test_validate_local_entrypoints \
+            Scripts.package.regression_checks.test_validate_phase186_package_matrix \
+            Scripts.package.regression_checks.test_validate_unity_package \
+            Scripts.phase190.regression_checks.test_phase190_script_documentation \
+            Scripts.phase190.regression_checks.test_phase190_validators \
+            Scripts.phase190.regression_checks.test_run_conformance \
+            Scripts.phase192.regression_checks.test_identity_tooling \
+            Scripts.release.regression_checks.test_regression_inventory \
+            Scripts.samples.regression_checks.test_sample_sync_tooling \
+            Scripts.schema.regression_checks.test_schema_tooling \
+            Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe \
+            Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual \
+            Scripts.smoke.replay.regression_checks.test_phase188_deterministic_replay_acceptance \
+            Scripts.smoke.ros2.regression_checks.test_phase162_lyrical_zenoh_player_smoke \
+            Scripts.smoke.ros2.regression_checks.test_ros2_windows_env
 
       - name: Run Phase186 Bridge tooling and package-composition gate
         if: always()
@@ -360,3 +384,43 @@ jobs:
 
       - name: Verify checked-in analyzer DLL freshness
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase115f
+
+  test:
+    name: test
+    if: always()
+    needs:
+      - linux-test
+      - optional-ros2-adapter
+      - optional-ros2-native
+      - windows-parity
+      - analyzer-freshness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every validation lane to succeed
+        env:
+          LINUX_RESULT: ${{ needs['linux-test'].result }}
+          ADAPTER_RESULT: ${{ needs['optional-ros2-adapter'].result }}
+          NATIVE_RESULT: ${{ needs['optional-ros2-native'].result }}
+          WINDOWS_RESULT: ${{ needs['windows-parity'].result }}
+          ANALYZER_RESULT: ${{ needs['analyzer-freshness'].result }}
+        run: |
+          set -eu
+          failed=0
+          for result in \
+            "linux-test=$LINUX_RESULT" \
+            "optional-ros2-adapter=$ADAPTER_RESULT" \
+            "optional-ros2-native=$NATIVE_RESULT" \
+            "windows-parity=$WINDOWS_RESULT" \
+            "analyzer-freshness=$ANALYZER_RESULT"; do
+            name="${result%%=*}"
+            value="${result#*=}"
+            echo "$name: $value"
+            if [ "$value" != "success" ]; then
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "Validation aggregate failed." >&2
+            exit 1
+          fi
+          echo "Validation aggregate passed."

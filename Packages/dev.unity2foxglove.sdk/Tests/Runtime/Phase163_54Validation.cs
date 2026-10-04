@@ -139,7 +139,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
 
             Check(project.Contains("Phase163_54Validation.cs", StringComparison.Ordinal)
-                  && registry.Contains("Ci(\"--phase163-54\", \"Phase 163-54\", Phase163_54Validation.Validate, includeInDefault: false)", StringComparison.Ordinal),
+                  && registry.Contains("Ci(\"--phase163-54\", \"Phase 163-54\", Phase163_54Validation.Validate, includeInDefault: false", StringComparison.Ordinal),
                 "163-54G-1: Phase163-54 validation is compiled and registered");
         }
 

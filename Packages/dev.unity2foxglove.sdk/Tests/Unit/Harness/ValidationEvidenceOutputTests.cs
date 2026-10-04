@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Tests;
 using Xunit;
 
@@ -62,6 +63,34 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 ValidationEvidence.None,
                 () => { },
                 includeInDefault: false));
+        }
+
+        [Fact]
+        public void RegistryEntriesRequireExplicitEvidenceClassification()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            var definitions = source.Substring(0, source.IndexOf("        static PhaseValidationRegistry()", StringComparison.Ordinal));
+
+            Assert.DoesNotContain("ValidationEvidence evidence =", definitions);
+            Assert.Equal(
+                Regex.Matches(definitions, @"\b(?:DefaultOnly|Ci|Local|Manual)\(").Count,
+                Regex.Matches(definitions, @"\bevidence:\s*ValidationEvidence\.").Count);
+
+            Assert.DoesNotContain("evidence: ValidationEvidence.None", definitions, StringComparison.Ordinal);
+            var phase16 = Regex.Match(
+                definitions,
+                @"Ci\(""--phase16""(?<call>.*?)\),\s*(?:\r?\n|$)",
+                RegexOptions.Singleline);
+            Assert.True(phase16.Success);
+            Assert.Contains(
+                "evidence: ValidationEvidence.Structural",
+                phase16.Groups["call"].Value,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "ValidationEvidence.Behavior",
+                phase16.Groups["call"].Value,
+                StringComparison.Ordinal);
         }
 
         [Fact]

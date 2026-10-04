@@ -184,12 +184,15 @@ PHASE181_INTERFACE_TOOLING_REGRESSIONS = (
     "Scripts.ros2forunity.interfaces.regression_checks.test_sync_foxrun_custom_typesupport_addon",
     "Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon",
     "Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain",
+    "Scripts.ros2forunity.interfaces.regression_checks.test_h07_health_deadline_contract",
+    "Scripts.ros2forunity.interfaces.regression_checks.test_h02_subst_cleanup_contract",
 )
 RELEASE_TOOLING_REGRESSION = "Scripts.release.regression_checks.test_release_tooling"
 SAMPLE_SYNC_TOOLING_REGRESSION = (
     "Scripts.samples.regression_checks.test_sample_sync_tooling"
 )
 PACKAGE_LANE_REGRESSION_MODULES = (
+    "Scripts.release.regression_checks.test_regression_inventory",
     "Scripts.native.regression_checks.test_native_sources",
     "Scripts.package.regression_checks.test_validate_local_entrypoints",
     "Scripts.package.regression_checks.test_validate_phase186_package_matrix",
@@ -249,6 +252,17 @@ class CapturedCommandResult:
     stdout: str
     stderr: str
     timeout_seconds: int | None = None
+
+
+@dataclass(frozen=True)
+class OwnedCommandResult:
+    """Result from a command whose complete process tree is owned by this run."""
+
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+    timed_out: bool = False
+    residual_pids: tuple[int, ...] = ()
 
 
 def current_git_head() -> str:
@@ -424,6 +438,61 @@ def cyan(msg: str) -> str:
     return f"\033[36m{msg}\033[0m"
 
 
+def _run_owned_command(
+    cmd: list[str],
+    *,
+    capture_output: bool,
+    timeout_seconds: int | None,
+) -> OwnedCommandResult:
+    """Run a command and own every descendant until it is quiescent."""
+    popen_kwargs = {}
+    if capture_output:
+        popen_kwargs.update(
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+        )
+    tree = None
+    try:
+        tree = start_owned_process(cmd, REPO_ROOT, **popen_kwargs)
+        try:
+            stdout, stderr = tree.process.communicate(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired as expired:
+            partial_stdout = expired.stdout.decode(errors="replace") if isinstance(expired.stdout, bytes) else (expired.stdout or "")
+            partial_stderr = expired.stderr.decode(errors="replace") if isinstance(expired.stderr, bytes) else (expired.stderr or "")
+            residual = tuple(tree.terminate())
+            try:
+                tail_stdout, tail_stderr = tree.process.communicate(timeout=2)
+            except (OSError, subprocess.TimeoutExpired):
+                tail_stdout, tail_stderr = "", ""
+            return OwnedCommandResult(
+                124,
+                partial_stdout + (tail_stdout or ""),
+                partial_stderr + (tail_stderr or ""),
+                timed_out=True,
+                residual_pids=residual,
+            )
+
+        returncode = tree.process.returncode or 0
+        residual = tuple(await_tree_quiescence(tree, 1.0))
+        if residual:
+            residual = tuple(tree.terminate())
+            if residual:
+                return OwnedCommandResult(
+                    125,
+                    stdout or "",
+                    stderr or "",
+                    residual_pids=residual,
+                )
+        return OwnedCommandResult(returncode, stdout or "", stderr or "")
+    except OSError as exc:
+        return OwnedCommandResult(125, "", str(exc))
+    finally:
+        if tree is not None:
+            tree.close()
+
+
 def run(
     cmd: list[str],
     label: str,
@@ -440,20 +509,27 @@ def run(
         else command_timeout_seconds() if timeout_seconds is None else max(1, timeout_seconds)
     )
     start = time.monotonic()
-    try:
-        result = subprocess.run(cmd, cwd=REPO_ROOT, timeout=effective_timeout)
-    except subprocess.TimeoutExpired:
+    result = _run_owned_command(
+        cmd,
+        capture_output=False,
+        timeout_seconds=effective_timeout,
+    )
+    if result.timed_out:
         elapsed = time.monotonic() - start
         print(red(f"{FAIL} {label} timed out after {effective_timeout}s ({elapsed:.1f}s)"))
+        if result.residual_pids:
+            print(red(f"{FAIL} {label} owned descendants remain: {result.residual_pids}"))
         if fatal:
             raise SystemExit(124)
         return False
     elapsed = time.monotonic() - start
-    ok = result.returncode == 0
+    ok = result.returncode == 0 and not result.residual_pids
     if ok:
         print(green(f"{PASS} {label} ({elapsed:.1f}s)"))
     else:
         print(red(f"{FAIL} {label} (exit {result.returncode}) ({elapsed:.1f}s)"))
+        if result.residual_pids:
+            print(red(f"{FAIL} {label} owned descendants remain: {result.residual_pids}"))
         if fatal:
             raise SystemExit(result.returncode)
     return ok
@@ -471,40 +547,33 @@ def run_captured(cmd: list[str], label: str) -> CapturedCommandResult:
     """Run a subprocess and capture output for later ordered replay."""
     effective_timeout = command_timeout_seconds()
     start = time.monotonic()
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=REPO_ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            errors="replace",
-            timeout=effective_timeout,
-        )
-    except subprocess.TimeoutExpired as ex:
+    result = _run_owned_command(
+        cmd,
+        capture_output=True,
+        timeout_seconds=effective_timeout,
+    )
+    if result.timed_out:
         elapsed = time.monotonic() - start
-        stdout = ex.stdout.decode(errors="replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
-        stderr = ex.stderr.decode(errors="replace") if isinstance(ex.stderr, bytes) else (ex.stderr or "")
+        stderr = result.stderr
+        if result.residual_pids:
+            stderr += f"\n{FAIL} {label} owned descendants remain: {result.residual_pids}\n"
         return CapturedCommandResult(
             label,
             False,
             124,
             elapsed,
-            _bound_captured_output(stdout),
+            _bound_captured_output(result.stdout),
             _bound_captured_output(stderr),
             timeout_seconds=effective_timeout,
         )
-    except OSError as ex:
-        elapsed = time.monotonic() - start
-        return CapturedCommandResult(label, False, 125, elapsed, "", str(ex))
     elapsed = time.monotonic() - start
     return CapturedCommandResult(
         label,
-        result.returncode == 0,
+        result.returncode == 0 and not result.residual_pids,
         result.returncode,
         elapsed,
-        _bound_captured_output(result.stdout or ""),
-        _bound_captured_output(result.stderr or ""),
+        _bound_captured_output(result.stdout),
+        _bound_captured_output(result.stderr),
     )
 
 

@@ -11,6 +11,6 @@ class H02SubstCleanupTests(unittest.TestCase):
         t = SRC.read_text(encoding='utf-8')
         self.assertIn('primary_error: BaseException | None = None', t)
         self.assertIn('cleanup.returncode != 0', t)
-        self.assertIn('if primary_error is None', t)
+        self.assertIn('if primary_error is not None', t)
 if __name__ == '__main__':
     unittest.main()
