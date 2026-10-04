@@ -179,6 +179,7 @@ def _validate_namespace_access(tree: ast.Module, path: str) -> None:
     aliases: dict[str, str] = {}
 
     def origin(node: ast.AST | None, seen: set[str] | None = None) -> str | None:
+        """Internal helper for origin."""
         if node is None:
             return None
         seen = set() if seen is None else seen
@@ -308,6 +309,7 @@ def _validate_namespace_access(tree: ast.Module, path: str) -> None:
 
 
 def _section_namespace_guard(source: str, path: str) -> ast.Module:
+    """Internal helper for _section_namespace_guard."""
     tree = ast.parse(source, filename=path)
     _validate_namespace_access(tree, path)
     return tree
@@ -375,11 +377,13 @@ def _surface(root: Path, facade: Path) -> tuple[frozenset[str], tuple[str, ...],
 
 
 def _initializer_lines(initializer: Path) -> tuple[str, ...]:
+    """Internal helper for _initializer_lines."""
     tree = ast.parse(initializer.read_text(encoding="utf-8"), filename=str(initializer))
     return tuple(ast.unparse(statement).strip() for statement in tree.body)
 
 
 def _is_docstring_statement(statement: str) -> bool:
+    """Internal helper for _is_docstring_statement."""
     try:
         tree = ast.parse(statement)
     except SyntaxError:
@@ -393,6 +397,7 @@ def _is_docstring_statement(statement: str) -> bool:
 
 
 def _statement_bound_names(statement: str) -> frozenset[str]:
+    """Internal helper for _statement_bound_names."""
     try:
         tree = ast.parse(statement)
     except SyntaxError:
@@ -403,6 +408,7 @@ def _statement_bound_names(statement: str) -> frozenset[str]:
     names: set[str] = set()
 
     def add_target(target: ast.AST) -> None:
+        """Internal helper for add_target."""
         if isinstance(target, ast.Name):
             names.add(target.id)
         elif isinstance(target, (ast.Tuple, ast.List)):
@@ -434,6 +440,7 @@ def _statement_bound_names(statement: str) -> frozenset[str]:
 
 
 def _statement_loaded_names(statement: str) -> frozenset[str]:
+    """Internal helper for _statement_loaded_names."""
     try:
         tree = ast.parse(statement)
     except SyntaxError:
@@ -446,9 +453,11 @@ def _statement_loaded_names(statement: str) -> frozenset[str]:
 
 
 def _simple_assignment_targets(node: ast.Assign | ast.AnnAssign) -> bool:
+    """Internal helper for _simple_assignment_targets."""
     targets = node.targets if isinstance(node, ast.Assign) else [node.target]
 
     def valid(target: ast.AST) -> bool:
+        """Internal helper for valid."""
         if isinstance(target, ast.Name):
             return True
         return isinstance(target, (ast.Tuple, ast.List)) and all(
@@ -459,6 +468,7 @@ def _simple_assignment_targets(node: ast.Assign | ast.AnnAssign) -> bool:
 
 
 def _safe_initializer_value(node: ast.AST, available: frozenset[str]) -> bool:
+    """Internal helper for _safe_initializer_value."""
     if isinstance(node, ast.Constant):
         return True
     if isinstance(node, ast.Name):
@@ -539,6 +549,7 @@ _SAFE_BUILTIN_NAMES = frozenset(
 
 
 def _safe_definition_expression(node: ast.AST | None, available: frozenset[str]) -> bool:
+    """Internal helper for _safe_definition_expression."""
     if node is None:
         return True
     if any(
@@ -558,6 +569,7 @@ def _safe_function_definition(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     available: frozenset[str],
 ) -> bool:
+    """Internal helper for _safe_function_definition."""
     if node.decorator_list:
         return False
     expressions = [
@@ -579,6 +591,7 @@ def _safe_function_definition(
 
 
 def _safe_class_definition(node: ast.ClassDef, available: frozenset[str]) -> bool:
+    """Internal helper for _safe_class_definition."""
     if node.decorator_list or node.keywords:
         return False
     if any(not _safe_definition_expression(base, available) for base in node.bases):
@@ -622,6 +635,7 @@ def _safe_initializer_addition(
     available: frozenset[str],
     forbidden: frozenset[str],
 ) -> bool:
+    """Internal helper for _safe_initializer_addition."""
     try:
         tree = ast.parse(statement)
     except SyntaxError:
@@ -705,6 +719,7 @@ def _initializer_is_additive(
     head: tuple[str, ...] | None,
     base_symbols: frozenset[str],
 ) -> bool:
+    """Internal helper for _initializer_is_additive."""
     if base is None or head is None:
         return True
     base_lines = list(base)
@@ -751,6 +766,7 @@ def _initializer_is_additive(
 
 
 def _sections_preserve_order(base: tuple[str, ...], head: tuple[str, ...]) -> bool:
+    """Internal helper for _sections_preserve_order."""
     if len(set(base)) != len(base) or len(set(head)) != len(head):
         return False
     cursor = 0
@@ -763,6 +779,7 @@ def _sections_preserve_order(base: tuple[str, ...], head: tuple[str, ...]) -> bo
 def _unpack_surface(surface: tuple) -> tuple[
     frozenset[str], tuple[str, ...], str | None, tuple[str, ...] | None, bool | None
 ]:
+    """Internal helper for _unpack_surface."""
     if len(surface) < 2:
         raise ValueError(f"unsupported identity surface shape: {len(surface)} fields")
     symbols = surface[0]
