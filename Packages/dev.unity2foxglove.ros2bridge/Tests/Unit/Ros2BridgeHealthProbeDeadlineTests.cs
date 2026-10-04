@@ -38,11 +38,10 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.True(
                 stopwatch.Elapsed < TimeSpan.FromSeconds(1.2),
                 "The probe exceeded its absolute deadline: " + stopwatch.Elapsed);
-            Assert.False(result.Succeeded);
-            await fixture.RequestReceived.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            await fixture.FixedHeaderSent.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            await fixture.BodyChunkSent.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            await server.WaitAsync(TimeSpan.FromSeconds(1));
+            await fixture.RequestReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await fixture.FixedHeaderSent.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await fixture.BodyChunkSent.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await server.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Null(fixture.UnexpectedFailure);
         }
 

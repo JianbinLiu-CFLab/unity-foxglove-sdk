@@ -185,6 +185,7 @@ PHASE181_INTERFACE_TOOLING_REGRESSIONS = (
     "Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon",
     "Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain",
     "Scripts.ros2forunity.interfaces.regression_checks.test_h07_health_deadline_contract",
+    "Scripts.ros2forunity.interfaces.regression_checks.test_h02_subst_cleanup_contract",
 )
 RELEASE_TOOLING_REGRESSION = "Scripts.release.regression_checks.test_release_tooling"
 SAMPLE_SYNC_TOOLING_REGRESSION = (
