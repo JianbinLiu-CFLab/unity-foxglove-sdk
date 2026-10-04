@@ -820,6 +820,7 @@ def _validate_namespace_access(
                         imported_module_aliases.add(target.id)
                         changed = True
     imported_module_names = dunder_import_aliases | import_module_aliases | imported_module_aliases
+
     for node in ast.walk(tree):
         if (
             isinstance(node, ast.Call)
@@ -833,9 +834,6 @@ def _validate_namespace_access(
         if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
             value = node.value
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            target_names = {
-                target.id for target in targets if isinstance(target, ast.Name)
-            }
             if isinstance(value, ast.Name) and value.id in indirect_namespace_names:
                 raise ValueError(f"Unsupported namespace helper alias in {path}")
             if isinstance(value, ast.Attribute) and value.attr in {
@@ -934,6 +932,25 @@ def _validate_namespace_access(
     def namespace_call(node: ast.AST | None) -> bool:
         """Internal helper for namespace_call."""
         return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in namespace_names and not node.args and not node.keywords
+
+    def reject_namespace_helper_aliases() -> None:
+        """Reject namespace helper attributes when they are rebound as values."""
+        for item in ast.walk(tree):
+            if not (
+                isinstance(item, ast.Attribute)
+                and namespace_call(item.value)
+                and item.attr in read_attrs
+            ):
+                continue
+            parent = parents.get(id(item))
+            if item.attr == "copy":
+                raise ValueError(f"Unsupported namespace helper alias in {path}")
+            if not (isinstance(parent, ast.Call) and parent.func is item):
+                raise ValueError(f"Unsupported namespace helper alias in {path}")
+
+    if reject_module_registry:
+        reject_namespace_helper_aliases()
+
     def key_node(node: ast.Call | ast.Subscript) -> ast.AST | None:
         """Internal helper for key_node."""
         return node.slice if isinstance(node, ast.Subscript) else (node.args[0] if node.args else None)
@@ -942,12 +959,7 @@ def _validate_namespace_access(
         key_ast = key_node(node)
         key = literal_string(key_ast)
         if key is None:
-            if not (
-                isinstance(key_ast, ast.Name)
-                and key_ast.id.startswith("_phase192_")
-            ):
-                raise ValueError(f"Unsupported dynamic namespace key in {path}")
-            return
+            raise ValueError(f"Unsupported dynamic namespace key in {path}")
         if key in dangerous_keys:
             raise ValueError(f"Unsupported dynamic execution namespace key in {path}")
     def literal_modules_key(node: ast.AST | None) -> bool:
@@ -1835,6 +1847,17 @@ def _literal_initializer_value(node: ast.AST) -> bool:
         return _literal_initializer_value(node.operand)
     return False
 
+def _literal_assignment_target_matches(target: ast.AST, value: ast.AST) -> bool:
+    """Return whether a literal assignment target cannot fail unpacking."""
+    if isinstance(target, ast.Name):
+        return True
+    if not isinstance(target, (ast.Tuple, ast.List)) or not isinstance(value, (ast.Tuple, ast.List)):
+        return False
+    return len(target.elts) == len(value.elts) and all(
+        _literal_assignment_target_matches(target_item, value_item)
+        for target_item, value_item in zip(target.elts, value.elts)
+    )
+
 def _is_docstring_statement(statement: str) -> bool:
     """Internal helper for _is_docstring_statement."""
     try:
@@ -1904,6 +1927,51 @@ def _loaded_names(node: ast.AST | None) -> frozenset[str]:
         if isinstance(item, ast.Name) and isinstance(item.ctx, ast.Load)
     )
 
+def _safe_runtime_expression(
+    node: ast.AST | None,
+    available_names: frozenset[str],
+) -> bool:
+    """Allow only literal or already-bound expressions evaluated at import time."""
+    if node is None:
+        return True
+    if isinstance(node, ast.Constant):
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in available_names
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return all(_safe_runtime_expression(item, available_names) for item in node.elts)
+    if isinstance(node, ast.Set):
+        return all(_literal_initializer_value(item) for item in node.elts)
+    if isinstance(node, ast.Dict):
+        return all(
+            key is not None
+            and _literal_initializer_value(key)
+            and _safe_runtime_expression(value, available_names)
+            for key, value in zip(node.keys, node.values)
+        )
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        return _literal_initializer_value(node.operand)
+    return False
+
+def _safe_annotation_expression(
+    node: ast.AST | None,
+    available_names: frozenset[str],
+    *,
+    postponed_annotations: bool = False,
+) -> bool:
+    """Allow non-executing, statically bound annotation expressions."""
+    if node is None:
+        return True
+    if not _safe_definition_expression(node):
+        return False
+    if postponed_annotations:
+        return True
+    if isinstance(node, ast.Constant):
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in available_names
+    return False
+
 def _safe_function_definition(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     available_names: frozenset[str] = frozenset(),
@@ -1928,7 +1996,14 @@ def _safe_function_definition(
     ]
     if node.decorator_list:
         return False
-    if any(not _safe_definition_expression(value) for value in [*annotations, *defaults]):
+    if any(
+        not _safe_annotation_expression(
+            value,
+            available_names,
+            postponed_annotations=postponed_annotations,
+        )
+        for value in annotations
+    ) or any(not _safe_runtime_expression(value, available_names) for value in defaults):
         return False
     runtime_names = set().union(*(_loaded_names(value) for value in defaults)) if defaults else set()
     annotation_names = set().union(*(_loaded_names(value) for value in annotations)) if annotations else set()
@@ -1943,7 +2018,10 @@ def _safe_class_definition(
     """Internal helper for _safe_class_definition."""
     if node.decorator_list or node.keywords:
         return False
-    if any(not _safe_definition_expression(base) for base in node.bases):
+    if any(
+        not isinstance(base, ast.Name) or base.id not in available_names
+        for base in node.bases
+    ):
         return False
     base_names = set().union(*(_loaded_names(base) for base in node.bases)) if node.bases else set()
     if not base_names <= available_names:
@@ -1961,12 +2039,18 @@ def _safe_class_definition(
             value = statement.value
             if value is None or not _literal_initializer_value(value):
                 return False
-            if (
-                isinstance(statement, ast.AnnAssign)
-                and not postponed_annotations
-                and not _loaded_names(statement.annotation) <= available_names
-            ):
+            targets = list(statement.targets) if isinstance(statement, ast.Assign) else [statement.target]
+            if any(not _literal_assignment_target_matches(target, value) for target in targets):
                 return False
+            if isinstance(statement, ast.AnnAssign):
+                if not _safe_annotation_expression(
+                    statement.annotation,
+                    available_names,
+                    postponed_annotations=postponed_annotations,
+                ):
+                    return False
+                if not postponed_annotations and not _loaded_names(statement.annotation) <= available_names:
+                    return False
             continue
         return False
     return True
@@ -2224,14 +2308,21 @@ def _safe_initializer_addition(
     if isinstance(node, ast.Assign):
         return bool(bound) and all(
             not name.startswith("__") and not name.startswith("_PHASE192_") for name in bound
-        ) and _literal_initializer_value(node.value)
+        ) and _literal_initializer_value(node.value) and all(
+            _literal_assignment_target_matches(target, node.value)
+            for target in node.targets
+        )
     if isinstance(node, ast.AnnAssign):
         annotation_names = _loaded_names(node.annotation)
         return bool(bound) and all(
             not name.startswith("__") and not name.startswith("_PHASE192_") for name in bound
-        ) and _safe_definition_expression(node.annotation) and (
+        ) and _safe_annotation_expression(
+            node.annotation,
+            available_names,
+            postponed_annotations=postponed_annotations,
+        ) and (
             postponed_annotations or annotation_names <= available_names
-        ) and node.value is not None and _literal_initializer_value(node.value)
+        ) and node.value is not None and _literal_initializer_value(node.value) and isinstance(node.target, ast.Name)
     return False
 
 def _section_tuple_names(statement: str) -> tuple[str, ...] | None:
@@ -2367,6 +2458,211 @@ def _contract_preserves_order(base: tuple[str, ...], head: tuple[str, ...]) -> b
         if cursor < len(base) and entry == base[cursor]:
             cursor += 1
     return cursor == len(base)
+
+def _validate_import_time_section(
+    source: str,
+    path: Path,
+    package_dir: Path,
+    new_sections: frozenset[str],
+    seen: set[Path] | None = None,
+) -> None:
+    """Reject import-time control flow and side effects in an additive section."""
+    seen = set() if seen is None else seen
+    path = path.resolve()
+    if path in seen:
+        return
+    seen.add(path)
+    tree = _parse_source(source, path)
+    postponed_annotations = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "__future__"
+        and not node.level
+        and any(alias.name == "annotations" for alias in node.names)
+        for node in tree.body
+    )
+    available_names: set[str] = set(_SAFE_BUILTIN_NAMES) | {
+        "__doc__", "__name__", "__package__", "__spec__"
+    }
+
+    def bound_names(node: ast.stmt) -> set[str]:
+        """Return simple names introduced by an import or literal definition."""
+        if isinstance(node, ast.Import):
+            return {alias.asname or alias.name.split(".", 1)[0] for alias in node.names}
+        if isinstance(node, ast.ImportFrom):
+            return {
+                alias.asname or alias.name
+                for alias in node.names
+                if alias.name != "*" and node.module != "__future__"
+            }
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return {node.name}
+        if isinstance(node, ast.Assign):
+            return set().union(*(target_names(target) for target in node.targets))
+        if isinstance(node, ast.AnnAssign):
+            return target_names(node.target)
+        return set()
+
+    def target_names(target: ast.AST) -> set[str]:
+        """Return names for a literal assignment target."""
+        if isinstance(target, ast.Name):
+            return {target.id}
+        if isinstance(target, (ast.Tuple, ast.List)):
+            return set().union(*(target_names(item) for item in target.elts))
+        return set()
+
+    def relative_target(name: str) -> Path:
+        """Resolve a package-relative section target without executing it."""
+        parts = name.split(".")
+        if not parts or any(_SECTION_NAME_RE.fullmatch(part) is None for part in parts):
+            raise ValueError(f"Unsafe relative import in {path}: {name}")
+        target = package_dir.joinpath(*parts).with_suffix(".py")
+        if not target.is_file():
+            target = package_dir.joinpath(*parts) / "__init__.py"
+        if not target.is_file():
+            raise ValueError(f"Missing relative import target in {path}: {name}")
+        return target
+
+    def validate_block(
+        statements: list[ast.stmt],
+        names: set[str],
+        *,
+        inert: bool = False,
+        module_level: bool = True,
+    ) -> None:
+        """Validate a restricted import-time statement block."""
+        for index, node in enumerate(statements):
+            if (
+                index == 0
+                and isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                continue
+            if isinstance(node, ast.Expr):
+                raise ValueError(f"Unsafe import-time expression in {path}")
+            if isinstance(node, ast.Pass):
+                continue
+            if isinstance(node, ast.Import):
+                if not node.names or not _absolute_import_resolves(node):
+                    raise ValueError(f"Unsafe import-time import in {path}")
+                names.update(bound_names(node))
+                continue
+            if isinstance(node, ast.ImportFrom):
+                if node.module == "__future__":
+                    if node.level or any(alias.name != "annotations" for alias in node.names):
+                        raise ValueError(f"Unsafe future import in {path}")
+                    continue
+                if not node.level:
+                    if not node.names or not _absolute_import_resolves(node):
+                        raise ValueError(f"Unsafe import-time import in {path}")
+                    names.update(bound_names(node))
+                    continue
+                if node.level != 1:
+                    raise ValueError(f"Unsafe parent-relative import in {path}")
+                imported_sections = [node.module] if node.module else [
+                    alias.name for alias in node.names if alias.name != "*"
+                ]
+                for imported in imported_sections:
+                    target = relative_target(imported)
+                    if imported.split(".", 1)[0] in new_sections:
+                        _validate_import_time_section(
+                            target.read_text(encoding="utf-8"),
+                            target,
+                            package_dir,
+                            new_sections,
+                            seen,
+                        )
+                names.update(bound_names(node))
+                continue
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if not _safe_function_definition(
+                    node,
+                    frozenset(names),
+                    postponed_annotations=postponed_annotations or inert,
+                ):
+                    raise ValueError(f"Unsafe import-time function definition in {path}")
+                names.add(node.name)
+                continue
+            if isinstance(node, ast.ClassDef):
+                if not _safe_class_definition(
+                    node,
+                    frozenset(names),
+                    postponed_annotations=postponed_annotations or inert,
+                ):
+                    raise ValueError(f"Unsafe import-time class definition in {path}")
+                names.add(node.name)
+                continue
+            if isinstance(node, ast.If):
+                if (
+                    node.orelse
+                    or not _safe_inert_initializer_condition(node.test)
+                    or not _loaded_names(node.test) <= frozenset(names)
+                ):
+                    raise ValueError(f"Unsafe import-time conditional in {path}")
+                validate_block(node.body, set(names), inert=True, module_level=False)
+                continue
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+                if any(
+                    not _literal_assignment_target_matches(target, node.value)
+                    for target in targets
+                ):
+                    raise ValueError(f"Unsafe import-time assignment target in {path}")
+                if any(
+                    isinstance(target, ast.Name)
+                    and target.id == "__all__"
+                    and _is_public_globals_comprehension(node.value)
+                    for target in targets
+                ):
+                    names.update(bound_names(node))
+                    continue
+                if node.value is None or not _literal_initializer_value(node.value):
+                    raise ValueError(f"Non-literal import-time assignment in {path}")
+                if isinstance(node, ast.AnnAssign):
+                    if not _safe_annotation_expression(
+                        node.annotation,
+                        frozenset(names),
+                        postponed_annotations=postponed_annotations or inert,
+                    ):
+                        raise ValueError(f"Unsafe import-time annotation in {path}")
+                    if not (postponed_annotations or inert) and not _loaded_names(node.annotation) <= frozenset(names):
+                        raise ValueError(f"Unbound import-time annotation in {path}")
+                names.update(bound_names(node))
+                continue
+            raise ValueError(f"Unsafe import-time statement in {path}: {type(node).__name__}")
+
+    validate_block(tree.body, available_names)
+
+def _validate_compatibility_new_sections(
+    base_root: Path,
+    head_root: Path,
+    base_surfaces: Mapping[str, tuple],
+    head_surfaces: Mapping[str, tuple],
+) -> None:
+    """Validate every section newly imported by compatibility mode."""
+    base_section_modules = _section_modules_for_root(base_root)
+    head_section_modules = _section_modules_for_root(head_root)
+    for relative in sorted(head_surfaces):
+        head_facade = head_root / relative
+        head_package = head_facade.with_suffix("")
+        head_sections = head_section_modules(head_package)
+        base_package = (base_root / relative).with_suffix("")
+        base_sections = (
+            base_section_modules(base_package)
+            if relative in base_surfaces and base_package.is_dir()
+            else ()
+        )
+        old_names = frozenset(path.stem for path in base_sections)
+        new_names = frozenset(path.stem for path in head_sections) - old_names
+        for section in head_sections:
+            if section.stem not in new_names:
+                continue
+            _validate_import_time_section(
+                section.read_text(encoding="utf-8"),
+                section,
+                head_package,
+                new_names,
+            )
 
 def _surface(
     root: Path,
@@ -2783,6 +3079,13 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
     with _revision_checkout(repository, base) as base_root, _revision_checkout(repository, head) as head_root:
         base_surfaces = _surfaces(base_root, strict=strict)
         head_surfaces = _surfaces(head_root, strict=strict)
+        if not strict:
+            _validate_compatibility_new_sections(
+                base_root,
+                head_root,
+                base_surfaces,
+                head_surfaces,
+            )
     errors = _compare_surfaces(base_surfaces, head_surfaces, strict=strict)
     if errors:
         for error in errors:

@@ -1284,6 +1284,140 @@ class IdentityToolingTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     compare_identity_surfaces._section_exports(source, "fixture.py")
 
+    def test_split_identity_surface_rejects_phase192_dynamic_dangerous_key(self) -> None:
+        """Private-looking dynamic keys cannot bypass dangerous namespace-key checks."""
+        source = (
+            "_phase192_key = '__builtins__'\n"
+            "PUBLIC = globals().get(_phase192_key).get('exec')\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n"
+        )
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._section_exports(source, "fixture.py")
+
+    def test_split_identity_surface_rejects_namespace_read_aliases(self) -> None:
+        """Namespace reads cannot be rebound to aliases before a dangerous lookup."""
+        sources = (
+            "get = globals().get\n"
+            "get('__builtins__')['exec']('PUBLIC = 2')\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "get = globals().__getitem__\n"
+            "get('__builtins__')['exec']('PUBLIC = 2')\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "get = globals().copy\n"
+            "data = get()\n"
+            "data['__builtins__']['exec']('PUBLIC = 2')\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "def read(get=globals().get):\n"
+            "    return get('PUBLIC')\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._section_exports(source, "fixture.py")
+
+    def test_compatibility_rejects_assert_false_initializer(self) -> None:
+        """An initializer assertion is never treated as a safe additive statement."""
+        self.assertFalse(
+            compare_identity_surfaces._initializer_is_additive(
+                ("from . import live",),
+                ("from . import live", "assert False"),
+                frozenset({"live"}),
+                frozenset(),
+                {},
+            )
+        )
+
+    def test_compatibility_rejects_import_time_side_effect_section(self) -> None:
+        """New sections reject top-level raises and calls before compatibility approval."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "live.py").write_text("LIVE = 1\n", encoding="utf-8")
+            for source in (
+                "raise RuntimeError('boom')\nNEW = 1\n",
+                "import os\nos.remove('boom')\nNEW = 1\n",
+                "boom()\nNEW = 1\n",
+            ):
+                with self.subTest(source=source):
+                    section = package / "new_section.py"
+                    section.write_text(source, encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        compare_identity_surfaces._validate_import_time_section(
+                            source,
+                            section,
+                            package,
+                            frozenset({"new_section"}),
+                        )
+
+    def test_compatibility_rejects_import_time_annotation_execution(self) -> None:
+        """New sections cannot execute calls or resolve unknown annotations at import time."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            sources = (
+                "VALUE: missing_type() = 1\n",
+                "def read(value: MissingType):\n    return value\n",
+                "def read(value=[item for item in range(1)]):\n    return value\n",
+                "class Record:\n    value: MissingType = 1\n",
+                "class Record:\n    value: MissingType() = 1\n",
+                "import typing\nclass Record(typing.MissingType):\n    pass\n",
+            )
+            for index, source in enumerate(sources):
+                with self.subTest(index=index):
+                    section = package / f"new_{index}.py"
+                    section.write_text(source, encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        compare_identity_surfaces._validate_import_time_section(
+                            source,
+                            section,
+                            package,
+                            frozenset({section.stem}),
+                        )
+
+            postponed = (
+                "from __future__ import annotations\n"
+                "def read(value: MissingType):\n"
+                "    return value\n"
+            )
+            section = package / "postponed.py"
+            section.write_text(postponed, encoding="utf-8")
+            compare_identity_surfaces._validate_import_time_section(
+                postponed,
+                section,
+                package,
+                frozenset({section.stem}),
+            )
+
+    def test_compatibility_requires_bound_type_checking_names(self) -> None:
+        """TYPE_CHECKING guards must use an imported, statically known name."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            unbound = "if TYPE_CHECKING:\n    VALUE = 1\n"
+            section = package / "unbound.py"
+            section.write_text(unbound, encoding="utf-8")
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._validate_import_time_section(
+                    unbound, section, package, frozenset({section.stem})
+                )
+
+            qualified_unbound = "if typing.TYPE_CHECKING:\n    VALUE = 1\n"
+            section = package / "qualified_unbound.py"
+            section.write_text(qualified_unbound, encoding="utf-8")
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._validate_import_time_section(
+                    qualified_unbound, section, package, frozenset({section.stem})
+                )
+
+            bound = "import typing\nif typing.TYPE_CHECKING:\n    VALUE = 1\n"
+            section = package / "bound.py"
+            section.write_text(bound, encoding="utf-8")
+            compare_identity_surfaces._validate_import_time_section(
+                bound, section, package, frozenset({section.stem})
+            )
+
     def test_split_identity_surface_rejects_operator_and_partial_registry_aliases(self) -> None:
         """Other standard-library helper combinators cannot hide registry access."""
         sources = (
