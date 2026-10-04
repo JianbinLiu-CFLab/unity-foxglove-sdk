@@ -31,6 +31,7 @@ BUMP_VERSION_PATH = ROOT / "Scripts" / "release" / "bump_version.py"
 RUN_CI_PATH = ROOT / "Scripts" / "release" / "run_ci.py"
 MCAP_CONFORMANCE_PATH = ROOT / "Scripts" / "mcap" / "conformance" / "run_phase121_conformance.py"
 UNITY_IL2CPP_PATH = ROOT / "Scripts" / "unity_build" / "unity_il2cpp.py"
+UNITY_BATCH_COMPILE_PATH = ROOT / "Scripts" / "release" / "run_unity_batch_compile.py"
 LOCAL_ENTRYPOINT_VALIDATOR_PATH = ROOT / "Scripts" / "package" / "validate_local_entrypoints.py"
 PHASE186_WINDOWS_LIVE_WORKFLOW_PATH = (
     ROOT / ".github" / "workflows" / "phase186-bridge-windows-live.yml"
@@ -41,6 +42,7 @@ PACKAGE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "package-check.yml"
 REPOSITORY_BOUNDARY_WORKFLOW_PATH = (
     ROOT / ".github" / "workflows" / "repository-boundary-check.yml"
 )
+UNITY_COMPILE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "unity-compile.yml"
 PHASE16_VALIDATION_PATH = (
     ROOT
     / "Packages"
@@ -55,6 +57,7 @@ WORKFLOW_PATHS = (
     PACKAGE_WORKFLOW_PATH,
     PHASE186_WINDOWS_LIVE_WORKFLOW_PATH,
     REPOSITORY_BOUNDARY_WORKFLOW_PATH,
+    UNITY_COMPILE_WORKFLOW_PATH,
 )
 
 
@@ -850,6 +853,7 @@ class RunCiTests(unittest.TestCase):
     def test_packages_lane_executes_all_maintained_python_regression_modules(self) -> None:
         """Default package CI must execute maintained regression modules, not only validators."""
         expected = (
+            "Scripts.release.regression_checks.test_regression_inventory",
             "Scripts.native.regression_checks.test_native_sources",
             "Scripts.package.regression_checks.test_validate_local_entrypoints",
             "Scripts.package.regression_checks.test_validate_phase186_package_matrix",
@@ -891,10 +895,33 @@ class RunCiTests(unittest.TestCase):
             calls,
         )
 
+    def test_required_test_context_aggregates_all_managed_lanes(self) -> None:
+        """The protected test context must fail when any managed lane fails."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("  linux-test:", workflow)
+        aggregate = workflow[workflow.index("\n  test:\n", workflow.index("jobs:")) :]
+        self.assertIn("if: always()", aggregate)
+        for dependency in (
+            "linux-test",
+            "optional-ros2-adapter",
+            "optional-ros2-native",
+            "windows-parity",
+            "analyzer-freshness",
+        ):
+            self.assertIn(f"- {dependency}", aggregate)
+        self.assertIn("Validation aggregate failed.", aggregate)
+
+    def test_unity_batch_gate_is_present_but_not_required(self) -> None:
+        """Unity import evidence is collected on the non-required licensed runner lane."""
+        workflow = (ROOT / ".github" / "workflows" / "unity-compile.yml").read_text(encoding="utf-8")
+        self.assertIn("name: Unity batch compile (non-required)", workflow)
+        self.assertNotIn("continue-on-error:", workflow)
+        self.assertIn("run_unity_batch_compile.py", workflow)
+
     def test_fatal_run_raises_after_printing_failure(self) -> None:
         """Fatal subprocess failures should abort at the point of failure."""
-        failed = subprocess.CompletedProcess(args=["tool"], returncode=7, stdout="", stderr="")
-        with mock.patch.object(self.run_ci.subprocess, "run", return_value=failed):
+        failed = self.run_ci.OwnedCommandResult(returncode=7)
+        with mock.patch.object(self.run_ci, "_run_owned_command", return_value=failed):
             self.assertFalse(self.run_ci.run(["tool"], "nonfatal", fatal=False))
             with self.assertRaises(SystemExit) as context:
                 self.run_ci.run(["tool"], "fatal", fatal=True)
@@ -905,7 +932,7 @@ class RunCiTests(unittest.TestCase):
         completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout="", stderr="")
 
         with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[10.0, 11.24]):
-            with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed):
+            with mock.patch.object(self.run_ci, "_run_owned_command", return_value=self.run_ci.OwnedCommandResult(0)):
                 with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
                     self.assertTrue(self.run_ci.run(["tool"], "timed success"))
 
@@ -916,7 +943,7 @@ class RunCiTests(unittest.TestCase):
         failed = subprocess.CompletedProcess(args=["tool"], returncode=7, stdout="", stderr="")
 
         with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[15.0, 16.24]):
-            with mock.patch.object(self.run_ci.subprocess, "run", return_value=failed):
+            with mock.patch.object(self.run_ci, "_run_owned_command", return_value=self.run_ci.OwnedCommandResult(7)):
                 with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
                     self.assertFalse(self.run_ci.run(["tool"], "timed failure"))
 
@@ -935,7 +962,11 @@ class RunCiTests(unittest.TestCase):
         )
 
         with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[20.0, 21.26]):
-            with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed):
+            with mock.patch.object(
+                self.run_ci,
+                "_run_owned_command",
+                return_value=self.run_ci.OwnedCommandResult(0, "validator output\n", ""),
+            ):
                 result = self.run_ci.run_captured(
                     ["tool"],
                     "captured validator",
@@ -960,7 +991,11 @@ class RunCiTests(unittest.TestCase):
         )
 
         with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[25.0, 26.24]):
-            with mock.patch.object(self.run_ci.subprocess, "run", return_value=failed):
+            with mock.patch.object(
+                self.run_ci,
+                "_run_owned_command",
+                return_value=self.run_ci.OwnedCommandResult(9, "validator stdout\n", "validator stderr\n"),
+            ):
                 result = self.run_ci.run_captured(["tool"], "captured failure")
 
         self.assertIsInstance(result, self.run_ci.CapturedCommandResult)
@@ -987,11 +1022,17 @@ class RunCiTests(unittest.TestCase):
                 "command_timeout_seconds",
                 side_effect=[7, 99],
             ) as command_timeout:
-                with mock.patch.object(self.run_ci.subprocess, "run", side_effect=timeout) as run_process:
+                with mock.patch.object(
+                    self.run_ci,
+                    "_run_owned_command",
+                    return_value=self.run_ci.OwnedCommandResult(
+                        124, "partial stdout\n", "partial stderr\n", timed_out=True
+                    ),
+                ) as run_process:
                     result = self.run_ci.run_captured(["tool"], "captured timeout")
 
         command_timeout.assert_called_once_with()
-        self.assertEqual(7, run_process.call_args.kwargs["timeout"])
+        self.assertEqual(7, run_process.call_args.kwargs["timeout_seconds"])
         self.assertIsInstance(result, self.run_ci.CapturedCommandResult)
         self.assertFalse(result.ok)
         self.assertEqual(124, result.returncode)
@@ -1004,7 +1045,11 @@ class RunCiTests(unittest.TestCase):
         """Captured command output is bounded and marked when truncated."""
         huge = "x" * (self.run_ci.MAX_CAPTURED_OUTPUT_CHARS + 4096)
         completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout=huge, stderr=huge)
-        with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed):
+        with mock.patch.object(
+            self.run_ci,
+            "_run_owned_command",
+            return_value=self.run_ci.OwnedCommandResult(0, huge, huge),
+        ):
             result = self.run_ci.run_captured(["tool"], "large output")
         self.assertLessEqual(len(result.stdout), self.run_ci.MAX_CAPTURED_OUTPUT_CHARS)
         self.assertIn("output truncated at", result.stdout)
@@ -1134,9 +1179,9 @@ class RunCiTests(unittest.TestCase):
         """Timed-out direct commands should retain their limit and show elapsed time."""
         with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[30.0, 31.28]):
             with mock.patch.object(
-                self.run_ci.subprocess,
-                "run",
-                side_effect=subprocess.TimeoutExpired(["tool"], 7),
+                self.run_ci,
+                "_run_owned_command",
+                return_value=self.run_ci.OwnedCommandResult(124, timed_out=True),
             ):
                 with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
                     self.assertFalse(self.run_ci.run(["tool"], "timeout", timeout_seconds=7))
@@ -1148,7 +1193,11 @@ class RunCiTests(unittest.TestCase):
     def test_run_ci_reports_timeout_without_hanging(self) -> None:
         """Subprocess timeouts should fail the command instead of hanging local CI."""
         with mock.patch.dict(os.environ, {"UNITY2FOXGLOVE_CI_TIMEOUT": "1"}):
-            with mock.patch.object(self.run_ci.subprocess, "run", side_effect=subprocess.TimeoutExpired(["tool"], 1)):
+            with mock.patch.object(
+                self.run_ci,
+                "_run_owned_command",
+                return_value=self.run_ci.OwnedCommandResult(124, timed_out=True),
+            ):
                 self.assertFalse(self.run_ci.run(["tool"], "timeout", fatal=False))
                 with self.assertRaises(SystemExit) as context:
                     self.run_ci.run(["tool"], "fatal-timeout", fatal=True)
@@ -1158,10 +1207,62 @@ class RunCiTests(unittest.TestCase):
         """Finite gates should be allowed to finish without a machine-specific deadline."""
         completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout="", stderr="")
 
-        with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed) as run_process:
+        with mock.patch.object(
+            self.run_ci,
+            "_run_owned_command",
+            return_value=self.run_ci.OwnedCommandResult(0),
+        ) as run_process:
             self.assertTrue(self.run_ci.run(["tool"], "finite gate", disable_timeout=True))
 
-        self.assertIsNone(run_process.call_args.kwargs["timeout"])
+        self.assertIsNone(run_process.call_args.kwargs["timeout_seconds"])
+
+    def test_run_timeout_terminates_descendant_process(self) -> None:
+        """The uncaptured runner must terminate a child that outlives its parent."""
+        self._assert_runner_timeout_terminates_descendant(captured=False)
+
+    def test_run_captured_timeout_terminates_descendant_process(self) -> None:
+        """The captured runner must terminate a child that outlives its parent."""
+        self._assert_runner_timeout_terminates_descendant(captured=True)
+
+    def _assert_runner_timeout_terminates_descendant(self, *, captured: bool) -> None:
+        """Verify timeout cleanup reaches descendants for both runner surfaces."""
+        with tempfile.TemporaryDirectory() as temp:
+            child_pid_path = Path(temp) / "child.pid"
+            parent_code = (
+                "import pathlib, subprocess, sys, time; "
+                f"child=subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+                f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid), encoding='utf-8'); "
+                "time.sleep(60)"
+            )
+            command = [sys.executable, "-c", parent_code]
+            if captured:
+                with mock.patch.object(self.run_ci, "command_timeout_seconds", return_value=1):
+                    result = self.run_ci.run_captured(command, "captured process tree timeout")
+                self.assertFalse(result.ok)
+                self.assertEqual(124, result.returncode)
+            else:
+                result = self.run_ci.run(command, "process tree timeout", timeout_seconds=1)
+                self.assertFalse(result)
+
+            deadline = time.monotonic() + 4
+            child_pid = None
+            while time.monotonic() < deadline:
+                if child_pid_path.is_file():
+                    child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+                    if not self._pid_is_running(child_pid):
+                        break
+                time.sleep(0.05)
+            self.assertIsNotNone(child_pid)
+            self.assertFalse(self._pid_is_running(child_pid), f"descendant remained alive: {child_pid}")
+
+    @staticmethod
+    def _pid_is_running(pid: int) -> bool:
+        """Return whether the operating-system process identifier is alive."""
+        try:
+            os.kill(pid, 0)
+        except (OSError, ProcessLookupError):
+            return False
+        return True
 
     def test_default_ci_builds_independent_subcommand_jobs(self) -> None:
         """Default local CI should enqueue every dotnet lane as a self-subcommand."""
@@ -3688,6 +3789,80 @@ class UnityIl2CppBuildTests(unittest.TestCase):
         except (OSError, ProcessLookupError):
             pass
         UnityIl2CppBuildTests._wait_for_pid_exit(pid)
+
+
+class UnityBatchCompileGateTests(unittest.TestCase):
+    """Regression coverage for the non-interactive Unity gate wrapper."""
+
+    def setUp(self) -> None:
+        """Load the Unity gate module from the checkout under test."""
+        self.gate = load_module("unity_batch_compile_under_test", UNITY_BATCH_COMPILE_PATH)
+
+    def test_compile_verdict_rejects_compiler_errors_and_warnings(self) -> None:
+        """Reject a batch log containing compiler errors or warnings."""
+        verdict, errors, warnings = self.gate.compile_verdict(
+            1,
+            "Assets/Foo.cs(4,2): error CS0103: missing\n"
+            "Assets/Bar.cs(8,1): warning CS0219: unused\n",
+        )
+        self.assertEqual("FAIL", verdict)
+        self.assertEqual(1, len(errors))
+        self.assertEqual(1, len(warnings))
+
+    def test_compile_verdict_marks_invalid_package_environment_not_run(self) -> None:
+        """Classify Unity package-manager environment failures as not run."""
+        verdict, diagnostics, _ = self.gate.compile_verdict(
+            1,
+            '[Package Manager] The "path" argument must be of type string\n',
+        )
+        self.assertEqual("NOT_RUN", verdict)
+        self.assertEqual(
+            ['[Package Manager] The "path" argument must be of type string'],
+            diagnostics,
+        )
+
+    def test_run_refuses_incomplete_environment_before_launch(self) -> None:
+        """Refuse to launch Unity when required user environment is absent."""
+        environment = {name: os.environ.pop(name, None) for name in self.gate.REQUIRED_ENVIRONMENT}
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                log_path = Path(temp) / "missing.log"
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as output:
+                    result = self.gate.run(Path("missing-unity"), Path("missing-project"), log_path)
+        finally:
+            for name, value in environment.items():
+                if value is not None:
+                    os.environ[name] = value
+        self.assertEqual(7, result)
+        result_payload = json.loads(output.getvalue())
+        self.assertEqual("NOT_RUN", result_payload["verdict"])
+        self.assertEqual(7, result_payload["exit_code"])
+
+    def test_main_passes_timeout_to_batch_runner(self) -> None:
+        """Forward the command-line timeout to the batch runner."""
+        with mock.patch.object(self.gate, "run", return_value=0) as run:
+            with mock.patch.object(
+                sys,
+                "argv",
+                [
+                    "run_unity_batch_compile.py",
+                    "--unity",
+                    "unity.exe",
+                    "--project-path",
+                    "project",
+                    "--log-file",
+                    "unity.log",
+                    "--timeout-seconds",
+                    "17",
+                ],
+            ):
+                self.assertEqual(0, self.gate.main())
+        run.assert_called_once_with(
+            Path("unity.exe"),
+            Path("project"),
+            Path("unity.log"),
+            17,
+        )
 
 
 if __name__ == "__main__":
