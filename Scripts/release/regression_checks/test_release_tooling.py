@@ -3866,6 +3866,56 @@ class UnityBatchCompileGateTests(unittest.TestCase):
             17,
         )
 
+    def test_run_resolves_relative_unity_and_project_paths_before_launch(self) -> None:
+        """The Unity gate must compare and launch using absolute paths."""
+        class FakeProcess:
+            returncode = 0
+
+            def wait(self, timeout=None):
+                Path(log_path).write_text("Unity compile completed\n", encoding="utf-8")
+                return 0
+
+        class FakeTree:
+            process = FakeProcess()
+
+            def close(self):
+                pass
+
+            def terminate(self):
+                return []
+
+        with tempfile.TemporaryDirectory(dir=ROOT) as temp:
+            root = Path(temp)
+            project = root / "Unity2Foxglove"
+            project.mkdir()
+            unity = root / "Unity.exe"
+            unity.write_text("", encoding="utf-8")
+            log_path = root / "build" / "unity.log"
+            with mock.patch.dict(
+                os.environ,
+                {name: "present" for name in self.gate.REQUIRED_ENVIRONMENT},
+                clear=False,
+            ):
+                with mock.patch.object(self.gate, "_active_unity_project", return_value=False):
+                    with mock.patch(
+                        "Scripts.unity_build.unity_il2cpp.start_owned_process",
+                        return_value=FakeTree(),
+                    ) as start:
+                        with mock.patch(
+                            "Scripts.unity_build.unity_il2cpp.await_tree_quiescence",
+                            return_value=[],
+                        ):
+                            result = self.gate.run(
+                                Path(os.path.relpath(unity)),
+                                Path(os.path.relpath(project)),
+                                log_path,
+                                timeout_seconds=1,
+                            )
+            self.assertEqual(0, result)
+            command = start.call_args.args[0]
+            self.assertEqual(str(unity.resolve()), command[0])
+            self.assertEqual(str(project.resolve()), command[command.index("-projectPath") + 1])
+
 
 if __name__ == "__main__":
     unittest.main()

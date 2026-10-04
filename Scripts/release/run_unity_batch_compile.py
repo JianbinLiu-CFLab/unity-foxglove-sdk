@@ -98,6 +98,9 @@ def run(
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
 ) -> int:
     """Run one owned Unity batch process and classify its compiler diagnostics."""
+    unity = unity.expanduser().resolve()
+    project_path = project_path.expanduser().resolve()
+    log_path = log_path.expanduser().resolve()
     missing = [name for name in REQUIRED_ENVIRONMENT if not os.environ.get(name)]
     if missing:
         return _not_run(log_path, "missing environment " + ", ".join(missing))
