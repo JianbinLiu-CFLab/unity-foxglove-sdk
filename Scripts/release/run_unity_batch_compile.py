@@ -74,6 +74,11 @@ def _write_result(log_path: Path, result: dict) -> None:
 
 def _not_run(log_path: Path, reason: str) -> int:
     """Record a preflight/environment block without launching Unity."""
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("", encoding="utf-8")
+    except OSError:
+        pass
     result = {
         "verdict": "NOT_RUN",
         "exit_code": 7,

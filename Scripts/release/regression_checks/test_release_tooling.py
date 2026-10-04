@@ -3827,8 +3827,10 @@ class UnityBatchCompileGateTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as temp:
                 log_path = Path(temp) / "missing.log"
+                log_path.write_text("stale compiler output", encoding="utf-8")
                 with mock.patch("sys.stdout", new_callable=io.StringIO) as output:
                     result = self.gate.run(Path("missing-unity"), Path("missing-project"), log_path)
+                self.assertEqual("", log_path.read_text(encoding="utf-8"))
         finally:
             for name, value in environment.items():
                 if value is not None:
