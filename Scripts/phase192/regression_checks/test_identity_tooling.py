@@ -224,6 +224,149 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertIn("EXTRA_SECTIONS fixture.py: new", errors)
         self.assertIn("EXTRA_SYMBOLS fixture.py: NEW", errors)
 
+    def test_split_identity_surface_compatibility_allows_additions(self) -> None:
+        """Compatibility mode permits additive surfaces and initializer changes."""
+        base = {
+            "fixture.py": (frozenset({"LIVE"}), ("live",), "base-init")
+        }
+        head = {
+            "fixture.py": (
+                frozenset({"LIVE", "NEW"}),
+                ("live", "new"),
+                "head-init",
+            ),
+            "added.py": (frozenset({"ADDED"}), ("added",), "added-init"),
+        }
+        self.assertEqual(
+            [], compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+        )
+
+    def test_split_identity_surface_compatibility_rejects_removals(self) -> None:
+        """Compatibility mode still rejects removed facades, sections, and symbols."""
+        base = {
+            "fixture.py": (
+                frozenset({"LIVE", "KEEP"}),
+                ("live", "keep"),
+                "base-init",
+            )
+        }
+        head = {
+            "fixture.py": (frozenset({"LIVE"}), ("live",), "head-init")
+        }
+        errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+        self.assertIn("MISSING_SECTIONS fixture.py: keep", errors)
+        self.assertIn("MISSING_SYMBOLS fixture.py: KEEP", errors)
+        errors = compare_identity_surfaces._compare_surfaces(
+            {**base, "removed.py": base["fixture.py"]}, head, strict=False
+        )
+        self.assertIn("REMOVED_FACADE removed.py", errors)
+
+    def test_split_identity_surface_compatibility_allows_safe_initializer_additions(self) -> None:
+        """Compatibility mode allows inert imports and literal bindings after the base contract."""
+        base = {
+            "fixture.py": (
+                frozenset({"LIVE"}),
+                ("live",),
+                ("from . import live", "VALUE = 1"),
+            )
+        }
+        head = {
+            "fixture.py": (
+                frozenset({"LIVE", "json", "NEW"}),
+                ("live", "new"),
+                ("import json", "from . import live", "VALUE = 1", "NEW = 2"),
+            )
+        }
+        self.assertEqual(
+            [], compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+        )
+
+    def test_split_identity_surface_compatibility_allows_safe_function_and_class_additions(self) -> None:
+        """Compatibility mode allows undecorated definitions with inert class bodies."""
+        base = {"fixture.py": (frozenset({"LIVE"}), ("live",), ("VALUE = 1",))}
+        head = {
+            "fixture.py": (
+                frozenset({"LIVE", "helper", "Helper"}),
+                ("live",),
+                (
+                    "VALUE = 1",
+                    "def helper():\n    return 1",
+                    "class Helper:\n    pass",
+                ),
+            )
+        }
+        self.assertEqual(
+            [], compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+        )
+
+    def test_split_identity_surface_compatibility_rejects_initializer_removals_and_reorder(self) -> None:
+        """Compatibility mode preserves base initializer order and statements."""
+        base = {"fixture.py": (frozenset({"LIVE"}), ("live",), ("KEEP = 1", "KEEP2 = 2"))}
+        for initializer in (("KEEP2 = 2", "KEEP = 1"), ("KEEP = 1",)):
+            with self.subTest(initializer=initializer):
+                errors = compare_identity_surfaces._compare_surfaces(
+                    base,
+                    {"fixture.py": (frozenset({"LIVE"}), ("live",), initializer)},
+                    strict=False,
+                )
+                self.assertIn("PACKAGE_INITIALIZER_CHANGED fixture.py", errors)
+
+    def test_split_identity_surface_compatibility_rejects_destructive_initializer_changes(self) -> None:
+        """Compatibility mode rejects rebinding and deleting existing initializer names."""
+        base = {"fixture.py": (frozenset({"LIVE"}), ("live",), ("VALUE = 1",))}
+        for statement in ("VALUE = 2", "del VALUE", "__all__ = []"):
+            with self.subTest(statement=statement):
+                errors = compare_identity_surfaces._compare_surfaces(
+                    base,
+                    {
+                        "fixture.py": (
+                            frozenset({"LIVE"}),
+                            ("live",),
+                            ("VALUE = 1", statement),
+                        )
+                    },
+                    strict=False,
+                )
+                self.assertIn("PACKAGE_INITIALIZER_CHANGED fixture.py", errors)
+
+    def test_split_identity_surface_compatibility_rejects_section_reorder(self) -> None:
+        """Compatibility mode preserves the order of existing sections."""
+        base = {"fixture.py": (frozenset({"LIVE"}), ("live", "other"), "init")}
+        errors = compare_identity_surfaces._compare_surfaces(
+            base,
+            {"fixture.py": (frozenset({"LIVE"}), ("other", "live", "new"), "changed")},
+            strict=False,
+        )
+        self.assertIn("SECTION_ORDER_CHANGED fixture.py", errors)
+
+    def test_split_identity_surface_compatibility_rejects_removed_entrypoint(self) -> None:
+        """Compatibility mode preserves an existing package module entrypoint."""
+        base = {
+            "fixture.py": (frozenset(), (), "init", (), True)
+        }
+        head = {
+            "fixture.py": (frozenset(), (), "init", (), False)
+        }
+        errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+        self.assertIn("MISSING_MODULE_ENTRYPOINT fixture.py", errors)
+
+    def test_identity_cli_defaults_to_strict_and_accepts_compatibility_flag(self) -> None:
+        """The CLI keeps strict mode as the default and exposes compatibility explicitly."""
+        with mock.patch.object(
+            compare_identity_surfaces, "compare_revisions", return_value=0
+        ) as compare:
+            self.assertEqual(
+                0, compare_identity_surfaces.main(["--base", "a", "--head", "b"])
+            )
+            self.assertTrue(compare.call_args.kwargs["strict"])
+            self.assertEqual(
+                0,
+                compare_identity_surfaces.main(
+                    ["--base", "a", "--head", "b", "--compatibility"]
+                ),
+            )
+            self.assertFalse(compare.call_args.kwargs["strict"])
+
     def test_split_identity_surface_honors_section_exports(self) -> None:
         """The identity surface must follow a section's runtime __all__ contract."""
         with tempfile.TemporaryDirectory() as temp:
@@ -259,6 +402,8 @@ class IdentityToolingTests(unittest.TestCase):
             (package / "live.py").write_text("LIVE = 1\n", encoding="utf-8")
             with self.assertRaises(FileNotFoundError):
                 compare_identity_surfaces._surfaces(root)
+            with self.assertRaises(FileNotFoundError):
+                compare_identity_surfaces._surfaces(root, strict=False)
 
     def test_split_identity_surface_rejects_orphan_section(self) -> None:
         """The base/head surface loader must reject a package section omitted from __init__."""
@@ -276,6 +421,8 @@ class IdentityToolingTests(unittest.TestCase):
             (package / "orphan.py").write_text("ORPHAN = 1\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 compare_identity_surfaces._surfaces(root)
+            surfaces = compare_identity_surfaces._surfaces(root, strict=False)
+            self.assertIn("Scripts/smoke/foxrun/fixture.py", surfaces)
     def test_generated_hash_gate_rejects_changed_manifest_hash(self) -> None:
         """Phase192 test generated hash gate rejects changed manifest hash."""
         with tempfile.TemporaryDirectory() as temp:
