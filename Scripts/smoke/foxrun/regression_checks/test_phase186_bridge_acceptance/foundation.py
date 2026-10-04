@@ -22,12 +22,57 @@ from unittest import mock
 from Scripts.smoke.foxrun import phase186_bridge_acceptance as acceptance
 from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
 from Scripts.smoke.foxrun import phase186_bridge_project as bridge_project
+from Scripts.phase192.compare_identity_surfaces import (
+    _entrypoint_contract,
+    _section_modules_for_root,
+)
 HEAD = "a" * 40
+def _phase192_repository_root() -> pathlib.Path:
+    """Locate the checkout even when the compatibility package rewrites __file__."""
+    current = pathlib.Path(__file__).resolve()
+    for candidate in (current.parent, *current.parents):
+        if (candidate / "Scripts").is_dir() and (candidate / "Unity2Foxglove").is_dir():
+            return candidate
+    raise RuntimeError("Could not locate the repository root")
+
+
+def _assert_entrypoint_delegates(package: pathlib.Path) -> None:
+    """Require each generated module entrypoint to import its owning package."""
+    entrypoint = package / "__main__.py"
+    try:
+        sections = _section_modules_for_root(package)(package)
+        _entrypoint_contract(
+            entrypoint,
+            frozenset(section.stem for section in sections),
+        )
+    except (OSError, SyntaxError, ValueError) as exc:
+        raise AssertionError(str(exc)) from exc
+
+
+def _decomposed_cli_modules(repository: pathlib.Path, relative_roots: tuple[str, ...]) -> tuple[str, ...]:
+    """Discover production split facades that expose module entrypoints."""
+    modules: list[str] = []
+    for relative_root in relative_roots:
+        root = repository / relative_root
+        for facade in sorted(root.rglob("*.py")):
+            if "regression_checks" in facade.parts:
+                continue
+            package = facade.with_suffix("")
+            if package.is_dir() and (package / "__init__.py").is_file():
+                if not (package / "__main__.py").is_file():
+                    raise AssertionError(f"Missing module entrypoint for {facade}")
+                _assert_entrypoint_delegates(package)
+                modules.append(".".join(facade.relative_to(repository).with_suffix("").parts))
+    if not modules:
+        raise AssertionError(f"No production split facades found under {relative_roots}")
+    return tuple(modules)
+
+
 class _Phase186BridgeAcceptanceTests_support:
     """Decomposed Phase192 implementation component."""
     def test_direct_script_bootstrap_can_import_deferred_live_runner(self) -> None:
         """Verify that direct script bootstrap can import deferred live runner."""
-        repository = pathlib.Path(__file__).resolve().parents[4]
+        repository = _phase192_repository_root()
         script_directory = repository / 'Scripts' / 'smoke' / 'foxrun'
         probe = '\nimport importlib\nimport pathlib\nimport sys\n\nscript_directory = pathlib.Path(sys.argv[1]).resolve()\nsys.path.insert(0, str(script_directory))\nimportlib.import_module("phase186_bridge_acceptance")\nimportlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")\n'
         with tempfile.TemporaryDirectory() as temp:
@@ -35,19 +80,10 @@ class _Phase186BridgeAcceptanceTests_support:
         self.assertEqual(0, completed.returncode, completed.stderr)
     def test_decomposed_smoke_packages_support_module_execution(self) -> None:
         """Verify every decomposed smoke package has a working module entrypoint."""
-        repository = pathlib.Path(__file__).resolve().parents[4]
-        modules = (
-            'phase184_foxglove_cli_install',
-            'phase184_foxglove_desktop_live_protocol',
-            'phase184_profile_acceptance',
-            'phase184_profile_acceptance_protocol',
-            'phase186_bridge_acceptance',
-            'phase186_bridge_acceptance_protocol',
-            'phase186_bridge_build',
-            'phase186_bridge_capability_probe',
-            'phase186_bridge_live',
-            'phase186_bridge_live_peer',
-            'phase186_provenance',
+        repository = _phase192_repository_root()
+        modules = tuple(
+            module.rsplit(".", 1)[-1]
+            for module in _decomposed_cli_modules(repository, ("Scripts/smoke/foxrun",))
         )
         for module in modules:
             with self.subTest(module=module):
@@ -57,12 +93,70 @@ class _Phase186BridgeAcceptanceTests_support:
                     capture_output=True,
                     text=True,
                     check=False,
+                    timeout=60,
                 )
                 self.assertEqual(
                     0,
                     completed.returncode,
                     f'{module}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}',
                 )
+    def test_ros2_and_websocket_decomposed_packages_support_module_execution(self) -> None:
+        """Verify every production ROS2 and WebSocket split package has a CLI entrypoint."""
+        repository = _phase192_repository_root()
+        modules = _decomposed_cli_modules(
+            repository,
+            ("Scripts/smoke/ros2", "Scripts/smoke/websocket"),
+        )
+        for module in modules:
+            with self.subTest(module=module):
+                completed = subprocess.run(
+                    [sys.executable, "-m", module, "--help"],
+                    cwd=repository,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=60,
+                )
+                self.assertEqual(
+                    0,
+                    completed.returncode,
+                    f"{module}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+                )
+
+    def test_module_entrypoint_rejects_non_delegating_noop(self) -> None:
+        """A non-star entrypoint must call an imported package callable."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = pathlib.Path(temp) / "fixture"
+            package.mkdir()
+            (package / "__main__.py").write_text(
+                "from . import main\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(AssertionError):
+                _assert_entrypoint_delegates(package)
+
+    def test_module_entrypoint_rejects_unsafe_guard_forms(self) -> None:
+        """The acceptance checker shares the identity gate's strict dispatch contract."""
+        for entrypoint_source in (
+            "from . import *\nif __name__ is '__main__': main()\n",
+            "from . import *\nif __name__ == '__main__':\n    while True:\n        break\n",
+            "from . import *\nif __name__ == '__main__':\n    def main():\n        import os\n    main()\n",
+        ):
+            with self.subTest(entrypoint_source=entrypoint_source), tempfile.TemporaryDirectory() as temp:
+                package = pathlib.Path(temp) / "fixture"
+                package.mkdir()
+                (package / "__init__.py").write_text(
+                    "from . import core\n", encoding="utf-8"
+                )
+                (package / "core.py").write_text(
+                    "def main(): pass\n", encoding="utf-8"
+                )
+                (package / "__main__.py").write_text(
+                    entrypoint_source, encoding="utf-8"
+                )
+                with self.assertRaises(AssertionError):
+                    _assert_entrypoint_delegates(package)
+
     def test_reporter_handoff_precedes_pass_fail_not_run_machine_markers(self) -> None:
         """Verify that reporter handoff precedes pass fail not run machine markers."""
         for verdict, reason in (('PASS', 'cleanup complete'), ('FAIL', 'FAIL_RUNTIME: peer stopped'), ('NOT RUN', 'Unity license unavailable')):
