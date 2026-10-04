@@ -3868,22 +3868,6 @@ class UnityBatchCompileGateTests(unittest.TestCase):
 
     def test_run_resolves_relative_unity_and_project_paths_before_launch(self) -> None:
         """The Unity gate must compare and launch using absolute paths."""
-        class FakeProcess:
-            returncode = 0
-
-            def wait(self, timeout=None):
-                Path(log_path).write_text("Unity compile completed\n", encoding="utf-8")
-                return 0
-
-        class FakeTree:
-            process = FakeProcess()
-
-            def close(self):
-                pass
-
-            def terminate(self):
-                return []
-
         with tempfile.TemporaryDirectory(dir=ROOT) as temp:
             root = Path(temp)
             project = root / "Unity2Foxglove"
@@ -3891,6 +3875,14 @@ class UnityBatchCompileGateTests(unittest.TestCase):
             unity = root / "Unity.exe"
             unity.write_text("", encoding="utf-8")
             log_path = root / "build" / "unity.log"
+            process = mock.Mock(returncode=0)
+            process.wait.side_effect = lambda timeout=None: (
+                log_path.parent.mkdir(parents=True, exist_ok=True),
+                log_path.write_text("Unity compile completed\n", encoding="utf-8"),
+                0,
+            )[-1]
+            tree = mock.Mock(process=process)
+            tree.terminate.return_value = []
             with mock.patch.dict(
                 os.environ,
                 {name: "present" for name in self.gate.REQUIRED_ENVIRONMENT},
@@ -3899,7 +3891,7 @@ class UnityBatchCompileGateTests(unittest.TestCase):
                 with mock.patch.object(self.gate, "_active_unity_project", return_value=False):
                     with mock.patch(
                         "Scripts.unity_build.unity_il2cpp.start_owned_process",
-                        return_value=FakeTree(),
+                        return_value=tree,
                     ) as start:
                         with mock.patch(
                             "Scripts.unity_build.unity_il2cpp.await_tree_quiescence",
