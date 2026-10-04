@@ -15,6 +15,30 @@ from typing import Iterable
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _MODULE_PATTERN = re.compile(r"Scripts(?:[./][A-Za-z0-9_]+)+\.regression_checks\.test_[A-Za-z0-9_]+")
 
+# These lanes are invoked by workflow commands rather than spelling every
+# module in YAML.  Keep the expansion here explicit so a module mentioned only
+# in run_ci.py is not mistaken for CI coverage unless the workflow invokes the
+# corresponding lane.
+_WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
+    "phase184-acceptance-tooling": (
+        "Scripts.smoke.foxrun.regression_checks.test_phase184_profile_acceptance_protocol",
+        "Scripts.smoke.foxrun.regression_checks.test_phase184_profile_acceptance",
+        "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_desktop_live_protocol",
+        "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_cli_install",
+        "Scripts.smoke.foxrun.regression_checks.test_phase184_windows_job_owner",
+        "Scripts.smoke.foxrun.regression_checks.test_phase184_foxglove_desktop_live_acceptance",
+    ),
+    "phase186-bridge-tooling": (
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_acceptance_protocol",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_acceptance",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_live",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_certification",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_build",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_capability_probe",
+        "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance",
+    ),
+}
+
 # Every discovered module must either appear in a CI/workflow command or have
 # an explicit, reviewed reason for its environment-specific exclusion.
 EXPLICIT_EXCLUSIONS: dict[str, str] = {
@@ -80,15 +104,18 @@ def discover_regression_modules(root: Path = _REPO_ROOT) -> set[str]:
 
 
 def discover_ci_modules(root: Path = _REPO_ROOT) -> set[str]:
-    """Return regression modules referenced by the CI runner and workflows."""
-    sources = [root / "Scripts/release/run_ci.py"]
-    sources.extend(sorted((root / ".github/workflows").glob("*.y*ml")))
+    """Return regression modules executed by the checked-in workflows."""
+    sources = sorted((root / ".github/workflows").glob("*.y*ml"))
     text = "\n".join(
         path.read_text(encoding="utf-8", errors="replace")
         for path in sources
         if path.exists()
     )
-    return {match.replace("/", ".") for match in _MODULE_PATTERN.findall(text)}
+    modules = {match.replace("/", ".") for match in _MODULE_PATTERN.findall(text)}
+    for lane, lane_modules in _WORKFLOW_RUNNER_MODULES.items():
+        if re.search(rf"run_ci\.py\s+--only\s+{re.escape(lane)}\b", text):
+            modules.update(lane_modules)
+    return modules
 
 
 def inventory_errors(

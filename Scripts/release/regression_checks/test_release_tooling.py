@@ -650,6 +650,7 @@ class RunCiTests(unittest.TestCase):
             "- name: Run validation suite",
             "- name: Run Phase179 ROS2 acceptance helper regressions",
             "- name: Run Phase181 custom ROS2 acceptance helper regressions",
+            "- name: Run complete Python regression inventory",
             "- name: Run Phase186 Bridge tooling and package-composition gate",
             "- name: Run Phase192 base-head identity equivalence gate",
             "- name: Run official MCAP differential conformance",
