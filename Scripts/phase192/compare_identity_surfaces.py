@@ -1104,6 +1104,33 @@ def _validate_namespace_access(
             ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
         )
         for executable in ast.walk(tree):
+            if isinstance(executable, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                definition_expressions = [
+                    *executable.args.defaults,
+                    *[value for value in executable.args.kw_defaults if value is not None],
+                    *[
+                        annotation
+                        for annotation in [
+                            getattr(executable, "returns", None),
+                            *(
+                                argument.annotation
+                                for argument in [
+                                    *executable.args.posonlyargs,
+                                    *executable.args.args,
+                                    *executable.args.kwonlyargs,
+                                    *([executable.args.vararg] if executable.args.vararg else []),
+                                    *([executable.args.kwarg] if executable.args.kwarg else []),
+                                ]
+                            ),
+                        ]
+                        if annotation is not None
+                    ],
+                ]
+                if any(contains_module_registry(expression) for expression in definition_expressions):
+                    raise ValueError(f"Unsupported module registry alias in {path}")
+            if isinstance(executable, ast.ClassDef):
+                if any(contains_module_registry(base) for base in executable.bases):
+                    raise ValueError(f"Unsupported module registry alias in {path}")
             if isinstance(executable, executable_types) and contains_registry_mutation(executable):
                 raise ValueError(f"Unsupported module namespace escape in {path}")
         safe_registry_consumers = {
@@ -2654,6 +2681,14 @@ def _validate_compatibility_new_sections(
         )
         old_names = frozenset(path.stem for path in base_sections)
         new_names = frozenset(path.stem for path in head_sections) - old_names
+        if relative not in base_surfaces:
+            initializer = head_package / "__init__.py"
+            _validate_import_time_section(
+                initializer.read_text(encoding="utf-8"),
+                initializer,
+                head_package,
+                frozenset(path.stem for path in head_sections),
+            )
         for section in head_sections:
             if section.stem not in new_names:
                 continue

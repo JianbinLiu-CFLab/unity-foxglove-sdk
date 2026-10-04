@@ -1418,6 +1418,30 @@ class IdentityToolingTests(unittest.TestCase):
                 bound, section, package, frozenset({section.stem})
             )
 
+    def test_compatibility_rejects_broken_added_facade_initializer(self) -> None:
+        """A newly added facade cannot hide an import-breaking package initializer."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "Scripts/smoke/foxrun/new_fixture"
+            package.mkdir(parents=True)
+            (root / "Scripts/smoke/foxrun/new_fixture.py").write_text(
+                "NEW = 1\n", encoding="utf-8"
+            )
+            (package / "live.py").write_text(
+                "LIVE = 1\n__all__ = ['LIVE']\n", encoding="utf-8"
+            )
+            (package / "__init__.py").write_text(
+                "raise RuntimeError('boom')\nfrom . import live\n", encoding="utf-8"
+            )
+            surfaces = compare_identity_surfaces._surfaces(root, strict=False)
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._validate_compatibility_new_sections(
+                    root / "base",
+                    root,
+                    {},
+                    surfaces,
+                )
+
     def test_split_identity_surface_rejects_operator_and_partial_registry_aliases(self) -> None:
         """Other standard-library helper combinators cannot hide registry access."""
         sources = (
@@ -1896,6 +1920,7 @@ class IdentityToolingTests(unittest.TestCase):
     def test_split_identity_surface_rejects_module_registry_alias_escapes(self) -> None:
         """Registry mutations hidden in aliases, calls, closures, or comprehensions fail closed."""
         sources = (
+            "import sys\ndef leak(registry=sys.modules):\n    return registry\nPUBLIC = 1\n",
             "from sys import modules as m\nt = m[__name__]\nt.PUBLIC = 2\nPUBLIC = 1\n",
             "import sys as s\nt = s.modules.get(__name__)\nt.PUBLIC = 2\nPUBLIC = 1\n",
             "import sys\ndef mutate(m):\n    m[__name__].pop('PUBLIC', None)\nmutate(sys.modules)\nPUBLIC = 1\n",
