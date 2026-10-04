@@ -167,6 +167,76 @@ namespace Unity.FoxgloveSDK.Tests
                     invalidSectionRejected,
                     "186-F17: split-source validation rejects invalid section names");
 
+                File.WriteAllText(Path.Combine(package, "class.py"), "CLASS_SECTION\n");
+                File.WriteAllText(Path.Combine(package, "café.py"), "UNICODE_SECTION\n");
+                File.WriteAllText(Path.Combine(package, "case.py"), "CASE_SECTION\n");
+                File.WriteAllText(Path.Combine(package, "match.py"), "MATCH_SECTION\n");
+                File.WriteAllText(Path.Combine(package, "type.py"), "TYPE_SECTION\n");
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import class\n");
+                var keywordSectionRejected = false;
+                try
+                {
+                    PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                }
+                catch (InvalidOperationException)
+                {
+                    keywordSectionRejected = true;
+                }
+                Check(
+                    keywordSectionRejected,
+                    "186-F21: split-source validation rejects keyword module names");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import live as class\n");
+                var keywordAliasRejected = false;
+                try
+                {
+                    PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                }
+                catch (InvalidOperationException)
+                {
+                    keywordAliasRejected = true;
+                }
+                Check(
+                    keywordAliasRejected,
+                    "186-F25: split-source validation rejects keyword aliases");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import café\n");
+                var unicodeSectionRejected = false;
+                try
+                {
+                    PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                }
+                catch (InvalidOperationException)
+                {
+                    unicodeSectionRejected = true;
+                }
+                Check(
+                    unicodeSectionRejected,
+                    "186-F22: split-source validation rejects non-ASCII module names");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import match\n");
+                var softKeywordSource = PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    softKeywordSource.Contains("MATCH_SECTION", StringComparison.Ordinal),
+                    "186-F23: split-source validation matches Python soft-keyword behavior");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import case\nfrom . import type\n");
+                var additionalSoftKeywordSource = PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    additionalSoftKeywordSource.Contains("CASE_SECTION", StringComparison.Ordinal) &&
+                    additionalSoftKeywordSource.Contains("TYPE_SECTION", StringComparison.Ordinal),
+                    "186-F24: split-source validation accepts every Python soft-keyword module name");
+
                 File.WriteAllText(
                     Path.Combine(package, "__init__.py"),
                     "from . import live as\n");

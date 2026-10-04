@@ -666,10 +666,21 @@ class RunCiTests(unittest.TestCase):
             workflow,
             "- name: Run Phase192 base-head identity equivalence gate",
         )
-        joined = "\n".join(workflow.splitlines()[start : start + 10])
+        joined = "\n".join(workflow.splitlines()[start : start + 30])
         self.assertIn("github.event.pull_request.base.sha", joined)
         self.assertIn("github.event.pull_request.head.sha", joined)
         self.assertIn("Scripts/phase192/compare_identity_surfaces.py", joined)
+        self.assertIn("--compatibility", joined)
+        self.assertIn("git archive", joined)
+        self.assertIn("IDENTITY_GATE_BOOTSTRAP_REQUIRED", joined)
+        self.assertNotIn("bootstrap_checker_sha", joined)
+        self.assertNotIn("git show", joined)
+        self.assertIn("trusted_root", joined)
+        self.assertIn("PYTHONPATH", joined)
+        self.assertIn("$RUNNER_TEMP", joined)
+        self.assertIn("--repository .", joined)
+        self.assertNotIn("python3 Scripts/phase192/compare_identity_surfaces.py", joined)
+        self.assertNotIn("--strict", joined)
     def test_dotnet_workflow_runs_xunit_before_panel_lane(self) -> None:
         """The unit-test gate must run even when the panel lane fails first."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")

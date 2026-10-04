@@ -17,6 +17,13 @@ namespace Unity.FoxgloveSDK.Tests
 {
     internal static class PhaseValidationSourceHelpers
     {
+        private static readonly HashSet<string> PythonSectionKeywords = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "False", "None", "True", "and", "as", "assert", "async", "await", "break",
+            "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
+            "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
+            "raise", "return", "try", "while", "with", "yield",
+        };
         public static string FindRequiredRepoRoot()
         {
             var root = Phase16Validation.FindRepoRoot();
@@ -176,12 +183,20 @@ namespace Unity.FoxgloveSDK.Tests
                 }
                 var match = Regex.Match(
                     part,
-                    @"^(?<name>[A-Za-z_]\w*)(?:\s+as\s+[A-Za-z_]\w*)?$",
+                    @"^(?<name>[A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+(?<alias>[A-Za-z_][A-Za-z0-9_]*))?$",
                     RegexOptions.CultureInvariant);
                 if (!match.Success)
                     throw new InvalidOperationException(
                         "Invalid Python source-section name in " + initPath);
-                yield return match.Groups["name"].Value;
+                var name = match.Groups["name"].Value;
+                if (PythonSectionKeywords.Contains(name))
+                    throw new InvalidOperationException(
+                        "Python source-section name is a keyword in " + initPath);
+                var alias = match.Groups["alias"].Value;
+                if (alias.Length > 0 && PythonSectionKeywords.Contains(alias))
+                    throw new InvalidOperationException(
+                        "Python source-section alias is a keyword in " + initPath);
+                yield return name;
             }
         }
 
@@ -242,7 +257,7 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     var match = Regex.Match(
                         singleStatement,
-                        @"^from\s+(?<dots>\.+)(?<module>[A-Za-z_]\w*)?\s+import\s+(?<names>.+?)$",
+                        @"^from\s+(?<dots>\.+)(?<module>[A-Za-z_][A-Za-z0-9_]*)?\s+import\s+(?<names>.+?)$",
                         RegexOptions.CultureInvariant);
                     if (!match.Success)
                     {
@@ -264,6 +279,9 @@ namespace Unity.FoxgloveSDK.Tests
                     if (dots.Length != 1)
                         continue;
                     var module = match.Groups["module"].Value;
+                    if (module.Length > 0 && PythonSectionKeywords.Contains(module))
+                        throw new InvalidOperationException(
+                            "Python source-section name is a keyword in " + initPath);
                     var names = ParsePythonImportNames(
                         match.Groups["names"].Value,
                         initPath,

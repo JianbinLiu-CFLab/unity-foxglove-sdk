@@ -223,6 +223,7 @@ def _python_declared_symbols(text: str) -> frozenset[str] | None:
     symbols: set[str] = set()
 
     def visit_body(body: list[ast.stmt], prefix: str = "") -> None:
+        """Collect declarations from one syntax-tree body."""
         for node in body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 qualified = f"{prefix}.{node.name}" if prefix else node.name

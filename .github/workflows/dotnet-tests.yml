@@ -159,7 +159,21 @@ jobs:
         env:
           PHASE192_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           PHASE192_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python3 Scripts/phase192/compare_identity_surfaces.py --base "$PHASE192_BASE_SHA" --head "$PHASE192_HEAD_SHA"
+        run: |
+          set -euo pipefail
+          trusted_root="$RUNNER_TEMP/phase192-trusted-base"
+          mkdir -p "$trusted_root"
+          git archive "$PHASE192_BASE_SHA" -- Scripts/phase192 Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket | tar -x -C "$trusted_root"
+          base_checker="$trusted_root/Scripts/phase192/compare_identity_surfaces.py"
+          if [ ! -f "$base_checker" ]; then
+            echo "Trusted base identity checker is missing" >&2
+            exit 1
+          fi
+          if ! grep -q -- "--compatibility" "$base_checker"; then
+            echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: trusted base checker lacks --compatibility" >&2
+            exit 1
+          fi
+          PYTHONPATH="$trusted_root" python3 "$base_checker" --base "$PHASE192_BASE_SHA" --head "$PHASE192_HEAD_SHA" --repository . --compatibility
 
       - name: Run official MCAP differential conformance
         if: always()

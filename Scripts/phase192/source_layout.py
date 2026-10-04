@@ -13,6 +13,7 @@ from types import ModuleType
 
 
 def _parse_source(source: str, path: Path) -> ast.Module:
+    """Parse source text and raise syntax errors with the source path."""
     compile(source, str(path), "exec")
     return ast.parse(source, filename=str(path))
 

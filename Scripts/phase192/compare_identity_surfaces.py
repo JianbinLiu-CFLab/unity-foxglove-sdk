@@ -5,14 +5,17 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import importlib
+import importlib.util
 import keyword
 import re
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 import subprocess
 import tarfile
 import tempfile
-from typing import Iterator
+from typing import Iterator, Mapping
 import sys
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -49,6 +52,7 @@ def _git(repository: Path, *args: str) -> str:
     return completed.stdout
 
 def _extract_archive_safely(archive: tarfile.TarFile, destination: Path) -> None:
+    """Internal helper for _extract_archive_safely."""
     root = destination.resolve()
     for member in archive.getmembers():
         target = (destination / member.name).resolve()
@@ -109,6 +113,7 @@ def _section_modules_for_root(root: Path):
     del root
 
     def section_modules(package_dir: Path) -> tuple[Path, ...]:
+        """Internal helper for section_modules."""
         init_path = package_dir / "__init__.py"
         tree = _parse_source(init_path.read_text(encoding="utf-8"), init_path)
         modules: list[Path] = []
@@ -167,6 +172,7 @@ def _top_level_names(tree: ast.Module, *, include_imports: bool = True) -> set[s
     names: set[str] = set()
 
     def add_target(target: ast.AST) -> None:
+        """Internal helper for add_target."""
         if isinstance(target, ast.Name):
             names.add(target.id)
         elif isinstance(target, (ast.Tuple, ast.List)):
@@ -174,6 +180,7 @@ def _top_level_names(tree: ast.Module, *, include_imports: bool = True) -> set[s
                 add_target(item)
 
     def visit(statements: list[ast.stmt]) -> None:
+        """Internal helper for visit."""
         for node in statements:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 names.add(node.name)
@@ -208,8 +215,7 @@ def _top_level_names(tree: ast.Module, *, include_imports: bool = True) -> set[s
             elif isinstance(node, _TRY_TYPES):
                 visit(node.body)
                 for handler in node.handlers:
-                    if handler.name:
-                        names.add(handler.name)
+                    # ``except ... as name`` is cleared by Python after the handler.
                     visit(handler.body)
                 visit(node.orelse)
                 visit(node.finalbody)
@@ -218,6 +224,7 @@ def _top_level_names(tree: ast.Module, *, include_imports: bool = True) -> set[s
                     visit(case.body)
             elif isinstance(node, ast.Delete):
                 def discard_target(target: ast.AST) -> None:
+                    """Internal helper for discard_target."""
                     if isinstance(target, ast.Name):
                         names.discard(target.id)
                     elif isinstance(target, (ast.Tuple, ast.List)):
@@ -230,12 +237,14 @@ def _top_level_names(tree: ast.Module, *, include_imports: bool = True) -> set[s
     return names
 
 def _declared_public_names(tree: ast.Module) -> frozenset[str]:
+    """Internal helper for _declared_public_names."""
     return frozenset(
         name for name in _top_level_names(tree, include_imports=True)
         if not name.startswith("_")
     )
 
 def _is_public_globals_comprehension(value: ast.AST) -> bool:
+    """Internal helper for _is_public_globals_comprehension."""
     if not isinstance(value, (ast.ListComp, ast.SetComp)) or len(value.generators) != 1:
         return False
     generator = value.generators[0]
@@ -268,8 +277,10 @@ def _is_public_globals_comprehension(value: ast.AST) -> bool:
     )
 
 def _bound_names_in_statement(statement: ast.stmt) -> set[str]:
+    """Internal helper for _bound_names_in_statement."""
     names: set[str] = set()
     def add_target(target: ast.AST) -> None:
+        """Internal helper for add_target."""
         if isinstance(target, ast.Name):
             names.add(target.id)
         elif isinstance(target, (ast.Tuple, ast.List)):
@@ -305,9 +316,11 @@ def _conditional_only_public_names(
     *,
     include_private: bool = False,
 ) -> frozenset[str]:
+    """Internal helper for _conditional_only_public_names."""
     control_types = (ast.If, ast.For, ast.AsyncFor, ast.While, *_TRY_TYPES, ast.With, ast.AsyncWith, ast.Match)
 
     def block_sets(statements: list[ast.stmt]) -> tuple[set[str], set[str]]:
+        """Internal helper for block_sets."""
         maybe: set[str] = set()
         guaranteed: set[str] = set()
         for statement in statements:
@@ -317,6 +330,7 @@ def _conditional_only_public_names(
         return maybe, guaranteed
 
     def statement_sets(statement: ast.stmt) -> tuple[set[str], set[str]]:
+        """Internal helper for statement_sets."""
         if not isinstance(statement, control_types):
             names = _bound_names_in_statement(statement)
             return set(names), set(names)
@@ -375,6 +389,7 @@ def _conditional_contract_signatures(tree: ast.AST) -> tuple[str, ...]:
     signatures: list[str] = []
 
     def bound_in_block(statements: list[ast.stmt]) -> set[str]:
+        """Internal helper for bound_in_block."""
         names: set[str] = set()
         for statement in statements:
             names.update(_bound_names_in_statement(statement))
@@ -410,6 +425,7 @@ def _conditional_contract_signatures(tree: ast.AST) -> tuple[str, ...]:
         *,
         structure: ast.AST | None = None,
     ) -> None:
+        """Internal helper for digest."""
         name_text = ",".join(sorted(names))
         body_shape = structure if structure is not None else ast.Module(body=body, type_ignores=[])
         payload = (
@@ -421,6 +437,7 @@ def _conditional_contract_signatures(tree: ast.AST) -> tuple[str, ...]:
         signatures.append(f"{name_text}:{signature}")
 
     def visit_statements(statements: list[ast.stmt]) -> None:
+        """Internal helper for visit_statements."""
         for statement in statements:
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
@@ -508,14 +525,18 @@ def _conditional_contract_signatures(tree: ast.AST) -> tuple[str, ...]:
     return tuple(signatures)
 
 def _reject_unsupported_module_bindings(tree: ast.Module, path: str) -> None:
+    """Internal helper for _reject_unsupported_module_bindings."""
     if _TYPE_ALIAS_TYPE is not None and any(isinstance(node, _TYPE_ALIAS_TYPE) for node in ast.walk(tree)):
         raise ValueError(f"Unsupported type alias binding in {path}")
 
     class Visitor(ast.NodeVisitor):
+        """Internal helper for Visitor."""
         def __init__(self) -> None:
+            """Internal helper for __init__."""
             self._class_depth = 0
 
         def _visit_definition_header(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+            """Internal helper for _visit_definition_header."""
             for decorator in node.decorator_list:
                 self.visit(decorator)
             arguments = [
@@ -531,10 +552,13 @@ def _reject_unsupported_module_bindings(tree: ast.Module, path: str) -> None:
             if node.returns is not None:
                 self.visit(node.returns)
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            """Internal helper for visit_FunctionDef."""
             self._visit_definition_header(node)
         def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            """Internal helper for visit_AsyncFunctionDef."""
             self._visit_definition_header(node)
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            """Internal helper for visit_ClassDef."""
             for decorator in node.decorator_list:
                 self.visit(decorator)
             for base in node.bases:
@@ -548,23 +572,30 @@ def _reject_unsupported_module_bindings(tree: ast.Module, path: str) -> None:
             finally:
                 self._class_depth -= 1
         def visit_Global(self, node: ast.Global) -> None:
+            """Internal helper for visit_Global."""
             if any(not name.startswith("_") for name in node.names):
                 raise ValueError(f"Unsupported public global binding in {path}")
         def visit_Import(self, node: ast.Import) -> None:
+            """Internal helper for visit_Import."""
             if any(alias.name.split(".", 1)[0] in {"builtins", "__builtins__", "__builtin__"} for alias in node.names):
                 raise ValueError(f"Unsupported builtins import in {path}")
         def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+            """Internal helper for visit_ImportFrom."""
             if node.module in {"builtins", "__builtins__", "__builtin__"}:
                 raise ValueError(f"Unsupported builtins import in {path}")
             self.generic_visit(node)
         def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+            """Internal helper for visit_NamedExpr."""
             raise ValueError(f"Unsupported module binding expression in {path}")
         def visit_Match(self, node: ast.Match) -> None:
+            """Internal helper for visit_Match."""
             raise ValueError(f"Unsupported module pattern binding in {path}")
         def visit_Delete(self, node: ast.Delete) -> None:
+            """Internal helper for visit_Delete."""
             if self._class_depth:
                 raise ValueError(f"Unsupported class namespace deletion in {path}")
             def unsafe_target(target: ast.AST) -> bool:
+                """Internal helper for unsafe_target."""
                 if isinstance(target, ast.Name):
                     return not target.id.startswith(("_phase192_", "_Phase192", "_PHASE192_"))
                 if isinstance(target, (ast.Tuple, ast.List)):
@@ -582,10 +613,303 @@ def _validate_namespace_access(
     *,
     reject_module_registry: bool = False,
 ) -> None:
+    """Internal helper for _validate_namespace_access."""
     parents: dict[int, ast.AST] = {}
     for parent in ast.walk(tree):
         for child in ast.iter_child_nodes(parent):
             parents[id(child)] = parent
+
+    # Track objects that can expose the module registry while preserving
+    # ordinary dynamic attribute access on runtime objects.
+    indirect_namespace_names = {
+        "getattr", "setattr", "delattr", "__getattribute__",
+    }
+    sys_aliases: set[str] = {"sys"}
+    importlib_aliases: set[str] = set()
+    import_module_callable_aliases: set[str] = set()
+    dunder_import_aliases: set[str] = set()
+    import_module_aliases: set[str] = set()
+    dunder_import_denied_roots = {
+        "builtins", "__builtins__", "__builtin__", "importlib", "os",
+        "subprocess", "sys",
+    }
+    dunder_import_denied_attrs = {
+        "__dict__", "__getattribute__", "__setattr__", "__delattr__",
+        "modules", "open", "system", "popen", "run", "Popen", "call",
+        "check_call", "check_output", "exec", "eval", "compile",
+        "import_module", "remove", "unlink", "write", "write_text",
+        "write_bytes", "mkdir", "rmdir", "rename", "replace", "chmod",
+        "connect", "send", "recv",
+    }
+
+    def fixed_string(node: ast.AST | None) -> str | None:
+        """Internal helper for fixed_string."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = fixed_string(node.left)
+            right = fixed_string(node.right)
+            if left is not None and right is not None:
+                return left + right
+        return None
+
+    def dunder_import_call(node: ast.AST | None) -> ast.Call | None:
+        """Internal helper for dunder_import_call."""
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "__import__"
+        ):
+            return node
+        return None
+
+    def validate_dunder_import(node: ast.Call) -> None:
+        """Internal helper for validate_dunder_import."""
+        if not node.args or any(keyword.arg != "fromlist" for keyword in node.keywords):
+            raise ValueError(f"Unsupported dynamic import in {path}")
+        module_name = fixed_string(node.args[0])
+        if module_name is None or module_name.split(".", 1)[0] in dunder_import_denied_roots:
+            raise ValueError(f"Unsupported dynamic import in {path}")
+        for keyword in node.keywords:
+            value = keyword.value
+            if not isinstance(value, (ast.List, ast.Tuple)) or not all(
+                isinstance(item, ast.Constant) and isinstance(item.value, str)
+                for item in value.elts
+            ):
+                raise ValueError(f"Unsupported dynamic import fromlist in {path}")
+
+    def contains_dunder_import(node: ast.AST) -> bool:
+        """Internal helper for contains_dunder_import."""
+        return any(dunder_import_call(item) is not None for item in ast.walk(node))
+
+    def importlib_object(node: ast.AST | None) -> bool:
+        """Internal helper for importlib_object."""
+        return isinstance(node, ast.Name) and node.id in importlib_aliases
+
+    def import_module_callable(node: ast.AST | None) -> bool:
+        """Internal helper for import_module_callable."""
+        return (
+            isinstance(node, ast.Name)
+            and node.id in import_module_callable_aliases
+        ) or (
+            isinstance(node, ast.Attribute)
+            and node.attr == "import_module"
+            and importlib_object(node.value)
+        )
+
+    def imported_module_call(node: ast.AST | None) -> bool:
+        """Internal helper for imported_module_call."""
+        return isinstance(node, ast.Call) and import_module_callable(node.func)
+
+    static_string_values: dict[str, str] = {}
+    static_string_candidates: dict[str, set[str] | None] = {}
+    for assignment in ast.walk(tree):
+        if not isinstance(assignment, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = assignment.value
+        fixed = fixed_string(value)
+        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if fixed is None:
+                static_string_candidates[target.id] = None
+            elif target.id not in static_string_candidates:
+                static_string_candidates[target.id] = {fixed}
+            elif static_string_candidates[target.id] is not None:
+                static_string_candidates[target.id].add(fixed)
+    for name, candidates in static_string_candidates.items():
+        if candidates and len(candidates) == 1:
+            static_string_values[name] = next(iter(candidates))
+
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "sys":
+                        name = alias.asname or "sys"
+                        if name not in sys_aliases:
+                            sys_aliases.add(name)
+                            changed = True
+                    if alias.name == "importlib" or alias.name.startswith("importlib."):
+                        name = alias.asname or alias.name.split(".", 1)[0]
+                        if name not in importlib_aliases:
+                            importlib_aliases.add(name)
+                            changed = True
+            elif isinstance(node, ast.ImportFrom) and node.module == "sys":
+                for alias in node.names:
+                    if alias.name == "sys":
+                        name = alias.asname or "sys"
+                        if name not in sys_aliases:
+                            sys_aliases.add(name)
+                            changed = True
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                value = node.value
+                imported = dunder_import_call(value)
+                if imported is not None:
+                    validate_dunder_import(imported)
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            dunder_import_aliases.add(target.id)
+                elif (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)
+                    and value.func.attr == "import_module"
+                ):
+                    module_name = fixed_string(value.args[0]) if value.args else None
+                    if module_name is None and value.args and isinstance(value.args[0], ast.Name):
+                        module_name = static_string_values.get(value.args[0].id)
+                    if module_name is not None and module_name.split(".", 1)[0] in dunder_import_denied_roots:
+                        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                        for target in targets:
+                            if isinstance(target, ast.Name):
+                                import_module_aliases.add(target.id)
+                elif isinstance(value, ast.Name) and value.id in dunder_import_aliases:
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            dunder_import_aliases.add(target.id)
+                elif isinstance(value, ast.Name) and value.id in import_module_aliases:
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            import_module_aliases.add(target.id)
+                if importlib_object(value):
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name) and target.id not in importlib_aliases:
+                            importlib_aliases.add(target.id)
+                            changed = True
+                if (
+                    isinstance(value, ast.Attribute)
+                    and value.attr == "import_module"
+                    and importlib_object(value.value)
+                ):
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            import_module_callable_aliases.add(target.id)
+                if isinstance(value, ast.Name) and value.id in import_module_callable_aliases:
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            import_module_callable_aliases.add(target.id)
+                if isinstance(value, ast.Name) and value.id in sys_aliases:
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name) and target.id not in sys_aliases:
+                            sys_aliases.add(target.id)
+                            changed = True
+    imported_module_aliases: set[str] = set(import_module_aliases)
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if imported_module_call(value) or (
+                isinstance(value, ast.Name) and value.id in imported_module_aliases
+            ):
+                for target in targets:
+                    if isinstance(target, ast.Name) and target.id not in imported_module_aliases:
+                        imported_module_aliases.add(target.id)
+                        changed = True
+    imported_module_names = dunder_import_aliases | import_module_aliases | imported_module_aliases
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "vars"
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id in sys_aliases | imported_module_names
+        ):
+            raise ValueError(f"Unsupported namespace object lookup in {path}")
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            value = node.value
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            target_names = {
+                target.id for target in targets if isinstance(target, ast.Name)
+            }
+            if isinstance(value, ast.Name) and value.id in indirect_namespace_names:
+                raise ValueError(f"Unsupported namespace helper alias in {path}")
+            if isinstance(value, ast.Attribute) and value.attr in {
+                "__getattribute__", "__setattr__", "__delattr__",
+                "attrgetter", "methodcaller", "partial", "import_module",
+            }:
+                raise ValueError(f"Unsupported indirect namespace helper in {path}")
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) and value.func.attr in {
+                "attrgetter", "methodcaller", "partial",
+            }:
+                raise ValueError(f"Unsupported indirect namespace helper in {path}")
+        if isinstance(node, ast.Call):
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and node.args
+                and importlib_object(node.args[0])
+            ):
+                raise ValueError(f"Unsupported dynamic import lookup in {path}")
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id in {"getattr", "setattr", "delattr"}
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id in sys_aliases | imported_module_names
+            ):
+                if len(node.args) < 2:
+                    raise ValueError(f"Unsupported dynamic namespace helper in {path}")
+                key_node = node.args[1]
+                key = (
+                    key_node.value
+                    if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str)
+                    else None
+                )
+                if key is None or key in {
+                    "modules", "__builtins__", "__import__", "import_module",
+                    "getattr", "setattr", "delattr",
+                } | dunder_import_denied_attrs:
+                    raise ValueError(f"Unsupported dynamic namespace key in {path}")
+            if isinstance(node.func, ast.Attribute):
+                base = node.func.value
+                if (
+                    isinstance(base, ast.Name)
+                    and base.id in {"operator", "functools"}
+                    and node.func.attr in {"attrgetter", "methodcaller", "partial"}
+                ):
+                    raise ValueError(f"Unsupported indirect namespace helper in {path}")
+                if (
+                    node.func.attr in {"__getattribute__", "__setattr__", "__delattr__"}
+                    and isinstance(base, ast.Name)
+                    and base.id in sys_aliases | imported_module_names
+                ):
+                    if node.func.attr in {"__setattr__", "__delattr__"}:
+                        raise ValueError(f"Unsupported namespace mutation in {path}")
+                    key = fixed_string(node.args[-1]) if node.args else None
+                    if key is None or key in {
+                        "modules", "__dict__", "__builtins__", "__import__",
+                        "import_module", "getattr", "setattr", "delattr",
+                    } | dunder_import_denied_attrs:
+                        raise ValueError(f"Unsupported dynamic namespace key in {path}")
+                if (
+                    node.func.attr in {"__getattribute__", "__setattr__", "__delattr__"}
+                    and node.args
+                    and isinstance(node.args[0], ast.Name)
+                    and node.args[0].id in sys_aliases | imported_module_names
+                ):
+                    if node.func.attr in {"__setattr__", "__delattr__"}:
+                        raise ValueError(f"Unsupported namespace mutation in {path}")
+                    key = fixed_string(node.args[-1])
+                    if key is None or key in {
+                        "modules", "__dict__", "__builtins__", "__import__",
+                        "import_module", "getattr", "setattr", "delattr",
+                    } | dunder_import_denied_attrs:
+                        raise ValueError(f"Unsupported dynamic namespace key in {path}")
     namespace_names = {"globals", "vars", "locals"}
     dynamic_names = {"exec", "eval", "compile"}
     builtin_names = {"builtins", "__builtins__", "__builtin__"}
@@ -594,21 +918,44 @@ def _validate_namespace_access(
     dangerous_keys = dynamic_names | {"__builtins__", "__import__", "import_module", "getattr", "setattr", "delattr", "__dict__", "f_globals", "f_locals"}
 
     def literal_string(node: ast.AST | None) -> str | None:
+        """Internal helper for literal_string."""
         return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+    def constant_string(node: ast.AST | None) -> str | None:
+        """Fold only literal string concatenations used as namespace keys."""
+        literal = literal_string(node)
+        if literal is not None:
+            return literal
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = constant_string(node.left)
+            right = constant_string(node.right)
+            if left is not None and right is not None:
+                return left + right
+        return None
     def namespace_call(node: ast.AST | None) -> bool:
+        """Internal helper for namespace_call."""
         return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in namespace_names and not node.args and not node.keywords
     def key_node(node: ast.Call | ast.Subscript) -> ast.AST | None:
+        """Internal helper for key_node."""
         return node.slice if isinstance(node, ast.Subscript) else (node.args[0] if node.args else None)
     def check_key(node: ast.Call | ast.Subscript) -> None:
-        key = literal_string(key_node(node))
+        """Internal helper for check_key."""
+        key_ast = key_node(node)
+        key = literal_string(key_ast)
         if key is None:
-            raise ValueError(f"Unsupported dynamic namespace key in {path}")
+            if not (
+                isinstance(key_ast, ast.Name)
+                and key_ast.id.startswith("_phase192_")
+            ):
+                raise ValueError(f"Unsupported dynamic namespace key in {path}")
+            return
         if key in dangerous_keys:
             raise ValueError(f"Unsupported dynamic execution namespace key in {path}")
     def literal_modules_key(node: ast.AST | None) -> bool:
+        """Internal helper for literal_modules_key."""
         return isinstance(node, ast.Constant) and node.value == "modules"
 
     def namespace_object(node: ast.AST) -> bool:
+        """Internal helper for namespace_object."""
         return (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
@@ -619,6 +966,7 @@ def _validate_namespace_access(
     module_registry_aliases: set[str] = set()
 
     def contains_module_registry(node: ast.AST) -> bool:
+        """Internal helper for contains_module_registry."""
         if isinstance(node, ast.Name) and node.id in module_registry_aliases:
             return True
         if isinstance(node, ast.Attribute) and node.attr == "modules":
@@ -641,6 +989,15 @@ def _validate_namespace_access(
         if isinstance(node, ast.Subscript):
             if literal_modules_key(node.slice) and namespace_object(node.value):
                 return True
+            if (
+                isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "vars"
+                and node.value.args
+                and isinstance(node.value.args[0], ast.Name)
+                and node.value.args[0].id in sys_aliases | dunder_import_aliases | import_module_aliases
+            ):
+                return True
             if literal_modules_key(node.slice) and isinstance(node.value, ast.Call):
                 if (
                     isinstance(node.value.func, ast.Attribute)
@@ -650,6 +1007,7 @@ def _validate_namespace_access(
         return any(contains_module_registry(child) for child in ast.iter_child_nodes(node))
 
     def target_names(target: ast.AST) -> set[str]:
+        """Internal helper for target_names."""
         if isinstance(target, ast.Name):
             return {target.id}
         if isinstance(target, (ast.Tuple, ast.List)):
@@ -695,6 +1053,7 @@ def _validate_namespace_access(
             targets = executable.targets if isinstance(executable, ast.Assign) else [executable.target]
             if value is not None and contains_module_registry(value):
                 def allowed_target(target: ast.AST) -> bool:
+                    """Internal helper for allowed_target."""
                     if isinstance(target, ast.Name):
                         return target.id.startswith("_phase192_")
                     return (
@@ -708,6 +1067,7 @@ def _validate_namespace_access(
                     raise ValueError(f"Unsupported module registry alias in {path}")
 
     def contains_registry_mutation(node: ast.AST) -> bool:
+        """Internal helper for contains_registry_mutation."""
         if isinstance(node, ast.Attribute) and contains_module_registry(node.value):
             if isinstance(node.ctx, (ast.Store, ast.Del)) or node.attr in {"__setattr__", "__delattr__"}:
                 return True
@@ -769,17 +1129,45 @@ def _validate_namespace_access(
     for node in ast.walk(tree):
         if id(node) in allowed_nodes:
             continue
+        if isinstance(node, ast.Call) and namespace_call(node):
+            parent = parents.get(id(node))
+            if isinstance(parent, ast.Attribute) and parent.value is node and parent.attr in read_attrs:
+                pass
+            elif isinstance(parent, ast.Subscript) and parent.value is node and isinstance(parent.ctx, ast.Load):
+                check_key(parent)
+            else:
+                raise ValueError(f"Unsupported namespace escape in {path}")
         if isinstance(node, ast.Global) and any(not name.startswith("_") for name in node.names):
             raise ValueError(f"Unsupported public global binding in {path}")
         if isinstance(node, ast.Import):
             if any(alias.name.split(".", 1)[0] in builtin_names or alias.name.rsplit(".", 1)[-1] in dynamic_names for alias in node.names):
                 raise ValueError(f"Unsupported dynamic execution import in {path}")
         if isinstance(node, ast.ImportFrom):
-            if (node.module or "").split(".", 1)[0] in builtin_names or any(alias.name in dynamic_names or alias.name == "import_module" for alias in node.names):
+            module_root = (node.module or "").split(".", 1)[0]
+            forbidden_aliases = {
+                "__dict__", "__getattribute__", "__setattr__", "__delattr__",
+                "attrgetter", "methodcaller", "partial",
+            }
+            if (
+                module_root in builtin_names
+                or any(
+                    alias.name in dynamic_names
+                    or alias.name == "import_module"
+                    or (
+                        module_root in {"sys", "operator", "functools"}
+                        and alias.name in forbidden_aliases
+                    )
+                    for alias in node.names
+                )
+            ):
                 raise ValueError(f"Unsupported dynamic execution import in {path}")
         if isinstance(node, ast.Name):
             if node.id in builtin_names or node.id in dynamic_names:
                 raise ValueError(f"Unsupported dynamic execution in {path}")
+            if node.id in indirect_namespace_names:
+                parent = parents.get(id(node))
+                if not (isinstance(parent, ast.Call) and parent.func is node):
+                    raise ValueError(f"Unsupported namespace helper alias in {path}")
             if node.id == "__import__":
                 parent = parents.get(id(node))
                 if not (isinstance(parent, ast.Call) and parent.func is node):
@@ -799,6 +1187,26 @@ def _validate_namespace_access(
                     raise ValueError(f"Unsupported namespace alias in {path}")
         if isinstance(node, ast.Attribute) and node.attr in {"__dict__", "f_globals", "f_locals", "_getframe"}:
             raise ValueError(f"Unsupported namespace access in {path}")
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr in dunder_import_denied_attrs
+            and (
+                contains_dunder_import(node.value)
+                or (
+                    isinstance(node.value, ast.Name)
+                    and node.value.id in importlib_aliases | imported_module_names
+                )
+                or imported_module_call(node.value)
+            )
+            and not (
+                node.attr == "import_module"
+                and isinstance(parents.get(id(node)), ast.Call)
+                and parents[id(node)].func is node
+            )
+        ):
+            raise ValueError(f"Unsupported dynamic import attribute in {path}")
+        if isinstance(node, ast.Subscript) and namespace_call(node.value):
+            check_key(node)
         if reject_module_registry and (
             (isinstance(node, ast.Attribute) and node.attr == "modules" and not isinstance(node.ctx, ast.Load))
             or (isinstance(node, ast.Attribute) and contains_module_registry(node.value) and isinstance(node.ctx, (ast.Store, ast.Del)))
@@ -814,15 +1222,16 @@ def _validate_namespace_access(
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in dynamic_names:
                 raise ValueError(f"Unsupported dynamic execution in {path}")
-            if isinstance(node.func, ast.Name) and node.func.id == "__import__" and node.args and literal_string(node.args[0]) in builtin_names:
-                raise ValueError(f"Unsupported namespace access in {path}")
+            imported = dunder_import_call(node)
+            if imported is not None:
+                validate_dunder_import(imported)
             if isinstance(node.func, ast.Attribute) and node.func.attr in dynamic_names:
                 value = node.func.value
                 if isinstance(value, ast.Name) and value.id in builtin_names:
                     raise ValueError(f"Unsupported dynamic execution in {path}")
                 if isinstance(value, ast.Call) and (
                     (isinstance(value.func, ast.Name) and value.func.id == "__import__")
-                    or (isinstance(value.func, ast.Attribute) and value.func.attr == "import_module")
+                    or imported_module_call(value)
                 ):
                     raise ValueError(f"Unsupported dynamic execution in {path}")
                 if contains_module_registry(value):
@@ -835,9 +1244,12 @@ def _validate_namespace_access(
                     check_key(node)
             if isinstance(node.func, ast.Subscript) and namespace_call(node.func.value):
                 check_key(node.func)
-            if any(isinstance(argument, ast.Call) and isinstance(argument.func, ast.Name) and argument.func.id in namespace_names for argument in node.args):
+            if any(
+                any(namespace_call(item) for item in ast.walk(argument))
+                for argument in [*node.args, *(keyword.value for keyword in node.keywords)]
+            ):
                 raise ValueError(f"Unsupported namespace escape in {path}")
-            if isinstance(node.func, ast.Name) and node.func.id in {"getattr", "setattr", "delattr"} and any(isinstance(argument, ast.Constant) and argument.value in dangerous_keys for argument in node.args[1:]):
+            if isinstance(node.func, ast.Name) and node.func.id in {"getattr", "setattr", "delattr"} and any(constant_string(argument) in dangerous_keys for argument in node.args[1:]):
                 raise ValueError(f"Unsupported namespace access in {path}")
             if reject_module_registry and isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"} and node.args and contains_module_registry(node.args[0]):
                 raise ValueError(f"Unsupported module namespace mutation in {path}")
@@ -847,14 +1259,86 @@ def _validate_namespace_access(
                 raise ValueError(f"Unsupported module namespace mutation in {path}")
             if isinstance(node.func, ast.Attribute) and node.func.attr == "__getattribute__":
                 value = node.func.value
+                if isinstance(value, ast.Name) and value.id in {"object", "type"}:
+                    raise ValueError(f"Unsupported reflection helper in {path}")
                 if isinstance(value, ast.Name) and value.id in builtin_names:
                     raise ValueError(f"Unsupported dynamic execution in {path}")
                 if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "__import__":
                     raise ValueError(f"Unsupported dynamic execution in {path}")
                 if contains_module_registry(value):
                     raise ValueError(f"Unsupported dynamic execution in {path}")
-    if any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "import_module" and node.args and literal_string(node.args[0]) in builtin_names for node in ast.walk(tree)):
+    if any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "import_module" and node.args and constant_string(node.args[0]) in builtin_names for node in ast.walk(tree)):
         raise ValueError(f"Unsupported builtins import in {path}")
+
+def _relative_import_contract(
+    tree: ast.Module,
+    package_dir: Path,
+    source_path: str | Path,
+    declared_sections: frozenset[str] | None = None,
+) -> tuple[str, ...]:
+    """Validate relative imports and return the star-import chain contract."""
+    star_contract: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or not node.level:
+            continue
+        if node.level != 1:
+            raise ValueError(f"Unsupported parent-relative import in {source_path}")
+        star_contract.append(ast.dump(node, include_attributes=False))
+        if node.module:
+            parts = node.module.split(".")
+            if any(_SECTION_NAME_RE.fullmatch(part) is None or keyword.iskeyword(part) for part in parts):
+                raise ValueError(f"Invalid relative import in {source_path}: {node.module}")
+            source_stem = Path(source_path).stem
+            if (
+                declared_sections is not None
+                and parts[0] not in declared_sections
+                and parts[0] != source_stem
+            ):
+                raise ValueError(
+                    f"Relative import target is not a declared section in {source_path}: {node.module}"
+                )
+            target_base = package_dir.joinpath(*parts)
+            target = target_base.with_suffix(".py") if target_base.with_suffix(".py").is_file() else target_base / "__init__.py"
+            if not target.is_file():
+                raise ValueError(f"Relative import target is missing in {source_path}: {node.module}")
+        else:
+            target = package_dir / "__init__.py"
+        if any(alias.name == "*" for alias in node.names):
+            continue
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            if node.module:
+                target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+                exports = _top_level_names(target_tree, include_imports=True)
+                exports.difference_update(_conditional_only_public_names(target_tree, include_private=True))
+                if alias.name not in exports:
+                    raise ValueError(
+                        f"Relative import symbol is missing in {source_path}: {node.module}:{alias.name}"
+                    )
+            else:
+                candidate = package_dir / f"{alias.name}.py"
+                candidate_package = package_dir / alias.name / "__init__.py"
+                if (
+                    declared_sections is not None
+                    and alias.name not in declared_sections
+                    and (candidate.is_file() or candidate_package.is_file())
+                ):
+                    raise ValueError(
+                        f"Relative import target is not a declared section in {source_path}: {alias.name}"
+                    )
+                if not candidate.is_file() and not candidate_package.is_file():
+                    # A package initializer may export a function or constant directly.
+                    package_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+                    package_exports = _top_level_names(package_tree, include_imports=True)
+                    package_exports.difference_update(
+                        _conditional_only_public_names(package_tree, include_private=True)
+                    )
+                    if alias.name not in package_exports:
+                        raise ValueError(
+                            f"Relative import target is missing in {source_path}: {alias.name}"
+                        )
+    return tuple(star_contract)
 
 def _symbols(
     source: str,
@@ -862,9 +1346,22 @@ def _symbols(
     *,
     reject_conditional: bool = True,
 ) -> frozenset[str]:
+    """Internal helper for _symbols."""
     tree = _parse_source(source, path)
+    source_file = Path(path)
+    if any(isinstance(node, ast.ImportFrom) and node.level for node in ast.walk(tree)):
+        if not source_file.is_file():
+            raise ValueError(f"Relative import validation requires a concrete source path: {path}")
+        _relative_import_contract(tree, source_file.parent, path)
     _reject_unsupported_module_bindings(tree, path)
-    _validate_namespace_access(tree, set(), path)
+    allowed_nodes: set[int] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
+                if _is_public_globals_comprehension(node.value):
+                    allowed_nodes.update(id(item) for item in ast.walk(node.value))
+    _validate_namespace_access(tree, allowed_nodes, path)
     conditional = _conditional_only_public_names(tree)
     if reject_conditional and conditional:
         raise ValueError(f"Conditional public bindings are not supported in {path}: {','.join(sorted(conditional))}")
@@ -880,7 +1377,13 @@ def _section_exports(
     *,
     reject_conditional: bool = True,
 ) -> frozenset[str]:
+    """Internal helper for _section_exports."""
     tree = _parse_source(source, path)
+    source_file = Path(path)
+    if any(isinstance(node, ast.ImportFrom) and node.level for node in ast.walk(tree)):
+        if not source_file.is_file():
+            raise ValueError(f"Relative import validation requires a concrete source path: {path}")
+        _relative_import_contract(tree, source_file.parent, path)
     _reject_unsupported_module_bindings(tree, path)
     declared = _declared_public_names(tree)
     bound = _top_level_names(tree, include_imports=True)
@@ -935,10 +1438,12 @@ def _section_exports(
     return frozenset(literal)
 
 def _initializer_lines(initializer: Path) -> tuple[str, ...]:
+    """Internal helper for _initializer_lines."""
     tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
     return tuple(ast.unparse(statement).strip() for statement in tree.body)
 
 def _initializer_digest(initializer: Path) -> str:
+    """Internal helper for _initializer_digest."""
     normalized = initializer.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     return hashlib.sha256(normalized).hexdigest()
 
@@ -979,25 +1484,44 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
 
 _ENTRYPOINT_IMPORT_ROOTS = frozenset({"argparse", "sys"})
 
-def _entrypoint_contract(path: Path) -> tuple[bool, str | None, tuple[str, ...], frozenset[str]]:
+def _entrypoint_contract(
+    path: Path,
+    allowed_relative_modules: frozenset[str] | None = None,
+    *,
+    reject_conditional: bool = True,
+) -> tuple[bool, str | None, tuple[str, ...], frozenset[str]]:
+    """Internal helper for _entrypoint_contract."""
     if not path.is_file():
         return False, None, (), frozenset()
     source = path.read_text(encoding="utf-8")
     compile(source, str(path), "exec")
     tree = _parse_source(source, path)
-    relative_imports = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.ImportFrom) and node.level == 1
-    ]
-    if not relative_imports:
-        raise ValueError(f"module entrypoint does not import its package: {path}")
     package_dir = path.parent
     package_init = package_dir / "__init__.py"
+    allowed_relative_modules = (
+        None if allowed_relative_modules is None else frozenset(allowed_relative_modules)
+    )
+    top_level_relative_imports = tuple(
+        node for node in tree.body if isinstance(node, ast.ImportFrom) and node.level == 1
+    )
+    relative_ids = {id(node) for node in top_level_relative_imports}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or not node.level:
+            continue
+        if node.level != 1 or id(node) not in relative_ids:
+            raise ValueError(f"unsupported nested or parent-relative entrypoint import: {path}")
+
+    def stable_exports(target: Path) -> set[str]:
+        """Internal helper for stable_exports."""
+        target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+        names = _top_level_names(target_tree, include_imports=True)
+        names.difference_update(_conditional_only_public_names(target_tree, include_private=True))
+        return names
+
     package_exports: set[str] = set()
     if package_init.is_file():
         package_tree = _parse_source(package_init.read_text(encoding="utf-8"), package_init)
-        package_exports.update(_top_level_names(package_tree, include_imports=True))
+        package_exports.update(stable_exports(package_init))
         for initializer_node in package_tree.body:
             if not isinstance(initializer_node, ast.ImportFrom) or initializer_node.level != 1:
                 continue
@@ -1009,58 +1533,133 @@ def _entrypoint_contract(path: Path) -> tuple[bool, str | None, tuple[str, ...],
                     continue
                 section_path = package_dir / f"{section_name}.py"
                 if section_path.is_file():
+                    section_tree = _parse_source(section_path.read_text(encoding="utf-8"), section_path)
+                    package_exports.update(stable_exports(section_path))
                     package_exports.update(
                         _section_exports(
                             section_path.read_text(encoding="utf-8"),
                             str(section_path),
-                            reject_conditional=False,
+                            reject_conditional=reject_conditional,
                         )
                     )
+
+    relative_imports = top_level_relative_imports
+    if not relative_imports:
+        raise ValueError(f"module entrypoint does not import its package: {path}")
     for node in relative_imports:
         if node.module is None:
-            if any(alias.name != "*" and alias.name not in package_exports for alias in node.names):
-                missing = sorted(alias.name for alias in node.names if alias.name != "*" and alias.name not in package_exports)
+            missing = sorted(
+                alias.name
+                for alias in node.names
+                if alias.name != "*"
+                and (
+                    (
+                        allowed_relative_modules is not None
+                        and alias.name not in allowed_relative_modules
+                        and alias.name not in package_exports
+                    )
+                    or (
+                        allowed_relative_modules is None
+                        and alias.name not in package_exports
+                        and not (package_dir / f"{alias.name}.py").is_file()
+                        and not (package_dir / alias.name / "__init__.py").is_file()
+                    )
+                )
+            )
+            if missing:
                 raise ValueError(f"relative entrypoint export is missing: {path}: {','.join(missing)}")
             continue
         parts = node.module.split(".")
         if any(_SECTION_NAME_RE.fullmatch(part) is None or keyword.iskeyword(part) for part in parts):
             raise ValueError(f"invalid relative module import in entrypoint: {path}")
+        if allowed_relative_modules is not None and parts[0] not in allowed_relative_modules:
+            raise ValueError(f"unlisted relative entrypoint module: {path}: {node.module}")
         module_file = package_dir.joinpath(*parts).with_suffix(".py")
         module_package = package_dir.joinpath(*parts) / "__init__.py"
         target = module_file if module_file.is_file() else module_package if module_package.is_file() else None
         if target is None:
             raise ValueError(f"relative entrypoint module is missing: {path}: {node.module}")
-        if target.name == "__init__.py":
-            target_exports = _top_level_names(_parse_source(target.read_text(encoding="utf-8"), target), include_imports=True)
-        else:
-            target_exports = _top_level_names(_parse_source(target.read_text(encoding="utf-8"), target), include_imports=True)
+        target_exports = stable_exports(target)
         if any(alias.name != "*" and alias.name not in target_exports for alias in node.names):
             missing = sorted(alias.name for alias in node.names if alias.name != "*" and alias.name not in target_exports)
             raise ValueError(f"relative entrypoint symbol is missing: {path}: {node.module}:{','.join(missing)}")
+
+    for node in tree.body:
+        if isinstance(node, ast.Import) or (isinstance(node, ast.ImportFrom) and node.level == 0 and node.module != "__future__"):
+            roots = (
+                {alias.name.split(".", 1)[0] for alias in node.names}
+                if isinstance(node, ast.Import)
+                else {(node.module or "").split(".", 1)[0]}
+            )
+            if not roots <= _ENTRYPOINT_IMPORT_ROOTS:
+                raise ValueError(f"unsupported absolute module entrypoint import: {path}")
+            if not _absolute_import_resolves(node):
+                raise ValueError(f"unresolvable absolute module entrypoint import: {path}")
+
     imported_names = {
         alias.asname or alias.name
-        for node in relative_imports
+        for node in tree.body
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        and (not isinstance(node, ast.ImportFrom) or node.module != "__future__")
         for alias in node.names
         if alias.name != "*"
     }
     has_star_import = any(
-        alias.name == "*"
-        for node in relative_imports
-        for alias in node.names
+        alias.name == "*" for node in relative_imports for alias in node.names
     )
-    local_names = {
-        node.name
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-    }
     dynamic_names: set[str] = set()
+    local_names: set[str] = set()
+    _ENTRYPOINT_DANGEROUS_NAMES = frozenset({
+        "__import__", "builtins", "compile", "delattr", "eval", "exec", "getattr",
+        "globals", "locals", "setattr", "vars",
+    })
+    _ENTRYPOINT_DANGEROUS_ATTRS = frozenset({
+        "__dict__", "__getattribute__", "__setattr__", "__delattr__", "modules",
+        "__class__", "__mro__", "__subclasses__", "__globals__", "__code__", "__closure__", "__func__",
+        "system", "popen", "run", "Popen", "call", "check_call", "check_output",
+        "import_module", "exec", "eval", "compile", "setattr", "delattr",
+        "open", "write", "write_text", "write_bytes", "unlink", "remove", "mkdir",
+        "rmdir", "rename", "replace", "chmod", "connect", "send", "recv",
+    })
+    entrypoint_builtins = frozenset(set(_SAFE_BUILTIN_NAMES) | {"sorted", "all", "any", "print"})
+
+    def local_function_is_safe(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+        """Internal helper for local_function_is_safe."""
+        if not _safe_function_definition(
+            node,
+            frozenset(set(entrypoint_builtins) | imported_names | local_names | {"__doc__"}),
+            postponed_annotations=True,
+        ):
+            return False
+        allowed_call_names = set(entrypoint_builtins) | imported_names | {
+            statement.name
+            for statement in body
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        for child in ast.walk(node):
+            if isinstance(child, (ast.Import, ast.ImportFrom, ast.While, ast.For, ast.AsyncFor, *_TRY_TYPES, ast.With, ast.AsyncWith, ast.Global, ast.Nonlocal, ast.NamedExpr, ast.Delete, ast.Assert, ast.Lambda, ast.Yield, ast.YieldFrom, ast.Await)):
+                return False
+            if isinstance(child, ast.Name) and child.id in _ENTRYPOINT_DANGEROUS_NAMES:
+                return False
+            if isinstance(child, ast.Attribute) and child.attr in _ENTRYPOINT_DANGEROUS_ATTRS:
+                return False
+            if isinstance(child, ast.Call):
+                if isinstance(child.func, ast.Name):
+                    if child.func.id in _ENTRYPOINT_DANGEROUS_NAMES:
+                        return False
+                    if child.func.id not in allowed_call_names:
+                        return False
+                if isinstance(child.func, ast.Attribute) and child.func.attr in _ENTRYPOINT_DANGEROUS_ATTRS:
+                    return False
+        return True
 
     def is_main_guard(node: ast.If) -> bool:
+        """Internal helper for is_main_guard."""
         test = node.test
         return (
             isinstance(test, ast.Compare)
             and len(test.ops) == 1
-            and isinstance(test.ops[0], (ast.Eq, ast.Is))
+            and isinstance(test.ops[0], ast.Eq)
             and len(test.comparators) == 1
             and (
                 (
@@ -1078,86 +1677,120 @@ def _entrypoint_contract(path: Path) -> tuple[bool, str | None, tuple[str, ...],
             )
         )
 
-    def is_safe_call(node: ast.Call) -> bool:
-        function = node.func
-        if isinstance(function, ast.Name):
-            return function.id in {
-                "SystemExit",
-                "callable",
-                "globals",
-            } or function.id in imported_names or function.id in local_names or function.id in dynamic_names
-        if isinstance(function, ast.Attribute):
-            if function.attr == "get" and isinstance(function.value, ast.Call):
-                return (
-                    isinstance(function.value.func, ast.Name)
-                    and function.value.func.id == "globals"
-                )
-            if isinstance(function.value, ast.Name):
-                return function.value.id in imported_names
+    def safe_value(node: ast.AST) -> bool:
+        """Internal helper for safe_value."""
+        if isinstance(node, (ast.Constant, ast.Name)):
+            return True
+        if isinstance(node, ast.Attribute):
+            return node.attr not in _ENTRYPOINT_DANGEROUS_ATTRS and safe_value(node.value)
+        if isinstance(node, ast.Subscript):
+            return safe_value(node.value) and safe_value(node.slice)
+        if isinstance(node, ast.Slice):
+            return all(part is None or safe_value(part) for part in (node.lower, node.upper, node.step))
+        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+            return all(safe_value(item) for item in node.elts)
         return False
 
-    def validate_guard(node: ast.AST) -> bool:
+    def is_safe_dispatch_call(node: ast.Call) -> bool:
+        """Internal helper for is_safe_dispatch_call."""
+        if not isinstance(node.func, ast.Name):
+            return False
+        if node.func.id not in imported_names | local_names | dynamic_names:
+            return False
+        return all(safe_value(argument) for argument in node.args) and all(
+            safe_value(keyword_node.value) for keyword_node in node.keywords
+        )
+
+    def validate_guard_statements(statements: list[ast.stmt]) -> bool:
+        """Internal helper for validate_guard_statements."""
         delegated = False
-        for child in ast.walk(node):
-            if isinstance(child, ast.Assign):
-                targets = [target for target in child.targets if isinstance(target, ast.Name)]
-                if not targets or any(not target.id.startswith("_phase192_") for target in targets):
-                    raise ValueError(f"unsafe module entrypoint statement: {path}")
-                dynamic_names.update(target.id for target in targets)
-            elif isinstance(child, ast.Call):
-                if not is_safe_call(child):
-                    raise ValueError(f"unsafe module entrypoint call: {path}")
-                if (
-                    isinstance(child.func, ast.Name)
-                    and child.func.id in imported_names | local_names | dynamic_names
+        for statement in statements:
+            if isinstance(statement, ast.Assign):
+                if len(statement.targets) != 1 or not isinstance(statement.targets[0], ast.Name):
+                    raise ValueError(f"unsafe module entrypoint assignment: {path}")
+                target = statement.targets[0].id
+                value = statement.value
+                if not target.startswith("_phase192_") or not (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)
+                    and isinstance(value.func.value, ast.Call)
+                    and isinstance(value.func.value.func, ast.Name)
+                    and value.func.value.func.id == "globals"
+                    and not value.func.value.args
+                    and not value.func.value.keywords
+                    and value.func.attr == "get"
+                    and len(value.args) == 1
+                    and isinstance(value.args[0], ast.Constant)
+                    and isinstance(value.args[0].value, str)
+                    and not value.keywords
                 ):
-                    delegated = True
+                    raise ValueError(f"unsafe module entrypoint assignment: {path}")
+                dynamic_names.add(target)
+                continue
+            if isinstance(statement, ast.If):
+                if statement.orelse or not (
+                    isinstance(statement.test, ast.Call)
+                    and isinstance(statement.test.func, ast.Name)
+                    and statement.test.func.id == "callable"
+                    and len(statement.test.args) == 1
+                    and not statement.test.keywords
+                    and isinstance(statement.test.args[0], ast.Name)
+                    and statement.test.args[0].id in dynamic_names
+                ):
+                    raise ValueError(f"unsafe module entrypoint control flow: {path}")
+                delegated = validate_guard_statements(statement.body) or delegated
+                continue
+            if isinstance(statement, ast.Raise):
+                exception = statement.exc
+                if not (
+                    isinstance(exception, ast.Call)
+                    and isinstance(exception.func, ast.Name)
+                    and exception.func.id == "SystemExit"
+                    and len(exception.args) == 1
+                    and not exception.keywords
+                    and isinstance(exception.args[0], ast.Call)
+                    and is_safe_dispatch_call(exception.args[0])
+                ):
+                    raise ValueError(f"unsafe module entrypoint raise: {path}")
+                delegated = True
+                continue
+            raise ValueError(f"unsafe module entrypoint statement: {path}")
         return delegated
 
     body = list(tree.body)
     if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
         body = body[1:]
     delegated = False
+    definitions: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for statement in body:
         if isinstance(statement, ast.Import):
-            if any(alias.name.split(".", 1)[0] not in _ENTRYPOINT_IMPORT_ROOTS for alias in statement.names):
-                raise ValueError(f"unsafe module entrypoint import: {path}")
             continue
         if isinstance(statement, ast.ImportFrom):
             if statement.module == "__future__":
-                if statement.level != 0 or any(
-                    alias.name != "annotations" or alias.asname is not None
-                    for alias in statement.names
-                ):
+                if statement.level != 0 or any(alias.name != "annotations" or alias.asname is not None for alias in statement.names):
                     raise ValueError(f"unsupported future import in module entrypoint: {path}")
                 continue
             if statement.level == 0:
-                root = (statement.module or "").split(".", 1)[0]
-                if root not in _ENTRYPOINT_IMPORT_ROOTS:
-                    raise ValueError(f"unsafe module entrypoint import: {path}")
+                continue
+            if statement.level != 1:
+                raise ValueError(f"unsupported relative import in module entrypoint: {path}")
             continue
-        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if statement.decorator_list:
-                raise ValueError(f"unsafe module entrypoint decorator: {path}")
-            available = frozenset(_SAFE_BUILTIN_NAMES)
-            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if not _safe_function_definition(statement, available, postponed_annotations=True):
-                    raise ValueError(f"unsafe module entrypoint definition: {path}")
-            elif not _safe_class_definition(statement, available, postponed_annotations=True):
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if statement.decorator_list or not local_function_is_safe(statement):
                 raise ValueError(f"unsafe module entrypoint definition: {path}")
-            if has_star_import:
-                raise ValueError(f"wildcard module entrypoint has executable definitions: {path}")
+            definitions.append(statement)
+            local_names.add(statement.name)
             continue
+        if isinstance(statement, ast.ClassDef):
+            raise ValueError(f"unsafe module entrypoint class definition: {path}")
         if isinstance(statement, ast.If) and is_main_guard(statement):
-            delegated = validate_guard(statement) or delegated
+            delegated = validate_guard_statements(statement.body) or delegated
             continue
         raise ValueError(f"unsafe module entrypoint statement: {path}")
     if not has_star_import and not delegated:
         raise ValueError(f"module entrypoint has no delegated callable: {path}")
     normalized = ast.Module(body=body, type_ignores=[])
-    digest = hashlib.sha256(
-        ast.dump(normalized, include_attributes=False).encode("utf-8")
-    ).hexdigest()
+    digest = hashlib.sha256(ast.dump(normalized, include_attributes=False).encode("utf-8")).hexdigest()
     contract: list[str] = []
     for node in ast.walk(normalized):
         if isinstance(node, ast.ImportFrom) and node.level == 1:
@@ -1170,6 +1803,7 @@ def _entrypoint_contract(path: Path) -> tuple[bool, str | None, tuple[str, ...],
     return True, digest, tuple(sorted(set(contract))), risks
 
 def _initializer_bound_names(node: ast.AST) -> tuple[str, ...]:
+    """Internal helper for _initializer_bound_names."""
     targets: list[ast.AST] = []
     if isinstance(node, ast.Assign):
         targets.extend(node.targets)
@@ -1177,6 +1811,7 @@ def _initializer_bound_names(node: ast.AST) -> tuple[str, ...]:
         targets.append(node.target)
     names: list[str] = []
     def collect(target: ast.AST) -> None:
+        """Internal helper for collect."""
         if isinstance(target, ast.Name):
             names.append(target.id)
         elif isinstance(target, (ast.Tuple, ast.List)):
@@ -1187,6 +1822,7 @@ def _initializer_bound_names(node: ast.AST) -> tuple[str, ...]:
     return tuple(names)
 
 def _literal_initializer_value(node: ast.AST) -> bool:
+    """Internal helper for _literal_initializer_value."""
     if isinstance(node, ast.Constant):
         return True
     if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
@@ -1200,6 +1836,7 @@ def _literal_initializer_value(node: ast.AST) -> bool:
     return False
 
 def _is_docstring_statement(statement: str) -> bool:
+    """Internal helper for _is_docstring_statement."""
     try:
         parsed = ast.parse(statement)
     except SyntaxError:
@@ -1212,6 +1849,7 @@ def _is_docstring_statement(statement: str) -> bool:
     )
 
 def _statement_bound_names(statement: str) -> frozenset[str]:
+    """Internal helper for _statement_bound_names."""
     try:
         body = ast.parse(statement).body
     except SyntaxError:
@@ -1220,6 +1858,7 @@ def _statement_bound_names(statement: str) -> frozenset[str]:
         return frozenset()
 
     def collect(node: ast.stmt) -> set[str]:
+        """Internal helper for collect."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             return {node.name}
         if isinstance(node, ast.Import):
@@ -1237,6 +1876,7 @@ def _statement_bound_names(statement: str) -> frozenset[str]:
     return frozenset(collect(body[0]))
 
 def _statement_loaded_names(statement: str) -> frozenset[str]:
+    """Internal helper for _statement_loaded_names."""
     try:
         tree = ast.parse(statement)
     except SyntaxError:
@@ -1247,6 +1887,7 @@ def _statement_loaded_names(statement: str) -> frozenset[str]:
     )
 
 def _safe_definition_expression(node: ast.AST | None) -> bool:
+    """Internal helper for _safe_definition_expression."""
     if node is None:
         return True
     return not any(
@@ -1255,6 +1896,7 @@ def _safe_definition_expression(node: ast.AST | None) -> bool:
     )
 
 def _loaded_names(node: ast.AST | None) -> frozenset[str]:
+    """Internal helper for _loaded_names."""
     if node is None:
         return frozenset()
     return frozenset(
@@ -1268,6 +1910,7 @@ def _safe_function_definition(
     *,
     postponed_annotations: bool = False,
 ) -> bool:
+    """Internal helper for _safe_function_definition."""
     annotations = [
         node.returns,
         *(
@@ -1297,6 +1940,7 @@ def _safe_class_definition(
     *,
     postponed_annotations: bool = False,
 ) -> bool:
+    """Internal helper for _safe_class_definition."""
     if node.decorator_list or node.keywords:
         return False
     if any(not _safe_definition_expression(base) for base in node.bases):
@@ -1344,6 +1988,7 @@ _SAFE_BUILTIN_NAMES = frozenset({
 })
 
 def _safe_inert_initializer_condition(node: ast.AST) -> bool:
+    """Internal helper for _safe_inert_initializer_condition."""
     return (
         isinstance(node, ast.Constant)
         and node.value is False
@@ -1357,6 +2002,113 @@ def _safe_inert_initializer_condition(node: ast.AST) -> bool:
         and node.value.id == "typing"
     )
 
+@lru_cache(maxsize=256)
+def _module_spec_exists(module_name: str) -> bool:
+    """Internal helper for _module_spec_exists."""
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except (ImportError, ModuleNotFoundError, AttributeError, ValueError):
+        return False
+
+def _absolute_import_resolves(node: ast.Import | ast.ImportFrom) -> bool:
+    """Internal helper for _absolute_import_resolves."""
+    if isinstance(node, ast.Import):
+        return bool(node.names) and all(
+            alias.name.split(".", 1)[0] in _SAFE_IMPORT_ROOTS
+            and _module_spec_exists(alias.name)
+            for alias in node.names
+        )
+    if node.level or not node.module or not node.names:
+        return False
+    root = node.module.split(".", 1)[0]
+    if root not in _SAFE_IMPORT_ROOTS or not _module_spec_exists(node.module):
+        return False
+    try:
+        module = importlib.import_module(node.module)
+    except (ImportError, ModuleNotFoundError, AttributeError, ValueError):
+        return False
+    for alias in node.names:
+        if alias.name == "*" or alias.name.startswith("__"):
+            return False
+        if hasattr(module, alias.name):
+            continue
+        if not _module_spec_exists(f"{node.module}.{alias.name}"):
+            return False
+    return True
+
+def _section_alias_bindings(
+    statements: tuple[str, ...] | list[str],
+    allowed_section_imports: frozenset[str],
+) -> dict[str, str]:
+    """Internal helper for _section_alias_bindings."""
+    bindings: dict[str, str] = {}
+    for statement in statements:
+        try:
+            tree = ast.parse(statement)
+        except SyntaxError:
+            continue
+        if len(tree.body) != 1 or not isinstance(tree.body[0], ast.ImportFrom):
+            continue
+        node = tree.body[0]
+        if node.level != 1 or node.module is not None:
+            continue
+        for alias in node.names:
+            if alias.name in allowed_section_imports and alias.asname:
+                bindings[alias.asname] = alias.name
+    return bindings
+
+def _definitely_bound_names(statement: str) -> frozenset[str]:
+    """Internal helper for _definitely_bound_names."""
+    try:
+        tree = ast.parse(statement)
+    except SyntaxError:
+        return frozenset()
+    if len(tree.body) != 1:
+        return frozenset()
+    node = tree.body[0]
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign, ast.AugAssign)):
+        return frozenset(_statement_bound_names(statement))
+    if isinstance(node, ast.If):
+        if not node.orelse:
+            return frozenset()
+        def block(statements: list[ast.stmt]) -> set[str]:
+            """Internal helper for block."""
+            result: set[str] = set()
+            for item in statements:
+                text = ast.unparse(item)
+                result.update(_definitely_bound_names(text))
+            return result
+        return frozenset(block(node.body) & block(node.orelse))
+    return frozenset()
+
+def _literal_truth_value(node: ast.AST) -> bool | None:
+    """Internal helper for _literal_truth_value."""
+    try:
+        value = ast.literal_eval(node)
+    except (TypeError, ValueError, SyntaxError):
+        return None
+    return bool(value)
+
+def _statement_deleted_names(statement: str) -> frozenset[str]:
+    """Internal helper for _statement_deleted_names."""
+    try:
+        tree = ast.parse(statement)
+    except SyntaxError:
+        return frozenset()
+    if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Delete):
+        return frozenset()
+    names: set[str] = set()
+    def collect(target: ast.AST) -> None:
+        """Internal helper for collect."""
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                collect(item)
+    for target in tree.body[0].targets:
+        collect(target)
+    return frozenset(names)
+
 def _safe_initializer_addition(
     statement: str,
     allowed_section_imports: frozenset[str] = frozenset(),
@@ -1364,7 +2116,9 @@ def _safe_initializer_addition(
     available_names: frozenset[str] = _SAFE_BUILTIN_NAMES,
     *,
     postponed_annotations: bool = False,
+    section_exports: Mapping[str, frozenset[str]] | None = None,
 ) -> bool:
+    """Internal helper for _safe_initializer_addition."""
     try:
         parsed = ast.parse(statement)
     except SyntaxError:
@@ -1373,7 +2127,7 @@ def _safe_initializer_addition(
         return False
     node = parsed.body[0]
     bound = _statement_bound_names(statement)
-    if bound & forbidden_names:
+    if not (isinstance(node, ast.ImportFrom) and node.level) and bound & forbidden_names:
         return False
     if isinstance(node, ast.Expr):
         return isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
@@ -1392,12 +2146,11 @@ def _safe_initializer_addition(
         node, available_names, postponed_annotations=postponed_annotations
     )
     if isinstance(node, ast.Import):
-        return bool(node.names) and all(
+        return bool(node.names) and _absolute_import_resolves(node) and all(
             alias.name.split(".", 1)[0] not in {"builtins", "__builtins__", "__builtin__"}
             and alias.name.split(".", 1)[0] not in {"exec", "eval", "compile"}
             and not alias.name.startswith("__")
             and not (alias.asname or "").startswith("__")
-            and alias.name.split(".", 1)[0] in _SAFE_IMPORT_ROOTS
             for alias in node.names
         )
     if isinstance(node, ast.ImportFrom):
@@ -1405,27 +2158,46 @@ def _safe_initializer_addition(
             return False
         if not node.level:
             root = (node.module or "").split(".", 1)[0]
-            return bool(node.names) and root not in {"builtins", "__builtins__", "__builtin__", "exec", "eval", "compile"} and all(
+            return bool(node.names) and _absolute_import_resolves(node) and all(
                 alias.name != "*"
                 and not alias.name.startswith("__")
                 and not (alias.asname or "").startswith("__")
-                and root in _SAFE_IMPORT_ROOTS
+                and root not in {"builtins", "__builtins__", "__builtin__", "exec", "eval", "compile"}
                 for alias in node.names
             )
+        section_exports = section_exports or {}
         if node.module is None:
-            return bool(node.names) and all(
+            valid = bool(node.names) and all(
                 alias.name in allowed_section_imports
                 and alias.name != "*"
                 and (alias.asname is None or not alias.asname.startswith("__"))
                 for alias in node.names
             )
-        return bool(node.names) and all(
-            node.module.split(".", 1)[0] in allowed_section_imports
+            if not valid:
+                return False
+            legitimate = {
+                alias.name
+                for alias in node.names
+                if alias.asname is None or alias.asname == alias.name
+            }
+            return not ((bound - legitimate) & forbidden_names)
+        section_name = node.module.split(".", 1)[0]
+        exports = section_exports.get(section_name)
+        valid = bool(node.names) and exports is not None and all(
+            alias.name in exports
             and alias.name != "*"
             and not alias.name.startswith("__")
             and not (alias.asname or "").startswith("__")
             for alias in node.names
         )
+        if not valid:
+            return False
+        legitimate = {
+            alias.name
+            for alias in node.names
+            if alias.asname is None or alias.asname == alias.name
+        }
+        return not ((bound - legitimate) & forbidden_names)
     if isinstance(node, ast.If):
         if (
             node.orelse
@@ -1440,12 +2212,13 @@ def _safe_initializer_addition(
                 forbidden_names,
                 available_names,
                 postponed_annotations=postponed_annotations,
+                section_exports=section_exports,
             )
             for item in node.body
         )
     if isinstance(node, ast.Assert):
         return (
-            _literal_initializer_value(node.test)
+            _literal_truth_value(node.test) is True
             and (node.msg is None or _literal_initializer_value(node.msg))
         )
     if isinstance(node, ast.Assign):
@@ -1461,12 +2234,59 @@ def _safe_initializer_addition(
         ) and node.value is not None and _literal_initializer_value(node.value)
     return False
 
+def _section_tuple_names(statement: str) -> tuple[str, ...] | None:
+    """Internal helper for _section_tuple_names."""
+    try:
+        tree = ast.parse(statement)
+    except SyntaxError:
+        return None
+    if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Assign):
+        return None
+    assignment = tree.body[0]
+    if not any(isinstance(target, ast.Name) and target.id == "_PHASE192_SECTION_MODULES" for target in assignment.targets):
+        return None
+    value = assignment.value
+    if not isinstance(value, (ast.Tuple, ast.List)):
+        return None
+    names = tuple(item.id for item in value.elts if isinstance(item, ast.Name))
+    if len(names) != len(value.elts) or any(not name.startswith("_phase192_section_") for name in names):
+        return None
+    return names
+
+
+def _initializer_statements_match(
+    base_statement: str,
+    head_statement: str,
+    preceding_head: tuple[str, ...] = (),
+    allowed_section_imports: frozenset[str] = frozenset(),
+) -> bool:
+    """Internal helper for _initializer_statements_match."""
+    if base_statement == head_statement:
+        return True
+    base_sections = _section_tuple_names(base_statement)
+    head_sections = _section_tuple_names(head_statement)
+    if base_sections is None or head_sections is None or len(set(head_sections)) != len(head_sections):
+        return False
+    bindings = _section_alias_bindings(preceding_head, allowed_section_imports)
+    if any(name not in bindings or bindings[name] not in allowed_section_imports for name in head_sections):
+        return False
+    cursor = 0
+    for name in base_sections:
+        try:
+            cursor = head_sections.index(name, cursor) + 1
+        except ValueError:
+            return False
+    return True
+
+
 def _initializer_is_additive(
     base_initializer: tuple[str, ...],
     head_initializer: tuple[str, ...],
     allowed_section_imports: frozenset[str] = frozenset(),
     forbidden_external_names: frozenset[str] = frozenset(),
+    section_exports: Mapping[str, frozenset[str]] | None = None,
 ) -> bool:
+    """Internal helper for _initializer_is_additive."""
     base = list(base_initializer)
     head = list(head_initializer)
     base_has_docstring = bool(base) and _is_docstring_statement(base[0])
@@ -1480,9 +2300,20 @@ def _initializer_is_additive(
     matched_by_head: dict[int, str] = {}
     cursor = 0
     for statement in base:
-        try:
-            index = head.index(statement, cursor)
-        except ValueError:
+        index = next(
+            (
+                candidate_index
+                for candidate_index in range(cursor, len(head))
+                if _initializer_statements_match(
+                     statement,
+                     head[candidate_index],
+                     tuple(head[:candidate_index]),
+                     allowed_section_imports,
+                 )
+            ),
+            None,
+        )
+        if index is None:
             return False
         matched_indexes.add(index)
         matched_by_head[index] = statement
@@ -1500,7 +2331,8 @@ def _initializer_is_additive(
     for index, statement in enumerate(head):
         bound = _statement_bound_names(statement)
         if index in matched_by_head:
-            available_names.update(bound)
+            available_names.difference_update(_statement_deleted_names(statement))
+            available_names.update(_definitely_bound_names(statement))
             available_names.update(_statement_loaded_names(statement))
             continue
         if bound & seen_additions:
@@ -1511,6 +2343,7 @@ def _initializer_is_additive(
             forbidden_names,
             frozenset(available_names),
             postponed_annotations=postponed_annotations,
+            section_exports=section_exports,
         ):
             return False
         seen_additions.update(bound)
@@ -1518,6 +2351,7 @@ def _initializer_is_additive(
     return True
 
 def _sections_preserve_order(base: tuple[str, ...], head: tuple[str, ...]) -> bool:
+    """Internal helper for _sections_preserve_order."""
     if len(set(base)) != len(base) or len(set(head)) != len(head):
         return False
     index = 0
@@ -1526,6 +2360,14 @@ def _sections_preserve_order(base: tuple[str, ...], head: tuple[str, ...]) -> bo
             index += 1
     return index == len(base)
 
+def _contract_preserves_order(base: tuple[str, ...], head: tuple[str, ...]) -> bool:
+    """Return whether every baseline contract entry remains in order."""
+    cursor = 0
+    for entry in head:
+        if cursor < len(base) and entry == base[cursor]:
+            cursor += 1
+    return cursor == len(base)
+
 def _surface(
     root: Path,
     facade: Path,
@@ -1533,6 +2375,7 @@ def _surface(
     *,
     reject_conditional: bool = True,
 ) -> tuple:
+    """Internal helper for _surface."""
     relative = facade.relative_to(root).as_posix()
     package = facade.with_suffix("")
     section_modules = section_modules or _section_modules_for_root(root)
@@ -1543,16 +2386,26 @@ def _surface(
     conditional_names: set[str] = set()
     risk_signatures: set[str] = set()
     conditional_contract: list[str] = []
+    relative_star_contract: list[str] = []
 
     def add_conditional_contract(signature: str) -> None:
+        """Internal helper for add_conditional_contract."""
         conditional_contract.append(signature)
 
     for section in sections:
         section_source = section.read_text(encoding="utf-8")
         section_tree = _parse_source(section_source, section)
+        relative_star_contract.extend(
+            _relative_import_contract(
+                section_tree,
+                package,
+                section,
+                frozenset(path.stem for path in sections),
+            )
+        )
         exports = _section_exports(
             section_source,
-            section.relative_to(root).as_posix(),
+            str(section),
             reject_conditional=reject_conditional,
         )
         section_exports.update(exports)
@@ -1570,9 +2423,17 @@ def _surface(
         )
     facade_source = facade.read_text(encoding="utf-8")
     facade_tree = _parse_source(facade_source, facade)
+    relative_star_contract.extend(
+        _relative_import_contract(
+            facade_tree,
+            facade.parent,
+            facade,
+            frozenset(path.stem for path in sections),
+        )
+    )
     facade_symbols = _symbols(
         facade_source,
-        relative,
+        str(facade),
         reject_conditional=reject_conditional,
     )
     exported = set(section_exports)
@@ -1590,7 +2451,17 @@ def _surface(
     )
     initializer = package / "__init__.py"
     initializer_tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
-    entrypoint_present, entrypoint_digest, entrypoint_contract, entrypoint_risks = _entrypoint_contract(package / "__main__.py")
+    _relative_import_contract(
+        initializer_tree,
+        package,
+        initializer,
+        frozenset(path.stem for path in sections),
+    )
+    entrypoint_present, entrypoint_digest, entrypoint_contract, entrypoint_risks = _entrypoint_contract(
+        package / "__main__.py",
+        frozenset(path.stem for path in sections),
+        reject_conditional=reject_conditional,
+    )
     risk_signatures.update(entrypoint_risks)
     _reject_unsupported_module_bindings(initializer_tree, str(initializer))
     risk_signatures.update(_namespace_risk_signatures(initializer_tree))
@@ -1621,6 +2492,7 @@ def _surface(
         entrypoint_digest,
         entrypoint_contract,
         owner_map_tuple,
+        tuple(relative_star_contract),
     )
 
 def _surfaces(
@@ -1628,6 +2500,7 @@ def _surfaces(
     *,
     strict: bool = True,
 ) -> dict[str, tuple]:
+    """Internal helper for _surfaces."""
     result: dict[str, tuple] = {}
     section_modules = _section_modules_for_root(root)
     for facade in _split_facades(root):
@@ -1683,14 +2556,16 @@ def _conditional_signature_names(signature: str) -> set[str]:
     return {name for name in name_text.split(",") if name}
 
 def _compare_surfaces(base_surfaces, head_surfaces, *, strict: bool = True) -> list[str]:
+    """Internal helper for _compare_surfaces."""
     errors: list[str] = []
 
     def unpack(surface):
-        if len(surface) > 13:
+        """Internal helper for unpack."""
+        if len(surface) > 14:
             raise ValueError(f"unsupported identity surface shape: {len(surface)} fields")
         defaults = (
             frozenset(), (), (), frozenset(), None, frozenset(), None, (),
-            frozenset(), (), None, (), (),
+            frozenset(), (), None, (), (), (),
         )
         return tuple(surface) + defaults[len(surface):]
 
@@ -1713,6 +2588,7 @@ def _compare_surfaces(base_surfaces, head_surfaces, *, strict: bool = True) -> l
             base_entrypoint_digest,
             base_entrypoint_contract,
             base_owner_map,
+            base_relative_star_contract,
         ) = unpack(base_surface)
         (
             head_symbols,
@@ -1728,6 +2604,7 @@ def _compare_surfaces(base_surfaces, head_surfaces, *, strict: bool = True) -> l
             head_entrypoint_digest,
             head_entrypoint_contract,
             head_owner_map,
+            head_relative_star_contract,
         ) = unpack(current)
         missing_sections = sorted(set(base_sections) - set(head_sections))
         extra_sections = sorted(set(head_sections) - set(base_sections))
@@ -1741,6 +2618,13 @@ def _compare_surfaces(base_surfaces, head_surfaces, *, strict: bool = True) -> l
             errors.append(f"SECTION_EXPORT_OWNER_CHANGED {relative}")
         if strict and tuple(base_owner_map or ()) != tuple(head_owner_map or ()):
             errors.append(f"SYMBOL_OWNER_CHANGED {relative}")
+        base_relative = tuple(base_relative_star_contract or ())
+        head_relative = tuple(head_relative_star_contract or ())
+        if (
+            (strict and base_relative != head_relative)
+            or (not strict and not _contract_preserves_order(base_relative, head_relative))
+        ):
+            errors.append(f"RELATIVE_STAR_IMPORT_CHANGED {relative}")
         if not strict and base_risks != head_risks:
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
         if not strict:
@@ -1809,6 +2693,7 @@ def _compare_surfaces(base_surfaces, head_surfaces, *, strict: bool = True) -> l
             base_exports_by_section = dict(base_section_map)
             head_exports_by_section = dict(head_section_map)
             def duplicate_exports(exports_by_section):
+                """Internal helper for duplicate_exports."""
                 owners: dict[str, set[str]] = {}
                 for section_name, exports in exports_by_section.items():
                     for name in exports:
@@ -1861,6 +2746,7 @@ def _compare_surfaces(base_surfaces, head_surfaces, *, strict: bool = True) -> l
                 frozenset(head_sections),
                 frozenset(base_external_names)
                 | (set(head_section_exports) - set(base_section_exports)),
+                dict(head_section_map or ()),
             )
         if not initializer_ok:
             errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
@@ -1891,10 +2777,11 @@ def _compare_surfaces(base_surfaces, head_surfaces, *, strict: bool = True) -> l
     return errors
 
 def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = True) -> int:
+    """Internal helper for compare_revisions."""
     base = _git(repository, "rev-parse", "--verify", base + "^{commit}").strip()
     head = _git(repository, "rev-parse", "--verify", head + "^{commit}").strip()
     with _revision_checkout(repository, base) as base_root, _revision_checkout(repository, head) as head_root:
-        base_surfaces = _surfaces(base_root, strict=True)
+        base_surfaces = _surfaces(base_root, strict=strict)
         head_surfaces = _surfaces(head_root, strict=strict)
     errors = _compare_surfaces(base_surfaces, head_surfaces, strict=strict)
     if errors:
@@ -1909,6 +2796,7 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
     return 0
 
 def main(argv: list[str] | None = None) -> int:
+    """Internal helper for main."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
     parser.add_argument("--head", required=True)

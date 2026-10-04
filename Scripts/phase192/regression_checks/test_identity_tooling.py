@@ -456,6 +456,59 @@ class IdentityToolingTests(unittest.TestCase):
         )
         self.assertEqual(27, len(relative))
 
+    def test_split_identity_surface_rejects_relative_star_chain_change(self) -> None:
+        """Changing a section's relative star-import source changes runtime overwrite order."""
+        with tempfile.TemporaryDirectory() as temp:
+            roots = [Path(temp) / name for name in ("base", "head")]
+            for root in roots:
+                package = root / "Scripts/smoke/foxrun/fixture"
+                package.mkdir(parents=True)
+                (root / "Scripts/smoke/foxrun/fixture.py").write_text("PUBLIC = 1\n", encoding="utf-8")
+                (package / "__init__.py").write_text(
+                    "from . import a as _phase192_section_0\n"
+                    "from . import c as _phase192_section_1\n"
+                    "from . import b as _phase192_section_2\n"
+                    "_PHASE192_SECTION_MODULES = (_phase192_section_0, _phase192_section_1, _phase192_section_2)\n",
+                    encoding="utf-8",
+                )
+                for name, value in (("a", 1), ("c", 2)):
+                    (package / f"{name}.py").write_text(
+                        f"X = {value}\n__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                        encoding="utf-8",
+                    )
+                (package / "b.py").write_text(
+                    "from .a import *\n__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                    encoding="utf-8",
+                )
+            (roots[1] / "Scripts/smoke/foxrun/fixture/b.py").write_text(
+                "from .c import *\n__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                encoding="utf-8",
+            )
+            base = compare_identity_surfaces._surfaces(roots[0], strict=True)
+            head = compare_identity_surfaces._surfaces(roots[1], strict=True)
+            errors = compare_identity_surfaces._compare_surfaces(base, head, strict=True)
+            self.assertIn("RELATIVE_STAR_IMPORT_CHANGED Scripts/smoke/foxrun/fixture.py", errors)
+
+    def test_split_identity_surface_rejects_missing_relative_facade_or_section_target(self) -> None:
+        """Facade and section relative imports must resolve to real files and exports."""
+        for location in ("facade", "section"):
+            with self.subTest(location=location), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                package = root / "Scripts/smoke/foxrun/fixture"
+                package.mkdir(parents=True)
+                facade_source = "from .missing import X\n" if location == "facade" else "PUBLIC = 1\n"
+                section_source = (
+                    "from .missing import X\n"
+                    "__all__ = [name for name in globals() if not name.startswith('__')]\n"
+                    if location == "section"
+                    else "LIVE = 1\n__all__ = [name for name in globals() if not name.startswith('__')]\n"
+                )
+                (root / "Scripts/smoke/foxrun/fixture.py").write_text(facade_source, encoding="utf-8")
+                (package / "__init__.py").write_text("from . import live\n", encoding="utf-8")
+                (package / "live.py").write_text(section_source, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._surfaces(root)
+
     def test_split_identity_surface_rejects_added_surface(self) -> None:
         """Identity equivalence rejects additions as well as removals."""
         base = {
@@ -486,6 +539,35 @@ class IdentityToolingTests(unittest.TestCase):
             )
         }
         self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
+
+    def test_split_identity_surface_allows_added_relative_section_contract(self) -> None:
+        """Adding a declared section preserves the baseline relative-import chain."""
+        with tempfile.TemporaryDirectory() as temp:
+            roots = [Path(temp) / name for name in ("base", "head")]
+            for root in roots:
+                package = root / "Scripts/smoke/foxrun/fixture"
+                package.mkdir(parents=True)
+                (root / "Scripts/smoke/foxrun/fixture.py").write_text(
+                    "PUBLIC = 1\n", encoding="utf-8"
+                )
+                (package / "live.py").write_text(
+                    "LIVE = 1\n__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                    encoding="utf-8",
+                )
+                (package / "__init__.py").write_text(
+                    "from . import live\n", encoding="utf-8"
+                )
+            head_package = roots[1] / "Scripts/smoke/foxrun/fixture"
+            (head_package / "new.py").write_text(
+                "NEW = 1\n__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                encoding="utf-8",
+            )
+            (head_package / "__init__.py").write_text(
+                "from . import live\nfrom . import new\n", encoding="utf-8"
+            )
+            base = compare_identity_surfaces._surfaces(roots[0], strict=False)
+            head = compare_identity_surfaces._surfaces(roots[1], strict=False)
+            self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
 
     def test_split_identity_surface_allows_safe_initializer_insertions(self) -> None:
         """Safe imports and literals may be inserted without freezing the package."""
@@ -560,6 +642,20 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertEqual(frozenset({"json", "_private", "PUBLIC", "visible"}), exports)
         self.assertEqual(frozenset({"json", "_private", "PUBLIC", "visible"}), symbols)
 
+    def test_split_identity_surface_rejects_ephemeral_exception_alias_export(self) -> None:
+        """An exception target is deleted after its handler and cannot be exported."""
+        source = (
+            "try:\n    raise Exception()\n"
+            "except Exception as PUBLIC:\n    pass\n"
+            "__all__ = ['PUBLIC']\n"
+        )
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._section_exports(source, "fixture.py")
+        self.assertNotIn(
+            "PUBLIC",
+            compare_identity_surfaces._symbols(source, "fixture.py", reject_conditional=False),
+        )
+
     def test_split_identity_surface_honors_explicit_imported_exports(self) -> None:
         """Explicit __all__ entries remain part of the runtime API even when imported."""
         source = "from dependency import Public\n__all__ = [\"Public\"]\n"
@@ -618,6 +714,28 @@ class IdentityToolingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 section_modules(package)
 
+    def test_split_identity_surface_rejects_explicit_relative_target_switch(self) -> None:
+        """Changing an explicit relative import target changes runtime wiring."""
+        with tempfile.TemporaryDirectory() as base_temp, tempfile.TemporaryDirectory() as head_temp:
+            def make(root: Path, target: str) -> dict:
+                """Internal helper for make."""
+                package = root / "Scripts/smoke/foxrun/fixture"
+                package.mkdir(parents=True)
+                facade = root / "Scripts/smoke/foxrun/fixture.py"
+                facade.write_text("PUBLIC = 1\n__all__ = ['PUBLIC']\n", encoding="utf-8")
+                (package / "__init__.py").write_text("from . import a\nfrom . import b\nfrom . import c\n", encoding="utf-8")
+                (package / "a.py").write_text("X = 1\n__all__ = ['X']\n", encoding="utf-8")
+                (package / "b.py").write_text(
+                    f"from .{target} import X\n__all__ = ['X']\n", encoding="utf-8"
+                )
+                (package / "c.py").write_text("X = 2\n__all__ = ['X']\n", encoding="utf-8")
+                (package / "__main__.py").write_text("from . import *\n", encoding="utf-8")
+                return {"Scripts/smoke/foxrun/fixture.py": compare_identity_surfaces._surface(root, facade)}
+            base = make(Path(base_temp), "a")
+            head = make(Path(head_temp), "c")
+            errors = compare_identity_surfaces._compare_surfaces(base, head, strict=True)
+            self.assertIn("RELATIVE_STAR_IMPORT_CHANGED Scripts/smoke/foxrun/fixture.py", errors)
+
     def test_split_identity_surface_rejects_orphan_section(self) -> None:
         """The base/head surface loader must reject a package section omitted from __init__."""
         with tempfile.TemporaryDirectory() as temp:
@@ -636,6 +754,27 @@ class IdentityToolingTests(unittest.TestCase):
                 compare_identity_surfaces._surfaces(root)
             surfaces = compare_identity_surfaces._surfaces(root, strict=False)
             self.assertIn("Scripts/smoke/foxrun/fixture.py", surfaces)
+
+    def test_split_identity_surface_rejects_declared_section_importing_orphan(self) -> None:
+        """A declared section cannot pull an unregistered sibling into its runtime surface."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "Scripts/smoke/foxrun/fixture"
+            package.mkdir(parents=True)
+            (root / "Scripts/smoke/foxrun/fixture.py").write_text(
+                "PUBLIC = 1\n", encoding="utf-8"
+            )
+            (package / "__init__.py").write_text(
+                "from . import core\n", encoding="utf-8"
+            )
+            (package / "core.py").write_text(
+                "from .evil import VALUE\nVALUE = VALUE\n"
+                "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                encoding="utf-8",
+            )
+            (package / "evil.py").write_text("VALUE = 1\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._surfaces(root, strict=False)
     def test_generated_hash_gate_rejects_changed_manifest_hash(self) -> None:
         """Phase192 test generated hash gate rejects changed manifest hash."""
         with tempfile.TemporaryDirectory() as temp:
@@ -1032,6 +1171,227 @@ class IdentityToolingTests(unittest.TestCase):
             compare_identity_surfaces._section_exports(source, "fixture.py"),
         )
 
+    def test_split_identity_surface_allows_ordinary_dynamic_attribute_and_import_lookup(self) -> None:
+        """Runtime object lookup is allowed when it is not a namespace escape."""
+        source = (
+            "import importlib\n"
+            "def read_field(obj, field):\n"
+            "    return getattr(obj, field, None)\n"
+            "def load_module(name):\n"
+            "    return importlib.import_module(name)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n"
+        )
+        exports = compare_identity_surfaces._section_exports(source, "fixture.py")
+        self.assertIn("read_field", exports)
+        self.assertIn("load_module", exports)
+
+    def test_split_identity_surface_tracks_only_static_sensitive_import_roots(self) -> None:
+        """Unknown import targets remain compatible while static sys aliases fail closed."""
+        allowed = (
+            "import importlib\n"
+            "def load(name, key):\n"
+            "    return getattr(importlib.import_module(name), key)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n"
+        )
+        exports = compare_identity_surfaces._section_exports(allowed, "fixture.py")
+        self.assertIn("load", exports)
+        rejected = (
+            "import importlib\n"
+            "name = 's' + 'ys'\n"
+            "module = importlib.import_module(name)\n"
+            "value = getattr(module, key)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n"
+        )
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._section_exports(rejected, "fixture.py")
+
+    def test_split_identity_surface_rejects_indirect_namespace_registry_aliases(self) -> None:
+        """Indirect reflection helpers cannot expose or mutate sys.modules."""
+        sources = (
+            "import sys, operator\n"
+            "get = operator.attrgetter('modules')\n"
+            "registry = get(sys)\n"
+            "registry[__name__].__setattr__('PUBLIC', 2)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "import sys\n"
+            "get = getattr\n"
+            "registry = get(sys, 'modules')\n"
+            "registry[__name__].__setattr__('PUBLIC', 2)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "import sys\n"
+            "get = object.__getattribute__\n"
+            "registry = get(sys, 'modules')\n"
+            "registry[__name__].__setattr__('PUBLIC', 2)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "import sys\n"
+            "registry = getattr(sys, 'mod' + 'ules')\n"
+            "registry[__name__].__setattr__('PUBLIC', 2)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "import sys\n"
+            "key = 'mod' + 'ules'\n"
+            "registry = sys.__getattribute__(key)\n"
+            "registry[__name__].__setattr__('PUBLIC', 2)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "import sys\n"
+            "sys.__setattr__('modules', {})\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "import sys\n"
+            "key = 'modules'\n"
+            "sys.__delattr__(key)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "import sys\n"
+            "key = 'mod' + 'ules'\n"
+            "registry = object.__getattribute__(sys, key)\n"
+            "registry[__name__] = object()\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "import sys\n"
+            "_phase192_get = getattr\n"
+            "registry = _phase192_get(sys, 'modules')\n"
+            "registry[__name__].__setattr__('PUBLIC', 2)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "import importlib\n"
+            "loader = importlib.import_module\n"
+            "module = loader('built' + 'ins')\n"
+            "module.exec('PUBLIC = 2')\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._section_exports(source, "fixture.py")
+
+    def test_split_identity_surface_rejects_dynamic_namespace_subscript_reads(self) -> None:
+        """Namespace subscripts cannot hide dynamic or dangerous key reads."""
+        for source in (
+            "value = globals()[key]\n__all__ = []\n",
+            "value = globals()['__builtins__']\n__all__ = []\n",
+            "value = locals()[key]\n__all__ = []\n",
+        ):
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._section_exports(source, "fixture.py")
+
+    def test_split_identity_surface_rejects_operator_and_partial_registry_aliases(self) -> None:
+        """Other standard-library helper combinators cannot hide registry access."""
+        sources = (
+            "import sys, operator\n"
+            "get = operator.methodcaller('__getattribute__', 'modules')\n"
+            "registry = get(sys)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+            "import builtins, functools\n"
+            "get = functools.partial(getattr, 'modules')\n"
+            "registry = get(builtins)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._section_exports(source, "fixture.py")
+
+    def test_split_identity_surface_rejects_reflection_helper_import_aliases(self) -> None:
+        """Reflection helpers imported directly cannot evade alias tracking."""
+        sources = (
+            "from sys import __getattribute__ as get\n"
+            "import sys\n"
+            "registry = get(sys, 'modules')\n"
+            "PUBLIC = 1\n",
+            "from operator import attrgetter as get\n"
+            "import sys\n"
+            "registry = get('modules')(sys)\n"
+            "PUBLIC = 1\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._section_exports(
+                        source + "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                        "fixture.py",
+                    )
+
+    def test_split_identity_surface_rejects_importlib_result_side_effects(self) -> None:
+        """Dynamic import results cannot reach process, file, or reflection side effects."""
+        sources = (
+            "import importlib\n"
+            "importlib.import_module('os').system('bad')\n"
+            "PUBLIC = 1\n",
+            "import importlib as _loader\n"
+            "_loader.import_module('os').remove('bad')\n"
+            "PUBLIC = 1\n",
+            "import importlib\n"
+            "module = importlib.import_module(name)\n"
+            "module.system('bad')\n"
+            "PUBLIC = 1\n",
+            "import importlib\n"
+            "module = importlib.import_module(name)\n"
+            "getattr(module, 'system')('bad')\n"
+            "PUBLIC = 1\n",
+            "import importlib\n"
+            "getattr(importlib, key)('os')\n"
+            "PUBLIC = 1\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._section_exports(
+                        source + "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                        "fixture.py",
+                    )
+
+    def test_split_identity_surface_rejects_nested_namespace_escapes(self) -> None:
+        """Namespace dictionaries cannot escape through containers, returns, or defaults."""
+        sources = (
+            "def consume(value):\n"
+            "    value[0]['PUBLIC'] = 2\n"
+            "consume((globals(),))\n"
+            "PUBLIC = 1\n",
+            "def consume(value=None):\n"
+            "    value['PUBLIC'] = 2\n"
+            "consume(value=globals())\n"
+            "PUBLIC = 1\n",
+            "def leak():\n"
+            "    return globals()\n"
+            "PUBLIC = 1\n",
+            "def leak(value=globals()):\n"
+            "    return value\n"
+            "PUBLIC = 1\n",
+            "values = [value for value in (globals(),)]\n"
+            "PUBLIC = 1\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._section_exports(
+                        source + "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                        "fixture.py",
+                    )
+
+    def test_split_identity_surface_allows_dynamic_import_loader_function(self) -> None:
+        """Existing runtime loaders may return an imported module without reflecting on it."""
+        source = (
+            "import importlib\n"
+            "def load_module(name):\n"
+            "    return importlib.import_module(name)\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n"
+        )
+        exports = compare_identity_surfaces._section_exports(source, "fixture.py")
+        self.assertIn("load_module", exports)
+
     def test_split_identity_surface_compatibility_allows_added_symbol(self) -> None:
         """Compatibility mode allows additive section symbols while strict mode audits them."""
         base = {
@@ -1054,6 +1414,71 @@ class IdentityToolingTests(unittest.TestCase):
             compare_identity_surfaces._compare_surfaces(base, head, strict=True),
         )
 
+
+    def test_split_identity_surface_allows_section_tuple_addition(self) -> None:
+        """Adding a declared section preserves the generated initializer contract."""
+        base = {
+            "fixture.py": (
+                frozenset({"LIVE"}),
+                ("live",),
+                (
+                    "from . import live as _phase192_section_0",
+                    "_PHASE192_SECTION_MODULES = (_phase192_section_0,)",
+                ),
+            )
+        }
+        head = {
+            "fixture.py": (
+                frozenset({"LIVE", "NEW"}),
+                ("live", "new"),
+                (
+                    "from . import live as _phase192_section_0",
+                    "from . import new as _phase192_section_1",
+                    "_PHASE192_SECTION_MODULES = (_phase192_section_0, _phase192_section_1)",
+                ),
+            )
+        }
+        self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
+
+    def test_split_identity_surface_rejects_unbound_section_tuple_alias(self) -> None:
+        """The generated section registry cannot reference an undeclared module alias."""
+        base = {
+            "fixture.py": (
+                frozenset({"LIVE"}),
+                ("live",),
+                (
+                    "from . import live as _phase192_section_0",
+                    "_PHASE192_SECTION_MODULES = (_phase192_section_0,)",
+                ),
+            )
+        }
+        head = {
+            "fixture.py": (
+                frozenset({"LIVE"}),
+                ("live",),
+                (
+                    "from . import live as _phase192_section_0",
+                    "_PHASE192_SECTION_MODULES = (_phase192_section_0, _phase192_section_fake)",
+                ),
+            )
+        }
+        errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+        self.assertIn("PACKAGE_INITIALIZER_CHANGED fixture.py", errors)
+
+    def test_split_identity_surface_rejects_missing_relative_initializer_member(self) -> None:
+        """Relative initializer imports must name an export of the referenced section."""
+        base = {
+            "fixture.py": (frozenset({"LIVE"}), ("live",), ("from . import live",)),
+        }
+        head = {
+            "fixture.py": (
+                frozenset({"LIVE", "Missing"}),
+                ("live",),
+                ("from . import live", "from .live import Missing"),
+            )
+        }
+        errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+        self.assertIn("PACKAGE_INITIALIZER_CHANGED fixture.py", errors)
 
     def test_split_identity_surface_allows_public_initializer_addition(self) -> None:
         """A new public initializer binding is compatible when the base is preserved."""
@@ -1090,6 +1515,7 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
 
     def test_split_identity_surface_preserves_module_docstring_position(self) -> None:
+        """Internal helper for test_split_identity_surface_preserves_module_docstring_position."""
         base = {"Scripts/smoke/foxrun/demo.py": (frozenset({"run"}), ("live",), ('"doc"',), frozenset({"run"}))}
         moved = {"Scripts/smoke/foxrun/demo.py": (frozenset({"run"}), ("live",), ("pass", '"doc"'), frozenset({"run"}))}
         errors = compare_identity_surfaces._compare_surfaces(base, moved, strict=False)
@@ -1098,7 +1524,11 @@ class IdentityToolingTests(unittest.TestCase):
     def test_split_identity_surface_allows_annotated_and_relative_initializer_additions(self) -> None:
         """Compatibility mode allows inert annotations and valid relative aliases."""
         base = {
-            "fixture.py": (frozenset({"LIVE"}), ("live",), ("from . import live",)),
+            "fixture.py": (
+                frozenset({"LIVE"}), ("live",), ("from . import live",),
+                frozenset({"LIVE"}), None, frozenset(), False,
+                (("live", frozenset()),), frozenset(), (), None, (), (),
+            ),
         }
         head = {
             "fixture.py": (
@@ -1111,6 +1541,9 @@ class IdentityToolingTests(unittest.TestCase):
                     "import json",
                     "NEW: str = 'x'",
                 ),
+                frozenset({"LIVE", "Value"}), None, frozenset(), False,
+                (("live", frozenset({"Value"})), ("new", frozenset())),
+                frozenset(), (), None, (), (),
             )
         }
         self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
@@ -1162,6 +1595,15 @@ class IdentityToolingTests(unittest.TestCase):
         errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
         self.assertIn("NAMESPACE_CONTRACT_CHANGED fixture.py", errors)
 
+    def test_split_identity_surface_rejects_unresolvable_safe_root_imports(self) -> None:
+        """Allowlisted standard-library roots still require real modules and members."""
+        base = {"fixture.py": (frozenset(), (), ("pass",))}
+        for statement in ("import json.no_such", "from json import NO_SUCH"):
+            with self.subTest(statement=statement):
+                head = {"fixture.py": (frozenset(), (), ("pass", statement))}
+                errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+                self.assertIn("PACKAGE_INITIALIZER_CHANGED fixture.py", errors)
+
     def test_split_identity_surface_rejects_unknown_initializer_import(self) -> None:
         """Compatibility mode does not admit arbitrary import side effects."""
         base = {"fixture.py": (frozenset(), (), ("pass",))}
@@ -1179,6 +1621,21 @@ class IdentityToolingTests(unittest.TestCase):
             )
         }
         self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
+
+    def test_split_identity_surface_rejects_assert_and_non_definite_initializer_references(self) -> None:
+        """Compatibility additions cannot add failing asserts or use conditional/ephemeral names."""
+        base_cases = (
+            (("pass",), ("pass", "assert False")),
+            (("if False:\n    PRIVATE = 1",), ("if False:\n    PRIVATE = 1", "def NEW(value=PRIVATE): pass")),
+            (("try:\n    raise Exception()\nexcept Exception as TEMP:\n    pass",), ("try:\n    raise Exception()\nexcept Exception as TEMP:\n    pass", "def NEW(value=TEMP): pass")),
+            (("OLD = 1", "del OLD"), ("OLD = 1", "del OLD", "def NEW(value=OLD): pass")),
+        )
+        for base_initializer, head_initializer in base_cases:
+            with self.subTest(head_initializer=head_initializer):
+                base = {"fixture.py": (frozenset(), (), base_initializer)}
+                head = {"fixture.py": (frozenset({"NEW"}), (), head_initializer)}
+                errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+                self.assertIn("PACKAGE_INITIALIZER_CHANGED fixture.py", errors)
 
     def test_split_identity_surface_rejects_forward_initializer_references(self) -> None:
         """Additive definitions cannot reference a binding declared later in the initializer."""
@@ -1359,6 +1816,28 @@ class IdentityToolingTests(unittest.TestCase):
                         "fixture.py",
                     )
 
+    def test_split_identity_surface_rejects_all_dunder_import_calls(self) -> None:
+        """Direct dynamic imports cannot bypass the namespace escape checks."""
+        sources = (
+            "__import__('os').open('bad', 'w')\nPUBLIC = 1\n",
+            "module_name = 'os'\n__import__(module_name).system('bad')\nPUBLIC = 1\n",
+            "x = __import__('sys')\ngetattr(x, 'modules')[__name__] = object()\nPUBLIC = 1\n",
+            "x = __import__('pathlib')\nx.open('bad', 'w')\nPUBLIC = 1\n",
+            "x = __import__('pathlib', fromlist=['Path'])\ngetattr(x, key)('bad')\nPUBLIC = 1\n",
+            "import importlib\n"
+            "x = importlib.import_module('sys')\n"
+            "key = 'modules'\n"
+            "registry = getattr(x, key)\n"
+            "PUBLIC = 1\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._section_exports(
+                        source + "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                        "fixture.py",
+                    )
+
     def test_source_map_does_not_treat_future_import_as_declaration(self) -> None:
         """Future-import names are compiler directives, not moved symbols."""
         with tempfile.TemporaryDirectory() as temp:
@@ -1429,6 +1908,50 @@ class IdentityToolingTests(unittest.TestCase):
             )
             self.assertEqual(identity_contracts.check_source_map(ledger, root), 1)
 
+
+    def test_compatibility_revision_loads_base_and_head_non_strict(self) -> None:
+        """An accepted additive head remains readable as the next compatibility baseline."""
+        from contextlib import contextmanager
+
+        @contextmanager
+        def checkout(_repository, revision):
+            """Internal helper for checkout."""
+            yield Path(revision)
+
+        with (
+            mock.patch.object(compare_identity_surfaces, "_git", side_effect=["base\n", "head\n"]),
+            mock.patch.object(compare_identity_surfaces, "_revision_checkout", side_effect=checkout),
+            mock.patch.object(compare_identity_surfaces, "_surfaces", return_value={}) as surfaces,
+        ):
+            self.assertEqual(0, compare_identity_surfaces.compare_revisions(Path("."), "base", "head", strict=False))
+        self.assertEqual(
+            [mock.call(Path("base"), strict=False), mock.call(Path("head"), strict=False)],
+            surfaces.call_args_list,
+        )
+
+    def test_compatibility_surface_can_be_reused_after_conditional_and_orphan_additions(self) -> None:
+        """Two compatibility rounds do not freeze an accepted conditional/orphan baseline."""
+        with tempfile.TemporaryDirectory() as temp:
+            roots = [Path(temp) / name for name in ("base", "head")]
+            for root in roots:
+                package = root / "Scripts/smoke/foxrun/fixture"
+                package.mkdir(parents=True)
+                (root / "Scripts/smoke/foxrun/fixture.py").write_text("PUBLIC = 1\n", encoding="utf-8")
+                (package / "__init__.py").write_text("from . import live\n", encoding="utf-8")
+                (package / "orphan.py").write_text("ORPHAN = 1\n", encoding="utf-8")
+            (roots[0] / "Scripts/smoke/foxrun/fixture/live.py").write_text(
+                "LIVE = 1\nif False:\n    CONDITIONAL = 1\n"
+                "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                encoding="utf-8",
+            )
+            (roots[1] / "Scripts/smoke/foxrun/fixture/live.py").write_text(
+                "LIVE = 1\nif False:\n    CONDITIONAL = 1\nif False:\n    LATER = 2\n"
+                "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                encoding="utf-8",
+            )
+            base = compare_identity_surfaces._surfaces(roots[0], strict=False)
+            head = compare_identity_surfaces._surfaces(roots[1], strict=False)
+            self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
 
     def test_identity_cli_defaults_to_strict_mode(self) -> None:
         """The command-line default remains the exact decomposition audit."""
@@ -1673,6 +2196,23 @@ class IdentityToolingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 compare_identity_surfaces._entrypoint_contract(path)
 
+    def test_entrypoint_rejects_unlisted_orphan_relative_module(self) -> None:
+        """An executable entrypoint cannot import an unregistered orphan section."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("from . import core\n", encoding="utf-8")
+            (package / "core.py").write_text("def main(): pass\n__all__ = ['main']\n", encoding="utf-8")
+            (package / "evil.py").write_text("def run(): pass\n__all__ = ['run']\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "from .evil import run\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(run())\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path, frozenset({"core"}))
+
     def test_entrypoint_rejects_missing_relative_module(self) -> None:
         """A -m wrapper cannot delegate to a module absent from its package."""
         with tempfile.TemporaryDirectory() as temp:
@@ -1706,6 +2246,146 @@ class IdentityToolingTests(unittest.TestCase):
             )
             with self.assertRaises(SyntaxError):
                 compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_hidden_guard_import_and_unsafe_control_flow(self) -> None:
+        """A module entrypoint guard may only dispatch; it cannot hide imports or loops."""
+        sources = (
+            "from . import main\nif __name__ == '__main__':\n    from . import missing\n    raise SystemExit(main())\n",
+            "from . import main\nif __name__ == '__main__':\n    while True:\n        pass\n    raise SystemExit(main())\n",
+            "from . import main\nif __name__ is '__main__':\n    raise SystemExit(main())\n",
+        )
+        for source in sources:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as temp:
+                package = Path(temp)
+                (package / "__init__.py").write_text("def main(): pass\n", encoding="utf-8")
+                path = package / "__main__.py"
+                path.write_text(source, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_unresolvable_absolute_import(self) -> None:
+        """Allowlisted absolute imports must name real modules or members."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("def main(): pass\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "from argparse import NO_SUCH\n"
+                "from . import main\n"
+                "if __name__ == '__main__':\n    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_conditional_relative_target(self) -> None:
+        """Entrypoints cannot import a target that is only conditionally bound."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("from . import core\n", encoding="utf-8")
+            (package / "core.py").write_text(
+                "if False:\n    def run(): pass\n__all__ = ['run']\n",
+                encoding="utf-8",
+            )
+            path = package / "__main__.py"
+            path.write_text(
+                "from .core import run\n"
+                "if __name__ == '__main__':\n    raise SystemExit(run())\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_unlisted_package_alias(self) -> None:
+        """A package-level alias for an orphan file is not an executable surface."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("from . import core\n", encoding="utf-8")
+            (package / "core.py").write_text("def main(): pass\n__all__ = ['main']\n", encoding="utf-8")
+            (package / "evil.py").write_text("def run(): pass\n__all__ = ['run']\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "from . import evil\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(evil.run())\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path, frozenset({"core"}))
+
+    def test_entrypoint_rejects_parent_relative_import(self) -> None:
+        """Entrypoints cannot escape their package through parent-relative imports."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "child"
+            package.mkdir()
+            (package / "__init__.py").write_text("def main(): pass\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "from . import main\n"
+                "from ..missing import nope\n"
+                "if __name__ == '__main__':\n    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_unsafe_local_function_body(self) -> None:
+        """A locally delegated wrapper cannot hide imports, process execution, or loops."""
+        bodies = (
+            "    __import__('os').system('bad')\n",
+            "    open('bad', 'w')\n",
+            "    obj.write('bad')\n",
+            "    obj.unlink()\n",
+            "    while True:\n        pass\n",
+        )
+        for body in bodies:
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as temp:
+                package = Path(temp)
+                (package / "__init__.py").write_text("def main(): pass\n", encoding="utf-8")
+                path = package / "__main__.py"
+                path.write_text(
+                    "from . import main\n"
+                    "def evil():\n" + body +
+                    "if __name__ == '__main__':\n    raise SystemExit(evil())\n",
+                    encoding="utf-8",
+                )
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_compatibility_allows_new_conditional_section_names(self) -> None:
+        """Compatibility scanning permits additive conditional exports without freezing them."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("from . import core\n", encoding="utf-8")
+            (package / "core.py").write_text(
+                "PUBLIC = 1\nif False:\n    NEW = 2\n"
+                "__all__ = [name for name in globals() if not name.startswith('__')]\n",
+                encoding="utf-8",
+            )
+            path = package / "__main__.py"
+            path.write_text("from . import *\n", encoding="utf-8")
+            self.assertTrue(
+                compare_identity_surfaces._entrypoint_contract(
+                    path,
+                    frozenset({"core"}),
+                    reject_conditional=False,
+                )[0]
+            )
+
+    def test_entrypoint_rejects_unapproved_absolute_imports(self) -> None:
+        """Executable wrappers only import the small approved CLI/runtime roots."""
+        for module in ("os", "pathlib", "subprocess"):
+            with self.subTest(module=module), tempfile.TemporaryDirectory() as temp:
+                package = Path(temp)
+                (package / "__init__.py").write_text("def main(): pass\n", encoding="utf-8")
+                path = package / "__main__.py"
+                path.write_text(
+                    f"import {module}\nfrom . import main\n"
+                    "if __name__ == '__main__':\n    raise SystemExit(main())\n",
+                    encoding="utf-8",
+                )
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._entrypoint_contract(path)
 
     def test_entrypoint_rejects_unknown_import_and_definition_side_effects(self) -> None:
         """Entrypoints reject unknown imports and import-time definition effects."""
