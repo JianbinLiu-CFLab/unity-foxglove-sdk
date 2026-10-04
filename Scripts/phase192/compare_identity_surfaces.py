@@ -168,7 +168,6 @@ def _target_names(target: ast.AST) -> set[str]:
 
 
 def _validate_namespace_access(tree: ast.Module, path: str) -> None:
-    """Reject dynamic imports and namespace writes without executing source."""
     parents: dict[int, ast.AST] = {}
     for parent in ast.walk(tree):
         for child in ast.iter_child_nodes(parent):
