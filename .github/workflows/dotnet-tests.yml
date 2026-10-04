@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  linux-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository with provenance history
@@ -150,6 +150,7 @@ jobs:
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_sync_foxrun_custom_typesupport_addon
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_h07_health_deadline_contract
 
       - name: Run Phase186 Bridge tooling and package-composition gate
         if: always()
@@ -360,3 +361,43 @@ jobs:
 
       - name: Verify checked-in analyzer DLL freshness
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase115f
+
+  test:
+    name: test
+    if: always()
+    needs:
+      - linux-test
+      - optional-ros2-adapter
+      - optional-ros2-native
+      - windows-parity
+      - analyzer-freshness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every validation lane to succeed
+        env:
+          LINUX_RESULT: ${{ needs['linux-test'].result }}
+          ADAPTER_RESULT: ${{ needs['optional-ros2-adapter'].result }}
+          NATIVE_RESULT: ${{ needs['optional-ros2-native'].result }}
+          WINDOWS_RESULT: ${{ needs['windows-parity'].result }}
+          ANALYZER_RESULT: ${{ needs['analyzer-freshness'].result }}
+        run: |
+          set -eu
+          failed=0
+          for result in \
+            "linux-test=$LINUX_RESULT" \
+            "optional-ros2-adapter=$ADAPTER_RESULT" \
+            "optional-ros2-native=$NATIVE_RESULT" \
+            "windows-parity=$WINDOWS_RESULT" \
+            "analyzer-freshness=$ANALYZER_RESULT"; do
+            name="${result%%=*}"
+            value="${result#*=}"
+            echo "$name: $value"
+            if [ "$value" != "success" ]; then
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "Validation aggregate failed." >&2
+            exit 1
+          fi
+          echo "Validation aggregate passed."
