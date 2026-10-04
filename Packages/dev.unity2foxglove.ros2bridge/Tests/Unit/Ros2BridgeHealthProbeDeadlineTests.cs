@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             var fixture = new DripFixture(listener);
             var server = Task.Run(fixture.Run);
+            await fixture.Accepting.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
             var stopwatch = Stopwatch.StartNew();
             var result = new Ros2BridgeU2R2HealthProbe().Ping("127.0.0.1", port, 500);
@@ -54,6 +55,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 _listener = listener;
             }
 
+            public TaskCompletionSource<bool> Accepting { get; } = NewSignal();
             public TaskCompletionSource<bool> RequestReceived { get; } = NewSignal();
             public TaskCompletionSource<bool> FixedHeaderSent { get; } = NewSignal();
             public TaskCompletionSource<bool> BodyChunkSent { get; } = NewSignal();
@@ -63,6 +65,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
                 try
                 {
+                    Accepting.TrySetResult(true);
                     using var client = _listener.AcceptTcpClient();
                     using var stream = client.GetStream();
                     var requestFixedHeader = ReadExact(stream, 16);
