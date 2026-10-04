@@ -44,7 +44,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install pinned Phase186 Python runtime dependency
-        run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0
+        run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0 websockets==15.0.1
 
       - name: Verify remote gateway manifest against pinned source
         run: python3 -c "from Scripts.remotegateway.regression_checks.test_remote_gateway_tooling import verify_pinned_source_manifest; verify_pinned_source_manifest()"
