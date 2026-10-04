@@ -1,5 +1,7 @@
 import json
 import pathlib
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -66,6 +68,50 @@ class Phase188ReplayRunnerTests(unittest.TestCase):
                 (root / "candidate" / f"phase188-replay_{index}.json").write_text(json.dumps(candidate), encoding="utf-8")
             result = run_phase188_replay.compare_results(root / "baseline", root / "candidate", root / "comparison.json")
             self.assertFalse(result["performanceWithinNoiseBand"])
+
+    def test_compare_cli_exit_code_enforces_noise_band(self):
+        """The real compare entrypoint must fail on a performance-only regression."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            baseline = root / "baseline"
+            candidate = root / "candidate"
+            output = root / "comparison"
+            baseline.mkdir()
+            candidate.mkdir()
+            for index, p95 in enumerate((10.0, 12.0, 11.0)):
+                common = {
+                    "fixtureHashSha256": "A" * 64,
+                    "p50Milliseconds": 1.0,
+                    "p95Milliseconds": p95,
+                    "p99Milliseconds": p95,
+                    "returnedMessages": 1,
+                    "resultDigestSha256": "B" * 64,
+                }
+                (baseline / f"phase188-replay_{index}.json").write_text(
+                    json.dumps(common), encoding="utf-8")
+                (candidate / f"phase188-replay_{index}.json").write_text(
+                    json.dumps({**common, "p95Milliseconds": 15.0}), encoding="utf-8")
+
+            command = [
+                sys.executable,
+                str(run_phase188_replay.__file__),
+                "--compare",
+                str(baseline),
+                str(candidate),
+                "--output",
+                str(output),
+            ]
+            failed = subprocess.run(command, cwd=run_phase188_replay.ROOT, text=True,
+                                    capture_output=True, check=False)
+            self.assertEqual(1, failed.returncode, failed.stdout + failed.stderr)
+
+            for path in candidate.glob("phase188-replay_*.json"):
+                payload = json.loads(path.read_text(encoding="utf-8"))
+                payload["p95Milliseconds"] = 12.0
+                path.write_text(json.dumps(payload), encoding="utf-8")
+            passed = subprocess.run(command, cwd=run_phase188_replay.ROOT, text=True,
+                                    capture_output=True, check=False)
+            self.assertEqual(0, passed.returncode, passed.stdout + passed.stderr)
 
     def test_comparison_does_not_call_count_only_semantic_parity(self):
         """Equal counts with different output digests must not be called semantic parity."""
