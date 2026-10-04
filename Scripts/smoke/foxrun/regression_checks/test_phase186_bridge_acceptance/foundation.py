@@ -4,6 +4,7 @@
 
 """Regression tests for the Phase186-H Bridge acceptance coordinator."""
 from __future__ import annotations
+import ast as _phase192_ast
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "test_phase186_bridge_acceptance.py"
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
@@ -23,11 +24,279 @@ from Scripts.smoke.foxrun import phase186_bridge_acceptance as acceptance
 from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
 from Scripts.smoke.foxrun import phase186_bridge_project as bridge_project
 HEAD = "a" * 40
+def _phase192_repository_root() -> pathlib.Path:
+    """Locate the checkout even when the compatibility package rewrites __file__."""
+    current = pathlib.Path(__file__).resolve()
+    for candidate in (current.parent, *current.parents):
+        if (candidate / "Scripts").is_dir() and (candidate / "Unity2Foxglove").is_dir():
+            return candidate
+    raise RuntimeError("Could not locate the repository root")
+
+
+_ENTRYPOINT_SAFE_NAMES = frozenset({
+    "BaseException", "Exception", "False", "None", "NotImplemented", "True",
+    "bool", "bytes", "dict", "float", "frozenset", "int", "len", "list",
+    "object", "range", "set", "str", "tuple", "type", "zip",
+})
+
+
+def _entrypoint_loaded_names(node: object) -> set[str]:
+    ast_module = _phase192_ast
+    return {
+        item.id
+        for item in ast_module.walk(node)
+        if isinstance(item, ast_module.Name) and isinstance(item.ctx, ast_module.Load)
+    }
+
+
+def _entrypoint_literal(node: object) -> bool:
+    if node is None:
+        return False
+    if isinstance(node, _phase192_ast.Constant):
+        return True
+    if isinstance(node, (_phase192_ast.List, _phase192_ast.Tuple, _phase192_ast.Set)):
+        return all(_entrypoint_literal(item) for item in node.elts)
+    if isinstance(node, _phase192_ast.Dict):
+        return all(key is None or _entrypoint_literal(key) for key in node.keys) and all(
+            _entrypoint_literal(value) for value in node.values
+        )
+    if isinstance(node, _phase192_ast.UnaryOp) and isinstance(node.op, (_phase192_ast.UAdd, _phase192_ast.USub)):
+        return _entrypoint_literal(node.operand)
+    return False
+
+
+def _entrypoint_class_body_is_safe(node: object, available: set[str]) -> bool:
+    for statement in node.body:
+        if isinstance(statement, _phase192_ast.Expr) and isinstance(statement.value, _phase192_ast.Constant) and isinstance(statement.value.value, str):
+            continue
+        if isinstance(statement, _phase192_ast.Pass):
+            continue
+        if isinstance(statement, (_phase192_ast.FunctionDef, _phase192_ast.AsyncFunctionDef)):
+            if statement.decorator_list:
+                return False
+            headers = [
+                value for value in [
+                    statement.returns,
+                    *(argument.annotation for argument in [
+                        *statement.args.posonlyargs,
+                        *statement.args.args,
+                        *statement.args.kwonlyargs,
+                        *([statement.args.vararg] if statement.args.vararg else []),
+                        *([statement.args.kwarg] if statement.args.kwarg else []),
+                    ]),
+                    *statement.args.defaults,
+                    *[value for value in statement.args.kw_defaults if value is not None],
+                ] if value is not None
+            ]
+            if any(any(isinstance(item, _phase192_ast.Call) for item in _phase192_ast.walk(value)) for value in headers):
+                return False
+            loaded = set().union(*(_entrypoint_loaded_names(value) for value in headers)) if headers else set()
+            if not loaded <= available:
+                return False
+            continue
+        if isinstance(statement, _phase192_ast.ClassDef):
+            if statement.decorator_list or statement.keywords:
+                return False
+            loaded = set().union(*(_entrypoint_loaded_names(value) for value in [*statement.bases, *statement.keywords])) if statement.bases or statement.keywords else set()
+            if not loaded <= available or any(any(isinstance(item, _phase192_ast.Call) for item in _phase192_ast.walk(value)) for value in [*statement.bases, *statement.keywords]):
+                return False
+            if not _entrypoint_class_body_is_safe(statement, available):
+                return False
+            continue
+        if isinstance(statement, (_phase192_ast.Assign, _phase192_ast.AnnAssign)):
+            value = statement.value
+            if value is None or not _entrypoint_literal(value):
+                return False
+            if isinstance(statement, _phase192_ast.AnnAssign):
+                if any(isinstance(item, _phase192_ast.Call) for item in _phase192_ast.walk(statement.annotation)):
+                    return False
+                if not _entrypoint_loaded_names(statement.annotation) <= available:
+                    return False
+            continue
+        return False
+    return True
+
+
+def _assert_entrypoint_delegates(package: pathlib.Path) -> None:
+    """Require each generated module entrypoint to import its owning package."""
+    entrypoint = package / "__main__.py"
+    source = entrypoint.read_text(encoding="utf-8")
+    ast_module = _phase192_ast
+    tree = ast_module.parse(source, filename=str(entrypoint))
+    future_allowed = True
+    for index, node in enumerate(tree.body):
+        if isinstance(node, ast_module.Expr) and isinstance(node.value, ast_module.Constant) and isinstance(node.value.value, str) and index == 0:
+            continue
+        if isinstance(node, ast_module.ImportFrom) and node.module == "__future__":
+            if not future_allowed or node.level != 0 or any(
+                alias.name != "annotations" or alias.asname is not None
+                for alias in node.names
+            ):
+                raise AssertionError(f"Unsupported future import: {entrypoint}")
+            continue
+        future_allowed = False
+    relative_imports = [
+        node
+        for node in tree.body
+        if isinstance(node, ast_module.ImportFrom) and node.level == 1
+    ]
+    if not relative_imports:
+        raise AssertionError(f"Module entrypoint does not delegate to its package: {entrypoint}")
+    imported_names = {
+        alias.asname or alias.name
+        for node in relative_imports
+        for alias in node.names
+        if alias.name != "*"
+    }
+    has_star = any(
+        alias.name == "*"
+        for node in relative_imports
+        for alias in node.names
+    )
+    postponed_annotations = any(
+        isinstance(node, ast_module.ImportFrom)
+        and node.module == "__future__"
+        and any(alias.name == "annotations" for alias in node.names)
+        for node in ast_module.walk(tree)
+    )
+    local_names = {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast_module.FunctionDef, ast_module.AsyncFunctionDef, ast_module.ClassDef))
+    }
+    dynamic_names: set[str] = set()
+
+    def is_main_guard(node: ast_module.If) -> bool:
+        test = node.test
+        return (
+            isinstance(test, ast_module.Compare)
+            and len(test.ops) == 1
+            and isinstance(test.ops[0], (ast_module.Eq, ast_module.Is))
+            and len(test.comparators) == 1
+            and (
+                (
+                    isinstance(test.left, ast_module.Name)
+                    and test.left.id == "__name__"
+                    and isinstance(test.comparators[0], ast_module.Constant)
+                    and test.comparators[0].value == "__main__"
+                )
+                or (
+                    isinstance(test.comparators[0], ast_module.Name)
+                    and test.comparators[0].id == "__name__"
+                    and isinstance(test.left, ast_module.Constant)
+                    and test.left.value == "__main__"
+                )
+            )
+        )
+
+    def safe_call(node: ast_module.Call) -> bool:
+        function = node.func
+        if isinstance(function, ast_module.Name):
+            return function.id in {"SystemExit", "callable", "globals"} | imported_names | local_names | dynamic_names
+        if isinstance(function, ast_module.Attribute):
+            if function.attr == "get" and isinstance(function.value, ast_module.Call):
+                return isinstance(function.value.func, ast_module.Name) and function.value.func.id == "globals"
+            if isinstance(function.value, ast_module.Name):
+                return function.value.id in imported_names
+        return False
+
+    delegated = False
+    for statement in tree.body:
+        if isinstance(statement, ast_module.Expr) and isinstance(statement.value, ast_module.Constant) and isinstance(statement.value.value, str):
+            continue
+        if isinstance(statement, ast_module.Import):
+            if any(alias.name.split(".", 1)[0] not in {"argparse", "sys"} for alias in statement.names):
+                raise AssertionError(f"Unsafe module entrypoint import: {entrypoint}")
+            continue
+        if isinstance(statement, ast_module.ImportFrom):
+            if statement.module == "__future__":
+                if statement.level != 0 or any(
+                    alias.name != "annotations" or alias.asname is not None
+                    for alias in statement.names
+                ):
+                    raise AssertionError(f"Unsupported future import: {entrypoint}")
+                continue
+            if statement.level == 0:
+                root = (statement.module or "").split(".", 1)[0]
+                if root not in {"argparse", "sys"}:
+                    raise AssertionError(f"Unsafe module entrypoint import: {entrypoint}")
+            continue
+        if isinstance(statement, (ast_module.FunctionDef, ast_module.AsyncFunctionDef, ast_module.ClassDef)):
+            if statement.decorator_list:
+                raise AssertionError(f"Unsafe module entrypoint definition: {entrypoint}")
+            if isinstance(statement, (ast_module.FunctionDef, ast_module.AsyncFunctionDef)):
+                header_nodes = [
+                    value for value in [
+                        statement.returns,
+                        *(argument.annotation for argument in [
+                            *statement.args.posonlyargs,
+                            *statement.args.args,
+                            *statement.args.kwonlyargs,
+                            *([statement.args.vararg] if statement.args.vararg else []),
+                            *([statement.args.kwarg] if statement.args.kwarg else []),
+                        ]),
+                        *statement.args.defaults,
+                        *[value for value in statement.args.kw_defaults if value is not None],
+                    ] if value is not None
+                ]
+                if any(isinstance(node, ast_module.Call) for value in header_nodes for node in ast_module.walk(value)):
+                    raise AssertionError(f"Unsafe module entrypoint definition: {entrypoint}")
+                available = _ENTRYPOINT_SAFE_NAMES | imported_names | local_names
+                loaded = set().union(*(_entrypoint_loaded_names(value) for value in header_nodes if value is not None)) if header_nodes else set()
+                if not postponed_annotations and not loaded <= available:
+                    raise AssertionError(f"Unsafe module entrypoint definition: {entrypoint}")
+            else:
+                header_nodes = [value for value in [*statement.bases, *statement.keywords] if value is not None]
+                if any(isinstance(node, ast_module.Call) for value in header_nodes for node in ast_module.walk(value)):
+                    raise AssertionError(f"Unsafe module entrypoint definition: {entrypoint}")
+                available = _ENTRYPOINT_SAFE_NAMES | imported_names | local_names
+                loaded = set().union(*(_entrypoint_loaded_names(value) for value in header_nodes if value is not None)) if header_nodes else set()
+                if not loaded <= available or not _entrypoint_class_body_is_safe(statement, available):
+                    raise AssertionError(f"Unsafe module entrypoint definition: {entrypoint}")
+            if has_star:
+                raise AssertionError(f"Wildcard module entrypoint has executable definitions: {entrypoint}")
+            continue
+        if not isinstance(statement, ast_module.If) or not is_main_guard(statement):
+            raise AssertionError(f"Unsafe module entrypoint statement: {entrypoint}")
+        for child in ast_module.walk(statement):
+            if isinstance(child, ast_module.Assign):
+                targets = [target for target in child.targets if isinstance(target, ast_module.Name)]
+                if not targets or any(not target.id.startswith("_phase192_") for target in targets):
+                    raise AssertionError(f"Unsafe module entrypoint assignment: {entrypoint}")
+                dynamic_names.update(target.id for target in targets)
+            elif isinstance(child, ast_module.Call):
+                if not safe_call(child):
+                    raise AssertionError(f"Unsafe module entrypoint call: {entrypoint}")
+                if isinstance(child.func, ast_module.Name) and child.func.id in imported_names | local_names | dynamic_names:
+                    delegated = True
+    if not has_star and not delegated:
+        raise AssertionError(f"Module entrypoint has no delegated callable: {entrypoint}")
+
+
+def _decomposed_cli_modules(repository: pathlib.Path, relative_roots: tuple[str, ...]) -> tuple[str, ...]:
+    """Discover production split facades that expose module entrypoints."""
+    modules: list[str] = []
+    for relative_root in relative_roots:
+        root = repository / relative_root
+        for facade in sorted(root.rglob("*.py")):
+            if "regression_checks" in facade.parts:
+                continue
+            package = facade.with_suffix("")
+            if package.is_dir() and (package / "__init__.py").is_file():
+                if not (package / "__main__.py").is_file():
+                    raise AssertionError(f"Missing module entrypoint for {facade}")
+                _assert_entrypoint_delegates(package)
+                modules.append(".".join(facade.relative_to(repository).with_suffix("").parts))
+    if not modules:
+        raise AssertionError(f"No production split facades found under {relative_roots}")
+    return tuple(modules)
+
+
 class _Phase186BridgeAcceptanceTests_support:
     """Decomposed Phase192 implementation component."""
     def test_direct_script_bootstrap_can_import_deferred_live_runner(self) -> None:
         """Verify that direct script bootstrap can import deferred live runner."""
-        repository = pathlib.Path(__file__).resolve().parents[4]
+        repository = _phase192_repository_root()
         script_directory = repository / 'Scripts' / 'smoke' / 'foxrun'
         probe = '\nimport importlib\nimport pathlib\nimport sys\n\nscript_directory = pathlib.Path(sys.argv[1]).resolve()\nsys.path.insert(0, str(script_directory))\nimportlib.import_module("phase186_bridge_acceptance")\nimportlib.import_module("Scripts.smoke.foxrun.phase186_bridge_live")\n'
         with tempfile.TemporaryDirectory() as temp:
@@ -35,19 +304,10 @@ class _Phase186BridgeAcceptanceTests_support:
         self.assertEqual(0, completed.returncode, completed.stderr)
     def test_decomposed_smoke_packages_support_module_execution(self) -> None:
         """Verify every decomposed smoke package has a working module entrypoint."""
-        repository = pathlib.Path(__file__).resolve().parents[4]
-        modules = (
-            'phase184_foxglove_cli_install',
-            'phase184_foxglove_desktop_live_protocol',
-            'phase184_profile_acceptance',
-            'phase184_profile_acceptance_protocol',
-            'phase186_bridge_acceptance',
-            'phase186_bridge_acceptance_protocol',
-            'phase186_bridge_build',
-            'phase186_bridge_capability_probe',
-            'phase186_bridge_live',
-            'phase186_bridge_live_peer',
-            'phase186_provenance',
+        repository = _phase192_repository_root()
+        modules = tuple(
+            module.rsplit(".", 1)[-1]
+            for module in _decomposed_cli_modules(repository, ("Scripts/smoke/foxrun",))
         )
         for module in modules:
             with self.subTest(module=module):
@@ -57,12 +317,48 @@ class _Phase186BridgeAcceptanceTests_support:
                     capture_output=True,
                     text=True,
                     check=False,
+                    timeout=60,
                 )
                 self.assertEqual(
                     0,
                     completed.returncode,
                     f'{module}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}',
                 )
+    def test_ros2_and_websocket_decomposed_packages_support_module_execution(self) -> None:
+        """Verify every production ROS2 and WebSocket split package has a CLI entrypoint."""
+        repository = _phase192_repository_root()
+        modules = _decomposed_cli_modules(
+            repository,
+            ("Scripts/smoke/ros2", "Scripts/smoke/websocket"),
+        )
+        for module in modules:
+            with self.subTest(module=module):
+                completed = subprocess.run(
+                    [sys.executable, "-m", module, "--help"],
+                    cwd=repository,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=60,
+                )
+                self.assertEqual(
+                    0,
+                    completed.returncode,
+                    f"{module}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+                )
+
+    def test_module_entrypoint_rejects_non_delegating_noop(self) -> None:
+        """A non-star entrypoint must call an imported package callable."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = pathlib.Path(temp) / "fixture"
+            package.mkdir()
+            (package / "__main__.py").write_text(
+                "from . import main\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(AssertionError):
+                _assert_entrypoint_delegates(package)
+
     def test_reporter_handoff_precedes_pass_fail_not_run_machine_markers(self) -> None:
         """Verify that reporter handoff precedes pass fail not run machine markers."""
         for verdict, reason in (('PASS', 'cleanup complete'), ('FAIL', 'FAIL_RUNTIME: peer stopped'), ('NOT RUN', 'Unity license unavailable')):

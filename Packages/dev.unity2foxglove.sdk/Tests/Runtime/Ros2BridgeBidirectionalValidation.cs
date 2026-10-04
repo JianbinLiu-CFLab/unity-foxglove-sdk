@@ -67,6 +67,7 @@ namespace Unity.FoxgloveSDK.Tests
                     Path.Combine(package, "__init__.py"),
                     "from . import live\n");
                 File.WriteAllText(Path.Combine(package, "live.py"), "LIVE_SECTION\n");
+                File.WriteAllText(Path.Combine(package, "other.py"), "OTHER_SECTION\n");
                 File.WriteAllText(Path.Combine(package, "obsolete.py"), "ORPHAN_SECTION\n");
 
                 var source = PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
@@ -74,6 +75,56 @@ namespace Unity.FoxgloveSDK.Tests
                     source.Contains("LIVE_SECTION", StringComparison.Ordinal)
                     && !source.Contains("ORPHAN_SECTION", StringComparison.Ordinal),
                     "186-F7: split-source validation follows __init__.py exports and ignores orphan sections");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import (\n    live,\n)\n");
+                var multilineSource = PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    multilineSource.Contains("LIVE_SECTION", StringComparison.Ordinal),
+                    "186-F8: split-source validation accepts multiline __init__.py imports");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import \\\n    live\n");
+                var continuedSource = PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    continuedSource.Contains("LIVE_SECTION", StringComparison.Ordinal),
+                    "186-F9: split-source validation accepts backslash-continued imports");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import live # comment \\\nfrom . import other\n");
+                var commentSource = PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    commentSource.Contains("LIVE_SECTION", StringComparison.Ordinal)
+                    && commentSource.Contains("OTHER_SECTION", StringComparison.Ordinal),
+                    "186-F10: split-source validation ignores backslashes inside comments");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "value = \\\n    1\nfrom . import live\n");
+                var unrelatedContinuationSource =
+                    PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    unrelatedContinuationSource.Contains("LIVE_SECTION", StringComparison.Ordinal),
+                    "186-F11: split-source validation ignores non-import continuations");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import live\nfrom . import live\n");
+                var duplicateImportRejected = false;
+                try
+                {
+                    PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                }
+                catch (InvalidOperationException)
+                {
+                    duplicateImportRejected = true;
+                }
+                Check(
+                    duplicateImportRejected,
+                    "186-F12: split-source validation rejects repeated imports");
 
                 File.WriteAllText(
                     Path.Combine(package, "__init__.py"),
@@ -89,7 +140,89 @@ namespace Unity.FoxgloveSDK.Tests
                 }
                 Check(
                     missingSectionRejected,
-                    "186-F8: split-source validation rejects missing declared sections");
+                    "186-F13: split-source validation rejects missing declared sections");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import live; from . import other\n");
+                var semicolonSource = PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    semicolonSource.Contains("LIVE_SECTION", StringComparison.Ordinal)
+                    && semicolonSource.Contains("OTHER_SECTION", StringComparison.Ordinal),
+                    "186-F16: split-source validation accepts same-line section imports");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import ../outside\n");
+                var invalidSectionRejected = false;
+                try
+                {
+                    PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                }
+                catch (InvalidOperationException)
+                {
+                    invalidSectionRejected = true;
+                }
+                Check(
+                    invalidSectionRejected,
+                    "186-F17: split-source validation rejects invalid section names");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import live as\n");
+                var malformedAliasRejected = false;
+                try
+                {
+                    PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                }
+                catch (InvalidOperationException)
+                {
+                    malformedAliasRejected = true;
+                }
+                Check(
+                    malformedAliasRejected,
+                    "186-F18: split-source validation rejects malformed aliases");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "if TYPE_CHECKING:\n    from . import missing\nfrom . import live\n");
+                var nestedImportSource =
+                    PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    nestedImportSource.Contains("LIVE_SECTION", StringComparison.Ordinal)
+                    && !nestedImportSource.Contains("ORPHAN_SECTION", StringComparison.Ordinal),
+                    "186-F19: split-source validation ignores nested imports");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "from . import live\ntext = \"unterminated\n");
+                var unterminatedStringRejected = false;
+                try
+                {
+                    PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                }
+                catch (InvalidOperationException)
+                {
+                    unterminatedStringRejected = true;
+                }
+                Check(
+                    unterminatedStringRejected,
+                    "186-F20: split-source validation rejects unterminated strings");
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "\"\"\"\nfrom . import missing\n\"\"\"\nfrom . import live\n");
+                var docstringSource = PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    docstringSource.Contains("LIVE_SECTION", StringComparison.Ordinal),
+                    "186-F14: split-source validation ignores imports inside docstrings");
+
+                File.WriteAllText(
+                    Path.Combine(package, "__init__.py"),
+                    "text = \"from . import missing\"\nfrom . import live\n");
+                var stringSource = PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(facade);
+                Check(
+                    stringSource.Contains("LIVE_SECTION", StringComparison.Ordinal),
+                    "186-F15: split-source validation ignores imports inside strings");
             }
             finally
             {

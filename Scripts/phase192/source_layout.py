@@ -5,17 +5,25 @@ from __future__ import annotations
 import ast
 import importlib
 import importlib.util
+import keyword
+import re
 from pathlib import Path
 import sys
 from types import ModuleType
+
+
+def _parse_source(source: str, path: Path) -> ast.Module:
+    compile(source, str(path), "exec")
+    return ast.parse(source, filename=str(path))
 
 
 def section_modules(package_dir: Path) -> tuple[Path, ...]:
     """Return package section files in the order exported by ``__init__.py``."""
 
     init_path = package_dir / "__init__.py"
-    tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
+    tree = _parse_source(init_path.read_text(encoding="utf-8"), init_path)
     modules: list[Path] = []
+    seen: dict[str, Path] = {}
     for node in tree.body:
         if not isinstance(node, ast.ImportFrom) or node.level != 1:
             continue
@@ -23,11 +31,23 @@ def section_modules(package_dir: Path) -> tuple[Path, ...]:
         for module_name in imported:
             if module_name == "__init__":
                 continue
+            if (
+                not isinstance(module_name, str)
+                or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", module_name, re.UNICODE)
+                or keyword.iskeyword(module_name)
+            ):
+                raise ValueError(f"Invalid declared source section: {module_name!r}")
             candidate = package_dir / f"{module_name}.py"
             if not candidate.is_file():
                 raise FileNotFoundError(
                     f"Declared source section is missing: {candidate}"
                 )
+            key = module_name.casefold()
+            if key in seen:
+                raise ValueError(
+                    f"Duplicate declared source section (case-insensitive): {candidate}"
+                )
+            seen[key] = candidate
             modules.append(candidate)
     if not modules:
         raise ValueError(f"No exported source sections found in {init_path}")
@@ -72,5 +92,10 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         raise RuntimeError(f"Could not load module from {facade}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        if sys.modules.get(module_name) is module:
+            sys.modules.pop(module_name, None)
+        raise
     return module
