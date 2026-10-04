@@ -143,7 +143,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(project.Contains("Phase163_55Validation.cs", StringComparison.Ordinal)
                   && registry.Contains("Ci(\"--phase163-55\",", StringComparison.Ordinal)
-                  && registry.Contains("Phase163_55Validation.Validate, includeInDefault: false)", StringComparison.Ordinal),
+                  && registry.Contains("Phase163_55Validation.Validate, includeInDefault: false", StringComparison.Ordinal),
                 "163-55F-1: Phase163-55 validation is compiled and registered");
         }
 

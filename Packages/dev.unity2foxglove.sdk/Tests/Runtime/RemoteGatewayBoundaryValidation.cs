@@ -210,7 +210,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(project.Contains("RemoteGatewayBoundaryValidation.cs", StringComparison.Ordinal),
                 "171-19: runtime validation project compiles Phase171 validation");
 
-            Check(registry.Contains("Ci(\"--phase171\", \"Phase 171: optional Remote Access Gateway package boundary\", RemoteGatewayBoundaryValidation.Validate, includeInDefault: false)", StringComparison.Ordinal)
+            Check(registry.Contains("Ci(\"--phase171\", \"Phase 171: optional Remote Access Gateway package boundary\", RemoteGatewayBoundaryValidation.Validate, includeInDefault: false", StringComparison.Ordinal)
                   && PhaseValidationRegistry.All.Any(item => item.Flag == "--phase171"),
                 "171-20: validation registry exposes --phase171 outside default CI");
         }
