@@ -138,10 +138,183 @@ def _symbols(source: str, path: str) -> frozenset[str]:
     return frozenset(name for name in _top_level_names(tree) if not name.startswith("_"))
 
 
+_FIXED_IMPORT_ROOTS = frozenset({"pathlib", "json", "Scripts"})
+_NAMESPACE_ROOTS = frozenset({"globals", "locals", "vars"})
+_DANGEROUS_ROOTS = frozenset({"builtins", "__builtins__", "__builtin__"})
+_DANGEROUS_ATTRIBUTES = frozenset(
+    {"__dict__", "f_globals", "f_locals", "_getframe"}
+)
+_NAMESPACE_MUTATIONS = frozenset(
+    {"clear", "pop", "popitem", "setdefault", "update", "__setitem__", "__delitem__"}
+)
+_NAMESPACE_READS = frozenset(
+    {"get", "keys", "items", "values", "copy", "__getitem__", "__contains__"}
+)
+
+
+def _literal_string(node: ast.AST | None) -> str | None:
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def _target_names(target: ast.AST) -> set[str]:
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, (ast.Tuple, ast.List)):
+        names: set[str] = set()
+        for item in target.elts:
+            names.update(_target_names(item))
+        return names
+    return set()
+
+
+def _validate_namespace_access(tree: ast.Module, path: str) -> None:
+    """Reject dynamic imports and namespace writes without executing source."""
+    parents: dict[int, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[id(child)] = parent
+
+    aliases: dict[str, str] = {}
+
+    def origin(node: ast.AST | None, seen: set[str] | None = None) -> str | None:
+        if node is None:
+            return None
+        seen = set() if seen is None else seen
+        if isinstance(node, ast.Name):
+            if node.id in seen:
+                return None
+            if node.id in aliases:
+                seen.add(node.id)
+                return aliases[node.id]
+            if node.id in _DANGEROUS_ROOTS:
+                return "builtins"
+            return None
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                if node.func.id in {"globals", "locals"}:
+                    if node.args or node.keywords:
+                        raise ValueError(f"Unsupported namespace call in {path}")
+                    return "namespace"
+                if node.func.id == "vars":
+                    if node.keywords or len(node.args) > 1:
+                        raise ValueError(f"Unsupported namespace call in {path}")
+                    return "namespace" if not node.args else None
+                if node.func.id == "__import__":
+                    module = _literal_string(node.args[0] if node.args else None)
+                    if module is None or module.split(".", 1)[0] not in _FIXED_IMPORT_ROOTS:
+                        raise ValueError(f"Unsupported dynamic import in {path}")
+                    return "module"
+                if node.func.id in {"exec", "eval", "compile"}:
+                    raise ValueError(f"Unsupported dynamic execution in {path}")
+                if origin(node.func) in {"namespace", "dynamic", "builtins"}:
+                    raise ValueError(f"Unsupported namespace call in {path}")
+            elif isinstance(node.func, ast.Attribute):
+                attr = node.func.attr
+                base = origin(node.func.value)
+                if attr in _NAMESPACE_MUTATIONS and base in {"namespace", "module_registry", "module_object", "builtins"}:
+                    raise ValueError(f"Unsupported namespace mutation in {path}")
+                if attr in _NAMESPACE_READS and base == "namespace":
+                    key = _literal_string(node.args[0] if node.args else None)
+                    if key is None or key in {"__builtins__", "__import__", "exec", "eval", "compile", "import_module"}:
+                        raise ValueError(f"Unsupported dynamic namespace key in {path}")
+                if attr in {"__getattribute__", "__setattr__", "__delattr__"} and base in {"module_registry", "module_object", "builtins", "namespace"}:
+                    raise ValueError(f"Unsupported namespace attribute in {path}")
+                if attr == "import_module" and base in {"builtins", "module_registry", "module_object"}:
+                    raise ValueError(f"Unsupported dynamic import in {path}")
+            return None
+        if isinstance(node, ast.Attribute):
+            if node.attr in _DANGEROUS_ATTRIBUTES:
+                raise ValueError(f"Unsupported namespace attribute in {path}")
+            if node.attr == "modules":
+                return "module_registry"
+            base = origin(node.value)
+            if node.attr in {"__getattribute__", "__setattr__", "__delattr__"} and base in {"module_registry", "module_object", "builtins", "namespace"}:
+                raise ValueError(f"Unsupported namespace attribute in {path}")
+            return "module_object" if base == "module_registry" else None
+        if isinstance(node, ast.Subscript):
+            base = origin(node.value)
+            if base in {"namespace", "module_registry", "module_object", "builtins"}:
+                key = _literal_string(node.slice)
+                if isinstance(node.ctx, (ast.Store, ast.Del)):
+                    raise ValueError(f"Unsupported namespace mutation in {path}")
+                if key is None or key in {"__builtins__", "__import__", "exec", "eval", "compile", "import_module"}:
+                    raise ValueError(f"Unsupported dynamic namespace key in {path}")
+                return "module_object" if base == "module_registry" else None
+        return None
+
+    # Gather aliases first so a one-line indirection cannot hide a dynamic root.
+    for _ in range(3):
+        changed = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                value = origin(node.value)
+                if value in {"namespace", "module_registry", "module_object", "builtins", "dynamic"}:
+                    for target in node.targets:
+                        for name in _target_names(target):
+                            if aliases.get(name) != value:
+                                aliases[name] = value
+                                changed = True
+            elif isinstance(node, ast.AnnAssign) and node.value is not None:
+                value = origin(node.value)
+                if value in {"namespace", "module_registry", "module_object", "builtins", "dynamic"}:
+                    for name in _target_names(node.target):
+                        if aliases.get(name) != value:
+                            aliases[name] = value
+                            changed = True
+        if not changed:
+            break
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".", 1)[0]
+                bound = alias.asname or root
+                if root in _DANGEROUS_ROOTS:
+                    raise ValueError(f"Unsupported builtins import in {path}")
+                if root == "sys":
+                    aliases[bound] = "sys"
+        elif isinstance(node, ast.ImportFrom):
+            root = (node.module or "").split(".", 1)[0]
+            if root in _DANGEROUS_ROOTS:
+                raise ValueError(f"Unsupported builtins import in {path}")
+            for alias in node.names:
+                if alias.name in {"__import__", "exec", "eval", "compile"}:
+                    raise ValueError(f"Unsupported dynamic import in {path}")
+                if root == "sys" and alias.name == "modules":
+                    aliases[alias.asname or alias.name] = "module_registry"
+
+        if isinstance(node, ast.Name):
+            parent = parents.get(id(node))
+            if node.id == "__import__" and not (
+                isinstance(parent, ast.Call) and parent.func is node
+            ):
+                raise ValueError(f"Unsupported dynamic import alias in {path}")
+            if node.id in _NAMESPACE_ROOTS and not (
+                isinstance(parent, ast.Call) and parent.func is node
+            ):
+                raise ValueError(f"Unsupported namespace alias in {path}")
+            if node.id in {"exec", "eval", "compile"}:
+                raise ValueError(f"Unsupported dynamic execution in {path}")
+
+        origin(node)
+
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"getattr", "setattr", "delattr"}:
+            if node.args and origin(node.args[0]) in {"namespace", "module_registry", "module_object", "builtins"}:
+                raise ValueError(f"Unsupported namespace access in {path}")
+            if any(_literal_string(argument) in _DANGEROUS_ATTRIBUTES | {"__import__", "exec", "eval", "compile", "import_module"} for argument in node.args[1:]):
+                raise ValueError(f"Unsupported namespace access in {path}")
+
+
+def _section_namespace_guard(source: str, path: str) -> ast.Module:
+    tree = ast.parse(source, filename=path)
+    _validate_namespace_access(tree, path)
+    return tree
+
+
 def _section_exports(source: str, path: str) -> frozenset[str]:
     """Resolve the generated section ``__all__`` contract statically."""
 
-    tree = ast.parse(source, filename=path)
+    tree = _section_namespace_guard(source, path)
     names = _top_level_names(tree)
     for node in tree.body:
         targets: list[ast.AST] = []
@@ -247,7 +420,27 @@ def _statement_bound_names(statement: str) -> frozenset[str]:
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
         for target in targets:
             add_target(target)
+    elif isinstance(node, ast.If):
+        for item in [*node.body, *node.orelse]:
+            if isinstance(item, (ast.Assign, ast.AnnAssign)):
+                targets = item.targets if isinstance(item, ast.Assign) else [item.target]
+                for target in targets:
+                    add_target(target)
+            elif isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                names.add(item.name)
     return frozenset(names)
+
+
+def _statement_loaded_names(statement: str) -> frozenset[str]:
+    try:
+        tree = ast.parse(statement)
+    except SyntaxError:
+        return frozenset()
+    return frozenset(
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    )
 
 
 def _simple_assignment_targets(node: ast.Assign | ast.AnnAssign) -> bool:
@@ -480,6 +673,28 @@ def _safe_initializer_addition(
         return _safe_function_definition(node, available)
     if isinstance(node, ast.ClassDef):
         return _safe_class_definition(node, available)
+    if isinstance(node, ast.If):
+        inert = (
+            isinstance(node.test, ast.Name)
+            and node.test.id == "TYPE_CHECKING"
+        ) or (
+            isinstance(node.test, ast.Attribute)
+            and isinstance(node.test.value, ast.Name)
+            and node.test.value.id == "typing"
+            and node.test.attr == "TYPE_CHECKING"
+        ) or (isinstance(node.test, ast.Constant) and node.test.value is False)
+        return (
+            inert
+            and not node.orelse
+            and all(
+                _safe_initializer_addition(ast.unparse(item), available, forbidden)
+                for item in node.body
+            )
+        )
+    if isinstance(node, ast.Assert):
+        return _safe_initializer_value(node.test, available) and (
+            node.msg is None or _safe_initializer_value(node.msg, available)
+        )
     return False
 
 
@@ -509,14 +724,14 @@ def _initializer_is_additive(
         matched.add(index)
         cursor = index + 1
     forbidden = set(base_symbols)
-    available = set(_SAFE_BUILTIN_NAMES) | set(base_symbols)
+    available = set(_SAFE_BUILTIN_NAMES)
     for statement in base_lines:
         names = _statement_bound_names(statement)
         forbidden.update(names)
-        available.update(names)
     for index, statement in enumerate(head_lines):
         if index in matched:
             available.update(_statement_bound_names(statement))
+            available.update(_statement_loaded_names(statement))
             continue
         if not _safe_initializer_addition(
             statement,
@@ -529,6 +744,7 @@ def _initializer_is_additive(
             return False
         forbidden.update(names)
         available.update(names)
+        available.update(_statement_loaded_names(statement))
     return True
 
 
