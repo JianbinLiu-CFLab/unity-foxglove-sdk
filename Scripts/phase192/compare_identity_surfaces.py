@@ -153,10 +153,12 @@ _NAMESPACE_READS = frozenset(
 
 
 def _literal_string(node: ast.AST | None) -> str | None:
+    """Return a literal string value when the AST node is one."""
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
 
 
 def _target_names(target: ast.AST) -> set[str]:
+    """Return simple names bound by an assignment target."""
     if isinstance(target, ast.Name):
         return {target.id}
     if isinstance(target, (ast.Tuple, ast.List)):
@@ -168,6 +170,7 @@ def _target_names(target: ast.AST) -> set[str]:
 
 
 def _validate_namespace_access(tree: ast.Module, path: str) -> None:
+    """Reject dynamic imports and namespace writes without executing source."""
     parents: dict[int, ast.AST] = {}
     for parent in ast.walk(tree):
         for child in ast.iter_child_nodes(parent):
