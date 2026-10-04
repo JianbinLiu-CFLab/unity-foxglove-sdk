@@ -220,7 +220,8 @@ namespace Unity.FoxgloveSDK.Tests
             var dir = AppContext.BaseDirectory;
             while (!string.IsNullOrEmpty(dir))
             {
-                if (Directory.Exists(Path.Combine(dir, ".git")))
+                var gitPath = Path.Combine(dir, ".git");
+                if (Directory.Exists(gitPath) || File.Exists(gitPath))
                     return dir;
                 dir = Directory.GetParent(dir)?.FullName;
             }
