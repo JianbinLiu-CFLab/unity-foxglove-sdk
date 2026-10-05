@@ -7,6 +7,7 @@ import ast
 import hashlib
 import importlib
 import importlib.util
+import json
 import keyword
 import re
 from contextlib import contextmanager
@@ -32,6 +33,41 @@ SPLIT_ROOTS = (
     Path("Scripts/smoke/ros2"),
     Path("Scripts/smoke/websocket"),
 )
+IDENTITY_WAIVER_PATH = Path("Scripts/phase192/identity_waivers.json")
+
+def _load_identity_waivers(root: Path) -> dict[str, frozenset[str]]:
+    """Load the reviewed public-symbol removal waivers for one revision."""
+    path = root / IDENTITY_WAIVER_PATH
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid identity waiver file: {path}") from exc
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        raise ValueError(f"Invalid identity waiver schema: {path}")
+    entries = payload.get("waived_symbols", {})
+    if not isinstance(entries, dict):
+        raise ValueError(f"Invalid identity waiver entries: {path}")
+    waivers: dict[str, frozenset[str]] = {}
+    for relative, names in entries.items():
+        relative_path = Path(relative) if isinstance(relative, str) else None
+        if (
+            not isinstance(relative, str)
+            or not relative.endswith(".py")
+            or "\\" in relative
+            or ":" in relative
+            or relative_path.is_absolute()
+            or ".." in relative_path.parts
+        ):
+            raise ValueError(f"Invalid identity waiver path: {relative!r}")
+        if not isinstance(names, list) or any(
+            not isinstance(name, str) or not name or name.startswith("_")
+            for name in names
+        ):
+            raise ValueError(f"Invalid identity waiver symbols: {relative}")
+        waivers[relative] = frozenset(names)
+    return waivers
 
 def _git(repository: Path, *args: str) -> str:
     """Run Git and return standard output."""
@@ -235,6 +271,16 @@ def _top_level_names(tree: ast.Module, *, include_imports: bool = True) -> set[s
 
     visit(tree.body)
     return names
+
+def _direct_import_bound_names(tree: ast.Module) -> frozenset[str]:
+    """Return names bound by top-level import statements."""
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            names.update(alias.asname or alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            names.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+    return frozenset(names)
 
 def _declared_public_names(tree: ast.Module) -> frozenset[str]:
     """Internal helper for _declared_public_names."""
@@ -2251,11 +2297,7 @@ def _safe_initializer_addition(
         node, available_names, postponed_annotations=postponed_annotations
     )
     if isinstance(node, ast.ClassDef):
-        return bool(bound) and all(
-            not name.startswith("__") and not name.startswith("_PHASE192_") for name in bound
-        ) and _safe_class_definition(
-        node, available_names, postponed_annotations=postponed_annotations
-    )
+        return False
     if isinstance(node, ast.Import):
         return bool(node.names) and _absolute_import_resolves(node) and all(
             alias.name.split(".", 1)[0] not in {"builtins", "__builtins__", "__builtin__"}
@@ -2611,14 +2653,7 @@ def _validate_import_time_section(
                 names.add(node.name)
                 continue
             if isinstance(node, ast.ClassDef):
-                if not _safe_class_definition(
-                    node,
-                    frozenset(names),
-                    postponed_annotations=postponed_annotations or inert,
-                ):
-                    raise ValueError(f"Unsafe import-time class definition in {path}")
-                names.add(node.name)
-                continue
+                raise ValueError(f"Unsafe import-time class definition in {path}")
             if isinstance(node, ast.If):
                 if (
                     node.orelse
@@ -2718,6 +2753,7 @@ def _surface(
     risk_signatures: set[str] = set()
     conditional_contract: list[str] = []
     relative_star_contract: list[str] = []
+    module_import_names: set[str] = set()
 
     def add_conditional_contract(signature: str) -> None:
         """Internal helper for add_conditional_contract."""
@@ -2726,6 +2762,7 @@ def _surface(
     for section in sections:
         section_source = section.read_text(encoding="utf-8")
         section_tree = _parse_source(section_source, section)
+        module_import_names.update(_direct_import_bound_names(section_tree))
         relative_star_contract.extend(
             _relative_import_contract(
                 section_tree,
@@ -2754,6 +2791,7 @@ def _surface(
         )
     facade_source = facade.read_text(encoding="utf-8")
     facade_tree = _parse_source(facade_source, facade)
+    module_import_names.update(_direct_import_bound_names(facade_tree))
     relative_star_contract.extend(
         _relative_import_contract(
             facade_tree,
@@ -2782,6 +2820,7 @@ def _surface(
     )
     initializer = package / "__init__.py"
     initializer_tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
+    module_import_names.update(_direct_import_bound_names(initializer_tree))
     _relative_import_contract(
         initializer_tree,
         package,
@@ -2809,6 +2848,11 @@ def _surface(
         (name, tuple(sorted(owners)))
         for name, owners in sorted(owner_map.items())
     )
+    public_symbols = frozenset(
+        name
+        for name in exported
+        if not name.startswith("_") and name not in module_import_names
+    )
     return (
         frozenset(exported),
         tuple(path.stem for path in sections),
@@ -2824,6 +2868,7 @@ def _surface(
         entrypoint_contract,
         owner_map_tuple,
         tuple(relative_star_contract),
+        public_symbols,
     )
 
 def _surfaces(
@@ -2886,17 +2931,27 @@ def _conditional_signature_names(signature: str) -> set[str]:
     name_text = payload.rsplit(":", 1)[0]
     return {name for name in name_text.split(",") if name}
 
-def _compare_surfaces(base_surfaces, head_surfaces, *, strict: bool = True) -> list[str]:
+def _compare_surfaces(
+    base_surfaces,
+    head_surfaces,
+    *,
+    strict: bool = True,
+    waived_symbols: Mapping[str, frozenset[str]] | None = None,
+) -> list[str]:
     """Internal helper for _compare_surfaces."""
     errors: list[str] = []
+    waiver_map = waived_symbols or {}
+    unknown_waiver_paths = sorted(set(waiver_map) - set(base_surfaces))
+    for relative in unknown_waiver_paths:
+        errors.append(f"INVALID_IDENTITY_WAIVER {relative}: facade is not in the base surface")
 
     def unpack(surface):
         """Internal helper for unpack."""
-        if len(surface) > 14:
+        if len(surface) > 15:
             raise ValueError(f"unsupported identity surface shape: {len(surface)} fields")
         defaults = (
             frozenset(), (), (), frozenset(), None, frozenset(), None, (),
-            frozenset(), (), None, (), (), (),
+            frozenset(), (), None, (), (), (), frozenset(),
         )
         return tuple(surface) + defaults[len(surface):]
 
@@ -2920,6 +2975,7 @@ def _compare_surfaces(base_surfaces, head_surfaces, *, strict: bool = True) -> l
             base_entrypoint_contract,
             base_owner_map,
             base_relative_star_contract,
+            base_public_symbols,
         ) = unpack(base_surface)
         (
             head_symbols,
@@ -2936,10 +2992,29 @@ def _compare_surfaces(base_surfaces, head_surfaces, *, strict: bool = True) -> l
             head_entrypoint_contract,
             head_owner_map,
             head_relative_star_contract,
+            head_public_symbols,
         ) = unpack(current)
+        if not base_public_symbols and base_symbols:
+            base_public_symbols = frozenset(
+                name for name in base_symbols if not name.startswith("_")
+            )
+        if not head_public_symbols and head_symbols:
+            head_public_symbols = frozenset(
+                name for name in head_symbols if not name.startswith("_")
+            )
         missing_sections = sorted(set(base_sections) - set(head_sections))
         extra_sections = sorted(set(head_sections) - set(base_sections))
-        missing_symbols = sorted(set(base_symbols) - set(head_symbols))
+        if strict:
+            missing_symbols = sorted(set(base_symbols) - set(head_symbols))
+        else:
+            public_removals = set(base_public_symbols) - set(head_public_symbols)
+            waiver = set(waiver_map.get(relative, frozenset()))
+            invalid_waivers = sorted(waiver - public_removals)
+            if invalid_waivers:
+                errors.append(
+                    f"INVALID_IDENTITY_WAIVER {relative}: {', '.join(invalid_waivers)}"
+                )
+            missing_symbols = sorted(public_removals - waiver)
         extra_symbols = sorted(set(head_symbols) - set(base_symbols))
         if strict and base_risks != head_risks:
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
@@ -3114,6 +3189,11 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
     with _revision_checkout(repository, base) as base_root, _revision_checkout(repository, head) as head_root:
         base_surfaces = _surfaces(base_root, strict=strict)
         head_surfaces = _surfaces(head_root, strict=strict)
+        base_waivers = _load_identity_waivers(base_root)
+        head_waivers = _load_identity_waivers(head_root)
+        if strict and base_waivers != head_waivers:
+            print("IDENTITY_WAIVER_CHANGED Scripts/phase192/identity_waivers.json")
+            return 1
         if not strict:
             _validate_compatibility_new_sections(
                 base_root,
@@ -3121,7 +3201,12 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
                 base_surfaces,
                 head_surfaces,
             )
-    errors = _compare_surfaces(base_surfaces, head_surfaces, strict=strict)
+    errors = _compare_surfaces(
+        base_surfaces,
+        head_surfaces,
+        strict=strict,
+        waived_symbols=head_waivers if not strict else None,
+    )
     if errors:
         for error in errors:
             print(error)

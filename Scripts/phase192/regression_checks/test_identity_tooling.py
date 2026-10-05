@@ -964,6 +964,7 @@ class IdentityToolingTests(unittest.TestCase):
             "_state = 2",
             "@danger()\ndef _helper(): pass",
             "class _Helper(metaclass=danger): pass",
+            "class _Invalid:\n    __slots__ = (1,)",
             "_annotated: evil() = 1",
         ):
             with self.subTest(statement=statement):
@@ -1023,7 +1024,7 @@ class IdentityToolingTests(unittest.TestCase):
                     compare_identity_surfaces._section_exports(source, "fixture.py")
 
     def test_split_identity_surface_compatibility_tracks_private_runtime_exports(self) -> None:
-        """Removing a single-underscore dynamic export remains a missing-symbol failure."""
+        """Compatibility mode permits removal of a single-underscore helper."""
         base_exports = compare_identity_surfaces._section_exports(
             "_helper = 1\nPUBLIC = 1\n__all__ = [name for name in globals() if not name.startswith('__')]\n",
             "fixture.py",
@@ -1035,7 +1036,143 @@ class IdentityToolingTests(unittest.TestCase):
         base = {"fixture.py": (base_exports, ("live",), (), base_exports)}
         head = {"fixture.py": (head_exports, ("live",), (), head_exports)}
         errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
-        self.assertIn("MISSING_SYMBOLS fixture.py: _helper", errors)
+        self.assertEqual([], errors)
+
+    def test_split_identity_surface_compatibility_ignores_removed_module_import(self) -> None:
+        """Compatibility mode permits removal of an unused absolute module import."""
+        base = {
+            "fixture.py": (
+                frozenset({"contextlib", "PUBLIC"}),
+                ("live",),
+                (),
+                frozenset({"contextlib", "PUBLIC"}),
+                None,
+                frozenset(),
+                True,
+                (),
+                frozenset(),
+                (),
+                None,
+                (),
+                (),
+                (),
+                frozenset({"PUBLIC"}),
+            )
+        }
+        head = {
+            "fixture.py": (
+                frozenset({"PUBLIC"}),
+                ("live",),
+                (),
+                frozenset({"PUBLIC"}),
+                None,
+                frozenset(),
+                True,
+                (),
+                frozenset(),
+                (),
+                None,
+                (),
+                (),
+                (),
+                frozenset({"PUBLIC"}),
+            )
+        }
+        self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
+
+    def test_split_identity_surface_compatibility_ignores_removed_from_import(self) -> None:
+        """Compatibility mode does not freeze names bound by from-import statements."""
+        base = {
+            "fixture.py": (
+                frozenset({"Imported", "PUBLIC"}),
+                ("live",),
+                (),
+                frozenset({"Imported", "PUBLIC"}),
+                None,
+                frozenset(),
+                True,
+                (),
+                frozenset(),
+                (),
+                None,
+                (),
+                (),
+                (),
+                frozenset({"PUBLIC"}),
+            )
+        }
+        head = {
+            "fixture.py": (
+                frozenset({"PUBLIC"}),
+                ("live",),
+                (),
+                frozenset({"PUBLIC"}),
+                None,
+                frozenset(),
+                True,
+                (),
+                frozenset(),
+                (),
+                None,
+                (),
+                (),
+                (),
+                frozenset({"PUBLIC"}),
+            )
+        }
+        self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
+
+    def test_split_identity_surface_rejects_waiver_for_nonremoved_symbol(self) -> None:
+        """A waiver must name a public symbol actually removed by the head revision."""
+        base = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
+        head = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
+        errors = compare_identity_surfaces._compare_surfaces(
+            base,
+            head,
+            strict=False,
+            waived_symbols={"fixture.py": frozenset({"PUBLIC"})},
+        )
+        self.assertIn("INVALID_IDENTITY_WAIVER fixture.py: PUBLIC", errors)
+
+    def test_split_identity_surface_rejects_waiver_for_unknown_facade(self) -> None:
+        """A waiver cannot silently target a facade absent from the base revision."""
+        base = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
+        head = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
+        errors = compare_identity_surfaces._compare_surfaces(
+            base,
+            head,
+            strict=False,
+            waived_symbols={"missing.py": frozenset({"PUBLIC"})},
+        )
+        self.assertTrue(any("INVALID_IDENTITY_WAIVER missing.py:" in error for error in errors))
+
+    def test_split_identity_surface_compatibility_honors_public_removal_waiver(self) -> None:
+        """A reviewed waiver can intentionally permit one public symbol removal."""
+        base = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
+        head = {"fixture.py": (frozenset(), ("live",), ())}
+        errors = compare_identity_surfaces._compare_surfaces(
+            base,
+            head,
+            strict=False,
+            waived_symbols={"fixture.py": frozenset({"PUBLIC"})},
+        )
+        self.assertEqual([], errors)
+
+    def test_split_identity_surface_rejects_unsafe_class_in_new_section(self) -> None:
+        """New sections cannot execute class bodies during package import."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "fixture"
+            package.mkdir()
+            section = package / "new.py"
+            source = "class NEW:\n    __slots__ = (1,)\n"
+            section.write_text(source, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Unsafe import-time class definition"):
+                compare_identity_surfaces._validate_import_time_section(
+                    source,
+                    section,
+                    package,
+                    frozenset({"new"}),
+                )
 
     def test_split_identity_surface_compatibility_allows_new_conditional_symbol(self) -> None:
         """Compatibility mode does not freeze a newly conditional public binding."""
