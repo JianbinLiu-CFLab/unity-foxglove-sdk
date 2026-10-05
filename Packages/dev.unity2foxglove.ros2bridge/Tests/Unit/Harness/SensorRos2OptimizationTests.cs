@@ -107,7 +107,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             Assert.Contains("cachedFrameName = null;", sensor, StringComparison.Ordinal);
             Assert.Contains("private bool rosParticipantsDisposed = true;", sensor, StringComparison.Ordinal);
-            Assert.Contains("if (rosParticipantsDisposed)", dispose, StringComparison.Ordinal);
+            Assert.Contains("if (rosParticipantsDisposed && publisherOwnership == null", dispose, StringComparison.Ordinal);
             Assert.Contains("Debug.LogWarning(\"Failed to remove ROS2 sensor publisher during cleanup", dispose, StringComparison.Ordinal);
             Assert.Contains("var clampedUpdateFreq = desiredUpdateFreq;", calculate, StringComparison.Ordinal);
             Assert.DoesNotContain("desiredUpdateFreq = maxFrameFreq", calculate, StringComparison.Ordinal);
