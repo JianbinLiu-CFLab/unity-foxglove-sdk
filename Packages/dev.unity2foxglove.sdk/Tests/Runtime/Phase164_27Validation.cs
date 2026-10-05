@@ -74,8 +74,8 @@ namespace Unity.FoxgloveSDK.Tests
             var applyCommunicationMode = PhaseValidationSourceHelpers.SourceMethod(source, "public static void ApplyCommunicationModeEnvironment");
             var bindPlayMode = PhaseValidationSourceHelpers.SourceMethod(source, "public static void BindActiveRuntimeForPlayMode(Ros2ForUnityRuntimeSelectionStatus status)");
 
-            Check(applyEnvironment.Contains("Environment.SetEnvironmentVariable(\"ROS_DISTRO\", runtime.RosDistro)", StringComparison.Ordinal)
-                  && applyEnvironment.Contains("Environment.SetEnvironmentVariable(\"RMW_IMPLEMENTATION\", rmwImplementation)", StringComparison.Ordinal)
+            Check(applyEnvironment.Contains("Ros2ForUnityEditorEnvironmentLease.Set(\"ROS_DISTRO\", runtime.RosDistro)", StringComparison.Ordinal)
+                  && applyEnvironment.Contains("Ros2ForUnityEditorEnvironmentLease.Set(\"RMW_IMPLEMENTATION\", rmwImplementation)", StringComparison.Ordinal)
                   && applyEnvironment.Contains("GetRmwImplementationForCommunicationMode(runtime, communicationMode)", StringComparison.Ordinal),
                 "164-27B-4: selected manifest identity and RMW are applied together without distro transport inference");
             Check(applyCommunicationMode.Contains("ApplySelectedRuntimeEnvironment(status.SelectedRuntime, mode);", StringComparison.Ordinal)

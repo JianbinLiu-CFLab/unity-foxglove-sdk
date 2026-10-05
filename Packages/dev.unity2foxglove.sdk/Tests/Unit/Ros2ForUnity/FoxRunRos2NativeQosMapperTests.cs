@@ -591,8 +591,11 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
             public void RemoveSubscription(IFoxRunRos2NativeSubscriptionToken token)
                 => RemoveCount++;
 
-            public void ReleaseNodeOwnership()
-                => NodeOwnershipReleaseCount++;
+            public bool ReleaseNodeOwnership()
+            {
+                NodeOwnershipReleaseCount++;
+                return true;
+            }
         }
 
         private sealed class RecordingToken : IFoxRunRos2NativeSubscriptionToken

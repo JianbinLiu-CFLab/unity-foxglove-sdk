@@ -15,6 +15,7 @@
 
 using UnityEngine;
 using System;
+using System.Collections.Generic;
 
 namespace ROS2
 {
@@ -91,6 +92,8 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
     private T readings;
     private bool newReadings;
     private readonly object readingsMutex = new object();
+    private bool publisherCleanupPending;
+    private readonly List<PublisherOwnership> retiredPublisherOwnerships = new List<PublisherOwnership>();
 
     private sealed class PublisherOwnership
     {
@@ -171,9 +174,25 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         {
             ros2UnityComponent = ros2Unity;
             publisherOwnership = new PublisherOwnership(node, createdPublisher);
+            publisherCleanupPending = retiredPublisherOwnerships.Count > 0;
             rosParticipantsDisposed = false;
         }
-        ros2Unity.RegisterExecutable(ExecutorThreadSensorPublishAction);
+        try
+        {
+            ros2Unity.RegisterExecutable(ExecutorThreadSensorPublishAction);
+        }
+        catch
+        {
+            try
+            {
+                DisposeRosParticipants();
+            }
+            catch (Exception cleanup)
+            {
+                Debug.LogException(cleanup);
+            }
+            throw;
+        }
     }
 
     /// <summary>
@@ -218,6 +237,11 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
     /// </summary>
     void Update()
     {
+        if (RetryPendingPublisherRemoval())
+        {
+            return;
+        }
+
         VisualiseEffects();
         OnUpdate();
         UpdateReadingOnMainThread();
@@ -282,6 +306,11 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         CalculateFrameTime();
     }
 
+    void OnEnable()
+    {
+        RetryPendingPublisherRemoval();
+    }
+
     void OnDisable()
     {
         DisposeRosParticipants();
@@ -298,12 +327,13 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         ROS2UnityComponent componentToUnregister;
         lock (readingsMutex)
         {
-            if (rosParticipantsDisposed)
+            if (rosParticipantsDisposed && publisherOwnership == null && retiredPublisherOwnerships.Count == 0)
             {
                 return;
             }
 
             rosParticipantsDisposed = true;
+            publishing = false;
             componentToUnregister = ros2UnityComponent;
         }
 
@@ -312,66 +342,119 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
             componentToUnregister.UnregisterExecutable(ExecutorThreadSensorPublishAction);
         }
 
-        ROS2Node nodeToUse = null;
-        Publisher<T> publisherToRemove = null;
-        PublisherOwnership ownershipToRetire;
+        PublisherOwnership ownershipToRemove = null;
         lock (readingsMutex)
         {
             ros2UnityComponent = null;
             readings = null;
             newReadings = false;
             cachedFrameName = null;
-            ownershipToRetire = publisherOwnership;
+            var ownershipToRetire = publisherOwnership;
             publisherOwnership = null;
             if (ownershipToRetire != null)
             {
                 ownershipToRetire.Retired = true;
-                if (ownershipToRetire.ActiveCalls == 0)
+                retiredPublisherOwnerships.Add(ownershipToRetire);
+                if (ownershipToRetire.ActiveCalls == 0 && !ownershipToRetire.RemovalClaimed)
                 {
                     ownershipToRetire.RemovalClaimed = true;
-                    nodeToUse = ownershipToRetire.Node;
-                    publisherToRemove = ownershipToRetire.Publisher;
+                    ownershipToRemove = ownershipToRetire;
                 }
             }
+            publisherCleanupPending = retiredPublisherOwnerships.Count > 0;
         }
 
-        RemovePublisherSafely(nodeToUse, publisherToRemove);
+        TryCompletePublisherRemoval(ownershipToRemove);
     }
 
     private void CompletePublisherCall(PublisherOwnership ownership)
     {
-        ROS2Node nodeToUse = null;
-        Publisher<T> publisherToRemove = null;
+        PublisherOwnership ownershipToRemove = null;
         lock (readingsMutex)
         {
             ownership.ActiveCalls--;
             if (ownership.ActiveCalls == 0 && ownership.Retired && !ownership.RemovalClaimed)
             {
                 ownership.RemovalClaimed = true;
-                nodeToUse = ownership.Node;
-                publisherToRemove = ownership.Publisher;
+                ownershipToRemove = ownership;
             }
         }
 
-        RemovePublisherSafely(nodeToUse, publisherToRemove);
+        TryCompletePublisherRemoval(ownershipToRemove);
     }
 
-    private static void RemovePublisherSafely(
+    private void TryCompletePublisherRemoval(PublisherOwnership ownership)
+    {
+        if (ownership == null)
+        {
+            return;
+        }
+
+        var removed = TryRemovePublisher(ownership.Node, ownership.Publisher);
+        lock (readingsMutex)
+        {
+            if (removed)
+            {
+                retiredPublisherOwnerships.Remove(ownership);
+                if (ReferenceEquals(publisherOwnership, ownership))
+                {
+                    publisherOwnership = null;
+                }
+                publisherCleanupPending = retiredPublisherOwnerships.Count > 0;
+            }
+            else
+            {
+                ownership.RemovalClaimed = false;
+                publisherCleanupPending = true;
+            }
+        }
+    }
+
+    private bool RetryPendingPublisherRemoval()
+    {
+        PublisherOwnership ownershipToRemove = null;
+        lock (readingsMutex)
+        {
+            if (!publisherCleanupPending)
+            {
+                return false;
+            }
+
+            foreach (var ownership in retiredPublisherOwnerships)
+            {
+                if (ownership.ActiveCalls == 0 && !ownership.RemovalClaimed)
+                {
+                    ownership.RemovalClaimed = true;
+                    ownershipToRemove = ownership;
+                    break;
+                }
+            }
+        }
+
+        TryCompletePublisherRemoval(ownershipToRemove);
+        lock (readingsMutex)
+        {
+            return publisherCleanupPending;
+        }
+    }
+
+    private static bool TryRemovePublisher(
         ROS2Node nodeToUse,
         Publisher<T> publisherToRemove)
     {
         if (nodeToUse == null || publisherToRemove == null || nodeToUse.IsDisposed)
         {
-            return;
+            return true;
         }
 
         try
         {
-            nodeToUse.RemovePublisher<T>(publisherToRemove);
+            return nodeToUse.RemovePublisher<T>(publisherToRemove);
         }
         catch (Exception ex)
         {
             Debug.LogWarning("Failed to remove ROS2 sensor publisher during cleanup: " + ex.Message);
+            return nodeToUse.IsDisposed;
         }
     }
 

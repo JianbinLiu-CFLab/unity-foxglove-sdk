@@ -31,6 +31,7 @@ namespace ROS2
 /// </summary>
 public class ROS2Node : IDisposable
 {
+    // U2F-LOCAL-PATCH: retain native ownership when deterministic disposal fails so shutdown can retry.
     private const string DefaultNodeName = "unity_ros2_node"; // Fallback only; callers creating multiple nodes should pass unique names.
 
     internal INode node;
@@ -45,7 +46,9 @@ public class ROS2Node : IDisposable
     /// </summary>
     public string name { get; }
     private readonly object mutex = new object();
+    private readonly int ownerThreadId;
     private volatile bool disposed;
+    private bool disposing;
 
     /// <summary>
     /// Returns whether this facade has disposed its underlying ros2cs node.
@@ -64,6 +67,7 @@ public class ROS2Node : IDisposable
     // Use ROS2UnityComponent to create a node
     internal ROS2Node(string unityROS2NodeName = DefaultNodeName)
     {
+        ownerThreadId = Environment.CurrentManagedThreadId;
         name = unityROS2NodeName;
         node = Ros2cs.CreateNode(name);
         NativeNode = node;
@@ -71,50 +75,113 @@ public class ROS2Node : IDisposable
     }
 
     /// <summary>
-    /// Releases the underlying ros2cs node and this node's owned ROS clock.
+    /// Attempts to release the underlying ros2cs node and this node's owned ROS clock.
     /// </summary>
-    public void Dispose()
+    public bool TryDispose()
     {
-        INode nodeToDispose = null;
-        ROS2Clock clockToDispose = null;
+        if (Environment.CurrentManagedThreadId != ownerThreadId)
+            return false;
+
+        INode nodeToDispose;
+        ROS2Clock clockToDispose;
         lock (mutex)
         {
             if (disposed)
             {
-                return;
+                return true;
             }
 
-            disposed = true;
+            if (disposing)
+            {
+                return false;
+            }
+
+            if (node == null && clock == null)
+            {
+                disposed = true;
+                return true;
+            }
+
+            disposing = true;
             nodeToDispose = node;
             clockToDispose = clock;
-            node = null;
-            clock = null;
         }
 
         try
         {
-            if (nodeToDispose != null && Ros2cs.Ok())
+            if (nodeToDispose != null)
             {
+                if (!Ros2cs.Ok())
+                {
+                    lock (mutex)
+                    {
+                        disposing = false;
+                    }
+                    return false;
+                }
+
                 Ros2cs.RemoveNode(nodeToDispose);
             }
         }
         catch (Exception e)
         {
             Debug.LogException(e);
-        }
-        finally
-        {
-            if (clockToDispose != null)
+            lock (mutex)
             {
-                try
-                {
-                    clockToDispose.Dispose();
-                }
-                catch (Exception e)
-                {
-                    Debug.LogException(e);
-                }
+                disposing = false;
             }
+            return false;
+        }
+
+        lock (mutex)
+        {
+            if (ReferenceEquals(node, nodeToDispose))
+            {
+                node = null;
+            }
+        }
+
+        if (clockToDispose != null)
+        {
+            try
+            {
+                clockToDispose.Dispose();
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+                lock (mutex)
+                {
+                    disposing = false;
+                }
+                return false;
+            }
+        }
+
+        lock (mutex)
+        {
+            if (ReferenceEquals(clock, clockToDispose))
+            {
+                clock = null;
+            }
+            disposing = false;
+            disposed = true;
+        }
+        return true;
+    }
+
+    public void Dispose()
+    {
+        if (Environment.CurrentManagedThreadId != ownerThreadId)
+        {
+            throw new InvalidOperationException(
+                "ROS2Node disposal must be requested from its lifecycle owner thread; use TryDispose on that thread.");
+        }
+
+        if (!TryDispose())
+        {
+            throw new InvalidOperationException(
+                "ROS2Node disposal did not complete; the native node remains owned for retry.");
         }
     }
 
@@ -157,7 +224,7 @@ public class ROS2Node : IDisposable
 
     private void ThrowIfUninitializedLocked(string callContext)
     {
-        if (disposed || node == null || !Ros2cs.Ok())
+        if (disposed || disposing || node == null || !Ros2cs.Ok())
         {
             throw new InvalidOperationException("Ros2 For Unity is not initialized, can't " + callContext);
         }

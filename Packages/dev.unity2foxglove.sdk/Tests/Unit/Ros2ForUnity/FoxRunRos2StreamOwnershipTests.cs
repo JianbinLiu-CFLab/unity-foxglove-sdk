@@ -261,6 +261,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void StopRetainsNodeOwnershipUntilReleaseSucceeds()
+        {
+            var backend = new FakeBackend { ReleaseFailuresRemaining = 1 };
+            var binding = Binding(
+                backend,
+                tryAdmitInput: () => true,
+                materializeOwned: (message, _) => new OwnedSample(message.Data),
+                transferOwned: _ => { },
+                clearOwned: () => backend.Events.Add("clear"));
+
+            Assert.True(binding.TryRegister().Succeeded);
+            binding.Stop();
+
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.False(((IFoxRunRos2DeferredCleanupStatus)binding).CleanupComplete);
+
+            binding.Stop();
+
+            Assert.Equal(2, backend.ReleaseCount);
+            Assert.True(((IFoxRunRos2DeferredCleanupStatus)binding).CleanupComplete);
+            Assert.Equal("remove,clear,release,clear,release", string.Join(",", backend.Events));
+        }
+
+        [Fact]
         public async Task StopRaceRoutesMaterializedOwnershipThroughStreamDiagnostics()
         {
             var backend = new FakeBackend();
@@ -975,6 +999,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public bool InvokeSynchronouslyOnRegister { get; set; }
             public bool InvokeAsynchronouslyOnRegister { get; set; }
             public int RegistrationFailuresRemaining { get; set; }
+            public int ReleaseFailuresRemaining { get; set; }
             public Exception RemoveException { get; set; }
             public ManualResetEventSlim RegisterEntered { get; set; }
             public ManualResetEventSlim ReleaseRegister { get; set; }
@@ -1032,11 +1057,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     throw RemoveException;
             }
 
-            public void ReleaseNodeOwnership()
+            public bool ReleaseNodeOwnership()
             {
                 ReleaseCount++;
                 ReleaseThreadId = Thread.CurrentThread.ManagedThreadId;
                 Events.Add("release");
+                if (ReleaseFailuresRemaining > 0)
+                {
+                    ReleaseFailuresRemaining--;
+                    return false;
+                }
+                return true;
             }
 
             public void Invoke(FakeMessage message) => _callback(message);

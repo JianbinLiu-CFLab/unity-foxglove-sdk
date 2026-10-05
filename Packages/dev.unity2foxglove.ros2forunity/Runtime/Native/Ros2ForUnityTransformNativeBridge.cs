@@ -133,8 +133,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 var instanceId = publisher.GetInstanceID();
                 _seen.Add(instanceId);
-                if (_bindings.ContainsKey(instanceId))
-                    continue;
+                if (_bindings.TryGetValue(instanceId, out var existing))
+                {
+                    if (existing.CleanupComplete)
+                        continue;
+                    if (!existing.TryDispose())
+                        continue;
+                    _bindings.Remove(instanceId);
+                }
 
                 var binding = new Binding(this, publisher);
                 binding.Subscribe();
@@ -150,8 +156,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             foreach (var key in _stale)
             {
-                _bindings[key].Dispose();
-                _bindings.Remove(key);
+                if (_bindings[key].TryDispose())
+                    _bindings.Remove(key);
             }
         }
 
@@ -252,19 +258,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void BeginShutdown()
         {
-            if (_isStopping)
-                return;
-
             _isStopping = true;
             ClearBindings();
         }
 
         private void ClearBindings()
         {
-            foreach (var binding in _bindings.Values)
-                binding.Dispose();
+            _stale.Clear();
+            foreach (var pair in _bindings)
+            {
+                if (pair.Value.TryDispose())
+                    _stale.Add(pair.Key);
+            }
 
-            _bindings.Clear();
+            foreach (var key in _stale)
+                _bindings.Remove(key);
         }
 
         private static string BuildNodeName(FoxgloveTransformPublisher source, int attempt)
@@ -312,6 +320,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             public bool IsStillEligible()
                 => IsEligible(_source);
 
+            internal bool CleanupComplete
+                => _node == null && _publisher == null;
+
+            internal bool TryDispose()
+            {
+                try
+                {
+                    Dispose();
+                }
+                catch (Exception ex)
+                {
+                    RecordPublishFailure("ROS2 Transform binding cleanup failed: " + ex.Message);
+                    return false;
+                }
+
+                return CleanupComplete;
+            }
+
             public void Dispose()
             {
                 if (_subscribed && _source != null)
@@ -355,6 +381,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_node != null && _publisher != null)
                     return true;
 
+                if (_node != null || _publisher != null)
+                {
+                    CleanupRos2();
+                    if (!CleanupComplete)
+                        return false;
+                }
+
                 Exception lastException = null;
                 for (var attempt = 0; attempt < MaxNodeCreateAttempts; attempt++)
                 {
@@ -370,6 +403,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     {
                         lastException = ex;
                         CleanupRos2();
+
+                        if (!CleanupComplete)
+                            return false;
 
                         if (_owner.IsShuttingDown)
                             return false;
@@ -484,29 +520,50 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             private void CleanupRos2()
             {
-                if (_node != null && _publisher != null)
+                if (_publisher != null)
                 {
-                    try { _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_publisher); }
-                    catch (Exception ex)
+                    if (_node == null)
                     {
-                        if (!_owner.IsShuttingDown)
-                            Debug.LogWarning("[Foxglove][R2FU] Transform publisher cleanup failed: " + ex.Message);
+                        return;
+                    }
+                    else
+                    {
+                        try
+                        {
+                            if (!_node.RemovePublisher<tf2_msgs.msg.TFMessage>(_publisher))
+                                return;
+                            _publisher = null;
+                        }
+                        catch (Exception ex)
+                        {
+                            if (!_owner.IsShuttingDown)
+                                Debug.LogWarning("[Foxglove][R2FU] Transform publisher cleanup failed: " + ex.Message);
+                            return;
+                        }
                     }
                 }
 
-                if (_owner._ros2Unity != null && _node != null)
+                if (_node == null)
+                    return;
+
+                if (_owner._ros2Unity == null)
+                    return;
+
+                try
                 {
-                    try { _owner._ros2Unity.RemoveNode(_node); }
-                    catch (Exception ex)
-                    {
-                        if (!_owner.IsShuttingDown)
-                            Debug.LogWarning("[Foxglove][R2FU] Transform node cleanup failed: " + ex.Message);
-                    }
+                    if (!_owner._ros2Unity.TryRemoveNode(_node))
+                        return;
+                }
+                catch (Exception ex)
+                {
+                    if (!_owner.IsShuttingDown)
+                        Debug.LogWarning("[Foxglove][R2FU] Transform node cleanup failed: " + ex.Message);
+                    return;
                 }
 
-                _publisher = null;
                 _node = null;
             }
+
         }
     }
 }

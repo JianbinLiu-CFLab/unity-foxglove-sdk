@@ -146,11 +146,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 throw new InvalidOperationException("R2FU publisher was not found during removal.");
         }
 
-        public void ReleaseNodeOwnership()
+        public bool ReleaseNodeOwnership()
         {
-            if (Interlocked.Exchange(ref _released, 1) != 0)
-                return;
-            _owner.ReleaseBindingOwnership();
+            if (Volatile.Read(ref _released) != 0)
+                return true;
+            if (_owner.ReleaseBindingOwnership())
+            {
+                Interlocked.Exchange(ref _released, 1);
+                return true;
+            }
+            return false;
         }
 
         private bool TryRollbackPublisher<T>(
@@ -162,7 +167,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 if (token != null)
                     return token.TryRemove();
-                return publisher == null || _driver.RemovePublisher<T>(publisher);
+                if (publisher != null)
+                    return _driver.RemovePublisher<T>(publisher);
+                return true;
             }
             catch
             {

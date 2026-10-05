@@ -53,8 +53,11 @@ UNITY_PACKAGE_PATH_PATCH_MARKER = "Unity2Foxglove package path support"
 LOCAL_PATCH_MARKER = "U2F-LOCAL-PATCH"
 MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors."
 LOCAL_PATCH_OVERLAY_FILES = {
+    "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
+    "Runtime/Ros2ForUnity/Scripts/ROS2Node.cs",
     "Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs",
     "Runtime/Ros2ForUnity/Scripts/ROS2UnityCore.cs",
+    "Runtime/Ros2ForUnity/Scripts/Sensor.cs",
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2ScalableTimeSource.cs",
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2TimeSource.cs",
 }
@@ -121,6 +124,8 @@ PHASE161_ASSET_CRITICAL_BASELINE = (
     "Ros2ForUnity/Plugins/Windows/x86_64/rosgraph_msgs__rosidl_typesupport_fastrtps_c.dll",
     "Ros2ForUnity/Plugins/Windows/x86_64/rosgraph_msgs__rosidl_typesupport_fastrtps_cpp.dll",
 )
+SUPPLEMENTAL_RUNTIME_RELATIVE = "Runtime/Ros2ForUnity/StreamingAssets/Ros2ForUnity/share/ament_index"
+
 LEAKY_UPSTREAM_EXAMPLES = (
     "ROS2TalkerExample.cs",
     "ROS2ListenerExample.cs",
@@ -554,7 +559,7 @@ def collect_local_patch_overlays(package: Path) -> dict[str, str]:
     for path in scripts.rglob("*.cs"):
         text = path.read_text(encoding="utf-8", errors="replace")
         relative = path.relative_to(package).as_posix()
-        if (LOCAL_PATCH_MARKER in text or relative in LOCAL_PATCH_OVERLAY_FILES) and relative != "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs":
+        if LOCAL_PATCH_MARKER in text or relative in LOCAL_PATCH_OVERLAY_FILES:
             overlays[relative] = text
     return overlays
 
@@ -577,6 +582,31 @@ def apply_local_patch_overlays(package: Path, overlays: dict[str, str]) -> None:
         target = package / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         write_text(target, text)
+
+
+def collect_supplemental_runtime_files(package: Path) -> dict[str, bytes]:
+    """Capture legacy ament-index files that may be absent from a refreshed archive."""
+    root = package.joinpath(*SUPPLEMENTAL_RUNTIME_RELATIVE.split("/"))
+    if not path_exists(root):
+        return {}
+
+    overlays: dict[str, bytes] = {}
+    for path in root.rglob("*"):
+        if path.is_file():
+            with open(windows_long_path(path), "rb") as stream:
+                overlays[path.relative_to(package).as_posix()] = stream.read()
+    return overlays
+
+
+def apply_supplemental_runtime_files(package: Path, overlays: dict[str, bytes]) -> None:
+    """Restore only missing legacy ament-index files after archive extraction."""
+    for relative, data in overlays.items():
+        target = package / Path(*relative.split("/"))
+        if path_exists(target):
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(windows_long_path(target), "wb") as stream:
+            stream.write(data)
 
 
 def apply_meta_overlays(package: Path, overlays: dict[str, bytes]) -> None:
@@ -830,6 +860,23 @@ The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`
 - SHA-256: `{artifact.sha256}`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-jazzy-win64-runtime-inventory.json`.
+
+## Process Environment Contract
+
+The first active ROS2 For Unity context acquires a process-wide ROS environment lease
+for the variables it changes. It snapshots each prior value, including whether a
+value was unset, applies the packaged Jazzy runtime settings, and on the last
+safe shutdown conditionally restores only values still equal to the value it
+applied. If application code changes a value while the context is active, that
+caller change is preserved. A failed startup attempts the same rollback; an
+incomplete restore keeps the lease pending and blocks a new context until cleanup
+succeeds.
+
+The runtime may update `ROS_DISTRO`, `AMENT_PREFIX_PATH`,
+`RMW_IMPLEMENTATION`, runtime-specific `RCUTILS_*`/`ROS2CS_*`, and on Windows
+the native plugin `PATH`. `ROS_DOMAIN_ID`, DDS discovery/firewall settings, and
+other caller-owned values are not rewritten. Native DLLs cannot be unloaded or
+safely mixed after initialization, so restart Unity after changing the runtime package, distro, or communication mode.
 
 ## Package Path Patch
 
@@ -1102,8 +1149,125 @@ def patch_unity_time_source_main_thread_guard(text: str) -> str:
     return text
 
 
+def replace_existing_standalone_method(
+    text: str,
+    signature: str,
+    next_signatures: tuple[str, ...],
+    marker: str,
+    legacy_marker: str,
+    replacement: str,
+) -> str:
+    """Replace one legacy standalone method while preserving already patched sources."""
+    method_signature = "    " + signature
+    if method_signature not in text:
+        return text
+    start = text.find(method_signature)
+    ends = [
+        text.find("    " + next_signature, start + len(method_signature))
+        for next_signature in next_signatures
+    ]
+    ends = [end for end in ends if end >= 0]
+    if not ends:
+        raise ValueError(f"Could not locate the {signature} method boundary.")
+    end = min(ends)
+    method_body = text[start:end]
+    if marker in method_body:
+        return text
+    if legacy_marker not in method_body:
+        label = (
+            "AMENT_PREFIX_PATH"
+            if "PrefixPath" in signature
+            else "RMW_IMPLEMENTATION"
+            if "RmwImplementation" in signature
+            else "ROS_DISTRO"
+        )
+        raise ValueError(f"Could not apply {label} compatibility patch.")
+    return text[:start] + replacement + text[end:]
+
+
+def replace_existing_standalone_prefix_method(text: str) -> str:
+    """Normalize an upstream prefix method before applying the environment isolation patch."""
+    replacement = '''    private static void SetStandalonePrefixPath()
+    {
+        string prefixPath = GetRos2ForUnityPath();
+        string pluginPrefixPath = GetPluginPath();
+        if (Directory.Exists(Path.Combine(pluginPrefixPath, "share")))
+        {
+            prefixPath = pluginPrefixPath;
+        }
+        else if (!Directory.Exists(Path.Combine(prefixPath, "share")))
+        {
+            Debug.LogWarning("Standalone AMENT_PREFIX_PATH fallback has no share directory: " + prefixPath);
+        }
+
+        // U2F-LOCAL-PATCH: standalone runtime must not inherit or require a sourced ROS 2 workspace.
+        SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath);
+    }
+
+'''
+    return replace_existing_standalone_method(
+        text,
+        "private static void SetStandalonePrefixPath()",
+        ("private static void SetStandaloneRmwImplementation()",),
+        "standalone runtime must not inherit or require a sourced ROS 2 workspace",
+        "prefixSource",
+        replacement,
+    )
+
+
+def replace_existing_standalone_rmw_method(text: str) -> str:
+    """Normalize the legacy Jazzy RMW method before applying environment isolation."""
+    replacement = '''    private static void SetStandaloneRmwImplementation()
+    {
+        // U2F-LOCAL-PATCH: standalone Jazzy runtime owns its RMW selection.
+        SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", expectedRmwImplementation);
+    }
+
+'''
+    return replace_existing_standalone_method(
+        text,
+        "private static void SetStandaloneRmwImplementation()",
+        ("private static void SetStandaloneRosDistro(",),
+        "standalone Jazzy runtime owns its RMW selection",
+        "Fast-RTPS is the bundled standalone RMW",
+        replacement,
+    )
+
+
+def replace_existing_standalone_distro_method(text: str) -> str:
+    """Normalize the legacy ROS_DISTRO method before applying environment isolation."""
+    replacement = '''    private static void SetStandaloneRosDistro(string ros2Codename)
+    {
+        // U2F-LOCAL-PATCH: standalone runtime owns ROS_DISTRO even when Unity was launched from another ROS shell.
+        SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
+    }
+
+'''
+    return replace_existing_standalone_method(
+        text,
+        "private static void SetStandaloneRosDistro(",
+        (
+            "private static void SetStandaloneRos2csSpinFallback(",
+            "private static void SetStandaloneRcutilsConsoleMode(",
+            "private static string NormalizeEnvPathEntry(",
+        ),
+        "standalone runtime owns ROS_DISTRO",
+        "String.IsNullOrEmpty(Environment.GetEnvironmentVariable(\"ROS_DISTRO\"))",
+        replacement,
+    )
+
+
 def patch_standalone_environment_bootstrap(text: str) -> str:
     """Patch standalone Jazzy environment writes so native ROS 2 getenv callers see them."""
+    expected_rmw_constant = '    private const string expectedRmwImplementation = "rmw_fastrtps_cpp";\n'
+    if expected_rmw_constant not in text:
+        anchor = '    private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";\n'
+        if anchor not in text:
+            raise ValueError("Could not locate the ROS2ForUnity asset-folder constant for RMW setup.")
+        text = text.replace(anchor, anchor + expected_rmw_constant, 1)
+    text = replace_existing_standalone_prefix_method(text)
+    text = replace_existing_standalone_rmw_method(text)
+    text = replace_existing_standalone_distro_method(text)
     if "using System.Runtime.InteropServices;" not in text:
         text = text.replace(
             "using System.Reflection;\n",
@@ -1137,7 +1301,7 @@ def patch_standalone_environment_bootstrap(text: str) -> str:
             "        if (GetOS() == Platform.Windows)\n"
             "        {\n"
             "            // U2F-LOCAL-PATCH: ROS 2 Windows native code reads getenv() from UCRT.\n"
-            "            int result = _wputenv_s(name, value);\n"
+            "            int result = _wputenv_s(name, value ?? String.Empty);\n"
             "            if (result != 0)\n"
             "            {\n"
             "                throw new InvalidOperationException(\n"
@@ -1717,10 +1881,12 @@ def build_package(paths: BuildPaths) -> RuntimeArtifact:
     snapshot = snapshot_package_dir(paths.package)
     overlays = collect_local_patch_overlays(paths.package)
     meta_overlays = collect_meta_overlays(paths.package)
+    supplemental_runtime_files = collect_supplemental_runtime_files(paths.package)
     snapshot_safe_to_remove = False
     try:
         reset_package_dir(paths.package)
         extract_runtime(paths)
+        apply_supplemental_runtime_files(paths.package, supplemental_runtime_files)
         normalize_ros2cs_plugin_roots(paths.package)
         copy_supplemental_runtime_dlls(paths.package, paths.ros2_bin)
         prune_non_contract_examples(paths.package)

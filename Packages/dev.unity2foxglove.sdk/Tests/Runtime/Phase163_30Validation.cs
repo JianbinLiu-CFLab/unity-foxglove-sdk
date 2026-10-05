@@ -53,7 +53,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
             var constructor = ExtractMethod(source, "ROS2ForUnity");
-            var shutdown = ExtractMethod(source, "CompleteShutdownShared");
+            var shutdown = ExtractMethod(source, "FinishShutdownShared");
 
             Check(source.Contains("private static void LogRuntimeInfoWithoutStackTrace", StringComparison.Ordinal)
                   && constructor.Contains("LogRuntimeInfoWithoutStackTrace(\"ROS2 version: \"", StringComparison.Ordinal)
@@ -68,8 +68,11 @@ namespace Unity.FoxgloveSDK.Tests
             var startExecutor = ExtractMethod(component, "StartExecutor");
             var markRuntimeShutdown = ExtractMethod(component, "MarkRuntimeShutdown");
 
+            var stopForRosShutdown = ExtractMethod(component, "StopForRosShutdown");
             Check(component.Contains("private bool runtimeShutdownRequested", StringComparison.Ordinal)
-                  && stopAll.Contains("component.MarkRuntimeShutdown();", StringComparison.Ordinal),
+                  && stopAll.Contains("StopForRosShutdown()", StringComparison.Ordinal)
+                  && stopForRosShutdown.Contains("DisposeNodes()", StringComparison.Ordinal)
+                  && stopForRosShutdown.Contains("TryDetachRuntimeState", StringComparison.Ordinal),
                 "163-30B-1: shared Humble shutdown marks components whose ROS2 context was torn down");
             Check(startExecutor.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
                   && startExecutor.Contains("ros2forUnity == null", StringComparison.Ordinal)

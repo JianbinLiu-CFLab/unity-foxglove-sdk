@@ -64,9 +64,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-22-D4: metadata load failures include malformed XML diagnostics");
             Check(source.Contains("string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();", StringComparison.Ordinal)
                   && source.Contains("bool standaloneBuild = IsStandalone();", StringComparison.Ordinal)
-                  && source.Contains("string currentRos2Version = standaloneBuild", StringComparison.Ordinal)
-                  && source.Contains("? GetMetadataValue(ros2csMetadata, \"/ros2cs/ros2\")", StringComparison.Ordinal)
-                  && source.Contains(": GetROSVersion();", StringComparison.Ordinal)
+                  && source.Contains("string currentRos2Version;", StringComparison.Ordinal)
+                  && source.Contains("currentRos2Version = standaloneBuild", StringComparison.Ordinal)
+                  && source.Contains("GetMetadataValue(ros2csMetadata, \"/ros2cs/ros2\")", StringComparison.Ordinal)
+                  && source.Contains("currentRos2Version = GetROSVersion();", StringComparison.Ordinal)
                   && source.Contains("CheckROSSupport(currentRos2Version)", StringComparison.Ordinal)
                   && source.Contains("WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version)", StringComparison.Ordinal)
                   && source.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)

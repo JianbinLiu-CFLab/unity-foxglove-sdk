@@ -24,6 +24,12 @@ namespace Unity2Foxglove.Ros2ForUnity
         /// throwing for unavailable runtime, disposed publisher, or unsupported
         /// message type conditions.
         /// </summary>
+        /// <remarks>
+        /// A <c>true</c> result means the configured middleware accepted the
+        /// message for publication; it does not mean that a subscriber received
+        /// it. A <c>false</c> result means this publisher did not accept the
+        /// message and supplies the reason through <paramref name="error"/>.
+        /// </remarks>
         bool TryPublish(T message, out string error);
     }
 }

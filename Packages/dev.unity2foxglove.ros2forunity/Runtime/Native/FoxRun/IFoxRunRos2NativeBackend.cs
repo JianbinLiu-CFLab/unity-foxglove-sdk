@@ -255,7 +255,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         void RemoveSubscription(IFoxRunRos2NativeSubscriptionToken token);
 
-        void ReleaseNodeOwnership();
+        bool ReleaseNodeOwnership();
     }
 
     /// <summary>
@@ -275,7 +275,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         void RemovePublisher(IFoxRunRos2NativePublisherToken token);
 
-        void ReleaseNodeOwnership();
+        bool ReleaseNodeOwnership();
     }
 }
 #endif

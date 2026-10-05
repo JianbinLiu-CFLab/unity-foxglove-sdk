@@ -42,6 +42,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private int _cleanupRetryExhausted;
         private int _cleanupFatal;
         private int _ownershipReleased;
+        private int _ownershipReleaseInFlight;
         private int _completionNotified;
 
         internal FoxRunRos2CustomPublisherBinding(
@@ -275,24 +276,29 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             if (Volatile.Read(ref _token) == null
-                && Interlocked.Exchange(ref _ownershipReleased, 1) == 0)
+                && Volatile.Read(ref _ownershipReleased) == 0)
             {
                 try
                 {
-                    _backend.ReleaseNodeOwnership();
-                }
-                catch (Exception exception) when (
-                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
-                {
-                    // The node can already be gone during native shutdown.
+                    if (!TryReleaseNodeOwnership())
+                    {
+                        var retryCount = Interlocked.Increment(ref _cleanupRetryCount);
+                        Volatile.Write(ref _cleanupPending, 1);
+                        if (retryCount >= MaximumCleanupRetries)
+                            Volatile.Write(ref _cleanupRetryExhausted, 1);
+                    }
                 }
                 catch (Exception exception)
                 {
                     fatal ??= ExceptionDispatchInfo.Capture(exception);
+                    Volatile.Write(ref _cleanupRetryExhausted, 1);
+                    Volatile.Write(ref _cleanupFatal, 1);
+                    Volatile.Write(ref _cleanupPending, 1);
                 }
             }
 
             if (Volatile.Read(ref _token) == null
+                && Volatile.Read(ref _ownershipReleased) != 0
                 && Interlocked.Exchange(ref _completionNotified, 1) == 0)
             {
                 try
@@ -311,7 +317,42 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             fatal?.Throw();
-            return Volatile.Read(ref _token) == null;
+            return Volatile.Read(ref _token) == null
+                   && Volatile.Read(ref _ownershipReleased) != 0;
+        }
+
+        private bool TryReleaseNodeOwnership()
+        {
+            if (Volatile.Read(ref _ownershipReleased) != 0)
+                return true;
+            if (Interlocked.CompareExchange(ref _ownershipReleaseInFlight, 1, 0) != 0)
+                return false;
+            try
+            {
+                bool released;
+                try
+                {
+                    released = _backend.ReleaseNodeOwnership();
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    return false;
+                }
+                if (released)
+                {
+                    Volatile.Write(ref _ownershipReleased, 1);
+                    Volatile.Write(ref _cleanupRetryCount, 0);
+                    Volatile.Write(ref _cleanupRetryExhausted, 0);
+                    Volatile.Write(ref _cleanupFatal, 0);
+                    Volatile.Write(ref _cleanupPending, 0);
+                }
+                return released;
+            }
+            finally
+            {
+                Volatile.Write(ref _ownershipReleaseInFlight, 0);
+            }
         }
 
         /// <summary>

@@ -338,7 +338,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void StopSuppressesNodeReleaseFailureAndStillRunsOriginCleanup()
+        public void StopRetainsNodeReleaseFailureForAControlledRetry()
         {
             var bus = new FoxTopicBus();
             var backend = new FakePublisherBackend
@@ -354,12 +354,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.True(binding.TryStart().Succeeded);
 
-            var exception = Record.Exception(binding.Stop);
-
-            Assert.Null(exception);
+            binding.Stop();
             Assert.False(bus.HasSubscribers("/phase181/custom"));
             Assert.Equal(new[] { "remove", "release" }, backend.StopOrder);
             Assert.Equal(1, backend.ReleaseCount);
+            Assert.Equal(0, originCleanupCount);
+            Assert.True(binding.CleanupPending);
+
+            backend.ReleaseFailure = null;
+            Assert.True(binding.TryRetryCleanup());
+            Assert.False(binding.CleanupPending);
+            Assert.Equal(new[] { "remove", "release", "release" }, backend.StopOrder);
+            Assert.Equal(2, backend.ReleaseCount);
             Assert.Equal(1, originCleanupCount);
         }
 
@@ -665,12 +671,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     throw RemoveFailure;
             }
 
-            public void ReleaseNodeOwnership()
+            public bool ReleaseNodeOwnership()
             {
                 ReleaseCount++;
                 StopOrder.Add("release");
                 if (ReleaseFailure != null)
                     throw ReleaseFailure;
+                return true;
             }
 
             private sealed class Token : IFoxRunRos2NativePublisherToken

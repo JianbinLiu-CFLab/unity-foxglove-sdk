@@ -667,7 +667,7 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
         "PackageInfo.FindForAssetPath",
         "resolvedPath",
         "unity2FoxgloveRuntimePackageAssetPath",
-        "SetProcessEnvironmentVariable(GetEnvPathVariableName()",
+        "SetProcessEnvironmentPathVariable(",
         'Path.Combine(',
         '"Packages"',
         '"Runtime"',
@@ -738,7 +738,7 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "private volatile bool quitting",
         "OnDestroy()",
         "OnApplicationQuit()",
-        "node.Dispose()",
+        "node.TryDispose()",
         "StopExecutor()",
         "TryDetachRuntimeState",
         "QuarantineNodesAfterExecutorTimeout",
@@ -794,7 +794,11 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     current_tokens = ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered")
     old_lifecycle = all(token in runtime for token in old_tokens)
     current_lifecycle = all(token in runtime for token in current_tokens)
-    mixed_partial = old_lifecycle and any(token in runtime for token in current_tokens) and not current_lifecycle
+    mixed_partial = (
+        old_lifecycle
+        and any(token in runtime for token in ("referenceCount", "ownsReference", "editorHandlersRegistered"))
+        and not current_lifecycle
+    )
     add(
         results,
         "ROS2ForUnity deterministic lifecycle",

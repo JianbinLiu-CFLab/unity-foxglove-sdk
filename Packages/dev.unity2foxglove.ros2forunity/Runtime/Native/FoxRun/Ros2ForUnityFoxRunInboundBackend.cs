@@ -40,7 +40,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         bool RemovePublisher<T>(object publisher)
             where T : ROS2.Message, new();
 
-        void ReleaseNode();
+        bool ReleaseNode();
     }
 
     /// <summary>
@@ -53,9 +53,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly IFoxRunRos2R2fuNodeDriver _driver;
         private readonly Func<bool> _canUseNativeRuntime;
         private readonly IFoxRunRos2NativeQosProfileFactory _publisherQosFactory;
+        private readonly int _ownerThreadId;
+        private readonly SynchronizationContext _ownerContext;
+        private const int AutomaticNodeReleaseRetryLimit = 1;
         private int _bindingLeases;
         private bool _hostOwnershipReleased;
         private bool _nodeReleased;
+        private bool _nodeReleaseInProgress;
+        private int _automaticNodeReleaseRetries;
+        private int _nodeReleaseDispatchPosted;
 
         internal Ros2ForUnityFoxRunNodeOwner(IFoxRunRos2R2fuNodeDriver driver)
             : this(driver, () => true)
@@ -65,12 +71,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal Ros2ForUnityFoxRunNodeOwner(
             IFoxRunRos2R2fuNodeDriver driver,
             Func<bool> canUseNativeRuntime,
-            IFoxRunRos2NativeQosProfileFactory publisherQosFactory = null)
+            IFoxRunRos2NativeQosProfileFactory publisherQosFactory = null,
+            int ownerThreadId = 0,
+            SynchronizationContext ownerContext = null)
         {
             _driver = driver ?? throw new ArgumentNullException(nameof(driver));
             _canUseNativeRuntime = canUseNativeRuntime
                                    ?? throw new ArgumentNullException(nameof(canUseNativeRuntime));
             _publisherQosFactory = publisherQosFactory;
+            _ownerThreadId = ownerThreadId > 0
+                ? ownerThreadId
+                : Thread.CurrentThread.ManagedThreadId;
+            _ownerContext = ownerContext;
         }
 
         internal IFoxRunRos2NativeBackend AcquireBackend()
@@ -82,10 +94,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 checked { _bindingLeases++; }
             }
 
-            return new Ros2ForUnityFoxRunInboundBackend(
-                this,
-                _driver,
-                _canUseNativeRuntime);
+            try
+            {
+                return new Ros2ForUnityFoxRunInboundBackend(
+                    this,
+                    _driver,
+                    _canUseNativeRuntime);
+            }
+            catch
+            {
+                ReleaseBindingOwnership();
+                throw;
+            }
         }
 
         internal IFoxRunRos2NativePublisherBackend AcquirePublisherBackend()
@@ -97,49 +117,151 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 checked { _bindingLeases++; }
             }
 
-            return new Ros2ForUnityFoxRunPublisherBackend(
-                this,
-                _driver,
-                _canUseNativeRuntime,
-                _publisherQosFactory);
+            try
+            {
+                return new Ros2ForUnityFoxRunPublisherBackend(
+                    this,
+                    _driver,
+                    _canUseNativeRuntime,
+                    _publisherQosFactory);
+            }
+            catch
+            {
+                ReleaseBindingOwnership();
+                throw;
+            }
         }
 
-        internal void ReleaseHostOwnership()
+        internal bool ReleaseHostOwnership()
         {
-            var release = false;
             lock (_sync)
             {
-                if (_hostOwnershipReleased)
-                    return;
                 _hostOwnershipReleased = true;
-                release = TryClaimNodeReleaseUnderLock();
             }
-
-            if (release)
-                _driver.ReleaseNode();
+            return TryReleaseNode(allowQueuedRequest: false, automaticRetry: false);
         }
 
-        internal void ReleaseBindingOwnership()
+        internal bool ReleaseBindingOwnership()
         {
-            var release = false;
             lock (_sync)
             {
-                if (_bindingLeases <= 0)
-                    return;
-                _bindingLeases--;
-                release = TryClaimNodeReleaseUnderLock();
+                if (_bindingLeases > 0)
+                    _bindingLeases--;
             }
-
-            if (release)
-                _driver.ReleaseNode();
+            var released = TryReleaseNode(allowQueuedRequest: true, automaticRetry: false);
+            // A queued owner-context request is a successful handoff; a
+            // direct failure remains retryable by the binding.
+            return released;
         }
 
-        private bool TryClaimNodeReleaseUnderLock()
+        private bool TryReleaseNode(bool allowQueuedRequest, bool automaticRetry)
         {
-            if (!_hostOwnershipReleased || _bindingLeases != 0 || _nodeReleased)
+            lock (_sync)
+            {
+                if (!_hostOwnershipReleased || _bindingLeases != 0 || _nodeReleased)
+                    return true;
+                if (_nodeReleaseInProgress)
+                    return false;
+                if (_nodeReleaseDispatchPosted != 0)
+                {
+                    if (Thread.CurrentThread.ManagedThreadId != _ownerThreadId)
+                        return false;
+                    Interlocked.Exchange(ref _nodeReleaseDispatchPosted, 0);
+                }
+                if (!automaticRetry)
+                    _automaticNodeReleaseRetries = 0;
+                _nodeReleaseInProgress = true;
+            }
+
+            if (Thread.CurrentThread.ManagedThreadId != _ownerThreadId)
+            {
+                lock (_sync)
+                    _nodeReleaseInProgress = false;
+                return PostNodeReleaseToOwnerThread(allowQueuedRequest, automaticRetry);
+            }
+
+            bool released;
+            try
+            {
+                released = _driver.ReleaseNode();
+            }
+            catch
+            {
+                lock (_sync)
+                {
+                    _nodeReleaseInProgress = false;
+                }
+                ScheduleAutomaticNodeReleaseRetry();
                 return false;
-            _nodeReleased = true;
-            return true;
+            }
+
+            lock (_sync)
+            {
+                _nodeReleaseInProgress = false;
+                if (released)
+                {
+                    _nodeReleased = true;
+                    _automaticNodeReleaseRetries = 0;
+                }
+            }
+            if (!released)
+                ScheduleAutomaticNodeReleaseRetry();
+            return released;
+        }
+
+        private void ScheduleAutomaticNodeReleaseRetry()
+        {
+            lock (_sync)
+            {
+                if (_automaticNodeReleaseRetries >= AutomaticNodeReleaseRetryLimit)
+                    return;
+                _automaticNodeReleaseRetries++;
+            }
+            PostNodeReleaseToOwnerThread(allowQueuedRequest: false, automaticRetry: true);
+        }
+
+        private bool PostNodeReleaseToOwnerThread(bool allowQueuedRequest, bool automaticRetry)
+        {
+            if (Interlocked.CompareExchange(ref _nodeReleaseDispatchPosted, 1, 0) != 0)
+                return false;
+
+            if (_ownerContext == null)
+            {
+                // A contextless owner cannot receive a callback. Keep an
+                // explicit owner-thread pump marker instead of silently
+                // dropping the release request. The Unity hosts invoke the
+                // pump from their owner-thread update; embedders without a
+                // host can call RetryPendingNodeReleaseOnCurrentThread().
+                return allowQueuedRequest;
+            }
+
+            try
+            {
+                _ownerContext.Post(
+                    _ =>
+                    {
+                        Interlocked.Exchange(ref _nodeReleaseDispatchPosted, 0);
+                        TryReleaseNode(allowQueuedRequest: false, automaticRetry: automaticRetry);
+                    },
+                    null);
+            }
+            catch
+            {
+                Interlocked.Exchange(ref _nodeReleaseDispatchPosted, 0);
+                return false;
+            }
+            return allowQueuedRequest;
+        }
+
+        internal bool RetryPendingNodeReleaseOnCurrentThread()
+        {
+            if (Thread.CurrentThread.ManagedThreadId != _ownerThreadId)
+                return false;
+
+            if (Interlocked.Exchange(ref _nodeReleaseDispatchPosted, 0) == 0)
+                return true;
+
+            return TryReleaseNode(allowQueuedRequest: false, automaticRetry: true);
         }
     }
 
@@ -240,8 +362,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return true;
             try
             {
-                token.TryRemove();
-                return true;
+                return token.TryRemove();
             }
             catch (Exception cleanupException) when (
                 FoxRunRos2NativeExceptionPolicy.IsRecoverable(cleanupException))
@@ -254,14 +375,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             if (token is not SubscriptionToken owned)
                 throw new ArgumentException("Subscription token was not created by this backend.", nameof(token));
-            owned.TryRemove();
+            if (!owned.TryRemove())
+                throw new InvalidOperationException("R2FU subscription was not found during removal.");
         }
 
-        public void ReleaseNodeOwnership()
+        public bool ReleaseNodeOwnership()
         {
-            if (Interlocked.Exchange(ref _released, 1) != 0)
-                return;
-            _owner.ReleaseBindingOwnership();
+            if (Volatile.Read(ref _released) != 0)
+                return true;
+            if (_owner.ReleaseBindingOwnership())
+            {
+                Interlocked.Exchange(ref _released, 1);
+                return true;
+            }
+            return false;
         }
 
         private static string Describe(Exception exception)
@@ -296,7 +423,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     if (subscription == null)
                         return true;
                     if (!_driver.RemoveSubscription(subscription))
-                        throw new InvalidOperationException("R2FU subscription was not found during removal.");
+                        return false;
                     Interlocked.CompareExchange(ref _subscription, null, subscription);
                     return true;
                 }
@@ -367,11 +494,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return false;
         }
 
-        public void ReleaseNode()
+        public bool ReleaseNode()
         {
-            var node = Interlocked.Exchange(ref _node, null);
-            if (node != null)
-                _owner.RemoveNode(node);
+            var node = Volatile.Read(ref _node);
+            if (node == null)
+                return true;
+
+            if (!_owner.TryRemoveNode(node))
+                return false;
+
+            Interlocked.CompareExchange(ref _node, null, node);
+            return true;
         }
     }
 }

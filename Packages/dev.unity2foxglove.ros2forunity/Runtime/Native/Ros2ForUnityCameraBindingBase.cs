@@ -43,18 +43,41 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 Debug.LogWarning("[Foxglove][R2FU] " + message);
             }
 
-            protected void CleanupNode()
+            protected bool CleanupNode()
             {
-                if (Owner._ros2Unity != null && Node != null)
+                if (Node == null || Owner._ros2Unity == null)
+                    return Node == null;
+
+                try
                 {
-                    try { Owner._ros2Unity.RemoveNode(Node); }
-                    catch (Exception ex)
-                    {
-                        RecordPublishFailure("ROS2 Camera node cleanup failed for " + Topic + ": " + ex.Message);
-                    }
+                    if (!Owner._ros2Unity.TryRemoveNode(Node))
+                        return false;
+                }
+                catch (Exception ex)
+                {
+                    RecordPublishFailure("ROS2 Camera node cleanup failed for " + Topic + ": " + ex.Message);
+                    return false;
                 }
 
                 Node = null;
+                return true;
+            }
+
+            internal virtual bool CleanupComplete => Node == null;
+
+            internal bool TryDispose()
+            {
+                try
+                {
+                    Dispose();
+                }
+                catch (Exception ex)
+                {
+                    RecordPublishFailure("ROS2 Camera binding cleanup failed for " + Topic + ": " + ex.Message);
+                    return false;
+                }
+
+                return CleanupComplete;
             }
         }
     }

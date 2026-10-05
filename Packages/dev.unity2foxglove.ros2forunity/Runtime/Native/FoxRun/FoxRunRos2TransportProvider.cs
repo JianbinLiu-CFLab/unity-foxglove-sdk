@@ -42,6 +42,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private FoxgloveManager _manager;
         private FoxRunRos2CustomPublisherHub _publisherHub;
         private FoxRunRos2SubscriptionHub _subscriptionHub;
+        private readonly object _lifecycleGate = new object();
         private long _activeGeneration = -1;
         private int _registered;
 
@@ -143,36 +144,40 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (manager == null)
                 return false;
 
-            if (!ReferenceEquals(_manager, manager))
+            lock (_lifecycleGate)
             {
-                Detach();
-                _manager = manager;
-            }
+                if (!ReferenceEquals(_manager, manager))
+                {
+                    if (!DetachUnderLifecycleLock())
+                        return false;
+                    _manager = manager;
+                }
 
-            if (!Application.isPlaying)
-            {
-                Interlocked.Exchange(ref _registered, 0);
-                _manager.UnregisterFoxRunTransportProvider(this);
+                if (!Application.isPlaying)
+                {
+                    Interlocked.Exchange(ref _registered, 0);
+                    _manager.UnregisterFoxRunTransportProvider(this);
+                    return true;
+                }
+
+                _publisherHub ??=
+                    GetOrAddOwnedHub<FoxRunRos2CustomPublisherHub>();
+                _subscriptionHub ??=
+                    GetOrAddOwnedHub<FoxRunRos2SubscriptionHub>();
+                _publisherHub.BindProviderOwner(_manager, this);
+                _subscriptionHub.BindProviderOwner(_manager, this);
+
+                if (!isActiveAndEnabled)
+                {
+                    Interlocked.Exchange(ref _registered, 0);
+                    _manager.UnregisterFoxRunTransportProvider(this);
+                    return true;
+                }
+
+                if (Interlocked.Exchange(ref _registered, 1) == 0)
+                    _manager.RegisterFoxRunTransportProvider(this);
                 return true;
             }
-
-            _publisherHub ??=
-                GetOrAddOwnedHub<FoxRunRos2CustomPublisherHub>();
-            _subscriptionHub ??=
-                GetOrAddOwnedHub<FoxRunRos2SubscriptionHub>();
-            _publisherHub.BindProviderOwner(_manager, this);
-            _subscriptionHub.BindProviderOwner(_manager, this);
-
-            if (!isActiveAndEnabled)
-            {
-                Interlocked.Exchange(ref _registered, 0);
-                _manager.UnregisterFoxRunTransportProvider(this);
-                return true;
-            }
-
-            if (Interlocked.Exchange(ref _registered, 1) == 0)
-                _manager.RegisterFoxRunTransportProvider(this);
-            return true;
         }
 
         private void ResumeActiveSessionIfPresent()
@@ -209,41 +214,101 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void Activate(ulong generation)
         {
-            _publishQos ??=
-                new FoxRunRos2QosProfileSettings();
-            _subscribeQos ??=
-                new FoxRunRos2QosProfileSettings();
-            ActivePublishQos = _publishQos.Resolve();
-            ActiveSubscribeQos = _subscribeQos.Resolve();
-            ActiveNativeCopyBudgetBytes =
-                FoxRunRos2NativeCopyBudgetPolicy
-                    .NormalizeSerializedBytes(
-                        _nativeCopyBudgetBytes);
-            Interlocked.Exchange(ref _activeGeneration, checked((long)generation));
-            _publisherHub.SetProviderSessionActive(true);
-            _subscriptionHub.SetProviderSessionActive(true);
+            var expected = checked((long)generation);
+            lock (_lifecycleGate)
+            {
+                if (_manager == null || !isActiveAndEnabled)
+                    throw new InvalidOperationException(
+                        "The R2FU Provider is detached or disabled.");
+                if (_publisherHub == null || _subscriptionHub == null)
+                    throw new InvalidOperationException(
+                        "The R2FU Provider hubs are not attached.");
+
+                _publishQos ??=
+                    new FoxRunRos2QosProfileSettings();
+                _subscribeQos ??=
+                    new FoxRunRos2QosProfileSettings();
+                ActivePublishQos = _publishQos.Resolve();
+                ActiveSubscribeQos = _subscribeQos.Resolve();
+                ActiveNativeCopyBudgetBytes =
+                    FoxRunRos2NativeCopyBudgetPolicy
+                        .NormalizeSerializedBytes(
+                            _nativeCopyBudgetBytes);
+
+                try
+                {
+                    if (Volatile.Read(ref _activeGeneration) >= 0
+                        && Volatile.Read(ref _activeGeneration) != expected)
+                    {
+                        DisableHubsUnderLifecycleLock();
+                        Volatile.Write(ref _activeGeneration, -1);
+                    }
+
+                    _publisherHub.SetProviderSessionActive(true);
+                    _subscriptionHub.SetProviderSessionActive(true);
+                    Volatile.Write(ref _activeGeneration, expected);
+                }
+                catch
+                {
+                    try
+                    {
+                        DisableHubsUnderLifecycleLock();
+                    }
+                    catch (Exception cleanupException)
+                    {
+                        Debug.LogWarning(
+                            "[Foxglove] R2FU Provider activation cleanup remains pending: "
+                            + cleanupException.Message);
+                    }
+                    Volatile.Write(ref _activeGeneration, -1);
+                    throw;
+                }
+            }
         }
 
-        private void Release(ulong generation)
+        private bool Release(ulong generation)
         {
             var expected = checked((long)generation);
-            if (Interlocked.CompareExchange(
-                    ref _activeGeneration,
-                    -1,
-                    expected) != expected)
+            lock (_lifecycleGate)
             {
-                return;
-            }
+                if (Volatile.Read(ref _activeGeneration) != expected)
+                    return true;
 
-            _publisherHub?.SetProviderSessionActive(false);
-            _subscriptionHub?.SetProviderSessionActive(false);
+                try
+                {
+                    DisableHubsUnderLifecycleLock();
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning("[Foxglove] R2FU Provider session cleanup remains pending: " + exception.Message);
+                    return false;
+                }
+
+                Volatile.Write(ref _activeGeneration, -1);
+                return true;
+            }
         }
 
         private void Detach()
         {
-            Interlocked.Exchange(ref _activeGeneration, -1);
-            _publisherHub?.SetProviderSessionActive(false);
-            _subscriptionHub?.SetProviderSessionActive(false);
+            lock (_lifecycleGate)
+            {
+                DetachUnderLifecycleLock();
+            }
+        }
+
+        private bool DetachUnderLifecycleLock()
+        {
+            try
+            {
+                DisableHubsUnderLifecycleLock();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning("[Foxglove] R2FU Provider detach remains pending: " + exception.Message);
+                return false;
+            }
+            Volatile.Write(ref _activeGeneration, -1);
             _publisherHub?.BindProviderOwner(null, null);
             _subscriptionHub?.BindProviderOwner(null, null);
 
@@ -251,13 +316,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _manager = null;
             if (manager != null
                 && Interlocked.Exchange(ref _registered, 0) != 0)
-            {
                 manager.UnregisterFoxRunTransportProvider(this);
-            }
             else
-            {
                 Interlocked.Exchange(ref _registered, 0);
-            }
+            return true;
+        }
+
+        private void DisableHubsUnderLifecycleLock()
+        {
+            _publisherHub?.SetProviderSessionActive(false);
+            _subscriptionHub?.SetProviderSessionActive(false);
         }
 
         private sealed class Session :
@@ -361,8 +429,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             public void Dispose()
             {
-                var owner = Interlocked.Exchange(ref _owner, null);
-                owner?.Release(Generation);
+                var owner = Volatile.Read(ref _owner);
+                if (owner != null && owner.Release(Generation))
+                    Interlocked.CompareExchange(ref _owner, null, owner);
             }
 
             private static FoxRunTransportDirectionStatus EmptyDirection(

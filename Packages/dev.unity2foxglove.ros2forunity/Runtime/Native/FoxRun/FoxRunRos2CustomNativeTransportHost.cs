@@ -23,6 +23,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Func<Ros2ForUnityFoxRunNodeOwner> _createOwner;
         private Ros2ForUnityFoxRunNodeOwner _owner;
         private int _leaseCount;
+        private bool _pendingRelease;
+        private bool _releaseInFlight;
 
         internal FoxRunRos2CustomNativeTransportLeaseTracker(
             Func<Ros2ForUnityFoxRunNodeOwner> createOwner)
@@ -33,6 +35,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal bool TryAcquireSubscriptionBackend(out IFoxRunRos2NativeBackend backend)
         {
             backend = null;
+            if (!RetryPendingRelease())
+                return false;
             if (!TryReserveOwner(out var owner))
                 return false;
 
@@ -44,7 +48,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             catch (Exception)
             {
-                ReleaseLease();
+                try
+                {
+                    ReleaseLease();
+                }
+                catch
+                {
+                }
                 return false;
             }
         }
@@ -52,6 +62,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal bool TryAcquirePublisherBackend(out IFoxRunRos2NativePublisherBackend backend)
         {
             backend = null;
+            if (!RetryPendingRelease())
+                return false;
             if (!TryReserveOwner(out var owner))
                 return false;
 
@@ -63,7 +75,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             catch (Exception)
             {
-                ReleaseLease();
+                try
+                {
+                    ReleaseLease();
+                }
+                catch
+                {
+                }
                 return false;
             }
         }
@@ -73,6 +91,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             owner = null;
             lock (_sync)
             {
+                if (_pendingRelease || _releaseInFlight)
+                {
+                    owner = null;
+                    return false;
+                }
+
                 owner = _owner;
                 if (owner == null)
                 {
@@ -105,32 +129,122 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
         }
 
-        private void ReleaseLease()
+        private bool ReleaseLease()
         {
             Ros2ForUnityFoxRunNodeOwner ownerToRelease = null;
             lock (_sync)
             {
-                if (_leaseCount <= 0)
-                    return;
-
-                _leaseCount--;
-                if (_leaseCount == 0)
+                if (_leaseCount > 0)
                 {
-                    ownerToRelease = _owner;
-                    _owner = null;
+                    _leaseCount--;
                 }
+                if (_leaseCount == 0 && (_pendingRelease || _owner != null))
+                {
+                    if (_releaseInFlight)
+                        return true;
+                    _releaseInFlight = true;
+                    ownerToRelease = _owner;
+                }
+                else if (_leaseCount == 0)
+                    return true;
             }
 
-            ownerToRelease?.ReleaseHostOwnership();
+            if (ownerToRelease == null)
+            {
+                lock (_sync)
+                    _releaseInFlight = false;
+                return true;
+            }
+
+            bool released;
+            try
+            {
+                released = ownerToRelease.ReleaseHostOwnership();
+            }
+            catch
+            {
+                released = false;
+            }
+            lock (_sync)
+            {
+                // Keep the in-flight marker set until the owner outcome and
+                // tracker ownership are committed atomically. Otherwise a
+                // concurrent acquisition can reuse a host after its node has
+                // already been released but before _pendingRelease is set.
+                if (ReferenceEquals(_owner, ownerToRelease) && _leaseCount == 0)
+                {
+                    _pendingRelease = !released;
+                    if (released)
+                        _owner = null;
+                }
+                _releaseInFlight = false;
+                if (!ReferenceEquals(_owner, ownerToRelease) || _leaseCount != 0)
+                    return released;
+            }
+            // The binding lease has been relinquished even when native node
+            // retirement remains pending; the tracker retains the owner for
+            // RetryPendingRelease rather than leaking the binding lease.
+            return true;
+        }
+
+        internal bool RetryPendingRelease()
+        {
+            Ros2ForUnityFoxRunNodeOwner ownerToRelease;
+            lock (_sync)
+            {
+                if (_releaseInFlight)
+                    return false;
+                ownerToRelease = _owner;
+            }
+
+            // A contextless owner cannot receive SynchronizationContext.Post.
+            // Pump its explicit owner-thread handoff before evaluating the
+            // tracker lease state so a callback-thread release cannot strand
+            // the final native node lease.
+            ownerToRelease?.RetryPendingNodeReleaseOnCurrentThread();
+
+            lock (_sync)
+            {
+                if (_releaseInFlight)
+                    return false;
+                if (!_pendingRelease || _leaseCount != 0 || _owner == null)
+                    return true;
+                _releaseInFlight = true;
+                ownerToRelease = _owner;
+            }
+
+            bool released;
+            try
+            {
+                released = ownerToRelease.ReleaseHostOwnership();
+            }
+            catch
+            {
+                released = false;
+            }
+            lock (_sync)
+            {
+                if (ReferenceEquals(_owner, ownerToRelease) && _leaseCount == 0 && released)
+                {
+                    _owner = null;
+                    _pendingRelease = false;
+                }
+                else if (ReferenceEquals(_owner, ownerToRelease) && _leaseCount == 0)
+                {
+                    _pendingRelease = true;
+                }
+                _releaseInFlight = false;
+            }
+            return released;
         }
 
         private sealed class SubscriptionLease : IFoxRunRos2NativeBackend
         {
             private readonly IFoxRunRos2NativeBackend _inner;
-            private readonly Action _releaseLease;
+            private readonly Func<bool> _releaseLease;
             private int _released;
 
-            internal SubscriptionLease(IFoxRunRos2NativeBackend inner, Action releaseLease)
+            internal SubscriptionLease(IFoxRunRos2NativeBackend inner, Func<bool> releaseLease)
             {
                 _inner = inner ?? throw new ArgumentNullException(nameof(inner));
                 _releaseLease = releaseLease ?? throw new ArgumentNullException(nameof(releaseLease));
@@ -146,28 +260,28 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             public void RemoveSubscription(IFoxRunRos2NativeSubscriptionToken token)
                 => _inner.RemoveSubscription(token);
 
-            public void ReleaseNodeOwnership()
+            public bool ReleaseNodeOwnership()
             {
-                if (Interlocked.Exchange(ref _released, 1) != 0)
-                    return;
-                try
+                if (Volatile.Read(ref _released) != 0)
+                    return true;
+                if (!_inner.ReleaseNodeOwnership())
                 {
-                    _inner.ReleaseNodeOwnership();
+                    return false;
                 }
-                finally
-                {
-                    _releaseLease();
-                }
+                if (!_releaseLease())
+                    return false;
+                Interlocked.Exchange(ref _released, 1);
+                return true;
             }
         }
 
         private sealed class PublisherLease : IFoxRunRos2NativePublisherBackend
         {
             private readonly IFoxRunRos2NativePublisherBackend _inner;
-            private readonly Action _releaseLease;
+            private readonly Func<bool> _releaseLease;
             private int _released;
 
-            internal PublisherLease(IFoxRunRos2NativePublisherBackend inner, Action releaseLease)
+            internal PublisherLease(IFoxRunRos2NativePublisherBackend inner, Func<bool> releaseLease)
             {
                 _inner = inner ?? throw new ArgumentNullException(nameof(inner));
                 _releaseLease = releaseLease ?? throw new ArgumentNullException(nameof(releaseLease));
@@ -186,18 +300,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             public void RemovePublisher(IFoxRunRos2NativePublisherToken token)
                 => _inner.RemovePublisher(token);
 
-            public void ReleaseNodeOwnership()
+            public bool ReleaseNodeOwnership()
             {
-                if (Interlocked.Exchange(ref _released, 1) != 0)
-                    return;
-                try
-                {
-                    _inner.ReleaseNodeOwnership();
-                }
-                finally
-                {
-                    _releaseLease();
-                }
+                if (Volatile.Read(ref _released) != 0)
+                    return true;
+                if (!_inner.ReleaseNodeOwnership())
+                    return false;
+                if (!_releaseLease())
+                    return false;
+                Interlocked.Exchange(ref _released, 1);
+                return true;
             }
         }
     }
@@ -327,7 +439,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 new Ros2ForUnityFoxRunR2fuNodeDriver(ros2Unity, node),
                 () => !_stopping
                       && Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
-                          gameObject.scene));
+                          gameObject.scene),
+                ownerThreadId: Thread.CurrentThread.ManagedThreadId,
+                ownerContext: SynchronizationContext.Current);
         }
 
         private void OnApplicationQuit()
@@ -335,14 +449,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _stopping = true;
         }
 
+        private void Update()
+        {
+            _leases?.RetryPendingRelease();
+        }
+
         private void OnDisable()
         {
             _stopping = true;
+            _leases?.RetryPendingRelease();
         }
 
         private void OnDestroy()
         {
             _stopping = true;
+            _leases?.RetryPendingRelease();
             if (_instance == this)
                 _instance = null;
         }

@@ -129,10 +129,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_bindings.TryGetValue(instanceId, out var existing))
                 {
                     if (existing.Topic == topic)
-                        continue;
+                    {
+                        if (existing.CleanupComplete)
+                            continue;
+                        if (!existing.TryDispose())
+                            continue;
+                        _bindings.Remove(instanceId);
+                    }
 
-                    existing.Dispose();
-                    _bindings.Remove(instanceId);
+                    else
+                    {
+                        if (!existing.TryDispose())
+                            continue;
+
+                        _bindings.Remove(instanceId);
+                    }
                 }
 
                 var binding = new ImuBinding(this, source, topic);
@@ -149,8 +160,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             foreach (var key in _stale)
             {
-                _bindings[key].Dispose();
-                _bindings.Remove(key);
+                if (_bindings[key].TryDispose())
+                    _bindings.Remove(key);
             }
         }
 
@@ -250,19 +261,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void BeginShutdown()
         {
-            if (_isStopping)
-                return;
-
             _isStopping = true;
             ClearBindings();
         }
 
         private void ClearBindings()
         {
-            foreach (var binding in _bindings.Values)
-                binding.Dispose();
+            _stale.Clear();
+            foreach (var pair in _bindings)
+            {
+                if (pair.Value.TryDispose())
+                    _stale.Add(pair.Key);
+            }
 
-            _bindings.Clear();
+            foreach (var key in _stale)
+                _bindings.Remove(key);
         }
 
         private static string NormalizeTopic(string topic)
@@ -311,6 +324,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             public bool IsStillEligible()
                 => IsEligible(_source) && NormalizeTopic(_source.ImuNativeTopic) == Topic;
 
+            internal bool CleanupComplete
+                => _node == null && _publisher == null;
+
+            internal bool TryDispose()
+            {
+                try
+                {
+                    Dispose();
+                }
+                catch (Exception ex)
+                {
+                    RecordPublishFailure("ROS2 IMU binding cleanup failed: " + ex.Message);
+                    return false;
+                }
+
+                return CleanupComplete;
+            }
+
             public void Dispose()
             {
                 if (_subscribed && _source != null)
@@ -354,6 +385,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_node != null && _publisher != null)
                     return true;
 
+                if (_node != null || _publisher != null)
+                {
+                    CleanupRos2();
+                    if (!CleanupComplete)
+                        return false;
+                }
+
                 var now = Time.unscaledTimeAsDouble;
                 if (!Ros2ForUnityNativePublisherRetryGate.CanAttempt(now, _nextPublisherAttemptAt))
                     return false;
@@ -374,6 +412,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     {
                         lastException = ex;
                         CleanupRos2();
+
+                        if (!CleanupComplete)
+                            return false;
 
                         if (_owner.IsShuttingDown)
                             return false;
@@ -415,25 +456,45 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             private void CleanupRos2()
             {
-                if (_node != null && _publisher != null)
+                if (_publisher != null)
                 {
-                    try { _node.RemovePublisher<sensor_msgs.msg.Imu>(_publisher); }
-                    catch (Exception ex)
+                    if (_node == null)
                     {
-                        if (!_owner.IsShuttingDown)
-                            Debug.LogWarning("[Foxglove][R2FU] IMU publisher cleanup failed: " + ex.Message);
+                        return;
+                    }
+                    else
+                    {
+                        try
+                        {
+                            if (!_node.RemovePublisher<sensor_msgs.msg.Imu>(_publisher))
+                                return;
+                            _publisher = null;
+                        }
+                        catch (Exception ex)
+                        {
+                            if (!_owner.IsShuttingDown)
+                                Debug.LogWarning("[Foxglove][R2FU] IMU publisher cleanup failed: " + ex.Message);
+                            return;
+                        }
                     }
                 }
 
-                _publisher = null;
-                if (_owner._ros2Unity != null && _node != null)
+                if (_node == null)
+                    return;
+
+                if (_owner._ros2Unity == null)
+                    return;
+
+                try
                 {
-                    try { _owner._ros2Unity.RemoveNode(_node); }
-                    catch (Exception ex)
-                    {
-                        if (!_owner.IsShuttingDown)
-                            Debug.LogWarning("[Foxglove][R2FU] IMU node cleanup failed: " + ex.Message);
-                    }
+                    if (!_owner._ros2Unity.TryRemoveNode(_node))
+                        return;
+                }
+                catch (Exception ex)
+                {
+                    if (!_owner.IsShuttingDown)
+                        Debug.LogWarning("[Foxglove][R2FU] IMU node cleanup failed: " + ex.Message);
+                    return;
                 }
 
                 _node = null;

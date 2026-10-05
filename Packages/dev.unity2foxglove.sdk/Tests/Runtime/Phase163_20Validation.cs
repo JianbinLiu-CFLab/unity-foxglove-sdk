@@ -84,8 +84,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && selection.Contains("GetRelativePath(projectPackagesDirectory, runtimePackageDirectory)", StringComparison.Ordinal)
                   && !selection.Contains("\"file:../../Packages/\" + packageName", StringComparison.Ordinal),
                 "163-20C-3: R2FU runtime dependency paths are derived from repository layout");
-            Check(selection.Contains("if (status.SelectedRuntime == null)\n                return;", StringComparison.Ordinal)
-                  && selection.Contains("Environment.SetEnvironmentVariable(\"RMW_IMPLEMENTATION\"", StringComparison.Ordinal),
+            Check(selection.Contains("if (status.SelectedRuntime == null)", StringComparison.Ordinal)
+                  && selection.Contains("RestoreProcessEnvironment();", StringComparison.Ordinal)
+                  && selection.Contains("Ros2ForUnityEditorEnvironmentLease.Set(\"RMW_IMPLEMENTATION\"", StringComparison.Ordinal),
                 "163-20C-4: R2FU communication environment is not mutated when no runtime is selected");
         }
 

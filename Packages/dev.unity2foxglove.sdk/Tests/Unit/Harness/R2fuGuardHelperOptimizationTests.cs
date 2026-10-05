@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 lyrical,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "completeShutdown.IndexOf(\"Ros2cs.Shutdown()\"",
+                "finishShutdown.Contains(\"Ros2cs.Shutdown()\"",
                 lyrical,
                 StringComparison.Ordinal);
         }

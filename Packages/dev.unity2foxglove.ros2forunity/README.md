@@ -37,6 +37,30 @@ The rebuilt Jazzy standalone route has exchanged simple `std_msgs/msg/String` to
 
 The current Windows x64 runtime packages have their runtime manifests, generated file inventories, checksums, and artifact-specific notices under repository-root `Packages/dev.unity2foxglove.ros2forunity.runtime.*` directories. The adapter package keeps compatibility records under `Compliance/` without bundling runtime binaries itself.
 
+## Runtime process contract
+
+The selected ROS2 For Unity runtime owns the process-wide ROS environment while
+its native context is active. This includes the packaged library path, the
+Windows native-plugin `PATH`, `AMENT_PREFIX_PATH`, `ROS_DISTRO`,
+`RMW_IMPLEMENTATION`, and runtime-specific `RCUTILS_*`/`ROS2CS_*` variables.
+The runtime snapshots prior values (including unset values), restores only
+values still equal to its own writes when the last context closes, and preserves
+caller changes made while the context is active. A failed startup attempts the
+same rollback; an incomplete restore keeps cleanup pending and blocks a new
+context until cleanup succeeds.
+Runtime selection, distro changes, and communication-mode changes require a
+fresh Unity process because native libraries cannot be unloaded or safely mixed
+after initialization. Do not switch the runtime or RMW in an already-loaded
+Editor session; restart Unity and select exactly one runtime before Play Mode.
+
+## Publish result contract
+
+`IUnity2FoxgloveRos2Publisher<T>.TryPublish` returns `true` when the configured
+ROS middleware accepted the publish call. It does not report subscriber count,
+delivery, or observation by a peer; a valid publisher with zero subscribers may
+therefore still return `true`. A `false` result means the SDK could not accept
+the call and provides the local failure through `error`.
+
 Local ROS2 command-line probes should use the repository-local `ros2-windows/` entrypoint, for example `ros2-windows/ros2_humble`, `ros2-windows/ros2_jazzy`, or `ros2-windows/ros2_lyrical`. Local ROS2 For Unity runtime ZIP inputs should use `r2fu-runtime-artifacts/<distro>/...`. These entrypoint directories keep machine-local installs and downloaded artifacts out of the package source tree.
 
 Windows Firewall may block inbound Fast DDS UDP discovery. WSL2, VPN, physical Linux host, or bridged Ubuntu VM are all valid ROS2 peer topologies once appropriate firewall allow rules are in place (see report 20 for root cause and fixes).

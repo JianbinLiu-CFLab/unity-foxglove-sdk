@@ -37,6 +37,23 @@ The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-lyrical-win64-runtime-inventory.json`.
 
+## Process Environment Contract
+
+The first active ROS2 For Unity context acquires a process-wide ROS environment lease
+for the variables it changes. It snapshots each prior value, including whether a
+value was unset, applies the packaged Lyrical runtime settings, and on the last
+safe shutdown conditionally restores only values still equal to the value it
+applied. If application code changes a value while the context is active, that
+caller change is preserved. A failed startup attempts the same rollback; an
+incomplete restore keeps the lease pending and blocks a new context until cleanup
+succeeds.
+
+The runtime may update `ROS_DISTRO`, `AMENT_PREFIX_PATH`,
+`RMW_IMPLEMENTATION`, runtime-specific `RCUTILS_*`/`ROS2CS_*`, and on Windows
+the native plugin `PATH`. `ROS_DOMAIN_ID`, DDS discovery/firewall settings,
+Zenoh router/configuration, and other caller-owned values are not rewritten.
+Native DLLs cannot be unloaded or safely mixed after initialization, so restart Unity after changing the runtime package, distro, or communication mode.
+
 ## Package Path Patch
 
 The bundled `ROS2ForUnity.cs` keeps the upstream `Assets/Ros2ForUnity` lookup and adds a package-path fallback so Unity Editor can load this runtime from:

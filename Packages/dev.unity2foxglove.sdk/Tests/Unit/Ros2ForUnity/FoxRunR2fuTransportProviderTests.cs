@@ -83,6 +83,115 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Ros2ForUnity
         }
 
         [Fact]
+        public void ProviderSerializesGenerationActivationAndStaleSessionTeardown()
+        {
+            var root = FindRepositoryRoot();
+            var source = File.ReadAllText(Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime",
+                "Native",
+                "FoxRun",
+                "FoxRunRos2TransportProvider.cs"));
+
+            var activateStart = source.IndexOf(
+                "private void Activate(ulong generation)",
+                StringComparison.Ordinal);
+            var releaseStart = source.IndexOf(
+                "private bool Release(ulong generation)",
+                StringComparison.Ordinal);
+            var detachStart = source.IndexOf(
+                "private void Detach()",
+                StringComparison.Ordinal);
+            var resumeStart = source.IndexOf(
+                "private void ResumeActiveSessionIfPresent()",
+                StringComparison.Ordinal);
+            var sessionStart = source.IndexOf(
+                "private sealed class Session :",
+                StringComparison.Ordinal);
+            Assert.True(activateStart >= 0);
+            Assert.True(releaseStart > activateStart);
+            Assert.True(detachStart > releaseStart);
+            Assert.True(sessionStart > detachStart);
+
+            var activate = source.Substring(
+                activateStart,
+                releaseStart - activateStart);
+            var release = source.Substring(
+                releaseStart,
+                detachStart - releaseStart);
+            var detach = source.Substring(
+                detachStart,
+                sessionStart - detachStart);
+            var ensureStart = source.IndexOf(
+                "private bool EnsureAttached()",
+                StringComparison.Ordinal);
+            Assert.True(ensureStart >= 0);
+            var ensure = source.Substring(
+                ensureStart,
+                resumeStart - ensureStart);
+
+            Assert.Contains(
+                "private readonly object _lifecycleGate",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains("lock (_lifecycleGate)", activate, StringComparison.Ordinal);
+            Assert.Contains("lock (_lifecycleGate)", release, StringComparison.Ordinal);
+            Assert.Contains("lock (_lifecycleGate)", detach, StringComparison.Ordinal);
+            Assert.Contains("lock (_lifecycleGate)", ensure, StringComparison.Ordinal);
+            Assert.Contains(
+                "if (!DetachUnderLifecycleLock())",
+                ensure,
+                StringComparison.Ordinal);
+            Assert.Contains("_manager = manager;", ensure, StringComparison.Ordinal);
+            Assert.Contains(
+                "private bool DetachUnderLifecycleLock()",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "if (_manager == null || !isActiveAndEnabled)",
+                activate,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "The R2FU Provider is detached or disabled.",
+                activate,
+                StringComparison.Ordinal);
+            var activationTry = activate.IndexOf(
+                "try",
+                StringComparison.Ordinal);
+            var generationSwitch = activate.IndexOf(
+                "if (Volatile.Read(ref _activeGeneration) >= 0",
+                StringComparison.Ordinal);
+            Assert.True(activationTry >= 0);
+            Assert.True(generationSwitch > activationTry);
+            var publisherActivation = activate.IndexOf(
+                "_publisherHub.SetProviderSessionActive(true)",
+                StringComparison.Ordinal);
+            var subscriptionActivation = activate.IndexOf(
+                "_subscriptionHub.SetProviderSessionActive(true)",
+                StringComparison.Ordinal);
+            var generationPublication = activate.IndexOf(
+                "Volatile.Write(ref _activeGeneration, expected)",
+                StringComparison.Ordinal);
+            Assert.True(publisherActivation >= 0);
+            Assert.True(subscriptionActivation > publisherActivation);
+            Assert.True(generationPublication > subscriptionActivation);
+            Assert.Contains(
+                "if (Volatile.Read(ref _activeGeneration) != expected)",
+                release,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Volatile.Write(ref _activeGeneration, -1)",
+                release,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "if (owner != null && owner.Release(Generation))",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void R2fuPackageDoesNotReferenceTheBridgePackage()
         {
             var root = FindRepositoryRoot();

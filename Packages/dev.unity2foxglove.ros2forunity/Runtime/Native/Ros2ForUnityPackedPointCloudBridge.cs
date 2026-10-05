@@ -154,8 +154,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             foreach (var key in _stale)
             {
-                _bindings[key].Dispose();
-                _bindings.Remove(key);
+                if (_bindings[key].TryDispose())
+                    _bindings.Remove(key);
             }
         }
 
@@ -171,11 +171,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 if (existing.Topic == topic)
                 {
-                    existing.PrewarmPublishers(_ros2Unity);
+                    if (existing.CleanupComplete)
+                    {
+                        existing.PrewarmPublishers(_ros2Unity);
+                        return;
+                    }
+
+                    if (!existing.TryDispose())
+                        return;
+                }
+                else if (!existing.TryDispose())
+                {
                     return;
                 }
-
-                existing.Dispose();
                 _bindings.Remove(instanceId);
             }
 
@@ -283,19 +291,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void BeginShutdown()
         {
-            if (_isStopping)
-                return;
-
             _isStopping = true;
             ClearBindings();
         }
 
         private void ClearBindings()
         {
-            foreach (var binding in _bindings.Values)
-                binding.Dispose();
+            _stale.Clear();
+            foreach (var pair in _bindings)
+            {
+                if (pair.Value.TryDispose())
+                    _stale.Add(pair.Key);
+            }
 
-            _bindings.Clear();
+            foreach (var key in _stale)
+                _bindings.Remove(key);
         }
 
         private static string NormalizeTopic(string topic)
@@ -373,6 +383,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             public bool IsStillEligible()
                 => IsEligible(_source)
                    && NormalizeTopic(_source.PackedPointCloudTopic) == Topic;
+
+            internal bool CleanupComplete
+                => _node == null && _publishers.Count == 0 && _tfAnchorPublisher == null;
+
+            internal bool TryDispose()
+            {
+                try
+                {
+                    Dispose();
+                }
+                catch (Exception ex)
+                {
+                    RecordPublishFailure("ROS2 PointCloud2 binding cleanup failed: " + ex.Message);
+                    return false;
+                }
+
+                return CleanupComplete;
+            }
 
             public void PrewarmPublishers(ROS2UnityComponent ros2Unity)
             {
@@ -558,6 +586,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_node != null && _publishers.TryGetValue(topic, out publisher) && publisher != null)
                     return true;
 
+                if (_node != null || _publishers.Count > 0 || _tfAnchorPublisher != null)
+                {
+                    CleanupRos2();
+                    if (!CleanupComplete)
+                        return false;
+                }
+
                 Exception lastException = null;
                 for (var attempt = 0; attempt < MaxNodeCreateAttempts; attempt++)
                 {
@@ -574,6 +609,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     {
                         lastException = ex;
                         CleanupRos2();
+
+                        if (!CleanupComplete)
+                            return false;
 
                         if (_owner.IsShuttingDown)
                             return false;
@@ -792,25 +830,63 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             private void CleanupRos2()
             {
+                var publishersRemoved = true;
                 if (_node != null)
                 {
-                    foreach (var publisher in _publishers.Values)
+                    foreach (var entry in new List<KeyValuePair<string, IPublisher<sensor_msgs.msg.PointCloud2>>>(_publishers))
                     {
-                        try { _node.RemovePublisher<sensor_msgs.msg.PointCloud2>(publisher); }
-                        catch (Exception) { }
+                        try
+                        {
+                            if (!_node.RemovePublisher<sensor_msgs.msg.PointCloud2>(entry.Value))
+                            {
+                                publishersRemoved = false;
+                                continue;
+                            }
+                            _publishers.Remove(entry.Key);
+                        }
+                        catch (Exception)
+                        {
+                            publishersRemoved = false;
+                        }
                     }
                 }
 
                 if (_node != null && _tfAnchorPublisher != null)
                 {
-                    try { _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfAnchorPublisher); }
-                    catch (Exception) { }
+                    try
+                    {
+                        if (!_node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfAnchorPublisher))
+                        {
+                            publishersRemoved = false;
+                            return;
+                        }
+                        _tfAnchorPublisher = null;
+                    }
+                    catch (Exception)
+                    {
+                        publishersRemoved = false;
+                    }
                 }
 
-                if (_owner._ros2Unity != null && _node != null)
+                if (!publishersRemoved)
+                    return;
+
+                if (_node == null)
                 {
-                    try { _owner._ros2Unity.RemoveNode(_node); }
-                    catch (Exception) { }
+                    return;
+                }
+
+                if (_owner._ros2Unity == null)
+                    return;
+
+                try
+                {
+                    if (!_owner._ros2Unity.TryRemoveNode(_node))
+                        return;
+                }
+                catch (Exception)
+                {
+                    return;
                 }
 
                 _publishers.Clear();

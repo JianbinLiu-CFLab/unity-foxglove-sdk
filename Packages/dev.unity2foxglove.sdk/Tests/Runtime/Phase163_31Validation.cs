@@ -84,7 +84,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
             var constructor = ExtractMethod(source, "ROS2ForUnity");
-            var destroy = ExtractMethod(source, "DestroyROS2ForUnity");
+            var destroy = ExtractMethod(source, "FinishShutdownShared");
 
             Check(source.Contains("private static void LogRuntimeInfoWithoutStackTrace", StringComparison.Ordinal)
                   && constructor.Contains("LogRuntimeInfoWithoutStackTrace(\"ROS2 version: \"", StringComparison.Ordinal)
@@ -138,8 +138,10 @@ namespace Unity.FoxgloveSDK.Tests
             var startExecutor = ExtractMethod(component, "StartExecutor");
             var markRuntimeShutdown = ExtractMethod(component, "MarkRuntimeShutdown");
 
+            var stopForRosShutdown = ExtractMethod(component, "StopForRosShutdown");
             Check(component.Contains("private static readonly HashSet<ROS2UnityComponent> instances", StringComparison.Ordinal)
-                  && stopAll.Contains("component.MarkRuntimeShutdown();", StringComparison.Ordinal)
+                  && stopAll.Contains("StopForRosShutdown()", StringComparison.Ordinal)
+                  && stopForRosShutdown.Contains("DisposeNodes()", StringComparison.Ordinal)
                   && component.Contains("instances.Remove(this);", StringComparison.Ordinal),
                 "163-31E-1: Jazzy components register for shared runtime shutdown and unregister on detach");
             Check(component.Contains("private bool runtimeShutdownRequested", StringComparison.Ordinal)

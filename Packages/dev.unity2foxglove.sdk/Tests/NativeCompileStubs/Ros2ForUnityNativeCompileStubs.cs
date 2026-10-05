@@ -14,6 +14,7 @@ namespace ROS2
         public bool Ok() => true;
         public ROS2Node CreateNode(string name) => new ROS2Node();
         public void RemoveNode(ROS2Node node) { }
+        public bool TryRemoveNode(ROS2Node node, bool dispose = true) => true;
     }
 
     public class ROS2Node : IDisposable

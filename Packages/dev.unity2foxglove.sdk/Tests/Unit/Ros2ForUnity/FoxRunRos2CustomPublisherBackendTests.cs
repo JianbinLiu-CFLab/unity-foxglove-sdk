@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
@@ -48,6 +49,25 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(0, driver.ReleaseNodeCount);
 
             subscriber.ReleaseNodeOwnership();
+            Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
+        public void PublisherReportsMiddlewareAcceptanceWhenNoSubscriberIsPresent()
+        {
+            var driver = new FakeNodeDriver();
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver, () => true, new ManagedQosFactory());
+            var publisher = owner.AcquirePublisherBackend();
+            var registration = publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default);
+
+            Assert.True(registration.Succeeded);
+            Assert.True(publisher.TryPublish(registration.Token, new TestEnvelope()));
+            Assert.Equal(1, driver.PublishCount);
+            Assert.Equal(0, driver.CreateSubscriptionCount);
+
+            publisher.RemovePublisher(registration.Token);
+            Assert.True(publisher.ReleaseNodeOwnership());
+            Assert.True(owner.ReleaseHostOwnership());
             Assert.Equal(1, driver.ReleaseNodeCount);
         }
 
@@ -95,13 +115,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void InvalidPublisherTokenRetainsRollbackOwnerWhenRemovalFails()
+        public void PublisherTokenRetainsEndpointWhenRemovalThrows()
         {
-            var driver = new FakeNodeDriver
-            {
-                PublisherUsable = false,
-                PublisherRemovalFailuresRemaining = 1
-            };
+            var driver = new FakeNodeDriver { PublisherRemovalExceptionsRemaining = 1 };
             var owner = new Ros2ForUnityFoxRunNodeOwner(
                 driver,
                 () => true,
@@ -112,15 +128,41 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Contract(),
                 FoxRunResolvedQos.Default);
 
-            Assert.False(registration.Succeeded);
-            Assert.NotNull(registration.Token);
+            Assert.True(registration.Succeeded);
+            var removalFailure = Assert.Throws<InvalidOperationException>(
+                () => publisher.RemovePublisher(registration.Token));
+            Assert.Equal("publisher removal pending", removalFailure.Message);
             Assert.Equal(1, driver.RemovePublisherCount);
 
             publisher.RemovePublisher(registration.Token);
 
             Assert.Equal(2, driver.RemovePublisherCount);
-            publisher.ReleaseNodeOwnership();
-            owner.ReleaseHostOwnership();
+            Assert.True(publisher.ReleaseNodeOwnership());
+            Assert.True(owner.ReleaseHostOwnership());
+            Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
+        public void PublisherTokenRetainsEndpointWhenRemovalReturnsFalse()
+        {
+            var driver = new FakeNodeDriver { PublisherRemovalReturnsFalse = true };
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver, () => true, new ManagedQosFactory());
+            var publisher = owner.AcquirePublisherBackend();
+            var registration = publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default);
+
+            Assert.True(registration.Succeeded);
+            var removalFailure = Assert.Throws<InvalidOperationException>(
+                () => publisher.RemovePublisher(registration.Token));
+            Assert.Equal("R2FU publisher was not found during removal.", removalFailure.Message);
+            Assert.Equal(1, driver.RemovePublisherCount);
+
+            driver.PublisherRemovalReturnsFalse = false;
+            publisher.RemovePublisher(registration.Token);
+
+            Assert.Equal(2, driver.RemovePublisherCount);
+            Assert.True(publisher.ReleaseNodeOwnership());
+            Assert.True(owner.ReleaseHostOwnership());
+            Assert.Equal(1, driver.ReleaseNodeCount);
         }
 
         [Fact]
@@ -233,7 +275,312 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public async Task CustomTransportLeaseTrackerReservesOwnerBeforeBackendAcquisition()
+        public void CustomTransportLeaseRetriesHostReleaseAfterRecoverableFailure()
+        {
+            var driver = new FakeNodeDriver { ReleaseFailuresRemaining = 1 };
+            var tracker = new FoxRunRos2CustomNativeTransportLeaseTracker(
+                () => new Ros2ForUnityFoxRunNodeOwner(driver));
+
+            Assert.True(tracker.TryAcquirePublisherBackend(out var publisher));
+            Assert.True(publisher.ReleaseNodeOwnership());
+            Assert.Equal(1, driver.ReleaseNodeCount);
+
+            Assert.True(tracker.RetryPendingRelease());
+            Assert.Equal(2, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
+        public void CallbackThreadHostReleaseIsDispatchedToTheOwnerThread()
+        {
+            var ownerThreadId = Thread.CurrentThread.ManagedThreadId;
+            var context = new QueuedSynchronizationContext();
+            var driver = new FakeNodeDriver();
+            var owner = new Ros2ForUnityFoxRunNodeOwner(
+                driver,
+                () => true,
+                new ManagedQosFactory(),
+                ownerThreadId,
+                context);
+            var publisher = owner.AcquirePublisherBackend();
+
+            var releaseResult = RunOnCallbackThread(
+                () =>
+                {
+                    Assert.True(publisher.ReleaseNodeOwnership());
+                    return owner.ReleaseHostOwnership();
+                },
+                "The callback-thread host release did not complete within the timeout.");
+            Assert.False(releaseResult);
+            Assert.Equal(0, driver.ReleaseNodeCount);
+            Assert.Equal(1, context.PendingCount);
+
+            context.RunPending();
+
+            Assert.Equal(1, driver.ReleaseNodeCount);
+            Assert.Equal(ownerThreadId, driver.ReleaseThreadId);
+            Assert.True(owner.ReleaseHostOwnership());
+        }
+
+        [Fact]
+        public void CallbackThreadBindingReleaseDoesNotLeakAfterHostRelease()
+        {
+            var ownerThreadId = Thread.CurrentThread.ManagedThreadId;
+            var context = new QueuedSynchronizationContext();
+            var driver = new FakeNodeDriver();
+            var owner = new Ros2ForUnityFoxRunNodeOwner(
+                driver,
+                () => true,
+                new ManagedQosFactory(),
+                ownerThreadId,
+                context);
+            var publisher = owner.AcquirePublisherBackend();
+
+            Assert.True(owner.ReleaseHostOwnership());
+            Assert.True(
+                RunOnCallbackThread(
+                    () => publisher.ReleaseNodeOwnership(),
+                    "The callback-thread binding release did not complete within the timeout."));
+            Assert.Equal(0, driver.ReleaseNodeCount);
+            Assert.Equal(1, context.PendingCount);
+
+            context.RunPending();
+
+            Assert.Equal(1, driver.ReleaseNodeCount);
+            Assert.Equal(ownerThreadId, driver.ReleaseThreadId);
+        }
+
+        [Fact]
+        public void ContextlessCallbackThreadReleaseCompletesThroughOwnerThreadPump()
+        {
+            var ownerThreadId = Thread.CurrentThread.ManagedThreadId;
+            var driver = new FakeNodeDriver();
+            var owner = new Ros2ForUnityFoxRunNodeOwner(
+                driver,
+                () => true,
+                new ManagedQosFactory(),
+                ownerThreadId,
+                ownerContext: null);
+            var publisher = owner.AcquirePublisherBackend();
+
+            Assert.True(owner.ReleaseHostOwnership());
+            Assert.Equal(0, driver.ReleaseNodeCount);
+
+            Assert.True(
+                RunOnCallbackThread(
+                    publisher.ReleaseNodeOwnership,
+                    "The contextless callback-thread release did not complete."));
+            Assert.Equal(0, driver.ReleaseNodeCount);
+
+            Assert.True(owner.RetryPendingNodeReleaseOnCurrentThread());
+            Assert.Equal(1, driver.ReleaseNodeCount);
+            Assert.Equal(ownerThreadId, driver.ReleaseThreadId);
+        }
+
+        [Fact]
+        public void ContextlessTrackerReleaseRetriesTheOwnerThreadHandoff()
+        {
+            var ownerThreadId = Thread.CurrentThread.ManagedThreadId;
+            var driver = new FakeNodeDriver();
+            Ros2ForUnityFoxRunNodeOwner owner = null;
+            var tracker = new FoxRunRos2CustomNativeTransportLeaseTracker(
+                () => owner = new Ros2ForUnityFoxRunNodeOwner(
+                    driver,
+                    () => true,
+                    new ManagedQosFactory(),
+                    ownerThreadId,
+                    ownerContext: null));
+
+            Assert.True(tracker.TryAcquirePublisherBackend(out var publisher));
+            Assert.True(owner.ReleaseHostOwnership());
+
+            Assert.True(
+                RunOnCallbackThread(
+                    publisher.ReleaseNodeOwnership,
+                    "The contextless tracker release did not complete."));
+            Assert.Equal(0, driver.ReleaseNodeCount);
+
+            Assert.True(tracker.RetryPendingRelease());
+            Assert.Equal(1, driver.ReleaseNodeCount);
+            Assert.Equal(ownerThreadId, driver.ReleaseThreadId);
+        }
+
+        [Fact]
+        public void CallbackThreadLeaseReleaseRemainsRetryableOnTheOwnerThread()
+        {
+            var ownerThreadId = Thread.CurrentThread.ManagedThreadId;
+            var context = new QueuedSynchronizationContext();
+            var driver = new FakeNodeDriver();
+            Ros2ForUnityFoxRunNodeOwner owner = null;
+            var tracker = new FoxRunRos2CustomNativeTransportLeaseTracker(
+                () => owner = new Ros2ForUnityFoxRunNodeOwner(
+                    driver,
+                    () => true,
+                    new ManagedQosFactory(),
+                    ownerThreadId,
+                    context));
+
+            Assert.True(tracker.TryAcquirePublisherBackend(out var publisher));
+            Assert.True(tracker.TryAcquireSubscriptionBackend(out var subscription));
+
+            Assert.True(
+                RunOnCallbackThread(
+                    () =>
+                    {
+                        Assert.True(publisher.ReleaseNodeOwnership());
+                        return subscription.ReleaseNodeOwnership();
+                    },
+                    "The callback-thread lease release did not complete within the timeout."));
+            Assert.Equal(0, driver.ReleaseNodeCount);
+            Assert.True(context.PendingCount > 0);
+
+            context.RunPending();
+
+            Assert.True(tracker.RetryPendingRelease());
+            Assert.Equal(1, driver.ReleaseNodeCount);
+            Assert.Equal(ownerThreadId, driver.ReleaseThreadId);
+            Assert.NotNull(owner);
+        }
+
+        [Fact]
+        public void OwnerContextRetriesQueuedNodeReleaseAcrossPublisherAndSubscriptionLeases()
+        {
+            var ownerThreadId = Thread.CurrentThread.ManagedThreadId;
+            var context = new QueuedSynchronizationContext();
+            var driver = new FakeNodeDriver { ReleaseFailuresRemaining = 1 };
+            var owner = new Ros2ForUnityFoxRunNodeOwner(
+                driver,
+                () => true,
+                new ManagedQosFactory(),
+                ownerThreadId,
+                context);
+            var publisher = owner.AcquirePublisherBackend();
+            var subscription = owner.AcquireBackend();
+
+            Assert.False(
+                RunOnCallbackThread(
+                    () =>
+                    {
+                        Assert.True(publisher.ReleaseNodeOwnership());
+                        Assert.True(subscription.ReleaseNodeOwnership());
+                        return owner.ReleaseHostOwnership();
+                    },
+                    "The callback-thread owner release did not complete within the timeout."));
+            Assert.Equal(0, driver.ReleaseNodeCount);
+            Assert.True(context.PendingCount > 0);
+
+            context.RunPending();
+
+            Assert.Equal(2, driver.ReleaseNodeCount);
+            Assert.Equal(ownerThreadId, driver.ReleaseThreadId);
+        }
+
+        [Fact]
+        public void OwnerContextRetriesQueuedNodeReleaseAfterDriverException()
+        {
+            var ownerThreadId = Thread.CurrentThread.ManagedThreadId;
+            var context = new QueuedSynchronizationContext();
+            var driver = new FakeNodeDriver
+            {
+                ReleaseExceptionsRemaining = 1,
+            };
+            var owner = new Ros2ForUnityFoxRunNodeOwner(
+                driver,
+                () => true,
+                new ManagedQosFactory(),
+                ownerThreadId,
+                context);
+
+            Assert.False(
+                RunOnCallbackThread(
+                    owner.ReleaseHostOwnership,
+                    "The callback-thread owner release did not complete within the timeout."));
+            Assert.Equal(0, driver.ReleaseNodeCount);
+
+            context.RunPending();
+
+            Assert.Equal(2, driver.ReleaseNodeCount);
+            Assert.Equal(ownerThreadId, driver.ReleaseThreadId);
+        }
+
+        [Fact]
+        public void BindingRetainsOwnershipWhenOwnerReleaseFailsOnTheOwnerThread()
+        {
+            var driver = new FakeNodeDriver { ReleaseFailuresRemaining = 1 };
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver, () => true, new ManagedQosFactory());
+            var publisher = owner.AcquirePublisherBackend();
+
+            Assert.True(owner.ReleaseHostOwnership());
+            Assert.False(publisher.ReleaseNodeOwnership());
+            Assert.Equal(1, driver.ReleaseNodeCount);
+
+            Assert.True(publisher.ReleaseNodeOwnership());
+            Assert.Equal(2, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
+        public void CustomTransportLeaseTrackerRejectsAcquireWhileHostReleaseIsInFlight()
+        {
+            var driver = new FakeNodeDriver
+            {
+                BlockRelease = true,
+            };
+            using var ownerReady = new ManualResetEventSlim(false);
+            using var releaseRequested = new ManualResetEventSlim(false);
+            using var releaseCompleted = new ManualResetEventSlim(false);
+            Exception ownerThreadFailure = null;
+            var ownerThreadId = 0;
+            IFoxRunRos2NativePublisherBackend publisher = null;
+            var ownerThread = new Thread(
+                () =>
+                {
+                    ownerThreadId = Thread.CurrentThread.ManagedThreadId;
+                    ownerReady.Set();
+                    releaseRequested.Wait(TimeSpan.FromSeconds(5));
+                    try
+                    {
+                        Assert.True(publisher.ReleaseNodeOwnership());
+                    }
+                    catch (Exception exception)
+                    {
+                        ownerThreadFailure = exception;
+                    }
+                    finally
+                    {
+                        releaseCompleted.Set();
+                    }
+                });
+            ownerThread.Start();
+            Assert.True(ownerReady.Wait(TimeSpan.FromSeconds(5)));
+            var tracker = new FoxRunRos2CustomNativeTransportLeaseTracker(
+                () => new Ros2ForUnityFoxRunNodeOwner(
+                    driver,
+                    () => true,
+                    ownerThreadId: ownerThreadId));
+
+            Assert.True(tracker.TryAcquirePublisherBackend(out publisher));
+            releaseRequested.Set();
+
+            Assert.True(
+                driver.ReleaseStarted.Wait(TimeSpan.FromSeconds(5)),
+                "The host release must be observable while it is in flight.");
+            Assert.False(
+                tracker.TryAcquirePublisherBackend(out _),
+                "A new lease must not reuse an owner while its host release is in flight.");
+
+            driver.ContinueRelease.Set();
+            Assert.True(
+                releaseCompleted.Wait(TimeSpan.FromSeconds(5)),
+                "The blocked host release did not complete.");
+            ownerThread.Join(TimeSpan.FromSeconds(5));
+            Assert.Null(ownerThreadFailure);
+
+            ownerThreadId = Thread.CurrentThread.ManagedThreadId;
+            Assert.True(tracker.TryAcquirePublisherBackend(out var nextPublisher));
+            Assert.True(nextPublisher.ReleaseNodeOwnership());
+        }
+
+        [Fact]
+        public void CustomTransportLeaseTrackerReservesOwnerBeforeBackendAcquisition()
         {
             var driver = new FakeNodeDriver();
             var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
@@ -279,12 +626,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Monitor.Exit(ownerSync);
             }
 
-            Assert.Same(
-                acquisition,
-                await Task.WhenAny(
-                    acquisition,
-                    Task.Delay(TimeSpan.FromSeconds(5))));
-            await acquisition;
+            Assert.True(
+                acquisition.Wait(TimeSpan.FromSeconds(5)),
+                "Publisher backend acquisition did not complete after the owner lock was released.");
             Assert.True(acquired);
             Assert.NotNull(second);
             first.ReleaseNodeOwnership();
@@ -301,6 +645,40 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                    ?? throw new InvalidOperationException(
                        $"Private field '{name}' was not found on {instance.GetType().FullName}."))
                 .GetValue(instance);
+
+        private static T RunOnCallbackThread<T>(Func<T> action, string timeoutMessage)
+        {
+            T result = default;
+            Exception failure = null;
+            var completed = new ManualResetEventSlim(false);
+            var thread = new Thread(
+                () =>
+                {
+                    try
+                    {
+                        result = action();
+                    }
+                    catch (Exception exception)
+                    {
+                        failure = exception;
+                    }
+                    finally
+                    {
+                        completed.Set();
+                    }
+                })
+            {
+                IsBackground = true,
+            };
+
+            thread.Start();
+            var signaled = completed.Wait(TimeSpan.FromSeconds(2));
+            var joined = thread.Join(TimeSpan.FromSeconds(1));
+            Assert.True(signaled, timeoutMessage);
+            Assert.True(joined, timeoutMessage + " The callback thread did not exit.");
+            Assert.Null(failure);
+            return result;
+        }
 
         private static FoxRunRos2CustomPublisherContract Contract()
             => new FoxRunRos2CustomPublisherContract(
@@ -337,18 +715,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         private sealed class FakeNodeDriver : IFoxRunRos2R2fuNodeDriver
         {
             public int CreatePublisherCount { get; private set; }
+            public int CreateSubscriptionCount { get; private set; }
             public int RemovePublisherCount { get; private set; }
             public int PublishCount { get; private set; }
             public int ReleaseNodeCount { get; private set; }
+            public int ReleaseThreadId { get; private set; }
             public bool PublisherUsable { get; set; } = true;
-            public int PublisherRemovalFailuresRemaining { get; set; }
+            public int PublisherRemovalExceptionsRemaining { get; set; }
+            public bool PublisherRemovalReturnsFalse { get; set; }
+            public int ReleaseFailuresRemaining { get; set; }
+            public int ReleaseExceptionsRemaining { get; set; }
+            public bool BlockRelease { get; set; }
+            public ManualResetEventSlim ReleaseStarted { get; } = new ManualResetEventSlim(false);
+            public ManualResetEventSlim ContinueRelease { get; } = new ManualResetEventSlim(false);
             public Exception PublisherFailure { get; set; }
             public Exception PublisherUsabilityFailure { get; set; }
             public ROS2.QualityOfServiceProfile LastPublisherQos { get; private set; }
 
             public object CreateSubscription<T>(string topic, Action<T> callback, ROS2.QualityOfServiceProfile qos)
                 where T : ROS2.Message, new()
-                => new object();
+            {
+                CreateSubscriptionCount++;
+                return new object();
+            }
 
             public bool IsSubscriptionUsable(object subscription) => subscription != null;
             public bool RemoveSubscription(object subscription) => true;
@@ -386,15 +775,54 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 if (publisher == null)
                     return false;
                 RemovePublisherCount++;
-                if (PublisherRemovalFailuresRemaining > 0)
+                if (PublisherRemovalExceptionsRemaining > 0)
                 {
-                    PublisherRemovalFailuresRemaining--;
+                    PublisherRemovalExceptionsRemaining--;
+                    throw new InvalidOperationException("publisher removal pending");
+                }
+                return !PublisherRemovalReturnsFalse;
+            }
+
+            public bool ReleaseNode()
+            {
+                ReleaseNodeCount++;
+                ReleaseThreadId = Thread.CurrentThread.ManagedThreadId;
+                if (BlockRelease)
+                {
+                    ReleaseStarted.Set();
+                    if (!ContinueRelease.Wait(TimeSpan.FromSeconds(5)))
+                        return false;
+                    BlockRelease = false;
+                }
+                if (ReleaseFailuresRemaining > 0)
+                {
+                    ReleaseFailuresRemaining--;
                     return false;
+                }
+                if (ReleaseExceptionsRemaining > 0)
+                {
+                    ReleaseExceptionsRemaining--;
+                    throw new InvalidOperationException("node release pending");
                 }
                 return true;
             }
+        }
 
-            public void ReleaseNode() => ReleaseNodeCount++;
+        private sealed class QueuedSynchronizationContext : SynchronizationContext
+        {
+            private readonly ConcurrentQueue<(SendOrPostCallback Callback, object State)> _pending =
+                new ConcurrentQueue<(SendOrPostCallback Callback, object State)>();
+
+            public int PendingCount => _pending.Count;
+
+            public override void Post(SendOrPostCallback callback, object state)
+                => _pending.Enqueue((callback, state));
+
+            public void RunPending()
+            {
+                while (_pending.TryDequeue(out var work))
+                    work.Callback(work.State);
+            }
         }
 
         private sealed class ManagedQosFactory : IFoxRunRos2NativeQosProfileFactory

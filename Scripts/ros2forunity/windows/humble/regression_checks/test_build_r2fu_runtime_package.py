@@ -56,6 +56,10 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             "The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`",
             self.builder.readme_text(artifact),
         )
+        self.assertIn("process-wide ROS environment", self.builder.readme_text(artifact))
+        self.assertIn("restart Unity after changing the runtime package", self.builder.readme_text(artifact))
+        self.assertIn("RMW_IMPLEMENTATION", self.builder.readme_text(artifact))
+        self.assertIn("ROS_DISTRO", self.builder.readme_text(artifact))
 
     def test_extract_runtime_rejects_zip_slip_entries(self) -> None:
         """Reject archive entries that would escape the package root."""
@@ -277,6 +281,81 @@ class RuntimePackageExtractionTests(unittest.TestCase):
 
             with self.assertRaises(UnicodeDecodeError):
                 self.builder.collect_local_patch_overlays(package)
+
+    def test_default_inventory_is_kept_outside_resettable_package(self) -> None:
+        """The default inventory must live in the adapter compliance directory."""
+        expected = (
+            self.builder.ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Compliance"
+            / (self.builder.RUNTIME_ID + "-runtime-inventory.json")
+        )
+        self.assertEqual(expected.resolve(), self.builder.DEFAULT_INVENTORY.resolve())
+
+    def test_supplemental_ament_index_files_restore_only_missing_entries(self) -> None:
+        """Legacy ament-index files survive archive extraction without overwriting new entries."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            root = package.joinpath(*self.builder.SUPPLEMENTAL_RUNTIME_RELATIVE.split("/"))
+            present = root / "resource_index" / "packages" / "present"
+            missing = root / "resource_index" / "packages" / "missing"
+            present.parent.mkdir(parents=True)
+            present.write_bytes(b"legacy-present")
+            missing.write_bytes(b"legacy-missing")
+
+            overlays = self.builder.collect_supplemental_runtime_files(package)
+            present.write_bytes(b"artifact-present")
+            missing.unlink()
+            self.builder.apply_supplemental_runtime_files(package, overlays)
+
+            self.assertEqual(b"artifact-present", present.read_bytes())
+            self.assertEqual(b"legacy-missing", missing.read_bytes())
+
+    def test_sensor_overlay_survives_runtime_regeneration(self) -> None:
+        """The patched Sensor source must be restored after an upstream refresh."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            sensor = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Sensor.cs"
+            sensor.parent.mkdir(parents=True)
+            sensor.write_text("patched sensor\n", encoding="utf-8")
+
+            overlays = self.builder.collect_local_patch_overlays(package)
+            relative = "Runtime/Ros2ForUnity/Scripts/Sensor.cs"
+            self.assertEqual("patched sensor\n", overlays[relative])
+
+            sensor.write_text("upstream sensor\n", encoding="utf-8")
+            self.builder.apply_local_patch_overlays(package, overlays)
+            self.assertEqual("patched sensor\n", sensor.read_text(encoding="utf-8"))
+
+    def test_ros2_for_unity_overlay_survives_runtime_regeneration(self) -> None:
+        """The lifecycle/environment patch must be restored after an upstream refresh."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            source = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
+            source.parent.mkdir(parents=True)
+            source.write_text("process environment lease marker\n", encoding="utf-8")
+
+            overlays = self.builder.collect_local_patch_overlays(package)
+            relative = "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs"
+            self.assertEqual("process environment lease marker\n", overlays[relative])
+
+            source.write_text("upstream source\n", encoding="utf-8")
+            self.builder.apply_local_patch_overlays(package, overlays)
+            self.assertEqual("process environment lease marker\n", source.read_text(encoding="utf-8"))
+
+    def test_ros2_for_unity_overlay_preserves_native_environment_helper(self) -> None:
+        """A refreshed Humble package must retain the UCRT environment helper."""
+        overlays = self.builder.collect_local_patch_overlays(self.builder.DEFAULT_PACKAGE)
+        relative = "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs"
+        source = overlays[relative]
+
+        self.assertIn(relative, self.builder.LOCAL_PATCH_OVERLAY_FILES)
+        self.assertIn("_wputenv_s(name, value ?? String.Empty)", source)
+        self.assertIn(
+            "[DllImport(\"ucrtbase.dll\", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]",
+            source,
+        )
 
     def test_existing_package_path_patch_still_applies_rmw_guard(self) -> None:
         """The early package-path patch branch must not skip RMW validation."""

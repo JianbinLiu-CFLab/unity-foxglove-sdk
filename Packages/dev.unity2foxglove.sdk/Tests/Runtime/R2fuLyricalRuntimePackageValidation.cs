@@ -357,7 +357,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "162-D2: Inspector blocks unsafe communication-mode hot switching");
 
             var guard = ReadRepoText(AdapterPackage + "/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
-            Check(selector.Contains("Environment.SetEnvironmentVariable(\"RMW_IMPLEMENTATION\"", StringComparison.Ordinal)
+            Check(selector.Contains("Ros2ForUnityEditorEnvironmentLease.Set(\"RMW_IMPLEMENTATION\"", StringComparison.Ordinal)
                   && selector.Contains("GetRmwImplementationForCommunicationMode", StringComparison.Ordinal)
                   && selector.Contains("BindActiveRuntimeForPlayMode", StringComparison.Ordinal)
                   && guard.Contains("GetCommunicationModeRequiringEditorRestart", StringComparison.Ordinal)
@@ -437,9 +437,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && runtimeSource.Contains("CompleteShutdownShared()", StringComparison.Ordinal),
                 "162-E5: Lyrical ROS2 context shutdown is serialized across editor reload/play-mode exits");
             var completeShutdown = ExtractMethod(runtimeSource, "private static void CompleteShutdownShared()");
+            var finishShutdown = ExtractMethod(runtimeSource, "private static void FinishShutdownShared()");
             Check(completeShutdown.Contains("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
-                  && completeShutdown.IndexOf("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
-                     < completeShutdown.IndexOf("Ros2cs.Shutdown()", StringComparison.Ordinal),
+                  && completeShutdown.Contains("FinishShutdownShared();", StringComparison.Ordinal)
+                  && finishShutdown.Contains("Ros2cs.Shutdown()", StringComparison.Ordinal),
                 "162-E6: Lyrical runtime stops ROS2 executor threads before unloading Zenoh/RMW through Ros2cs.Shutdown");
             var constructor = ExtractMethod(runtimeSource, "internal ROS2ForUnity()");
             var windowsBlockStart = constructor.IndexOf("if (GetOS() == Platform.Windows)", StringComparison.Ordinal);
@@ -457,7 +458,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(componentSource.Contains("private static readonly HashSet<ROS2UnityComponent> instances", StringComparison.Ordinal)
                   && componentSource.Contains("instances.Add(this)", StringComparison.Ordinal)
                   && componentSource.Contains("instances.Remove(this)", StringComparison.Ordinal)
-                  && componentSource.Contains("public static void StopAllExecutorsForRosShutdown()", StringComparison.Ordinal),
+                  && componentSource.Contains("public static bool StopAllExecutorsForRosShutdown()", StringComparison.Ordinal),
                 "162-E7: Lyrical ROS2UnityComponent tracks active components for cooperative native shutdown");
             Check(componentSource.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
                   && componentSource.Contains("MarkRuntimeShutdown()", StringComparison.Ordinal)
