@@ -415,6 +415,8 @@ namespace Unity.FoxgloveSDK.Components
         private void CompletePendingReadback()
         {
             _pendingRequests = Mathf.Max(0, _pendingRequests - 1);
+            if (_pendingRequests == 0)
+                _captureResources.ReleaseRetiredRenderTextures();
             if (_pendingRequests == 0 && _cleanupWhenReadbacksDrain)
             {
                 _cleanupWhenReadbacksDrain = false;
@@ -488,7 +490,13 @@ namespace Unity.FoxgloveSDK.Components
                 Interlocked.Increment(ref _captureGeneration);
             }
             _captureResources.Ensure(this, transform, width, height);
+            if (_pendingRequests == 0)
+                _captureResources.ReleaseRetiredRenderTextures();
         }
+
+        /// <summary>Returns the source camera used by the image capture pipeline.</summary>
+        public Camera SensorCameraSourceCamera
+            => _captureResources.SourceCamera ?? GetComponent<Camera>();
 
         /// <summary>
         /// Destroys Unity-owned capture resources only after local pending readbacks are

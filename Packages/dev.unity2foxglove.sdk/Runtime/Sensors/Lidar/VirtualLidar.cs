@@ -629,6 +629,8 @@ namespace Unity.FoxgloveSDK.Components
         private void OnValidate()
         {
             NormalizeSerializedNumericConfiguration();
+            if (Application.isPlaying && isActiveAndEnabled)
+                Debug.LogWarning("[VirtualLidar] Configuration changes during Play are deferred until the component is disabled and re-enabled.", this);
         }
 
         private void NormalizeSerializedNumericConfiguration()
