@@ -39,8 +39,6 @@ namespace Unity2Foxglove.Ros2Bridge
 
                 cancellationToken.ThrowIfCancellationRequested();
                 client.NoDelay = true;
-                client.ReceiveTimeout = RemainingMilliseconds(stopwatch, totalTimeoutMs);
-                client.SendTimeout = RemainingMilliseconds(stopwatch, totalTimeoutMs);
 
                 var requestId = RequestIdPrefix + Guid.NewGuid().ToString("N");
                 var request = Ros2BridgeU2R2HealthCodec.WriteHealthPing(requestId);
@@ -134,10 +132,18 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var remaining = RemainingMilliseconds(deadline, timeoutMs);
-                if (remaining <= 0)
-                    throw new TimeoutException("Timed out reading ROS2 Bridge health response.");
                 stream.ReadTimeout = (int)Math.Min(int.MaxValue, remaining);
-                var read = stream.Read(bytes, offset, count - offset);
+                int read;
+                try
+                {
+                    read = stream.Read(bytes, offset, count - offset);
+                }
+                catch (IOException exception) when (deadline.ElapsedMilliseconds >= timeoutMs)
+                {
+                    throw new TimeoutException(
+                        "ROS2 Bridge health probe exceeded its total deadline.",
+                        exception);
+                }
                 if (read <= 0)
                     throw new IOException("ROS2 Bridge sidecar closed the connection.");
                 offset += read;

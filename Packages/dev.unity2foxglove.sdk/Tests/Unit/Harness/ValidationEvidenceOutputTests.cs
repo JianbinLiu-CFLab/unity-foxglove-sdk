@@ -91,6 +91,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "ValidationEvidence.Behavior",
                 phase16.Groups["call"].Value,
                 StringComparison.Ordinal);
+
+            var phase16423 = Regex.Match(
+                definitions,
+                @"Ci\(""--phase164-23""(?<call>.*?)\),\s*(?:\r?\n|$)",
+                RegexOptions.Singleline);
+            Assert.True(phase16423.Success);
+            Assert.Contains(
+                "evidence: ValidationEvidence.Structural",
+                phase16423.Groups["call"].Value,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "ValidationEvidence.Behavior",
+                phase16423.Groups["call"].Value,
+                StringComparison.Ordinal);
         }
 
         [Fact]
