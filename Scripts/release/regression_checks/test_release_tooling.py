@@ -918,6 +918,7 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("name: Unity batch compile (non-required)", workflow)
         self.assertNotIn("continue-on-error:", workflow)
         self.assertIn("run_unity_batch_compile.py", workflow)
+        self.assertIn("  push:\n    branches: [main]", workflow)
 
     def test_fatal_run_raises_after_printing_failure(self) -> None:
         """Fatal subprocess failures should abort at the point of failure."""
