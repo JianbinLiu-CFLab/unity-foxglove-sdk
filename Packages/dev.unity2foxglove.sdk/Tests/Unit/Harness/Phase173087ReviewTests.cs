@@ -5,7 +5,14 @@
 // Purpose: Phase 173-087 Unity review regression checks.
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.Loader;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
 
@@ -792,6 +799,267 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("if (released)", source, StringComparison.Ordinal);
             Assert.Contains("CompareExchange(ref _node, null, node)", source, StringComparison.Ordinal);
             Assert.Contains("TryRemoveNode", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RuntimeEnvironmentLeaseRestoresPreviouslyUnsetVariable()
+        {
+            foreach (var distro in RuntimeDistros)
+            {
+                var name = "U2F_LEASE_UNSET_" + distro.ToUpperInvariant();
+                var lease = RuntimeLeaseType(distro);
+                var previous = Environment.GetEnvironmentVariable(name);
+                Environment.SetEnvironmentVariable(name, null);
+                try
+                {
+                    InvokeLease(lease, "Begin");
+                    InvokeLease(lease, "Set", name, "lease-value", false);
+                    Assert.Equal("lease-value", Environment.GetEnvironmentVariable(name));
+                    Assert.True((bool)InvokeLease(lease, "Restore", false));
+                    Assert.Null(Environment.GetEnvironmentVariable(name));
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable(name, previous);
+                }
+            }
+        }
+
+        [Fact]
+        public void RuntimeEnvironmentLeaseRestoresAnExistingValue()
+        {
+            foreach (var distro in RuntimeDistros)
+            {
+                var name = "U2F_LEASE_EXISTING_" + distro.ToUpperInvariant();
+                var lease = RuntimeLeaseType(distro);
+                var previous = Environment.GetEnvironmentVariable(name);
+                Environment.SetEnvironmentVariable(name, "original-value");
+                try
+                {
+                    InvokeLease(lease, "Begin");
+                    InvokeLease(lease, "Set", name, "lease-value", false);
+                    Assert.Equal("lease-value", Environment.GetEnvironmentVariable(name));
+                    Assert.True((bool)InvokeLease(lease, "Restore", false));
+                    Assert.Equal("original-value", Environment.GetEnvironmentVariable(name));
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable(name, previous);
+                }
+            }
+        }
+
+        [Fact]
+        public void RuntimeEnvironmentLeasePreservesCallerMutation()
+        {
+            foreach (var distro in RuntimeDistros)
+            {
+                var name = "U2F_LEASE_CALLER_" + distro.ToUpperInvariant();
+                var lease = RuntimeLeaseType(distro);
+                var previous = Environment.GetEnvironmentVariable(name);
+                Environment.SetEnvironmentVariable(name, "original-value");
+                try
+                {
+                    InvokeLease(lease, "Begin");
+                    InvokeLease(lease, "Set", name, "lease-value", false);
+                    Environment.SetEnvironmentVariable(name, "caller-value");
+                    Assert.True((bool)InvokeLease(lease, "Restore", false));
+                    Assert.Equal("caller-value", Environment.GetEnvironmentVariable(name));
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable(name, previous);
+                }
+            }
+        }
+
+        [Fact]
+        public void RuntimeEnvironmentLeaseRemovesOnlyItsPathEntry()
+        {
+            foreach (var distro in RuntimeDistros)
+            {
+                var name = "U2F_LEASE_PATH_" + distro.ToUpperInvariant();
+                var lease = RuntimeLeaseType(distro);
+                var separator = Path.PathSeparator;
+                var original = string.Join(separator, new[] { "old-a", "old-b" });
+                var runtimeEntry = "runtime-entry";
+                var previous = Environment.GetEnvironmentVariable(name);
+                Environment.SetEnvironmentVariable(name, original);
+                try
+                {
+                    InvokeLease(lease, "Begin");
+                    InvokeLease(
+                        lease,
+                        "SetPath",
+                        name,
+                        original + separator + runtimeEntry,
+                        runtimeEntry,
+                        separator,
+                        false);
+                    Environment.SetEnvironmentVariable(
+                        name,
+                        original + separator + runtimeEntry + separator + "caller-entry");
+
+                    Assert.True((bool)InvokeLease(lease, "Restore", false));
+                    Assert.Equal(
+                        original + separator + "caller-entry",
+                        Environment.GetEnvironmentVariable(name));
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable(name, previous);
+                }
+            }
+        }
+
+        [Fact]
+        public void RuntimeEnvironmentLeaseRejectsASecondBeginUntilCleanupCompletes()
+        {
+            foreach (var distro in RuntimeDistros)
+            {
+                var name = "U2F_LEASE_NESTED_" + distro.ToUpperInvariant();
+                var lease = RuntimeLeaseType(distro);
+                var previous = Environment.GetEnvironmentVariable(name);
+                Environment.SetEnvironmentVariable(name, null);
+                try
+                {
+                    InvokeLease(lease, "Begin");
+                    var secondBegin = Assert.Throws<TargetInvocationException>(
+                        () => InvokeLease(lease, "Begin"));
+                    Assert.IsType<InvalidOperationException>(secondBegin.InnerException);
+                    Assert.True((bool)InvokeLease(lease, "Restore", false));
+
+                    InvokeLease(lease, "Begin");
+                    InvokeLease(lease, "Set", name, "second-value", false);
+                    Assert.True((bool)InvokeLease(lease, "Restore", false));
+                    Assert.Null(Environment.GetEnvironmentVariable(name));
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable(name, previous);
+                }
+            }
+        }
+
+        [Fact]
+        public void RuntimeEnvironmentLeaseBlocksRestartWhileCleanupIsPending()
+        {
+            foreach (var distro in RuntimeDistros)
+            {
+                var name = "U2F_LEASE_PENDING_" + distro.ToUpperInvariant();
+                var lease = RuntimeLeaseType(distro);
+                var previous = Environment.GetEnvironmentVariable(name);
+                Environment.SetEnvironmentVariable(name, null);
+                InvokeLease(lease, "Begin");
+                try
+                {
+                    var failedSet = Assert.Throws<TargetInvocationException>(
+                        () => InvokeLease(lease, "Set", name, "value", true));
+                    Assert.IsType<PlatformNotSupportedException>(failedSet.InnerException);
+
+                    var restart = Assert.Throws<TargetInvocationException>(
+                        () => InvokeLease(lease, "Begin"));
+                    Assert.IsType<InvalidOperationException>(restart.InnerException);
+                    Assert.False((bool)InvokeLease(lease, "Restore", true));
+                    Assert.True((bool)InvokeLease(lease, "Restore", false));
+                    Assert.Null(Environment.GetEnvironmentVariable(name));
+                }
+                finally
+                {
+                    try
+                    {
+                        InvokeLease(lease, "Restore", false);
+                    }
+                    catch (TargetInvocationException)
+                    {
+                    }
+                    Environment.SetEnvironmentVariable(name, previous);
+                }
+            }
+        }
+
+        private static readonly Dictionary<string, Type> RuntimeLeaseTypes =
+            new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+
+        private static Type RuntimeLeaseType(string distro)
+        {
+            lock (RuntimeLeaseTypes)
+            {
+                if (!RuntimeLeaseTypes.TryGetValue(distro, out var type))
+                {
+                    type = CompileRuntimeLease(distro).GetType(
+                        "ROS2.Ros2ForUnityProcessEnvironmentLease",
+                        throwOnError: true);
+                    RuntimeLeaseTypes.Add(distro, type);
+                }
+
+                return type;
+            }
+        }
+
+        private static object InvokeLease(Type lease, string method, params object[] arguments)
+        {
+            return lease.GetMethod(
+                    method,
+                    BindingFlags.NonPublic | BindingFlags.Static)
+                .Invoke(null, arguments);
+        }
+
+        private static Assembly CompileRuntimeLease(string distro)
+        {
+            var source = RuntimeSource(distro, "ROS2ForUnity.cs");
+            var root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
+            var declaration = root.DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .Single(node => node.Identifier.Text == "Ros2ForUnityProcessEnvironmentLease")
+                .ToFullString();
+            var probe = @"
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace UnityEngine
+{
+    internal static class Debug
+    {
+        internal static void LogException(Exception exception) { }
+    }
+}
+
+namespace ROS2
+{
+" + declaration + @"
+}
+";
+
+            var compilation = CSharpCompilation.Create(
+                "Ros2ForUnityProcessEnvironmentLease_" + distro + "_" + Guid.NewGuid().ToString("N"),
+                new[] { CSharpSyntaxTree.ParseText(probe) },
+                TrustedPlatformReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            using var image = new MemoryStream();
+            var emit = compilation.Emit(image);
+            Assert.True(
+                emit.Success,
+                string.Join(
+                    Environment.NewLine,
+                    emit.Diagnostics
+                        .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                        .Select(diagnostic => diagnostic.ToString())));
+
+            image.Position = 0;
+            return AssemblyLoadContext.Default.LoadFromStream(image);
+        }
+
+        private static MetadataReference[] TrustedPlatformReferences()
+        {
+            var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+            Assert.False(string.IsNullOrEmpty(trustedAssemblies));
+            return trustedAssemblies
+                .Split(Path.PathSeparator)
+                .Select(path => MetadataReference.CreateFromFile(path))
+                .ToArray();
         }
 
         private static void AssertRos2WarningThrottle(string path)
