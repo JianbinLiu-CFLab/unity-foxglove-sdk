@@ -41,7 +41,6 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
         "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance",
     ),
     "phase181-interface-tooling": (
-        "Scripts.mcap.regression_checks.test_mcap_time_sync",
         "Scripts.ros2forunity.interfaces.regression_checks.test_h01_delivery_enum_contract",
         "Scripts.ros2forunity.interfaces.regression_checks.test_h01_mismatch_cleanup_contract",
         "Scripts.ros2forunity.interfaces.regression_checks.test_h01_preflight_metadata_contract",
@@ -60,7 +59,6 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
         "Scripts.ros2forunity.interfaces.regression_checks.test_h04_node_lifetime_contract",
         "Scripts.ros2forunity.interfaces.regression_checks.test_h04_post_init_cleanup_contract",
         "Scripts.ros2forunity.interfaces.regression_checks.test_h04_runtime_identity_contract",
-        "Scripts.ros2forunity.interfaces.regression_checks.test_h04_tool_identity_contract",
         "Scripts.ros2forunity.interfaces.regression_checks.test_h06_sigpipe_contract",
         "Scripts.ros2forunity.interfaces.regression_checks.test_h06_write_deadline_contract",
         "Scripts.ros2forunity.interfaces.regression_checks.test_h07_command_runner_contract",
@@ -71,6 +69,7 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
         "Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest_h02005",
     ),
     "windows-parity-regression-tooling": (
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h04_tool_identity_contract",
         "Scripts.ros2forunity.windows.humble.regression_checks.test_build_r2fu_runtime_package",
         "Scripts.ros2forunity.windows.humble.regression_checks.test_inspect_r2fu_runtime_artifact",
         "Scripts.ros2forunity.windows.humble.regression_checks.test_phase160_build_defaults",
@@ -91,6 +90,8 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
 # Every discovered module must either appear in a CI/workflow command or have
 # an explicit, reviewed reason for its environment-specific exclusion.
 EXPLICIT_EXCLUSIONS: dict[str, str] = {
+    "Scripts.mcap.regression_checks.test_mcap_time_sync":
+        "MCAP Python package and pinned fixture are not provisioned in the dotnet-tests runner; run in the MCAP conformance lane with its fixture.",
     "Scripts.smoke.foxrun.regression_checks.test_atomic_publication":
         "Manual publication integration lane; generated FoxRun artifact inputs are not provisioned in default runners.",
     "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_manual":
