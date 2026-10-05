@@ -32,12 +32,12 @@ namespace Unity.FoxgloveSDK.UnitTests
             await fixture.Accepting.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
             var stopwatch = Stopwatch.StartNew();
-            var result = new Ros2BridgeU2R2HealthProbe().Ping("127.0.0.1", port, 500);
+            var result = new Ros2BridgeU2R2HealthProbe().Ping("127.0.0.1", port, 2_000);
             stopwatch.Stop();
 
             Assert.False(result.Succeeded);
             Assert.True(
-                stopwatch.Elapsed < TimeSpan.FromSeconds(1.2),
+                stopwatch.Elapsed < TimeSpan.FromSeconds(3),
                 "The probe exceeded its absolute deadline: " + stopwatch.Elapsed);
             await fixture.RequestReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await fixture.FixedHeaderSent.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                         Array.Empty<byte>());
                     var fixedHeader = new byte[16];
                     Array.Copy(response, fixedHeader, fixedHeader.Length);
-                    Thread.Sleep(300);
+                    Thread.Sleep(900);
                     stream.Write(fixedHeader, 0, fixedHeader.Length);
                     stream.Flush();
                     FixedHeaderSent.TrySetResult(true);
@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                     for (var offset = 0; offset < bodyLength; offset += chunkSize)
                     {
                         if (offset != 0)
-                            Thread.Sleep(100);
+                            Thread.Sleep(500);
                         var count = Math.Min(chunkSize, bodyLength - offset);
                         BodyChunkSent.TrySetResult(true);
                         stream.Write(response, 16 + offset, count);

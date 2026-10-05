@@ -51,6 +51,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private int _cleanupDispatchPending;
         private int _failedRegistrationCleanupPending;
         private int _nodeReleased;
+        private int _nodeReleaseInFlight;
         private bool _teardownFailureRecorded;
         private bool _registrationInFlight;
         private ExceptionDispatchInfo _failedRegistrationFatal;
@@ -632,20 +633,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 fatal = exception;
             }
 
+            var nodeReleased = false;
             try
             {
-                ReleaseNodeOnce();
+                nodeReleased = ReleaseNodeOnce();
             }
             catch (Exception exception)
             {
                 fatal ??= exception;
             }
-            finally
+            if (fatal == null && nodeReleased)
             {
                 Volatile.Write(ref _cleanupComplete, CleanupFinished);
-            }
-            if (fatal == null)
                 MarkStoppedCleanupComplete();
+            }
+            else
+            {
+                Volatile.Write(ref _cleanupComplete, CleanupNotStarted);
+                RecordPendingCleanup();
+            }
             return fatal;
         }
 
@@ -814,9 +820,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             if (terminalCleanup && terminalCleanupClaimed)
             {
+                var nodeReleased = false;
                 try
                 {
-                    ReleaseNodeOnce();
+                    nodeReleased = ReleaseNodeOnce();
                 }
                 catch (Exception exception) when (
                     FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
@@ -827,10 +834,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     fatal ??= ExceptionDispatchInfo.Capture(exception);
                 }
-                finally
-                {
+                if (fatal == null && nodeReleased)
                     Volatile.Write(ref _cleanupComplete, CleanupFinished);
-                }
+                else
+                    Volatile.Write(ref _cleanupComplete, CleanupNotStarted);
             }
             if (terminalCleanup && terminalCleanupClaimed && fatal == null)
                 MarkStoppedCleanupComplete();
@@ -911,10 +918,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             primary.Throw();
         }
 
-        private void ReleaseNodeOnce()
+        private bool ReleaseNodeOnce()
         {
-            if (Interlocked.CompareExchange(ref _nodeReleased, 1, 0) == 0)
-                _backend.ReleaseNodeOwnership();
+            if (Volatile.Read(ref _nodeReleased) != 0)
+                return true;
+            if (Interlocked.CompareExchange(ref _nodeReleaseInFlight, 1, 0) != 0)
+                return false;
+            try
+            {
+                var released = _backend.ReleaseNodeOwnership();
+                if (released)
+                    Volatile.Write(ref _nodeReleased, 1);
+                return released;
+            }
+            finally
+            {
+                Volatile.Write(ref _nodeReleaseInFlight, 0);
+            }
         }
 
         private static string DescribeException(Exception exception)

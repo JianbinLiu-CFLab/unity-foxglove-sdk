@@ -215,7 +215,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     /// apply or stop. User code retaining a value must deep-copy it. Stop clears
     /// the member only when it still references the framework-owned value.
     /// </summary>
-    internal sealed class FoxRunRos2SubscriptionBinding<T> : IFoxRunRos2HostBinding, IFoxRunRos2TimedHostBinding
+    internal sealed class FoxRunRos2SubscriptionBinding<T> : IFoxRunRos2HostBinding, IFoxRunRos2TimedHostBinding, IFoxRunRos2DeferredCleanupStatus
         where T : ROS2.Message, new()
     {
         private const long AcceptanceArming = -1;
@@ -263,6 +263,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool _slotCleanupComplete;
         private bool _cleanupPending;
         private bool _nodeReleaseClaimed;
+        private bool _nodeReleaseInFlight;
         private bool _teardownFailureRecorded;
         private bool _preserveTerminalFailure;
         private bool _conditionRejectedSinceLastApply;
@@ -352,6 +353,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal long SameOriginDropCount => Interlocked.Read(ref _sameOriginDrops);
         internal long TransportAdmissionDropCount =>
             Interlocked.Read(ref _transportAdmissionDrops);
+
+        bool IFoxRunRos2DeferredCleanupStatus.CleanupComplete
+        {
+            get
+            {
+                lock (_lifecycleLock)
+                {
+                    return _slotCleanupComplete
+                           && _token == null
+                           && _registrationRollbackToken == null
+                           && _nodeReleaseClaimed;
+                }
+            }
+        }
 
         public void WaitForRuntime()
         {
@@ -962,7 +977,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var beginStop = false;
             lock (_lifecycleLock)
             {
-                if ((_slotCleanupComplete && _token == null && _registrationRollbackToken == null) || _stopCleanupInProgress)
+                if ((_slotCleanupComplete
+                     && _token == null
+                     && _registrationRollbackToken == null
+                     && _nodeReleaseClaimed)
+                    || _stopCleanupInProgress)
                     return;
                 _stopCleanupInProgress = true;
                 token = _token ?? _registrationRollbackToken;
@@ -1306,9 +1325,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 || _token != null
                 || _registrationRollbackToken != null
                 || _registrationInFlight
-                || _nodeReleaseClaimed)
+                || _nodeReleaseClaimed
+                || _nodeReleaseInFlight)
                 return false;
-            _nodeReleaseClaimed = true;
+            _nodeReleaseInFlight = true;
             return true;
         }
 
@@ -1404,14 +1424,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             if (!claimed)
                 return;
+            var released = false;
             try
             {
-                _backend.ReleaseNodeOwnership();
+                released = _backend.ReleaseNodeOwnership();
             }
             catch (Exception exception) when (
                 FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 RecordTeardownFailure("release node", exception);
+            }
+            finally
+            {
+                lock (_lifecycleLock)
+                {
+                    _nodeReleaseInFlight = false;
+                    if (released)
+                        _nodeReleaseClaimed = true;
+                }
             }
         }
 

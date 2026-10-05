@@ -18,6 +18,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             private readonly FoxgloveCameraInfoPublisher _source;
             private IPublisher<sensor_msgs.msg.CameraInfo> _publisher;
             private IPublisher<tf2_msgs.msg.TFMessage> _tfAnchorPublisher;
+
+            internal override bool CleanupComplete
+                => base.CleanupComplete
+                   && _publisher == null
+                   && _tfAnchorPublisher == null;
             private bool _subscribed;
 
             public InfoBinding(Ros2ForUnityCameraNativeBridge owner, FoxgloveCameraInfoPublisher source, string topic)
@@ -87,6 +92,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (Node != null && _publisher != null)
                     return true;
 
+                if (Node != null || _publisher != null || _tfAnchorPublisher != null)
+                {
+                    CleanupRos2();
+                    if (!CleanupComplete)
+                        return false;
+                }
+
                 Exception lastException = null;
                 for (var attempt = 0; attempt < MaxNodeCreateAttempts; attempt++)
                 {
@@ -102,6 +114,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     {
                         lastException = ex;
                         CleanupRos2();
+
+                        if (!CleanupComplete)
+                            return false;
 
                         if (Owner.IsShuttingDown)
                             return false;
@@ -243,20 +258,46 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             private void CleanupRos2()
             {
-                if (Node != null && _publisher != null)
+                if (_publisher != null)
                 {
-                    try { Node.RemovePublisher<sensor_msgs.msg.CameraInfo>(_publisher); }
-                    catch (Exception ex) { Debug.LogWarning("[Foxglove][R2FU] CameraInfo cleanup failed: " + ex.Message); }
+                    if (Node == null)
+                        return;
+                    else
+                    {
+                        try
+                        {
+                            if (!Node.RemovePublisher<sensor_msgs.msg.CameraInfo>(_publisher))
+                                return;
+                            _publisher = null;
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.LogWarning("[Foxglove][R2FU] CameraInfo cleanup failed: " + ex.Message);
+                            return;
+                        }
+                    }
                 }
 
-                if (Node != null && _tfAnchorPublisher != null)
+                if (_tfAnchorPublisher != null)
                 {
-                    try { Node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfAnchorPublisher); }
-                    catch (Exception ex) { Debug.LogWarning("[Foxglove][R2FU] CameraInfo TF cleanup failed: " + ex.Message); }
+                    if (Node == null)
+                        return;
+                    else
+                    {
+                        try
+                        {
+                            if (!Node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfAnchorPublisher))
+                                return;
+                            _tfAnchorPublisher = null;
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.LogWarning("[Foxglove][R2FU] CameraInfo TF cleanup failed: " + ex.Message);
+                            return;
+                        }
+                    }
                 }
 
-                _publisher = null;
-                _tfAnchorPublisher = null;
                 CleanupNode();
             }
         }

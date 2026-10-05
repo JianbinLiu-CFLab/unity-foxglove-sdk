@@ -57,6 +57,10 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             "The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`",
             self.builder.readme_text(artifact),
         )
+        self.assertIn("process-wide ROS environment", self.builder.readme_text(artifact))
+        self.assertIn("restart Unity after changing the runtime package", self.builder.readme_text(artifact))
+        self.assertIn("RMW_IMPLEMENTATION", self.builder.readme_text(artifact))
+        self.assertIn("ROS_DISTRO", self.builder.readme_text(artifact))
 
     def test_extract_runtime_rejects_zip_slip_entries(self) -> None:
         """Reject archive entries that would escape the package root."""
@@ -234,6 +238,113 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.builder.validate_ros2cs_metadata_descriptions(package)
 
+    def test_default_inventory_is_kept_outside_resettable_package(self) -> None:
+        """The default inventory must live in the adapter compliance directory."""
+        expected = (
+            self.builder.ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Compliance"
+            / (self.builder.RUNTIME_ID + "-runtime-inventory.json")
+        )
+        self.assertEqual(expected.resolve(), self.builder.DEFAULT_INVENTORY.resolve())
+
+    def test_supplemental_ament_index_files_restore_only_missing_entries(self) -> None:
+        """Legacy ament-index files survive archive extraction without overwriting new entries."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            root = package.joinpath(*self.builder.SUPPLEMENTAL_RUNTIME_RELATIVE.split("/"))
+            present = root / "resource_index" / "packages" / "present"
+            missing = root / "resource_index" / "packages" / "missing"
+            present.parent.mkdir(parents=True)
+            present.write_bytes(b"legacy-present")
+            missing.write_bytes(b"legacy-missing")
+
+            overlays = self.builder.collect_supplemental_runtime_files(package)
+            present.write_bytes(b"artifact-present")
+            missing.unlink()
+            self.builder.apply_supplemental_runtime_files(package, overlays)
+
+            self.assertEqual(b"artifact-present", present.read_bytes())
+            self.assertEqual(b"legacy-missing", missing.read_bytes())
+
+    def test_standalone_patch_normalizes_legacy_artifact_methods(self) -> None:
+        """Legacy standalone method bodies must be replaced before isolation checks run."""
+        source = (
+            "    private static void SetStandalonePrefixPath()\n"
+            "    {\n"
+            "        string prefixSource = \"asset root\";\n"
+            "        SetProcessEnvironmentVariable(\"AMENT_PREFIX_PATH\", prefixPath);\n"
+            "    }\n\n"
+            "    private static void SetStandaloneRmwImplementation()\n"
+            "    {\n"
+            "        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable(\"RMW_IMPLEMENTATION\")))\n"
+            "        {\n"
+            "            // Fast-RTPS is the bundled standalone RMW.\n"
+            "            SetProcessEnvironmentVariable(\"RMW_IMPLEMENTATION\", \"rmw_fastrtps_cpp\");\n"
+            "        }\n"
+            "    }\n\n"
+            "    private static void SetStandaloneRosDistro(string ros2Codename)\n"
+            "    {\n"
+            "        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable(\"ROS_DISTRO\")))\n"
+            "        {\n"
+            "            SetProcessEnvironmentVariable(\"ROS_DISTRO\", ros2Codename);\n"
+            "        }\n"
+            "    }\n\n"
+            "    private static void SetStandaloneRos2csSpinFallback(string ros2Codename)\n"
+            "    {\n"
+            "    }\n"
+        )
+
+        patched = self.builder.replace_existing_standalone_prefix_method(source)
+        patched = self.builder.replace_existing_standalone_rmw_method(patched)
+        patched = self.builder.replace_existing_standalone_distro_method(patched)
+        self.assertIn("standalone runtime must not inherit a sourced ROS2 workspace", patched)
+        self.assertIn("standalone runtime owns its RMW selection while allowing Lyrical Zenoh", patched)
+        self.assertIn("standalone runtime owns ROS_DISTRO", patched)
+        self.assertNotIn("prefixSource", patched)
+        self.assertNotIn("Fast-RTPS is the bundled standalone RMW", patched)
+        self.assertEqual(
+            patched,
+            self.builder.replace_existing_standalone_distro_method(
+                self.builder.replace_existing_standalone_rmw_method(
+                    self.builder.replace_existing_standalone_prefix_method(patched)
+                )
+            ),
+        )
+
+    def test_sensor_overlay_survives_runtime_regeneration(self) -> None:
+        """The patched Sensor source must be restored after an upstream refresh."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            sensor = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Sensor.cs"
+            sensor.parent.mkdir(parents=True)
+            sensor.write_text("patched sensor\n", encoding="utf-8")
+
+            overlays = self.builder.collect_local_patch_overlays(package)
+            relative = "Runtime/Ros2ForUnity/Scripts/Sensor.cs"
+            self.assertEqual("patched sensor\n", overlays[relative])
+
+            sensor.write_text("upstream sensor\n", encoding="utf-8")
+            self.builder.apply_local_patch_overlays(package, overlays)
+            self.assertEqual("patched sensor\n", sensor.read_text(encoding="utf-8"))
+
+    def test_ros2_for_unity_overlay_survives_runtime_regeneration(self) -> None:
+        """The lifecycle/environment patch must be restored after an upstream refresh."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            source = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
+            source.parent.mkdir(parents=True)
+            source.write_text("process environment lease marker\n", encoding="utf-8")
+
+            overlays = self.builder.collect_local_patch_overlays(package)
+            relative = "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs"
+            self.assertEqual("process environment lease marker\n", overlays[relative])
+
+            source.write_text("upstream source\n", encoding="utf-8")
+            self.builder.apply_local_patch_overlays(package, overlays)
+            self.assertEqual("process environment lease marker\n", source.read_text(encoding="utf-8"))
+
     def test_patch_ros2_for_unity_requires_copyright_replacement(self) -> None:
         """Patch generation fails when the expected copyright line is absent."""
         with tempfile.TemporaryDirectory() as temp:
@@ -387,7 +498,21 @@ class RuntimePackageExtractionTests(unittest.TestCase):
         windows_end = constructor.find("} else {", windows_start)
         windows_block = constructor[windows_start:windows_end]
 
-        self.assertIn("#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN", patched)
+        crt_guard_count = (
+            patched.count("#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN")
+            + patched.count("#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN")
+        )
+        legacy_crt_guard = (
+            crt_guard_count >= 2
+            and "[DllImport(\"ucrtbase.dll\"" in patched
+            and "_wputenv_s" in patched
+        )
+        lease_crt_guard = (
+            "Ros2ForUnityProcessEnvironmentLease.Set(" in patched
+            and "Ros2ForUnityProcessEnvironmentLease.Restore(" in patched
+            and legacy_crt_guard
+        )
+        self.assertTrue(legacy_crt_guard or lease_crt_guard)
         self.assertIn("PrewarmUnityPaths", patched)
         self.assertNotIn("SetStandaloneRosDistro(currentRos2Version)", windows_block)
         self.assertNotIn("SetStandalonePrefixPath();", windows_block)

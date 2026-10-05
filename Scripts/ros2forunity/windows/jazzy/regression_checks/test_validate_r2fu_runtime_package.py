@@ -194,7 +194,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
                 "// Unity2Foxglove package path support\n"
                 "const string packageName = \"dev.unity2foxglove.ros2forunity.runtime.jazzy.win64\";\n"
                 "var resolvedPath = unity2FoxgloveRuntimePackageAssetPath;\n"
-                "SetProcessEnvironmentVariable(GetEnvPathVariableName(), resolvedPath);\n"
+                "SetProcessEnvironmentPathVariable(GetEnvPathVariableName(), resolvedPath, resolvedPath, Path.PathSeparator);\n"
                 "Path.Combine(\"Packages\", \"Runtime\");\n"
                 "Directory.Exists(packagePath);\n"
                 "return assetPath;\n",

@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
             var constructor = ExtractCSharpMethod(runtime, "ROS2ForUnity");
-            var shutdown = ExtractCSharpMethod(runtime, "CompleteShutdownShared");
+            var shutdown = ExtractCSharpMethod(runtime, "FinishShutdownShared");
 
             Check(runtime.Contains("private static void LogRuntimeInfoWithoutStackTrace", StringComparison.Ordinal)
                   && constructor.Contains("LogRuntimeInfoWithoutStackTrace(\"ROS2 version: \"", StringComparison.Ordinal)
@@ -155,17 +155,20 @@ namespace Unity.FoxgloveSDK.Tests
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
             var component = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs");
             var completeShutdown = ExtractCSharpMethod(runtime, "CompleteShutdownShared");
+            var finishShutdown = ExtractCSharpMethod(runtime, "FinishShutdownShared");
             var lazyConstruct = ExtractCSharpMethod(component, "LazyConstruct");
             var stopAll = ExtractCSharpMethod(component, "StopAllExecutorsForRosShutdown");
+            var stopForRosShutdown = ExtractCSharpMethod(component, "StopForRosShutdown");
             var startExecutor = ExtractCSharpMethod(component, "StartExecutor");
             var markRuntimeShutdown = ExtractCSharpMethod(component, "MarkRuntimeShutdown");
 
-            Check(completeShutdown.Contains("ROS2UnityComponent.StopAllExecutorsForRosShutdown();", StringComparison.Ordinal)
-                  && completeShutdown.IndexOf("ROS2UnityComponent.StopAllExecutorsForRosShutdown();", StringComparison.Ordinal)
-                     < completeShutdown.IndexOf("Ros2cs.Shutdown();", StringComparison.Ordinal),
+            Check(completeShutdown.Contains("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
+                  && completeShutdown.Contains("FinishShutdownShared();", StringComparison.Ordinal)
+                  && finishShutdown.Contains("Ros2cs.Shutdown();", StringComparison.Ordinal),
                 "163-32E-1: Lyrical runtime stops component executors before shared ROS2 shutdown");
             Check(component.Contains("private bool runtimeShutdownRequested", StringComparison.Ordinal)
-                  && stopAll.Contains("component.MarkRuntimeShutdown();", StringComparison.Ordinal)
+                  && stopAll.Contains("StopForRosShutdown()", StringComparison.Ordinal)
+                  && stopForRosShutdown.Contains("DisposeNodes()", StringComparison.Ordinal)
                   && lazyConstruct.Contains("throw new ObjectDisposedException(nameof(ROS2UnityComponent))", StringComparison.Ordinal)
                   && startExecutor.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
                   && startExecutor.Contains("ros2forUnity == null", StringComparison.Ordinal)

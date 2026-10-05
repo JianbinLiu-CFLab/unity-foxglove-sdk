@@ -34,6 +34,12 @@ internal class ROS2ForUnity : IDisposable
     private static volatile bool isInitialized = false;
     private static readonly object initMutex = new object();
     private static bool shutdownInProgress = false;
+    private static bool nativeShutdownCompleted = false;
+    private const int MaxShutdownRetryAttempts = 3;
+#if UNITY_EDITOR
+    private static bool shutdownRetryScheduled = false;
+#endif
+    private static int shutdownRetryAttempts = 0;
     private static int referenceCount = 0;
     private static bool pathConfigured = false;
     private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";
@@ -49,23 +55,6 @@ internal class ROS2ForUnity : IDisposable
     private const string defaultRmwImplementation = "rmw_fastrtps_cpp";
     private const string zenohRmwImplementation = "rmw_zenoh_cpp";
     private const string supportedRmwImplementationsDescription = "rmw_fastrtps_cpp, rmw_zenoh_cpp";
-
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-    private static extern int _wputenv_s(string name, string value);
-#endif
-#endif
-#endif
-#endif
-#endif
-#endif
-#endif
 
 #if UNITY_EDITOR
     private static bool editorHandlersRegistered = false;
@@ -128,20 +117,17 @@ internal class ROS2ForUnity : IDisposable
 
     private static void SetProcessEnvironmentVariable(string name, string value)
     {
-        Environment.SetEnvironmentVariable(name, value);
-        if (GetOS() == Platform.Windows)
-        {
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-            int result = _wputenv_s(name, value);
-            if (result != 0)
-            {
-                throw new InvalidOperationException(
-                    "Failed to set Windows CRT environment variable '" + name + "' (ucrtbase _wputenv_s returned " + result + ")");
-            }
-#else
-            throw new PlatformNotSupportedException("Windows CRT environment updates require a Windows Unity build target.");
-#endif
-        }
+        Ros2ForUnityProcessEnvironmentLease.Set(name, value, GetOS() == Platform.Windows);
+    }
+
+    private static void SetProcessEnvironmentPathVariable(string name, string value, string pathEntry, char separator)
+    {
+        Ros2ForUnityProcessEnvironmentLease.SetPath(
+            name,
+            value,
+            pathEntry,
+            separator,
+            GetOS() == Platform.Windows);
     }
 
     internal static void PrewarmUnityPaths()
@@ -258,7 +244,7 @@ internal class ROS2ForUnity : IDisposable
 
         if (String.IsNullOrEmpty(currentPath))
         {
-            SetProcessEnvironmentVariable(GetEnvPathVariableName(), pluginPath);
+            SetProcessEnvironmentPathVariable(GetEnvPathVariableName(), pluginPath, pluginPath, envPathSep);
             pathConfigured = true;
             return;
         }
@@ -276,7 +262,11 @@ internal class ROS2ForUnity : IDisposable
             }
         }
 
-        SetProcessEnvironmentVariable(GetEnvPathVariableName(), pluginPath + envPathSep + currentPath);
+        SetProcessEnvironmentPathVariable(
+            GetEnvPathVariableName(),
+            pluginPath + envPathSep + currentPath,
+            pluginPath,
+            envPathSep);
         pathConfigured = true;
     }
 
@@ -576,76 +566,133 @@ internal class ROS2ForUnity : IDisposable
             // Load metadata
             LoadMetadata();
             string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();
-            if (IsStandalone())
-            {
-                string packagedRos2Version = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
-                SetStandaloneRosDistro(packagedRos2Version);
-                SetStandalonePrefixPath();
-                SetStandaloneRmwImplementation();
-                SetStandaloneRcutilsConsoleMode();
-            }
-            string currentRos2Version = GetROSVersion();
             bool standaloneBuild = IsStandalone();
-            string standalone = standaloneBuild ? "standalone" : "non-standalone";
+            Ros2ForUnityProcessEnvironmentLease.Begin();
+            bool nativeInitialized = false;
+            bool nativeShutdownSucceeded = true;
+            try
+            {
+                if (standaloneBuild)
+                {
+                    string packagedRos2Version = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
+                    SetStandaloneRosDistro(packagedRos2Version);
+                    SetStandalonePrefixPath();
+                    SetStandaloneRmwImplementation();
+                    SetStandaloneRcutilsConsoleMode();
+                }
+                string currentRos2Version = GetROSVersion();
+                string standalone = standaloneBuild ? "standalone" : "non-standalone";
 
-            // Self checks
+                // Self checks
             CheckROSSupport(currentRos2Version);
             WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);
             CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);
 
-            // Library loading
-            if (GetOS() == Platform.Windows) {
-                // Windows version can run standalone, modifies PATH to ensure all plugins visibility.
-                if (!pathConfigured)
+                // Library loading
+                if (GetOS() == Platform.Windows) {
+                    // Windows version can run standalone, modifies PATH to ensure all plugins visibility.
+                    if (!pathConfigured)
+                    {
+                        SetEnvPathVariable();
+                    }
+                } else {
+                    // For foxy, it is necessary to use modified version of librcpputils to resolve custom msgs packages.
+                    ROS2.GlobalVariables.absolutePath = GetPluginPath() + "/";
+                    if (currentRos2Version == "foxy") {
+                        ROS2.GlobalVariables.preloadLibrary = true;
+                        ROS2.GlobalVariables.preloadLibraryName = "librcpputils.so";
+                    }
+                }
+
+                // Initialize
+                ConnectLoggers();
+                Ros2ForUnityNativePluginBootstrap.SealNativeLibraryRegistration();
+                try
                 {
-                    SetEnvPathVariable();
+                    Ros2cs.Init();
+                    nativeInitialized = true;
+                    nativeShutdownCompleted = false;
                 }
-            } else {
-                // For foxy, it is necessary to use modified version of librcpputils to resolve custom msgs packages.
-                ROS2.GlobalVariables.absolutePath = GetPluginPath() + "/";
-                if (currentRos2Version == "foxy") {
-                    ROS2.GlobalVariables.preloadLibrary = true;
-                    ROS2.GlobalVariables.preloadLibraryName = "librcpputils.so";
+                catch
+                {
+                    Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
+                    throw;
                 }
-            }
+                try
+                {
+                    RegisterCtrlCHandler();
 
-            // Initialize
-            ConnectLoggers();
-            Ros2ForUnityNativePluginBootstrap.SealNativeLibraryRegistration();
-            try
-            {
-                Ros2cs.Init();
+                    string rmwImpl = Ros2cs.GetRMWImplementation();
+                    ValidateRmwImplementation(rmwImpl);
+
+                    LogRuntimeInfoWithoutStackTrace("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
+
+    #if UNITY_EDITOR
+                    RegisterEditorHandlers();
+    #endif
+                }
+                catch
+                {
+                    // A post-init validation failure must release the native
+                    // context and callbacks before the constructor propagates.
+                    try { UnregisterCtrlCHandlerStatic(); } catch { }
+                    try
+                    {
+                        Ros2cs.Shutdown();
+                        nativeShutdownCompleted = true;
+                        nativeShutdownSucceeded = true;
+                    }
+                    catch
+                    {
+                        nativeShutdownSucceeded = false;
+                    }
+                    if (nativeShutdownSucceeded)
+                    {
+                        try
+                        {
+                            Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
+                        }
+                        catch
+                        {
+                            nativeShutdownSucceeded = false;
+                        }
+                    }
+                    if (!nativeShutdownSucceeded && nativeInitialized)
+                    {
+                        isInitialized = true;
+                        referenceCount = 1;
+                        ownsReference = true;
+                        shutdownInProgress = true;
+                    }
+                    throw;
+                }
+                isInitialized = true;
+                referenceCount = 1;
+                ownsReference = true;
             }
             catch
             {
-                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
-                throw;
-            }
-            try
-            {
-                RegisterCtrlCHandler();
-
-                string rmwImpl = Ros2cs.GetRMWImplementation();
-                ValidateRmwImplementation(rmwImpl);
-
-                LogRuntimeInfoWithoutStackTrace("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
-
+                if (nativeInitialized && !nativeShutdownSucceeded)
+                {
+                    CompleteShutdownShared();
+                }
+                else
+                {
+                    bool environmentRestored = Ros2ForUnityProcessEnvironmentLease.Abort(GetOS() == Platform.Windows);
+                    if (environmentRestored)
+                        pathConfigured = false;
+                    else
+                    {
+                        shutdownInProgress = true;
+                        shutdownRetryAttempts = 0;
+                        Debug.LogError("ROS2 For Unity startup rollback could not fully restore the process environment; cleanup remains pending.");
 #if UNITY_EDITOR
-                RegisterEditorHandlers();
+                        ScheduleShutdownRetry();
 #endif
-            }
-            catch
-            {
-                // A post-init validation failure must release the native
-                // context and callbacks before the constructor propagates.
-                try { UnregisterCtrlCHandlerStatic(); } catch { }
-                try { Ros2cs.Shutdown(); } catch { }
-                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
+                    }
+                }
                 throw;
             }
-            isInitialized = true;
-            referenceCount = 1;
-            ownsReference = true;
         }
     }
 
@@ -730,41 +777,190 @@ internal class ROS2ForUnity : IDisposable
         return true;
     }
 
+    internal static void RetryPendingShutdown()
+    {
+        bool restoreOnly;
+        lock (initMutex)
+        {
+            if (!shutdownInProgress)
+                return;
+
+            restoreOnly = !isInitialized;
+        }
+
+        if (restoreOnly)
+            FinishShutdownShared();
+        else
+            CompleteShutdownShared();
+    }
+
+    internal static bool IsShutdownCompleteForEditor()
+    {
+        lock (initMutex)
+        {
+            return !isInitialized && !shutdownInProgress;
+        }
+    }
+
     private static void CompleteShutdownShared()
     {
-        // Executor joins must happen outside initMutex. Executor Tick() can call Ok(), which also
-        // takes initMutex; joining here while holding it would create a fragile lock-order inversion.
-        ROS2UnityComponent.StopAllExecutorsForRosShutdown();
+        if (!ROS2UnityComponent.StopAllExecutorsForRosShutdown())
+        {
+#if UNITY_EDITOR
+            ScheduleShutdownRetry();
+#else
+            TryCompleteShutdownWithBoundedRetry();
+#endif
+            return;
+        }
+
+        FinishShutdownShared();
+    }
+
+#if UNITY_EDITOR
+    private static void ScheduleShutdownRetry()
+    {
+        if (shutdownRetryScheduled || !shutdownInProgress)
+            return;
+
+        if (shutdownRetryAttempts >= MaxShutdownRetryAttempts)
+        {
+            Debug.LogError("ROS2 For Unity shutdown deferred: executor threads remain active after bounded retries.");
+            return;
+        }
+
+        shutdownRetryAttempts++;
+        shutdownRetryScheduled = true;
+        EditorApplication.delayCall += RetryShutdownOnMainThread;
+    }
+
+    private static void RetryShutdownOnMainThread()
+    {
+        EditorApplication.delayCall -= RetryShutdownOnMainThread;
+        shutdownRetryScheduled = false;
+        if (!shutdownInProgress)
+            return;
+
+        if (ROS2UnityComponent.StopAllExecutorsForRosShutdown())
+        {
+            FinishShutdownShared();
+            return;
+        }
+
+        ScheduleShutdownRetry();
+    }
+#else
+    private static void TryCompleteShutdownWithBoundedRetry()
+    {
+        for (int attempt = 0; attempt < MaxShutdownRetryAttempts - 1; attempt++)
+        {
+            if (ROS2UnityComponent.StopAllExecutorsForRosShutdown())
+            {
+                FinishShutdownShared();
+                return;
+            }
+        }
+
+        Debug.LogError("ROS2 For Unity shutdown deferred: executor threads remain active after bounded retries.");
+    }
+#endif
+
+    private static void FinishShutdownShared()
+    {
+        bool retryEnvironmentRestore = false;
+        bool retryNativeShutdown = false;
         lock (initMutex)
         {
             if (!isInitialized)
             {
                 referenceCount = 0;
-                shutdownInProgress = false;
-                return;
+                bool environmentRestored = Ros2ForUnityProcessEnvironmentLease.Restore(
+                    Environment.OSVersion.Platform == PlatformID.Win32NT);
+                if (environmentRestored)
+                {
+                    shutdownInProgress = false;
+                    shutdownRetryAttempts = 0;
+                    pathConfigured = false;
+                }
+                else
+                {
+                    shutdownInProgress = true;
+                    shutdownRetryAttempts = 0;
+                    retryEnvironmentRestore = true;
+                    Debug.LogError("ROS2 For Unity process environment lease could not be fully restored; shutdown remains pending.");
+                }
             }
+            else
+            {
+                LogRuntimeInfoWithoutStackTrace("Shutting down Ros2 For Unity");
+                bool nativeShutdownSucceeded = nativeShutdownCompleted;
+                if (!nativeShutdownSucceeded)
+                {
+                    try
+                    {
+                        Ros2cs.Shutdown();
+                        nativeShutdownCompleted = true;
+                        nativeShutdownSucceeded = true;
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogException(e);
+                        retryNativeShutdown = true;
+                    }
+                }
 
-            LogRuntimeInfoWithoutStackTrace("Shutting down Ros2 For Unity");
-            try
-            {
+                if (nativeShutdownSucceeded)
+                {
+                    try
+                    {
 #if UNITY_EDITOR
-                UnregisterEditorHandlers();
+                        UnregisterEditorHandlers();
 #endif
-                Ros2cs.Shutdown();
-            }
-            catch (Exception e)
-            {
-                Debug.LogException(e);
-            }
-            finally
-            {
-                isInitialized = false;
-                referenceCount = 0;
-                shutdownInProgress = false;
-                UnregisterCtrlCHandlerStatic();
-                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
+                        UnregisterCtrlCHandlerStatic();
+                        Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
+                        isInitialized = false;
+                        referenceCount = 0;
+                        nativeShutdownCompleted = false;
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogException(e);
+                        retryNativeShutdown = true;
+                    }
+                }
+
+                if (!isInitialized)
+                {
+                    referenceCount = 0;
+                    bool environmentRestored = Ros2ForUnityProcessEnvironmentLease.Restore(
+                        Environment.OSVersion.Platform == PlatformID.Win32NT);
+                    if (environmentRestored)
+                    {
+                        shutdownInProgress = false;
+                        shutdownRetryAttempts = 0;
+                        pathConfigured = false;
+                    }
+                    else
+                    {
+                        shutdownInProgress = true;
+                        shutdownRetryAttempts = 0;
+                        retryEnvironmentRestore = true;
+                        Debug.LogError("ROS2 For Unity process environment lease could not be fully restored; shutdown remains pending.");
+                    }
+                }
+                else
+                {
+                    shutdownInProgress = true;
+                    shutdownRetryAttempts = 0;
+                    retryNativeShutdown = true;
+                }
             }
         }
+
+#if UNITY_EDITOR
+        if (retryEnvironmentRestore || retryNativeShutdown)
+            ScheduleShutdownRetry();
+#endif
     }
 
     private static void LogRuntimeInfoWithoutStackTrace(string message)
@@ -818,6 +1014,321 @@ internal class ROS2ForUnity : IDisposable
         }
     }
 #endif
+}
+
+
+/// <summary>Tracks and conditionally restores process-wide environment values owned by the runtime.</summary>
+internal static class Ros2ForUnityProcessEnvironmentLease
+{
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    private static extern int _wputenv_s(string name, string value);
+#endif
+#endif
+    private sealed class Entry
+    {
+        internal readonly string Previous;
+        internal string Applied;
+        internal bool HasApplied;
+        internal string PendingRestore;
+        internal bool HasPendingRestore;
+        internal string PathEntry;
+        internal char PathSeparator;
+
+        internal Entry(string previous)
+        {
+            Previous = previous;
+        }
+    }
+
+    private static readonly object Gate = new object();
+    private static readonly Dictionary<string, Entry> Entries =
+        new Dictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
+    private static bool active;
+    private static bool restorePending;
+
+    internal static void Begin()
+    {
+        lock (Gate)
+        {
+            if (active || restorePending)
+                throw new InvalidOperationException(
+                    "The ROS2 For Unity process environment lease is still pending cleanup.");
+
+            Entries.Clear();
+            active = true;
+        }
+    }
+
+    internal static void Set(string name, string value, bool windows)
+    {
+        if (String.IsNullOrEmpty(name))
+            throw new ArgumentException("Environment variable name is required.", nameof(name));
+
+        lock (Gate)
+        {
+            if (!active)
+                throw new InvalidOperationException(
+                    "The ROS2 For Unity process environment lease is not active.");
+
+            if (restorePending)
+                throw new InvalidOperationException(
+                    "The ROS2 For Unity process environment lease is still pending cleanup.");
+
+            if (!Entries.TryGetValue(name, out var entry))
+            {
+                entry = new Entry(Environment.GetEnvironmentVariable(name));
+                Entries.Add(name, entry);
+            }
+
+            string rollbackValue = Environment.GetEnvironmentVariable(name);
+            string previousApplied = entry.Applied;
+            bool hadApplied = entry.HasApplied;
+            entry.Applied = value;
+            entry.HasApplied = true;
+            try
+            {
+                Apply(name, value, windows);
+                entry.HasPendingRestore = false;
+                entry.PendingRestore = null;
+            }
+            catch
+            {
+                try
+                {
+                    Apply(name, rollbackValue, windows);
+                    if ((hadApplied && String.Equals(rollbackValue, previousApplied, StringComparison.Ordinal))
+                        || (!hadApplied && String.Equals(rollbackValue, entry.Previous, StringComparison.Ordinal)))
+                    {
+                        entry.Applied = rollbackValue;
+                        entry.HasApplied = hadApplied;
+                        entry.HasPendingRestore = false;
+                        entry.PendingRestore = null;
+                    }
+                    else
+                    {
+                        Entries.Remove(name);
+                    }
+                }
+                catch
+                {
+                    restorePending = true;
+                    entry.PendingRestore = rollbackValue;
+                    entry.HasPendingRestore = true;
+                }
+                throw;
+            }
+        }
+    }
+
+    internal static void SetPath(
+        string name,
+        string value,
+        string pathEntry,
+        char separator,
+        bool windows)
+    {
+        Set(name, value, windows);
+        lock (Gate)
+        {
+            if (Entries.TryGetValue(name, out var entry)
+                && !ContainsPathEntry(entry.Previous, pathEntry, separator))
+            {
+                entry.PathEntry = pathEntry;
+                entry.PathSeparator = separator;
+            }
+        }
+    }
+
+    internal static bool Restore(bool windows)
+    {
+        lock (Gate)
+        {
+            if (!active)
+                return true;
+
+            bool success = true;
+            var completed = new List<string>();
+            foreach (var pair in Entries)
+            {
+                var entry = pair.Value;
+                var current = Environment.GetEnvironmentVariable(pair.Key);
+                if (entry.HasPendingRestore
+                    && String.Equals(current, entry.PendingRestore, StringComparison.Ordinal))
+                {
+                    try
+                    {
+                        ApplyNativeIfSupported(pair.Key, entry.PendingRestore, windows);
+                        completed.Add(pair.Key);
+                    }
+                    catch (Exception exception)
+                    {
+                        success = false;
+                        restorePending = true;
+                        Debug.LogException(exception);
+                    }
+                    continue;
+                }
+
+                entry.HasPendingRestore = false;
+                entry.PendingRestore = null;
+                if (!entry.HasApplied
+                    || !String.Equals(current, entry.Applied, StringComparison.Ordinal))
+                {
+                    if (entry.PathEntry != null
+                        && TryRemovePathEntry(
+                            current,
+                            entry.PathEntry,
+                            entry.PathSeparator,
+                            out var restoredPath))
+                    {
+                        try
+                        {
+                            Apply(pair.Key, restoredPath, windows);
+                            entry.HasPendingRestore = false;
+                            entry.PendingRestore = null;
+                            completed.Add(pair.Key);
+                        }
+                        catch (Exception exception)
+                        {
+                            success = false;
+                            restorePending = true;
+                            entry.PendingRestore = restoredPath;
+                            entry.HasPendingRestore = true;
+                            Debug.LogException(exception);
+                        }
+                        continue;
+                    }
+
+                    // A caller changed the managed value. Preserve that change,
+                    // and synchronize the native CRT view on Windows as well.
+                    if (windows)
+                    {
+                        try
+                        {
+                            ApplyNative(pair.Key, current);
+                        }
+                        catch (Exception exception)
+                        {
+                            success = false;
+                            restorePending = true;
+                            entry.PendingRestore = current;
+                            entry.HasPendingRestore = true;
+                            Debug.LogException(exception);
+                            continue;
+                        }
+                    }
+                    completed.Add(pair.Key);
+                    continue;
+                }
+
+                try
+                {
+                    Apply(pair.Key, pair.Value.Previous, windows);
+                    entry.HasPendingRestore = false;
+                    entry.PendingRestore = null;
+                    completed.Add(pair.Key);
+                }
+                catch (Exception exception)
+                {
+                    success = false;
+                    restorePending = true;
+                    entry.PendingRestore = pair.Value.Previous;
+                    entry.HasPendingRestore = true;
+                    Debug.LogException(exception);
+                }
+            }
+
+            foreach (var name in completed)
+                Entries.Remove(name);
+
+            if (Entries.Count == 0)
+            {
+                active = false;
+                restorePending = false;
+            }
+
+            return success && !active;
+        }
+    }
+
+    private static bool ContainsPathEntry(string path, string entry, char separator)
+    {
+        if (String.IsNullOrEmpty(path) || String.IsNullOrEmpty(entry))
+            return false;
+
+        foreach (var part in path.Split(new[] { separator }, StringSplitOptions.None))
+        {
+            if (String.Equals(part.Trim(), entry, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool TryRemovePathEntry(
+        string path,
+        string entry,
+        char separator,
+        out string restoredPath)
+    {
+        restoredPath = path;
+        if (String.IsNullOrEmpty(path) || String.IsNullOrEmpty(entry))
+            return false;
+
+        var parts = path.Split(new[] { separator }, StringSplitOptions.None);
+        var kept = new List<string>(parts.Length);
+        var removed = false;
+        foreach (var part in parts)
+        {
+            if (!removed
+                && String.Equals(part.Trim(), entry, StringComparison.OrdinalIgnoreCase))
+            {
+                removed = true;
+                continue;
+            }
+            kept.Add(part);
+        }
+
+        if (!removed)
+            return false;
+
+        restoredPath = kept.Count == 0 ? String.Empty : String.Join(separator.ToString(), kept);
+        return !String.Equals(restoredPath, path, StringComparison.Ordinal);
+    }
+
+    internal static bool Abort(bool windows)
+    {
+        return Restore(windows);
+    }
+
+    private static void Apply(string name, string value, bool windows)
+    {
+        Environment.SetEnvironmentVariable(name, value);
+        if (windows)
+            ApplyNative(name, value);
+    }
+
+    private static void ApplyNative(string name, string value)
+    {
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        int result = _wputenv_s(name, value ?? String.Empty);
+        if (result != 0)
+        {
+            throw new InvalidOperationException(
+                "Failed to set Windows CRT environment variable '" + name
+                + "' (ucrtbase _wputenv_s returned " + result + ")");
+        }
+#else
+        throw new PlatformNotSupportedException("Windows CRT environment updates are only supported on Windows.");
+#endif
+    }
+
+    private static void ApplyNativeIfSupported(string name, string value, bool windows)
+    {
+        if (windows)
+            ApplyNative(name, value);
+    }
 }
 
 }  // namespace ROS2

@@ -187,7 +187,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             }
 
             public void RemoveSubscription(IFoxRunRos2NativeSubscriptionToken token) => RemoveCount++;
-            public void ReleaseNodeOwnership() => ReleaseCount++;
+            public bool ReleaseNodeOwnership()
+            {
+                ReleaseCount++;
+                return true;
+            }
             public void Invoke(TestEnvelope envelope) => _callback(envelope);
 
             private sealed class Token : IFoxRunRos2NativeSubscriptionToken

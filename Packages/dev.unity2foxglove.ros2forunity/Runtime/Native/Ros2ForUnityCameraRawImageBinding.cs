@@ -17,6 +17,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             private readonly FoxgloveCameraPublisher _source;
             private IPublisher<sensor_msgs.msg.Image> _publisher;
+
+            internal override bool CleanupComplete
+                => base.CleanupComplete && _publisher == null;
             private bool _subscribed;
 
             public RawImageBinding(Ros2ForUnityCameraNativeBridge owner, FoxgloveCameraPublisher source, string topic)
@@ -76,6 +79,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (Node != null && _publisher != null)
                     return true;
 
+                if (Node != null || _publisher != null)
+                {
+                    CleanupRos2();
+                    if (!CleanupComplete)
+                        return false;
+                }
+
                 Exception lastException = null;
                 for (var attempt = 0; attempt < MaxNodeCreateAttempts; attempt++)
                 {
@@ -91,6 +101,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     {
                         lastException = ex;
                         CleanupRos2();
+
+                        if (!CleanupComplete)
+                            return false;
 
                         if (Owner.IsShuttingDown)
                             return false;
@@ -114,13 +127,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             private void CleanupRos2()
             {
-                if (Node != null && _publisher != null)
+                if (_publisher != null)
                 {
-                    try { Node.RemovePublisher<sensor_msgs.msg.Image>(_publisher); }
-                    catch (Exception) { }
+                    if (Node == null)
+                        return;
+                    else
+                    {
+                        try
+                        {
+                            if (!Node.RemovePublisher<sensor_msgs.msg.Image>(_publisher))
+                                return;
+                            _publisher = null;
+                        }
+                        catch (Exception)
+                        {
+                            return;
+                        }
+                    }
                 }
 
-                _publisher = null;
                 CleanupNode();
             }
         }

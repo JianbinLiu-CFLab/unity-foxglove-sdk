@@ -34,6 +34,23 @@ The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-humble-win64-runtime-inventory.json`.
 
+## Process Environment Contract
+
+The first active ROS2 For Unity context acquires a process-wide ROS environment lease
+for the variables it changes. It snapshots each prior value, including whether a
+value was unset, applies the packaged Humble runtime settings, and on the last
+safe shutdown conditionally restores only values still equal to the value it
+applied. If application code changes a value while the context is active, that
+caller change is preserved. A failed startup attempts the same rollback; an
+incomplete restore keeps the lease pending and blocks a new context until cleanup
+succeeds.
+
+The runtime may update `ROS_DISTRO`, `AMENT_PREFIX_PATH`,
+`RMW_IMPLEMENTATION`, runtime-specific `RCUTILS_*`/`ROS2CS_*`, and on Windows
+the native plugin `PATH`. `ROS_DOMAIN_ID`, DDS discovery/firewall settings, and
+other caller-owned values are not rewritten. Native DLLs cannot be unloaded or
+safely mixed after initialization, so restart Unity after changing the runtime package, distro, or communication mode.
+
 ## Known Artifact Debt
 
 The current Humble artifact still carries OpenSSL 1.1.x runtime DLLs through its transitive ROS2/DDS closure. Those DLLs are not used by the default FastRTPS visualization path unless DDS security/TLS features are enabled, but OpenSSL 1.1.x is end-of-life. Treat this as an artifact refresh requirement: a future Humble runtime rebuild must move the transitive OpenSSL dependency to OpenSSL 3.x before this package is considered release-hardened.

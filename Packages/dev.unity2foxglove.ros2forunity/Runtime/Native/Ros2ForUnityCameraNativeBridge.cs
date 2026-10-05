@@ -144,10 +144,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_rawImageBindings.TryGetValue(instanceId, out var existing))
                 {
                     if (existing.Topic == topic)
-                        continue;
+                    {
+                        if (existing.CleanupComplete)
+                            continue;
+                        if (!existing.TryDispose())
+                            continue;
+                        _rawImageBindings.Remove(instanceId);
+                    }
 
-                    existing.Dispose();
-                    _rawImageBindings.Remove(instanceId);
+                    else
+                    {
+                        if (!existing.TryDispose())
+                            continue;
+
+                        _rawImageBindings.Remove(instanceId);
+                    }
                 }
 
                 var binding = new RawImageBinding(this, publisher, topic);
@@ -173,10 +184,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_imageBindings.TryGetValue(instanceId, out var existing))
                 {
                     if (existing.Topic == topic)
-                        continue;
+                    {
+                        if (existing.CleanupComplete)
+                            continue;
+                        if (!existing.TryDispose())
+                            continue;
+                        _imageBindings.Remove(instanceId);
+                    }
 
-                    existing.Dispose();
-                    _imageBindings.Remove(instanceId);
+                    else
+                    {
+                        if (!existing.TryDispose())
+                            continue;
+
+                        _imageBindings.Remove(instanceId);
+                    }
                 }
 
                 var binding = new ImageBinding(this, publisher, topic);
@@ -206,12 +228,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     if (existing.Topic == topic)
                     {
-                        existing.PrewarmPublisher(_ros2Unity);
-                        continue;
+                        if (!existing.CleanupComplete)
+                        {
+                            if (!existing.TryDispose())
+                                continue;
+                            _infoBindings.Remove(instanceId);
+                        }
+                        else
+                        {
+                            existing.PrewarmPublisher(_ros2Unity);
+                            continue;
+                        }
                     }
+                    else
+                    {
+                        if (!existing.TryDispose())
+                            continue;
 
-                    existing.Dispose();
-                    _infoBindings.Remove(instanceId);
+                        _infoBindings.Remove(instanceId);
+                    }
                 }
 
                 var binding = new InfoBinding(this, publisher, topic);
@@ -235,8 +270,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             foreach (var key in _staleBindings)
             {
-                bindings[key].Dispose();
-                bindings.Remove(key);
+                if (bindings[key].TryDispose())
+                    bindings.Remove(key);
             }
         }
 
@@ -344,25 +379,29 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void BeginShutdown()
         {
-            if (_isStopping)
-                return;
-
             _isStopping = true;
             ClearBindings();
         }
 
         private void ClearBindings()
         {
-            foreach (var binding in _imageBindings.Values)
-                binding.Dispose();
-            foreach (var binding in _rawImageBindings.Values)
-                binding.Dispose();
-            foreach (var binding in _infoBindings.Values)
-                binding.Dispose();
+            RemoveCompleted(_imageBindings);
+            RemoveCompleted(_rawImageBindings);
+            RemoveCompleted(_infoBindings);
+        }
 
-            _imageBindings.Clear();
-            _rawImageBindings.Clear();
-            _infoBindings.Clear();
+        private void RemoveCompleted<TBinding>(Dictionary<int, TBinding> bindings)
+            where TBinding : BindingBase
+        {
+            _staleBindings.Clear();
+            foreach (var pair in bindings)
+            {
+                if (pair.Value.TryDispose())
+                    _staleBindings.Add(pair.Key);
+            }
+
+            foreach (var key in _staleBindings)
+                bindings.Remove(key);
         }
 
         private static string NormalizeTopic(string topic, string defaultTopic)

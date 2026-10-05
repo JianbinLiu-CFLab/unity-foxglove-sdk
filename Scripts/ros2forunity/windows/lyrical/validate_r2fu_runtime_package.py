@@ -962,7 +962,7 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "private volatile bool quitting",
         "OnDestroy()",
         "OnApplicationQuit()",
-        "node.Dispose()",
+        "node.TryDispose()",
         "StopExecutor()",
         "private int shutdownInProgress = 0",
         "Interlocked.CompareExchange(ref shutdownInProgress, 1, 0)",
@@ -1027,9 +1027,21 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     add(results, "ROS2UnityCore bounded join", core_join, "ROS2UnityCore.cs")
 
     runtime = read_optional_text(scripts / "ROS2ForUnity.cs")
-    old_lifecycle = all(token in runtime for token in ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered"))
-    current_lifecycle = all(token in runtime for token in ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered"))
-    add(results, "ROS2ForUnity deterministic lifecycle", old_lifecycle or current_lifecycle, "ROS2ForUnity.cs")
+    old_tokens = ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered")
+    current_tokens = ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered")
+    old_lifecycle = all(token in runtime for token in old_tokens)
+    current_lifecycle = all(token in runtime for token in current_tokens)
+    mixed_partial = (
+        old_lifecycle
+        and any(token in runtime for token in ("referenceCount", "ownsReference", "editorHandlersRegistered"))
+        and not current_lifecycle
+    )
+    add(
+        results,
+        "ROS2ForUnity deterministic lifecycle",
+        (old_lifecycle or current_lifecycle) and not mixed_partial,
+        f"old_lifecycle={old_lifecycle} current_lifecycle={current_lifecycle} mixed_partial={mixed_partial}",
+    )
     add(results, "ROS2ForUnity avoids finalizer shutdown", "~ROS2ForUnity" not in runtime, "ROS2ForUnity.cs")
     add(
         results,
@@ -1066,8 +1078,25 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     add(
         results,
         "ROS2ForUnity Windows CRT environment import is Windows-symbol guarded",
-        "#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN" in runtime
-        and "PlatformNotSupportedException(\"Windows CRT environment updates require a Windows Unity build target.\")" in runtime,
+        (
+            (
+                runtime.count("#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN") >= 2
+                or runtime.count("#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN") >= 2
+            )
+            and "[DllImport(\"ucrtbase.dll\"" in runtime
+            and "_wputenv_s" in runtime
+        )
+        or (
+            "Ros2ForUnityProcessEnvironmentLease.Set(" in runtime
+            and "Ros2ForUnityProcessEnvironmentLease.Restore(" in runtime
+            and (
+                runtime.count("#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN")
+                + runtime.count("#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN")
+                >= 2
+            )
+            and "[DllImport(\"ucrtbase.dll\"" in runtime
+            and "_wputenv_s" in runtime
+        ),
         "ROS2ForUnity.cs",
     )
     constructor = runtime[runtime.find("internal ROS2ForUnity()") :]
@@ -1086,7 +1115,14 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "ROS2UnityComponent prevents restart during shared ROS shutdown",
         "runtimeShutdownRequested" in component
         and "MarkRuntimeShutdown()" in component
-        and "component.MarkRuntimeShutdown();" in component
+        and (
+            "component.MarkRuntimeShutdown();" in component
+            or (
+                "private bool StopForRosShutdown()" in component
+                and "TryDetachRuntimeState(true, out instance)" in component
+                and "MarkRuntimeShutdownPendingExecutor()" in component
+            )
+        )
         and "throw new ObjectDisposedException(nameof(ROS2UnityComponent))" in component
         and "ros2forUnity == null" in component,
         "ROS2UnityComponent.cs",
@@ -1167,7 +1203,17 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     add(results, "TimeUtils does not cast modulo directly", "(uint)(nanosec % 1e9)" not in time_utils and "(uint)(nanosec % 1000000000)" not in time_utils, "TimeUtils.cs")
 
     sensor = read_optional_text(scripts / "Sensor.cs")
-    add(results, "Sensor uses short-circuit publisher guard", "publisher != null && publishing" in sensor, "Sensor.cs")
+    sensor_publisher_guard = (
+        "publisher != null && publishing" in sensor
+        or "publisherOwnership != null && publishing" in sensor
+        or (
+            "rosParticipantsDisposed" in sensor
+            and "publisherOwnership == null" in sensor
+            and "!publishing" in sensor
+            and "CompletePublisherCall" in sensor
+        )
+    )
+    add(results, "Sensor uses short-circuit publisher guard", sensor_publisher_guard, "Sensor.cs")
     readings_guard_index = sensor.find("if (readings != null)")
     readings_deref_index = sensor.find("readings.SetHeaderFrame")
     sensor_null_guard = (

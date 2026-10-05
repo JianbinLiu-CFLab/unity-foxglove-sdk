@@ -51,11 +51,16 @@ UNITY_PACKAGE_PATH_PATCH_MARKER = "Unity2Foxglove package path support"
 LOCAL_PATCH_MARKER = "U2F-LOCAL-PATCH"
 MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors."
 LOCAL_PATCH_OVERLAY_FILES = {
+    "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
+    "Runtime/Ros2ForUnity/Scripts/ROS2Node.cs",
     "Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs",
     "Runtime/Ros2ForUnity/Scripts/ROS2UnityCore.cs",
+    "Runtime/Ros2ForUnity/Scripts/Sensor.cs",
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2ScalableTimeSource.cs",
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2TimeSource.cs",
 }
+SUPPLEMENTAL_RUNTIME_RELATIVE = "Runtime/Ros2ForUnity/StreamingAssets/Ros2ForUnity/share/ament_index"
+
 LEAKY_UPSTREAM_EXAMPLES = (
     "ROS2TalkerExample.cs",
     "ROS2ListenerExample.cs",
@@ -500,8 +505,6 @@ def collect_local_patch_overlays(package: Path) -> dict[str, str]:
     for path in scripts.rglob("*.cs"):
         text = path.read_text(encoding="utf-8")
         relative = path.relative_to(package).as_posix()
-        if relative == "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs":
-            continue
         if LOCAL_PATCH_MARKER in text or relative in LOCAL_PATCH_OVERLAY_FILES:
             overlays[relative] = text
     return overlays
@@ -525,6 +528,31 @@ def apply_local_patch_overlays(package: Path, overlays: dict[str, str]) -> None:
         target = package / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         write_text(target, text)
+
+
+def collect_supplemental_runtime_files(package: Path) -> dict[str, bytes]:
+    """Capture legacy ament-index files that may be absent from a refreshed archive."""
+    root = package.joinpath(*SUPPLEMENTAL_RUNTIME_RELATIVE.split("/"))
+    if not path_exists(root):
+        return {}
+
+    overlays: dict[str, bytes] = {}
+    for path in root.rglob("*"):
+        if path.is_file():
+            with open(windows_long_path(path), "rb") as stream:
+                overlays[path.relative_to(package).as_posix()] = stream.read()
+    return overlays
+
+
+def apply_supplemental_runtime_files(package: Path, overlays: dict[str, bytes]) -> None:
+    """Restore only missing legacy ament-index files after archive extraction."""
+    for relative, data in overlays.items():
+        target = package / Path(*relative.split("/"))
+        if path_exists(target):
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(windows_long_path(target), "wb") as stream:
+            stream.write(data)
 
 
 def apply_meta_overlays(package: Path, overlays: dict[str, bytes]) -> None:
@@ -709,6 +737,23 @@ The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`
 - SHA-256: `{artifact.sha256}`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-humble-win64-runtime-inventory.json`.
+
+## Process Environment Contract
+
+The first active ROS2 For Unity context acquires a process-wide ROS environment lease
+for the variables it changes. It snapshots each prior value, including whether a
+value was unset, applies the packaged Humble runtime settings, and on the last
+safe shutdown conditionally restores only values still equal to the value it
+applied. If application code changes a value while the context is active, that
+caller change is preserved. A failed startup attempts the same rollback; an
+incomplete restore keeps the lease pending and blocks a new context until cleanup
+succeeds.
+
+The runtime may update `ROS_DISTRO`, `AMENT_PREFIX_PATH`,
+`RMW_IMPLEMENTATION`, runtime-specific `RCUTILS_*`/`ROS2CS_*`, and on Windows
+the native plugin `PATH`. `ROS_DOMAIN_ID`, DDS discovery/firewall settings, and
+other caller-owned values are not rewritten. Native DLLs cannot be unloaded or
+safely mixed after initialization, so restart Unity after changing the runtime package, distro, or communication mode.
 
 ## Known Artifact Debt
 
@@ -1389,10 +1434,12 @@ def build_package(paths: BuildPaths) -> RuntimeArtifact:
     snapshot = snapshot_package_dir(paths.package)
     overlays = collect_local_patch_overlays(paths.package)
     meta_overlays = collect_meta_overlays(paths.package)
+    supplemental_runtime_files = collect_supplemental_runtime_files(paths.package)
     snapshot_safe_to_remove = False
     try:
         reset_package_dir(paths.package)
         extract_runtime(paths)
+        apply_supplemental_runtime_files(paths.package, supplemental_runtime_files)
         normalize_ros2cs_plugin_roots(paths.package)
         prune_non_contract_examples(paths.package)
         patch_ros2_for_unity(paths.package)

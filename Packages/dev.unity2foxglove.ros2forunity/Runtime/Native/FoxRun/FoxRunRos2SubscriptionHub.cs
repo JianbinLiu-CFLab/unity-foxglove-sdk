@@ -949,6 +949,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             EnsureHostCleanupQueue();
             DrainPendingHostCleanup();
+            _nodeOwner?.RetryPendingNodeReleaseOnCurrentThread();
             if (_stopping)
             {
                 BeginShutdown();
@@ -1243,7 +1244,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     gameObject.scene);
                 owner = new Ros2ForUnityFoxRunNodeOwner(
                     new Ros2ForUnityFoxRunR2fuNodeDriver(_ros2Unity, node),
-                    admission.CanUseNativeRuntimeNow);
+                    admission.CanUseNativeRuntimeNow,
+                    ownerThreadId: Thread.CurrentThread.ManagedThreadId,
+                    ownerContext: SynchronizationContext.Current);
                 _nodeOwner = owner;
                 _nodeRetry.RecordSuccess();
                 return true;
@@ -1646,7 +1649,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             ExceptionDispatchInfo fatal = null;
             var cleanupComplete = false;
             var owner = _nodeOwner;
-            _nodeOwner = null;
+            var hostReleased = owner == null;
             var cleanupQueue = EnsureHostCleanupQueue();
             try
             {
@@ -1659,7 +1662,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         "Native ROS2 subscription teardown failed: "
                         + FoxRunRos2PublicDiagnostic.Describe(
                             FoxRunRos2RegistrationError.TeardownFailure)),
-                    () => owner?.ReleaseHostOwnership(),
+                    () =>
+                    {
+                        hostReleased = owner == null || owner.ReleaseHostOwnership();
+                        return hostReleased;
+                    },
                     out cleanupComplete);
             }
             catch (Exception exception)
@@ -1672,9 +1679,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     "stop-binding|deferred-cleanup-timeout",
                     "Native ROS2 subscription teardown remains pending after the bounded host cleanup window.");
             }
-            if (cleanupComplete)
+            if (cleanupComplete && hostReleased)
             {
+                _nodeOwner = null;
                 _bindings.Clear();
+                _ros2Unity = null;
             }
             else
             {
@@ -1694,7 +1703,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _existingBindings.Clear();
             _diagnostics.Clear();
             _runtimeDiagnosticContext = FoxRunRos2RuntimeDiagnosticContext.Unknown;
-            _ros2Unity = null;
             fatal?.Throw();
         }
 
@@ -1780,7 +1788,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2HostCleanupQueue cleanupQueue,
             TimeSpan timeout,
             Action<Exception> reportFailure,
-            Action releaseHostOwnership,
+            Func<bool> releaseHostOwnership,
             out bool cleanupComplete)
         {
             if (releaseHostOwnership == null)
@@ -1804,7 +1812,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             try
             {
-                releaseHostOwnership();
+                if (!releaseHostOwnership())
+                    cleanupComplete = false;
             }
             catch (Exception exception) when (
                 FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))

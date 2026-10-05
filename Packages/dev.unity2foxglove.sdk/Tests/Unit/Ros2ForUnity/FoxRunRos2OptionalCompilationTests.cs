@@ -302,8 +302,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 bootstrap,
                 StringComparison.Ordinal);
             Assert.Contains("Environment.SetEnvironmentVariable", bootstrap, StringComparison.Ordinal);
+            Assert.Contains("RestoreEditorProcessPath", bootstrap, StringComparison.Ordinal);
             Assert.Contains("\"PATH\"", bootstrap, StringComparison.Ordinal);
             Assert.Contains("Path.PathSeparator", bootstrap, StringComparison.Ordinal);
+            Assert.Contains("TryRemoveOwnedPathEntries", bootstrap, StringComparison.Ordinal);
+            Assert.Contains("ownedProcessPathEntries", bootstrap, StringComparison.Ordinal);
+            Assert.Contains("var wasOwned = processPathOwned", bootstrap, StringComparison.Ordinal);
             Assert.Contains(
                 "Ros2ForUnityNativePluginBootstrap.RegisterEditorPackagePluginDirectory(package.resolvedPath)",
                 bootstrap,
@@ -335,7 +339,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Contains("ReadAllTextForVerification(templatePath)", zenohRouterSettings, StringComparison.Ordinal);
             Assert.DoesNotContain("File.ReadAllText(templatePath)", zenohRouterSettings, StringComparison.Ordinal);
             Assert.Contains("SetProcessEnvironmentVariable(ZenohSessionConfigEnvironmentVariable", zenohRouterSettings, StringComparison.Ordinal);
-            Assert.Contains("_wputenv_s", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.Contains("Ros2ForUnityEditorEnvironmentLease.Set", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.Contains("Ros2ForUnityEditorEnvironmentLease", runtimeSelection, StringComparison.Ordinal);
+            Assert.Contains("_wputenv_s", runtimeSelection, StringComparison.Ordinal);
+            Assert.Contains("if (!pair.Value.HasApplied", runtimeSelection, StringComparison.Ordinal);
+            Assert.Contains("string.Equals(current, pair.Value.Applied", runtimeSelection, StringComparison.Ordinal);
+            Assert.Contains("string.IsNullOrWhiteSpace(rmwImplementation) ? null", runtimeSelection, StringComparison.Ordinal);
+            Assert.Contains("RestoreEditorProcessEnvironment", playModeGuard, StringComparison.Ordinal);
             Assert.Contains("GetZenohRouterEndpointRequiringEditorRestart", playModeGuard, StringComparison.Ordinal);
 
             var customInterfaceIndex = customInspector.IndexOf(

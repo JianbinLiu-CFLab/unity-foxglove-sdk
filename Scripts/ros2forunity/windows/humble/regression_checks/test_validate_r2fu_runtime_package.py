@@ -133,6 +133,17 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertIn("ValidateRmwImplementation", source)
         self.assertIn("rmw_fastrtps_cpp", source)
 
+    def test_runtime_source_retains_windows_ucrt_environment_helper(self) -> None:
+        """The regenerated Windows runtime must keep the native environment bridge."""
+        source = (
+            self.validator.RUNTIME_ROOT
+            / "Scripts"
+            / "ROS2ForUnity.cs"
+        ).read_text(encoding="utf-8", errors="replace")
+
+        self.assertEqual(1, source.count("private static extern int _wputenv_s"))
+        self.assertIn("_wputenv_s(name, value ?? String.Empty)", source)
+
     def test_generator_alignment_reports_missing_generator_as_failed_check(self) -> None:
         """Missing generator source should produce a structured failed result."""
         with tempfile.TemporaryDirectory() as temp:

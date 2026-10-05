@@ -600,7 +600,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                             origin)
                         : null,
                     binding == null
-                        ? backend.ReleaseNodeOwnership
+                        ? () => backend.ReleaseNodeOwnership()
                         : null);
                 throw;
             }

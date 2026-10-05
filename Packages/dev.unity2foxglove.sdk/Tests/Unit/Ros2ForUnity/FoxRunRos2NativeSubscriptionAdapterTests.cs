@@ -718,6 +718,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void RecoverableNodeReleaseFailureRetainsOwnershipForRetry()
+        {
+            var events = new List<string>();
+            var backend = new FakeBackend(events)
+            {
+                ReleaseException = new InvalidOperationException("release is temporarily unavailable")
+            };
+            var binding = CreateBinding(backend, 2, () => 2, _ => { }, _ => false);
+
+            Assert.True(binding.TryRegister().Succeeded);
+            binding.Stop();
+
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.False(((IFoxRunRos2DeferredCleanupStatus)binding).CleanupComplete);
+
+            backend.ReleaseException = null;
+            binding.Stop();
+
+            Assert.Equal(2, backend.ReleaseCount);
+            Assert.True(((IFoxRunRos2DeferredCleanupStatus)binding).CleanupComplete);
+        }
+
+        [Fact]
         public void SubscriptionHubTeardownContinuesAfterFatalHostedBinding()
         {
             var stopOrder = new List<string>();
@@ -800,7 +823,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 queue,
                 TimeSpan.Zero,
                 _ => { },
-                () => hostReleaseCount++,
+                () =>
+                {
+                    hostReleaseCount++;
+                    return true;
+                },
                 out var cleanupComplete);
 
             Assert.False(cleanupComplete);
@@ -2087,12 +2114,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     throw RemoveException;
             }
 
-            public void ReleaseNodeOwnership()
+            public bool ReleaseNodeOwnership()
             {
                 ReleaseCount++;
                 _events?.Add("release-node");
                 if (ReleaseException != null)
                     throw ReleaseException;
+                return true;
             }
 
             public void Invoke(FakeMessage value) => _callback(value);
@@ -2153,7 +2181,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 where T : ROS2.Message, new()
                 => false;
 
-            public void ReleaseNode() => ReleaseNodeCount++;
+            public bool ReleaseNode()
+            {
+                ReleaseNodeCount++;
+                return true;
+            }
         }
 
         private sealed class FakeToken : IFoxRunRos2NativeSubscriptionToken
@@ -2793,7 +2825,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void ProductionBackendMakesMissingSubscriptionRemovalObservable()
+        public void ProductionBackendRetainsSubscriptionWhenRemovalReturnsFalse()
         {
             var driver = new FakeR2fuNodeDriver { RemoveReturns = false };
             var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
@@ -2804,12 +2836,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 _ => { });
             Assert.True(registration.Succeeded);
 
-            var failure = Assert.Throws<InvalidOperationException>(
+            var removalFailure = Assert.Throws<InvalidOperationException>(
                 () => backend.RemoveSubscription(registration.Token));
-            Assert.Contains("not found", failure.Message, StringComparison.OrdinalIgnoreCase);
-            backend.ReleaseNodeOwnership();
-            owner.ReleaseHostOwnership();
+            Assert.Equal("R2FU subscription was not found during removal.", removalFailure.Message);
+            Assert.Equal(1, driver.RemoveCount);
+
+            driver.RemoveReturns = true;
+            backend.RemoveSubscription(registration.Token);
+
+            Assert.Equal(2, driver.RemoveCount);
+            Assert.True(backend.ReleaseNodeOwnership());
+            Assert.True(owner.ReleaseHostOwnership());
             Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
+        public void ProductionNodeOwnerRetriesSharedNodeReleaseAfterRecoverableFailure()
+        {
+            var driver = new FakeR2fuNodeDriver { ReleaseFailuresRemaining = 1 };
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
+
+            Assert.False(owner.ReleaseHostOwnership());
+            Assert.Equal(1, driver.ReleaseNodeCount);
+
+            Assert.True(owner.ReleaseHostOwnership());
+            Assert.Equal(2, driver.ReleaseNodeCount);
         }
 
         [Fact]
@@ -3390,6 +3441,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public int CreateCount { get; private set; }
             public int RemoveCount { get; private set; }
             public int ReleaseNodeCount { get; private set; }
+            public int ReleaseFailuresRemaining { get; set; }
             public List<ROS2.QualityOfServiceProfile> SeenQos { get; } = new List<ROS2.QualityOfServiceProfile>();
             public bool RemoveReturns { get; set; } = true;
 
@@ -3426,7 +3478,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 where T : ROS2.Message, new()
                 => publisher != null;
 
-            public void ReleaseNode() => ReleaseNodeCount++;
+            public bool ReleaseNode()
+            {
+                ReleaseNodeCount++;
+                if (ReleaseFailuresRemaining > 0)
+                {
+                    ReleaseFailuresRemaining--;
+                    return false;
+                }
+                return true;
+            }
         }
     }
 }

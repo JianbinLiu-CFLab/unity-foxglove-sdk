@@ -663,7 +663,7 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "private volatile bool quitting",
         "OnDestroy()",
         "OnApplicationQuit()",
-        "node.Dispose()",
+        "node.TryDispose()",
         "StopExecutor()",
         "StopAllExecutorsForRosShutdown()",
         "private int shutdownInProgress = 0",
@@ -733,7 +733,11 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     current_tokens = ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered")
     old_lifecycle = all(token in runtime for token in old_tokens)
     current_lifecycle = all(token in runtime for token in current_tokens)
-    mixed_partial = old_lifecycle and any(token in runtime for token in current_tokens) and not current_lifecycle
+    mixed_partial = (
+        old_lifecycle
+        and any(token in runtime for token in ("referenceCount", "ownsReference", "editorHandlersRegistered"))
+        and not current_lifecycle
+    )
     add(
         results,
         "ROS2ForUnity deterministic lifecycle",
@@ -764,6 +768,13 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         and "WarnIfStandaloneRosDistroOverride" in runtime
         and "CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)" in runtime
         and "ROS2 version in standalone process environment does not match this runtime package" not in runtime,
+        "ROS2ForUnity.cs",
+    )
+    add(
+        results,
+        "ROS2ForUnity mirrors Windows environment updates to UCRT",
+        runtime.count("private static extern int _wputenv_s") == 1
+        and "_wputenv_s(name, value ?? String.Empty)" in runtime,
         "ROS2ForUnity.cs",
     )
     constructor_start = runtime.find("internal ROS2ForUnity()")
@@ -869,7 +880,17 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     add(results, "TimeUtils does not cast modulo directly", "(uint)(nanosec % 1e9)" not in time_utils and "(uint)(nanosec % 1000000000)" not in time_utils, "TimeUtils.cs")
 
     sensor = read_optional_text(scripts / "Sensor.cs")
-    add(results, "Sensor uses short-circuit publisher guard", "publisher != null && publishing" in sensor, "Sensor.cs")
+    sensor_publisher_guard = (
+        "publisher != null && publishing" in sensor
+        or "publisherOwnership != null && publishing" in sensor
+        or (
+            "rosParticipantsDisposed" in sensor
+            and "publisherOwnership == null" in sensor
+            and "!publishing" in sensor
+            and "CompletePublisherCall" in sensor
+        )
+    )
+    add(results, "Sensor uses short-circuit publisher guard", sensor_publisher_guard, "Sensor.cs")
     readings_guard_index = sensor.find("if (readings != null)")
     readings_deref_index = sensor.find("readings.SetHeaderFrame")
     sensor_null_guard = (

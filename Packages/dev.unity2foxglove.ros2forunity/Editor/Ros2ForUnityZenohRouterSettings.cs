@@ -11,7 +11,6 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
@@ -112,11 +111,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
     internal static class Ros2ForUnityZenohRouterSettings
     {
-#if UNITY_EDITOR_WIN
-        [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-        private static extern int _wputenv_s(string name, string value);
-#endif
-
         private const string ZenohRouterAddressEditorUserSettingsKey = "Unity2Foxglove.R2FU.ZenohRouterAddress";
         private const string ZenohRouterPortEditorUserSettingsKey = "Unity2Foxglove.R2FU.ZenohRouterPort";
         private const string RouterSettingsRelativePath = "Library/Unity2Foxglove/R2fuZenohRouterSettings.json";
@@ -346,19 +340,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static void SetProcessEnvironmentVariable(string name, string value)
         {
-            Environment.SetEnvironmentVariable(name, value);
-#if UNITY_EDITOR_WIN
-            var result = _wputenv_s(name, value ?? string.Empty);
-            if (result != 0)
-            {
-                throw new InvalidOperationException(
-                    "Failed to set Windows CRT environment variable '"
-                    + name
-                    + "' (ucrtbase _wputenv_s returned "
-                    + result
-                    + ").");
-            }
-#endif
+            Ros2ForUnityEditorEnvironmentLease.Set(name, value);
         }
 
         private static void ClearRestartProcessZenohConfiguration(ProcessStartInfo startInfo)

@@ -63,13 +63,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Empty(publish.Ancestors().OfType<LockStatementSyntax>());
         }
 
-        [Fact]
-        public void JazzySensorDefersPublisherRemovalUntilPublishReturns()
+        [Theory]
+        [InlineData("humble")]
+        [InlineData("jazzy")]
+        [InlineData("lyrical")]
+        public void RuntimeSensorsDeferPublisherRemovalUntilPublishReturns(string distro)
         {
-            const string path =
-                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/Sensor.cs";
+            var path =
+                $"Packages/dev.unity2foxglove.ros2forunity.runtime.{distro}.win64/Runtime/Ros2ForUnity/Scripts/Sensor.cs";
             var executor = Method(path, "ExecutorThreadSensorPublishAction");
-            var dispose = Method(path, "DisposeRosParticipants");
+            var dispose = distro == "jazzy"
+                ? Method(path, "DisposeRosParticipants")
+                : Method(path, "UnregisterExecutable");
             var completion = Method(path, "CompletePublisherCall");
 
             Assert.Contains(
@@ -78,21 +83,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 StringComparison.Ordinal);
             Assert.NotEmpty(
                 executor.DescendantNodes().OfType<FinallyClauseSyntax>());
+            Assert.Contains("Retired = true;", dispose.ToFullString(), StringComparison.Ordinal);
             Assert.Contains(
-                "ownershipToRetire.Retired = true;",
-                dispose.ToFullString(),
+                "TryCompletePublisherRemoval(ownershipToRemove);",
+                completion.ToFullString(),
                 StringComparison.Ordinal);
-            var remove = completion.DescendantNodes()
+            var cleanup = Method(path, "TryCompletePublisherRemoval");
+            var remove = cleanup.DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
                 .Single(invocation => invocation.Expression.ToString()
-                    .Contains("RemovePublisherSafely", StringComparison.Ordinal));
+                    .Contains("TryRemovePublisher", StringComparison.Ordinal));
             Assert.Empty(remove.Ancestors().OfType<LockStatementSyntax>());
         }
 
-        [Fact]
-        public async Task JazzySensorCanRebindWhileTheRetiredPublisherFinishes()
+        [Theory]
+        [InlineData("humble")]
+        [InlineData("jazzy")]
+        [InlineData("lyrical")]
+        public async Task RuntimeSensorCanRebindWhileTheRetiredPublisherFinishes(string distro)
         {
-            var assembly = CompileJazzySensorProbe();
+            var assembly = CompileSensorProbe(distro);
             var sensorType = assembly.GetType("ROS2.SensorProbe", throwOnError: true);
             var componentType = assembly.GetType("ROS2.ROS2UnityComponent", throwOnError: true);
             var nodeType = assembly.GetType("ROS2.ROS2Node", throwOnError: true);
@@ -108,7 +118,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var create = sensorType.GetMethod("CreateROSParticipants");
             var sensorBase = sensorType.BaseType;
             var dispose = sensorBase?.GetMethod(
-                "DisposeRosParticipants",
+                distro == "jazzy" ? "DisposeRosParticipants" : "UnregisterExecutable",
                 BindingFlags.Instance | BindingFlags.NonPublic);
 
             try
@@ -228,10 +238,10 @@ namespace ROS2
                 .Single(method => method.Identifier.ValueText == name && method.Body != null);
         }
 
-        private static Assembly CompileJazzySensorProbe()
+        private static Assembly CompileSensorProbe(string distro)
         {
-            const string path =
-                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/Sensor.cs";
+            var path =
+                $"Packages/dev.unity2foxglove.ros2forunity.runtime.{distro}.win64/Runtime/Ros2ForUnity/Scripts/Sensor.cs";
             const string probe = @"
 using System;
 using System.Collections.Generic;
@@ -240,7 +250,11 @@ using System.Threading;
 namespace UnityEngine
 {
     public class MonoBehaviour { }
-    public static class Debug { public static void LogWarning(object value) { } }
+    public static class Debug
+    {
+        public static void LogWarning(object value) { }
+        public static void LogException(Exception value) { }
+    }
     public static class Time { public static float fixedDeltaTime = 0.02f; }
 }
 
@@ -296,7 +310,11 @@ namespace ROS2
         }
 
         public bool TryUpdateROSTimestamp(ref MessageWithHeader value) => true;
-        public void RemovePublisher<T>(Publisher<T> publisher) => RemovedPublishers.Add(publisher);
+        public bool RemovePublisher<T>(Publisher<T> publisher)
+        {
+            RemovedPublishers.Add(publisher);
+            return true;
+        }
     }
 
     public sealed class SensorProbe : Sensor<TestMessage>
@@ -315,7 +333,7 @@ namespace ROS2
             var trusted = (string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES");
             Assert.False(string.IsNullOrEmpty(trusted));
             var compilation = CSharpCompilation.Create(
-                "jazzy-sensor-ownership-" + Guid.NewGuid().ToString("N"),
+                distro + "-sensor-ownership-" + Guid.NewGuid().ToString("N"),
                 new[]
                 {
                     CSharpSyntaxTree.ParseText(TestSources.Text(path)),

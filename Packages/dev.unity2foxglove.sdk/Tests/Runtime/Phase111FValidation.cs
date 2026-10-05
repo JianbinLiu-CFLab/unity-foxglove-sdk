@@ -176,7 +176,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && !component.Contains("OnDisable()", StringComparison.Ordinal)
                   && (component.Contains("threadToJoin.Join(1000)", StringComparison.Ordinal)
                       || component.Contains("threadToJoin.Join(TimeSpan.FromSeconds(2))", StringComparison.Ordinal))
-                  && component.Contains("node.Dispose()", StringComparison.Ordinal),
+                  && (component.Contains("node.TryDispose()", StringComparison.Ordinal)
+                      || component.Contains("node.Dispose()", StringComparison.Ordinal)),
                 "111F-E4: ROS2UnityComponent stops, joins, and disposes nodes deterministically");
             Check(component.Contains("nodesSnapshot.AddRange(ros2csNodes)", StringComparison.Ordinal)
                   && component.Contains("Ros2cs.SpinOnce(nodesSnapshot", StringComparison.Ordinal),
@@ -188,6 +189,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(component.Contains("private bool StopExecutor()", StringComparison.Ordinal)
                   && component.Contains("ReferenceEquals(executorThread, threadToJoin)", StringComparison.Ordinal)
                   && !component.Contains("if (!StopExecutor())", StringComparison.Ordinal)
+                  && component.Contains("MarkRuntimeShutdownPendingExecutor()", StringComparison.Ordinal)
                   && component.Contains("QuarantineNodesAfterExecutorTimeout", StringComparison.Ordinal)
                   && component.Contains("TryDetachRuntimeState(executorStopped, out instance)", StringComparison.Ordinal),
                 "111F-E4d: ROS2UnityComponent quarantines timed-out executor state without skipping lifecycle cleanup");
