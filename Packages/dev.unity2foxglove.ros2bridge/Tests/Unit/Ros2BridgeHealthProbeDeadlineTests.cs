@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             stopwatch.Stop();
 
             Assert.False(result.Succeeded);
+            Assert.Contains("total deadline", result.Message, StringComparison.OrdinalIgnoreCase);
             Assert.True(
                 stopwatch.Elapsed < TimeSpan.FromSeconds(3),
                 "The probe exceeded its absolute deadline: " + stopwatch.Elapsed);

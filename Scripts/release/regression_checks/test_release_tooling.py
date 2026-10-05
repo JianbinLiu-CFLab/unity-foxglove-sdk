@@ -1243,6 +1243,21 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual((), result.residual_pids)
         tree.terminate.assert_called_once_with()
 
+    def test_owned_command_does_not_promote_unknown_returncode_to_success(self) -> None:
+        """An unavailable process return code must not be rewritten as zero."""
+        process = mock.Mock(returncode=None)
+        process.communicate.return_value = ("output\n", "")
+        tree = mock.Mock(process=process)
+        tree.terminate.return_value = []
+
+        with mock.patch.object(self.run_ci, "start_owned_process", return_value=tree):
+            with mock.patch.object(self.run_ci, "await_tree_quiescence", return_value=[]):
+                result = self.run_ci._run_owned_command(
+                    ["tool"], capture_output=True, timeout_seconds=10
+                )
+
+        self.assertIsNone(result.returncode)
+
     def test_owned_command_fails_closed_when_cleanup_leaves_residual_tree(self) -> None:
         """A descendant that survives termination must retain the fail-closed result."""
         process = mock.Mock(returncode=0)
@@ -1271,12 +1286,12 @@ class RunCiTests(unittest.TestCase):
             )
             command = [sys.executable, "-c", parent_code]
             if captured:
-                with mock.patch.object(self.run_ci, "command_timeout_seconds", return_value=1):
+                with mock.patch.object(self.run_ci, "command_timeout_seconds", return_value=5):
                     result = self.run_ci.run_captured(command, "captured process tree timeout")
                 self.assertFalse(result.ok)
                 self.assertEqual(124, result.returncode)
             else:
-                result = self.run_ci.run(command, "process tree timeout", timeout_seconds=1)
+                result = self.run_ci.run(command, "process tree timeout", timeout_seconds=5)
                 self.assertFalse(result)
 
             deadline = time.monotonic() + 4
@@ -3900,6 +3915,40 @@ class UnityBatchCompileGateTests(unittest.TestCase):
             Path("unity.log"),
             17,
         )
+
+    def test_script_entrypoint_resolves_repository_imports(self) -> None:
+        """Running the gate as a file must reach its JSON verdict before launch."""
+        with tempfile.TemporaryDirectory(dir=ROOT) as temp:
+            root = Path(temp)
+            project = root / "Unity2Foxglove"
+            project.mkdir()
+            log_path = root / "build" / "unity.log"
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = ""
+            environment.update({name: "present" for name in self.gate.REQUIRED_ENVIRONMENT})
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(UNITY_BATCH_COMPILE_PATH),
+                    "--unity",
+                    sys.executable,
+                    "--project-path",
+                    str(project),
+                    "--log-file",
+                    str(log_path),
+                    "--timeout-seconds",
+                    "2",
+                ],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotIn("ModuleNotFoundError", completed.stderr)
+            self.assertIn('"verdict":', completed.stdout)
+            self.assertTrue(log_path.with_suffix(".json").is_file())
 
     def test_run_resolves_relative_unity_and_project_paths_before_launch(self) -> None:
         """The Unity gate must compare and launch using absolute paths."""

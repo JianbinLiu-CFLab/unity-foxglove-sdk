@@ -13,6 +13,6 @@ class H07HealthDeadlineTests(unittest.TestCase):
         self.assertIn('RemainingMilliseconds(stopwatch, totalTimeoutMs)', t)
         self.assertIn('ReadExact(stream, 16, timeoutMs, deadline, cancellationToken)', t)
         self.assertNotIn('Stopwatch.StartNew();\n            var bytes = new byte[count];', t)
-        self.assertIn('Timed out reading ROS2 Bridge health response.', t)
+        self.assertIn('ROS2 Bridge health probe exceeded its total deadline.', t)
 if __name__ == '__main__':
     unittest.main()

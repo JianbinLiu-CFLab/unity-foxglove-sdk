@@ -474,7 +474,7 @@ def _run_owned_command(
                 residual_pids=residual,
             )
 
-        returncode = tree.process.returncode or 0
+        returncode = tree.process.returncode
         residual = tuple(await_tree_quiescence(tree, 1.0))
         if residual:
             residual = tuple(tree.terminate())

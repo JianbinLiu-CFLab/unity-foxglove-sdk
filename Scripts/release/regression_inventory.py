@@ -8,8 +8,11 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 from pathlib import Path
+import subprocess
+import sys
 from typing import Iterable
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -37,61 +40,74 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
         "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_capability_probe",
         "Scripts.smoke.foxrun.regression_checks.test_phase186_provenance",
     ),
+    "phase181-interface-tooling": (
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h01_delivery_enum_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h01_mismatch_cleanup_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h01_preflight_metadata_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h01_provider_freeze_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h01_registry_ownership_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h01_selection_error_attribution",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h02_assembly_identity_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h02_enum_width_fixture_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h02_inherited_member_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h02_null_sequence_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h02_writer_rollback_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h03_fatal_boundary_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h03_stop_admission_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h04_draco_framing_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h04_native_registration_phase_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h04_node_lifetime_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h04_post_init_cleanup_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h04_runtime_identity_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h06_sigpipe_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h06_write_deadline_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h07_command_runner_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h07_payload_ownership_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h07_queue_accounting_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h07_startup_rollback_contract",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest_h02",
+        "Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest_h02005",
+    ),
+    "windows-parity-regression-tooling": (
+        "Scripts.ros2forunity.interfaces.regression_checks.test_h04_tool_identity_contract",
+        "Scripts.ros2forunity.windows.humble.regression_checks.test_build_r2fu_runtime_package",
+        "Scripts.ros2forunity.windows.humble.regression_checks.test_inspect_r2fu_runtime_artifact",
+        "Scripts.ros2forunity.windows.humble.regression_checks.test_phase160_build_defaults",
+        "Scripts.ros2forunity.windows.humble.regression_checks.test_sync_r2fu_artifact_to_unity2foxglove",
+        "Scripts.ros2forunity.windows.humble.regression_checks.test_validate_r2fu_runtime_package",
+        "Scripts.ros2forunity.windows.humble.regression_checks.test_validate_ros2forunity_package",
+        "Scripts.ros2forunity.windows.jazzy.regression_checks.test_build_r2fu_runtime_package",
+        "Scripts.ros2forunity.windows.jazzy.regression_checks.test_phase138b_build_defaults",
+        "Scripts.ros2forunity.windows.jazzy.regression_checks.test_sync_r2fu_artifact_to_unity2foxglove",
+        "Scripts.ros2forunity.windows.jazzy.regression_checks.test_validate_r2fu_runtime_package",
+        "Scripts.ros2forunity.windows.lyrical.regression_checks.test_build_r2fu_runtime_package",
+        "Scripts.ros2forunity.windows.lyrical.regression_checks.test_phase146b_build_defaults",
+        "Scripts.ros2forunity.windows.lyrical.regression_checks.test_sync_r2fu_artifact_to_unity2foxglove",
+        "Scripts.ros2forunity.windows.lyrical.regression_checks.test_validate_r2fu_runtime_package",
+    ),
 }
 
 # Every discovered module must either appear in a CI/workflow command or have
 # an explicit, reviewed reason for its environment-specific exclusion.
 EXPLICIT_EXCLUSIONS: dict[str, str] = {
-    'Scripts.mcap.regression_checks.test_mcap_time_sync': 'MCAP timing diagnostic; manual/performance-only because it depends on external timing fixtures.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h01_delivery_enum_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h01_mismatch_cleanup_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h01_preflight_metadata_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h01_provider_freeze_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h01_registry_ownership_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h01_selection_error_attribution': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h02_assembly_identity_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h02_enum_width_fixture_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h02_inherited_member_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h02_null_sequence_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h02_writer_rollback_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h03_fatal_boundary_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h03_stop_admission_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h04_draco_framing_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h04_native_registration_phase_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h04_node_lifetime_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h04_post_init_cleanup_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h04_runtime_identity_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h04_tool_identity_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h06_sigpipe_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h06_write_deadline_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h07_command_runner_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h07_payload_ownership_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h07_queue_accounting_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_h07_startup_rollback_contract': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest_h02': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest_h02005': 'ROS2 interface contract fixture; exercised by the dedicated interface/toolchain workflow when its external fixture is provisioned.',
-    'Scripts.ros2forunity.windows.humble.regression_checks.test_build_r2fu_runtime_package': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.humble.regression_checks.test_inspect_r2fu_runtime_artifact': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.humble.regression_checks.test_phase160_build_defaults': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.humble.regression_checks.test_sync_r2fu_artifact_to_unity2foxglove': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.humble.regression_checks.test_validate_r2fu_runtime_package': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.humble.regression_checks.test_validate_ros2forunity_package': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.jazzy.regression_checks.test_build_r2fu_runtime_package': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.jazzy.regression_checks.test_phase138b_build_defaults': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.jazzy.regression_checks.test_sync_r2fu_artifact_to_unity2foxglove': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.jazzy.regression_checks.test_validate_r2fu_runtime_package': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.lyrical.regression_checks.test_build_r2fu_runtime_package': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.lyrical.regression_checks.test_phase146b_build_defaults': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.lyrical.regression_checks.test_sync_r2fu_artifact_to_unity2foxglove': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.ros2forunity.windows.lyrical.regression_checks.test_validate_r2fu_runtime_package': 'Windows package build or artifact lane; runs only with the corresponding self-hosted ROS2 fixture.',
-    'Scripts.smoke.foxrun.regression_checks.test_atomic_publication': 'FoxRun publication integration fixture; manual lane requiring generated artifact inputs.',
-    'Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_manual': 'Phase189 manual/probe lane; requires provisioned Unity/native artifacts.',
-    'Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_probe': 'Phase189 manual/probe lane; requires provisioned Unity/native artifacts.',
-    'Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup': 'ROS2 live/native smoke lane; exercised by the optional or self-hosted ROS2 workflow, not the default package lane.',
-    'Scripts.smoke.ros2.regression_checks.test_i10_phase106_cleanup': 'ROS2 live/native smoke lane; exercised by the optional or self-hosted ROS2 workflow, not the default package lane.',
-    'Scripts.smoke.ros2.regression_checks.test_i10_phase109_cleanup': 'ROS2 live/native smoke lane; exercised by the optional or self-hosted ROS2 workflow, not the default package lane.',
-    'Scripts.smoke.ros2.regression_checks.test_i10_remaining_cleanup': 'ROS2 live/native smoke lane; exercised by the optional or self-hosted ROS2 workflow, not the default package lane.',
-    'Scripts.smoke.ros2.regression_checks.test_launch_phase138l_rviz2': 'ROS2 live/native smoke lane; exercised by the optional or self-hosted ROS2 workflow, not the default package lane.',
+    "Scripts.mcap.regression_checks.test_mcap_time_sync":
+        "MCAP Python package and pinned fixture are not provisioned in the dotnet-tests runner; run in the MCAP conformance lane with its fixture.",
+    "Scripts.smoke.foxrun.regression_checks.test_atomic_publication":
+        "Manual publication integration lane; generated FoxRun artifact inputs are not provisioned in default runners.",
+    "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_manual":
+        "Manual/native Unity artifact lane; provisioned native and Unity inputs are required.",
+    "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_probe":
+        "Manual/native Unity artifact lane; provisioned native and Unity inputs are required.",
+    "Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup":
+        "Live/native ROS2 smoke lane; a ROS2 runtime and network fixture are required.",
+    "Scripts.smoke.ros2.regression_checks.test_i10_phase106_cleanup":
+        "Live/native ROS2 smoke lane; a ROS2 runtime and network fixture are required.",
+    "Scripts.smoke.ros2.regression_checks.test_i10_phase109_cleanup":
+        "Live/native ROS2 smoke lane; a ROS2 runtime and network fixture are required.",
+    "Scripts.smoke.ros2.regression_checks.test_i10_remaining_cleanup":
+        "Live/native ROS2 smoke lane; a ROS2 runtime and network fixture are required.",
+    "Scripts.smoke.ros2.regression_checks.test_launch_phase138l_rviz2":
+        "Live/native ROS2 smoke lane; a ROS2 runtime and network fixture are required.",
 }
 
 
@@ -102,6 +118,62 @@ def discover_regression_modules(root: Path = _REPO_ROOT) -> set[str]:
         for path in root.glob("Scripts/**/regression_checks/test_*.py")
     }
 
+def _workflow_run_text(text: str) -> str:
+    """Return commands from active workflow run blocks, excluding comments/disabled steps."""
+    lines = text.splitlines()
+    blocks: list[list[str]] = []
+    current: list[str] | None = None
+    step_indent: int | None = None
+    for line in lines:
+        stripped = line.lstrip()
+        indent = len(line) - len(stripped)
+        if re.match(r"^-\s+name:\s*", stripped):
+            if current is not None:
+                blocks.append(current)
+            current = [line]
+            step_indent = indent
+            continue
+        if current is not None:
+            if stripped and indent <= (step_indent or 0) and re.match(r"^-\s+", stripped):
+                blocks.append(current)
+                current = None
+                step_indent = None
+            else:
+                current.append(line)
+    if current is not None:
+        blocks.append(current)
+    if not blocks:
+        blocks = [lines]
+
+    commands: list[str] = []
+    for block in blocks:
+        if any(
+            re.match(
+                r"^\s*if:\s*(?:false|0|\$\{\{\s*false\s*\}\})\s*$",
+                line,
+                flags=re.IGNORECASE,
+            )
+            for line in block
+        ):
+            continue
+        in_run = False
+        run_indent = 0
+        for line in block:
+            stripped = line.lstrip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            indent = len(line) - len(stripped)
+            if re.match(r"^run:\s*", stripped):
+                in_run = True
+                run_indent = indent
+                commands.append(re.sub(r"^run:\s*", "", stripped))
+                continue
+            if in_run and indent > run_indent:
+                commands.append(line)
+            elif in_run:
+                in_run = False
+    return "\n".join(line for line in commands if not line.lstrip().startswith("#"))
+
 
 def discover_ci_modules(root: Path = _REPO_ROOT) -> set[str]:
     """Return regression modules executed by the checked-in workflows."""
@@ -111,9 +183,15 @@ def discover_ci_modules(root: Path = _REPO_ROOT) -> set[str]:
         for path in sources
         if path.exists()
     )
-    modules = {match.replace("/", ".") for match in _MODULE_PATTERN.findall(text)}
+    commands = _workflow_run_text(text)
+    modules = {match.replace("/", ".") for match in _MODULE_PATTERN.findall(commands)}
     for lane, lane_modules in _WORKFLOW_RUNNER_MODULES.items():
-        if re.search(rf"run_ci\.py\s+--only\s+{re.escape(lane)}\b", text):
+        if re.search(rf"run_ci\.py\s+--only\s+{re.escape(lane)}\b", commands):
+            modules.update(lane_modules)
+        if re.search(
+            rf"regression_inventory\.py\s+--run-lane\s+{re.escape(lane)}\b",
+            commands,
+        ):
             modules.update(lane_modules)
     return modules
 
@@ -153,13 +231,23 @@ def validate_inventory(root: Path = _REPO_ROOT) -> None:
         raise AssertionError("Regression inventory is incomplete: " + "; ".join(errors))
 
 
-def main() -> int:
-    """Validate the live inventory and emit the machine-readable success marker."""
+def main(argv: list[str] | None = None) -> int:
+    """Validate the inventory or run one reviewed regression lane."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run-lane", choices=sorted(_WORKFLOW_RUNNER_MODULES))
+    args = parser.parse_args(argv)
     errors = inventory_errors()
     if errors:
         for error in errors:
             print(error)
         return 1
+    if args.run_lane:
+        completed = subprocess.run(
+            [sys.executable, "-B", "-m", "unittest", *_WORKFLOW_RUNNER_MODULES[args.run_lane]],
+            cwd=_REPO_ROOT,
+            check=False,
+        )
+        return completed.returncode
     print("REGRESSION_INVENTORY_OK")
     return 0
 
