@@ -2938,7 +2938,7 @@ def _compare_surfaces(
     strict: bool = True,
     waived_symbols: Mapping[str, frozenset[str]] | None = None,
 ) -> list[str]:
-    """Internal helper for _compare_surfaces."""
+    """Compare identity surfaces using waivers from the trusted base revision."""
     errors: list[str] = []
     waiver_map = waived_symbols or {}
     unknown_waiver_paths = sorted(set(waiver_map) - set(base_surfaces))
@@ -3009,7 +3009,7 @@ def _compare_surfaces(
         else:
             public_removals = set(base_public_symbols) - set(head_public_symbols)
             waiver = set(waiver_map.get(relative, frozenset()))
-            invalid_waivers = sorted(waiver - public_removals)
+            invalid_waivers = sorted(waiver - set(base_public_symbols))
             if invalid_waivers:
                 errors.append(
                     f"INVALID_IDENTITY_WAIVER {relative}: {', '.join(invalid_waivers)}"
@@ -3205,7 +3205,7 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
         base_surfaces,
         head_surfaces,
         strict=strict,
-        waived_symbols=head_waivers if not strict else None,
+        waived_symbols=base_waivers if not strict else None,
     )
     if errors:
         for error in errors:
