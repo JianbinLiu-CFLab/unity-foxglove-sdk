@@ -41,6 +41,8 @@ namespace Unity.FoxgloveSDK.Components
         private FoxgloveCameraPublisher _cachedImagePublisher;
         private bool _imagePublisherCacheResolved;
         private bool _warnedScreenDimensionFallback;
+        private bool _warnedSourceCameraMismatch;
+        private bool _warnedOrthographicCamera;
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.CameraCalibrationSchemaName;
         public override bool SupportsJsonEncoding => false;
@@ -96,6 +98,13 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
 
+            var sourceCamera = _autoFromCamera ? ResolveSourceCamera() : null;
+            if (sourceCamera != null && sourceCamera.orthographic)
+            {
+                WarnOrthographicCamera();
+                return;
+            }
+
             var publishNativeFrame = SensorCameraInfoReady != null;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishProvider =
@@ -136,18 +145,10 @@ namespace Unity.FoxgloveSDK.Components
             var fy = 0.0;
             var cx = width / 2.0;
             var cy = height / 2.0;
-            if (cam != null && cam.orthographic)
-            {
-                fy = height / Math.Max(0.001, 2.0 * cam.orthographicSize);
-                fx = fy * ((double)width / Math.Max(1.0, height));
-            }
-            else
-            {
-                var verticalFov = cam != null ? cam.fieldOfView : 60.0;
-                var fovRad = Math.Max(0.001, verticalFov) * Math.PI / 180.0;
-                fy = height / (2.0 * Math.Tan(fovRad / 2.0));
-                fx = fy * ((double)width / Math.Max(1.0, height));
-            }
+            var verticalFov = cam != null ? cam.fieldOfView : 60.0;
+            var fovRad = Math.Max(0.001, verticalFov) * Math.PI / 180.0;
+            fy = height / (2.0 * Math.Tan(fovRad / 2.0));
+            fx = fy * ((double)width / Math.Max(1.0, height));
             if (cam != null && _fxOverride == 0 && _fyOverride == 0 && _cxOverride == 0 && _cyOverride == 0)
             {
                 var projection = cam.projectionMatrix;
@@ -178,6 +179,15 @@ namespace Unity.FoxgloveSDK.Components
 
         private Camera ResolveSourceCamera()
         {
+            var imagePublisher = ResolveImagePublisher();
+            var imageSourceCamera = imagePublisher?.SensorCameraSourceCamera;
+            if (imageSourceCamera != null)
+            {
+                if (_sourceCamera != null && _sourceCamera != imageSourceCamera)
+                    WarnSourceCameraMismatch(_sourceCamera, imageSourceCamera);
+                return imageSourceCamera;
+            }
+
             if (_sourceCamera != null)
                 return _sourceCamera;
 
@@ -212,6 +222,31 @@ namespace Unity.FoxgloveSDK.Components
             _sourceCameraCacheResolved = false;
             _cachedImagePublisher = null;
             _imagePublisherCacheResolved = false;
+            _warnedSourceCameraMismatch = false;
+            _warnedOrthographicCamera = false;
+            _warnedScreenDimensionFallback = false;
+        }
+
+        private void WarnSourceCameraMismatch(Camera configured, Camera imageSource)
+        {
+            if (_warnedSourceCameraMismatch)
+                return;
+
+            _warnedSourceCameraMismatch = true;
+            Debug.LogWarning(
+                "[Foxglove] CameraInfo source camera differs from the image publisher source; using the image publisher camera for dimensions and intrinsics."
+                + " Configured=" + configured.name
+                + ", Image=" + imageSource.name);
+        }
+
+        private void WarnOrthographicCamera()
+        {
+            if (_warnedOrthographicCamera)
+                return;
+
+            _warnedOrthographicCamera = true;
+            Debug.LogWarning(
+                "[Foxglove] CameraInfo is not published for orthographic cameras because the CameraInfo contract is pinhole-based.");
         }
 
         private ulong ResolveCameraInfoUnixNs()

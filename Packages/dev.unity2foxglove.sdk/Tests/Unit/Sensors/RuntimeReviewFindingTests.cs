@@ -6,8 +6,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 using System.Numerics;
 using Foxglove.Schemas;
+using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Sensors.Lidar;
 using Xunit;
@@ -131,6 +134,187 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.True(exposedModes.IsReadOnly);
             Assert.Throws<NotSupportedException>(() => exposedAltitudes[0] = 42.0);
             Assert.Throws<NotSupportedException>(() => exposedModes[0] = "corrupted");
+        }
+
+        [Fact]
+        public void MultiTickLidarAcquisitionUsesElapsedPhysicsTime()
+        {
+            var offset = LidarScanTiming.AcquisitionOffsetSeconds(
+                acquisitionPhysSeconds: 0.120,
+                scanStartPhysSeconds: 0.040,
+                normalizedOffset: 0.5f,
+                fixedDeltaTimeSeconds: 0.020f);
+
+            Assert.Equal(0.09f, offset, 6);
+        }
+
+        [Fact]
+        public void CameraSubscriberFanoutCatchesPerSubscriberFailure()
+        {
+            foreach (var relativePath in new[]
+                     {
+                         "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraInfoPublisher.cs",
+                         "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Raw.cs",
+                         "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Jpeg.cs"
+                     })
+            {
+                var source = Text(relativePath);
+                Assert.Contains("handlers.GetInvocationList()", source, StringComparison.Ordinal);
+                Assert.Contains("catch (Exception ex)", source, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void VideoDrainUsesAStablePerTickBudget()
+        {
+            var session = new CameraVideoSidecarSession();
+            var sidecar = new FakeVideoSidecar(5);
+            typeof(CameraVideoSidecarSession)
+                .GetField("_sidecar", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(session, sidecar);
+            typeof(CameraVideoSidecarSession)
+                .GetField("_mode", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(session, CameraOutputMode.H264Ffmpeg);
+
+            var published = new List<ulong>();
+            Assert.True(session.TryDrain(
+                () => 900UL,
+                (_, timestamp, _) => published.Add(timestamp),
+                null));
+            Assert.Equal(4, published.Count);
+            Assert.Equal(1, sidecar.Remaining);
+
+            Assert.True(session.TryDrain(
+                () => 900UL,
+                (_, timestamp, _) => published.Add(timestamp),
+                null));
+            Assert.Equal(5, published.Count);
+            Assert.Equal(0, sidecar.Remaining);
+        }
+
+        [Fact]
+        public void CameraCaptureResizeRetiresOldRenderTextureUntilDrain()
+        {
+            var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraCaptureResources.cs");
+            var resize = source.IndexOf("RetireRenderTexture();", StringComparison.Ordinal);
+            var release = source.IndexOf("ReleaseRetiredRenderTextures", StringComparison.Ordinal);
+
+            Assert.True(resize >= 0);
+            Assert.True(release > resize);
+            Assert.Contains("private readonly List<RenderTexture> _retiredRenderTextures", source, StringComparison.Ordinal);
+            Assert.Contains("_captureResources.ReleaseRetiredRenderTextures();", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs"), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CameraInfoUsesImageSourceAndRejectsOrthographicProjection()
+        {
+            var info = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraInfoPublisher.cs");
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+
+            Assert.Contains("imagePublisher?.SensorCameraSourceCamera", info, StringComparison.Ordinal);
+            Assert.Contains("WarnSourceCameraMismatch", info, StringComparison.Ordinal);
+            Assert.Contains("WarnOrthographicCamera", info, StringComparison.Ordinal);
+            Assert.Contains("CameraInfo is not published for orthographic cameras", info, StringComparison.Ordinal);
+            Assert.DoesNotContain("cam.orthographicSize", info, StringComparison.Ordinal);
+            Assert.Contains("public Camera SensorCameraSourceCamera", publisher, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SensorGenerationAndConfigurationContractsRemainBoundToRuntimeState()
+        {
+            var managerClock = Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveSharedSensorClock.cs");
+            var imu = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+
+            Assert.Contains("public int Generation", managerClock, StringComparison.Ordinal);
+            Assert.Contains("SharedSensorClockGeneration", imu, StringComparison.Ordinal);
+            Assert.Contains("SharedSensorClockGeneration", lidar, StringComparison.Ordinal);
+            Assert.Contains("NormalizeSerializedNumericConfiguration();", lidar, StringComparison.Ordinal);
+            Assert.Contains("RebuildScanConfiguration();", lidar, StringComparison.Ordinal);
+            Assert.Contains("Configuration changes during Play are deferred until the component is disabled and re-enabled.", lidar, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void LidarDeskewBindsMotionCompensationToSensorTransform()
+        {
+            var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            Assert.Contains("SetMotionCompensationTransform(transform);", lidar, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void VideoInputAdmissionAndJpegOrientationContractsRemainExplicit()
+        {
+            var policy = Text("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/CameraPipelineHealthPolicy.cs");
+            var pipeline = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
+            var asyncJpeg = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegWorkerPayloads.cs");
+            var syncJpeg = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraCaptureResources.cs");
+
+            Assert.Contains("VideoInputQueueFull", policy, StringComparison.Ordinal);
+            Assert.Contains("InputQueueDepth", pipeline, StringComparison.Ordinal);
+            Assert.Contains("flipVertical: true", asyncJpeg, StringComparison.Ordinal);
+            Assert.Contains("FlipRgb24RowsInPlace", syncJpeg, StringComparison.Ordinal);
+        }
+
+        private sealed class FakeVideoSidecar : ICameraVideoEncoderSidecar
+        {
+            private readonly Queue<byte[]> _units = new Queue<byte[]>();
+
+            internal FakeVideoSidecar(int count)
+            {
+                for (var i = 0; i < count; i++)
+                    _units.Enqueue(new byte[] { (byte)i });
+            }
+
+            public int Remaining => _units.Count;
+            public bool IsRunning => true;
+            public int OutputQueueDepth => _units.Count;
+            public int MaxOutputQueue => 8;
+            public int InputQueueDepth => 0;
+            public int MaxInputQueue => 8;
+            public string LastDiagnosticLine => "";
+            public string LastError => "";
+            public bool TrySubmitFrame(byte[] frame) => true;
+            public bool TryDequeueAccessUnit(out byte[] accessUnit)
+            {
+                if (_units.Count == 0)
+                {
+                    accessUnit = null;
+                    return false;
+                }
+
+                accessUnit = _units.Dequeue();
+                return true;
+            }
+            public void Dispose() { }
+        }
+
+        private static string Text(string relativePath)
+        {
+            var path = PathOf(relativePath);
+            Assert.True(File.Exists(path), "Required source file was not found: " + relativePath);
+            return File.ReadAllText(path);
+        }
+
+        private static string PathOf(string relativePath)
+            => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        private static string RepoRoot
+        {
+            get
+            {
+                var dir = new DirectoryInfo(AppContext.BaseDirectory);
+                while (dir != null)
+                {
+                    if (File.Exists(Path.Combine(dir.FullName, "README.md"))
+                        && Directory.Exists(Path.Combine(dir.FullName, "Unity2Foxglove"))
+                        && Directory.Exists(Path.Combine(dir.FullName, "Packages")))
+                        return dir.FullName;
+                    dir = dir.Parent;
+                }
+
+                Assert.Fail("Could not locate repository root for sensor review tests.");
+                return string.Empty;
+            }
         }
     }
 }
