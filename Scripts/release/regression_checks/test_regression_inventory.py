@@ -71,6 +71,48 @@ class RegressionInventoryTests(unittest.TestCase):
                 modules,
             )
 
+    def test_workflow_inventory_ignores_comments_and_disabled_steps(self):
+        """Only commands in active run blocks count as CI coverage."""
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workflow = root / ".github" / "workflows" / "ci.yml"
+            workflow.parent.mkdir(parents=True)
+            workflow.write_text(
+                """
+jobs:
+  test:
+    steps:
+      - name: disabled
+        if: false
+        run: python -m unittest Scripts.fake.regression_checks.test_disabled
+      - name: active
+        run: |
+          # python -m unittest Scripts.fake.regression_checks.test_comment
+          python -m unittest Scripts.fake.regression_checks.test_active
+""",
+                encoding="utf-8",
+            )
+            modules = regression_inventory.discover_ci_modules(root)
+            self.assertIn("Scripts.fake.regression_checks.test_active", modules)
+            self.assertNotIn("Scripts.fake.regression_checks.test_disabled", modules)
+            self.assertNotIn("Scripts.fake.regression_checks.test_comment", modules)
+
+    def test_workflow_inventory_recognizes_reviewed_inventory_lane(self):
+        """A reviewed inventory lane expands to its declared modules."""
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workflow = root / ".github" / "workflows" / "ci.yml"
+            workflow.parent.mkdir(parents=True)
+            workflow.write_text(
+                "run: python3 -B Scripts/release/regression_inventory.py --run-lane phase181-interface-tooling\n",
+                encoding="utf-8",
+            )
+            modules = regression_inventory.discover_ci_modules(root)
+            self.assertIn(
+                "Scripts.ros2forunity.interfaces.regression_checks.test_h01_delivery_enum_contract",
+                modules,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

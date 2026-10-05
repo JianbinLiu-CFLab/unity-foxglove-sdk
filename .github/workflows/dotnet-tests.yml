@@ -153,6 +153,10 @@ jobs:
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_h07_health_deadline_contract
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_h02_subst_cleanup_contract
 
+      - name: Run complete Phase181 interface regression lane
+        if: always()
+        run: python3 -B Scripts/release/regression_inventory.py --run-lane phase181-interface-tooling
+
       - name: Run complete Python regression inventory
         if: always()
         run: |
@@ -167,6 +171,7 @@ jobs:
             Scripts.phase190.regression_checks.test_run_conformance \
             Scripts.phase192.regression_checks.test_identity_tooling \
             Scripts.release.regression_checks.test_regression_inventory \
+            Scripts.release.regression_checks.test_release_tooling \
             Scripts.samples.regression_checks.test_sample_sync_tooling \
             Scripts.schema.regression_checks.test_schema_tooling \
             Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe \
@@ -193,7 +198,7 @@ jobs:
             echo "Trusted base identity checker is missing" >&2
             exit 1
           fi
-          if ! grep -q -- "--compatibility" "$base_checker"; then
+          if ! python3 "$base_checker" --help 2>&1 | grep -q -- "--compatibility"; then
             echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: trusted base checker lacks --compatibility" >&2
             exit 1
           fi
@@ -340,6 +345,10 @@ jobs:
       - name: Run Windows package validation
         shell: pwsh
         run: python -B Scripts/package/validate_unity_package.py
+
+      - name: Run Windows portable regression inventory lane
+        shell: pwsh
+        run: python -B Scripts/release/regression_inventory.py --run-lane windows-parity-regression-tooling
 
   analyzer-freshness:
     runs-on: windows-latest

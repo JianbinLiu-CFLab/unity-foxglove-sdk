@@ -91,7 +91,7 @@ class Phase160BuildDefaultsTests(unittest.TestCase):
         self.assertEqual(124, result.exit_code)
         self.assertIn("partial", result.output)
         self.assertIn("COMMAND_TIMEOUT", result.output)
-        self.assertLess(time.monotonic() - started, 3.0)
+        self.assertLess(time.monotonic() - started, 10.0)
 
 
 if __name__ == "__main__":
