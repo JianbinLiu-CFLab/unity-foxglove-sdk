@@ -6,6 +6,7 @@ import io
 import tarfile
 import tempfile
 import unittest
+from contextlib import contextmanager
 from unittest import mock
 from pathlib import Path
 
@@ -1122,8 +1123,8 @@ class IdentityToolingTests(unittest.TestCase):
         }
         self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
 
-    def test_split_identity_surface_rejects_waiver_for_nonremoved_symbol(self) -> None:
-        """A waiver must name a public symbol actually removed by the head revision."""
+    def test_split_identity_surface_accepts_pending_public_removal_waiver(self) -> None:
+        """A base waiver may remain pending until its public symbol is removed."""
         base = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
         head = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
         errors = compare_identity_surfaces._compare_surfaces(
@@ -1132,7 +1133,19 @@ class IdentityToolingTests(unittest.TestCase):
             strict=False,
             waived_symbols={"fixture.py": frozenset({"PUBLIC"})},
         )
-        self.assertIn("INVALID_IDENTITY_WAIVER fixture.py: PUBLIC", errors)
+        self.assertEqual([], errors)
+
+    def test_split_identity_surface_rejects_waiver_for_nonpublic_symbol(self) -> None:
+        """A waiver cannot authorize a symbol absent from the base public surface."""
+        base = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
+        head = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
+        errors = compare_identity_surfaces._compare_surfaces(
+            base,
+            head,
+            strict=False,
+            waived_symbols={"fixture.py": frozenset({"MISSING"})},
+        )
+        self.assertIn("INVALID_IDENTITY_WAIVER fixture.py: MISSING", errors)
 
     def test_split_identity_surface_rejects_waiver_for_unknown_facade(self) -> None:
         """A waiver cannot silently target a facade absent from the base revision."""
@@ -2224,6 +2237,38 @@ class IdentityToolingTests(unittest.TestCase):
             [mock.call(Path("base"), strict=False), mock.call(Path("head"), strict=False)],
             surfaces.call_args_list,
         )
+
+    def test_compatibility_uses_base_revision_waiver_authority(self) -> None:
+        """A head-only waiver cannot authorize a public-symbol removal in the same change."""
+        base_surfaces = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
+        head_surfaces = {"fixture.py": (frozenset(), ("live",), ())}
+
+        @contextmanager
+        def checkout(_repository, revision):
+            """Internal helper for checkout."""
+            yield Path(revision)
+
+        with (
+            mock.patch.object(compare_identity_surfaces, "_git", side_effect=["base\n", "head\n"]),
+            mock.patch.object(compare_identity_surfaces, "_revision_checkout", side_effect=checkout),
+            mock.patch.object(
+                compare_identity_surfaces,
+                "_surfaces",
+                side_effect=[base_surfaces, head_surfaces],
+            ),
+            mock.patch.object(
+                compare_identity_surfaces,
+                "_load_identity_waivers",
+                side_effect=[{}, {"fixture.py": frozenset({"PUBLIC"})}],
+            ),
+            mock.patch.object(compare_identity_surfaces, "_validate_compatibility_new_sections"),
+        ):
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    Path("."), "base", "head", strict=False
+                ),
+            )
 
     def test_compatibility_surface_can_be_reused_after_conditional_and_orphan_additions(self) -> None:
         """Two compatibility rounds do not freeze an accepted conditional/orphan baseline."""
