@@ -60,6 +60,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 CameraPipelineHealthSkipReason.VideoOutputQueueFull,
                 CameraPipelineHealthPolicy.Evaluate(videoBusy).SkipReason);
 
+            var videoInputBusy = healthy;
+            videoInputBusy.VideoInputQueueDepth = 2;
+            videoInputBusy.MaxVideoInputQueueDepth = 2;
+            Assert.Equal(
+                CameraPipelineHealthSkipReason.VideoInputQueueFull,
+                CameraPipelineHealthPolicy.Evaluate(videoInputBusy).SkipReason);
+
             var cooling = healthy;
             cooling.RenderPressureCooldownActive = true;
             Assert.Equal(
