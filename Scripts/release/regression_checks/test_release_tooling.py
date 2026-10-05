@@ -3901,6 +3901,40 @@ class UnityBatchCompileGateTests(unittest.TestCase):
             17,
         )
 
+    def test_script_entrypoint_resolves_repository_imports(self) -> None:
+        """Running the gate as a file must reach its JSON verdict before launch."""
+        with tempfile.TemporaryDirectory(dir=ROOT) as temp:
+            root = Path(temp)
+            project = root / "Unity2Foxglove"
+            project.mkdir()
+            log_path = root / "build" / "unity.log"
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = ""
+            environment.update({name: "present" for name in self.gate.REQUIRED_ENVIRONMENT})
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(UNITY_BATCH_COMPILE_PATH),
+                    "--unity",
+                    sys.executable,
+                    "--project-path",
+                    str(project),
+                    "--log-file",
+                    str(log_path),
+                    "--timeout-seconds",
+                    "2",
+                ],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotIn("ModuleNotFoundError", completed.stderr)
+            self.assertIn('"verdict":', completed.stdout)
+            self.assertTrue(log_path.with_suffix(".json").is_file())
+
     def test_run_resolves_relative_unity_and_project_paths_before_launch(self) -> None:
         """The Unity gate must compare and launch using absolute paths."""
         with tempfile.TemporaryDirectory(dir=ROOT) as temp:
