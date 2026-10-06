@@ -109,6 +109,12 @@ class ValidatePackageTests(unittest.TestCase):
             "#endif",
             phase181,
         )
+        self.assertIn(
+            "#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)\n"
+            "using Unity2Foxglove.Ros2ForUnity.Native;\n"
+            "#endif",
+            phase184,
+        )
         for source in (phase181, phase181_sample, phase184, phase184_builder):
             self.assertNotIn("FoxRunRos2TransportProvider.IdValue", source)
         self.assertIn("NativeTransportId", phase181)

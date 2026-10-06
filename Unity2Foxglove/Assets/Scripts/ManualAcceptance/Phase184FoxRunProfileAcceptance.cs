@@ -16,6 +16,10 @@ using UnityEngine;
 using Unity2Foxglove.Ros2Bridge;
 using Debug = UnityEngine.Debug;
 
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
+using Unity2Foxglove.Ros2ForUnity.Native;
+#endif
+
 namespace Unity2Foxglove.ManualAcceptance
 {
     using Unity.FoxgloveSDK.Tests.FoxRun.Fixtures;
