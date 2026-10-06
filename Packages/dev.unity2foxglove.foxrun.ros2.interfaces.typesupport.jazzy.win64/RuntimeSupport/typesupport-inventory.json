@@ -29,11 +29,11 @@
       "sha256": "c9fda353259929cc67737eec11341710d9a9fc699617b5506e83ddff54539146"
     },
     {
-      "byteLength": 574,
+      "byteLength": 622,
       "classification": "metadata",
       "path": "Runtime/FoxRun/Generated/Unity2Foxglove.FoxRun.CustomRos2Typesupport.asmdef",
       "role": "metadata",
-      "sha256": "f7ec8800ad4231e3015b36e3225c600a84ca550b57f77d52ee6b24cf51c25ef1"
+      "sha256": "1a657ed56f1f73cacdb0ea463482bce76a94937ecee751db7cb167ddb070ad50"
     },
     {
       "byteLength": 40448,
@@ -278,7 +278,7 @@
       "classification": "metadata",
       "path": "RuntimeSupport/typesupport-manifest.json",
       "role": "metadata",
-      "sha256": "de9663f4767243ab35760ffdca76487f9486698b2b6f92ffce2c955b31a64904"
+      "sha256": "f78cf9e0754860ff8384c1de7e86271d666f33609b220f3b2fbfa5a6bfa8c82d"
     },
     {
       "byteLength": 17909,

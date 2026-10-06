@@ -34,7 +34,7 @@ public sealed class Phase132StandardPoseSource : MonoBehaviour
         _statusMessage = error;
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     public geometry_msgs.msg.PoseStamped CreatePoseStamped(int sec, uint nanosec)
     {
         return new geometry_msgs.msg.PoseStamped

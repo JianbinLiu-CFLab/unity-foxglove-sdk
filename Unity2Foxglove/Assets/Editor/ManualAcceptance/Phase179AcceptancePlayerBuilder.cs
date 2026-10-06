@@ -15,7 +15,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
@@ -362,7 +362,7 @@ public static class Phase179AcceptancePlayerBuilder
         SetBoolean(serialized, "_foxgloveOutputEnabled", false);
         SetBoolean(serialized, "_enableFoxRunInbound", true);
         serialized.ApplyModifiedPropertiesWithoutUndo();
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (manager.GetComponent<FoxRunRos2TransportProvider>() == null)
             manager.gameObject.AddComponent<FoxRunRos2TransportProvider>();
         manager.ConfigureFoxRunTransports(

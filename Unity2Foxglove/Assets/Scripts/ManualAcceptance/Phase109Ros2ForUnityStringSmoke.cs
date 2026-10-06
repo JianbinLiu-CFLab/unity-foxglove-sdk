@@ -6,7 +6,7 @@
 
 using Unity2Foxglove.Ros2ForUnity;
 using UnityEngine;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
 #endif
 
@@ -30,7 +30,7 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
     private Phase109Ros2ForUnityContext _context;
     private IUnity2FoxgloveRos2Node _node;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private IUnity2FoxgloveRos2Publisher<std_msgs.msg.String> _publisher;
     private IUnity2FoxgloveRos2Subscription _subscription;
 #endif
@@ -45,7 +45,7 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
         _lastReceived = string.Empty;
         _loggedFirstPublish = false;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         _context = Phase109Ros2ForUnityContextFactory.Create(gameObject);
         _statusMessage = _context.StatusMessage;
 #else
@@ -55,7 +55,7 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void Update()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (_context == null)
             _context = Phase109Ros2ForUnityContextFactory.Create(gameObject);
 
@@ -76,7 +76,7 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
     private void OnDisable()
     {
         Application.runInBackground = _previousRunInBackground;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         _subscription?.Dispose();
         _subscription = null;
         _publisher?.Dispose();
@@ -103,7 +103,7 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
         Debug.LogWarning("[Phase109Ros2ForUnityStringSmoke] " + _statusMessage);
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private void EnsureEndpoints()
     {
         if (_publisher != null && _subscription != null)

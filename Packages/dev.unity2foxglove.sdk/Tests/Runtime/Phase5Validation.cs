@@ -194,21 +194,20 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
-        /// Verifies the package-level link.xml template exists and
-        /// contains preserve rules for Newtonsoft.Json and
-        /// Unity.FoxgloveSDK.
+        /// Verifies the package-level link.xml preservation contract exists and
+        /// contains preserve rules for the SDK and protobuf assemblies.
         /// </summary>
         private static void TestPackageLinkXmlTemplateExists()
         {
             var root = FindRepoRoot();
-            Assert(root != null, "Repo root found for package link.xml template");
+            Assert(root != null, "Repo root found for package link.xml preservation contract");
             var path = Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "link.xml");
-            Assert(File.Exists(path), $"Package link.xml template exists at {path}");
-            AssertLinkXml(path, "Package link.xml template");
+            Assert(File.Exists(path), $"Package link.xml preservation contract exists at {path}");
+            AssertLinkXml(path, "Package link.xml preservation contract");
         }
 
         /// <summary>
-        /// Verifies the demo project carries the project-level stripping guard.
+        /// Verifies the demo project does not carry a stale hand-copied linker file.
         /// </summary>
         private static void TestAssetsLinkXmlProjectGuard()
         {
@@ -216,7 +215,7 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(root != null, "Repo root found for package-owned link.xml guard");
             var path = Path.Combine(root, "Unity2Foxglove", "Assets", "link.xml");
             Assert(!File.Exists(path),
-                "Project Assets link.xml is absent because package Runtime/link.xml is the single stripping authority");
+                "Project Assets link.xml is absent because FoxrunBuildPreprocess owns the effective build-time linker file");
         }
     }
 }

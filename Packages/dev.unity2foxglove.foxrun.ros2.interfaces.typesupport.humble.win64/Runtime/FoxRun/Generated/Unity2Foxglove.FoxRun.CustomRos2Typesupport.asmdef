@@ -2,7 +2,8 @@
   "allowUnsafeCode": false,
   "autoReferenced": true,
   "defineConstraints": [
-    "UNITY2FOXGLOVE_ROS2_FOR_UNITY"
+    "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+    "UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN"
   ],
   "excludePlatforms": [],
   "includePlatforms": [

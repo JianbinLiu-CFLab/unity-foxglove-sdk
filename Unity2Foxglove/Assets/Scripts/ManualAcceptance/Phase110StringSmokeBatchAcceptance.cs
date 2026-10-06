@@ -14,7 +14,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 #endif
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
 #endif
 
@@ -36,7 +36,7 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
 #if UNITY_EDITOR
     public static void RunBatch()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         BatchRunner.Start();
 #else
         Debug.LogError(LogPrefix + " UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_FAIL missing UNITY2FOXGLOVE_ROS2_FOR_UNITY");
@@ -45,7 +45,7 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
     }
 #endif
 
-#if UNITY_EDITOR && UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY_EDITOR && UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private sealed class BatchRunner
     {
         private readonly bool _directMode;

@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Validate release package
         run: python3 Scripts/package/validate_unity_package.py
@@ -32,6 +33,67 @@ jobs:
           python3 Scripts/ros2forunity/windows/humble/validate_r2fu_runtime_package.py
           python3 Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py
           python3 Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py
+
+      - name: Enforce release gate for published candidates
+        env:
+          R2FU_EXPECTED_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          root = Path("Packages")
+          distros = ("humble", "jazzy", "lyrical")
+          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
+          if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+              before = event["pull_request"]["base"]["sha"]
+          else:
+              before = event.get("before")
+          after = os.environ["GITHUB_SHA"]
+          if not before or set(before) == {"0"}:
+              diff_command = ["git", "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "--no-renames", after]
+          else:
+              diff_command = ["git", "diff", "--name-only", "--no-renames", before, after]
+          changed = subprocess.check_output(diff_command, text=True).splitlines()
+          runtime_prefixes = tuple(
+              f"Packages/dev.unity2foxglove.ros2forunity.runtime.{distro}.win64/"
+              for distro in distros
+          )
+          if not any(path.startswith(runtime_prefixes) for path in changed):
+              print("No runtime candidate package changed; release gate not required.")
+              raise SystemExit(0)
+
+          candidates = []
+          for distro in distros:
+              package = root / f"dev.unity2foxglove.ros2forunity.runtime.{distro}.win64"
+              manifest = json.loads((package / "RuntimeSupport" / "runtime-manifest.json").read_text(encoding="utf-8"))
+              inventory_path = Path(manifest["inventoryFile"])
+              if not inventory_path.is_absolute():
+                  inventory_path = package / inventory_path
+              inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+              acceptance = manifest.get("freshProjectAcceptance")
+              if (
+                  manifest.get("distributionLevel") != "Prototype"
+                  or acceptance != "deferred_to_install_acceptance"
+                  or inventory.get("redistributionStatus") != "candidate_not_published"
+              ):
+                  candidates.append(distro)
+
+          if not candidates:
+              print("No published runtime candidate changed; release gate not required.")
+              raise SystemExit(0)
+
+          print("Release candidates detected: " + ", ".join(candidates))
+          for distro in candidates:
+              subprocess.check_call([
+                  sys.executable,
+                  f"Scripts/ros2forunity/windows/{distro}/validate_r2fu_runtime_package.py",
+                  "--release-gate",
+              ])
+          PY
 
       - name: Validate ROS2 For Unity adapter package matrix
         run: |

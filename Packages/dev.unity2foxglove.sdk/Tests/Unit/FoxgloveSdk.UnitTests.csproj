@@ -22,7 +22,7 @@
       Condition="'$(IncludeClientEventManagerSurface)' == '' and '$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true' and '$(IncludeRos2Bridge)' != 'true'">true</IncludeClientEventManagerSurface>
     <IncludeClientEventManagerSurface Condition="'$(IncludeClientEventManagerSurface)' == ''">false</IncludeClientEventManagerSurface>
     <IncludeClientEventManagerSurface Condition="'$(IncludeManagerProductionBoundary)' == 'true'">false</IncludeClientEventManagerSurface>
-    <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY</DefineConstants>
+    <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY;UNITY_EDITOR_WIN</DefineConstants>
     <DefineConstants Condition="'$(IncludeManagerProductionBoundary)' == 'true'">$(DefineConstants);MANAGER_PRODUCTION_BOUNDARY</DefineConstants>
     <Phase179OptionalCompilationLane>default</Phase179OptionalCompilationLane>
     <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityAdapter)' == 'true'">adapter</Phase179OptionalCompilationLane>

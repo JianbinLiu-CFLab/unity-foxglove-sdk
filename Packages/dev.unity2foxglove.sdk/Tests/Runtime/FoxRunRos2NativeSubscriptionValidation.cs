@@ -1588,7 +1588,8 @@ namespace Unity.FoxgloveSDK.Tests
             var method = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(
                 source,
                 signature,
-                "UNITY2FOXGLOVE_ROS2_FOR_UNITY");
+                "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                "UNITY_EDITOR_WIN");
             if (method.Length == 0)
                 throw new InvalidOperationException("[FAIL] missing active R2FU method in " + fileName + ": " + signature);
             return method;

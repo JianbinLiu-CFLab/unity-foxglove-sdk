@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[5]
@@ -87,6 +88,56 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertTrue(self.validator.fresh_project_acceptance_passed({"freshProjectAcceptance": {"status": "passed"}}))
         self.assertTrue(self.validator.fresh_project_acceptance_passed({"freshProjectAcceptance": "passed"}))
 
+    def test_release_gate_requires_exact_candidate_acceptance_binding(self) -> None:
+        """A passed acceptance record must identify the exact published candidate."""
+        manifest = {
+            "runtimeId": "r2fu-humble-win64",
+            "packageName": "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+            "packageVersion": "0.1.0-preview.1",
+            "rosDistro": "humble",
+            "artifactName": "Ros2ForUnity_humble_standalone_windows_x86_64.zip",
+            "artifactSha256": "a" * 64,
+            "artifactSize": 123,
+            "inventoryFileCount": 7,
+            "unityVersion": "6000.3.14f1",
+            "freshProjectAcceptance": {
+                "status": "passed",
+                "runtimeId": "r2fu-humble-win64",
+                "packageName": "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+                "packageVersion": "0.1.0-preview.1",
+                "rosDistro": "humble",
+                "artifactName": "Ros2ForUnity_humble_standalone_windows_x86_64.zip",
+                "artifactSha256": "a" * 64,
+                "artifactSize": 123,
+                "inventoryFileCount": 7,
+                "unityVersion": "6000.3.14f1",
+                "commitSha": "b" * 40,
+                "workflowRunId": 42,
+            },
+        }
+        self.assertTrue(self.validator.fresh_project_acceptance_binding_matches_manifest(manifest))
+        self.assertTrue(self.validator.fresh_project_acceptance_record_is_valid(manifest))
+        with mock.patch.dict(self.validator.os.environ, {"R2FU_EXPECTED_COMMIT_SHA": "c" * 40}, clear=False):
+            self.assertFalse(self.validator.fresh_project_acceptance_binding_matches_manifest(manifest))
+        with mock.patch.dict(self.validator.os.environ, {"R2FU_EXPECTED_COMMIT_SHA": "b" * 40}, clear=False):
+            self.assertTrue(self.validator.fresh_project_acceptance_binding_matches_manifest(manifest))
+        manifest.pop("unityVersion")
+        self.assertFalse(self.validator.fresh_project_acceptance_binding_matches_manifest(manifest))
+        manifest["unityVersion"] = "6000.3.14f1"
+        manifest["freshProjectAcceptance"]["artifactSha256"] = "c" * 64
+        self.assertFalse(self.validator.fresh_project_acceptance_binding_matches_manifest(manifest))
+        manifest["freshProjectAcceptance"]["artifactSha256"] = manifest["artifactSha256"]
+        manifest["freshProjectAcceptance"]["inventoryFileCount"] = 8
+        self.assertFalse(self.validator.fresh_project_acceptance_binding_matches_manifest(manifest))
+        self.assertFalse(self.validator.fresh_project_acceptance_record_is_valid(manifest))
+
+    def test_player_runtime_paths_use_streaming_assets_and_plugin_root(self) -> None:
+        """Player metadata and native plugins must resolve from their build outputs."""
+        source = (self.validator.RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs").read_text(encoding="utf-8")
+        self.assertIn("Application.streamingAssetsPath", source)
+        self.assertIn("Application.dataPath", source)
+        self.assertIn("StreamingAssets", source)
+
     def test_release_gate_rejects_prototype_distribution(self) -> None:
         """Release gate rejects Prototype and records missing-field behavior."""
         self.assertFalse(self.validator.published_runtime_is_not_prototype({"distributionLevel": "Prototype"}))
@@ -132,6 +183,20 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertIn("expectedRmwImplementation", source)
         self.assertIn("ValidateRmwImplementation", source)
         self.assertIn("rmw_fastrtps_cpp", source)
+
+    def test_runtime_asmdef_is_windows_constrained(self) -> None:
+        """The packaged runtime assembly must not compile in unsupported editors."""
+        data = self.validator.load_json(
+            self.validator.RUNTIME_ROOT
+            / "Scripts"
+            / "Unity2Foxglove.Ros2ForUnity.Runtime.HumbleWin64.asmdef",
+            [],
+            "runtime asmdef",
+        )
+        self.assertEqual(
+            ["UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN"],
+            data.get("defineConstraints"),
+        )
 
     def test_runtime_source_retains_windows_ucrt_environment_helper(self) -> None:
         """The regenerated Windows runtime must keep the native environment bridge."""

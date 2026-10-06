@@ -143,7 +143,7 @@ PACKAGE_PATH_BLOCK = """    public static string GetRos2ForUnityPath()
             // Unity2Foxglove package path support: keep upstream asset-folder fallback.
             return assetPath;
         }
-        return pluginPath;
+        return Path.Combine(Application.streamingAssetsPath, ros2ForUnityAssetFolderName);
     }
 """
 
@@ -204,7 +204,7 @@ PACKAGE_COMPUTE_PATH_BLOCK = """    private static string ComputeRos2ForUnityPat
             // Unity2Foxglove package path support: keep upstream asset-folder fallback.
             return assetPath;
         }
-        return path;
+        return Path.Combine(Application.streamingAssetsPath, ros2ForUnityAssetFolderName);
     }
 """
 
@@ -533,6 +533,7 @@ def runtime_asmdef() -> dict[str, object]:
         "precompiledReferences": [],
         "autoReferenced": True,
         "versionDefines": [],
+        "defineConstraints": ["UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN"],
         "noEngineReferences": False,
     }
 
@@ -609,6 +610,17 @@ def apply_meta_overlays(package: Path, overlays: dict[str, bytes]) -> None:
             stream.write(data)
 
 
+def extract_unity_meta_guid(text: str) -> str:
+    """Extract a valid Unity GUID from an existing metadata file."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("guid:"):
+            value = stripped.split(":", 1)[1].strip()
+            if len(value) == 32 and all(c in "0123456789abcdefABCDEF" for c in value):
+                return value.lower()
+    return ""
+
+
 def deterministic_guid(relative_path: str) -> str:
     """Return a deterministic Unity GUID for generated metadata."""
     seed = f"{PACKAGE_NAME}:{relative_path.replace(chr(92), '/')}"
@@ -626,9 +638,9 @@ def meta_importer_for(path: Path) -> str:
     return "TextScriptImporter"
 
 
-def generated_meta_text(path: Path, relative_path: str, is_dir: bool) -> str:
+def generated_meta_text(path: Path, relative_path: str, is_dir: bool, guid: str | None = None) -> str:
     """Return deterministic Unity .meta text for a generated path."""
-    guid = deterministic_guid(relative_path)
+    guid = guid or deterministic_guid(relative_path)
     if is_dir:
         return (
             "fileFormatVersion: 2\n"
@@ -642,6 +654,43 @@ def generated_meta_text(path: Path, relative_path: str, is_dir: bool) -> str:
         )
 
     importer = meta_importer_for(path)
+    if importer == "PluginImporter":
+        return (
+            "fileFormatVersion: 2\n"
+            f"guid: {guid}\n"
+            "PluginImporter:\n"
+            "  externalObjects: {}\n"
+            "  serializedVersion: 2\n"
+            "  iconMap: {}\n"
+            "  executionOrder: {}\n"
+            "  defineConstraints: []\n"
+            "  isPreloaded: 0\n"
+            "  isOverridable: 0\n"
+            "  isExplicitlyReferenced: 0\n"
+            "  validateReferences: 1\n"
+            "  platformData:\n"
+            "  - first:\n"
+            "      Any:\n"
+            "    second:\n"
+            "      enabled: 0\n"
+            "      settings: {}\n"
+            "  - first:\n"
+            "      Editor: Editor\n"
+            "    second:\n"
+            "      enabled: 1\n"
+            "      settings:\n"
+            "        CPU: x86_64\n"
+            "        OS: Windows\n"
+            "  - first:\n"
+            "      Standalone: Windows\n"
+            "    second:\n"
+            "      enabled: 1\n"
+            "      settings:\n"
+            "        CPU: x86_64\n"
+            "  userData:\n"
+            "  assetBundleName:\n"
+            "  assetBundleVariant:\n"
+        )
     return (
         "fileFormatVersion: 2\n"
         f"guid: {guid}\n"
@@ -665,11 +714,20 @@ def ensure_generated_meta(package: Path, target: Path, is_dir: bool) -> None:
 def write_generated_metas(package: Path) -> None:
     """Generate metadata for package-owned files and directories lacking upstream metadata."""
     paths = list(package.rglob("*"))
+    native_plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
     directories = sorted((path for path in paths if path.is_dir()), key=lambda item: item.as_posix())
     files = sorted((path for path in paths if path.is_file()), key=lambda item: item.as_posix())
     for directory in directories:
         ensure_generated_meta(package, directory, is_dir=True)
     for path in files:
+        if path.name.lower().endswith(".dll.meta") and path.parent == native_plugin_root:
+            asset = path.with_suffix("")
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if asset.exists() and "PluginImporter:" not in text:
+                guid = extract_unity_meta_guid(text)
+                if guid:
+                    write_text(path, generated_meta_text(asset, asset.relative_to(package).as_posix(), is_dir=False, guid=guid))
+            continue
         if path.name.endswith(".meta") or path.name == ".gitkeep":
             continue
         ensure_generated_meta(package, path, is_dir=False)
@@ -709,6 +767,7 @@ def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
         "packageName": PACKAGE_NAME,
         "packageVersion": PACKAGE_VERSION,
         "rosDistro": "lyrical",
+        "unityVersion": "6000.3.14f1",
         "platform": "win64",
         "unityPlatform": "Windows",
         "architecture": "x86_64",
@@ -744,7 +803,7 @@ def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
         "criticalRuntimeFiles": list(CRITICAL_RUNTIME_FILES),
         "packagePathPatch": {
             "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
-            "reason": "Resolve the runtime root from this Unity package when Assets/Ros2ForUnity is absent.",
+            "reason": "Resolve the Editor runtime root from this Unity package and stage Player metadata/share under StreamingAssets.",
             "keepsAssetFolderFallback": True,
         },
         "freshProjectAcceptance": "deferred_to_install_acceptance",
@@ -981,6 +1040,7 @@ def patch_ros2_for_unity(package: Path) -> None:
     source = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
     text = source.read_text(encoding="utf-8")
     text = patch_ros2cs_logger_callback_api(text)
+    text = patch_runtime_metadata_path(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
         text = patch_rmw_guard(text)
         text = patch_standalone_environment_isolation(text)
@@ -1007,6 +1067,17 @@ def patch_ros2_for_unity(package: Path) -> None:
     text = patch_standalone_environment_isolation(text)
     text = patch_runtime_lifecycle_safety(text)
     write_text(source, text)
+
+
+def patch_runtime_metadata_path(text: str) -> str:
+    """Keep Player metadata lookup under the StreamingAssets runtime root."""
+    old = 'string ros2csMetadataPath = GetPluginPath() + separator + "metadata_ros2cs.xml";'
+    new = 'string ros2csMetadataPath = GetRos2ForUnityPath() + separator + "metadata_ros2cs.xml";'
+    if new in text:
+        return text
+    if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
+        return text
+    return replace_required_once(text, old, new, "Player metadata staging path")
 
 
 def patch_ros2cs_logger_callback_api(text: str) -> str:

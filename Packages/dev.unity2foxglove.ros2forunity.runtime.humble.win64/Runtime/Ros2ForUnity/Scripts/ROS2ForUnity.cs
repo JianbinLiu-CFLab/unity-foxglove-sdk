@@ -197,7 +197,10 @@ internal class ROS2ForUnity : IDisposable
             // Unity2Foxglove package path support: keep upstream asset-folder fallback.
             return assetPath;
         }
-        return path;
+
+        // Player metadata and share files are staged under StreamingAssets by the
+        // build preprocessor, which becomes <App>_Data/StreamingAssets at runtime.
+        return Path.Combine(Application.streamingAssetsPath, ros2ForUnityAssetFolderName);
     }
 
     /// <summary>
@@ -211,13 +214,9 @@ internal class ROS2ForUnity : IDisposable
     private static string ComputePluginPath()
     {
         char separator = Path.DirectorySeparatorChar;
-        string ros2ForUnityPath = GetRos2ForUnityPath();
-        string path = ros2ForUnityPath;
-
-        // Editor: Assets/Ros2ForUnity/Plugins/<OS>/x86_64
-        // Windows Player: <App>_Data/Plugins/x86_64
-        // Linux Player: <App>_Data/Plugins
-
+        // Unity copies package plugins to <App>_Data/Plugins for a Player,
+        // while the Editor keeps them below the package asset root.
+        string path = InEditor() ? GetRos2ForUnityPath() : Application.dataPath;
         path += separator + "Plugins";
 
         if (InEditor()) {
@@ -288,20 +287,17 @@ internal class ROS2ForUnity : IDisposable
     private static void SetStandalonePrefixPath()
     {
         string prefixPath = GetRos2ForUnityPath();
-        string prefixSource = "asset root";
         string streamingAssetsPrefixPath = Path.Combine(Application.streamingAssetsPath, ros2ForUnityAssetFolderName);
         string pluginPrefixPath = GetPluginPath();
         // 1. StreamingAssets: preferred for standalone runtime share data copied beside the Player.
         if (Directory.Exists(Path.Combine(streamingAssetsPrefixPath, "share")))
         {
             prefixPath = streamingAssetsPrefixPath;
-            prefixSource = "StreamingAssets";
         }
         // 2. Plugins dir: compact standalone plugin bundle layout.
         else if (Directory.Exists(Path.Combine(pluginPrefixPath, "share")))
         {
             prefixPath = pluginPrefixPath;
-            prefixSource = "plugin directory";
         }
         // 3. Asset root: Editor or non-standalone fallback.
         else if (!Directory.Exists(Path.Combine(prefixPath, "share")))
@@ -572,7 +568,7 @@ internal class ROS2ForUnity : IDisposable
         char separator = Path.DirectorySeparatorChar;
         try
         {
-            string ros2csMetadataPath = GetPluginPath() + separator + "metadata_ros2cs.xml";
+            string ros2csMetadataPath = GetRos2ForUnityPath() + separator + "metadata_ros2cs.xml";
             string ros2ForUnityMetadataPath = GetRos2ForUnityPath() + separator + "metadata_ros2_for_unity.xml";
             ros2csMetadata.Load(ros2csMetadataPath);
             ros2ForUnityMetadata.Load(ros2ForUnityMetadataPath);

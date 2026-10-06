@@ -8,7 +8,7 @@ using System;
 using System.Collections.Generic;
 using Unity2Foxglove.Ros2ForUnity;
 using UnityEngine;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
 #endif
 
@@ -23,7 +23,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
     private bool _disposed;
     private string _statusMessage = UnavailableMessage;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private bool _ownsRos2UnityComponent;
     private ROS2UnityComponent _ros2Unity;
     private bool _initializationFailed;
@@ -40,7 +40,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         {
             if (_disposed)
                 return false;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
             return !_initializationFailed && _ros2Unity != null && _ros2Unity.Ok();
 #else
             return false;
@@ -54,7 +54,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         {
             if (_disposed)
                 return Unity2FoxgloveRos2Status.Disposed;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
             if (_initializationFailed)
                 return Unity2FoxgloveRos2Status.Error;
 #endif
@@ -72,7 +72,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             return false;
         }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (_initializationFailed)
             return false;
 
@@ -120,7 +120,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         if (_disposed)
             return new UnavailableNode(NormalizeName(nodeName), "ROS2 For Unity context is disposed.");
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (!TryEnsureReady() || _ros2Unity == null)
             return new UnavailableNode(NormalizeName(nodeName), _statusMessage);
 
@@ -169,7 +169,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         }
         _disposed = true;
         _nodes.Clear();
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (_ownsRos2UnityComponent && _ros2Unity != null)
             UnityEngine.Object.Destroy(_ros2Unity);
         _ros2Unity = null;
@@ -259,7 +259,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         void DrainPendingCallbacks();
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private sealed class Phase110Ros2ForUnityNode : IPhase110DrainableNode
     {
         private readonly ROS2UnityComponent _ros2Unity;

@@ -62,6 +62,36 @@ class RuntimePackageExtractionTests(unittest.TestCase):
         self.assertIn("RMW_IMPLEMENTATION", self.builder.readme_text(artifact))
         self.assertIn("ROS_DISTRO", self.builder.readme_text(artifact))
 
+    def test_native_dll_meta_upgrade_preserves_guid_without_rewriting_managed_dll_meta(self) -> None:
+        """Only Windows native DLL metadata becomes PluginImporter metadata."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            native_root = package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
+            managed_root = package / "Runtime" / "Ros2ForUnity" / "Plugins"
+            native_root.mkdir(parents=True)
+            managed_root.mkdir(parents=True, exist_ok=True)
+            native = native_root / "rcl.dll"
+            managed = managed_root / "ros2cs_core.dll"
+            native.write_bytes(b"native")
+            managed.write_bytes(b"managed")
+            (native.with_name(native.name + ".meta")).write_text(
+                "fileFormatVersion: 2\nguid: " + "a" * 32 + "\nTextScriptImporter:\n",
+                encoding="utf-8",
+            )
+            (managed.with_name(managed.name + ".meta")).write_text(
+                "fileFormatVersion: 2\nguid: " + "b" * 32 + "\nTextScriptImporter:\n",
+                encoding="utf-8",
+            )
+
+            self.builder.write_generated_metas(package)
+
+            native_meta = native.with_name(native.name + ".meta").read_text(encoding="utf-8")
+            managed_meta = managed.with_name(managed.name + ".meta").read_text(encoding="utf-8")
+            self.assertIn("PluginImporter:", native_meta)
+            self.assertIn("guid: " + "a" * 32, native_meta)
+            self.assertIn("TextScriptImporter:", managed_meta)
+            self.assertIn("guid: " + "b" * 32, managed_meta)
+
     def test_extract_runtime_rejects_zip_slip_entries(self) -> None:
         """Reject archive entries that would escape the package root."""
         with tempfile.TemporaryDirectory() as temp:
@@ -359,6 +389,13 @@ class RuntimePackageExtractionTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 self.builder.patch_ros2_for_unity(package)
+
+    def test_player_metadata_patch_uses_streaming_assets_root(self) -> None:
+        """Player metadata must follow the staged StreamingAssets layout."""
+        source = 'string ros2csMetadataPath = GetPluginPath() + separator + "metadata_ros2cs.xml";'
+        patched = self.builder.patch_runtime_metadata_path(source)
+        self.assertIn('GetRos2ForUnityPath() + separator + "metadata_ros2cs.xml"', patched)
+        self.assertNotIn("GetPluginPath()", patched)
 
     def test_runtime_safety_patches_survive_the_new_upstream_layout(self) -> None:
         """Lifecycle and Unity-time safety patches must survive an upstream runtime refresh."""

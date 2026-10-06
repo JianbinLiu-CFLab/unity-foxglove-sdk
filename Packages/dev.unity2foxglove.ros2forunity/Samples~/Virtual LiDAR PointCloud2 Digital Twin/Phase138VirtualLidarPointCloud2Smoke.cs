@@ -10,7 +10,7 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using UnityEngine;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
@@ -46,7 +46,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     [SerializeField] private uint _rowStep;
     [SerializeField] private double _lastPublishCallMs;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private ROS2UnityComponent _ros2Unity;
     private ROS2Node _node;
     private IPublisher<sensor_msgs.msg.PointCloud2> _publisher;
@@ -67,7 +67,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
         ResolveComponents();
         SubscribeToNativeFrames();
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         EnsureRos2UnityComponent();
 #else
         WarnMissingDefine();
@@ -76,7 +76,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
 
     private void Update()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         TryResolveAndSubscribe();
 #else
         WarnMissingDefine();
@@ -86,7 +86,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     private void OnDisable()
     {
         UnsubscribeFromNativeFrames();
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         CleanupRuntime();
 #endif
     }
@@ -94,7 +94,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     private void OnDestroy()
     {
         UnsubscribeFromNativeFrames();
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         CleanupRuntime();
 #endif
     }
@@ -207,7 +207,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
 
         _nextPublishAt = Time.unscaledTime + _publishIntervalSeconds;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (!TryEnsureRos2Ready())
         {
             _droppedFrameCount++;
@@ -255,7 +255,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
         Debug.LogWarning(LogPrefix + " " + _statusMessage);
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private void EnsureRos2UnityComponent()
     {
         if (_ros2Unity != null)

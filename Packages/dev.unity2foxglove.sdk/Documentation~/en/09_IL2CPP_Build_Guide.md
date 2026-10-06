@@ -87,7 +87,7 @@ Typical build log:
 | Unity exits with code `1` | Build failed. | Open the log path printed by the script. |
 | No `/debug/...` topics in Player | FoxRun fallback did not generate. | Look for `[FoxrunBuildPreprocess]` and generated `.g.cs` logs. |
 | Foxglove connects but topics are empty | Player is not running or server did not start. | Check Player log and port `8765`. |
-| JSON messages become `{}` in Player | Linker preservation problem. | Verify project `Assets/link.xml` exists and preserves Newtonsoft.Json and `Unity.FoxgloveSDK`. |
+| JSON messages become `{}` in Player | Linker preservation problem. | Verify the build log contains `[FoxrunBuildPreprocess] Wrote FoxRun_link.xml`; the SDK generates the effective linker input before every Player build. |
 | Compression-related build error | Compression DLLs are missing or excluded. | Verify package plugin DLLs and asmdef references. |
 
 ## 9. Scope Exclusions

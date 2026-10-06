@@ -22,7 +22,7 @@ public static class Phase138CPointCloud2MessageBuilder
     private const byte PointFieldFloat32 = 7;
     private const byte PointFieldFloat64 = 8;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     /// <summary>Build a PointCloud2 message from a prepared native PointCloud2 frame.</summary>
     public static sensor_msgs.msg.PointCloud2 Build(PackedPointCloudFrame frame, bool copyDataBeforePublish)
     {

@@ -55,7 +55,7 @@ public sealed class Phase132StandardCameraSource : MonoBehaviour
         _statusMessage = error;
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     public sensor_msgs.msg.CameraInfo CreateCameraInfo(int sec, uint nanosec)
     {
         var width = Width;

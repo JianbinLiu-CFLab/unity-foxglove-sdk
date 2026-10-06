@@ -149,20 +149,30 @@ def run(
             residual = await_tree_quiescence(tree, 2.0)
             if residual:
                 residual_detected = True
-                residual = tree.terminate()
+                observed_residual = list(residual)
+                residual = sorted(set(observed_residual) | set(tree.terminate()))
     finally:
         tree.close()
 
     text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
-    if residual_detected:
-        exit_code = 125
-        verdict, first, second = "FAIL", ["Unity process tree did not quiesce after exit"], []
-    elif not log_path.is_file():
+    if not log_path.is_file():
         verdict, first, second = "FAIL", ["Unity did not create the requested log file"], []
     elif not text:
         verdict, first, second = "FAIL", ["Unity created an empty compile log"], []
     else:
         verdict, first, second = compile_verdict(exit_code, text)
+    if residual_detected:
+        residual_message = "Unity process tree did not quiesce after exit"
+        if verdict == "PASS":
+            exit_code = 125
+            verdict = "FAIL"
+            first = [residual_message]
+        elif verdict == "FAIL":
+            if exit_code == 0:
+                exit_code = 125
+            first = [*first, residual_message]
+        else:
+            first = [*first, residual_message]
     result = {
         "verdict": verdict,
         "exit_code": exit_code,

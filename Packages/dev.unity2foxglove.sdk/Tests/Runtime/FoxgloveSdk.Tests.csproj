@@ -9,7 +9,7 @@
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityNative)' == 'true' and '$(IncludeRos2ForUnityAdapter)' == ''">true</IncludeRos2ForUnityAdapter>
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityAdapter)' == ''">false</IncludeRos2ForUnityAdapter>
     <IncludeRos2Bridge Condition="'$(IncludeRos2Bridge)' == ''">true</IncludeRos2Bridge>
-    <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY</DefineConstants>
+    <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY;UNITY_EDITOR_WIN</DefineConstants>
     <DefineConstants Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_R2FU_VALIDATION</DefineConstants>
     <Phase179OptionalCompilationLane>default</Phase179OptionalCompilationLane>
     <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityAdapter)' == 'true'">adapter</Phase179OptionalCompilationLane>

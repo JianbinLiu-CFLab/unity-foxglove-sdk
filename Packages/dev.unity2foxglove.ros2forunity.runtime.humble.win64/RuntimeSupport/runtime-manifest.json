@@ -4,6 +4,7 @@
   "packageName": "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
   "packageVersion": "0.1.0-preview.1",
   "rosDistro": "humble",
+  "unityVersion": "6000.3.14f1",
   "platform": "win64",
   "unityPlatform": "Windows",
   "architecture": "x86_64",
@@ -28,7 +29,7 @@
   ],
   "packagePathPatch": {
     "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
-    "reason": "Resolve the runtime root from this Unity package when Assets/Ros2ForUnity is absent.",
+    "reason": "Resolve the Editor runtime root from this Unity package and stage Player metadata/share under StreamingAssets.",
     "keepsAssetFolderFallback": true
   },
   "freshProjectAcceptance": "deferred_to_install_acceptance"

@@ -10,7 +10,7 @@ using System.Text;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
@@ -57,7 +57,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
         FoxRunDeliveryHistory.ProviderDefault;
     [SerializeField] private int capturedDeliveryDepth;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     // The generated host owns this current message. It is intentionally not
     // serialized or shown in Inspector; only the bounded managed copies below
     // are acceptance evidence.
@@ -111,7 +111,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
 
     private FoxgloveManager _sessionPolicyManager;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private int _lastObservedLength = -1;
     private ulong _lastObservedFingerprint;
     private int _pendingNextFrameLength = -1;
@@ -146,7 +146,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
             manager = FindFirstObjectByType<FoxgloveManager>();
         AttachManagerSessionPolicyObserver();
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         EndActiveBurstAttempt();
         _managerWasEnabled = manager != null && manager.isActiveAndEnabled;
         _disableWindowActive = false;
@@ -170,18 +170,18 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     private void OnDisable()
     {
         DetachManagerSessionPolicyObserver();
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         EndActiveBurstAttempt();
 #endif
     }
 
     private void Update()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         ObserveManagerDisableWindow();
 #endif
         AttachManagerSessionPolicyObserver();
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         ObserveGeneratedOwnedCopy();
 #else
         WarnUnavailableOnce();
@@ -231,7 +231,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
         capturedDeliveryDepth = policy.DefaultDeliveryPolicy.Depth;
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private void ObserveGeneratedOwnedCopy()
     {
         var currentValue = inputString != null ? inputString.Data : null;
@@ -689,7 +689,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     [ContextMenu("Arm Phase179 Burst Attempt")]
     public void ArmBurstAttempt()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         armedBurstToken = CopyBounded(armedBurstToken?.Trim(), MaximumMarkerTokenLength);
         if (string.IsNullOrEmpty(armedBurstToken)
             || armedBurstToken.Contains("|seq=", StringComparison.Ordinal))
@@ -761,7 +761,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
         burstAttemptApplied = 0;
         burstAttemptPending = 0;
         burstAttemptCallbacksInFlight = 0;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         EndActiveBurstAttempt();
         _lastObservedLength = -1;
         _lastObservedFingerprint = 0;

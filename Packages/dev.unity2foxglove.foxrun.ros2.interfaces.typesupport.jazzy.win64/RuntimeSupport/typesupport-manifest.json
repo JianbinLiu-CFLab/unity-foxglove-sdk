@@ -2,7 +2,7 @@
   "architecture": "x86_64",
   "baseRuntime": {
     "packageId": "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-    "runtimeManifestSha256": "80139c866d00ab41b0f5f51b492f35e23c306703409a6de36368a25b6e2ec357",
+    "runtimeManifestSha256": "ebf407eb6bebb562077a5bee1cdaea738de3e7955478188cdb67209e84a1f36c",
     "runtimeManifestVersion": 1
   },
   "distro": "jazzy",

@@ -10,7 +10,7 @@ using System.Globalization;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
@@ -28,7 +28,7 @@ namespace Unity2Foxglove.ManualAcceptance
     [AddComponentMenu("Foxglove/Manual Acceptance/Phase181 Custom ROS2 Interface")]
     public sealed partial class Phase181FoxRunCustomRos2InterfaceAcceptance : MonoBehaviour
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         private enum BidirectionalEvidenceStage
         {
             AwaitingInitialRemote,
@@ -41,6 +41,7 @@ namespace Unity2Foxglove.ManualAcceptance
         public const string NativePublishTopic = "/foxrun/phase181/custom/publish";
         public const string NativeSubscribeTopic = "/foxrun/phase181/custom/subscribe";
         public const string NativeBidirectionalTopic = "/foxrun/phase181/custom/bidirectional";
+        private const string NativeTransportId = "unity2foxglove.r2fu";
 
         private const int MaximumMarkerCount = 32;
         private const int MaximumInspectorTextLength = 256;
@@ -56,7 +57,7 @@ namespace Unity2Foxglove.ManualAcceptance
             Mode = FoxRunFlow.Publish,
             PublishTransportIds = new[]
             {
-                FoxRunRos2TransportProvider.IdValue
+                NativeTransportId
             })]
         [SerializeField] private Phase181State _nativePublish;
 
@@ -64,7 +65,7 @@ namespace Unity2Foxglove.ManualAcceptance
             NativeSubscribeTopic,
             Mode = FoxRunFlow.Subscribe,
             SubscribeTransportId =
-                FoxRunRos2TransportProvider.IdValue)]
+                NativeTransportId)]
         [SerializeField] private Phase181State _inputPort;
 
         // The peer protocol explicitly owns the native inbound/output-loop evidence.
@@ -72,10 +73,10 @@ namespace Unity2Foxglove.ManualAcceptance
             NativeBidirectionalTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
             SubscribeTransportId =
-                FoxRunRos2TransportProvider.IdValue,
+                NativeTransportId,
             PublishTransportIds = new[]
             {
-                FoxRunRos2TransportProvider.IdValue
+                NativeTransportId
             })]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput;
 
@@ -87,7 +88,7 @@ namespace Unity2Foxglove.ManualAcceptance
         public Phase181State InputPort => _inputPort;
         public Phase181State NativeInputWebSocketOutput => _nativeInputWebSocketOutput;
 
-#if !(UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES)
+#if !(UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN))
         [Header("Custom Interface Availability")]
         [TextArea(2, 3)]
         [SerializeField] private string _unavailableReason =
@@ -97,7 +98,7 @@ namespace Unity2Foxglove.ManualAcceptance
         [Header("Safe Decoded Inspector Copies")]
         [SerializeField] private string _status = "Waiting for custom native ROS2 registration.";
         [SerializeField] private int _emittedMarkerCount;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         [SerializeField] private string _runtime = string.Empty;
         [SerializeField] private string _rmwImplementation = string.Empty;
         [SerializeField] private string _interfaceDigestPrefix = "120864853239";
@@ -132,7 +133,7 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private readonly HashSet<string> _emittedMarkers = new HashSet<string>(StringComparer.Ordinal);
         private string _runToken = string.Empty;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         private long _observedSubscribeSession = long.MinValue;
         private long _observedSubscribeApplied = -1;
         private long _observedBidirectionalSession = long.MinValue;
@@ -151,7 +152,7 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private void OnEnable()
         {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
             if (_manager == null)
                 _manager = FindFirstObjectByType<FoxgloveManager>();
 
@@ -190,7 +191,7 @@ namespace Unity2Foxglove.ManualAcceptance
                 return;
             }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
             _nativePublish = CreateState("unity-publish", 181, false);
             _nativeInputWebSocketOutput = CreateState(
                 "unity-bidirectional",
@@ -209,7 +210,7 @@ namespace Unity2Foxglove.ManualAcceptance
 
         private void Update()
         {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
             ObserveRuntimeAndInterface();
             ObserveSubscribe();
             ObserveBidirectional();
@@ -217,7 +218,7 @@ namespace Unity2Foxglove.ManualAcceptance
 #endif
         }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         private void ObserveRuntimeAndInterface()
         {
             var snapshots = FoxRunRos2SubscriptionRuntimeDiagnostics.GetSnapshots();

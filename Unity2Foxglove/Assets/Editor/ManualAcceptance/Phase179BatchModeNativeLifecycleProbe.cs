@@ -10,7 +10,7 @@ using Process = System.Diagnostics.Process;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
@@ -158,7 +158,7 @@ public static class Phase179BatchModeNativeLifecycleProbe
 
     private static bool HasReadyStringSubscription()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         var snapshots = FoxRunRos2SubscriptionRuntimeDiagnostics.GetSnapshots();
         for (var index = 0; index < snapshots.Length; index++)
         {
@@ -176,7 +176,7 @@ public static class Phase179BatchModeNativeLifecycleProbe
 
     private static string DescribeDiagnostics()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         var snapshots = FoxRunRos2SubscriptionRuntimeDiagnostics.GetSnapshots();
         if (snapshots.Length == 0)
             return "none";

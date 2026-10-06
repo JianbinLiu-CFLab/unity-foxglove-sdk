@@ -1,0 +1,31 @@
+name: ROS2 For Unity release gate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "r2fu-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2fu-release-gate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-gate:
+    name: r2fu-release-gate
+    runs-on: ubuntu-latest
+    env:
+      R2FU_EXPECTED_COMMIT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate every runtime release candidate
+        run: |
+          python3 Scripts/ros2forunity/windows/humble/validate_r2fu_runtime_package.py --release-gate
+          python3 Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py --release-gate
+          python3 Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py --release-gate

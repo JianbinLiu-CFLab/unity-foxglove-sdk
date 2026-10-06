@@ -20,7 +20,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
@@ -254,7 +254,7 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
         if (!foxglove && !native && !bridge)
             throw new ArgumentException("Unknown Phase184 acceptance case.", nameof(caseId));
 
-#if !UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if !(UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN))
         if (native)
         {
             throw new InvalidOperationException(
@@ -288,13 +288,13 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
         var publishTransportIds = new List<string>();
         if (foxglove)
             publishTransportIds.Add(FoxgloveWebSocketTransport.Id);
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (native)
         {
             if (manager.GetComponent<FoxRunRos2TransportProvider>() == null)
                 manager.gameObject.AddComponent<FoxRunRos2TransportProvider>();
             publishTransportIds.Add(
-                FoxRunRos2TransportProvider.IdValue);
+                Phase184FoxRunProfileAcceptance.NativeTransportId);
         }
 #endif
         if (bridge)
@@ -323,7 +323,7 @@ public static class Phase184FoxRunProfileAcceptanceBuilder
             publishTransportIds,
             subscriptionsEnabled: true,
             native
-                ? FoxRunRos2TransportProvider.IdValue
+                ? Phase184FoxRunProfileAcceptance.NativeTransportId
                 : FoxgloveWebSocketTransport.Id);
         EditorUtility.SetDirty(manager);
     }

@@ -15,6 +15,7 @@ import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -950,7 +951,7 @@ class RunCiTests(unittest.TestCase):
         """Unity import and project configuration changes must require the gate."""
         workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
         scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
-        match = re.search(r"grep -Eq '([^']+)'", scope)
+        match = re.search(r"grep -E '([^']+)' >/dev/null", scope)
         self.assertIsNotNone(match)
         assert match is not None
         path_pattern = match.group(1)
@@ -969,6 +970,46 @@ class RunCiTests(unittest.TestCase):
             self.assertRegex(path, path_pattern, path)
         for path in ("README.md", "Scripts/release/run_ci.py", ".github/workflows/test.yml"):
             self.assertNotRegex(path, path_pattern, path)
+
+        self.assertNotIn("grep -Eq", scope)
+
+    def test_unity_scope_consumes_all_changed_paths_before_matching(self) -> None:
+        """A large changed-path list must not abort on a short-circuiting grep pipe."""
+        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
+        self.assertIn("grep -E '", scope)
+        self.assertIn("' >/dev/null", scope)
+        self.assertNotIn("grep -Eq", scope)
+
+        changed = "\n".join(
+            ["Packages/dev.unity2foxglove.sdk/Runtime/Foo.cs"]
+            + [f"docs/generated-{index}.md" for index in range(2000)]
+        )
+        script = """
+set -euo pipefail
+required=false
+changed="$(cat "$1")"
+if printf '%s\\n' "$changed" | grep -E '^(Packages/[^/]+/(Runtime|Editor)/|Packages/[^/]+/package\\.json$|Unity2Foxglove/(Assets|Packages|ProjectSettings)/|.*\\.(asmdef|asmref|meta)$)' >/dev/null; then
+  required=true
+fi
+printf '%s' "$required"
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            changed_path = Path(temp) / "changed.txt"
+            changed_path.write_text(changed, encoding="utf-8")
+            bash_executable = shutil.which("bash") or "bash"
+            if os.name == "nt":
+                git_bash = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe"
+                if git_bash.exists():
+                    bash_executable = str(git_bash)
+            result = subprocess.run(
+                [bash_executable, "-c", script, "scope-test", changed_path.as_posix()],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "true")
 
     def test_unity_required_gate_fails_closed_when_scope_needs_runner(self) -> None:
         """Unity changes must not bypass the required context when scheduling is disabled."""
@@ -1033,6 +1074,82 @@ class RunCiTests(unittest.TestCase):
         self.assertGreaterEqual(len(diff_lines), 3)
         for line in diff_lines:
             self.assertIn("--no-renames", line)
+
+    def test_unity_project_bootstraps_r2fu_symbol_before_first_compile(self) -> None:
+        """The Windows editor must see the optional R2FU assembly on its first import."""
+        project_settings = (ROOT / "Unity2Foxglove" / "ProjectSettings" / "ProjectSettings.asset").read_text(
+            encoding="utf-8"
+        )
+        self.assertRegex(
+            project_settings,
+            r"(?m)^\s*Standalone:.*\bUNITY2FOXGLOVE_ROS2_FOR_UNITY\b",
+        )
+        asmdef_paths = (
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Runtime"
+            / "Native"
+            / "Unity2Foxglove.Ros2ForUnity.Native.asmdef",
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Editor"
+            / "Native"
+            / "Unity2Foxglove.Ros2ForUnity.Native.Editor.asmdef",
+        )
+        for index, asmdef_path in enumerate(asmdef_paths):
+            asmdef = json.loads(asmdef_path.read_text(encoding="utf-8"))
+            self.assertIn("UNITY2FOXGLOVE_ROS2_FOR_UNITY", asmdef.get("defineConstraints", []))
+            expected_platform_constraint = "UNITY_EDITOR_WIN" if index else "UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN"
+            self.assertIn(expected_platform_constraint, asmdef.get("defineConstraints", []))
+
+    def test_native_source_guards_defer_platform_authority_to_asmdefs(self) -> None:
+        """Package native sources must not disappear when Unity compiles the Windows Editor assembly."""
+        native_root = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity" / "Runtime" / "Native"
+        native_sources = sorted(native_root.rglob("*.cs"))
+        self.assertGreater(len(native_sources), 0)
+        for source in native_sources:
+            first_guard = next(
+                (line.strip() for line in source.read_text(encoding="utf-8").splitlines() if line.strip().startswith("#if")),
+                "",
+            )
+            if first_guard:
+                self.assertEqual("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", first_guard, source)
+
+        inspector = (
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Editor"
+            / "Native"
+            / "FoxRunRos2SubscriptionDiagnosticsInspector.cs"
+        )
+        self.assertEqual(
+            "#if UNITY_EDITOR && UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+            next(line.strip() for line in inspector.read_text(encoding="utf-8").splitlines() if line.strip().startswith("#if")),
+        )
+
+        emitter_root = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity" / "Editor" / "Native" / "FoxRun"
+        for name in ("Ros2CustomDtoMapperEmitter.cs", "Ros2CustomPublishEmitter.cs", "Ros2InputDispatchEmitter.cs"):
+            emitter = (emitter_root / name).read_text(encoding="utf-8")
+            self.assertIn("UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN", emitter)
+
+    def test_package_release_gate_scans_the_full_event_range(self) -> None:
+        """Candidate detection must not miss runtime changes in a multi-commit push."""
+        workflow = PACKAGE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn('GITHUB_EVENT_PATH', workflow)
+        self.assertIn('GITHUB_EVENT_NAME', workflow)
+        self.assertIn('event["pull_request"]["base"]["sha"]', workflow)
+        self.assertIn('event.get("before")', workflow)
+        self.assertIn('os.environ["GITHUB_SHA"]', workflow)
+        self.assertIn('"git", "diff", "--name-only", "--no-renames", before, after', workflow)
+        self.assertIn('"git", "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "--no-renames", after', workflow)
+        self.assertIn('inventory_path = Path(manifest["inventoryFile"])', workflow)
+        self.assertIn('inventory_path = package / inventory_path', workflow)
+        self.assertNotIn('package / "RuntimeSupport" / manifest["inventoryFile"]', workflow)
+        self.assertNotIn('"HEAD^1", "HEAD"', workflow)
 
     def test_fatal_run_raises_after_printing_failure(self) -> None:
         """Fatal subprocess failures should abort at the point of failure."""
@@ -3989,6 +4106,50 @@ class UnityBatchCompileGateTests(unittest.TestCase):
             ['[Package Manager] The "path" argument must be of type string'],
             diagnostics,
         )
+
+    def test_run_preserves_compiler_diagnostics_when_tree_is_not_quiet(self) -> None:
+        """Keep compiler errors and observed residual PIDs when cleanup also fails."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = root / "Unity2Foxglove"
+            project.mkdir()
+            unity = root / "Unity.exe"
+            unity.write_text("stub", encoding="utf-8")
+            log_path = root / "unity.log"
+            process = mock.Mock()
+
+            def finish_process(*_args, **_kwargs):
+                """Write the compiler failure before the controlled process exits."""
+                log_path.write_text(
+                    "Assets/Foo.cs(4,2): error CS0103: missing\n",
+                    encoding="utf-8",
+                )
+                return 3
+
+            process.wait.side_effect = finish_process
+            tree = mock.Mock(process=process)
+            tree.terminate.return_value = []
+            environment = {name: "present" for name in self.gate.REQUIRED_ENVIRONMENT}
+            with mock.patch.dict(os.environ, environment, clear=False):
+                with mock.patch.object(self.gate, "_active_unity_project", return_value=False):
+                    with mock.patch(
+                        "Scripts.unity_build.unity_il2cpp.start_owned_process",
+                        return_value=tree,
+                    ):
+                        with mock.patch(
+                            "Scripts.unity_build.unity_il2cpp.await_tree_quiescence",
+                            return_value=[424242],
+                        ):
+                            with mock.patch("sys.stdout", new_callable=io.StringIO) as output:
+                                result = self.gate.run(unity, project, log_path)
+
+            payload = json.loads(output.getvalue())
+        self.assertEqual(1, result)
+        self.assertEqual("FAIL", payload["verdict"])
+        self.assertEqual(3, payload["exit_code"])
+        self.assertTrue(any("error CS0103" in line for line in payload["errors"]))
+        self.assertIn("Unity process tree did not quiesce after exit", payload["errors"])
+        self.assertEqual([424242], payload["residual_pids"])
 
     def test_run_refuses_incomplete_environment_before_launch(self) -> None:
         """Refuse to launch Unity when required user environment is absent."""
