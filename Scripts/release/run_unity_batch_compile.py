@@ -33,7 +33,7 @@ INVALID_MARKERS = (
 )
 ERROR_PATTERN = re.compile(r"\berror CS\d+\b")
 WARNING_PATTERN = re.compile(r"\bwarning CS\d+\b")
-DEFAULT_TIMEOUT_SECONDS = 30 * 60
+DEFAULT_TIMEOUT_SECONDS = 60 * 60
 
 
 def compile_verdict(exit_code: int, log_text: str) -> tuple[str, list[str], list[str]]:
