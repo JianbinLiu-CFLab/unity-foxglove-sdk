@@ -383,6 +383,7 @@ namespace Foxglove.Schemas.Video
             try
             {
                 var stream = process.StandardInput.BaseStream;
+                var protocolHeader = new byte[12];
                 while (!token.IsCancellationRequested && IsProcessRunning(process))
                 {
                     if (TryDequeueInputFrame(process, token, out var frame))
@@ -433,7 +434,7 @@ namespace Foxglove.Schemas.Video
                                 {
                                     Interlocked.Increment(ref _writtenFrameCount);
                                     countedWrittenFrame = true;
-                                    await WriteProtocolHeaderAsync(stream, frame.TimestampNs, length, token).ConfigureAwait(false);
+                                    await WriteProtocolHeaderAsync(stream, protocolHeader, frame.TimestampNs, length, token).ConfigureAwait(false);
                                 }
                                 else
                                 {
@@ -681,9 +682,8 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private static async Task WriteProtocolHeaderAsync(Stream stream, ulong timestampNs, int length, CancellationToken token)
+        private static async Task WriteProtocolHeaderAsync(Stream stream, byte[] header, ulong timestampNs, int length, CancellationToken token)
         {
-            var header = new byte[12];
             for (var i = 0; i < 8; i++)
                 header[i] = (byte)(timestampNs >> (8 * i));
             header[8] = (byte)length;

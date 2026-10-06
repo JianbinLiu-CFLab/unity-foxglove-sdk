@@ -347,7 +347,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(lidar.Contains("_maxRaycastCommandsPerFixedUpdate = 6144", StringComparison.Ordinal),
                 "138L-4A: VirtualLidar keeps the 138I static raycast budget cap");
-            Check(lidar.Contains("_scanBuffers.BudgetColumnsPerTick(_maxRaycastCommandsPerFixedUpdate)", StringComparison.Ordinal)
+            Check(lidar.Contains("_activeConfiguration.MaxRaycastCommandsPerFixedUpdate", StringComparison.Ordinal)
+                  && lidar.Contains("_scanBuffers.BudgetColumnsPerTick(_activeConfiguration.MaxRaycastCommandsPerFixedUpdate)", StringComparison.Ordinal)
                   && buffers.Contains("return Math.Max(1, maxRaycastCommandsPerFixedUpdate / perColumn)", StringComparison.Ordinal),
                 "138L-4B: BudgetColumnsPerTick remains cap-based");
             Check(lidar.Contains("StartNewScan(Time.fixedTimeAsDouble)", StringComparison.Ordinal),
