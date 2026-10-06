@@ -70,7 +70,10 @@ jobs:
           for distro in distros:
               package = root / f"dev.unity2foxglove.ros2forunity.runtime.{distro}.win64"
               manifest = json.loads((package / "RuntimeSupport" / "runtime-manifest.json").read_text(encoding="utf-8"))
-              inventory = json.loads((package / "RuntimeSupport" / manifest["inventoryFile"]).read_text(encoding="utf-8"))
+              inventory_path = Path(manifest["inventoryFile"])
+              if not inventory_path.is_absolute():
+                  inventory_path = package / inventory_path
+              inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
               acceptance = manifest.get("freshProjectAcceptance")
               if (
                   manifest.get("distributionLevel") != "Prototype"

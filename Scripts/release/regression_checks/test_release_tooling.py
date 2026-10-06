@@ -1086,6 +1086,9 @@ printf '%s' "$required"
         self.assertIn('os.environ["GITHUB_SHA"]', workflow)
         self.assertIn('"git", "diff", "--name-only", "--no-renames", before, after', workflow)
         self.assertIn('"git", "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "--no-renames", after', workflow)
+        self.assertIn('inventory_path = Path(manifest["inventoryFile"])', workflow)
+        self.assertIn('inventory_path = package / inventory_path', workflow)
+        self.assertNotIn('package / "RuntimeSupport" / manifest["inventoryFile"]', workflow)
         self.assertNotIn('"HEAD^1", "HEAD"', workflow)
 
     def test_fatal_run_raises_after_printing_failure(self) -> None:
