@@ -1135,8 +1135,8 @@ class IdentityToolingTests(unittest.TestCase):
         )
         self.assertEqual([], errors)
 
-    def test_split_identity_surface_rejects_waiver_for_nonpublic_symbol(self) -> None:
-        """A waiver cannot authorize a symbol absent from the base public surface."""
+    def test_split_identity_surface_ignores_stale_waiver_for_removed_symbol(self) -> None:
+        """A stale symbol waiver is inert for an existing facade."""
         base = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
         head = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
         errors = compare_identity_surfaces._compare_surfaces(
@@ -1145,7 +1145,31 @@ class IdentityToolingTests(unittest.TestCase):
             strict=False,
             waived_symbols={"fixture.py": frozenset({"MISSING"})},
         )
-        self.assertIn("INVALID_IDENTITY_WAIVER fixture.py: MISSING", errors)
+        self.assertEqual([], errors)
+
+    def test_split_identity_surface_stale_waiver_does_not_hide_active_removal(self) -> None:
+        """An expired waiver cannot hide a different public removal."""
+        base = {"fixture.py": (frozenset({"PUBLIC", "OTHER"}), ("live",), ())}
+        head = {"fixture.py": (frozenset({"OTHER"}), ("live",), ())}
+        errors = compare_identity_surfaces._compare_surfaces(
+            base,
+            head,
+            strict=False,
+            waived_symbols={"fixture.py": frozenset({"MISSING"})},
+        )
+        self.assertEqual(["MISSING_SYMBOLS fixture.py: PUBLIC"], errors)
+
+    def test_split_identity_surface_strict_mode_ignores_waivers(self) -> None:
+        """Strict mode rejects removals regardless of compatibility waivers."""
+        base = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
+        head = {"fixture.py": (frozenset(), ("live",), ())}
+        errors = compare_identity_surfaces._compare_surfaces(
+            base,
+            head,
+            strict=True,
+            waived_symbols={"fixture.py": frozenset({"PUBLIC"})},
+        )
+        self.assertEqual(["MISSING_SYMBOLS fixture.py: PUBLIC"], errors)
 
     def test_split_identity_surface_rejects_waiver_for_unknown_facade(self) -> None:
         """A waiver cannot silently target a facade absent from the base revision."""
@@ -2265,6 +2289,38 @@ class IdentityToolingTests(unittest.TestCase):
         ):
             self.assertEqual(
                 1,
+                compare_identity_surfaces.compare_revisions(
+                    Path("."), "base", "head", strict=False
+                ),
+            )
+
+    def test_compatibility_ignores_stale_base_waiver_during_cleanup(self) -> None:
+        """Expired base waivers do not block their cleanup change."""
+        base_surfaces = {"fixture.py": (frozenset({"OTHER"}), ("live",), ())}
+        head_surfaces = {"fixture.py": (frozenset({"OTHER"}), ("live",), ())}
+
+        @contextmanager
+        def checkout(_repository, revision):
+            """Provide a revision-labelled checkout for the compatibility seam."""
+            yield Path(revision)
+
+        with (
+            mock.patch.object(compare_identity_surfaces, "_git", side_effect=["base\n", "head\n"]),
+            mock.patch.object(compare_identity_surfaces, "_revision_checkout", side_effect=checkout),
+            mock.patch.object(
+                compare_identity_surfaces,
+                "_surfaces",
+                side_effect=[base_surfaces, head_surfaces],
+            ),
+            mock.patch.object(
+                compare_identity_surfaces,
+                "_load_identity_waivers",
+                side_effect=[{"fixture.py": frozenset({"PUBLIC"})}, {}],
+            ),
+            mock.patch.object(compare_identity_surfaces, "_validate_compatibility_new_sections"),
+        ):
+            self.assertEqual(
+                0,
                 compare_identity_surfaces.compare_revisions(
                     Path("."), "base", "head", strict=False
                 ),

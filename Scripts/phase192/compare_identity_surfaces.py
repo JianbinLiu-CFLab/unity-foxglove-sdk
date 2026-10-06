@@ -3008,12 +3008,7 @@ def _compare_surfaces(
             missing_symbols = sorted(set(base_symbols) - set(head_symbols))
         else:
             public_removals = set(base_public_symbols) - set(head_public_symbols)
-            waiver = set(waiver_map.get(relative, frozenset()))
-            invalid_waivers = sorted(waiver - set(base_public_symbols))
-            if invalid_waivers:
-                errors.append(
-                    f"INVALID_IDENTITY_WAIVER {relative}: {', '.join(invalid_waivers)}"
-                )
+            waiver = set(waiver_map.get(relative, frozenset())) & set(base_public_symbols)
             missing_symbols = sorted(public_removals - waiver)
         extra_symbols = sorted(set(head_symbols) - set(base_symbols))
         if strict and base_risks != head_risks:

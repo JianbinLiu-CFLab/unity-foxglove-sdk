@@ -80,7 +80,7 @@ class Phase160BuildDefaultsTests(unittest.TestCase):
                 [
                     sys.executable,
                     "-c",
-                    "import sys,time;sys.stdout.write('partial');sys.stdout.flush();time.sleep(5)",
+                    "import sys,time;sys.stdout.write('partial');sys.stdout.flush();time.sleep(30)",
                 ],
                 cwd=root,
                 env=os.environ.copy(),
