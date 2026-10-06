@@ -276,26 +276,27 @@ namespace Foxglove.Schemas.Video
                 return false;
 
             var videoFormat = ResolveVideoFormat(_mode);
+            var maxUnits = Math.Max(1, maxAccessUnits);
             if (sidecar is ITimestampedCameraVideoEncoderSidecar timestampedSidecar)
             {
                 var drained = 0;
-                while (drained < Math.Max(1, maxAccessUnits)
+                while (drained < maxUnits
                     && timestampedSidecar.TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit))
                 {
+                    drained++;
                     if (accessUnit.TimestampNs == 0UL)
                         continue;
 
                     publishAccessUnit(accessUnit.Data, accessUnit.TimestampNs, videoFormat);
-                    drained++;
                 }
             }
             else
             {
                 var drained = 0;
-                while (drained < Math.Max(1, maxAccessUnits) && sidecar.TryDequeueAccessUnit(out var accessUnit))
+                while (drained < maxUnits && sidecar.TryDequeueAccessUnit(out var accessUnit))
                 {
-                    publishAccessUnit(accessUnit, fallbackTimestampNs(), videoFormat);
                     drained++;
+                    publishAccessUnit(accessUnit, fallbackTimestampNs(), videoFormat);
                 }
             }
 

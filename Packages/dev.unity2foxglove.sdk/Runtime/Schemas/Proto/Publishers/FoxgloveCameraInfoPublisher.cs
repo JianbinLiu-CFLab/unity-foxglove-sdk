@@ -98,7 +98,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
 
-            var sourceCamera = _autoFromCamera ? ResolveSourceCamera() : null;
+            var sourceCamera = ResolveSourceCamera();
             if (sourceCamera != null && sourceCamera.orthographic)
             {
                 WarnOrthographicCamera();
