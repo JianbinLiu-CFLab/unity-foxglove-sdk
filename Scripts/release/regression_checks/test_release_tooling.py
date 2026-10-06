@@ -1000,6 +1000,18 @@ class RunCiTests(unittest.TestCase):
             steps.index("uses: actions/checkout@"),
         )
 
+    def test_unity_runner_bootstraps_powershell_path_before_pwsh_steps(self) -> None:
+        """The runner must expose the MSI PowerShell executable before shell resolution."""
+        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        steps = workflow.split("  unity_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
+        bootstrap = steps.split("      - name: Enable Git long-path support", 1)[0]
+        self.assertIn("shell: cmd", bootstrap)
+        self.assertIn(r"POWERSHELL7=C:\Program Files\PowerShell\7", bootstrap)
+        self.assertIn(r"%POWERSHELL7%\pwsh.exe", bootstrap)
+        self.assertIn("%GITHUB_PATH%", bootstrap)
+        self.assertIn("where pwsh", bootstrap)
+        self.assertLess(bootstrap.index("shell: cmd"), steps.index("shell: pwsh"))
+
     def test_unity_workflow_preserves_library_and_separates_manual_runs(self) -> None:
         """Keep the Unity Library cache and prevent push runs from cancelling dispatch runs."""
         workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
