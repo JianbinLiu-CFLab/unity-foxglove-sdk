@@ -695,6 +695,14 @@ class RunCiTests(unittest.TestCase):
             workflow,
         )
 
+    def test_dotnet_workflow_provisions_mcap_timestamp_runtime_dependency(self) -> None:
+        """The MCAP timestamp regression must run with its pinned reader installed."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            "mcap==1.3.1",
+            workflow,
+        )
+
     def test_dotnet_workflow_runs_xunit_before_panel_lane(self) -> None:
         """The unit-test gate must run even when the panel lane fails first."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
