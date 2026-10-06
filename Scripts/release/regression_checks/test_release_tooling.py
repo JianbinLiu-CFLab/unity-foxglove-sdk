@@ -15,6 +15,7 @@ import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -950,7 +951,7 @@ class RunCiTests(unittest.TestCase):
         """Unity import and project configuration changes must require the gate."""
         workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
         scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
-        match = re.search(r"grep -Eq '([^']+)'", scope)
+        match = re.search(r"grep -E '([^']+)' >/dev/null", scope)
         self.assertIsNotNone(match)
         assert match is not None
         path_pattern = match.group(1)
@@ -969,6 +970,46 @@ class RunCiTests(unittest.TestCase):
             self.assertRegex(path, path_pattern, path)
         for path in ("README.md", "Scripts/release/run_ci.py", ".github/workflows/test.yml"):
             self.assertNotRegex(path, path_pattern, path)
+
+        self.assertNotIn("grep -Eq", scope)
+
+    def test_unity_scope_consumes_all_changed_paths_before_matching(self) -> None:
+        """A large changed-path list must not abort on a short-circuiting grep pipe."""
+        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
+        self.assertIn("grep -E '", scope)
+        self.assertIn("' >/dev/null", scope)
+        self.assertNotIn("grep -Eq", scope)
+
+        changed = "\n".join(
+            ["Packages/dev.unity2foxglove.sdk/Runtime/Foo.cs"]
+            + [f"docs/generated-{index}.md" for index in range(2000)]
+        )
+        script = """
+set -euo pipefail
+required=false
+changed="$(cat "$1")"
+if printf '%s\\n' "$changed" | grep -E '^(Packages/[^/]+/(Runtime|Editor)/|Packages/[^/]+/package\\.json$|Unity2Foxglove/(Assets|Packages|ProjectSettings)/|.*\\.(asmdef|asmref|meta)$)' >/dev/null; then
+  required=true
+fi
+printf '%s' "$required"
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            changed_path = Path(temp) / "changed.txt"
+            changed_path.write_text(changed, encoding="utf-8")
+            bash_executable = shutil.which("bash") or "bash"
+            if os.name == "nt":
+                git_bash = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe"
+                if git_bash.exists():
+                    bash_executable = str(git_bash)
+            result = subprocess.run(
+                [bash_executable, "-c", script, "scope-test", changed_path.as_posix()],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "true")
 
     def test_unity_required_gate_fails_closed_when_scope_needs_runner(self) -> None:
         """Unity changes must not bypass the required context when scheduling is disabled."""
