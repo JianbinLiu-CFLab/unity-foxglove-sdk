@@ -66,6 +66,19 @@ jobs:
           || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
     steps:
+      - name: Bootstrap PowerShell 7 on PATH
+        shell: cmd
+        run: |
+          set "POWERSHELL7=C:\Program Files\PowerShell\7"
+          if not exist "%POWERSHELL7%\pwsh.exe" (
+            echo PowerShell 7 MSI installation is required.
+            exit /b 1
+          )
+          echo %POWERSHELL7%>>"%GITHUB_PATH%"
+          set "PATH=%POWERSHELL7%;%PATH%"
+          where pwsh
+          pwsh -NoLogo -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"
+
       - name: Enable Git long-path support
         shell: pwsh
         run: |
