@@ -40,7 +40,6 @@ namespace Unity.FoxgloveSDK.Components
         private CameraClearFlags _lastClearFlags;
         private Color _lastBackgroundColor;
         private bool _captureCameraDirty = true;
-        private bool _sourceCameraResolved;
 
         public Camera CaptureCamera => _captureCamera;
 
@@ -53,10 +52,9 @@ namespace Unity.FoxgloveSDK.Components
             if (owner == null)
                 return;
 
-            if (_sourceCamera == null && !_sourceCameraResolved)
+            if (_sourceCamera == null)
             {
                 _sourceCamera = owner.GetComponent<Camera>();
-                _sourceCameraResolved = true;
             }
             width = Math.Max(1, width);
             height = Math.Max(1, height);
@@ -170,7 +168,6 @@ namespace Unity.FoxgloveSDK.Components
             _rgbScratch = null;
             _rowScratch = null;
             _sourceCamera = null;
-            _sourceCameraResolved = false;
             _captureRenderTextureGeneration = 0;
             _lastCopiedSourceCamera = null;
             _captureCameraDirty = true;

@@ -53,5 +53,56 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 : Math.Clamp(normalizedOffset, 0f, 1f);
             return (float)elapsed + phase * tick;
         }
+
+        /// <summary>
+        /// Reserve whole scan columns only when no asynchronous batch is in flight.
+        /// </summary>
+        internal static bool TryReserveColumns(
+            bool hasPendingScan,
+            double progress,
+            int budgetColumns,
+            int remainingColumns,
+            out int columnsToEmit,
+            out double remainingProgress)
+        {
+            columnsToEmit = 0;
+            remainingProgress = progress;
+            if (hasPendingScan
+                || double.IsNaN(progress)
+                || double.IsInfinity(progress)
+                || progress <= 0d
+                || budgetColumns <= 0
+                || remainingColumns <= 0)
+                return false;
+
+            var wholeColumns = progress >= int.MaxValue
+                ? int.MaxValue
+                : (int)Math.Floor(progress);
+            columnsToEmit = Math.Min(wholeColumns, Math.Min(budgetColumns, remainingColumns));
+            if (columnsToEmit <= 0)
+            {
+                columnsToEmit = 0;
+                return false;
+            }
+
+            remainingProgress = progress - columnsToEmit;
+            return true;
+        }
+
+        /// <summary>
+        /// Advance a scan boundary from the sensor timeline rather than completion time.
+        /// </summary>
+        internal static double NextScanStartPhysSeconds(double scanStartPhysSeconds, double scanPeriodSeconds)
+        {
+            if (double.IsNaN(scanStartPhysSeconds)
+                || double.IsInfinity(scanStartPhysSeconds)
+                || double.IsNaN(scanPeriodSeconds)
+                || double.IsInfinity(scanPeriodSeconds)
+                || scanPeriodSeconds <= 0d)
+                return scanStartPhysSeconds;
+
+            var next = scanStartPhysSeconds + scanPeriodSeconds;
+            return double.IsNaN(next) || double.IsInfinity(next) ? scanStartPhysSeconds : next;
+        }
     }
 }
