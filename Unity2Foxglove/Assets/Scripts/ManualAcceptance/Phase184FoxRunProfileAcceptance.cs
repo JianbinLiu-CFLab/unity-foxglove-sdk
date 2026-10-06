@@ -40,7 +40,7 @@ namespace Unity2Foxglove.ManualAcceptance
         public const string DegradedTargetCase = "degraded-target";
         public const string QosContractCase = "qos-contract";
         public const string StreamCase = "stream-640hz";
-        internal const string NativeTransportId = "unity2foxglove.r2fu";
+        public const string NativeTransportId = "unity2foxglove.r2fu";
 
         private const int MaximumStatusCharacters = 512;
         private const int MaximumConfigBytes = 1024 * 1024;

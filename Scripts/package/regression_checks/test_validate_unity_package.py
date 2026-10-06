@@ -119,7 +119,7 @@ class ValidatePackageTests(unittest.TestCase):
             self.assertNotIn("FoxRunRos2TransportProvider.IdValue", source)
         self.assertIn("NativeTransportId", phase181)
         self.assertIn("NativeTransportId", phase181_sample)
-        self.assertIn("NativeTransportId", phase184)
+        self.assertIn("public const string NativeTransportId", phase184)
         self.assertIn("Phase184FoxRunProfileAcceptance.NativeTransportId", phase184_builder)
 
     def test_ros2_runtime_assemblies_require_a_windows_symbol(self) -> None:
