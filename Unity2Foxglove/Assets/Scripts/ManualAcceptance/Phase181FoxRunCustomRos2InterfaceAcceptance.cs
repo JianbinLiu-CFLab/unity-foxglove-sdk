@@ -10,6 +10,10 @@ using System.Globalization;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
+using Unity2Foxglove.Ros2ForUnity.Native;
+#endif
+
 namespace Unity2Foxglove.ManualAcceptance
 {
     using Unity.FoxgloveSDK.Tests.FoxRun.Fixtures;
