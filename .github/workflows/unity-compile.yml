@@ -15,7 +15,14 @@ jobs:
   unity-compile:
     # This self-hosted lane is intentionally non-required until its licensed
     # Unity environment has demonstrated stable availability.
+    # It is skipped until the repository variable UNITY_SELF_HOSTED_RUNNER is
+    # set to 'enabled', so it never queues without a registered runner. Fork
+    # pull requests never run on the self-hosted machine.
     name: unity-compile
+    if: >-
+      vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'
+      && (github.event_name != 'pull_request'
+          || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
