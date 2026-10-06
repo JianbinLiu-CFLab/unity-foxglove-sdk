@@ -111,6 +111,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Range(0, 1)] private float _syntheticIntensity = 1f;
         private readonly PlayModeConfigurationWarningGate _playModeConfigurationWarningGate =
             new PlayModeConfigurationWarningGate();
+        private LidarRuntimeConfiguration _activeConfiguration;
 
         /// <summary>The most recently generated PointCloudFrame, or null before the first scan.</summary>
         public PointCloudFrame LastFrame { get; private set; }
@@ -247,8 +248,6 @@ namespace Unity.FoxgloveSDK.Components
                     ? _sensorUnitProfile.Manager
                     : FindFirstObjectByType<FoxgloveManager>();
 
-            WarnIfOwnLayerIncludedInRaycastMask();
-
             // Resolve publisher if unassigned
             if (_pointCloudPublisher == null)
             {
@@ -265,6 +264,7 @@ namespace Unity.FoxgloveSDK.Components
             }
             _pointCloudPublisher?.MarkSourceDrivenPointCloud();
             RebuildScanConfiguration();
+            WarnIfOwnLayerIncludedInRaycastMask();
         }
 
         private SensorUnitProfile ResolveSensorUnitProfile()
@@ -307,6 +307,15 @@ namespace Unity.FoxgloveSDK.Components
 
         private void RebuildScanConfiguration()
         {
+            _activeConfiguration = new LidarRuntimeConfiguration(
+                _frameId,
+                _maxRangeMeters,
+                _layerMask.value,
+                _publishEmptyFrames,
+                _logPerformanceDiagnostics,
+                _maxRaycastCommandsPerFixedUpdate,
+                _syntheticReflectivity,
+                _syntheticIntensity);
             _scanPattern = null;
             if (_sensorUnitProfile != null)
                 _scanPattern = _sensorUnitProfile.CreateScanPattern(_columnStep);
@@ -396,7 +405,7 @@ namespace Unity.FoxgloveSDK.Components
                 EnsureScanClock(Time.fixedTimeAsDouble);
 
                 ScanScheduler.ConsumePendingScan(
-                    _logPerformanceDiagnostics,
+                    _activeConfiguration.LogPerformanceDiagnostics,
                     Time.fixedDeltaTime,
                     _activeScanRepresentation.UseNativeSnapshot,
                     _scanBuffers,
@@ -462,8 +471,8 @@ namespace Unity.FoxgloveSDK.Components
                 var scheduleStart = BeginLidarFixedUpdateTiming();
                 ScanScheduler.SchedulePendingScan(
                     columnsToEmit,
-                    _maxRaycastCommandsPerFixedUpdate,
-                    _logPerformanceDiagnostics,
+                    _activeConfiguration.MaxRaycastCommandsPerFixedUpdate,
+                    _activeConfiguration.LogPerformanceDiagnostics,
                     Time.fixedDeltaTime,
                     Time.fixedTimeAsDouble,
                     _activeScanStartPhysSeconds,
@@ -472,16 +481,16 @@ namespace Unity.FoxgloveSDK.Components
                     ref _scanColumnRayCursor,
                     transform.position,
                     transform.rotation,
-                    _layerMask,
-                    _maxRangeMeters,
-                    _syntheticIntensity,
-                    _syntheticReflectivity,
+                    new LayerMask { value = _activeConfiguration.LayerMaskValue },
+                    _activeConfiguration.MaxRangeMeters,
+                    _activeConfiguration.SyntheticIntensity,
+                    _activeConfiguration.SyntheticReflectivity,
                     _scanPattern,
                     _activeScanWorldToLocal,
                     _activeScanRepresentation.RequiresNativeAcquisitionFrame,
                     _scanBuffers);
                 LogLidarFixedUpdateTiming(
-                    _logPerformanceDiagnostics,
+                    _activeConfiguration.LogPerformanceDiagnostics,
                     this,
                     columnsToEmit,
                     budgetColumns,
@@ -494,7 +503,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private long BeginLidarFixedUpdateTiming()
-            => _logPerformanceDiagnostics ? Stopwatch.GetTimestamp() : 0L;
+            => _activeConfiguration.LogPerformanceDiagnostics ? Stopwatch.GetTimestamp() : 0L;
 
         private static double ElapsedLidarFixedUpdateTiming(long startTicks)
             => startTicks == 0L ? 0d : (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
@@ -542,7 +551,7 @@ namespace Unity.FoxgloveSDK.Components
             _activeScanFrame = new PointCloudFrame
             {
                 UnixNs = _scanClock.GetScanStartUnixNs(_activeScanStartPhysSeconds),
-                FrameId = _frameId,
+                FrameId = _activeConfiguration.FrameId,
                 ValidCount = 0,
                 // SLAM front-ends (FAST-LIO/LIVO2) consume the Ouster-style absolute-ns `t`.
                 EmitAbsoluteTimeNs = true
@@ -595,7 +604,7 @@ namespace Unity.FoxgloveSDK.Components
 
             _scanFramePublisher.TryPublishActiveScan(
                 _pointCloudPublisher,
-                _publishEmptyFrames,
+                _activeConfiguration.PublishEmptyFrames,
                 _activeScanFrame,
                 _activeScanValidPoints,
                 _activeScanRepresentation,
@@ -612,7 +621,7 @@ namespace Unity.FoxgloveSDK.Components
         // i.e. ~1.2 Hz full-fidelity at 50 Hz physics: slow but rock-steady, with TF/camera
         // and the main loop fully protected.
         private int BudgetColumnsPerTick()
-            => _scanBuffers.BudgetColumnsPerTick(_maxRaycastCommandsPerFixedUpdate);
+            => _scanBuffers.BudgetColumnsPerTick(_activeConfiguration.MaxRaycastCommandsPerFixedUpdate);
 
         private void EnsureScanClock(double physNow)
         {
@@ -664,7 +673,7 @@ namespace Unity.FoxgloveSDK.Components
         private void WarnIfOwnLayerIncludedInRaycastMask()
         {
             var ownLayerMask = 1 << gameObject.layer;
-            if ((_layerMask.value & ownLayerMask) == 0)
+            if ((_activeConfiguration.LayerMaskValue & ownLayerMask) == 0)
                 return;
 
             Debug.LogWarning(

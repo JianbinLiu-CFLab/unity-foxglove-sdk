@@ -415,6 +415,56 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void VirtualLidarRuntimeConfigurationRemainsStableUntilTheNextEnableCycle()
+        {
+            var active = new LidarRuntimeConfiguration(
+                "scan-a",
+                50f,
+                7,
+                publishEmptyFrames: false,
+                logPerformanceDiagnostics: false,
+                maxRaycastCommandsPerFixedUpdate: 6144,
+                syntheticReflectivity: 0.25f,
+                syntheticIntensity: 0.75f);
+
+            var editedFrameId = "scan-b";
+            var editedMaxRange = 10f;
+
+            Assert.Equal("scan-a", active.FrameId);
+            Assert.Equal(50f, active.MaxRangeMeters);
+            Assert.Equal(7, active.LayerMaskValue);
+            Assert.Equal(6144, active.MaxRaycastCommandsPerFixedUpdate);
+
+            var refreshed = new LidarRuntimeConfiguration(
+                editedFrameId,
+                editedMaxRange,
+                3,
+                publishEmptyFrames: true,
+                logPerformanceDiagnostics: true,
+                maxRaycastCommandsPerFixedUpdate: 1024,
+                syntheticReflectivity: 0.5f,
+                syntheticIntensity: 0.5f);
+
+            Assert.Equal("scan-b", refreshed.FrameId);
+            Assert.Equal(10f, refreshed.MaxRangeMeters);
+            Assert.True(refreshed.PublishEmptyFrames);
+            Assert.True(refreshed.LogPerformanceDiagnostics);
+            Assert.Equal(1024, refreshed.MaxRaycastCommandsPerFixedUpdate);
+        }
+
+        [Fact]
+        public void VirtualLidarUsesTheEnableCycleConfigurationSnapshot()
+        {
+            var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+
+            Assert.Contains("_activeConfiguration = new LidarRuntimeConfiguration(", lidar, StringComparison.Ordinal);
+            Assert.Contains("_activeConfiguration.MaxRangeMeters", lidar, StringComparison.Ordinal);
+            Assert.Contains("_activeConfiguration.LayerMaskValue", lidar, StringComparison.Ordinal);
+            Assert.Contains("_activeConfiguration.PublishEmptyFrames", lidar, StringComparison.Ordinal);
+            Assert.DoesNotContain("_maxRangeMeters,\n                    _syntheticIntensity", lidar, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CameraSourceFallbackUsesUnityNullSemantics()
         {
             var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");

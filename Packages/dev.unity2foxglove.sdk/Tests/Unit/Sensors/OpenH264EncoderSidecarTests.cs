@@ -7,6 +7,7 @@
 using System;
 using System.Reflection;
 using System.Collections;
+using System.IO;
 using Unity.FoxgloveSDK.Components;
 using System.Diagnostics;
 using System.Threading;
@@ -222,6 +223,47 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var startInfo = options.CreateStartInfo();
             Assert.DoesNotContain("--protocol", startInfo.Arguments, StringComparison.Ordinal);
             Assert.Equal("2", startInfo.Environment["OPENH264_PROBE_PROTOCOL"]);
+        }
+
+        [Fact]
+        public async Task ProtocolHeaderBufferCanBeReusedAcrossFrames()
+        {
+            var method = typeof(OpenH264EncoderSidecar).GetMethod(
+                "WriteProtocolHeaderAsync",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.NotNull(method);
+
+            var header = new byte[12];
+            using var stream = new MemoryStream();
+            var first = (Task)method.Invoke(
+                null,
+                new object[] { stream, header, 0x0102030405060708UL, 0x0A0B0C0D, CancellationToken.None });
+            await first.WaitAsync(TimeSpan.FromSeconds(1));
+            var second = (Task)method.Invoke(
+                null,
+                new object[] { stream, header, 9UL, 3, CancellationToken.None });
+            await second.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.Equal(
+                new byte[]
+                {
+                    8, 7, 6, 5, 4, 3, 2, 1, 13, 12, 11, 10,
+                    9, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0
+                },
+                stream.ToArray());
+
+            var source = File.ReadAllText(Path.Combine(
+                FindRepoRoot(),
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs"));
+            Assert.Equal(1, CountOccurrences(source, "var protocolHeader = new byte[12];"));
+            var writerStart = source.IndexOf("private async Task RunStdinWriter", StringComparison.Ordinal);
+            var writerEnd = source.IndexOf("private Task RunStdoutReader", writerStart, StringComparison.Ordinal);
+            var writer = source.Substring(writerStart, writerEnd - writerStart);
+            Assert.Equal(1, CountOccurrences(writer, "new byte[12]"));
+            var headerWriterStart = source.IndexOf("private static async Task WriteProtocolHeaderAsync", StringComparison.Ordinal);
+            var headerWriterEnd = source.IndexOf("private static ulong ReadUInt64LittleEndian", headerWriterStart, StringComparison.Ordinal);
+            var headerWriter = source.Substring(headerWriterStart, headerWriterEnd - headerWriterStart);
+            Assert.DoesNotContain("new byte[12]", headerWriter, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -851,6 +893,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 SetField(sidecar, "_process", null);
                 sidecar.GetType().GetMethod("Stop", Type.EmptyTypes)?.Invoke(sidecar, null);
             }
+        }
+
+        private static int CountOccurrences(string source, string value)
+        {
+            var count = 0;
+            var index = 0;
+            while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += value.Length;
+            }
+
+            return count;
+        }
+
+        private static string FindRepoRoot()
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                var gitPath = Path.Combine(directory.FullName, ".git");
+                if (File.Exists(gitPath) || Directory.Exists(gitPath))
+                    return directory.FullName;
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Repository root not found.");
         }
 
         private static object GetField(object target, string name)

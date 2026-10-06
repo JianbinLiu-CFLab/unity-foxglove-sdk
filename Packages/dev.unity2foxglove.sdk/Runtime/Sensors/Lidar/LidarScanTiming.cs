@@ -7,6 +7,38 @@ using System;
 
 namespace Unity.FoxgloveSDK.Sensors.Lidar
 {
+    internal readonly struct LidarRuntimeConfiguration
+    {
+        public LidarRuntimeConfiguration(
+            string frameId,
+            float maxRangeMeters,
+            int layerMaskValue,
+            bool publishEmptyFrames,
+            bool logPerformanceDiagnostics,
+            int maxRaycastCommandsPerFixedUpdate,
+            float syntheticReflectivity,
+            float syntheticIntensity)
+        {
+            FrameId = frameId;
+            MaxRangeMeters = maxRangeMeters;
+            LayerMaskValue = layerMaskValue;
+            PublishEmptyFrames = publishEmptyFrames;
+            LogPerformanceDiagnostics = logPerformanceDiagnostics;
+            MaxRaycastCommandsPerFixedUpdate = maxRaycastCommandsPerFixedUpdate;
+            SyntheticReflectivity = syntheticReflectivity;
+            SyntheticIntensity = syntheticIntensity;
+        }
+
+        public string FrameId { get; }
+        public float MaxRangeMeters { get; }
+        public int LayerMaskValue { get; }
+        public bool PublishEmptyFrames { get; }
+        public bool LogPerformanceDiagnostics { get; }
+        public int MaxRaycastCommandsPerFixedUpdate { get; }
+        public float SyntheticReflectivity { get; }
+        public float SyntheticIntensity { get; }
+    }
+
     internal static class LidarPendingScanCompletionPolicy
     {
         internal static bool IsReady(bool scheduled, bool jobCompleted, int batchCount)
