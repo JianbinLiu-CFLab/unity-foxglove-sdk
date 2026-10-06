@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native
 // Purpose: Shared lifecycle gate for R2FU native bridge startup and shutdown windows.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;

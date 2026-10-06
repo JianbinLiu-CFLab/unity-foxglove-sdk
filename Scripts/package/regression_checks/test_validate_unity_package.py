@@ -45,6 +45,8 @@ class ValidatePackageTests(unittest.TestCase):
         staging = (ROOT / "Packages" / "dev.unity2foxglove.ros2forunity" / "Editor" / "Ros2ForUnityRuntimePlayerStaging.cs").read_text(encoding="utf-8")
         self.assertIn("CopyRequired", staging)
         self.assertNotIn("CopyIfPresent(Path.Combine(source, \"metadata_ros2_for_unity.xml\")", staging)
+        self.assertIn("Ros2ForUnityRuntimeSelection.RepositoryPackagesDirectory(project)", staging)
+        self.assertNotIn('Path.Combine(project, "Packages", packageName)', staging)
         self.assertIn("StreamingAssets", staging)
 
         runtime_files = list((ROOT / "Packages").glob("dev.unity2foxglove.ros2forunity.runtime.*.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs"))
@@ -61,10 +63,10 @@ class ValidatePackageTests(unittest.TestCase):
                 source,
             )
 
-    def test_project_ros_guards_are_windows_only_and_not_persisted(self) -> None:
-        """Project acceptance consumers must not compile on unsupported Standalone targets."""
+    def test_project_ros_guards_bootstrap_and_reconcile_windows_only(self) -> None:
+        """The first import exposes the bootstrap symbol and the installer removes it off Windows."""
         project = (ROOT / "Unity2Foxglove" / "ProjectSettings" / "ProjectSettings.asset").read_text(encoding="utf-8")
-        self.assertNotIn("Standalone: UNITY2FOXGLOVE_ROS2_FOR_UNITY", project)
+        self.assertIn("Standalone: UNITY2FOXGLOVE_ROS2_FOR_UNITY", project)
         offenders = []
         for path in (ROOT / "Unity2Foxglove" / "Assets").rglob("*.cs"):
             lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -85,6 +87,8 @@ class ValidatePackageTests(unittest.TestCase):
 
         installer = (ROOT / "Packages" / "dev.unity2foxglove.ros2forunity" / "Editor" / "Ros2ForUnityRuntimeDefineInstaller.cs").read_text(encoding="utf-8")
         self.assertIn("activeBuildTarget == BuildTarget.StandaloneWindows64", installer)
+        self.assertIn("var enableRuntime = status.HasSelection && isWindowsStandalone;", installer)
+        self.assertIn("RemoveSymbol(parts, Ros2ForUnityRuntimeSelection.BaseCompileSymbol)", installer)
         self.assertNotIn("activeBuildTarget == BuildTarget.StandaloneWindows;", installer)
 
     def test_native_acceptance_sources_have_non_windows_safe_transport_contracts(self) -> None:
@@ -137,17 +141,23 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertIn("UNITY_EDITOR_WIN", native_editor["defineConstraints"])
 
     def test_ros2_native_sources_and_typesupport_are_windows_guarded(self) -> None:
-        """A persisted Standalone symbol must not activate ROS code on non-Windows targets."""
+        """Asmdef platform constraints own package availability while source guards own feature selection."""
         native_root = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity"
-        sources = list((native_root / "Runtime" / "Native").rglob("*.cs"))
-        sources += list((native_root / "Editor" / "Native").rglob("*.cs"))
-        offenders = []
-        for path in sources:
-            for line_number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-                if line.lstrip().startswith("#if") and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in line:
-                    if "UNITY_EDITOR_WIN" not in line and "UNITY_STANDALONE_WIN" not in line:
-                        offenders.append(f"{path}:{line_number}")
-        self.assertEqual([], offenders)
+        runtime_sources = list((native_root / "Runtime" / "Native").rglob("*.cs"))
+        for path in runtime_sources:
+            first_guard = next(
+                (line.strip() for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+                 if line.strip().startswith("#if") and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in line),
+                "",
+            )
+            if first_guard:
+                self.assertEqual("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", first_guard, str(path))
+
+        inspector = native_root / "Editor" / "Native" / "FoxRunRos2SubscriptionDiagnosticsInspector.cs"
+        self.assertIn(
+            "#if UNITY_EDITOR && UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+            inspector.read_text(encoding="utf-8"),
+        )
 
         addon_asmdefs = list(
             ROOT.glob("Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.*.win64/Runtime/FoxRun/Generated/*.asmdef")
@@ -172,7 +182,12 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertIn("--release-gate", workflow)
         self.assertIn("redistributionStatus", workflow)
         self.assertIn("distributionLevel", workflow)
-        self.assertIn('git", "diff", "--name-only", "--no-renames", "HEAD^1", "HEAD"', workflow)
+        self.assertIn('event["pull_request"]["base"]["sha"]', workflow)
+        self.assertIn('event.get("before")', workflow)
+        self.assertIn('os.environ["GITHUB_SHA"]', workflow)
+        self.assertIn('"git", "diff", "--name-only", "--no-renames", before, after', workflow)
+        self.assertIn('"git", "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "--no-renames", after', workflow)
+        self.assertNotIn('"HEAD^1", "HEAD"', workflow)
         self.assertIn("No runtime candidate package changed; release gate not required.", workflow)
         self.assertIn("for distro in candidates:", workflow)
         self.assertNotIn("for distro in distros:\n              subprocess.check_call", workflow)

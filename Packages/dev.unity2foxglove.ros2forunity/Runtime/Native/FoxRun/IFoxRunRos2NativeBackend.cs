@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native/FoxRun
 // Purpose: Small typed transport seam for native subscription lifecycle tests.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using Unity.FoxgloveSDK.Components;
 

@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native/FoxRun
 // Purpose: Register a generated custom typesupport add-on's Editor-native directory before ROS2 loads it.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Collections.Generic;
 using System.IO;

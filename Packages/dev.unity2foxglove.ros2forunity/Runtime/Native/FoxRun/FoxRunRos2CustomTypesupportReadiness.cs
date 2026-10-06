@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native/FoxRun
 // Purpose: Internal Player-safe custom typesupport readiness result.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     internal enum FoxRunRos2CustomTypesupportReadinessCode

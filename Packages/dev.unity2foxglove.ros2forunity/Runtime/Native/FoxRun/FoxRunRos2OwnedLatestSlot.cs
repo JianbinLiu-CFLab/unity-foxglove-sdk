@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native/FoxRun
 // Purpose: Capacity-one owned mailbox between callback and main-thread consumers.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;

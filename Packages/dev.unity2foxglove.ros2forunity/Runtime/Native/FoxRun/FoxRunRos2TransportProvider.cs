@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native/FoxRun
 // Purpose: Manager-local R2FU FoxRun transport Provider companion.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;

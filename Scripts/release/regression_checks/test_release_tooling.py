@@ -1104,6 +1104,37 @@ printf '%s' "$required"
             expected_platform_constraint = "UNITY_EDITOR_WIN" if index else "UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN"
             self.assertIn(expected_platform_constraint, asmdef.get("defineConstraints", []))
 
+    def test_native_source_guards_defer_platform_authority_to_asmdefs(self) -> None:
+        """Package native sources must not disappear when Unity compiles the Windows Editor assembly."""
+        native_root = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity" / "Runtime" / "Native"
+        native_sources = sorted(native_root.rglob("*.cs"))
+        self.assertGreater(len(native_sources), 0)
+        for source in native_sources:
+            first_guard = next(
+                (line.strip() for line in source.read_text(encoding="utf-8").splitlines() if line.strip().startswith("#if")),
+                "",
+            )
+            if first_guard:
+                self.assertEqual("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", first_guard, source)
+
+        inspector = (
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Editor"
+            / "Native"
+            / "FoxRunRos2SubscriptionDiagnosticsInspector.cs"
+        )
+        self.assertEqual(
+            "#if UNITY_EDITOR && UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+            next(line.strip() for line in inspector.read_text(encoding="utf-8").splitlines() if line.strip().startswith("#if")),
+        )
+
+        emitter_root = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity" / "Editor" / "Native" / "FoxRun"
+        for name in ("Ros2CustomDtoMapperEmitter.cs", "Ros2CustomPublishEmitter.cs", "Ros2InputDispatchEmitter.cs"):
+            emitter = (emitter_root / name).read_text(encoding="utf-8")
+            self.assertIn("UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN", emitter)
+
     def test_package_release_gate_scans_the_full_event_range(self) -> None:
         """Candidate detection must not miss runtime changes in a multi-commit push."""
         workflow = PACKAGE_WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -4075,6 +4106,50 @@ class UnityBatchCompileGateTests(unittest.TestCase):
             ['[Package Manager] The "path" argument must be of type string'],
             diagnostics,
         )
+
+    def test_run_preserves_compiler_diagnostics_when_tree_is_not_quiet(self) -> None:
+        """Keep compiler errors and observed residual PIDs when cleanup also fails."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = root / "Unity2Foxglove"
+            project.mkdir()
+            unity = root / "Unity.exe"
+            unity.write_text("stub", encoding="utf-8")
+            log_path = root / "unity.log"
+            process = mock.Mock()
+
+            def finish_process(*_args, **_kwargs):
+                """Write the compiler failure before the controlled process exits."""
+                log_path.write_text(
+                    "Assets/Foo.cs(4,2): error CS0103: missing\n",
+                    encoding="utf-8",
+                )
+                return 3
+
+            process.wait.side_effect = finish_process
+            tree = mock.Mock(process=process)
+            tree.terminate.return_value = []
+            environment = {name: "present" for name in self.gate.REQUIRED_ENVIRONMENT}
+            with mock.patch.dict(os.environ, environment, clear=False):
+                with mock.patch.object(self.gate, "_active_unity_project", return_value=False):
+                    with mock.patch(
+                        "Scripts.unity_build.unity_il2cpp.start_owned_process",
+                        return_value=tree,
+                    ):
+                        with mock.patch(
+                            "Scripts.unity_build.unity_il2cpp.await_tree_quiescence",
+                            return_value=[424242],
+                        ):
+                            with mock.patch("sys.stdout", new_callable=io.StringIO) as output:
+                                result = self.gate.run(unity, project, log_path)
+
+            payload = json.loads(output.getvalue())
+        self.assertEqual(1, result)
+        self.assertEqual("FAIL", payload["verdict"])
+        self.assertEqual(3, payload["exit_code"])
+        self.assertTrue(any("error CS0103" in line for line in payload["errors"]))
+        self.assertIn("Unity process tree did not quiesce after exit", payload["errors"])
+        self.assertEqual([424242], payload["residual_pids"])
 
     def test_run_refuses_incomplete_environment_before_launch(self) -> None:
         """Refuse to launch Unity when required user environment is absent."""

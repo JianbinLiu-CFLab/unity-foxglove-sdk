@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native/FoxRun
 // Purpose: Public generated-code seam for custom ROS2 native publishers.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     /// <summary>Implemented only by generated Phase181 custom DTO publisher partials.</summary>

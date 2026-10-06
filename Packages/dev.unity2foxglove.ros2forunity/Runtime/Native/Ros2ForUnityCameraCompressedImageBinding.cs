@@ -3,7 +3,7 @@
 //
 // Module: Ros2ForUnity.Native
 // Purpose: Compressed camera image DDS binding for ROS2 For Unity.
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using ROS2;
 using Unity.FoxgloveSDK.Components;

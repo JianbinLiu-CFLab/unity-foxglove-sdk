@@ -45,7 +45,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 throw new BuildFailedException(
                     status?.Diagnostic ?? "No active Windows ROS2 For Unity runtime package was found.");
             var packageName = status.SelectedRuntime.PackageName;
-            var package = Path.Combine(project, "Packages", packageName);
+            var package = Path.Combine(
+                Ros2ForUnityRuntimeSelection.RepositoryPackagesDirectory(project),
+                packageName);
             var source = Path.Combine(package, "Runtime", "Ros2ForUnity");
             var manifestSource = Path.Combine(package, "RuntimeSupport", "runtime-manifest.json");
             var destination = Path.Combine(Application.dataPath, "StreamingAssets", "Ros2ForUnity");
