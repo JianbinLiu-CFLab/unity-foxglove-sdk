@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native/FoxRun
 // Purpose: Portable FoxRun subscription QoS mapping through the common R2FU API.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using System;
 using System.Runtime.ExceptionServices;
 using Unity.FoxgloveSDK.Components;

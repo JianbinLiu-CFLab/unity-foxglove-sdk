@@ -177,7 +177,10 @@ internal class ROS2ForUnity
             // Unity2Foxglove package path support: keep upstream asset-folder fallback.
             return assetPath;
         }
-        return path;
+
+        // Player metadata and share files are staged under StreamingAssets by the
+        // build preprocessor, which becomes <App>_Data/StreamingAssets at runtime.
+        return Path.Combine(Application.streamingAssetsPath, ros2ForUnityAssetFolderName);
     }
 
     public static string GetPluginPath()
@@ -194,11 +197,11 @@ internal class ROS2ForUnity
     private static string ComputePluginPath()
     {
         char separator = Path.DirectorySeparatorChar;
-        string ros2ForUnityPath = GetRos2ForUnityPath();
-        string path = ros2ForUnityPath;
-        
+        // Unity copies package plugins to <App>_Data/Plugins for a Player,
+        // while the Editor keeps them below the package asset root.
+        string path = InEditor() ? GetRos2ForUnityPath() : Application.dataPath;
         path += separator + "Plugins";
-        
+
         if (InEditor()) {
             path += separator + GetOSName();
         }
@@ -207,7 +210,7 @@ internal class ROS2ForUnity
         {
            path += separator + "x86_64";
         }
-        
+
         if (GetOS() == Platform.Windows)
         {
            path = path.Replace("/", "\\");
@@ -564,7 +567,7 @@ internal class ROS2ForUnity
     private void LoadMetadata() 
     {
         char separator = Path.DirectorySeparatorChar;
-        string ros2csMetadataPath = GetPluginPath() + separator + "metadata_ros2cs.xml";
+        string ros2csMetadataPath = GetRos2ForUnityPath() + separator + "metadata_ros2cs.xml";
         string ros2ForUnityMetadataPath = GetRos2ForUnityPath() + separator + "metadata_ros2_for_unity.xml";
         try
         {

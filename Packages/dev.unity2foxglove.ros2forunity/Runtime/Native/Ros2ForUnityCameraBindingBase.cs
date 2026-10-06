@@ -3,7 +3,7 @@
 //
 // Module: Ros2ForUnity.Native
 // Purpose: Shared lifecycle base for camera native DDS binding objects.
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using System;
 using ROS2;
 using Unity.FoxgloveSDK.Components;

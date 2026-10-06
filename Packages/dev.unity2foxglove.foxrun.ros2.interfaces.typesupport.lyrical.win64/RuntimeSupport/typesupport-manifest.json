@@ -2,7 +2,7 @@
   "architecture": "x86_64",
   "baseRuntime": {
     "packageId": "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
-    "runtimeManifestSha256": "b29884cf61a020d63962395bdd064dd8cf22e76cb8d5435a01d5b58f3f4fc14e",
+    "runtimeManifestSha256": "68439b600e2970086adc9b7585920dde6b05f08c6aa038329d76f032278e7242",
     "runtimeManifestVersion": 1
   },
   "distro": "lyrical",

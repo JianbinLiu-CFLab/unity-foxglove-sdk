@@ -6,4 +6,5 @@
   <!-- Preserve Google.Protobuf and generated proto types for IL2CPP -->
   <assembly fullname="Google.Protobuf" preserve="all" />
   <assembly fullname="Unity.FoxgloveSDK.Proto" preserve="all" />
+  <assembly fullname="Unity.FoxgloveSDK.Proto.Generated" preserve="all" />
 </linker>

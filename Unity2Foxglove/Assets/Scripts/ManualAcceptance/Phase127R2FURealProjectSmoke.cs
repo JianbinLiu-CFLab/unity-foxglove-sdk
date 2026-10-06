@@ -14,7 +14,7 @@ using UnityEngine;
 using UnityEditor;
 #endif
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
 #endif
 
@@ -67,7 +67,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
     private bool _previousRunInBackground;
     private bool _cleanedUp = true;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private ROS2UnityComponent _ros2Unity;
     private ROS2Node _node;
     private IPublisher<std_msgs.msg.String> _publisher;
@@ -97,7 +97,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
         _cleanedUp = false;
         _initialPathClean = !ContainsMachineRosPath(Environment.GetEnvironmentVariable("PATH") ?? string.Empty);
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         EnsureRos2UnityComponent();
 #else
         WarnMissingDefine();
@@ -106,7 +106,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
     private void Update()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         LogRuntimeRootOnce();
         if (!TryEnsureReady())
             return;
@@ -124,14 +124,14 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
     private void OnDisable()
     {
         Application.runInBackground = _previousRunInBackground;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         CleanupManualRuntime();
 #endif
     }
 
     private void OnDestroy()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         CleanupManualRuntime();
 #endif
     }
@@ -158,7 +158,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
         Debug.LogWarning(LogPrefix + " " + _statusMessage);
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private void EnsureRos2UnityComponent()
     {
         if (_ros2Unity != null)
@@ -446,7 +446,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 #if UNITY_EDITOR
     public static void RunBatch()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         BatchRunner.Start();
 #else
         Debug.LogError(LogPrefix + " UNITY2FOXGLOVE_R2FU_RUNTIME_SMOKE_FAIL missing UNITY2FOXGLOVE_ROS2_FOR_UNITY");
@@ -455,7 +455,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
     }
 #endif
 
-#if UNITY_EDITOR && UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY_EDITOR && UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private sealed class BatchRunner
     {
         private readonly GameObject _host;

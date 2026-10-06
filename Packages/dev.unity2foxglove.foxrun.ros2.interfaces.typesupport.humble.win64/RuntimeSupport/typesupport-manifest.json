@@ -2,7 +2,7 @@
   "architecture": "x86_64",
   "baseRuntime": {
     "packageId": "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
-    "runtimeManifestSha256": "2f192687c3cd5903461141cd0cc5dc5badbab5d7ef5fbc1adb286cf83cdddcc8",
+    "runtimeManifestSha256": "506a6f28c3576defd1e6295b4f1eff17e6aacb442584081166c87ad1c5a5f9fa",
     "runtimeManifestVersion": 1
   },
   "distro": "humble",

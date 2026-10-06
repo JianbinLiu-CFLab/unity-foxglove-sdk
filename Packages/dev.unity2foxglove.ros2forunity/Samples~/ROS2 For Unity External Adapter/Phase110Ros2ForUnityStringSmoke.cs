@@ -7,7 +7,7 @@
 using Unity2Foxglove.Ros2ForUnity;
 using UnityEngine;
 using UnityEngine.Serialization;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using System.Collections.Generic;
 using ROS2;
 #endif
@@ -50,7 +50,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     public string StatusMessage => _statusMessage;
     public string LastError => _lastError;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private IUnity2FoxgloveRos2Publisher<std_msgs.msg.String> _publisher;
     private IUnity2FoxgloveRos2Subscription _subscription;
     private ROS2UnityComponent _directRos2Unity;
@@ -68,7 +68,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     {
         if (_adapterCleanupPending && !TryDisposeAdapter())
             return;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         _nextPublishTime = 0f;
         _publishedCount = 0;
         _receivedCount = 0;
@@ -80,7 +80,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         _lastReceived = string.Empty;
         _lastError = string.Empty;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (_useDirectRuntime)
         {
             _statusMessage = "Direct ROS2 For Unity diagnostic mode.";
@@ -99,7 +99,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     {
         if (_adapterCleanupPending && !TryDisposeAdapter())
             return;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (_useDirectRuntime)
         {
             if (!TryEnsureDirectReady())
@@ -142,7 +142,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private bool TryDisposeAdapter()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (_useDirectRuntime)
         {
             DisposeDirectEndpoints();
@@ -160,7 +160,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
             return false;
         }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         _subscription = null;
         _publisher = null;
 #endif
@@ -215,7 +215,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private bool TryEnsureDirectReady()
     {
         if (_directInitializationFailed)

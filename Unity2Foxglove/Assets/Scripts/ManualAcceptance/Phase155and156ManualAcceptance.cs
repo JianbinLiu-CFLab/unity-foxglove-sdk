@@ -10,7 +10,7 @@ using System.Text;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
@@ -305,7 +305,7 @@ public sealed class Phase155and156Ros2UnavailableSinkBootstrap : MonoBehaviour
             return;
         }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         var provider = manager.GetComponent<FoxRunRos2TransportProvider>();
         if (provider == null)
         {

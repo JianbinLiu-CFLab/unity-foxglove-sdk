@@ -59,7 +59,7 @@ namespace FoxgloveSdk.UnitTests.Ros2ForUnity
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityImuNativeBridge.cs");
             var syntax = CSharpSyntaxTree.ParseText(
                     source,
-                    new CSharpParseOptions(preprocessorSymbols: new[] { "UNITY2FOXGLOVE_ROS2_FOR_UNITY" }))
+                    new CSharpParseOptions(preprocessorSymbols: new[] { "UNITY2FOXGLOVE_ROS2_FOR_UNITY", "UNITY_EDITOR_WIN" }))
                 .GetRoot();
             var update = syntax.DescendantNodes()
                 .OfType<MethodDeclarationSyntax>()

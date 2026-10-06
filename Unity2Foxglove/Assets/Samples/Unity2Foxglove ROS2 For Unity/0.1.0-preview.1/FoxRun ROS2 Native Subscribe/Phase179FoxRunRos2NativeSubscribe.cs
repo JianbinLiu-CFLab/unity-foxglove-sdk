@@ -9,7 +9,7 @@ using System.Collections.Generic;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
@@ -31,7 +31,7 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribe : MonoBehaviour
     private const int MaximumStringLength = 256;
     private const int MaximumArrayLength = 8;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     [FoxRun(
         StringTopic,
         Mode = FoxRunFlow.Subscribe,
@@ -94,7 +94,7 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribe : MonoBehaviour
 
     private void Update()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         ObserveString();
         ObserveTwist();
         ObserveJoy();
@@ -104,7 +104,7 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribe : MonoBehaviour
 #endif
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private void ObserveString()
     {
         if (!TryObserve(StringTopic, out var snapshot) || _inputString == null)

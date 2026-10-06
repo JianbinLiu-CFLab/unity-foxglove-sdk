@@ -8,7 +8,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using UnityEngine;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
 #endif
 
@@ -75,7 +75,7 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
     private long _unixStartSeconds;
     private double _lastStampSeconds;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private ROS2UnityComponent _ros2Unity;
     private ROS2Node _node;
     private IPublisher<sensor_msgs.msg.CameraInfo> _cameraInfoPublisher;
@@ -120,7 +120,7 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         _lastStampSeconds = 0d;
 
         EnsureSources();
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         EnsureRos2UnityComponent();
 #else
         WarnMissingDefine();
@@ -129,7 +129,7 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
 
     private void Update()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         LogRuntimeRootOnce();
         if (!TryEnsureReady())
             return;
@@ -145,14 +145,14 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
     private void OnDisable()
     {
         Application.runInBackground = _previousRunInBackground;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         CleanupRuntime();
 #endif
     }
 
     private void OnDestroy()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         CleanupRuntime();
 #endif
     }
@@ -224,7 +224,7 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         Debug.LogWarning(LogPrefix + " " + _statusMessage);
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private void EnsureRos2UnityComponent()
     {
         if (_ros2Unity != null)
@@ -566,7 +566,7 @@ internal static class Phase132StandardMessagesCommon
             throw new InvalidOperationException(label + " must contain exactly " + expectedLength + " values.");
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     public static std_msgs.msg.Header CreateHeader(string frameId, int sec, uint nanosec)
     {
         return new std_msgs.msg.Header

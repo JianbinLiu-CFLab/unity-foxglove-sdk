@@ -12,5 +12,8 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "versionDefines": [],
+  "defineConstraints": [
+    "UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN"
+  ],
   "noEngineReferences": false
 }

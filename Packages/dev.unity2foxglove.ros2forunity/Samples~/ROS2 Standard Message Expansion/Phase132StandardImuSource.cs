@@ -36,7 +36,7 @@ public sealed class Phase132StandardImuSource : MonoBehaviour
         _statusMessage = error;
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     public sensor_msgs.msg.Imu CreateImu(int sec, uint nanosec)
     {
         var orientationCovariance = new[] { 0.01d, 0d, 0d, 0d, 0.01d, 0d, 0d, 0d, 0.01d };

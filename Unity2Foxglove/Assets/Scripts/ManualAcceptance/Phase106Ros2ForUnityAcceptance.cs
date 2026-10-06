@@ -6,7 +6,7 @@
 
 using System;
 using UnityEngine;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
 #endif
 
@@ -22,7 +22,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
     private bool _warnedMissingDefine;
     private bool _previousRunInBackground;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private ROS2UnityComponent _ros2Unity;
     private ROS2Node _ros2Node;
     private IPublisher<std_msgs.msg.String> _publisher;
@@ -37,7 +37,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
         Application.runInBackground = true;
         _nextPublishTime = 0f;
         _publishCount = 0;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         EnsureRos2UnityComponent();
 #else
         WarnMissingDefine();
@@ -46,7 +46,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
 
     private void Update()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         if (!TryEnsureRos2Ready())
             return;
 
@@ -65,14 +65,14 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
     private void OnDisable()
     {
         Application.runInBackground = _previousRunInBackground;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         DisposeRos2Endpoints();
 #endif
     }
 
     private void OnDestroy()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         DisposeRos2Endpoints();
 #endif
     }
@@ -86,7 +86,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
         Debug.LogWarning("[Phase106Ros2ForUnityAcceptance] Import ROS2 For Unity and add UNITY2FOXGLOVE_ROS2_FOR_UNITY before running this smoke.");
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private void EnsureRos2UnityComponent()
     {
         var ros2Unity = GetComponent<ROS2UnityComponent>();

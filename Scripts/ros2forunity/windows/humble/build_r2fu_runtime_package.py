@@ -126,7 +126,7 @@ PACKAGE_PATH_BLOCK = """    public static string GetRos2ForUnityPath()
             // Unity2Foxglove package path support: keep upstream asset-folder fallback.
             return assetPath;
         }
-        return pluginPath;
+        return Path.Combine(Application.streamingAssetsPath, ros2ForUnityAssetFolderName);
     }
 """
 
@@ -187,7 +187,7 @@ PACKAGE_COMPUTE_PATH_BLOCK = """    private static string ComputeRos2ForUnityPat
             // Unity2Foxglove package path support: keep upstream asset-folder fallback.
             return assetPath;
         }
-        return path;
+        return Path.Combine(Application.streamingAssetsPath, ros2ForUnityAssetFolderName);
     }
 """
 
@@ -491,6 +491,7 @@ def runtime_asmdef() -> dict[str, object]:
         "precompiledReferences": [],
         "autoReferenced": True,
         "versionDefines": [],
+        "defineConstraints": ["UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN"],
         "noEngineReferences": False,
     }
 
@@ -669,6 +670,7 @@ def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
         "packageName": PACKAGE_NAME,
         "packageVersion": PACKAGE_VERSION,
         "rosDistro": "humble",
+        "unityVersion": "6000.3.14f1",
         "platform": "win64",
         "unityPlatform": "Windows",
         "architecture": "x86_64",
@@ -693,7 +695,7 @@ def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
         ],
         "packagePathPatch": {
             "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
-            "reason": "Resolve the runtime root from this Unity package when Assets/Ros2ForUnity is absent.",
+            "reason": "Resolve the Editor runtime root from this Unity package and stage Player metadata/share under StreamingAssets.",
             "keepsAssetFolderFallback": True,
         },
         "freshProjectAcceptance": "deferred_to_install_acceptance",
@@ -916,6 +918,7 @@ def patch_ros2_for_unity(package: Path) -> None:
     source = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
     text = source.read_text(encoding="utf-8")
     text = patch_ros2cs_logger_callback_api(text)
+    text = patch_runtime_metadata_path(text)
     text = patch_standalone_environment_isolation(text)
     text = patch_runtime_lifecycle_safety(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
@@ -941,6 +944,17 @@ def patch_ros2_for_unity(package: Path) -> None:
     text = patch_rmw_guard(text)
     text = patch_standalone_environment_isolation(text)
     write_text(source, text)
+
+
+def patch_runtime_metadata_path(text: str) -> str:
+    """Keep Player metadata lookup under the StreamingAssets runtime root."""
+    old = 'string ros2csMetadataPath = GetPluginPath() + separator + "metadata_ros2cs.xml";'
+    new = 'string ros2csMetadataPath = GetRos2ForUnityPath() + separator + "metadata_ros2cs.xml";'
+    if new in text:
+        return text
+    if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
+        return text
+    return replace_required_once(text, old, new, "Player metadata staging path")
 
 
 def patch_ros2cs_logger_callback_api(text: str) -> str:

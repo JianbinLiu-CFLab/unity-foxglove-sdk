@@ -33,7 +33,7 @@ public static class Phase130MarkerArrayMessageBuilder
         return unchecked((int)(hash & 0x7fffffffu));
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     public static visualization_msgs.msg.MarkerArray BuildAddOrModify(
         string stableName,
         Vector3 position,

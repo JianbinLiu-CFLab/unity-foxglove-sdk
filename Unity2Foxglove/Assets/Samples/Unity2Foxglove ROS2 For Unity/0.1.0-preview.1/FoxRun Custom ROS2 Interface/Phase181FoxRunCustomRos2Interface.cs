@@ -8,7 +8,6 @@ using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
-using Unity2Foxglove.Ros2ForUnity.Native;
 
 // IMPORTANT: The following DTO names are the static interface identity locked
 // by dev.unity2foxglove.foxrun.ros2.interfaces v1. Do not rename their
@@ -60,6 +59,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         public const string NativePublishTopic = "/foxrun/phase181/custom/publish";
         public const string NativeSubscribeTopic = "/foxrun/phase181/custom/subscribe";
         public const string NativeBidirectionalTopic = "/foxrun/phase181/custom/bidirectional";
+        private const string NativeTransportId = "unity2foxglove.r2fu";
 
         [Header("Custom DTO Native ROS2 Contracts")]
         [Tooltip("Unity publishes this custom DTO through the selected native ROS2 typesupport add-on.")]
@@ -68,7 +68,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
             Mode = FoxRunFlow.Publish,
             PublishTransportIds = new[]
             {
-                FoxRunRos2TransportProvider.IdValue
+                NativeTransportId
             })]
         [SerializeField] private Phase181State _nativePublish = CreateState("publish-only", 1);
 
@@ -77,7 +77,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
             NativeSubscribeTopic,
             Mode = FoxRunFlow.Subscribe,
             SubscribeTransportId =
-                FoxRunRos2TransportProvider.IdValue)]
+                NativeTransportId)]
         [SerializeField] private Phase181State _inputPort;
 
         /// <summary>
@@ -92,7 +92,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
             Mode = FoxRunFlow.PublishAndSubscribe,
             Encoding = FoxRunEncoding.JSON,
             SubscribeTransportId =
-                FoxRunRos2TransportProvider.IdValue,
+                NativeTransportId,
             PublishTransportIds = new[]
             {
                 FoxgloveWebSocketTransport.Id

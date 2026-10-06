@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import argparse
+import os
 import hashlib
 import re
 import sys
@@ -315,6 +316,7 @@ def check_runtime_manifest(results: list[CheckResult], data: dict) -> None:
         "packageName": PACKAGE_NAME,
         "packageVersion": "0.1.0-preview.1",
         "rosDistro": "jazzy",
+        "unityVersion": "6000.3.14f1",
         "platform": "win64",
         "unityPlatform": "Windows",
         "architecture": "x86_64",
@@ -325,12 +327,24 @@ def check_runtime_manifest(results: list[CheckResult], data: dict) -> None:
         "runtimeRoot": "Runtime/Ros2ForUnity",
         "pluginPath": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
         "supportLevel": "Recommended",
-        "distributionLevel": "Prototype",
         "activeRuntimePolicy": "one_runtime_package_per_project",
-        "freshProjectAcceptance": "deferred_to_install_acceptance",
     }
     for key, value in expected.items():
         add(results, f"runtime manifest {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+    acceptance = data.get("freshProjectAcceptance")
+    add(
+        results,
+        "runtime manifest freshProjectAcceptance",
+        fresh_project_acceptance_record_is_valid(data),
+        f"freshProjectAcceptance={acceptance!r}",
+    )
+    distribution_level = data.get("distributionLevel")
+    add(
+        results,
+        "runtime manifest distributionLevel",
+        distribution_level in {"Prototype", "Supported", "Recommended"},
+        f"distributionLevel={distribution_level!r}",
+    )
 
     artifact_sha = data.get("artifactSha256")
     artifact_size = data.get("artifactSize")
@@ -443,6 +457,61 @@ def fresh_project_acceptance_passed(manifest: dict) -> bool:
     return fresh_project_acceptance_status(manifest) == "passed"
 
 
+def fresh_project_acceptance_binding_matches_manifest(manifest: dict) -> bool:
+    """Return whether a passed acceptance record is bound to this exact candidate."""
+    acceptance = manifest.get("freshProjectAcceptance")
+    if not isinstance(acceptance, dict) or acceptance.get("status") != "passed":
+        return False
+
+    for key in (
+        "runtimeId",
+        "packageName",
+        "packageVersion",
+        "rosDistro",
+        "unityVersion",
+        "artifactName",
+        "artifactSha256",
+        "artifactSize",
+        "inventoryFileCount",
+    ):
+        if acceptance.get(key) != manifest.get(key):
+            return False
+
+    artifact_sha = acceptance.get("artifactSha256")
+    if not isinstance(artifact_sha, str) or re.fullmatch(r"[0-9a-fA-F]{64}", artifact_sha) is None:
+        return False
+    artifact_size = acceptance.get("artifactSize")
+    if not isinstance(artifact_size, int) or isinstance(artifact_size, bool) or artifact_size <= 0:
+        return False
+    inventory_file_count = acceptance.get("inventoryFileCount")
+    if not isinstance(inventory_file_count, int) or isinstance(inventory_file_count, bool) or inventory_file_count <= 0:
+        return False
+    if manifest.get("unityVersion") != "6000.3.14f1" or acceptance.get("unityVersion") != manifest.get("unityVersion"):
+        return False
+    commit_sha = acceptance.get("commitSha")
+    if not isinstance(commit_sha, str) or re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha) is None:
+        return False
+    expected_commit_sha = os.environ.get("R2FU_EXPECTED_COMMIT_SHA")
+    if expected_commit_sha and commit_sha.lower() != expected_commit_sha.lower():
+        return False
+    workflow_run_id = acceptance.get("workflowRunId")
+    if isinstance(workflow_run_id, bool):
+        return False
+    try:
+        if int(workflow_run_id) <= 0:
+            return False
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def fresh_project_acceptance_record_is_valid(manifest: dict) -> bool:
+    """Return whether the manifest carries a deferred or bound acceptance record."""
+    acceptance = manifest.get("freshProjectAcceptance")
+    if acceptance == "deferred_to_install_acceptance":
+        return True
+    return fresh_project_acceptance_binding_matches_manifest(manifest)
+
 def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bool = False, skip_dll_hash: bool = False) -> None:
     """Validate the copied runtime inventory."""
     data = load_json(INVENTORY, results, "runtime inventory parses")
@@ -506,6 +575,19 @@ def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bo
             "release gate: fresh-project acceptance is passed",
             fresh_project_acceptance_passed(manifest),
             f"freshProjectAcceptance.status={fresh_status!r}",
+        )
+        expected_commit_sha = os.environ.get("R2FU_EXPECTED_COMMIT_SHA", "")
+        add(
+            results,
+            "release gate: expected commit SHA is supplied",
+            re.fullmatch(r"[0-9a-fA-F]{40}", expected_commit_sha) is not None,
+            "R2FU_EXPECTED_COMMIT_SHA must identify the checked-out candidate commit",
+        )
+        add(
+            results,
+            "release gate: fresh-project acceptance binds exact candidate",
+            fresh_project_acceptance_binding_matches_manifest(manifest),
+            "freshProjectAcceptance must bind artifact, package, commit, Unity version, and workflow run",
         )
         add(
             results,
@@ -714,7 +796,12 @@ def check_runtime_asmdef(results: list[CheckResult]) -> None:
         f"includePlatforms={data.get('includePlatforms')!r}",
     )
     add(results, "runtime asmdef auto-referenced", data.get("autoReferenced") is True, f"autoReferenced={data.get('autoReferenced')!r}")
-    add(results, "runtime asmdef has no define gate", "defineConstraints" not in data, f"defineConstraints={data.get('defineConstraints')!r}")
+    add(
+        results,
+        "runtime asmdef has Windows define gate",
+        data.get("defineConstraints") == ["UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN"],
+        f"defineConstraints={data.get('defineConstraints')!r}",
+    )
 
 
 def check_runtime_source_patches(results: list[CheckResult]) -> None:
@@ -1003,6 +1090,7 @@ def check_generator_alignment(results: list[CheckResult]) -> None:
         "windows_long_path",
         "PackageInfo.FindForAssetPath",
         "UNITY_EDITOR",
+        "Application.streamingAssetsPath",
     )
     for token in required:
         add(results, f"runtime package generator token: {token}", token in generator, token)

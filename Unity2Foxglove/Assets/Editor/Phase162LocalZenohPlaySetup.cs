@@ -1,3 +1,4 @@
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY_EDITOR_WIN
 // Local editor helper for Phase162 Lyrical Zenoh RViz acceptance.
 
 using System;
@@ -265,3 +266,4 @@ public static class Phase162LocalZenohPlaySetup
         field.SetValue(target, value);
     }
 }
+#endif

@@ -230,7 +230,8 @@ namespace ROS2
         private static MethodDeclarationSyntax Method(string path, string name)
         {
             var parseOptions = CSharpParseOptions.Default.WithPreprocessorSymbols(
-                "UNITY2FOXGLOVE_ROS2_FOR_UNITY");
+                "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                "UNITY_EDITOR_WIN");
             var root = CSharpSyntaxTree.ParseText(TestSources.Text(path), parseOptions)
                 .GetCompilationUnitRoot();
             return root.DescendantNodes()

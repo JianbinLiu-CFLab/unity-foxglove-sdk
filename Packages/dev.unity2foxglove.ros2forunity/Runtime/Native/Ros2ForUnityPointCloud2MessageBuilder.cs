@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native
 // Purpose: Maps SDK-prepared PointCloud2 native frames to generated ROS2 messages.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using System;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 

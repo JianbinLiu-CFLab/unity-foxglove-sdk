@@ -11,7 +11,7 @@ using System.Text;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
@@ -63,7 +63,7 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
     [Tooltip("The Manager that owns the native FoxRun subscription session.")]
     [SerializeField] private FoxgloveManager _manager;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     // These fields are the generated binding targets. Their lifetime is owned by
     // the generated host; Inspector evidence below is copied from them on Unity's
     // main thread and no callback-owned reference is stored separately.
@@ -169,7 +169,7 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
     private bool _completionMarkerEmitted;
     private float _autoQuitDeadline;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private long _stringObservedSession = long.MinValue;
     private long _twistObservedSession = long.MinValue;
     private long _joyObservedSession = long.MinValue;
@@ -239,7 +239,7 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
 
     private void Update()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         ObserveString();
         ObserveTwist();
         ObserveJoy();
@@ -253,7 +253,7 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
 #endif
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private void ObserveString()
     {
         if (!TryGetNewlyAppliedSnapshot(
@@ -492,7 +492,7 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
             Application.Quit(exitCode);
     }
 
-#if !UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if !(UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN))
     private void WarnUnavailableOnce()
     {
         if (_unavailableWarningEmitted)
@@ -504,7 +504,7 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
     }
 #endif
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private void EmitAppliedMarker(
         string topic,
         string valueToken,

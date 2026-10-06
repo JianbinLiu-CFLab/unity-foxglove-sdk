@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native
 // Purpose: Product bridge from standard camera publishers to ROS2 For Unity DDS.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using System;
 using System.Collections.Generic;
 using ROS2;

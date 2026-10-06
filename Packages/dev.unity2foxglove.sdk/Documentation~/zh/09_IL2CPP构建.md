@@ -19,9 +19,7 @@ IL2CPP（Intermediate Language To C++）是 Unity 独立平台构建的标准后
 
 ## link.xml 保护
 
-IL2CPP 代码剥离可能移除 SDK 依赖的类型，需要在项目中保留 `link.xml`。
-
-SDK 已在包内包含 `Runtime/link.xml`：
+IL2CPP 代码剥离可能移除 SDK 依赖的类型。SDK 在包内包含 `Runtime/link.xml`，并在每次 Player 构建前生成临时的 `Assets/FoxRun_link.xml`，把 SDK、protobuf 和 MCAP 反射入口合并到 UnityLinker 输入中；消费项目不需要手工复制文件。
 
 ```xml
 <linker>
@@ -32,7 +30,7 @@ SDK 已在包内包含 `Runtime/link.xml`：
 </linker>
 ```
 
-Unity 在构建 IL2CPP 时会自动收集所有 Assemblies 下的 `link.xml`。如项目中另有 link.xml，确保不与之冲突。
+Unity 在构建 IL2CPP 时会自动收集构建前生成的 `FoxRun_link.xml`。如项目中另有 link.xml，确保不与之冲突。
 
 ## [FoxRun] 源代码生成
 

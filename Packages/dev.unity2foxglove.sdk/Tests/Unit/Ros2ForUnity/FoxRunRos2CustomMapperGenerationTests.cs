@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 new[] { CreateCustomMember() });
 
             Assert.Contains(
-                "#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES",
+                "#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)",
                 source,
                 StringComparison.Ordinal);
             Assert.Contains("IFoxRunRos2CustomSubscriptionSource", source, StringComparison.Ordinal);
@@ -120,7 +120,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.DoesNotContain("System.Reflection", source, StringComparison.Ordinal);
 
             var customSection = source.Substring(source.IndexOf(
-                "#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES",
+                "#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)",
                 StringComparison.Ordinal));
             Assert.DoesNotContain("__foxRunSuppressNextPublish_", customSection, StringComparison.Ordinal);
         }
@@ -301,6 +301,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 {
                     "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
                     "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES",
+                    "UNITY_EDITOR_WIN",
                 });
             var support = CSharpSyntaxTree.ParseText(CustomMapperDynamicSupport, parseOptions);
             var compilation = CSharpCompilation.Create(
@@ -436,6 +437,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 {
                     "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
                     "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES",
+                    "UNITY_EDITOR_WIN",
                 });
             var compilation = CSharpCompilation.Create(
                 "phase184_custom_cleanup_" + Guid.NewGuid().ToString("N"),
@@ -537,6 +539,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 {
                     "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
                     "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES",
+                    "UNITY_EDITOR_WIN",
                 });
             var compilation = CSharpCompilation.Create(
                 "phase184_custom_stream_" + Guid.NewGuid().ToString("N"),

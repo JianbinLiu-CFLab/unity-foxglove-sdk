@@ -77,8 +77,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var changed = false;
             changed |= RemoveStaleRuntimePackageSymbols(parts);
 
-            var isWindowsStandalone = EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneWindows64
-                || EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneWindows;
+            var isWindowsStandalone = EditorUserBuildSettings.activeBuildTarget == BuildTarget.StandaloneWindows64;
             var enableRuntime = status.HasSelection && isWindowsStandalone;
 
             if (enableRuntime)

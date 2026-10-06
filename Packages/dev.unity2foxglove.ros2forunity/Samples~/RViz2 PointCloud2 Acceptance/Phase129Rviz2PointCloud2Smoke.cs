@@ -9,7 +9,7 @@ using System.IO;
 using System.Reflection;
 using Unity.FoxgloveSDK.Schemas;
 using UnityEngine;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
 #endif
 
@@ -66,7 +66,7 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
     private long _unixStartSeconds;
     private double _lastStampSeconds;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private ROS2UnityComponent _ros2Unity;
     private ROS2Node _node;
     private IPublisher<tf2_msgs.msg.TFMessage> _tfPublisher;
@@ -103,7 +103,7 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         _realtimeStartSeconds = RealtimeSeconds();
         _lastStampSeconds = 0d;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         EnsureRos2UnityComponent();
 #else
         WarnMissingDefine();
@@ -112,7 +112,7 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
 
     private void Update()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         LogRuntimeRootOnce();
         if (!TryEnsureReady())
             return;
@@ -128,14 +128,14 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
     private void OnDisable()
     {
         Application.runInBackground = _previousRunInBackground;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         CleanupRuntime();
 #endif
     }
 
     private void OnDestroy()
     {
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         CleanupRuntime();
 #endif
     }
@@ -188,7 +188,7 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         return frame;
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private void EnsureRos2UnityComponent()
     {
         if (_ros2Unity != null)

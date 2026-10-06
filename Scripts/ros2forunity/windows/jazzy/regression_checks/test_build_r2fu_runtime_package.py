@@ -162,6 +162,13 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.builder.patch_ros2_for_unity(package)
 
+    def test_player_metadata_patch_uses_streaming_assets_root(self) -> None:
+        """Player metadata must follow the staged StreamingAssets layout."""
+        source = 'string ros2csMetadataPath = GetPluginPath() + separator + "metadata_ros2cs.xml";'
+        patched = self.builder.patch_runtime_metadata_path(source)
+        self.assertIn('GetRos2ForUnityPath() + separator + "metadata_ros2cs.xml"', patched)
+        self.assertNotIn("GetPluginPath()", patched)
+
     def test_runtime_safety_patches_survive_the_new_upstream_layout(self) -> None:
         """Lifecycle and Unity-time safety patches must survive an upstream runtime refresh."""
         runtime = (

@@ -39,7 +39,7 @@ public sealed class Phase132StandardOdometrySource : MonoBehaviour
         _statusMessage = error;
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     public nav_msgs.msg.Odometry CreateOdometry(int sec, uint nanosec)
     {
         var poseCovariance = CreateDiagonalCovariance36(0.05d);

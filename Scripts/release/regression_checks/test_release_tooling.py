@@ -1034,6 +1034,19 @@ class RunCiTests(unittest.TestCase):
         for line in diff_lines:
             self.assertIn("--no-renames", line)
 
+    def test_package_release_gate_scans_the_full_event_range(self) -> None:
+        """Candidate detection must not miss runtime changes in a multi-commit push."""
+        workflow = PACKAGE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn('GITHUB_EVENT_PATH', workflow)
+        self.assertIn('GITHUB_EVENT_NAME', workflow)
+        self.assertIn('event["pull_request"]["base"]["sha"]', workflow)
+        self.assertIn('event.get("before")', workflow)
+        self.assertIn('os.environ["GITHUB_SHA"]', workflow)
+        self.assertIn('"git", "diff", "--name-only", "--no-renames", before, after', workflow)
+        self.assertIn('"git", "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "--no-renames", after', workflow)
+        self.assertNotIn('"HEAD^1", "HEAD"', workflow)
+
     def test_fatal_run_raises_after_printing_failure(self) -> None:
         """Fatal subprocess failures should abort at the point of failure."""
         failed = self.run_ci.OwnedCommandResult(returncode=7)

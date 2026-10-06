@@ -48,7 +48,7 @@ public sealed class Phase132StandardNavSatFixSource : MonoBehaviour
         return value < minimum ? minimum : value > maximum ? maximum : value;
     }
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     public sensor_msgs.msg.NavSatFix CreateNavSatFix(int sec, uint nanosec)
     {
         var covariance = new[] { 2.5d, 0d, 0d, 0d, 2.5d, 0d, 0d, 0d, 5.0d };

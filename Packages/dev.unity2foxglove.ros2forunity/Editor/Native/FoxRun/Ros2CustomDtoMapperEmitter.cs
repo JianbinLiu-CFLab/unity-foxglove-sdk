@@ -48,7 +48,7 @@ namespace Unity.FoxgloveSDK.Editor
             var pad = string.IsNullOrEmpty(ns) ? string.Empty : "    ";
             var declaringType = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
             sb.AppendLine();
-            sb.AppendLine("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES");
+            sb.AppendLine("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)");
             if (!string.IsNullOrEmpty(escapedNamespace))
             {
                 sb.AppendLine("namespace " + escapedNamespace);

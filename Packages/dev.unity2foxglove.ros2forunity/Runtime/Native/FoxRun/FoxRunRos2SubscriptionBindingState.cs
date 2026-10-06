@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native/FoxRun
 // Purpose: Stable native subscription binding lifecycle states.
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     public enum FoxRunRos2SubscriptionBindingState

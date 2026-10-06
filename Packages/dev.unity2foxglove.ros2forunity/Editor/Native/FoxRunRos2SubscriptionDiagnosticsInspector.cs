@@ -4,7 +4,7 @@
 // Module: Ros2ForUnity.Native.Editor
 // Purpose: Read-only Inspector surface for bounded FoxRun native subscription diagnostics.
 
-#if UNITY_EDITOR && UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY_EDITOR && UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY_EDITOR_WIN
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

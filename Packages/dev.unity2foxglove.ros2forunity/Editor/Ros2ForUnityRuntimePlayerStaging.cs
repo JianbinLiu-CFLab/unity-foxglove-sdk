@@ -65,9 +65,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             File.WriteAllText(
                 Path.Combine(destination, ".unity2foxglove-staged"),
                 packageName + "|" + status.SelectedRuntime.RuntimeId + "|" + Hash(manifestBytes));
-            CopyIfPresent(Path.Combine(source, "metadata_ros2_for_unity.xml"), destination);
-            CopyIfPresent(Path.Combine(source, "metadata_ros2cs.xml"), destination);
-            CopyIfPresent(
+            CopyRequired(Path.Combine(source, "metadata_ros2_for_unity.xml"), destination);
+            CopyRequired(Path.Combine(source, "metadata_ros2cs.xml"), destination);
+            CopyRequired(
                 manifestSource,
                 destination);
             var share = Path.Combine(source, "Plugins", "Windows", "x86_64", "share");
@@ -89,9 +89,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             AssetDatabase.Refresh();
         }
 
-        private static void CopyIfPresent(string source, string destination)
+        private static void CopyRequired(string source, string destination)
         {
-            if (File.Exists(source)) File.Copy(source, Path.Combine(destination, Path.GetFileName(source)), true);
+            if (!File.Exists(source))
+                throw new BuildFailedException("Selected ROS2 For Unity runtime is missing required staged file: " + source);
+            File.Copy(source, Path.Combine(destination, Path.GetFileName(source)), true);
         }
 
         private static void CopyDirectory(string source, string destination)
