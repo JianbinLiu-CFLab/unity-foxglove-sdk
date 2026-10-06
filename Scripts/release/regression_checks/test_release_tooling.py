@@ -1075,6 +1075,35 @@ printf '%s' "$required"
         for line in diff_lines:
             self.assertIn("--no-renames", line)
 
+    def test_unity_project_bootstraps_r2fu_symbol_before_first_compile(self) -> None:
+        """The Windows editor must see the optional R2FU assembly on its first import."""
+        project_settings = (ROOT / "Unity2Foxglove" / "ProjectSettings" / "ProjectSettings.asset").read_text(
+            encoding="utf-8"
+        )
+        self.assertRegex(
+            project_settings,
+            r"(?m)^\s*Standalone:.*\bUNITY2FOXGLOVE_ROS2_FOR_UNITY\b",
+        )
+        asmdef_paths = (
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Runtime"
+            / "Native"
+            / "Unity2Foxglove.Ros2ForUnity.Native.asmdef",
+            ROOT
+            / "Packages"
+            / "dev.unity2foxglove.ros2forunity"
+            / "Editor"
+            / "Native"
+            / "Unity2Foxglove.Ros2ForUnity.Native.Editor.asmdef",
+        )
+        for index, asmdef_path in enumerate(asmdef_paths):
+            asmdef = json.loads(asmdef_path.read_text(encoding="utf-8"))
+            self.assertIn("UNITY2FOXGLOVE_ROS2_FOR_UNITY", asmdef.get("defineConstraints", []))
+            expected_platform_constraint = "UNITY_EDITOR_WIN" if index else "UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN"
+            self.assertIn(expected_platform_constraint, asmdef.get("defineConstraints", []))
+
     def test_package_release_gate_scans_the_full_event_range(self) -> None:
         """Candidate detection must not miss runtime changes in a multi-commit push."""
         workflow = PACKAGE_WORKFLOW_PATH.read_text(encoding="utf-8")
