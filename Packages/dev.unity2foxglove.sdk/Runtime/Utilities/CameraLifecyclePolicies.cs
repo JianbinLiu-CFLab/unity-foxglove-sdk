@@ -61,9 +61,18 @@ namespace Unity.FoxgloveSDK.Util
     /// <summary>Decides when an orthographic camera is incompatible with CameraInfo output.</summary>
     internal static class CameraInfoProjectionPolicy
     {
-        /// <summary>Suppresses output for every orthographic source because CameraInfo is pinhole-based.</summary>
-        public static bool ShouldSuppressOrthographic(bool hasSourceCamera, bool isOrthographic)
-            => hasSourceCamera && isOrthographic;
+        /// <summary>Suppresses output when the published image cannot be represented by pinhole CameraInfo.</summary>
+        public static bool ShouldSuppressOrthographic(
+            bool hasImageSourceCamera,
+            bool imageSourceIsOrthographic,
+            bool autoFromCamera,
+            bool fallbackSourceIsOrthographic)
+        {
+            if (hasImageSourceCamera)
+                return imageSourceIsOrthographic;
+
+            return autoFromCamera && fallbackSourceIsOrthographic;
+        }
     }
 
     /// <summary>Emits a Play Mode configuration warning at most once per enable cycle.</summary>

@@ -274,30 +274,39 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("imagePublisher?.SensorCameraSourceCamera", info, StringComparison.Ordinal);
             Assert.Contains("WarnSourceCameraMismatch", info, StringComparison.Ordinal);
             Assert.Contains("WarnOrthographicCamera", info, StringComparison.Ordinal);
-            Assert.Contains("var sourceCamera = ResolveSourceCamera();", info, StringComparison.Ordinal);
+            Assert.Contains("var imageSourceCamera = imagePublisher?.SensorCameraSourceCamera;", info, StringComparison.Ordinal);
+            Assert.Contains("var fallbackCamera = imageSourceCamera == null && _autoFromCamera", info, StringComparison.Ordinal);
             Assert.Contains("var cam = _autoFromCamera ? ResolveSourceCamera() : null;", info, StringComparison.Ordinal);
             Assert.Contains("CameraInfo is not published for orthographic cameras", info, StringComparison.Ordinal);
             Assert.DoesNotContain("cam.orthographicSize", info, StringComparison.Ordinal);
             Assert.Contains("public Camera SensorCameraSourceCamera", publisher, StringComparison.Ordinal);
             Assert.Contains("CameraInfoProjectionPolicy.ShouldSuppressOrthographic", info, StringComparison.Ordinal);
+            Assert.DoesNotContain("var sourceCamera = ResolveSourceCamera();", info, StringComparison.Ordinal);
             Assert.Contains("capture camera is authoritative", editor, StringComparison.Ordinal);
             Assert.Contains("Orthographic sources are never published as pinhole CameraInfo", editor, StringComparison.Ordinal);
         }
 
         [Theory]
-        [InlineData(true, true, true)]
-        [InlineData(true, false, false)]
-        [InlineData(false, true, false)]
-        public void CameraInfoProjectionPolicyRejectsEveryOrthographicSource(
-            bool hasSourceCamera,
-            bool isOrthographic,
+        [InlineData(true, true, false, false, true)]
+        [InlineData(true, true, true, false, true)]
+        [InlineData(true, false, false, true, false)]
+        [InlineData(false, false, true, true, true)]
+        [InlineData(false, false, true, false, false)]
+        [InlineData(false, false, false, true, false)]
+        public void CameraInfoProjectionPolicyUsesPublishedImageAuthority(
+            bool hasImageSourceCamera,
+            bool imageSourceIsOrthographic,
+            bool autoFromCamera,
+            bool fallbackSourceIsOrthographic,
             bool expected)
         {
             Assert.Equal(
                 expected,
                 CameraInfoProjectionPolicy.ShouldSuppressOrthographic(
-                    hasSourceCamera,
-                    isOrthographic));
+                    hasImageSourceCamera,
+                    imageSourceIsOrthographic,
+                    autoFromCamera,
+                    fallbackSourceIsOrthographic));
         }
 
         [Fact]
