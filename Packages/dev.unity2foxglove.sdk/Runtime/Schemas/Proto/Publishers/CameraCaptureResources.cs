@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using Unity.FoxgloveSDK.Util;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
@@ -20,7 +21,10 @@ namespace Unity.FoxgloveSDK.Components
         private Camera _sourceCamera;
         private Camera _captureCamera;
         private RenderTexture _captureRenderTexture;
-        private readonly List<RenderTexture> _retiredRenderTextures = new List<RenderTexture>();
+        private readonly List<RetiredRenderTexture> _retiredRenderTextures = new List<RetiredRenderTexture>();
+        private readonly object _retiredRenderTexturesGate = new object();
+        private readonly CameraReadbackGenerationTracker _readbackGenerations = new CameraReadbackGenerationTracker();
+        private int _captureRenderTextureGeneration;
         private Texture2D _texture2D;
         private byte[] _rgbScratch;
         private byte[] _rowScratch;
@@ -44,7 +48,7 @@ namespace Unity.FoxgloveSDK.Components
 
         public Camera SourceCamera => _sourceCamera;
 
-        public void Ensure(Component owner, Transform parent, int width, int height)
+        public void Ensure(Component owner, Transform parent, int width, int height, int captureGeneration)
         {
             if (owner == null)
                 return;
@@ -64,6 +68,7 @@ namespace Unity.FoxgloveSDK.Components
                 RetireRenderTexture();
                 _captureRenderTexture = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
                 _captureRenderTexture.Create();
+                _captureRenderTextureGeneration = captureGeneration;
                 _captureCameraDirty = true;
             }
 
@@ -152,7 +157,7 @@ namespace Unity.FoxgloveSDK.Components
                 _captureCamera.targetTexture = null;
 
             DestroyRenderTexture();
-            ReleaseRetiredRenderTextures();
+            ReleaseAllRetiredRenderTextures();
 
             if (_captureCamera != null)
             {
@@ -166,6 +171,7 @@ namespace Unity.FoxgloveSDK.Components
             _rowScratch = null;
             _sourceCamera = null;
             _sourceCameraResolved = false;
+            _captureRenderTextureGeneration = 0;
             _lastCopiedSourceCamera = null;
             _captureCameraDirty = true;
         }
@@ -218,17 +224,31 @@ namespace Unity.FoxgloveSDK.Components
 
         public void ReleaseRetiredRenderTextures()
         {
-            for (var i = 0; i < _retiredRenderTextures.Count; i++)
+            List<RenderTexture> texturesToRelease = null;
+            lock (_retiredRenderTexturesGate)
             {
-                var texture = _retiredRenderTextures[i];
-                if (texture == null)
-                    continue;
+                for (var i = _retiredRenderTextures.Count - 1; i >= 0; i--)
+                {
+                    var retired = _retiredRenderTextures[i];
+                    if (_readbackGenerations.HasPending(retired.Generation))
+                        continue;
 
-                texture.Release();
-                DestroyUnityObject(texture);
+                    texturesToRelease ??= new List<RenderTexture>();
+                    texturesToRelease.Add(retired.Texture);
+                    _retiredRenderTextures.RemoveAt(i);
+                }
             }
 
-            _retiredRenderTextures.Clear();
+            ReleaseRenderTextures(texturesToRelease);
+        }
+
+        public void RegisterReadback(int generation)
+            => _readbackGenerations.Register(generation);
+
+        public void CompleteReadback(int generation)
+        {
+            _readbackGenerations.Complete(generation);
+            ReleaseRetiredRenderTextures();
         }
 
         private void RetireRenderTexture()
@@ -236,8 +256,59 @@ namespace Unity.FoxgloveSDK.Components
             if (_captureRenderTexture == null)
                 return;
 
-            _retiredRenderTextures.Add(_captureRenderTexture);
+            lock (_retiredRenderTexturesGate)
+            {
+                _retiredRenderTextures.Add(new RetiredRenderTexture(
+                    _captureRenderTexture,
+                    _captureRenderTextureGeneration));
+            }
             _captureRenderTexture = null;
+        }
+
+        private void ReleaseAllRetiredRenderTextures()
+        {
+            List<RenderTexture> texturesToRelease = null;
+            lock (_retiredRenderTexturesGate)
+            {
+                for (var i = 0; i < _retiredRenderTextures.Count; i++)
+                {
+                    texturesToRelease ??= new List<RenderTexture>();
+                    texturesToRelease.Add(_retiredRenderTextures[i].Texture);
+                }
+
+                _retiredRenderTextures.Clear();
+                _readbackGenerations.Clear();
+            }
+
+            ReleaseRenderTextures(texturesToRelease);
+        }
+
+        private static void ReleaseRenderTextures(List<RenderTexture> textures)
+        {
+            if (textures == null)
+                return;
+
+            for (var i = 0; i < textures.Count; i++)
+            {
+                var texture = textures[i];
+                if (texture == null)
+                    continue;
+
+                texture.Release();
+                DestroyUnityObject(texture);
+            }
+        }
+
+        private sealed class RetiredRenderTexture
+        {
+            public RetiredRenderTexture(RenderTexture texture, int generation)
+            {
+                Texture = texture;
+                Generation = generation;
+            }
+
+            public RenderTexture Texture { get; }
+            public int Generation { get; }
         }
 
         private static void DestroyUnityObject(Object target)

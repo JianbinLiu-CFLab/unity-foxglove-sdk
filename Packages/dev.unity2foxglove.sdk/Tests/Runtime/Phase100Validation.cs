@@ -103,7 +103,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("OnReadbackComplete(req, generation")
                   || source.Contains("OnReadbackComplete(request, generation"),
                 "100C-2: " + label + " passes generation into AsyncGPUReadback callback");
-            Check(source.Contains("CompletePendingReadback()"),
+            Check(source.Contains("CompletePendingReadback()")
+                  || source.Contains("CompletePendingReadback(generation)"),
                 "100C-3: " + label + " centralizes pending readback decrement and drain cleanup");
         }
 

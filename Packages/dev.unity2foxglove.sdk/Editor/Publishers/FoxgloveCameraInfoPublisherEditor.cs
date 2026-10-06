@@ -65,6 +65,9 @@ namespace Unity.FoxgloveSDK.Editor
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("CameraInfo Source", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "When Image Publisher is assigned, its capture camera is authoritative for dimensions and auto-derived intrinsics. Override fields take precedence; disabling Auto From Camera uses manual intrinsics. Orthographic sources are never published as pinhole CameraInfo.",
+                MessageType.None);
             DrawObjectField(serializedObject.FindProperty("_sourceCamera"), "Source Camera");
             DrawObjectField(serializedObject.FindProperty("_imagePublisher"), "Image Publisher");
             DrawObjectField(serializedObject.FindProperty("_sensorUnitProfile"), "Sensor Unit Profile");
