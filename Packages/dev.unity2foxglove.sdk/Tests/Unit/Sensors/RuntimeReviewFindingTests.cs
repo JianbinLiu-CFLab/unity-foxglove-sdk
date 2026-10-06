@@ -193,6 +193,43 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void VideoDrainCountsTimestampedUnitsWithoutTimestampsAgainstBudget()
+        {
+            var session = new CameraVideoSidecarSession();
+            var sidecar = new FakeTimestampedVideoSidecar(new[]
+            {
+                new EncodedVideoAccessUnit(new byte[] { 1 }, 0UL),
+                new EncodedVideoAccessUnit(new byte[] { 2 }, 0UL),
+                new EncodedVideoAccessUnit(new byte[] { 3 }, 0UL),
+                new EncodedVideoAccessUnit(new byte[] { 4 }, 400UL),
+                new EncodedVideoAccessUnit(new byte[] { 5 }, 500UL)
+            });
+            typeof(CameraVideoSidecarSession)
+                .GetField("_sidecar", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(session, sidecar);
+            typeof(CameraVideoSidecarSession)
+                .GetField("_mode", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(session, CameraOutputMode.H264Ffmpeg);
+
+            var published = new List<ulong>();
+            Assert.True(session.TryDrain(
+                () => 900UL,
+                (_, timestamp, _) => published.Add(timestamp),
+                null,
+                maxAccessUnits: 4));
+            Assert.Equal(new[] { 400UL }, published);
+            Assert.Equal(1, sidecar.Remaining);
+
+            Assert.True(session.TryDrain(
+                () => 900UL,
+                (_, timestamp, _) => published.Add(timestamp),
+                null,
+                maxAccessUnits: 4));
+            Assert.Equal(new[] { 400UL, 500UL }, published);
+            Assert.Equal(0, sidecar.Remaining);
+        }
+
+        [Fact]
         public void CameraCaptureResizeRetiresOldRenderTextureUntilDrain()
         {
             var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraCaptureResources.cs");
@@ -214,6 +251,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("imagePublisher?.SensorCameraSourceCamera", info, StringComparison.Ordinal);
             Assert.Contains("WarnSourceCameraMismatch", info, StringComparison.Ordinal);
             Assert.Contains("WarnOrthographicCamera", info, StringComparison.Ordinal);
+            Assert.Contains("var sourceCamera = ResolveSourceCamera();", info, StringComparison.Ordinal);
+            Assert.Contains("var cam = _autoFromCamera ? ResolveSourceCamera() : null;", info, StringComparison.Ordinal);
             Assert.Contains("CameraInfo is not published for orthographic cameras", info, StringComparison.Ordinal);
             Assert.DoesNotContain("cam.orthographicSize", info, StringComparison.Ordinal);
             Assert.Contains("public Camera SensorCameraSourceCamera", publisher, StringComparison.Ordinal);
@@ -279,6 +318,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 if (_units.Count == 0)
                 {
                     accessUnit = null;
+                    return false;
+                }
+
+                accessUnit = _units.Dequeue();
+                return true;
+            }
+            public void Dispose() { }
+        }
+
+        private sealed class FakeTimestampedVideoSidecar : ITimestampedCameraVideoEncoderSidecar
+        {
+            private readonly Queue<EncodedVideoAccessUnit> _units;
+
+            internal FakeTimestampedVideoSidecar(IEnumerable<EncodedVideoAccessUnit> units)
+            {
+                _units = new Queue<EncodedVideoAccessUnit>(units);
+            }
+
+            public int Remaining => _units.Count;
+            public bool IsRunning => true;
+            public int OutputQueueDepth => _units.Count;
+            public int MaxOutputQueue => 8;
+            public int InputQueueDepth => 0;
+            public int MaxInputQueue => 8;
+            public string LastDiagnosticLine => "";
+            public string LastError => "";
+            public bool TrySubmitFrame(byte[] frame) => true;
+            public bool TrySubmitFrame(byte[] frame, ulong timestampNs) => true;
+            public bool TryDequeueAccessUnit(out byte[] accessUnit)
+            {
+                if (!TryDequeueEncodedAccessUnit(out var timestamped))
+                {
+                    accessUnit = null;
+                    return false;
+                }
+
+                accessUnit = timestamped.Data;
+                return true;
+            }
+            public bool TryDequeueEncodedAccessUnit(out EncodedVideoAccessUnit accessUnit)
+            {
+                if (_units.Count == 0)
+                {
+                    accessUnit = default;
                     return false;
                 }
 
