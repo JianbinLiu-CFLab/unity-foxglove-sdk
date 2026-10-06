@@ -920,19 +920,44 @@ class RunCiTests(unittest.TestCase):
             self.assertIn(f"- {dependency}", aggregate)
         self.assertIn("Validation aggregate failed.", aggregate)
 
-    def test_unity_batch_gate_is_present_but_not_required(self) -> None:
-        """Unity import evidence is collected on the non-required licensed runner lane."""
+    def test_unity_batch_gate_is_present_and_path_aware(self) -> None:
+        """Unity changes expose a required, path-aware aggregate gate."""
         workflow = (ROOT / ".github" / "workflows" / "unity-compile.yml").read_text(encoding="utf-8")
-        self.assertIn("name: Unity batch compile (non-required)", workflow)
+        self.assertIn("name: Unity batch compile and path-aware gate", workflow)
         self.assertNotIn("continue-on-error:", workflow)
         self.assertIn("run_unity_batch_compile.py", workflow)
         self.assertIn("  push:\n    branches: [main]", workflow)
 
+        scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
+        self.assertIn("unity_required: ${{ steps.scope.outputs.unity_required }}", scope)
+        self.assertIn("runner_available: ${{ steps.runner.outputs.runner_available }}", scope)
+        self.assertIn("git diff --name-only", scope)
+        self.assertIn(r"Packages/[^/]+/(Runtime|Editor)/", scope)
+        self.assertIn(r"Unity2Foxglove/Assets/", scope)
+        self.assertIn(r".*\.meta$", scope)
+        self.assertIn("actions/runners", scope)
+
+        aggregate = workflow.split("  unity_required:\n", 1)[1]
+        self.assertIn("if: always()", aggregate)
+        self.assertIn("UNITY_GATE_NOT_REQUIRED", aggregate)
+        self.assertIn("UNITY_SELF_HOSTED_RUNNER", aggregate)
+        self.assertIn("UNITY_GATE_PASS", aggregate)
+        self.assertIn("github.event.pull_request.head.repo.full_name", aggregate)
+
+    def test_unity_required_gate_fails_closed_when_scope_needs_runner(self) -> None:
+        """Unity changes must fail the required context when no trusted runner is available."""
+        workflow = (ROOT / ".github" / "workflows" / "unity-compile.yml").read_text(encoding="utf-8")
+        compile_job = workflow.split("  unity_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
+        self.assertIn("needs.unity_scope.outputs.unity_required == 'true'", compile_job)
+        self.assertIn("needs.unity_scope.outputs.runner_available == 'true'", compile_job)
+        self.assertLess(compile_job.index("if:"), compile_job.index("runs-on:"))
+
     def test_unity_batch_gate_runs_only_on_an_enabled_trusted_runner(self) -> None:
         """Skip the self-hosted job until a runner is enabled, and never run fork pull requests on it."""
         workflow = (ROOT / ".github" / "workflows" / "unity-compile.yml").read_text(encoding="utf-8")
-        job = workflow.split("  unity-compile:\n", 1)[1].split("    steps:\n", 1)[0]
+        job = workflow.split("  unity_compile:\n", 1)[1].split("    steps:\n", 1)[0]
         self.assertIn("vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'", job)
+        self.assertIn("needs.unity_scope.outputs.runner_available == 'true'", job)
         self.assertIn("github.event_name != 'pull_request'", job)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", job)
         self.assertLess(job.index("if:"), job.index("runs-on:"))
