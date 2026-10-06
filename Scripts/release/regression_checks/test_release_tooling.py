@@ -920,6 +920,15 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("run_unity_batch_compile.py", workflow)
         self.assertIn("  push:\n    branches: [main]", workflow)
 
+    def test_unity_batch_gate_runs_only_on_an_enabled_trusted_runner(self) -> None:
+        """Skip the self-hosted job until a runner is enabled, and never run fork pull requests on it."""
+        workflow = (ROOT / ".github" / "workflows" / "unity-compile.yml").read_text(encoding="utf-8")
+        job = workflow.split("  unity-compile:\n", 1)[1].split("    steps:\n", 1)[0]
+        self.assertIn("vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'", job)
+        self.assertIn("github.event_name != 'pull_request'", job)
+        self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", job)
+        self.assertLess(job.index("if:"), job.index("runs-on:"))
+
     def test_fatal_run_raises_after_printing_failure(self) -> None:
         """Fatal subprocess failures should abort at the point of failure."""
         failed = self.run_ci.OwnedCommandResult(returncode=7)
