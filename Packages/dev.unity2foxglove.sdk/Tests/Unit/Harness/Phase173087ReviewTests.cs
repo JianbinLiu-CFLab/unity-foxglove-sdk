@@ -5,7 +5,6 @@
 // Purpose: Phase 173-087 Unity review regression checks.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -470,23 +469,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void RuntimeEnvironmentLeaseHandlesUnsetWindowsValuesAndPendingRetry()
+        public void RuntimeShutdownRetryContractsRemainExplicit()
         {
             foreach (var distro in RuntimeDistros)
             {
                 var source = RuntimeSource(distro, "ROS2ForUnity.cs");
-                Assert.Contains("_wputenv_s(name, value ?? String.Empty)", source, StringComparison.Ordinal);
-                Assert.Contains("ProcessEnvironmentLease.Restore", source, StringComparison.Ordinal);
                 Assert.Contains("shutdown remains pending", source, StringComparison.Ordinal);
-                Assert.Contains("if (active || restorePending)", source, StringComparison.Ordinal);
-                Assert.Contains("string previousApplied = entry.Applied;", source, StringComparison.Ordinal);
-                Assert.Contains("bool hadApplied = entry.HasApplied;", source, StringComparison.Ordinal);
-                Assert.Contains("entry.Applied = value;", source, StringComparison.Ordinal);
-                Assert.Contains("entry.HasApplied = true;", source, StringComparison.Ordinal);
-                Assert.Contains("entry.HasApplied = hadApplied;", source, StringComparison.Ordinal);
-                Assert.Contains("restorePending = true;", source, StringComparison.Ordinal);
-                Assert.Contains("ApplyNative(pair.Key, current);", source, StringComparison.Ordinal);
-                Assert.Contains("entry.PendingRestore = current;", source, StringComparison.Ordinal);
                 Assert.Contains("ScheduleShutdownRetry();", source, StringComparison.Ordinal);
                 Assert.Contains("private static bool nativeShutdownCompleted", source, StringComparison.Ordinal);
                 var finish = TestSources.ExtractMethod(source, "private static void FinishShutdownShared()");
@@ -809,9 +797,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var name = "U2F_LEASE_UNSET_" + distro.ToUpperInvariant();
                 var lease = RuntimeLeaseType(distro);
                 var previous = Environment.GetEnvironmentVariable(name);
-                Environment.SetEnvironmentVariable(name, null);
                 try
                 {
+                    Environment.SetEnvironmentVariable(name, null);
                     InvokeLease(lease, "Begin");
                     InvokeLease(lease, "Set", name, "lease-value", false);
                     Assert.Equal("lease-value", Environment.GetEnvironmentVariable(name));
@@ -820,6 +808,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 }
                 finally
                 {
+                    TryRestoreLease(lease, false);
                     Environment.SetEnvironmentVariable(name, previous);
                 }
             }
@@ -833,9 +822,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var name = "U2F_LEASE_EXISTING_" + distro.ToUpperInvariant();
                 var lease = RuntimeLeaseType(distro);
                 var previous = Environment.GetEnvironmentVariable(name);
-                Environment.SetEnvironmentVariable(name, "original-value");
                 try
                 {
+                    Environment.SetEnvironmentVariable(name, "original-value");
                     InvokeLease(lease, "Begin");
                     InvokeLease(lease, "Set", name, "lease-value", false);
                     Assert.Equal("lease-value", Environment.GetEnvironmentVariable(name));
@@ -844,6 +833,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 }
                 finally
                 {
+                    TryRestoreLease(lease, false);
                     Environment.SetEnvironmentVariable(name, previous);
                 }
             }
@@ -857,9 +847,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var name = "U2F_LEASE_CALLER_" + distro.ToUpperInvariant();
                 var lease = RuntimeLeaseType(distro);
                 var previous = Environment.GetEnvironmentVariable(name);
-                Environment.SetEnvironmentVariable(name, "original-value");
                 try
                 {
+                    Environment.SetEnvironmentVariable(name, "original-value");
                     InvokeLease(lease, "Begin");
                     InvokeLease(lease, "Set", name, "lease-value", false);
                     Environment.SetEnvironmentVariable(name, "caller-value");
@@ -868,6 +858,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 }
                 finally
                 {
+                    TryRestoreLease(lease, false);
                     Environment.SetEnvironmentVariable(name, previous);
                 }
             }
@@ -884,9 +875,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var original = string.Join(separator, new[] { "old-a", "old-b" });
                 var runtimeEntry = "runtime-entry";
                 var previous = Environment.GetEnvironmentVariable(name);
-                Environment.SetEnvironmentVariable(name, original);
                 try
                 {
+                    Environment.SetEnvironmentVariable(name, original);
                     InvokeLease(lease, "Begin");
                     InvokeLease(
                         lease,
@@ -907,6 +898,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 }
                 finally
                 {
+                    TryRestoreLease(lease, false);
                     Environment.SetEnvironmentVariable(name, previous);
                 }
             }
@@ -920,9 +912,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var name = "U2F_LEASE_NESTED_" + distro.ToUpperInvariant();
                 var lease = RuntimeLeaseType(distro);
                 var previous = Environment.GetEnvironmentVariable(name);
-                Environment.SetEnvironmentVariable(name, null);
                 try
                 {
+                    Environment.SetEnvironmentVariable(name, null);
                     InvokeLease(lease, "Begin");
                     var secondBegin = Assert.Throws<TargetInvocationException>(
                         () => InvokeLease(lease, "Begin"));
@@ -936,6 +928,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 }
                 finally
                 {
+                    TryRestoreLease(lease, false);
                     Environment.SetEnvironmentVariable(name, previous);
                 }
             }
@@ -949,10 +942,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var name = "U2F_LEASE_PENDING_" + distro.ToUpperInvariant();
                 var lease = RuntimeLeaseType(distro);
                 var previous = Environment.GetEnvironmentVariable(name);
-                Environment.SetEnvironmentVariable(name, null);
-                InvokeLease(lease, "Begin");
                 try
                 {
+                    Environment.SetEnvironmentVariable(name, null);
+                    InvokeLease(lease, "Begin");
                     var failedSet = Assert.Throws<TargetInvocationException>(
                         () => InvokeLease(lease, "Set", name, "value", true));
                     Assert.IsType<PlatformNotSupportedException>(failedSet.InnerException);
@@ -966,35 +959,87 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 }
                 finally
                 {
-                    try
-                    {
-                        InvokeLease(lease, "Restore", false);
-                    }
-                    catch (TargetInvocationException)
-                    {
-                    }
+                    TryRestoreLease(lease, false);
                     Environment.SetEnvironmentVariable(name, previous);
                 }
             }
         }
 
-        private static readonly Dictionary<string, Type> RuntimeLeaseTypes =
-            new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
-
-        private static Type RuntimeLeaseType(string distro)
+        [Fact]
+        public void RuntimeEnvironmentLeaseExecutesWindowsCrtBranch()
         {
-            lock (RuntimeLeaseTypes)
-            {
-                if (!RuntimeLeaseTypes.TryGetValue(distro, out var type))
-                {
-                    type = CompileRuntimeLease(distro).GetType(
-                        "ROS2.Ros2ForUnityProcessEnvironmentLease",
-                        throwOnError: true);
-                    RuntimeLeaseTypes.Add(distro, type);
-                }
+            if (!OperatingSystem.IsWindows())
+                return;
 
-                return type;
+            foreach (var distro in RuntimeDistros)
+            {
+                var name = "U2F_LEASE_WINDOWS_" + distro.ToUpperInvariant();
+                var lease = RuntimeLeaseType(distro, windowsSymbols: true);
+                var previous = Environment.GetEnvironmentVariable(name);
+                try
+                {
+                    Environment.SetEnvironmentVariable(name, null);
+                    InvokeLease(lease, "Begin");
+                    InvokeLease(lease, "Set", name, "lease-value", true);
+                    Assert.Equal("lease-value", Environment.GetEnvironmentVariable(name));
+                    Assert.True((bool)InvokeLease(lease, "Restore", true));
+                    Assert.Null(Environment.GetEnvironmentVariable(name));
+                }
+                finally
+                {
+                    TryRestoreLease(lease, true);
+                    Environment.SetEnvironmentVariable(name, previous);
+                }
             }
+        }
+
+        [Fact]
+        public void RuntimeEnvironmentLeaseRollsBackFailedNativeApplyAfterCallerMutation()
+        {
+            foreach (var distro in RuntimeDistros)
+            {
+                var name = "U2F_LEASE_ROLLBACK_" + distro.ToUpperInvariant();
+                var lease = RuntimeLeaseType(
+                    distro,
+                    windowsSymbols: true,
+                    replaceWindowsNative: true);
+                var previous = Environment.GetEnvironmentVariable(name);
+                try
+                {
+                    Environment.SetEnvironmentVariable(name, "original-value");
+                    InvokeLease(lease, "Begin");
+                    InvokeLease(lease, "Set", name, "lease-value", true);
+                    Environment.SetEnvironmentVariable(name, "caller-value");
+
+                    var failedSet = Assert.Throws<TargetInvocationException>(
+                        () => InvokeLease(lease, "Set", name, NativeFailureValue, true));
+                    Assert.IsType<InvalidOperationException>(failedSet.InnerException);
+                    Assert.Equal("caller-value", Environment.GetEnvironmentVariable(name));
+                    Assert.True((bool)InvokeLease(lease, "Restore", true));
+
+                    InvokeLease(lease, "Begin");
+                    InvokeLease(lease, "Set", name, "second-value", true);
+                    Assert.True((bool)InvokeLease(lease, "Restore", true));
+                    Assert.Equal("caller-value", Environment.GetEnvironmentVariable(name));
+                }
+                finally
+                {
+                    TryRestoreLease(lease, true);
+                    Environment.SetEnvironmentVariable(name, previous);
+                }
+            }
+        }
+
+        private const string NativeFailureValue = "__U2F_NATIVE_FAILURE__";
+
+        private static Type RuntimeLeaseType(
+            string distro,
+            bool windowsSymbols = false,
+            bool replaceWindowsNative = false)
+        {
+            return CompileRuntimeLease(distro, windowsSymbols, replaceWindowsNative).GetType(
+                "ROS2.Ros2ForUnityProcessEnvironmentLease",
+                throwOnError: true);
         }
 
         private static object InvokeLease(Type lease, string method, params object[] arguments)
@@ -1005,17 +1050,51 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 .Invoke(null, arguments);
         }
 
-        private static Assembly CompileRuntimeLease(string distro)
+        private static void TryRestoreLease(Type lease, bool windows)
         {
+            try
+            {
+                InvokeLease(lease, "Restore", windows);
+            }
+            catch (TargetInvocationException)
+            {
+            }
+        }
+
+        private static Assembly CompileRuntimeLease(
+            string distro,
+            bool windowsSymbols,
+            bool replaceWindowsNative)
+        {
+            var symbols = windowsSymbols
+                ? new[] { "UNITY_EDITOR_WIN" }
+                : Array.Empty<string>();
+            var parseOptions = new CSharpParseOptions(preprocessorSymbols: symbols);
             var source = RuntimeSource(distro, "ROS2ForUnity.cs");
-            var root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
+            var root = CSharpSyntaxTree.ParseText(source, parseOptions).GetCompilationUnitRoot();
             var declaration = root.DescendantNodes()
                 .OfType<ClassDeclarationSyntax>()
                 .Single(node => node.Identifier.Text == "Ros2ForUnityProcessEnvironmentLease")
                 .ToFullString();
+            if (replaceWindowsNative)
+            {
+                const string nativeDeclaration =
+                    "    [DllImport(\"ucrtbase.dll\", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]\n"
+                    + "    private static extern int _wputenv_s(string name, string value);";
+                var nativeStub =
+                    "    private static int _wputenv_s(string name, string value)\n"
+                    + "    {\n"
+                    + "        return String.Equals(value, \"" + NativeFailureValue
+                    + "\", StringComparison.Ordinal) ? 22 : 0;\n"
+                    + "    }";
+                var replaced = declaration.Replace(nativeDeclaration, nativeStub, StringComparison.Ordinal);
+                Assert.NotEqual(declaration, replaced);
+                declaration = replaced;
+            }
             var probe = @"
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using UnityEngine;
 
 namespace UnityEngine
@@ -1034,7 +1113,7 @@ namespace ROS2
 
             var compilation = CSharpCompilation.Create(
                 "Ros2ForUnityProcessEnvironmentLease_" + distro + "_" + Guid.NewGuid().ToString("N"),
-                new[] { CSharpSyntaxTree.ParseText(probe) },
+                new[] { CSharpSyntaxTree.ParseText(probe, parseOptions) },
                 TrustedPlatformReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
