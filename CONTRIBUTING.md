@@ -42,6 +42,11 @@ dotnet build Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLog
 - Strict mode rejects any surface removal and ignores compatibility waivers.
 - Run `python -B Scripts/phase192/compare_identity_surfaces.py --base <base> --head <head> --repository . --compatibility` to reproduce the compatibility check locally.
 
+### Unity compile gate
+
+- Pull requests that change Unity import inputs need a successful self-hosted `unity-compile` run; see
+  [Unity Self-Hosted Runner](docs/unity-self-hosted-runner.md) for runner setup, auto-start and machine changes.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
