@@ -9,6 +9,7 @@ using System.Collections;
 using System.IO;
 using System.Reflection;
 using UnityEngine;
+using Unity.FoxgloveSDK.Utilities;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -64,7 +65,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
     private bool _firstPublishLogged;
     private bool _greenLogged;
     private int _loggedReceivedCount;
-    private bool _previousRunInBackground;
+    private RunInBackgroundLease _runInBackgroundLease;
     private bool _cleanedUp = true;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
@@ -81,8 +82,10 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
     private void OnEnable()
     {
-        _previousRunInBackground = Application.runInBackground;
-        Application.runInBackground = true;
+        _runInBackgroundLease?.Release();
+        _runInBackgroundLease = RunInBackgroundLease.Acquire(
+            () => Application.runInBackground,
+            value => Application.runInBackground = value);
         _nextPublishAt = 0f;
         _publishedCount = 0;
         _receivedCount = 0;
@@ -123,7 +126,11 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
     private void OnDisable()
     {
-        Application.runInBackground = _previousRunInBackground;
+        if (_runInBackgroundLease != null)
+        {
+            _runInBackgroundLease.Release();
+            _runInBackgroundLease = null;
+        }
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         CleanupManualRuntime();
 #endif
@@ -485,12 +492,13 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
         private bool _runtimeRootLogged;
         private bool _completed;
         private float _inboundDeadlineAt;
-        private bool _previousRunInBackground;
+        private RunInBackgroundLease _runInBackgroundLease;
 
         private BatchRunner()
         {
-            _previousRunInBackground = Application.runInBackground;
-            Application.runInBackground = true;
+            _runInBackgroundLease = RunInBackgroundLease.Acquire(
+                () => Application.runInBackground,
+                value => Application.runInBackground = value);
             _initialPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
             _requireInbound = string.Equals(
                 Environment.GetEnvironmentVariable("UNITY2FOXGLOVE_R2FU_REQUIRE_INBOUND"),
@@ -714,7 +722,11 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
             _completed = true;
             EditorApplication.update -= Tick;
-            Application.runInBackground = _previousRunInBackground;
+            if (_runInBackgroundLease != null)
+            {
+                _runInBackgroundLease.Release();
+                _runInBackgroundLease = null;
+            }
             Cleanup();
             EditorApplication.Exit(exitCode);
         }

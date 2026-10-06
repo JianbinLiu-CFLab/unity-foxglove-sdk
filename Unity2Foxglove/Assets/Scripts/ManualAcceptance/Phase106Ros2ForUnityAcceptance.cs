@@ -5,6 +5,7 @@
 // Purpose: Phase106-only ROS2 For Unity standalone pub/sub acceptance component.
 
 using System;
+using Unity.FoxgloveSDK.Utilities;
 using UnityEngine;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
@@ -20,7 +21,7 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
     private float _nextPublishTime;
     private int _publishCount;
     private bool _warnedMissingDefine;
-    private bool _previousRunInBackground;
+    private RunInBackgroundLease _runInBackgroundLease;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     private ROS2UnityComponent _ros2Unity;
@@ -33,8 +34,10 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
 
     private void OnEnable()
     {
-        _previousRunInBackground = Application.runInBackground;
-        Application.runInBackground = true;
+        _runInBackgroundLease?.Release();
+        _runInBackgroundLease = RunInBackgroundLease.Acquire(
+            () => Application.runInBackground,
+            value => Application.runInBackground = value);
         _nextPublishTime = 0f;
         _publishCount = 0;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
@@ -64,7 +67,11 @@ public sealed class Phase106Ros2ForUnityAcceptance : MonoBehaviour
 
     private void OnDisable()
     {
-        Application.runInBackground = _previousRunInBackground;
+        if (_runInBackgroundLease != null)
+        {
+            _runInBackgroundLease.Release();
+            _runInBackgroundLease = null;
+        }
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         DisposeRos2Endpoints();
 #endif

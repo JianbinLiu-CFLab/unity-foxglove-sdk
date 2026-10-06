@@ -56,11 +56,11 @@ public partial class TestLog : MonoBehaviour
         if (_trackedCube != null)
             return;
 
-        var cube = GameObject.Find("Cube");
-        _trackedCube = cube != null ? cube.transform : transform;
-        if (cube == null && !_warnedMissingTrackedCube)
+        var scenePublisher = FindFirstObjectByType<FoxgloveSceneCubePublisher>();
+        _trackedCube = scenePublisher != null ? scenePublisher.transform : transform;
+        if (scenePublisher == null && !_warnedMissingTrackedCube)
         {
-            Debug.LogWarning("TestLog tracked cube is not assigned and no active GameObject named 'Cube' was found; publishing this transform instead.");
+            Debug.LogWarning("TestLog tracked cube is not assigned and no FoxgloveSceneCubePublisher was found; publishing this transform instead.");
             _warnedMissingTrackedCube = true;
         }
     }

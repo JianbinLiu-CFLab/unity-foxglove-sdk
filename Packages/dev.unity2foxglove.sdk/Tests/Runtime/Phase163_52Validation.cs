@@ -112,8 +112,10 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static bool HasRunInBackgroundRestore(string source)
-            => source.Contains("_previousRunInBackground = Application.runInBackground;", StringComparison.Ordinal)
-               && source.Contains("Application.runInBackground = _previousRunInBackground;", StringComparison.Ordinal);
+            => (source.Contains("_previousRunInBackground = Application.runInBackground;", StringComparison.Ordinal)
+                && source.Contains("Application.runInBackground = _previousRunInBackground;", StringComparison.Ordinal))
+               || (source.Contains("RunInBackgroundLease.Acquire", StringComparison.Ordinal)
+                   && source.Contains("_runInBackgroundLease.Release()", StringComparison.Ordinal));
 
         private static bool HasSeparatedRetryGates(string source)
             => source.Contains("_readyInitializationBlocked", StringComparison.Ordinal)

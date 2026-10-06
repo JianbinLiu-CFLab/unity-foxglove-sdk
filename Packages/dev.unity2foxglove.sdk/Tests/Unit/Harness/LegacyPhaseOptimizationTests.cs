@@ -415,21 +415,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void Phase14027MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_27Validation.cs", "--phase140-27", "Phase140_27Validation.Validate");
 
+        [Fact]
+        public void WorkstreamGHistoricalLedgerAndLifecycleGuardsRemainAuditable()
+        {
+            var ledger = TestSources.Text("docs/research-workstream-g-closure.md");
+            foreach (var finding in new[]
+                     {
+                         "Phase140-27/P2-1",
+                         "Phase140-27/P2-2",
+                         "Phase140-27/P2-3",
+                         "Phase140-27/P2-4",
+                         "Phase140-27/P2-5",
+                         "Phase140-27/P2-6",
+                         "Phase140-27/P3-1",
+                         "Phase140-27/P3-2",
+                         "Phase140-27/P3-3",
+                         "Phase140-27/P3-4",
+                         "Phase140-27/P3-5",
+                         "Phase140-27/P3-6"
+                     })
+                Assert.Contains("| " + finding + " |", ledger, StringComparison.Ordinal);
+
+            VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/FoxgloveDebugOverlaySmoke.cs");
+            VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase106Ros2ForUnityAcceptance.cs");
+            VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase109Ros2ForUnityStringSmoke.cs");
+            VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase110StringSmokeBatchAcceptance.cs");
+            VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase127R2FURealProjectSmoke.cs");
+
+            var demo = TestSources.Text("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/FoxgloveDemoSetup.cs");
+            Assert.Contains("FindFirstObjectByType<FoxgloveSceneCubePublisher>()", demo, StringComparison.Ordinal);
+            Assert.DoesNotContain("GameObject.Find(\"Cube\")", demo, StringComparison.Ordinal);
+            Assert.Contains("scene cube publisher", demo, StringComparison.OrdinalIgnoreCase);
+            var testLog = TestSources.Text("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/TestLog.cs");
+            Assert.Contains("FindFirstObjectByType<FoxgloveSceneCubePublisher>()", testLog, StringComparison.Ordinal);
+            Assert.DoesNotContain("GameObject.Find(\"Cube\")", testLog, StringComparison.Ordinal);
+        }
+
         private static void VerifyRunInBackgroundRestore(string path)
         {
             var source = TestSources.Text(path);
-            if (path.EndsWith("Phase110StringSmokeBatchAcceptance.cs", StringComparison.Ordinal))
-            {
-                Assert.Contains("RunInBackgroundLease", source, StringComparison.Ordinal);
-                Assert.Contains("RunInBackgroundLease.Acquire", source, StringComparison.Ordinal);
-                Assert.Contains("_runInBackgroundLease.Release()", source, StringComparison.Ordinal);
-                return;
-            }
-
-            Assert.Contains("private bool _previousRunInBackground;", source, StringComparison.Ordinal);
-            Assert.Contains("_previousRunInBackground = Application.runInBackground;", source, StringComparison.Ordinal);
-            Assert.Contains("Application.runInBackground = true;", source, StringComparison.Ordinal);
-            Assert.Contains("Application.runInBackground = _previousRunInBackground;", source, StringComparison.Ordinal);
+            Assert.Contains("using Unity.FoxgloveSDK.Utilities;", source, StringComparison.Ordinal);
+            Assert.Contains("private RunInBackgroundLease _runInBackgroundLease;", source, StringComparison.Ordinal);
+            Assert.Contains("RunInBackgroundLease.Acquire(", source, StringComparison.Ordinal);
+            Assert.Contains("_runInBackgroundLease.Release()", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("_previousRunInBackground", source, StringComparison.Ordinal);
         }
     }
 }

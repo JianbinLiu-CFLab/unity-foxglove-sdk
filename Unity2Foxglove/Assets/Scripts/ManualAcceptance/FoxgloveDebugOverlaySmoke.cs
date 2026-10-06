@@ -6,6 +6,7 @@
 
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Utilities;
 using UnityEngine;
 
 /// <summary>
@@ -80,7 +81,7 @@ public sealed class FoxgloveDebugOverlaySmoke : MonoBehaviour
     private bool _loggedFirstPublish;
     private bool _loggedInvalidTopicProbe;
     private bool _loggedBinaryRejectionProbe;
-    private bool _previousRunInBackground;
+    private RunInBackgroundLease _runInBackgroundLease;
 
     /// <summary>
     /// True when the component is intentionally verifying that overlay data is blocked.
@@ -95,8 +96,10 @@ public sealed class FoxgloveDebugOverlaySmoke : MonoBehaviour
     /// </summary>
     private void OnEnable()
     {
-        _previousRunInBackground = Application.runInBackground;
-        Application.runInBackground = true;
+        _runInBackgroundLease?.Release();
+        _runInBackgroundLease = RunInBackgroundLease.Acquire(
+            () => Application.runInBackground,
+            value => Application.runInBackground = value);
         _nextPublishTime = 0f;
         _nextManagerSearchTime = 0f;
         _publishedCount = 0;
@@ -112,7 +115,11 @@ public sealed class FoxgloveDebugOverlaySmoke : MonoBehaviour
 
     private void OnDisable()
     {
-        Application.runInBackground = _previousRunInBackground;
+        if (_runInBackgroundLease != null)
+        {
+            _runInBackgroundLease.Release();
+            _runInBackgroundLease = null;
+        }
     }
 
     /// <summary>
