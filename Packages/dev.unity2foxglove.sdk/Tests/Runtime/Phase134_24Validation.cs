@@ -72,8 +72,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-24-B2: Phase109 smoke only creates publisher when missing");
             Check(source.Contains("Phase109 endpoint creation failed:", StringComparison.Ordinal),
                 "134-24-B3: Phase109 smoke surfaces partial endpoint creation failures");
-            Check(source.Contains("Application.runInBackground = _previousRunInBackground;", StringComparison.Ordinal),
-                "134-24-B4: Phase109 smoke restores runInBackground after manual acceptance");
+            Check(source.Contains("RunInBackgroundLease.Acquire", StringComparison.Ordinal)
+                  && source.Contains("_runInBackgroundLease.Release()", StringComparison.Ordinal)
+                  && !source.Contains("_previousRunInBackground", StringComparison.Ordinal),
+                "134-24-B4: Phase109 smoke restores runInBackground without clobbering newer owners");
         }
 
         private static void VerifyPhase110BatchAvoidsSmokePrivateFields()
@@ -122,8 +124,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-24-E3: Phase127 batch received-count snapshot uses receive lock");
             Check(source.Contains("nativeNodeDiagnostic=<unavailable:ROS2Node.node field missing>", StringComparison.Ordinal),
                 "134-24-E4: Phase127 diagnostic reflection reports unavailable private fields explicitly");
-            Check(source.Contains("Application.runInBackground = _previousRunInBackground;", StringComparison.Ordinal),
-                "134-24-E5: Phase127 manual acceptance restores runInBackground");
+            Check(source.Contains("RunInBackgroundLease.Acquire", StringComparison.Ordinal)
+                  && source.Contains("_runInBackgroundLease.Release()", StringComparison.Ordinal)
+                  && !source.Contains("_previousRunInBackground", StringComparison.Ordinal),
+                "134-24-E5: Phase127 manual acceptance restores runInBackground without clobbering newer owners");
         }
 
         private static void VerifyFullDemoUsesManagerFacadeAndBoundedLogging()

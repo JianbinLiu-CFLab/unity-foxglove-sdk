@@ -6,6 +6,7 @@
 
 using Unity2Foxglove.Ros2ForUnity;
 using UnityEngine;
+using Unity.FoxgloveSDK.Utilities;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
 #endif
@@ -26,7 +27,7 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
     private float _nextPublishTime;
     private bool _warnedMissingDefine;
     private bool _loggedFirstPublish;
-    private bool _previousRunInBackground;
+    private RunInBackgroundLease _runInBackgroundLease;
     private Phase109Ros2ForUnityContext _context;
     private IUnity2FoxgloveRos2Node _node;
 
@@ -37,8 +38,10 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void OnEnable()
     {
-        _previousRunInBackground = Application.runInBackground;
-        Application.runInBackground = true;
+        _runInBackgroundLease?.Release();
+        _runInBackgroundLease = RunInBackgroundLease.Acquire(
+            () => Application.runInBackground,
+            value => Application.runInBackground = value);
         _nextPublishTime = 0f;
         _publishedCount = 0;
         _receivedCount = 0;
@@ -75,7 +78,11 @@ public sealed class Phase109Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void OnDisable()
     {
-        Application.runInBackground = _previousRunInBackground;
+        if (_runInBackgroundLease != null)
+        {
+            _runInBackgroundLease.Release();
+            _runInBackgroundLease = null;
+        }
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         _subscription?.Dispose();
         _subscription = null;

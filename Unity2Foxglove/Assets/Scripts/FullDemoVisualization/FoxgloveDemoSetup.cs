@@ -195,7 +195,7 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     }
 
     /// <summary>
-    /// Locates the cube GameObject by explicit binding or demo object name.
+    /// Locates the cube GameObject by explicit binding or its scene cube publisher.
     /// </summary>
     private GameObject FindCube()
     {
@@ -203,7 +203,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
             return _cube;
         if (_cachedCube != null)
             return _cachedCube;
-        _cachedCube = GameObject.Find("Cube");
+        var scenePublisher = FindFirstObjectByType<FoxgloveSceneCubePublisher>();
+        _cachedCube = scenePublisher == null ? null : scenePublisher.gameObject;
         return _cachedCube;
     }
 
