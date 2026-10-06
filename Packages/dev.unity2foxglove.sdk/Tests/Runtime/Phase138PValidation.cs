@@ -401,8 +401,8 @@ namespace Unity.FoxgloveSDK.Tests
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var cameraPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPipeline.cs");
             var readback = ExtractMethod(camera, "private void OnReadbackComplete");
-            var completeCount = CountOccurrences(readback, "CompletePendingReadback()");
-            var completeIndex = readback.IndexOf("CompletePendingReadback()", StringComparison.Ordinal);
+            var completeCount = CountOccurrences(readback, "CompletePendingReadback(generation)");
+            var completeIndex = readback.IndexOf("CompletePendingReadback(generation)", StringComparison.Ordinal);
             var finallyIndex = readback.IndexOf("finally", StringComparison.Ordinal);
             var submitIndex = readback.IndexOf("SubmitVideoFrame", StringComparison.Ordinal);
             var queueIndex = readback.IndexOf("QueueJpegFrame", StringComparison.Ordinal);

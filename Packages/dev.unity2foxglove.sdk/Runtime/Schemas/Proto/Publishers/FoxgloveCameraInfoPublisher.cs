@@ -7,6 +7,7 @@
 using System;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.Camera;
+using Unity.FoxgloveSDK.Util;
 using UnityEngine;
 using NumericQuaternion = System.Numerics.Quaternion;
 using NumericVector3 = System.Numerics.Vector3;
@@ -21,6 +22,7 @@ namespace Unity.FoxgloveSDK.Components
     public class FoxgloveCameraInfoPublisher : FoxglovePublisherBase
     {
         [Header("Sensor CameraInfo")]
+        [Tooltip("When Image Publisher is assigned, its capture source camera is authoritative for dimensions and auto-derived intrinsics; override fields still take precedence.")]
         [SerializeField] private Camera _sourceCamera;
         [SerializeField] private FoxgloveCameraPublisher _imagePublisher;
         [SerializeField] private MonoBehaviour _sensorUnitProfile;
@@ -28,6 +30,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _useSharedSensorClock = true;
         [SerializeField] private bool _publishCameraTfAnchor = true;
         [SerializeField] private string _cameraTfParentFrame = "os_sensor";
+        [Tooltip("Derive intrinsics from the resolved camera. Override fields take precedence; disabling this uses manual intrinsics. Orthographic sources are always rejected because CameraInfo is pinhole-based.")]
         [SerializeField] private bool _autoFromCamera = true;
         [SerializeField] private uint _widthOverride;
         [SerializeField] private uint _heightOverride;
@@ -99,7 +102,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!ShouldPublishNow()) return;
 
             var sourceCamera = ResolveSourceCamera();
-            if (sourceCamera != null && sourceCamera.orthographic)
+            if (CameraInfoProjectionPolicy.ShouldSuppressOrthographic(
+                    sourceCamera != null,
+                    sourceCamera != null && sourceCamera.orthographic))
             {
                 WarnOrthographicCamera();
                 return;

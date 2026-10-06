@@ -13,6 +13,7 @@ using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Sensors.Lidar;
+using Unity.FoxgloveSDK.Util;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Sensors
@@ -233,19 +234,41 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         public void CameraCaptureResizeRetiresOldRenderTextureUntilDrain()
         {
             var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraCaptureResources.cs");
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var resize = source.IndexOf("RetireRenderTexture();", StringComparison.Ordinal);
             var release = source.IndexOf("ReleaseRetiredRenderTextures", StringComparison.Ordinal);
 
             Assert.True(resize >= 0);
             Assert.True(release > resize);
-            Assert.Contains("private readonly List<RenderTexture> _retiredRenderTextures", source, StringComparison.Ordinal);
-            Assert.Contains("_captureResources.ReleaseRetiredRenderTextures();", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs"), StringComparison.Ordinal);
+            Assert.Contains("private readonly List<RetiredRenderTexture> _retiredRenderTextures", source, StringComparison.Ordinal);
+            Assert.Contains("CameraReadbackGenerationTracker", source, StringComparison.Ordinal);
+            Assert.Contains("_captureResources.RegisterReadback(generation);", publisher, StringComparison.Ordinal);
+            Assert.Contains("_captureResources.CompleteReadback(generation);", publisher, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RetiredReadbackTrackerReleasesEachGenerationAfterItsOwnDrain()
+        {
+            var tracker = new CameraReadbackGenerationTracker();
+            tracker.Register(1);
+            tracker.Register(1);
+            tracker.Register(2);
+
+            Assert.True(tracker.HasPending(1));
+            Assert.False(tracker.Complete(1));
+            Assert.True(tracker.HasPending(1));
+            Assert.True(tracker.Complete(1));
+            Assert.False(tracker.HasPending(1));
+            Assert.True(tracker.HasPending(2));
+            Assert.True(tracker.Complete(2));
+            Assert.False(tracker.HasPending(2));
         }
 
         [Fact]
         public void CameraInfoUsesImageSourceAndRejectsOrthographicProjection()
         {
             var info = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraInfoPublisher.cs");
+            var editor = Text("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraInfoPublisherEditor.cs");
             var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
 
             Assert.Contains("imagePublisher?.SensorCameraSourceCamera", info, StringComparison.Ordinal);
@@ -256,6 +279,48 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("CameraInfo is not published for orthographic cameras", info, StringComparison.Ordinal);
             Assert.DoesNotContain("cam.orthographicSize", info, StringComparison.Ordinal);
             Assert.Contains("public Camera SensorCameraSourceCamera", publisher, StringComparison.Ordinal);
+            Assert.Contains("CameraInfoProjectionPolicy.ShouldSuppressOrthographic", info, StringComparison.Ordinal);
+            Assert.Contains("capture camera is authoritative", editor, StringComparison.Ordinal);
+            Assert.Contains("Orthographic sources are never published as pinhole CameraInfo", editor, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(true, true, true)]
+        [InlineData(true, false, false)]
+        [InlineData(false, true, false)]
+        public void CameraInfoProjectionPolicyRejectsEveryOrthographicSource(
+            bool hasSourceCamera,
+            bool isOrthographic,
+            bool expected)
+        {
+            Assert.Equal(
+                expected,
+                CameraInfoProjectionPolicy.ShouldSuppressOrthographic(
+                    hasSourceCamera,
+                    isOrthographic));
+        }
+
+        [Fact]
+        public void VirtualLidarPlayModeWarningIsLimitedToOnePerEnable()
+        {
+            var gate = new PlayModeConfigurationWarningGate();
+            Assert.True(gate.TryIssue(true));
+            Assert.False(gate.TryIssue(true));
+            gate.Reset();
+            Assert.True(gate.TryIssue(true));
+
+            var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            Assert.Contains("_playModeConfigurationWarningGate.Reset();", lidar, StringComparison.Ordinal);
+            Assert.Contains("TryIssue(Application.isPlaying && isActiveAndEnabled)", lidar, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CameraSourceFallbackUsesUnityNullSemantics()
+        {
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            Assert.Contains("var sourceCamera = _captureResources.SourceCamera;", publisher, StringComparison.Ordinal);
+            Assert.Contains("return sourceCamera != null ? sourceCamera : GetComponent<Camera>();", publisher, StringComparison.Ordinal);
+            Assert.DoesNotContain("_captureResources.SourceCamera ?? GetComponent<Camera>()", publisher, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -271,12 +271,21 @@ namespace Unity.FoxgloveSDK.Components
             // Snapshot the concrete render target size with the readback request. Inspector
             // width/height can change while this callback is in flight.
             var captureRenderTexture = _captureResources.CaptureRenderTexture;
-            var generation = _captureGeneration;
+            var generation = Volatile.Read(ref _captureGeneration);
             var captureWidth = captureRenderTexture.width;
             var captureHeight = captureRenderTexture.height;
             RememberReadbackStart(renderUnixNs, Stopwatch.GetTimestamp());
             _pendingRequests++;
-            AsyncGPUReadback.Request(captureRenderTexture, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs, captureWidth, captureHeight));
+            _captureResources.RegisterReadback(generation);
+            try
+            {
+                AsyncGPUReadback.Request(captureRenderTexture, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs, captureWidth, captureHeight));
+            }
+            catch
+            {
+                CompletePendingReadback(generation);
+                throw;
+            }
             _diagnostics.RecordReadbackScheduled(
                 pendingBeforeSchedule,
                 _pendingRequests,
@@ -368,7 +377,7 @@ namespace Unity.FoxgloveSDK.Components
             }
             finally
             {
-                CompletePendingReadback();
+                CompletePendingReadback(generation);
             }
         }
 
@@ -412,11 +421,10 @@ namespace Unity.FoxgloveSDK.Components
             UnlockRuntimeOutputMode();
         }
 
-        private void CompletePendingReadback()
+        private void CompletePendingReadback(int generation)
         {
+            _captureResources.CompleteReadback(generation);
             _pendingRequests = Mathf.Max(0, _pendingRequests - 1);
-            if (_pendingRequests == 0)
-                _captureResources.ReleaseRetiredRenderTextures();
             if (_pendingRequests == 0 && _cleanupWhenReadbacksDrain)
             {
                 _cleanupWhenReadbacksDrain = false;
@@ -489,14 +497,20 @@ namespace Unity.FoxgloveSDK.Components
             {
                 Interlocked.Increment(ref _captureGeneration);
             }
-            _captureResources.Ensure(this, transform, width, height);
+            _captureResources.Ensure(this, transform, width, height, Volatile.Read(ref _captureGeneration));
             if (_pendingRequests == 0)
                 _captureResources.ReleaseRetiredRenderTextures();
         }
 
         /// <summary>Returns the source camera used by the image capture pipeline.</summary>
         public Camera SensorCameraSourceCamera
-            => _captureResources.SourceCamera ?? GetComponent<Camera>();
+        {
+            get
+            {
+                var sourceCamera = _captureResources.SourceCamera;
+                return sourceCamera != null ? sourceCamera : GetComponent<Camera>();
+            }
+        }
 
         /// <summary>
         /// Destroys Unity-owned capture resources only after local pending readbacks are

@@ -14,6 +14,7 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Sensors;
 using Unity.FoxgloveSDK.Sensors.Lidar;
+using Unity.FoxgloveSDK.Util;
 using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
@@ -108,6 +109,8 @@ namespace Unity.FoxgloveSDK.Components
 
         [SerializeField, Range(0, 1)] private float _syntheticReflectivity = 1f;
         [SerializeField, Range(0, 1)] private float _syntheticIntensity = 1f;
+        private readonly PlayModeConfigurationWarningGate _playModeConfigurationWarningGate =
+            new PlayModeConfigurationWarningGate();
 
         /// <summary>The most recently generated PointCloudFrame, or null before the first scan.</summary>
         public PointCloudFrame LastFrame { get; private set; }
@@ -295,6 +298,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnEnable()
         {
+            _playModeConfigurationWarningGate.Reset();
             NormalizeSerializedNumericConfiguration();
             ResolveSensorUnitProfile();
             if (_scanPattern != null)
@@ -629,7 +633,7 @@ namespace Unity.FoxgloveSDK.Components
         private void OnValidate()
         {
             NormalizeSerializedNumericConfiguration();
-            if (Application.isPlaying && isActiveAndEnabled)
+            if (_playModeConfigurationWarningGate.TryIssue(Application.isPlaying && isActiveAndEnabled))
                 Debug.LogWarning("[VirtualLidar] Configuration changes during Play are deferred until the component is disabled and re-enabled.", this);
         }
 
