@@ -418,6 +418,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         private static void VerifyRunInBackgroundRestore(string path)
         {
             var source = TestSources.Text(path);
+            if (path.EndsWith("Phase110StringSmokeBatchAcceptance.cs", StringComparison.Ordinal))
+            {
+                Assert.Contains("RunInBackgroundLease", source, StringComparison.Ordinal);
+                Assert.Contains("RunInBackgroundLease.Acquire", source, StringComparison.Ordinal);
+                Assert.Contains("_runInBackgroundLease.Release()", source, StringComparison.Ordinal);
+                return;
+            }
+
             Assert.Contains("private bool _previousRunInBackground;", source, StringComparison.Ordinal);
             Assert.Contains("_previousRunInBackground = Application.runInBackground;", source, StringComparison.Ordinal);
             Assert.Contains("Application.runInBackground = true;", source, StringComparison.Ordinal);

@@ -95,8 +95,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(batch.Contains("private bool _executorsStarted;", StringComparison.Ordinal)
                   && batch.Contains("if (_executorsStarted)", StringComparison.Ordinal),
                 "134-24-C6: Phase110 batch starts reflected executors only once");
-            Check(batch.Contains("Application.runInBackground = _previousRunInBackground;", StringComparison.Ordinal),
-                "134-24-C7: Phase110 batch restores runInBackground");
+            Check(batch.Contains("RunInBackgroundLease.Acquire", StringComparison.Ordinal)
+                  && batch.Contains("_runInBackgroundLease.Release()", StringComparison.Ordinal),
+                "134-24-C7: Phase110 batch restores runInBackground without clobbering newer owners");
         }
 
         private static void VerifyPhase125FixtureNamesAreUtcUnique()

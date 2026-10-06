@@ -116,7 +116,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "138P-6C: normalized scan offsets are scaled by scan period");
 
             var scheduler = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
-            Check(scheduler.Contains("LidarScanTiming.NormalizedOffsetToSeconds(timeOffset, scanPattern.ScanRateHz)", StringComparison.Ordinal),
+            Check(scheduler.Contains("LidarScanTiming.AcquisitionOffsetSeconds(", StringComparison.Ordinal)
+                  && scheduler.Contains("timeOffset", StringComparison.Ordinal)
+                  && scheduler.Contains("fixedDeltaTimeSeconds", StringComparison.Ordinal),
                 "138P-6D: VirtualLidar stores point offsets as seconds before packing");
         }
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -45,6 +46,34 @@ class SampleSyncToolingTests(unittest.TestCase):
         script = ROOT / "Scripts/samples/sync_ros2_bridge_sample.py"
 
         self.assertTrue(script.is_file(), script)
+
+    def test_maze_metadata_topic_matches_runtime_default(self) -> None:
+        """Maze metadata, bootstrap, editor, and imported copy share the Draco topic."""
+        manifest = json.loads(
+            (ROOT / "Packages/dev.unity2foxglove.sdk/package.json").read_text(encoding="utf-8")
+        )
+        sample = next(item for item in manifest["samples"] if item["displayName"] == "Virtual LiDAR Maze Demo")
+        metadata_topic = re.search(r"via (/[A-Za-z0-9_/-]+)", sample["description"])
+        self.assertIsNotNone(metadata_topic)
+        expected = metadata_topic.group(1)
+        sources = [
+            ROOT / "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs",
+            ROOT / "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs",
+            ROOT / "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs",
+            ROOT / "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs",
+        ]
+        for source_path in sources:
+            source = source_path.read_text(encoding="utf-8")
+            self.assertIn(expected, source, source_path)
+
+    def test_phase138c_helper_labels_diagnostic_mirror_not_product_gate(self) -> None:
+        """The Phase138C helper must not present its duplicate publisher as product proof."""
+        source = (ROOT / "Scripts/smoke/ros2/phase138c_pointcloud2_mirror_acceptance.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("DIAGNOSTIC_MIRROR_GREEN", source)
+        self.assertIn("PRODUCT_GATE_REQUIRED", source)
+        self.assertNotIn("GREEN: /points external ROS2 acceptance checks completed", source)
 
     def test_ros2_bridge_sample_import_root_tracks_package_version(self) -> None:
         """The checked-in imported copy must follow the Bridge manifest version."""

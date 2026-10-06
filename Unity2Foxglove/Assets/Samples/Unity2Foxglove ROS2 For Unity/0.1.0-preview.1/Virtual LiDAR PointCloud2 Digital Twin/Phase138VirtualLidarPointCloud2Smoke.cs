@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Samples/Virtual LiDAR PointCloud2 Digital Twin
-// Purpose: Publishes prepared PointCloud2 native frames to ROS2 DDS via ROS2 For Unity.
+// Purpose: Publishes prepared PointCloud2 native frames as a diagnostic mirror via ROS2 For Unity.
 // All ROS2 references are guarded by #if UNITY2FOXGLOVE_ROS2_FOR_UNITY.
 
 using System;
@@ -20,6 +20,7 @@ using Unity2Foxglove.Ros2ForUnity.Native;
 public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
 {
     private const string LogPrefix = "[Phase138VirtualLidarPointCloud2Smoke]";
+    private const string EvidenceRole = "diagnostic-mirror";
     private const float ResolveRetrySeconds = 1f;
     private const int MaxNodeCreateAttempts = 8;
 
@@ -108,7 +109,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
     {
         _nextPublishAt = 0f;
         _nextResolveAt = 0f;
-        _statusMessage = "Waiting for PointCloud2 Native frames.";
+        _statusMessage = "Waiting for PointCloud2 Native frames (diagnostic mirror).";
         _lastError = string.Empty;
         _publishedPointCloudCount = 0;
         _droppedFrameCount = 0;
@@ -293,7 +294,7 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
         if (!_endpointsLogged)
         {
             _endpointsLogged = true;
-            Debug.Log(LogPrefix + " publishing " + _topic + " as sensor_msgs/msg/PointCloud2 from node " + _effectiveNodeName);
+            Debug.Log(LogPrefix + " role=" + EvidenceRole + " publishing " + _topic + " as sensor_msgs/msg/PointCloud2 from node " + _effectiveNodeName);
         }
 
         return _publisher != null;

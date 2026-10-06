@@ -278,9 +278,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridge.Contains("CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic)", StringComparison.Ordinal)
                   && bridge.Contains("geometry_msgs.msg.TransformStamped", StringComparison.Ordinal)
                   && bridge.Contains("PublishTfAnchor", StringComparison.Ordinal)
-                  && bridge.Contains("ResolveDynamicTfAnchor", StringComparison.Ordinal)
-                  && bridge.Contains("CoordinateConverter.UnityToFoxglovePosition(_source.transform.position)", StringComparison.Ordinal)
-                  && bridge.Contains("CoordinateConverter.UnityToFoxgloveRotation(_source.transform.rotation)", StringComparison.Ordinal)
+                   && bridge.Contains("ResolveDynamicTfAnchor", StringComparison.Ordinal)
+                   && bridge.Contains("PackedPointCloudTfAnchorResolver.Resolve", StringComparison.Ordinal)
+                   && bridge.Contains("_source.transform.position.x", StringComparison.Ordinal)
+                   && bridge.Contains("_source.transform.rotation.w", StringComparison.Ordinal)
                   && bridge.Contains("PointCloud2 Native DDS ready", StringComparison.Ordinal)
                   && !publisher.Contains("tf2_msgs", StringComparison.Ordinal),
                 "138L-5Da: R2FU bridge publishes a dynamic product TF anchor while the core SDK stays ROS-free");

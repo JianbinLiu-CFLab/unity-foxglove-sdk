@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             var phase138 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138Validation.cs");
             Check(phase138.Contains("var validatedCount = 0;", StringComparison.Ordinal)
                   && phase138.Contains("validatedCount++;", StringComparison.Ordinal)
-                  && phase138.Contains("validatedCount == gen1.RayCount", StringComparison.Ordinal),
+                  && phase138.Contains("validatedCount == expectedSampledRays", StringComparison.Ordinal),
                 "163-54A-1: Phase138 ray unit-length validation cannot pass without returned rays");
 
             var phase138b = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138BValidation.cs");
@@ -109,9 +109,12 @@ namespace Unity.FoxgloveSDK.Tests
             })
             {
                 var source = ReadRepoText(relativePath);
-                Check(source.Contains("RecordCleanupFailure(\"removing TF publisher\", ex)", StringComparison.Ordinal)
-                      && source.Contains("RecordCleanupFailure(\"removing PointCloud2 publisher\", ex)", StringComparison.Ordinal)
+                Check(source.Contains("RecordCleanupFailure(\"removing PointCloud2 publisher\", ex)", StringComparison.Ordinal)
                       && source.Contains("RecordCleanupFailure(\"removing ROS2 node\", ex)", StringComparison.Ordinal)
+                       && !source.Contains("RecordCleanupFailure(\"removing TF publisher\", ex)", StringComparison.Ordinal)
+                       && !source.Contains("tf2_msgs", StringComparison.Ordinal)
+                       && !source.Contains("TransformStamped", StringComparison.Ordinal)
+                       && !source.Contains("TF publisher", StringComparison.Ordinal)
                       && source.Contains("Debug.LogWarning(LogPrefix + \" \" + message)", StringComparison.Ordinal)
                       && !source.Contains("catch (Exception) { }", StringComparison.Ordinal),
                     "163-54E-1: ROS2 sample cleanup failures are logged in " + Path.GetFileName(relativePath));
@@ -139,7 +142,9 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
 
             Check(project.Contains("Phase163_54Validation.cs", StringComparison.Ordinal)
-                  && registry.Contains("Ci(\"--phase163-54\", \"Phase 163-54\", Phase163_54Validation.Validate, includeInDefault: false", StringComparison.Ordinal),
+                  && registry.Contains("Ci(\"--phase163-54\"", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_54Validation.Validate", StringComparison.Ordinal)
+                  && registry.Contains("includeInDefault: false", StringComparison.Ordinal),
                 "163-54G-1: Phase163-54 validation is compiled and registered");
         }
 

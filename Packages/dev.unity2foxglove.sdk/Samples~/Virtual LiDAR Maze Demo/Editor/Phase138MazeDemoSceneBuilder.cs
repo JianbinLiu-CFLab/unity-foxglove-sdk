@@ -69,8 +69,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             var mgrGo = new GameObject("FoxgloveManager");
             Undo.RegisterCreatedObjectUndo(mgrGo, "Build Maze Demo");
             var manager = mgrGo.AddComponent<FoxgloveManager>();
-            SetField(manager, "_outputCoordinateMode", CoordinateMode.RightHand);
-            SetField(manager, "_inputCoordinateMode", CoordinateMode.RightHand);
+            CoordinateModeAuthority.Apply<CoordinateMode>((field, value) => SetField(manager, field, value), CoordinateMode.RightHand);
 
             // 2. Maze centred on origin.
             var maze = Phase138MazeBuilder.Build(CellsX, CellsZ, CellSize, 1.5f, 0.2f, 42);

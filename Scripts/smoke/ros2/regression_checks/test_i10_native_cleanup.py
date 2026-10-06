@@ -27,9 +27,21 @@ class I10NativeCleanupTests(unittest.TestCase):
     def test_direct_node_removal_waits_for_child_cleanup(self):
         """Ensure a failed child removal cannot orphan the node handle."""
         source = (ROOT / "Packages/dev.unity2foxglove.ros2forunity/Samples~/ROS2 For Unity External Adapter/Phase110Ros2ForUnityStringSmoke.cs").read_text(encoding="utf-8")
-        self.assertIn("if (!cleanupFailed && _directRos2Unity != null && _directRos2Node != null)", source)
-        self.assertIn("_directRos2Node.RemoveSubscription<std_msgs.msg.String>(_directSubscription);\n                _directSubscription = null;", source)
-        self.assertIn("_directRos2Node.RemovePublisher<std_msgs.msg.String>(_directPublisher);\n                _directPublisher = null;", source)
+        self.assertIn("if (!cleanupFailed && _directRos2Node != null)", source)
+        self.assertIn("_directRos2Node != null && _directRos2Unity == null", source)
+        self.assertIn("ref _directRos2Node", source)
+        self.assertIn("_directRos2Node == null && (_directSubscription != null || _directPublisher != null)", source)
+        self.assertIn("_directRos2Node != null || _directSubscription != null || _directPublisher != null", source)
+        self.assertIn("ref _directSubscription", source)
+        self.assertIn("ref _directPublisher", source)
+
+    def test_direct_cleanup_uses_retryable_owner_helper(self):
+        """The direct sample uses the executable clear-after-success helper."""
+        source = (ROOT / "Packages/dev.unity2foxglove.ros2forunity/Samples~/ROS2 For Unity External Adapter/Phase110Ros2ForUnityStringSmoke.cs").read_text(encoding="utf-8")
+        self.assertIn("RetryableNativeCleanup.TryRemove", source)
+        self.assertIn("ref _directSubscription", source)
+        self.assertIn("ref _directPublisher", source)
+        self.assertIn("ref _directRos2Node", source)
 
 
 if __name__ == "__main__":
