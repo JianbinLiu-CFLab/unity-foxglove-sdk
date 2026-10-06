@@ -930,7 +930,7 @@ class RunCiTests(unittest.TestCase):
 
         scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
         self.assertIn("unity_required: ${{ steps.scope.outputs.unity_required }}", scope)
-        self.assertIn("git diff --name-only", scope)
+        self.assertIn("git diff --no-renames --name-only", scope)
         self.assertIn(r"Packages/[^/]+/(Runtime|Editor)/", scope)
         self.assertIn(r"Packages/[^/]+/package\.json$", scope)
         self.assertIn(r"Unity2Foxglove/(Assets|Packages|ProjectSettings)/", scope)
@@ -988,6 +988,28 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("github.event_name != 'pull_request'", job)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", job)
         self.assertLess(job.index("if:"), job.index("runs-on:"))
+
+    def test_unity_workflow_preserves_library_and_separates_manual_runs(self) -> None:
+        """Keep the Unity Library cache and prevent push runs from cancelling dispatch runs."""
+        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        compile_job = workflow.split("  unity_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
+        self.assertIn("clean: false", compile_job)
+        self.assertIn("git clean -ffdx -e Unity2Foxglove/Library/", compile_job)
+        self.assertIn("--timeout-seconds 3600", compile_job)
+        self.assertIn(
+            "group: unity-compile-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}",
+            workflow,
+        )
+        self.assertIn("cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}", workflow)
+
+    def test_unity_scope_disables_rename_detection(self) -> None:
+        """Renames must report both paths so moving compiled code cannot bypass the gate."""
+        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
+        diff_lines = [line.strip() for line in scope.splitlines() if "git diff" in line]
+        self.assertGreaterEqual(len(diff_lines), 3)
+        for line in diff_lines:
+            self.assertIn("--no-renames", line)
 
     def test_fatal_run_raises_after_printing_failure(self) -> None:
         """Fatal subprocess failures should abort at the point of failure."""
@@ -3928,6 +3950,10 @@ class UnityBatchCompileGateTests(unittest.TestCase):
         self.assertEqual("FAIL", verdict)
         self.assertEqual(1, len(errors))
         self.assertEqual(1, len(warnings))
+
+    def test_default_timeout_allows_cold_unity_import(self) -> None:
+        """Allow a cold self-hosted workspace enough time for Unity package import."""
+        self.assertEqual(60 * 60, self.gate.DEFAULT_TIMEOUT_SECONDS)
 
     def test_compile_verdict_marks_invalid_package_environment_not_run(self) -> None:
         """Classify Unity package-manager environment failures as not run."""
