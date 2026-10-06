@@ -989,6 +989,17 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", job)
         self.assertLess(job.index("if:"), job.index("runs-on:"))
 
+    def test_unity_batch_gate_enables_git_long_paths_before_checkout(self) -> None:
+        """The runner checkout must support the repository's longest tracked paths on Windows."""
+        workflow = (ROOT / ".github" / "workflows" / "unity-compile.yml").read_text(encoding="utf-8")
+        steps = workflow.split("  unity_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
+        self.assertIn("git config --global core.longpaths true", steps)
+        self.assertIn("GIT_CONFIG_GLOBAL=", steps)
+        self.assertLess(
+            steps.index("core.longpaths true"),
+            steps.index("uses: actions/checkout@"),
+        )
+
     def test_fatal_run_raises_after_printing_failure(self) -> None:
         """Fatal subprocess failures should abort at the point of failure."""
         failed = self.run_ci.OwnedCommandResult(returncode=7)
