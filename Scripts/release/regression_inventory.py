@@ -85,30 +85,22 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
         "Scripts.ros2forunity.windows.lyrical.regression_checks.test_sync_r2fu_artifact_to_unity2foxglove",
         "Scripts.ros2forunity.windows.lyrical.regression_checks.test_validate_r2fu_runtime_package",
     ),
+    "portable-regression-tooling": (
+        "Scripts.mcap.regression_checks.test_mcap_time_sync",
+        "Scripts.smoke.foxrun.regression_checks.test_atomic_publication",
+        "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_manual",
+        "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_probe",
+        "Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup",
+        "Scripts.smoke.ros2.regression_checks.test_i10_phase106_cleanup",
+        "Scripts.smoke.ros2.regression_checks.test_i10_phase109_cleanup",
+        "Scripts.smoke.ros2.regression_checks.test_i10_remaining_cleanup",
+        "Scripts.smoke.ros2.regression_checks.test_launch_phase138l_rviz2",
+    ),
 }
 
 # Every discovered module must either appear in a CI/workflow command or have
 # an explicit, reviewed reason for its environment-specific exclusion.
-EXPLICIT_EXCLUSIONS: dict[str, str] = {
-    "Scripts.mcap.regression_checks.test_mcap_time_sync":
-        "MCAP Python package and pinned fixture are not provisioned in the dotnet-tests runner; run in the MCAP conformance lane with its fixture.",
-    "Scripts.smoke.foxrun.regression_checks.test_atomic_publication":
-        "Manual publication integration lane; generated FoxRun artifact inputs are not provisioned in default runners.",
-    "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_manual":
-        "Manual/native Unity artifact lane; provisioned native and Unity inputs are required.",
-    "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_probe":
-        "Manual/native Unity artifact lane; provisioned native and Unity inputs are required.",
-    "Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup":
-        "Live/native ROS2 smoke lane; a ROS2 runtime and network fixture are required.",
-    "Scripts.smoke.ros2.regression_checks.test_i10_phase106_cleanup":
-        "Live/native ROS2 smoke lane; a ROS2 runtime and network fixture are required.",
-    "Scripts.smoke.ros2.regression_checks.test_i10_phase109_cleanup":
-        "Live/native ROS2 smoke lane; a ROS2 runtime and network fixture are required.",
-    "Scripts.smoke.ros2.regression_checks.test_i10_remaining_cleanup":
-        "Live/native ROS2 smoke lane; a ROS2 runtime and network fixture are required.",
-    "Scripts.smoke.ros2.regression_checks.test_launch_phase138l_rviz2":
-        "Live/native ROS2 smoke lane; a ROS2 runtime and network fixture are required.",
-}
+EXPLICIT_EXCLUSIONS: dict[str, str] = {}
 
 
 def discover_regression_modules(root: Path = _REPO_ROOT) -> set[str]:
