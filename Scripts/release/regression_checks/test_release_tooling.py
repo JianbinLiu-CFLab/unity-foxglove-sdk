@@ -930,12 +930,14 @@ class RunCiTests(unittest.TestCase):
 
         scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
         self.assertIn("unity_required: ${{ steps.scope.outputs.unity_required }}", scope)
-        self.assertIn("runner_available: ${{ steps.runner.outputs.runner_available }}", scope)
         self.assertIn("git diff --name-only", scope)
         self.assertIn(r"Packages/[^/]+/(Runtime|Editor)/", scope)
-        self.assertIn(r"Unity2Foxglove/Assets/", scope)
-        self.assertIn(r".*\.meta$", scope)
-        self.assertIn("actions/runners", scope)
+        self.assertIn(r"Packages/[^/]+/package\.json$", scope)
+        self.assertIn(r"Unity2Foxglove/(Assets|Packages|ProjectSettings)/", scope)
+        self.assertIn(r".*\.(asmdef|asmref|meta)$", scope)
+        self.assertNotIn("actions/runners", workflow)
+        self.assertNotIn("gh api", workflow)
+        self.assertNotIn("GH_TOKEN", workflow)
 
         aggregate = workflow.split("  unity_required:\n", 1)[1]
         self.assertIn("if: always()", aggregate)
@@ -944,20 +946,45 @@ class RunCiTests(unittest.TestCase):
         self.assertIn("UNITY_GATE_PASS", aggregate)
         self.assertIn("github.event.pull_request.head.repo.full_name", aggregate)
 
+    def test_unity_scope_matches_import_sensitive_paths(self) -> None:
+        """Unity import and project configuration changes must require the gate."""
+        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
+        match = re.search(r"grep -Eq '([^']+)'", scope)
+        self.assertIsNotNone(match)
+        assert match is not None
+        path_pattern = match.group(1)
+        for path in (
+            "Packages/dev.unity2foxglove.sdk/Runtime/Foo.cs",
+            "Packages/dev.unity2foxglove.sdk/Editor/Foo.cs",
+            "Packages/dev.unity2foxglove.sdk/package.json",
+            "Unity2Foxglove/Assets/Foo.cs",
+            "Unity2Foxglove/Packages/manifest.json",
+            "Unity2Foxglove/Packages/packages-lock.json",
+            "Unity2Foxglove/ProjectSettings/ProjectVersion.txt",
+            "Packages/dev.unity2foxglove.sdk/Foo.asmdef",
+            "Packages/dev.unity2foxglove.sdk/Foo.asmref",
+            "Packages/dev.unity2foxglove.sdk/Runtime/Foo.cs.meta",
+        ):
+            self.assertRegex(path, path_pattern, path)
+        for path in ("README.md", "Scripts/release/run_ci.py", ".github/workflows/test.yml"):
+            self.assertNotRegex(path, path_pattern, path)
+
     def test_unity_required_gate_fails_closed_when_scope_needs_runner(self) -> None:
-        """Unity changes must fail the required context when no trusted runner is available."""
+        """Unity changes must not bypass the required context when scheduling is disabled."""
         workflow = (ROOT / ".github" / "workflows" / "unity-compile.yml").read_text(encoding="utf-8")
         compile_job = workflow.split("  unity_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
         self.assertIn("needs.unity_scope.outputs.unity_required == 'true'", compile_job)
-        self.assertIn("needs.unity_scope.outputs.runner_available == 'true'", compile_job)
+        self.assertNotIn("needs.unity_scope.outputs.runner_available", compile_job)
+        self.assertIn("vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'", compile_job)
         self.assertLess(compile_job.index("if:"), compile_job.index("runs-on:"))
 
     def test_unity_batch_gate_runs_only_on_an_enabled_trusted_runner(self) -> None:
-        """Skip the self-hosted job until a runner is enabled, and never run fork pull requests on it."""
+        """Schedule the self-hosted job only when enabled, and never run fork pull requests on it."""
         workflow = (ROOT / ".github" / "workflows" / "unity-compile.yml").read_text(encoding="utf-8")
         job = workflow.split("  unity_compile:\n", 1)[1].split("    steps:\n", 1)[0]
         self.assertIn("vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'", job)
-        self.assertIn("needs.unity_scope.outputs.runner_available == 'true'", job)
+        self.assertNotIn("needs.unity_scope.outputs.runner_available", job)
         self.assertIn("github.event_name != 'pull_request'", job)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", job)
         self.assertLess(job.index("if:"), job.index("runs-on:"))
