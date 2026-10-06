@@ -157,6 +157,10 @@ jobs:
         if: always()
         run: python3 -B Scripts/release/regression_inventory.py --run-lane phase181-interface-tooling
 
+      - name: Run complete portable regression lane
+        if: always()
+        run: python3 -B Scripts/release/regression_inventory.py --run-lane portable-regression-tooling
+
       - name: Run complete Python regression inventory
         if: always()
         run: |

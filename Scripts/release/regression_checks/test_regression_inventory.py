@@ -113,22 +113,30 @@ jobs:
                 modules,
             )
 
-    def test_platform_specific_modules_stay_in_reviewed_lanes(self):
-        """Platform-bound checks are not forced into the Linux interface lane."""
+    def test_portable_modules_stay_in_the_portable_ci_lane(self):
+        """Fixture-free regression checks execute in the required portable lane."""
         linux_lane = regression_inventory._WORKFLOW_RUNNER_MODULES[
             "phase181-interface-tooling"
         ]
         windows_lane = regression_inventory._WORKFLOW_RUNNER_MODULES[
             "windows-parity-regression-tooling"
         ]
-        self.assertNotIn(
+        portable_lane = regression_inventory._WORKFLOW_RUNNER_MODULES[
+            "portable-regression-tooling"
+        ]
+        expected = {
             "Scripts.mcap.regression_checks.test_mcap_time_sync",
-            linux_lane,
-        )
-        self.assertIn(
-            "Scripts.mcap.regression_checks.test_mcap_time_sync",
-            regression_inventory.EXPLICIT_EXCLUSIONS,
-        )
+            "Scripts.smoke.foxrun.regression_checks.test_atomic_publication",
+            "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_manual",
+            "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_probe",
+            "Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup",
+            "Scripts.smoke.ros2.regression_checks.test_i10_phase106_cleanup",
+            "Scripts.smoke.ros2.regression_checks.test_i10_phase109_cleanup",
+            "Scripts.smoke.ros2.regression_checks.test_i10_remaining_cleanup",
+            "Scripts.smoke.ros2.regression_checks.test_launch_phase138l_rviz2",
+        }
+        self.assertEqual(expected, set(portable_lane))
+        self.assertEqual({}, regression_inventory.EXPLICIT_EXCLUSIONS)
         self.assertNotIn(
             "Scripts.ros2forunity.interfaces.regression_checks.test_h04_tool_identity_contract",
             linux_lane,
