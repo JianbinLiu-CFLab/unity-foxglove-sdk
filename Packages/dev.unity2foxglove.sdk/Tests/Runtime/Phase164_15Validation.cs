@@ -41,9 +41,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("_captureCameraDirty = true;", StringComparison.Ordinal)
                   && source.Contains("_lastCopiedSourceCamera = null;", StringComparison.Ordinal),
                 "architecture guard: 164-15A-4: capture resource recreation and cleanup invalidate the camera-copy cache");
-            Check(source.Contains("private bool _sourceCameraResolved;", StringComparison.Ordinal)
+            Check(ensure.Contains("if (_sourceCamera == null)", StringComparison.Ordinal)
+                  && !ensure.Contains("&& !_sourceCameraResolved", StringComparison.Ordinal)
                   && source.Contains("Object.DestroyImmediate(target)", StringComparison.Ordinal),
-                "architecture guard: 164-15A-5: capture resources cache missing source camera probes and destroy edit-mode objects immediately");
+                "architecture guard: 164-15A-5: capture resources re-probe Unity-null source cameras and destroy edit-mode objects immediately");
         }
 
         private static void VerifyReadbackTimingUsesSmallRingBuffer()

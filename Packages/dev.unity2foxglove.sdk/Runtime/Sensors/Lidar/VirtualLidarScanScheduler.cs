@@ -56,6 +56,9 @@ namespace Unity.FoxgloveSDK.Components
             _logContext = logContext;
         }
 
+        /// <summary>Whether a batch is still owned by the asynchronous scheduler.</summary>
+        public bool HasPendingScan => _pendingScanState == PendingScanState.Scheduled;
+
         /// <summary>
         /// Schedule a pending raycast+build batch for the current fixed-tick column progress.
         /// </summary>

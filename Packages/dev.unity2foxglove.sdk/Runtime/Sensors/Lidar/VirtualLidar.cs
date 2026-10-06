@@ -233,7 +233,7 @@ namespace Unity.FoxgloveSDK.Components
             PublishActiveScan(ref timings);
             timings.PublishActiveScanMs += timings.ElapsedMs(publishStart);
             var startNewScanStart = timings.Start();
-            StartNewScan(Time.fixedTimeAsDouble);
+            StartNewScan(LidarScanTiming.NextScanStartPhysSeconds(_activeScanStartPhysSeconds, _scanPeriod));
             timings.StartNewScanMs += timings.ElapsedMs(startNewScanStart);
         }
 
@@ -387,6 +387,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (_manager != null
                     && _sharedClockGeneration != _manager.SharedSensorClockGeneration)
                 {
+                    ScanScheduler.DrainPendingScan();
                     _sharedClockGeneration = _manager.SharedSensorClockGeneration;
                     _scanClock.Reset();
                     ResetScanState(Time.fixedTimeAsDouble);
@@ -404,6 +405,9 @@ namespace Unity.FoxgloveSDK.Components
                     ref _activeScanPointSnapshotCount,
                     ref _activeScanValidPoints,
                     OnScanBoundaryAction);
+
+                if (ScanScheduler.HasPendingScan)
+                    return;
 
                 if (_activeScanFrame == null)
                     StartNewScan(Time.fixedTimeAsDouble);
@@ -443,12 +447,17 @@ namespace Unity.FoxgloveSDK.Components
                 var remainingColumns = _scanBuffers.ScanColumnCount - _scanColumnCursor;
                 if (remainingColumns <= 0)
                     remainingColumns = _scanBuffers.ScanColumnCount;
+                var boundedBudgetColumns = Math.Min(budgetColumns, remainingColumns);
 
-                var columnsToEmit = Math.Min((int)Math.Floor(_scanColumnProgress),
-                    Math.Min(budgetColumns, remainingColumns));
-                if (columnsToEmit <= 0)
+                if (!LidarScanTiming.TryReserveColumns(
+                        ScanScheduler.HasPendingScan,
+                        _scanColumnProgress,
+                        boundedBudgetColumns,
+                        remainingColumns,
+                        out var columnsToEmit,
+                        out var remainingProgress))
                     return;
-                _scanColumnProgress -= columnsToEmit;
+                _scanColumnProgress = remainingProgress;
 
                 var scheduleStart = BeginLidarFixedUpdateTiming();
                 ScanScheduler.SchedulePendingScan(

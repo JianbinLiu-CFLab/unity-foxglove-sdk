@@ -150,6 +150,65 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void LidarProgressReservationPreservesBacklogWhileBatchIsInFlight()
+        {
+            const double progress = 3.75d;
+
+            Assert.False(LidarScanTiming.TryReserveColumns(
+                hasPendingScan: true,
+                progress: progress,
+                budgetColumns: 2,
+                remainingColumns: 4,
+                out var pendingColumns,
+                out var pendingProgress));
+            Assert.Equal(0, pendingColumns);
+            Assert.Equal(progress, pendingProgress);
+
+            Assert.True(LidarScanTiming.TryReserveColumns(
+                hasPendingScan: false,
+                progress: progress,
+                budgetColumns: 2,
+                remainingColumns: 4,
+                out var reservedColumns,
+                out var remainingProgress));
+            Assert.Equal(2, reservedColumns);
+            Assert.Equal(1.75d, remainingProgress, 10);
+        }
+
+        [Fact]
+        public void LidarBoundaryTimestampAdvancesFromScanTimeline()
+        {
+            Assert.Equal(
+                12.5d,
+                LidarScanTiming.NextScanStartPhysSeconds(10.0d, 2.5d),
+                10);
+            Assert.Equal(
+                10.0d,
+                LidarScanTiming.NextScanStartPhysSeconds(10.0d, double.NaN),
+                10);
+            Assert.Equal(
+                10.0d,
+                LidarScanTiming.NextScanStartPhysSeconds(10.0d, double.PositiveInfinity),
+                10);
+        }
+
+        [Fact]
+        public void SharedSensorClockResetReanchorsAndAdvancesGeneration()
+        {
+            var clock = new FoxgloveSharedSensorClock();
+
+            Assert.Equal(0, clock.Generation);
+            Assert.Equal(1_000_000_000UL, clock.GetUnixTime(10.0d, 1_000_000_000UL));
+            Assert.Equal(1_500_000_000UL, clock.GetUnixTime(10.5d, 9_000_000_000UL));
+
+            clock.Reset();
+
+            Assert.Equal(1, clock.Generation);
+            Assert.Equal(2_000_000_000UL, clock.GetUnixTime(20.0d, 2_000_000_000UL));
+            Assert.Equal(2_250_000_000UL, clock.GetUnixTime(20.25d, 9_000_000_000UL));
+        }
+
+        [Fact]
         public void CameraSubscriberFanoutCatchesPerSubscriberFailure()
         {
             foreach (var relativePath in new[]
@@ -244,6 +303,38 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("CameraReadbackGenerationTracker", source, StringComparison.Ordinal);
             Assert.Contains("_captureResources.RegisterReadback(generation);", publisher, StringComparison.Ordinal);
             Assert.Contains("_captureResources.CompleteReadback(generation);", publisher, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SensorGenerationResetDropsStaleWorkBeforeStartingNewEpoch()
+        {
+            var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var imu = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+
+            var lidarGeneration = lidar.IndexOf(
+                "_sharedClockGeneration != _manager.SharedSensorClockGeneration",
+                StringComparison.Ordinal);
+            var lidarDrain = lidar.IndexOf("ScanScheduler.DrainPendingScan();", lidarGeneration, StringComparison.Ordinal);
+            var lidarClockReset = lidar.IndexOf("_scanClock.Reset();", lidarGeneration, StringComparison.Ordinal);
+            Assert.True(lidarGeneration >= 0);
+            Assert.InRange(lidarDrain, lidarGeneration, lidarClockReset - 1);
+
+            var imuGeneration = imu.IndexOf(
+                "_sharedClockGeneration != _manager.SharedSensorClockGeneration",
+                StringComparison.Ordinal);
+            var imuRetire = imu.IndexOf("RetireQueuedSamplesForLifecycleTransition();", imuGeneration, StringComparison.Ordinal);
+            var imuEpochReset = imu.IndexOf("_hasEpoch = false;", imuGeneration, StringComparison.Ordinal);
+            Assert.True(imuGeneration >= 0);
+            Assert.InRange(imuRetire, imuGeneration, imuEpochReset - 1);
+        }
+
+        [Fact]
+        public void CameraCaptureReResolvesAReplacementAfterUnitySourceDestruction()
+        {
+            var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraCaptureResources.cs");
+
+            Assert.Contains("if (_sourceCamera == null)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("&& !_sourceCameraResolved", source, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -352,6 +443,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         {
             var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             Assert.Contains("SetMotionCompensationTransform(transform);", lidar, StringComparison.Ordinal);
+            Assert.Contains("LidarScanTiming.NextScanStartPhysSeconds(_activeScanStartPhysSeconds, _scanPeriod)", lidar, StringComparison.Ordinal);
         }
 
         [Fact]

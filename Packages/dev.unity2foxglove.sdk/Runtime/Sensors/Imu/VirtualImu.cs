@@ -181,6 +181,8 @@ namespace Unity.FoxgloveSDK.Components
 
             if (_manager != null && _sharedClockGeneration != _manager.SharedSensorClockGeneration)
             {
+                RetireQueuedSamplesForLifecycleTransition();
+                _hasLastVelocity = false;
                 _hasEpoch = false;
                 _sharedClockGeneration = _manager.SharedSensorClockGeneration;
                 _nextSampleIndex = 0;
