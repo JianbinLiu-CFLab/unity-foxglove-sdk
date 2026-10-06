@@ -12,6 +12,7 @@ using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Utilities;
 
 /// <summary>
 /// Registers demo Parameters and Services for Phase 7 manual verification.
@@ -40,7 +41,7 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     private FoxgloveParameterStore.ParameterRegistration _colorRegistration;
     private FoxgloveParameterStore.ParameterRegistration _scaleRegistration;
     private GameObject _cachedCube;
-    private int _wiringGeneration;
+    private readonly WiringGenerationGate _wiringGeneration = new WiringGenerationGate();
     private System.Action<string, JToken, string> _parameterChangedHandler;
 
     /// <summary>
@@ -92,7 +93,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         // Advertise /unity/client_log so Foxglove sees foxglove.Log in the schema picker.
         _manager.GetOrRegisterSchemaChannel("/unity/client_log", FoxgloveSchemaDefinitions.LogSchemaName);
 
-        _parameterChangedHandler = (name, value, type) => OnParameterChangedForRuntime(rt, name, value, type);
+        var wiringGeneration = _wiringGeneration.Activate();
+        _parameterChangedHandler = (name, value, type) => OnParameterChangedForRuntime(rt, wiringGeneration, name, value, type);
         rt.Parameters.OnParameterChanged += _parameterChangedHandler;
         _wiredManager = _manager;
         _wiredRuntime = rt;
@@ -132,7 +134,7 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
 
     private void ClearRuntimeWiring()
     {
-        System.Threading.Interlocked.Increment(ref _wiringGeneration);
+        _wiringGeneration.Invalidate();
         if (_wiredRuntime != null)
             if (_parameterChangedHandler != null)
                 _wiredRuntime.Parameters.OnParameterChanged -= _parameterChangedHandler;
@@ -230,18 +232,21 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     /// Handles Foxglove parameter changes by delegating Unity-object updates to
     /// the main thread via <c>SynchronizationContext</c>.
     /// </summary>
-    private void OnParameterChangedForRuntime(FoxgloveRuntime runtime, string name, JToken value, string type)
+    private void OnParameterChangedForRuntime(FoxgloveRuntime runtime, int wiringGeneration, string name, JToken value, string type)
     {
-        if (!ReferenceEquals(runtime, _wiredRuntime) || !_initialized || !isActiveAndEnabled)
+        if (!ReferenceEquals(runtime, _wiredRuntime)
+            || !_wiringGeneration.IsCurrent(wiringGeneration)
+            || !_initialized
+            || !isActiveAndEnabled)
             return;
         if (name == "/cube/color" && TryReadColor(value, out var color))
         {
             if (_unityContext != null && SynchronizationContext.Current != _unityContext)
             {
-                var generation = System.Threading.Volatile.Read(ref _wiringGeneration);
+                var generation = wiringGeneration;
                 _unityContext.Post(_ =>
                 {
-                    if (generation == System.Threading.Volatile.Read(ref _wiringGeneration) && isActiveAndEnabled)
+                    if (_wiringGeneration.IsCurrent(generation) && isActiveAndEnabled)
                         ApplySceneColorFromParameter(color);
                 }, null);
             }
@@ -255,10 +260,10 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
             var scaleValue = value?.DeepClone();
             if (_unityContext != null && SynchronizationContext.Current != _unityContext)
             {
-                var generation = System.Threading.Volatile.Read(ref _wiringGeneration);
+                var generation = wiringGeneration;
                 _unityContext.Post(_ =>
                 {
-                    if (generation == System.Threading.Volatile.Read(ref _wiringGeneration) && isActiveAndEnabled)
+                    if (_wiringGeneration.IsCurrent(generation) && isActiveAndEnabled)
                         ApplyScaleFromParameter(scaleValue);
                 }, null);
             }

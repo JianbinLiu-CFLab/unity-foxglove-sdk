@@ -765,10 +765,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             private void ResolveDynamicTfAnchor(out Vector3 translation, out Quaternion rotation)
             {
-                translation = CoordinateConverter.UnityToFoxglovePosition(_source.transform.position)
-                              + _source.PackedPointCloudTfTranslation;
-                rotation = CoordinateConverter.UnityToFoxgloveRotation(_source.transform.rotation)
-                           * _source.PackedPointCloudTfRotationRos;
+                var pose = PackedPointCloudTfAnchorResolver.Resolve(
+                    _source.transform.position.x,
+                    _source.transform.position.y,
+                    _source.transform.position.z,
+                    _source.transform.rotation.x,
+                    _source.transform.rotation.y,
+                    _source.transform.rotation.z,
+                    _source.transform.rotation.w,
+                    _source.PackedPointCloudTfTranslation.x,
+                    _source.PackedPointCloudTfTranslation.y,
+                    _source.PackedPointCloudTfTranslation.z,
+                    _source.PackedPointCloudTfRotationRos.x,
+                    _source.PackedPointCloudTfRotationRos.y,
+                    _source.PackedPointCloudTfRotationRos.z,
+                    _source.PackedPointCloudTfRotationRos.w);
+                translation = new Vector3(pose.TranslationX, pose.TranslationY, pose.TranslationZ);
+                rotation = new Quaternion(pose.RotationX, pose.RotationY, pose.RotationZ, pose.RotationW);
             }
 
             private void RecordPublishFailure(string message)

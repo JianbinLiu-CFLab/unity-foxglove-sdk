@@ -502,8 +502,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "162-F3: RViz2 PointCloud2 displays use non-queued sensor-data QoS");
 
             Check(bridge.Contains("ResolveDynamicTfAnchor", StringComparison.Ordinal)
-                  && bridge.Contains("CoordinateConverter.UnityToFoxglovePosition(_source.transform.position)", StringComparison.Ordinal)
-                  && bridge.Contains("CoordinateConverter.UnityToFoxgloveRotation(_source.transform.rotation)", StringComparison.Ordinal),
+                  && bridge.Contains("PackedPointCloudTfAnchorResolver.Resolve", StringComparison.Ordinal)
+                  && bridge.Contains("_source.transform.position.x", StringComparison.Ordinal)
+                  && bridge.Contains("_source.transform.rotation.w", StringComparison.Ordinal),
                 "162-F4: PointCloud2 TF anchor follows the source transform instead of publishing a stale static pose");
 
             var scene = ReadRepoText("Unity2Foxglove/Assets/Scenes/Phase138_Foxglove_MCAP_Smoke.unity");

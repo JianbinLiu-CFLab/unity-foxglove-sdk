@@ -640,6 +640,32 @@ class RunCiTests(unittest.TestCase):
         runtime = active_workflow_line_index(workflow, "- name: Run validation suite")
         self.assertLess(xunit, runtime)
 
+    def test_dotnet_workflow_runs_package_sample_closure_lane(self) -> None:
+        """The required workflow runs the package and sample closure lane."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        step = active_workflow_line_index(workflow, "- name: Run package and sample closure lane")
+        command = active_workflow_line_index(workflow, "run: python3 -B Scripts/release/run_ci.py --only packages")
+        self.assertLess(step, command)
+        self.assertIn(
+            "Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup",
+            RUN_CI_PATH.read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            "-m unittest Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup",
+            workflow,
+        )
+
+    def test_dotnet_workflow_runs_workstream_f_runtime_closure_validations(self) -> None:
+        """The required workflow runs every explicit Workstream F runtime selector."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        step = active_workflow_line_index(workflow, "- name: Run Workstream F explicit runtime closure validations")
+        command = active_workflow_line_index(workflow, "dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- \"$flag\" || status=$?")
+        self.assertLess(step, command)
+        self.assertIn("status=0", workflow)
+        self.assertIn('exit "$status"', workflow)
+        for flag in ("--phase138l", "--phase138m", "--phase138p", "--phase163-54"):
+            self.assertIn(flag, workflow)
+
     def test_dotnet_workflow_collects_independent_gate_results_after_early_failure(self) -> None:
         """Independent remote gates must execute after an earlier step fails."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -872,6 +898,7 @@ class RunCiTests(unittest.TestCase):
             "Scripts.smoke.test_core_smoke_scripts",
             "Scripts.smoke.ros2.regression_checks.test_phase162_lyrical_zenoh_player_smoke",
             "Scripts.smoke.ros2.regression_checks.test_ros2_windows_env",
+            "Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup",
             "Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe",
             "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual",
             "Scripts.phase190.regression_checks.test_phase190_validators",

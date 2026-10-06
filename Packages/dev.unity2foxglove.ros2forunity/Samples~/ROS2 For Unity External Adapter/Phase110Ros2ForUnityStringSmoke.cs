@@ -5,6 +5,7 @@
 // Purpose: ROS2 For Unity bidirectional string topic smoke component.
 
 using Unity2Foxglove.Ros2ForUnity;
+using Unity.FoxgloveSDK.Utilities;
 using UnityEngine;
 using UnityEngine.Serialization;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
@@ -344,54 +345,46 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void DisposeDirectEndpoints()
     {
+        if (_directRos2Node == null && (_directSubscription != null || _directPublisher != null))
+        {
+            Debug.LogWarning(LogPrefix + "direct child handles remain but their ROS2 node owner is missing; retaining handles for retry.");
+            return;
+        }
+
         var cleanupFailed = false;
-        if (_directRos2Node != null && _directSubscription != null)
+        if (_directRos2Node != null)
         {
-            try
-            {
-                _directRos2Node.RemoveSubscription<std_msgs.msg.String>(_directSubscription);
-                _directSubscription = null;
-            }
-            catch (System.Exception ex)
-            {
-                cleanupFailed = true;
-                Debug.LogWarning(LogPrefix + "subscription cleanup failed; retaining handle for retry: " + ex.Message);
-            }
+            cleanupFailed |= !RetryableNativeCleanup.TryRemove(
+                ref _directSubscription,
+                subscription => _directRos2Node.RemoveSubscription<std_msgs.msg.String>(subscription),
+                ex => Debug.LogWarning(LogPrefix + "subscription cleanup failed; retaining handle for retry: " + ex.Message));
         }
 
-        if (_directRos2Node != null && _directPublisher != null)
+        if (_directRos2Node != null)
         {
-            try
-            {
-                _directRos2Node.RemovePublisher<std_msgs.msg.String>(_directPublisher);
-                _directPublisher = null;
-            }
-            catch (System.Exception ex)
-            {
-                cleanupFailed = true;
-                Debug.LogWarning(LogPrefix + "publisher cleanup failed; retaining handle for retry: " + ex.Message);
-            }
+            cleanupFailed |= !RetryableNativeCleanup.TryRemove(
+                ref _directPublisher,
+                publisher => _directRos2Node.RemovePublisher<std_msgs.msg.String>(publisher),
+                ex => Debug.LogWarning(LogPrefix + "publisher cleanup failed; retaining handle for retry: " + ex.Message));
         }
 
-        if (!cleanupFailed && _directRos2Unity != null && _directRos2Node != null)
+        if (!cleanupFailed && _directRos2Node != null && _directRos2Unity == null)
         {
-            try
-            {
-                _directRos2Unity.RemoveNode(_directRos2Node);
-            }
-            catch (System.Exception ex)
-            {
-                cleanupFailed = true;
-                Debug.LogWarning(LogPrefix + "node cleanup failed; retaining handle for retry: " + ex.Message);
-            }
+            Debug.LogWarning(LogPrefix + "direct ROS2 node remains but its ROS2 Unity owner is missing; retaining handles for retry.");
+            return;
         }
 
-        if (cleanupFailed)
+        if (!cleanupFailed && _directRos2Node != null)
+        {
+            cleanupFailed = !RetryableNativeCleanup.TryRemove(
+                ref _directRos2Node,
+                node => _directRos2Unity.RemoveNode(node),
+                ex => Debug.LogWarning(LogPrefix + "node cleanup failed; retaining handle for retry: " + ex.Message));
+        }
+
+        if (cleanupFailed || _directRos2Node != null || _directSubscription != null || _directPublisher != null)
             return;
 
-        _directSubscription = null;
-        _directPublisher = null;
-        _directRos2Node = null;
         if (_ownsDirectRos2Unity && _directRos2Unity != null)
             Destroy(_directRos2Unity);
         _directRos2Unity = null;

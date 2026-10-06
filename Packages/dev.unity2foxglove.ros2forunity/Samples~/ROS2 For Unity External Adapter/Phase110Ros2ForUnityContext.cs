@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using Unity2Foxglove.Ros2ForUnity;
+using Unity.FoxgloveSDK.Utilities;
 using UnityEngine;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
@@ -387,7 +388,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
     private sealed class StringPublisher : IUnity2FoxgloveRos2Publisher<std_msgs.msg.String>, IPhase110DrainablePublisher
     {
-        private readonly IPublisher<std_msgs.msg.String> _publisher;
+        private IPublisher<std_msgs.msg.String> _publisher;
         private readonly ROS2Node _ros2Node;
         private bool _disposed;
 
@@ -402,7 +403,7 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
         }
 
         public string Topic { get; }
-        public bool IsDisposed => _disposed;
+        public bool IsDisposed => _disposed || _publisher == null;
 
         public bool TryPublish(std_msgs.msg.String message, out string error)
         {
@@ -430,15 +431,12 @@ public sealed class Phase110Ros2ForUnityContext : IUnity2FoxgloveRos2Context
             if (_disposed)
                 return;
 
-            try
-            {
-                _ros2Node.RemovePublisher<std_msgs.msg.String>(_publisher);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning("[Ros2ForUnityContext] publisher cleanup failed; retaining native handle for retry: " + ex.Message);
+            if (!RetryableNativeCleanup.TryRemove(
+                    ref _publisher,
+                    publisher => _ros2Node.RemovePublisher<std_msgs.msg.String>(publisher),
+                    ex => Debug.LogWarning("[Ros2ForUnityContext] publisher cleanup failed; retaining native handle for retry: " + ex.Message)))
                 return;
-            }
+
             _disposed = true;
         }
     }

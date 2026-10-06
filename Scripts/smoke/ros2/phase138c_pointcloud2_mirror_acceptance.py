@@ -3,13 +3,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Module: Scripts/smoke
-# Purpose: Manual ROS2 and RViz2 acceptance helper for Phase138C Virtual LiDAR PointCloud2 mirror.
+# Purpose: Manual ROS2 and RViz2 diagnostic-mirror helper for Phase138C Virtual LiDAR PointCloud2.
 
-"""Validate Phase138C Virtual LiDAR ROS2 PointCloud2 mirror topic.
+"""Validate the Phase138C Virtual LiDAR ROS2 PointCloud2 diagnostic mirror.
 
 Start Unity manually first, import the Virtual LiDAR PointCloud2 Digital Twin
 sample, add Phase138VirtualLidarPointCloud2Smoke to a GameObject with a
-VirtualLidar, and enter Play Mode. This helper then uses the pinned Windows
+VirtualLidar, and enter Play Mode. This helper is diagnostic evidence only;
+it does not validate the automatic product bridge. It uses the pinned Windows
 ROS2 Jazzy Python entry point to check the external ROS2 graph and launch
 RViz2 by default.
 """
@@ -214,8 +215,9 @@ def main(argv: list[str]) -> int:
     print(points_echo.rstrip())
     validate_pointcloud2_echo(points_echo)
 
-    print("[phase138c] GREEN: /points external ROS2 acceptance checks completed.")
-    print("[phase138c] Confirm RViz2 displays PointCloud2 /points at Fixed Frame os_lidar before marking manual PASS.")
+    print("[phase138c] DIAGNOSTIC_MIRROR_GREEN: /points diagnostic mirror checks completed.")
+    print("[phase138c] PRODUCT_GATE_REQUIRED: validate the automatic R2FU product bridge separately.")
+    print("[phase138c] Confirm RViz2 displays PointCloud2 /points at Fixed Frame os_lidar for diagnostic evidence.")
     return 0
 
 

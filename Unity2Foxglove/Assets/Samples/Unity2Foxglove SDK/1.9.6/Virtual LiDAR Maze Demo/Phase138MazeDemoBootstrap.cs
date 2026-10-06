@@ -35,8 +35,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             // 1. FoxgloveManager (RightHand so TF and point cloud share handedness).
             var mgrGo = new GameObject("FoxgloveManager");
             var manager = mgrGo.AddComponent<FoxgloveManager>();
-            SetPrivateField(manager, "_outputCoordinateMode", CoordinateMode.RightHand);
-            SetPrivateField(manager, "_inputCoordinateMode", CoordinateMode.RightHand);
+            CoordinateModeAuthority.Apply<CoordinateMode>((field, value) => SetPrivateField(manager, field, value), CoordinateMode.RightHand);
 
             // 2. Maze (centred on origin)
             Phase138MazeBuilder.Build(8, 8, 2f, 1.5f, 0.2f, 42);

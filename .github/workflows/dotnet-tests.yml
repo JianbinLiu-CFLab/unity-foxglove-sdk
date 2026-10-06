@@ -127,6 +127,15 @@ jobs:
       - name: Run validation suite
         if: always()
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
+      - name: Run Workstream F explicit runtime closure validations
+        if: always()
+        run: |
+          set -uo pipefail
+          status=0
+          for flag in --phase138l --phase138m --phase138p --phase163-54; do
+            dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- "$flag" || status=$?
+          done
+          exit "$status"
 
       - name: Run Phase179 ROS2 acceptance helper regressions
         if: always()
@@ -187,6 +196,12 @@ jobs:
       - name: Run Phase186 Bridge tooling and package-composition gate
         if: always()
         run: python3 Scripts/release/run_ci.py --only phase186-bridge-tooling
+      - name: Run package and sample closure lane
+        if: always()
+        run: python3 -B Scripts/release/run_ci.py --only packages
+      - name: Run Workstream F native cleanup regression
+        if: always()
+        run: python3 -B -m unittest Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup
       - name: Run Phase192 base-head identity equivalence gate
         if: always()
         env:

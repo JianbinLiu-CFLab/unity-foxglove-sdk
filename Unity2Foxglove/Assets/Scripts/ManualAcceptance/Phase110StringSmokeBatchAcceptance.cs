@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using Unity.FoxgloveSDK.Utilities;
 using UnityEngine;
 
 #if UNITY_EDITOR
@@ -63,7 +64,7 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
         private bool _runtimeLogged;
         private bool _inboundDeadlineArmed;
         private float _inboundDeadlineAt = float.PositiveInfinity;
-        private bool _previousRunInBackground;
+        private RunInBackgroundLease _runInBackgroundLease;
         private bool _executorsStarted;
         private bool _warnedMissingStartExecutor;
         private bool _previousEnterPlayModeOptionsEnabled;
@@ -71,8 +72,9 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
 
         private BatchRunner()
         {
-            _previousRunInBackground = Application.runInBackground;
-            Application.runInBackground = true;
+            _runInBackgroundLease = RunInBackgroundLease.Acquire(
+                () => Application.runInBackground,
+                value => Application.runInBackground = value);
             _directMode = ReadBool("UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_DIRECT", false);
             _requireInbound = ReadBool("UNITY2FOXGLOVE_PHASE110_STRING_SMOKE_REQUIRE_INBOUND", true);
             _minInboundCount = ReadPositiveInt(
@@ -290,7 +292,8 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
 
             _completed = true;
             EditorApplication.update -= Tick;
-            Application.runInBackground = _previousRunInBackground;
+            if (!_runInBackgroundLease.Release())
+                Debug.Log(LogPrefix + " runInBackground lease was already released or superseded.");
             EditorSettings.enterPlayModeOptionsEnabled = _previousEnterPlayModeOptionsEnabled;
             EditorSettings.enterPlayModeOptions = _previousEnterPlayModeOptions;
             try
