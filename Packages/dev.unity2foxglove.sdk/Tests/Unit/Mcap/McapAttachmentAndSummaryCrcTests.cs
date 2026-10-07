@@ -388,5 +388,26 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
+        private static string RepoPath(string relativePath)
+        {
+            var explicitRoot = Environment.GetEnvironmentVariable("UNITY2FOXGLOVE_REPO_ROOT");
+            if (!string.IsNullOrWhiteSpace(explicitRoot))
+                return Path.Combine(Path.GetFullPath(explicitRoot), relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
+                    || Directory.Exists(Path.Combine(dir.FullName, ".git"))
+                    || File.Exists(Path.Combine(dir.FullName, ".git")))
+                    return Path.Combine(dir.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+                dir = dir.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate repository root.");
+        }
+
+
     }
 }

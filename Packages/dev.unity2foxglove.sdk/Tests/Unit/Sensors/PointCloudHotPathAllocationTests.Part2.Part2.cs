@@ -149,22 +149,7 @@ public sealed partial class PointCloudHotPathAllocationTests
             return count;
         }
 
-        private static readonly string RepoRoot = FindRepoRoot();
 
-        private static string FindRepoRoot()
-        {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null)
-            {
-                if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                    || Directory.Exists(Path.Combine(dir.FullName, ".git"))
-                    || File.Exists(Path.Combine(dir.FullName, ".git")))
-                    return dir.FullName;
 
-                dir = dir.Parent;
-            }
-
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
-        }
     }
 }

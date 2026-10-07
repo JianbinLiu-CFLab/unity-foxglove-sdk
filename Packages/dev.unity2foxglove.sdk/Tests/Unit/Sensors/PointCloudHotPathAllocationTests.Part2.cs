@@ -373,5 +373,8 @@ public sealed partial class PointCloudHotPathAllocationTests
             Assert.Equal(packed.Data.Length, reader.BaseStream.Position);
         }
 
+
+
+
     }
 }
