@@ -422,6 +422,13 @@ class FreezeBaselineTests(unittest.TestCase):
         self.assertLessEqual(len(source.read_text(encoding="utf-8").splitlines()), 500)
         self.assertTrue(source.with_name("FoxgloveRemoteGatewayController.NativeBuffers.cs").is_file())
 
+    def test_wave_a_windows_job_owner_facade_is_bounded(self) -> None:
+        root = Path(__file__).resolve().parents[3]
+        facade = root / "Scripts" / "smoke" / "foxrun" / "phase184_windows_job_owner.py"
+        self.assertLessEqual(len(facade.read_text(encoding="utf-8").splitlines()), 500)
+        self.assertTrue(facade.with_suffix("").is_dir())
+        self.assertTrue((facade.with_suffix("") / "__init__.py").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

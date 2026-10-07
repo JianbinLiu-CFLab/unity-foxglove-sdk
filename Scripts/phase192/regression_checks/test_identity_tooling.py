@@ -559,6 +559,10 @@ class IdentityToolingTests(unittest.TestCase):
             "Scripts/smoke/ros2/phase160_humble_lidar_deskew_acceptance.py",
             relative,
         )
+        self.assertIn(
+            "Scripts/smoke/foxrun/phase184_windows_job_owner.py",
+            relative,
+        )
         self.assertEqual(49, len(relative))
 
     def test_split_identity_surface_rejects_relative_star_chain_change(self) -> None:
