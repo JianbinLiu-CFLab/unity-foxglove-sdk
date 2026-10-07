@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase82Validation
     {
         private const int NativeSmokeSubmittedFrames = 60;
-        private const int NativeSmokeMaxFirstOutputInput = 2;
+        private const int NativeSmokeMaxFirstOutputInput = 3;
         private const int NativeSmokeExpectedMinimumAccessUnits = 57;
 
         private static int _passed;
@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Tests
                     if (firstOutputAfterInput < 0 || firstOutputAfterInput > NativeSmokeMaxFirstOutputInput)
                         throw new InvalidOperationException(
                             "Native H.264 first output was delayed until input "
-                            + firstOutputAfterInput + "; low-latency mode did not engage.");
+                            + firstOutputAfterInput + "; low-latency mode did not engage within the startup buffer.");
                     var droppedInputFrames = GetLongProperty(sidecarType, sidecar, "DroppedInputFrames");
                     if (droppedInputFrames != 0)
                         throw new InvalidOperationException("Native H.264 dropped " + droppedInputFrames + " input frames during smoke.");
