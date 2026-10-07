@@ -23,7 +23,7 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
-    
+
 
 public sealed partial class FoxRunMessagePackEmitterTests
     {

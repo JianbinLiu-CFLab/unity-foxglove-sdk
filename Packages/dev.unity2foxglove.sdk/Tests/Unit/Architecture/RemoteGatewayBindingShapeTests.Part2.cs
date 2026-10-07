@@ -17,7 +17,7 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Architecture
 {
-    
+
 
 public sealed partial class RemoteGatewayBindingShapeTests
     {

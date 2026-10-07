@@ -16,7 +16,7 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 {
-    
+
 
 public sealed partial class FoxRunStreamTests
     {
