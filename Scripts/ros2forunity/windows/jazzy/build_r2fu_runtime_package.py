@@ -750,6 +750,14 @@ def write_generated_metas(package: Path) -> None:
     for directory in directories:
         ensure_generated_meta(package, directory, is_dir=True, existing_paths=existing_paths)
     for path in files:
+        if path.name.lower().endswith(".dll.meta"):
+            asset = path.with_suffix("")
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if asset.exists() and "PluginImporter:" not in text:
+                guid = extract_unity_meta_guid(text)
+                if guid:
+                    write_text(path, generated_meta_text(asset, asset.relative_to(package).as_posix(), is_dir=False, guid=guid))
+            continue
         if path.name.endswith(".meta") or path.name == ".gitkeep":
             continue
         ensure_generated_meta(package, path, is_dir=False, existing_paths=existing_paths)

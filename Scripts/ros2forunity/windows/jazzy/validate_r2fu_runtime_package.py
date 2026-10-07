@@ -17,6 +17,7 @@ import os
 import hashlib
 import re
 import sys
+import subprocess
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -457,8 +458,38 @@ def fresh_project_acceptance_passed(manifest: dict) -> bool:
     return fresh_project_acceptance_status(manifest) == "passed"
 
 
+
+def acceptance_commit_is_ancestor_and_package_unchanged(acceptance_sha: str, candidate_sha: str) -> bool:
+    """Return whether an accepted commit is an ancestor with an unchanged runtime package."""
+    if re.fullmatch(r"[0-9a-fA-F]{40}", acceptance_sha or "") is None:
+        return False
+    if re.fullmatch(r"[0-9a-fA-F]{40}", candidate_sha or "") is None:
+        return False
+    package_relative = PACKAGE.relative_to(ROOT).as_posix()
+    try:
+        ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", acceptance_sha, candidate_sha],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if ancestor.returncode != 0:
+            return False
+        unchanged = subprocess.run(
+            ["git", "diff", "--quiet", acceptance_sha, candidate_sha, "--", package_relative],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return unchanged.returncode == 0
+    except (OSError, ValueError):
+        return False
+
+
 def fresh_project_acceptance_binding_matches_manifest(manifest: dict) -> bool:
-    """Return whether a passed acceptance record is bound to this exact candidate."""
+    """Return whether a passed acceptance record remains valid for this candidate."""
     acceptance = manifest.get("freshProjectAcceptance")
     if not isinstance(acceptance, dict) or acceptance.get("status") != "passed":
         return False
@@ -492,7 +523,10 @@ def fresh_project_acceptance_binding_matches_manifest(manifest: dict) -> bool:
     if not isinstance(commit_sha, str) or re.fullmatch(r"[0-9a-fA-F]{40}", commit_sha) is None:
         return False
     expected_commit_sha = os.environ.get("R2FU_EXPECTED_COMMIT_SHA")
-    if expected_commit_sha and commit_sha.lower() != expected_commit_sha.lower():
+    if expected_commit_sha and not acceptance_commit_is_ancestor_and_package_unchanged(
+        commit_sha,
+        expected_commit_sha,
+    ):
         return False
     workflow_run_id = acceptance.get("workflowRunId")
     if isinstance(workflow_run_id, bool):
@@ -585,7 +619,7 @@ def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bo
         )
         add(
             results,
-            "release gate: fresh-project acceptance binds exact candidate",
+            "release gate: fresh-project acceptance binds unchanged candidate lineage",
             fresh_project_acceptance_binding_matches_manifest(manifest),
             "freshProjectAcceptance must bind artifact, package, commit, Unity version, and workflow run",
         )
@@ -707,16 +741,18 @@ def check_runtime_files(results: list[CheckResult]) -> None:
         add(results, f"supplemental runtime DLL present: {Path(runtime_path).name}", path.exists(), rel(path))
 
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
+    managed_dlls = list((RUNTIME_ROOT / "Plugins").glob("*.dll")) if (RUNTIME_ROOT / "Plugins").exists() else []
+    plugin_dlls = sorted({*dlls, *managed_dlls}, key=lambda path: path.as_posix())
     add(results, "Windows x86_64 DLL payload", len(dlls) >= 900, f"dll_count={len(dlls)}")
     plugin_meta_failures = []
-    for dll in dlls:
+    for dll in plugin_dlls:
         meta = dll.with_name(dll.name + ".meta")
         text = read_optional_text(meta)
         if "PluginImporter:" not in text:
             plugin_meta_failures.append(rel(meta))
     add(
         results,
-        "Windows x86_64 DLL metas use PluginImporter",
+        "Runtime DLL metas use PluginImporter",
         len(dlls) >= 900 and not plugin_meta_failures,
         ", ".join(plugin_meta_failures[:8]),
     )

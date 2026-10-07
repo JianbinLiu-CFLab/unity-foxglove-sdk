@@ -116,6 +116,19 @@ class RuntimePackageExtractionTests(unittest.TestCase):
                 self.assertIn("<file>a.dll</file>", text)
                 self.assertNotIn("D:\\producer", text)
 
+    def test_legacy_managed_dll_meta_preserves_guid_while_upgrading_importer(self) -> None:
+        """Managed DLL metadata must use the same Windows PluginImporter contract as native DLLs."""
+        legacy = b"fileFormatVersion: 2\nguid: abcdefabcdefabcdefabcdefabcdefab\n"
+
+        data = self.builder.normalize_meta_overlay(
+            "Runtime/Ros2ForUnity/Plugins/ros2cs_core.dll.meta",
+            legacy,
+        ).decode("utf-8")
+
+        self.assertIn("guid: abcdefabcdefabcdefabcdefabcdefab", data)
+        self.assertIn("PluginImporter:", data)
+        self.assertIn("Standalone: Windows", data)
+
     def test_patch_deps_json_sha512_updates_inventory_hash(self) -> None:
         """Generated deps.json files should carry integrity hints and matching inventory hashes."""
         with tempfile.TemporaryDirectory() as temp:

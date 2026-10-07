@@ -62,8 +62,8 @@ class RuntimePackageExtractionTests(unittest.TestCase):
         self.assertIn("RMW_IMPLEMENTATION", self.builder.readme_text(artifact))
         self.assertIn("ROS_DISTRO", self.builder.readme_text(artifact))
 
-    def test_native_dll_meta_upgrade_preserves_guid_without_rewriting_managed_dll_meta(self) -> None:
-        """Only Windows native DLL metadata becomes PluginImporter metadata."""
+    def test_dll_meta_upgrade_preserves_guid_for_native_and_managed_plugins(self) -> None:
+        """All packaged DLL metadata becomes Windows PluginImporter metadata."""
         with tempfile.TemporaryDirectory() as temp:
             package = Path(temp) / "package"
             native_root = package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
@@ -89,7 +89,7 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             managed_meta = managed.with_name(managed.name + ".meta").read_text(encoding="utf-8")
             self.assertIn("PluginImporter:", native_meta)
             self.assertIn("guid: " + "a" * 32, native_meta)
-            self.assertIn("TextScriptImporter:", managed_meta)
+            self.assertIn("PluginImporter:", managed_meta)
             self.assertIn("guid: " + "b" * 32, managed_meta)
 
     def test_extract_runtime_rejects_zip_slip_entries(self) -> None:
