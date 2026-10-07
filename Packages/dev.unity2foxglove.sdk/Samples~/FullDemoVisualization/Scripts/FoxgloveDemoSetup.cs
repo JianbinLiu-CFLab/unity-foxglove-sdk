@@ -35,14 +35,11 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     private bool _warnedWaitingForManager;
     private bool _warnedInvalidScale;
     private SynchronizationContext _unityContext;
-    private FoxgloveManager _wiredManager;
     private FoxgloveRuntime _wiredRuntime;
     private FoxgloveSceneCubePublisher _scenePublisher;
-    private FoxgloveParameterStore.ParameterRegistration _colorRegistration;
-    private FoxgloveParameterStore.ParameterRegistration _scaleRegistration;
+    private DemoWiringOwnership _wiringOwnership;
     private GameObject _cachedCube;
     private readonly WiringGenerationGate _wiringGeneration = new WiringGenerationGate();
-    private System.Action<string, JToken, string> _parameterChangedHandler;
 
     /// <summary>
     /// Initializes parameters <c>/cube/color</c> and <c>/cube/scale</c>,
@@ -83,20 +80,23 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         }
 
         var rt = runtime;
+        var manager = _manager;
+        var ownership = new DemoWiringOwnership();
 
-        _colorRegistration = rt.Parameters.RegisterOwned("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true);
-        _scaleRegistration = rt.Parameters.RegisterOwned("/cube/scale", 1.0, "number", true);
+        ownership.Add(rt.Parameters.RegisterOwned("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true));
+        ownership.Add(rt.Parameters.RegisterOwned("/cube/scale", 1.0, "number", true));
 
         // Phase 8: log client-published messages to Unity Console.
-        _manager.OnClientMessage += OnClientMessageReceived;
+        manager.OnClientMessage += OnClientMessageReceived;
+        ownership.Add(() => manager.OnClientMessage -= OnClientMessageReceived);
 
         // Advertise /unity/client_log so Foxglove sees foxglove.Log in the schema picker.
-        _manager.GetOrRegisterSchemaChannel("/unity/client_log", FoxgloveSchemaDefinitions.LogSchemaName);
+        manager.GetOrRegisterSchemaChannel("/unity/client_log", FoxgloveSchemaDefinitions.LogSchemaName);
 
         var wiringGeneration = _wiringGeneration.Activate();
-        _parameterChangedHandler = (name, value, type) => OnParameterChangedForRuntime(rt, wiringGeneration, name, value, type);
-        rt.Parameters.OnParameterChanged += _parameterChangedHandler;
-        _wiredManager = _manager;
+        var parameterChangedHandler = (System.Action<string, JToken, string>)((name, value, type) => OnParameterChangedForRuntime(rt, wiringGeneration, name, value, type));
+        rt.Parameters.OnParameterChanged += parameterChangedHandler;
+        ownership.Add(() => rt.Parameters.OnParameterChanged -= parameterChangedHandler);
         _wiredRuntime = rt;
 
         var cubeObject = FindCube();
@@ -104,8 +104,14 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         {
             _scenePublisher = cubeObject.GetComponent<FoxgloveSceneCubePublisher>();
             if (_scenePublisher != null)
-                _scenePublisher.OnSceneCubeColorChanged += OnSceneCubeColorChanged;
+            {
+                var scenePublisher = _scenePublisher;
+                scenePublisher.OnSceneCubeColorChanged += OnSceneCubeColorChanged;
+                ownership.Add(() => scenePublisher.OnSceneCubeColorChanged -= OnSceneCubeColorChanged);
+            }
         }
+
+        _wiringOwnership = ownership;
 
         var initialColor = rt.Parameters.GetWireParameter("/cube/color")?.Value;
         if (TryReadColor(initialColor, out var color))
@@ -135,29 +141,13 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     private void ClearRuntimeWiring()
     {
         _wiringGeneration.Invalidate();
-        if (_wiredRuntime != null)
-            if (_parameterChangedHandler != null)
-                _wiredRuntime.Parameters.OnParameterChanged -= _parameterChangedHandler;
-
-        _colorRegistration?.Dispose();
-        _scaleRegistration?.Dispose();
-        _colorRegistration = null;
-        _scaleRegistration = null;
-
-        if (!ReferenceEquals(_wiredManager, null))
-            _wiredManager.OnClientMessage -= OnClientMessageReceived;
-
-        if (_scenePublisher != null)
-        {
-            _scenePublisher.OnSceneCubeColorChanged -= OnSceneCubeColorChanged;
-            _scenePublisher = null;
-        }
+        _wiringOwnership?.Dispose();
+        _wiringOwnership = null;
+        _scenePublisher = null;
 
         _initialized = false;
         _warnedInvalidScale = false;
-        _wiredManager = null;
         _wiredRuntime = null;
-        _parameterChangedHandler = null;
     }
 
     [FoxService(
