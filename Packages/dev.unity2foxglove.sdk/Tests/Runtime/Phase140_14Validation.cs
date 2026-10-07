@@ -42,11 +42,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void SyncJpegFallbackUpdatesPublishTimeForEverySuccessfulPath()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Jpeg.cs");
-            var method = ExtractMethod(source, "private void PublishJpegFrame");
+            var method = ExtractMethod(source, "private void PublishJpegFrame(AsyncGPUReadbackRequest req, CameraCaptureIdentity identity");
 
-            Check(CountOccurrences(method, "_lastPublishedCaptureUnixNs = unixNs") >= 4,
+            Check(CountOccurrences(method, "_lastPublishedCaptureUnixNs = identity.TimestampNs") >= 4,
                 "140-14A-1: synchronous JPEG fallback updates publish order after every successful output path");
-            Check(method.Contains("if (!CameraJpegPublishOrderPolicy.ShouldPublish(unixNs, _lastPublishedCaptureUnixNs))", StringComparison.Ordinal),
+            Check(method.Contains("if (!CameraJpegPublishOrderPolicy.ShouldPublish(identity.TimestampNs, _lastPublishedCaptureUnixNs))", StringComparison.Ordinal),
                 "140-14A-2: synchronous JPEG fallback rejects late or duplicate timestamps before publishing");
         }
 
@@ -102,7 +102,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VideoFrameFactoryNullCheckRunsBeforeOtherValidation()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
-            var method = ExtractMethod(source, "public CameraVideoSubmitResult SubmitVideoFrame");
+            var method = ExtractMethod(
+                source.Replace("\r\n", "\n", StringComparison.Ordinal),
+                "public CameraVideoSubmitResult SubmitVideoFrame<TFrameBytes>(\n            TFrameBytes frameBytes,\n            CameraCaptureIdentity identity)");
 
             Check(!method.Contains("Func<byte[]>", StringComparison.Ordinal)
                   && method.Contains("ICameraVideoFrameBytesSource", StringComparison.Ordinal)
@@ -114,7 +116,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VideoFrameSubmitAvoidsPerFrameClosure()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Video.cs");
-            var method = ExtractMethod(source, "private void SubmitVideoFrame");
+            var method = ExtractMethod(
+                source.Replace("\r\n", "\n", StringComparison.Ordinal),
+                "private void SubmitVideoFrame(\n            AsyncGPUReadbackRequest req,\n            CameraVideoOutputProfile profile,\n            CameraCaptureIdentity identity)");
 
             Check(!method.Contains("() => readbackData.ToArray()", StringComparison.Ordinal)
                   && method.Contains("new CameraVideoReadbackFrameBytesSource(req)", StringComparison.Ordinal)

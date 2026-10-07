@@ -135,14 +135,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private void InvokeCameraInfoSubscribers(SensorCameraInfoFrame frame)
         {
-            var handlers = SensorCameraInfoReady;
-            if (handlers == null)
-                return;
-            foreach (var subscriber in handlers.GetInvocationList())
-            {
-                try { ((Action<SensorCameraInfoFrame>)subscriber)(frame); }
-                catch (Exception ex) { Debug.LogWarning("[Foxglove] CameraInfo subscriber failed: " + ex.Message); }
-            }
+            SubscriberFanout.Invoke(
+                SensorCameraInfoReady,
+                frame,
+                exception => Debug.LogWarning("[Foxglove] CameraInfo subscriber failed: " + exception.Message));
         }
 
         private SensorCameraInfoFrame BuildSensorCameraInfoFrame(ulong unixNs)

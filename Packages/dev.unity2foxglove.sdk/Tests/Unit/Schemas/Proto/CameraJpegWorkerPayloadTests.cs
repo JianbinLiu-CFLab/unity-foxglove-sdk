@@ -85,7 +85,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Schemas.Proto
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var method = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.ExtractMethod(
                 source,
-                "private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs, int captureWidth, int captureHeight)");
+                "private void OnReadbackComplete(AsyncGPUReadbackRequest req, CameraCaptureIdentity identity)");
             AssertReplayGuardPrecedesOutput(
                 method,
                 "SubmitVideoFrame(",
@@ -165,6 +165,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Schemas.Proto
                          + "    public event Action<Frame> " + eventName + ";\n"
                          + managerField
                          + managerType
+                         + "    private static class SubscriberFanout { internal static void Invoke<T>(Action<T> handlers, T value, Action<Exception> onError) { if (handlers == null) return; foreach (var subscriber in handlers.GetInvocationList()) { try { ((Action<T>)subscriber)(value); } catch (Exception exception) { onError(exception); } } } }\n"
                          + "    " + replayGate + "\n"
                          + "    private static void LogWarning(string message) { }\n"
                          + "    public int Dispatch(bool suppressed, bool managerSuppressed) {\n"

@@ -13,6 +13,23 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
 {
+    /// <summary>Immutable metadata captured with one camera readback request.</summary>
+    internal readonly struct CameraCaptureIdentity
+    {
+        public CameraCaptureIdentity(int generation, ulong timestampNs, int width, int height)
+        {
+            Generation = generation;
+            TimestampNs = timestampNs;
+            Width = Math.Max(1, width);
+            Height = Math.Max(1, height);
+        }
+
+        public int Generation { get; }
+        public ulong TimestampNs { get; }
+        public int Width { get; }
+        public int Height { get; }
+    }
+
     /// <summary>
     /// Worker-side JPEG encode path operating only on owned buffers and pure
     /// managed serializers; Unity APIs must stay out of this type.
@@ -113,6 +130,34 @@ namespace Unity.FoxgloveSDK.Components
 
     internal sealed class JpegEncodeRequest
     {
+        public JpegEncodeRequest(
+            byte[] rgb24,
+            CameraCaptureIdentity identity,
+            int quality,
+            string frameId,
+            bool publishWebSocket,
+            bool publishProvider,
+            bool publishNativeFrame,
+            PublisherEffectiveEncoding webSocketEncoding,
+            int maxEncodedBytes,
+            int jpegWorkerGeneration)
+            : this(
+                rgb24,
+                identity.Width,
+                identity.Height,
+                quality,
+                identity.TimestampNs,
+                frameId,
+                publishWebSocket,
+                publishProvider,
+                publishNativeFrame,
+                webSocketEncoding,
+                maxEncodedBytes,
+                identity.Generation,
+                jpegWorkerGeneration)
+        {
+        }
+
         public JpegEncodeRequest(
             byte[] rgb24,
             int width,

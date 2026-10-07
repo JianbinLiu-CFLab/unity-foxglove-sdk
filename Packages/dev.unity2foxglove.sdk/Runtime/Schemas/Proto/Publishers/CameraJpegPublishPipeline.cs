@@ -173,6 +173,33 @@ namespace Unity.FoxgloveSDK.Components
             int maxEncodedBytes,
             Action onEncodeQueueDrop)
         {
+            return TryQueueFrame(
+                frameBytes,
+                new CameraCaptureIdentity(_captureGeneration(), unixNs, captureWidth, captureHeight),
+                publishWebSocket,
+                publishProvider,
+                publishNativeFrame,
+                webSocketEncoding,
+                readbackLatencyMs,
+                jpegQuality,
+                frameId,
+                maxEncodedBytes,
+                onEncodeQueueDrop);
+        }
+
+        public bool TryQueueFrame(
+            byte[] frameBytes,
+            CameraCaptureIdentity identity,
+            bool publishWebSocket,
+            bool publishProvider,
+            bool publishNativeFrame,
+            PublisherEffectiveEncoding webSocketEncoding,
+            double readbackLatencyMs,
+            int jpegQuality,
+            string frameId,
+            int maxEncodedBytes,
+            Action onEncodeQueueDrop)
+        {
             if (frameBytes == null)
                 return false;
 
@@ -180,17 +207,14 @@ namespace Unity.FoxgloveSDK.Components
 
             var request = new JpegEncodeRequest(
                 frameBytes,
-                Math.Max(1, captureWidth),
-                Math.Max(1, captureHeight),
+                identity,
                 Math.Clamp(jpegQuality, 10, 100),
-                unixNs,
                 frameId,
                 publishWebSocket,
                 publishProvider,
                 publishNativeFrame,
                 webSocketEncoding,
                 Math.Max(0, maxEncodedBytes),
-                _captureGeneration(),
                 _jpegPipeline.WorkerGeneration);
 
             var dropped = _jpegPipeline.Queue(request);

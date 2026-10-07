@@ -7,6 +7,30 @@ using System;
 
 namespace Unity.FoxgloveSDK.Components
 {
+    /// <summary>Invokes delegate subscribers independently so one failure cannot stop delivery.</summary>
+    internal static class SubscriberFanout
+    {
+        internal static void Invoke<T>(Action<T> handlers, T value, Action<Exception> onError)
+        {
+            if (handlers == null)
+                return;
+            if (onError == null)
+                throw new ArgumentNullException(nameof(onError));
+
+            foreach (var subscriber in handlers.GetInvocationList())
+            {
+                try
+                {
+                    ((Action<T>)subscriber)(value);
+                }
+                catch (Exception exception)
+                {
+                    onError(exception);
+                }
+            }
+        }
+    }
+
     /// <summary>Maintains an immutable subscriber snapshot and isolates handler failures.</summary>
     internal sealed class ReplaySubscriberFanoutState<TDelegate>
         where TDelegate : Delegate

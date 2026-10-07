@@ -103,6 +103,27 @@ namespace Unity.FoxgloveSDK.Components
             double readbackLatencyMs,
             byte[] frameBytes = null)
         {
+            QueueJpegFrame(
+                req,
+                new CameraCaptureIdentity(0, unixNs, captureWidth, captureHeight),
+                publishWebSocket,
+                publishProvider,
+                publishNativeFrame,
+                webSocketEncoding,
+                readbackLatencyMs,
+                frameBytes);
+        }
+
+        private void QueueJpegFrame(
+            AsyncGPUReadbackRequest req,
+            CameraCaptureIdentity identity,
+            bool publishWebSocket,
+            bool publishProvider,
+            bool publishNativeFrame,
+            PublisherEffectiveEncoding webSocketEncoding,
+            double readbackLatencyMs,
+            byte[] frameBytes = null)
+        {
             EnsureJpegPublishPipeline();
             var copyStart = Stopwatch.GetTimestamp();
             // AsyncGPUReadback memory is callback-scoped; the worker receives an independent
@@ -123,9 +144,7 @@ namespace Unity.FoxgloveSDK.Components
                 _pendingRequests);
             _jpegPublishPipeline.TryQueueFrame(
                 frameBytes,
-                unixNs,
-                captureWidth,
-                captureHeight,
+                identity,
                 publishWebSocket,
                 publishProvider,
                 publishNativeFrame,
@@ -251,9 +270,17 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void PublishJpegFrame(AsyncGPUReadbackRequest req, ulong unixNs, int captureWidth, int captureHeight, byte[] frameBytes = null)
         {
+            PublishJpegFrame(
+                req,
+                new CameraCaptureIdentity(0, unixNs, captureWidth, captureHeight),
+                frameBytes);
+        }
+
+        private void PublishJpegFrame(AsyncGPUReadbackRequest req, CameraCaptureIdentity identity, byte[] frameBytes = null)
+        {
             var jpeg = frameBytes == null
-                ? _captureResources.EncodeJpeg(req, captureWidth, captureHeight, _jpegQuality)
-                : _captureResources.EncodeJpeg(frameBytes, captureWidth, captureHeight, _jpegQuality);
+                ? _captureResources.EncodeJpeg(req, identity.Width, identity.Height, _jpegQuality)
+                : _captureResources.EncodeJpeg(frameBytes, identity.Width, identity.Height, _jpegQuality);
             if (jpeg == null || jpeg.Length == 0) return;
 
             if (CameraBackpressurePolicy.ExceedsBudget(jpeg, _maxEncodedBytes))
@@ -263,7 +290,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            if (!CameraJpegPublishOrderPolicy.ShouldPublish(unixNs, _lastPublishedCaptureUnixNs))
+            if (!CameraJpegPublishOrderPolicy.ShouldPublish(identity.TimestampNs, _lastPublishedCaptureUnixNs))
             {
                 _diagnostics.RecordLateJpegDrop();
                 return;
@@ -278,54 +305,54 @@ namespace Unity.FoxgloveSDK.Components
 
             if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.MsgPack)
             {
-                if (TryPublishComponentMessagePackImage(jpeg, unixNs, frameId, "jpeg"))
+                if (TryPublishComponentMessagePackImage(jpeg, identity.TimestampNs, frameId, "jpeg"))
                 {
-                    _lastPublishedCaptureUnixNs = unixNs;
+                    _lastPublishedCaptureUnixNs = identity.TimestampNs;
                     _backpressureGate.ResetSkipLogCount();
                 }
             }
             else if (publishWebSocket && EffectiveEncoding == PublisherEffectiveEncoding.Protobuf)
             {
-                protobufMessage = CameraCompressedImageBuilder.Create(unixNs, frameId, jpeg, "jpeg");
-                PublishProto(protobufMessage.ToByteArray(), unixNs);
-                _lastPublishedCaptureUnixNs = unixNs;
+                protobufMessage = CameraCompressedImageBuilder.Create(identity.TimestampNs, frameId, jpeg, "jpeg");
+                PublishProto(protobufMessage.ToByteArray(), identity.TimestampNs);
+                _lastPublishedCaptureUnixNs = identity.TimestampNs;
                 _backpressureGate.ResetSkipLogCount();
             }
             else if (publishWebSocket)
             {
                 var msg = new CompressedImageMessage
                 {
-                    Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(unixNs),
+                    Timestamp = FoxgloveTimeUtil.ToFoxgloveTime(identity.TimestampNs),
                     FrameId = frameId,
                     Data = Convert.ToBase64String(jpeg),
                     Format = "jpeg"
                 };
 
-                Publish(msg, unixNs);
-                _lastPublishedCaptureUnixNs = unixNs;
+                Publish(msg, identity.TimestampNs);
+                _lastPublishedCaptureUnixNs = identity.TimestampNs;
                 _backpressureGate.ResetSkipLogCount();
             }
 
             if (publishProvider)
             {
                 protobufMessage ??= CameraCompressedImageBuilder.Create(
-                    unixNs,
+                    identity.TimestampNs,
                     frameId,
                     jpeg,
                     "jpeg");
                 PublishOrdinaryTransport(
                     protobufMessage,
                     Foxglove.CompressedImage.Descriptor.FullName,
-                    unixNs);
-                _lastPublishedCaptureUnixNs = unixNs;
+                    identity.TimestampNs);
+                _lastPublishedCaptureUnixNs = identity.TimestampNs;
                 _backpressureGate.ResetSkipLogCount();
             }
 
             if (publishNativeFrame)
             {
-                sensorFrame ??= new SensorCompressedImageFrame(unixNs, frameId, jpeg, "jpeg");
+                sensorFrame ??= new SensorCompressedImageFrame(identity.TimestampNs, frameId, jpeg, "jpeg");
                 InvokeCompressedSubscribers(sensorFrame);
-                _lastPublishedCaptureUnixNs = unixNs;
+                _lastPublishedCaptureUnixNs = identity.TimestampNs;
                 _backpressureGate.ResetSkipLogCount();
             }
         }
@@ -335,14 +362,10 @@ namespace Unity.FoxgloveSDK.Components
             if (IsReplaySuppressed)
                 return;
 
-            var handlers = SensorCompressedImageReady;
-            if (handlers == null)
-                return;
-            foreach (var subscriber in handlers.GetInvocationList())
-            {
-                try { ((Action<SensorCompressedImageFrame>)subscriber)(frame); }
-                catch (Exception ex) { Debug.LogWarning("[Foxglove] Compressed camera subscriber failed: " + ex.Message); }
-            }
+            SubscriberFanout.Invoke(
+                SensorCompressedImageReady,
+                frame,
+                exception => Debug.LogWarning("[Foxglove] Compressed camera subscriber failed: " + exception.Message));
         }
 
         /// <summary>

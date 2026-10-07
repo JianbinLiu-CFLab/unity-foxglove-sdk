@@ -89,13 +89,13 @@ namespace Unity.FoxgloveSDK.Tests
             var camera = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
             var cameraPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var cameraSession = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
-            Check(camera.Contains("var renderUnixNs = CurrentLogTimeNs;") && camera.Contains("OnReadbackComplete(req, generation, renderUnixNs"),
-                "134-12C-1: primary camera captures timestamp at render and passes it into readback callback");
-            Check(camera.Contains("PublishJpegFrame(req, renderUnixNs")
-                  && camera.Contains("SubmitVideoFrame(req, profile, renderUnixNs, captureWidth, captureHeight)"),
-                "134-12C-2: primary camera uses render timestamp for JPEG and video frame submission");
+            Check(camera.Contains("var renderUnixNs = CurrentLogTimeNs;") && camera.Contains("OnReadbackComplete(req, captureIdentity)"),
+                "134-12C-1: primary camera captures timestamp at render and passes its identity into readback callback");
+            Check(camera.Contains("PublishJpegFrame(req, identity")
+                  && camera.Contains("SubmitVideoFrame(req, profile, identity)"),
+                "134-12C-2: primary camera uses captured identity for JPEG and video frame submission");
             Check(camera.Contains("_videoPublishPipeline.SubmitVideoFrame")
-                  && cameraPipeline.Contains("_videoSidecarSession.TrySubmitFrame(ownedFrameBytes, renderUnixNs)")
+                  && cameraPipeline.Contains("_videoSidecarSession.TrySubmitFrame(ownedFrameBytes, identity.TimestampNs)")
                   && cameraSession.Contains("ITimestampedCameraVideoEncoderSidecar timestampedSidecar")
                   && cameraSession.Contains("timestampedSidecar.TrySubmitFrame(frameBytes, timestampNs)"),
                 "134-12C-3: primary camera submits video frames with render timestamps when sidecar supports it");

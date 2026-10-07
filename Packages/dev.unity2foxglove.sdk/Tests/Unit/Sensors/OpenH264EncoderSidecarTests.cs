@@ -226,23 +226,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
-        public async Task ProtocolHeaderBufferCanBeReusedAcrossFrames()
+        public void ProtocolHeaderBufferCanBeReusedAcrossFrames()
         {
             var method = typeof(OpenH264EncoderSidecar).GetMethod(
-                "WriteProtocolHeaderAsync",
+                "PopulateProtocolHeader",
                 BindingFlags.Static | BindingFlags.NonPublic);
             Assert.NotNull(method);
 
             var header = new byte[12];
             using var stream = new MemoryStream();
-            var first = (Task)method.Invoke(
+            method.Invoke(
                 null,
-                new object[] { stream, header, 0x0102030405060708UL, 0x0A0B0C0D, CancellationToken.None });
-            await first.WaitAsync(TimeSpan.FromSeconds(1));
-            var second = (Task)method.Invoke(
+                new object[] { header, 0x0102030405060708UL, 0x0A0B0C0D });
+            stream.Write(header, 0, header.Length);
+            method.Invoke(
                 null,
-                new object[] { stream, header, 9UL, 3, CancellationToken.None });
-            await second.WaitAsync(TimeSpan.FromSeconds(1));
+                new object[] { header, 9UL, 3 });
+            stream.Write(header, 0, header.Length);
 
             Assert.Equal(
                 new byte[]
@@ -260,7 +260,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var writerEnd = source.IndexOf("private Task RunStdoutReader", writerStart, StringComparison.Ordinal);
             var writer = source.Substring(writerStart, writerEnd - writerStart);
             Assert.Equal(1, CountOccurrences(writer, "new byte[12]"));
-            var headerWriterStart = source.IndexOf("private static async Task WriteProtocolHeaderAsync", StringComparison.Ordinal);
+            Assert.Contains("PopulateProtocolHeader(protocolHeader", writer, StringComparison.Ordinal);
+            Assert.Contains("WriteAsync(protocolHeader", writer, StringComparison.Ordinal);
+            Assert.DoesNotContain("WriteProtocolHeaderAsync", source, StringComparison.Ordinal);
+            var headerWriterStart = source.IndexOf("private static void PopulateProtocolHeader", StringComparison.Ordinal);
             var headerWriterEnd = source.IndexOf("private static ulong ReadUInt64LittleEndian", headerWriterStart, StringComparison.Ordinal);
             var headerWriter = source.Substring(headerWriterStart, headerWriterEnd - headerWriterStart);
             Assert.DoesNotContain("new byte[12]", headerWriter, StringComparison.Ordinal);

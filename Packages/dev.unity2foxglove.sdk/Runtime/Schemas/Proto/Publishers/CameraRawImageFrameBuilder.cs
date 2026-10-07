@@ -6,6 +6,7 @@
 
 using System;
 using Unity.FoxgloveSDK.Schemas.Camera;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -49,7 +50,10 @@ namespace Unity.FoxgloveSDK.Components
             if (ownedRgb24.Length != expectedLength)
                 throw new ArgumentException("RGB24 row buffer must match width * height * 3 bytes.", nameof(ownedRgb24));
             if (flipVertical)
-                FlipRgb24RowsInPlace(ownedRgb24, safeWidth, safeHeight);
+            {
+                byte[] rowScratch = null;
+                Rgb24Orientation.FlipRowsInPlace(ownedRgb24, safeWidth, safeHeight, ref rowScratch);
+            }
             return new SensorRawImageFrame(unixNs, frameId, width, height, ownedRgb24, "rgb8");
         }
 
@@ -72,28 +76,7 @@ namespace Unity.FoxgloveSDK.Components
             var expectedLength = CheckedRgb24ByteLength(width, height);
             if (source.Length != expectedLength || destination.Length != expectedLength)
                 throw new ArgumentException("RGB24 row buffers must match width * height * 3 bytes.");
-            var rowStride = checked(width * 3);
-
-            for (var y = 0; y < height; y++)
-            {
-                var sourceY = flipVertical ? (height - 1 - y) : y;
-                var sourceOffset = sourceY * rowStride;
-                var destinationOffset = y * rowStride;
-                Array.Copy(source, sourceOffset, destination, destinationOffset, rowStride);
-            }
-        }
-
-        private static void FlipRgb24RowsInPlace(byte[] data, int width, int height)
-        {
-            var rowStride = checked(width * 3);
-            var row = new byte[rowStride];
-            for (var y = 0; y < height / 2; y++)
-            {
-                var opposite = height - 1 - y;
-                Buffer.BlockCopy(data, y * rowStride, row, 0, rowStride);
-                Buffer.BlockCopy(data, opposite * rowStride, data, y * rowStride, rowStride);
-                Buffer.BlockCopy(row, 0, data, opposite * rowStride, rowStride);
-            }
+            Rgb24Orientation.CopyRows(source, destination, width, height, flipVertical);
         }
 
         private static int CheckedRgb24ByteLength(int width, int height)

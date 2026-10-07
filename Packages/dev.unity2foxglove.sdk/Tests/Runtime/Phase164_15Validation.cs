@@ -60,7 +60,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             var publisherVideo = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Video.cs");
-            var submit = PhaseValidationSourceHelpers.SourceMethod(pipeline, "public CameraVideoSubmitResult SubmitVideoFrame");
+            var submit = PhaseValidationSourceHelpers.SourceMethodContaining(
+                pipeline,
+                "SubmitVideoFrame",
+                "frameBytes.CopyTo(_rgbScratch)");
             var source = PhaseValidationSourceHelpers.SourceMethod(publisherVideo, "public void CopyTo");
 
             Check(pipeline.Contains("private byte[] _rgbScratch;", StringComparison.Ordinal)
@@ -84,12 +87,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(jpeg.Contains("frameBytes ??= req.GetData<byte>().ToArray();", StringComparison.Ordinal),
                 "architecture guard: 164-15D-1: async JPEG path keeps an owned readback byte array for worker lifetime safety");
-            var passesFrameBytesToRequest =
-                pipeline.Contains("frameBytes,\r\n                Math.Max(1, captureWidth)", StringComparison.Ordinal)
-                || pipeline.Contains("frameBytes,\n                Math.Max(1, captureWidth)", StringComparison.Ordinal);
             Check(pipeline.Contains("if (frameBytes == null)", StringComparison.Ordinal)
                   && pipeline.Contains("var request = new JpegEncodeRequest(", StringComparison.Ordinal)
-                  && passesFrameBytesToRequest
+                  && (pipeline.Contains("frameBytes,\r\n                identity,", StringComparison.Ordinal)
+                      || pipeline.Contains("frameBytes,\n                identity,", StringComparison.Ordinal))
                   && !pipeline.Contains("frameBytes.ToArray()", StringComparison.Ordinal),
                 "architecture guard: 164-15D-2: JPEG queue contract still treats the supplied RGB buffer as the owned worker input");
         }

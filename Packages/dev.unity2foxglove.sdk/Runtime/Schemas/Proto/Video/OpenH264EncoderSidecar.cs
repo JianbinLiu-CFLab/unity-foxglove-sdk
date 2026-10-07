@@ -434,7 +434,8 @@ namespace Foxglove.Schemas.Video
                                 {
                                     Interlocked.Increment(ref _writtenFrameCount);
                                     countedWrittenFrame = true;
-                                    await WriteProtocolHeaderAsync(stream, protocolHeader, frame.TimestampNs, length, token).ConfigureAwait(false);
+                                    PopulateProtocolHeader(protocolHeader, frame.TimestampNs, length);
+                                    await stream.WriteAsync(protocolHeader, 0, protocolHeader.Length, token).ConfigureAwait(false);
                                 }
                                 else
                                 {
@@ -682,15 +683,17 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private static async Task WriteProtocolHeaderAsync(Stream stream, byte[] header, ulong timestampNs, int length, CancellationToken token)
+        private static void PopulateProtocolHeader(byte[] header, ulong timestampNs, int length)
         {
+            if (header == null || header.Length < 12)
+                throw new ArgumentException("The protocol header buffer must contain at least 12 bytes.", nameof(header));
+
             for (var i = 0; i < 8; i++)
                 header[i] = (byte)(timestampNs >> (8 * i));
             header[8] = (byte)length;
             header[9] = (byte)(length >> 8);
             header[10] = (byte)(length >> 16);
             header[11] = (byte)(length >> 24);
-            await stream.WriteAsync(header, 0, header.Length, token).ConfigureAwait(false);
         }
 
         private static ulong ReadUInt64LittleEndian(byte[] buffer, int offset)

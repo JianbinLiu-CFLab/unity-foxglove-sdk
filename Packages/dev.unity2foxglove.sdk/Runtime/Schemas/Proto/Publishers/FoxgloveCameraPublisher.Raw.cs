@@ -41,6 +41,17 @@ namespace Unity.FoxgloveSDK.Components
             int captureHeight,
             bool takeOwnership = false)
         {
+            PublishRawFrame(
+                rgb24Readback,
+                new CameraCaptureIdentity(0, unixNs, captureWidth, captureHeight),
+                takeOwnership);
+        }
+
+        private void PublishRawFrame(
+            byte[] rgb24Readback,
+            CameraCaptureIdentity identity,
+            bool takeOwnership = false)
+        {
             if (IsReplaySuppressed || !HasSensorRawImageDemand() || rgb24Readback == null || rgb24Readback.Length == 0)
                 return;
 
@@ -48,17 +59,17 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var frame = takeOwnership
                     ? CameraRawImageFrameBuilder.BuildRgb8Owned(
-                        unixNs,
+                        identity.TimestampNs,
                         ResolveFrameId(),
-                        captureWidth,
-                        captureHeight,
+                        identity.Width,
+                        identity.Height,
                         rgb24Readback,
                         flipVertical: true)
                     : CameraRawImageFrameBuilder.BuildRgb8(
-                        unixNs,
+                        identity.TimestampNs,
                         ResolveFrameId(),
-                        captureWidth,
-                        captureHeight,
+                        identity.Width,
+                        identity.Height,
                         rgb24Readback,
                         flipVertical: true);
                 InvokeRawSubscribers(frame);
@@ -75,14 +86,10 @@ namespace Unity.FoxgloveSDK.Components
             if (IsReplaySuppressed)
                 return;
 
-            var handlers = SensorRawImageReady;
-            if (handlers == null)
-                return;
-            foreach (var subscriber in handlers.GetInvocationList())
-            {
-                try { ((Action<SensorRawImageFrame>)subscriber)(frame); }
-                catch (Exception ex) { Debug.LogWarning("[Foxglove] Raw camera subscriber failed: " + ex.Message); }
-            }
+            SubscriberFanout.Invoke(
+                SensorRawImageReady,
+                frame,
+                exception => Debug.LogWarning("[Foxglove] Raw camera subscriber failed: " + exception.Message));
         }
     }
 }

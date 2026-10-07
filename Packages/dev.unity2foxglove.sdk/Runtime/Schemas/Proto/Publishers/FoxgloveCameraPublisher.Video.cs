@@ -36,13 +36,22 @@ namespace Unity.FoxgloveSDK.Components
             int captureWidth,
             int captureHeight)
         {
+            SubmitVideoFrame(
+                req,
+                profile,
+                new CameraCaptureIdentity(0, renderUnixNs, captureWidth, captureHeight));
+        }
+
+        private void SubmitVideoFrame(
+            AsyncGPUReadbackRequest req,
+            CameraVideoOutputProfile profile,
+            CameraCaptureIdentity identity)
+        {
             var readbackData = new CameraVideoReadbackFrameBytesSource(req);
             EnsureVideoPublishPipeline();
             var result = _videoPublishPipeline.SubmitVideoFrame(
                 readbackData,
-                renderUnixNs,
-                captureWidth,
-                captureHeight);
+                identity);
 
             if (result.Submitted)
             {

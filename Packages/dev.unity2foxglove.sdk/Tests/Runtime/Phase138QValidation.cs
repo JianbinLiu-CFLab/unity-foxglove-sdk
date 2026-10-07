@@ -178,7 +178,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("_videoSidecarHeight", StringComparison.Ordinal),
                 "architecture guard: 138Q-3D: FoxgloveCameraPublisher delegates video sidecar lifecycle state");
             var drain = SliceMethod(camera, "private void DrainEncodedAccessUnits()");
-            var submit = SliceMethod(camera, "private void SubmitVideoFrame(");
+            var submit = SliceMethod(
+                camera.Replace("\r\n", "\n", StringComparison.Ordinal),
+                "private void SubmitVideoFrame(\n            AsyncGPUReadbackRequest req,\n            CameraVideoOutputProfile profile,\n            CameraCaptureIdentity identity)");
             Check(camera.Contains("private CameraVideoPublishPipeline EnsureVideoPublishPipeline()", StringComparison.Ordinal)
                   && IndexOf(drain, "var pipeline = EnsureVideoPublishPipeline();") >= 0
                   && IndexOf(drain, "var pipeline = EnsureVideoPublishPipeline();") < IndexOf(drain, "pipeline.TryDrainEncodedAccessUnits(")
@@ -281,7 +283,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private Thread _jpegWorker", StringComparison.Ordinal)
                   && !camera.Contains("EncodeJpegWorkerLoop", StringComparison.Ordinal),
                 "architecture guard: 138Q-5D: FoxgloveCameraPublisher delegates repeated JPEG worker lifecycle code");
-            var queue = SliceMethod(camera, "private void QueueJpegFrame(");
+            var queue = SliceMethod(
+                camera.Replace("\r\n", "\n", StringComparison.Ordinal),
+                "private void QueueJpegFrame(\n            AsyncGPUReadbackRequest req,\n            CameraCaptureIdentity identity,");
             var drain = SliceMethod(camera, "private void DrainCompletedJpegFrames()");
             Check(camera.Contains("private CameraJpegPublishPipeline EnsureJpegPublishPipeline()", StringComparison.Ordinal)
                   && IndexOf(queue, "EnsureJpegPublishPipeline();") >= 0

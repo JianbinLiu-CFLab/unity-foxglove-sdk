@@ -271,19 +271,21 @@ namespace Unity.FoxgloveSDK.Components
             // Snapshot the concrete render target size with the readback request. Inspector
             // width/height can change while this callback is in flight.
             var captureRenderTexture = _captureResources.CaptureRenderTexture;
-            var generation = Volatile.Read(ref _captureGeneration);
-            var captureWidth = captureRenderTexture.width;
-            var captureHeight = captureRenderTexture.height;
-            RememberReadbackStart(renderUnixNs, Stopwatch.GetTimestamp());
+            var captureIdentity = new CameraCaptureIdentity(
+                Volatile.Read(ref _captureGeneration),
+                renderUnixNs,
+                captureRenderTexture.width,
+                captureRenderTexture.height);
+            RememberReadbackStart(captureIdentity.TimestampNs, Stopwatch.GetTimestamp());
             _pendingRequests++;
-            _captureResources.RegisterReadback(generation);
+            _captureResources.RegisterReadback(captureIdentity.Generation);
             try
             {
-                AsyncGPUReadback.Request(captureRenderTexture, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs, captureWidth, captureHeight));
+                AsyncGPUReadback.Request(captureRenderTexture, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, captureIdentity));
             }
             catch
             {
-                CompletePendingReadback(generation);
+                CompletePendingReadback(captureIdentity.Generation);
                 throw;
             }
             _diagnostics.RecordReadbackScheduled(
@@ -303,13 +305,13 @@ namespace Unity.FoxgloveSDK.Components
         /// Completes one local readback request and routes it using the generation and
         /// dimensions captured when the request was issued.
         /// </summary>
-        private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs, int captureWidth, int captureHeight)
+        private void OnReadbackComplete(AsyncGPUReadbackRequest req, CameraCaptureIdentity identity)
         {
-            var readbackLatencyMs = TakeReadbackLatencyMs(renderUnixNs);
+            var readbackLatencyMs = TakeReadbackLatencyMs(identity.TimestampNs);
             try
             {
                 // Equivalent to generation != _captureGeneration, but with a cross-thread visible read.
-                if (_destroyed || !isActiveAndEnabled || generation != Volatile.Read(ref _captureGeneration)) return;
+                if (_destroyed || !isActiveAndEnabled || identity.Generation != Volatile.Read(ref _captureGeneration)) return;
                 if (IsReplaySuppressed) return;
                 if (req.hasError)
                 {
@@ -328,11 +330,11 @@ namespace Unity.FoxgloveSDK.Components
                 var publishVideo = profile.IsVideo && publishWebSocket;
                 if (publishVideo)
                 {
-                    SubmitVideoFrame(req, profile, renderUnixNs, captureWidth, captureHeight);
+                    SubmitVideoFrame(req, profile, identity);
                     if (publishRawFrame)
                     {
                         var rawBytes = req.GetData<byte>().ToArray();
-                        PublishRawFrame(rawBytes, renderUnixNs, captureWidth, captureHeight, takeOwnership: true);
+                        PublishRawFrame(rawBytes, identity, takeOwnership: true);
                     }
                     return;
                 }
@@ -349,7 +351,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (!publishJpegFrame)
                 {
                     if (frameBytes != null)
-                        PublishRawFrame(frameBytes, renderUnixNs, captureWidth, captureHeight, takeOwnership: true);
+                        PublishRawFrame(frameBytes, identity, takeOwnership: true);
                     return;
                 }
 
@@ -357,9 +359,7 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     QueueJpegFrame(
                         req,
-                        renderUnixNs,
-                        captureWidth,
-                        captureHeight,
+                        identity,
                         publishWebSocket,
                         publishProvider,
                         publishNativeFrame,
@@ -367,17 +367,17 @@ namespace Unity.FoxgloveSDK.Components
                         readbackLatencyMs,
                         frameBytes);
                     if (publishRawFrame && frameBytes != null)
-                        PublishRawFrame(frameBytes, renderUnixNs, captureWidth, captureHeight);
+                        PublishRawFrame(frameBytes, identity);
                     return;
                 }
 
-                PublishJpegFrame(req, renderUnixNs, captureWidth, captureHeight, frameBytes);
+                PublishJpegFrame(req, identity, frameBytes);
                 if (publishRawFrame && frameBytes != null)
-                    PublishRawFrame(frameBytes, renderUnixNs, captureWidth, captureHeight);
+                    PublishRawFrame(frameBytes, identity);
             }
             finally
             {
-                CompletePendingReadback(generation);
+                CompletePendingReadback(identity.Generation);
             }
         }
 

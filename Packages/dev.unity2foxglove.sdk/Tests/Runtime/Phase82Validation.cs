@@ -412,7 +412,7 @@ namespace Unity.FoxgloveSDK.Tests
             var drainIndex = pipelineSubmitIndex >= 0
                 ? publisherSource.IndexOf("DrainEncodedAccessUnits();", pipelineSubmitIndex, StringComparison.Ordinal)
                 : -1;
-            Check(videoPipelineSource.Contains("_videoSidecarSession.TrySubmitFrame(ownedFrameBytes, renderUnixNs)")
+            Check(videoPipelineSource.Contains("_videoSidecarSession.TrySubmitFrame(ownedFrameBytes, identity.TimestampNs)")
                   && submitIndex >= 0
                   && pipelineSubmitIndex > submitIndex
                   && drainIndex > pipelineSubmitIndex,
