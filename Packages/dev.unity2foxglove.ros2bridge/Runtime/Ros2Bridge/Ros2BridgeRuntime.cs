@@ -1518,6 +1518,8 @@ namespace Unity2Foxglove.Ros2Bridge
                                 : response.Message;
                     }
                 }
+                exchangeTransient?.Dispose();
+                exchangeTransient = null;
                 lock (_gate)
                 {
                     if (!_preparations.TryGetValue(key, out var current)
