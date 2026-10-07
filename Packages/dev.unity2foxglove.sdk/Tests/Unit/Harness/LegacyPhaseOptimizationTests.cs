@@ -421,8 +421,42 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var ledger = TestSources.Text("docs/research-workstream-g-closure.md");
             Assert.Contains("reconstructed closure mapping", ledger, StringComparison.Ordinal);
             Assert.Contains("original validation checks use the `140-27A-1` through `140-27F-4` namespace", ledger, StringComparison.Ordinal);
-            Assert.Contains("140-27A-1..A-4", ledger, StringComparison.Ordinal);
-            Assert.Contains("140-27C-1..C-2", ledger, StringComparison.Ordinal);
+            Assert.Contains("## Supporting historical checks", ledger, StringComparison.Ordinal);
+            var registerStart = ledger.IndexOf("## Reconstructed finding register", StringComparison.Ordinal);
+            var checksStart = ledger.IndexOf("## Automated closure checks", StringComparison.Ordinal);
+            Assert.True(registerStart >= 0 && checksStart > registerStart);
+            var provenance = ledger.Substring(registerStart, checksStart - registerStart);
+            foreach (var check in new[]
+                     {
+                         "140-27A-1", "140-27A-2", "140-27A-3", "140-27A-4",
+                         "140-27B-1", "140-27B-2", "140-27C-1", "140-27C-2",
+                         "140-27C-3", "140-27D-1", "140-27D-2", "140-27E-1",
+                         "140-27E-2", "140-27E-3", "140-27E-4", "140-27E-5",
+                         "140-27F-1", "140-27F-2", "140-27F-3", "140-27F-4"
+                     })
+                Assert.Single(Regex.Matches(provenance, Regex.Escape(check)));
+
+            foreach (var mapping in new[]
+                     {
+                         "| Phase140-27/P2-1 | P2 | Closed | 140-27A-1 |",
+                         "| Phase140-27/P2-4 | P2 | Closed | 140-27C-1, 140-27C-2 |",
+                         "| Phase140-27/P3-1 | P3 | Closed | 140-27D-2 |",
+                         "| Phase140-27/P3-2 | P3 | Closed | 140-27A-2 |",
+                         "| Phase140-27/P3-5 | P3 | Closed | 140-27E-2 |",
+                         "| Phase140-27/P3-6 | P3 | Closed | 140-27D-1 |"
+                     })
+                Assert.Contains(mapping, ledger, StringComparison.Ordinal);
+
+            foreach (var supporting in new[]
+                     {
+                         "- `140-27A-3`",
+                         "- `140-27A-4`",
+                         "- `140-27E-4`",
+                         "- `140-27F-3`",
+                         "- `140-27F-4`"
+                     })
+                Assert.Contains(supporting, ledger, StringComparison.Ordinal);
+
             foreach (var finding in new[]
                      {
                          "Phase140-27/P2-1",
