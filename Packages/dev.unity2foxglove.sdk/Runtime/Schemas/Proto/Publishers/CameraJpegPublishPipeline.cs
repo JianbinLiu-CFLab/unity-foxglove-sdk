@@ -160,35 +160,6 @@ namespace Unity.FoxgloveSDK.Components
 
         public bool TryQueueFrame(
             byte[] frameBytes,
-            ulong unixNs,
-            int captureWidth,
-            int captureHeight,
-            bool publishWebSocket,
-            bool publishProvider,
-            bool publishNativeFrame,
-            PublisherEffectiveEncoding webSocketEncoding,
-            double readbackLatencyMs,
-            int jpegQuality,
-            string frameId,
-            int maxEncodedBytes,
-            Action onEncodeQueueDrop)
-        {
-            return TryQueueFrame(
-                frameBytes,
-                new CameraCaptureIdentity(_captureGeneration(), unixNs, captureWidth, captureHeight),
-                publishWebSocket,
-                publishProvider,
-                publishNativeFrame,
-                webSocketEncoding,
-                readbackLatencyMs,
-                jpegQuality,
-                frameId,
-                maxEncodedBytes,
-                onEncodeQueueDrop);
-        }
-
-        public bool TryQueueFrame(
-            byte[] frameBytes,
             CameraCaptureIdentity identity,
             bool publishWebSocket,
             bool publishProvider,

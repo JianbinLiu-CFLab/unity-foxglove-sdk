@@ -213,7 +213,7 @@ namespace Unity.FoxgloveSDK.Components
                 for (var i = _retiredRenderTextures.Count - 1; i >= 0; i--)
                 {
                     var retired = _retiredRenderTextures[i];
-                    if (_readbackGenerations.HasPending(retired.Generation))
+                    if (!_readbackGenerations.IsDrained(retired.Generation))
                         continue;
 
                     texturesToRelease ??= new List<RenderTexture>();

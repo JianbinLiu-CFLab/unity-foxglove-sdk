@@ -93,29 +93,6 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void QueueJpegFrame(
             AsyncGPUReadbackRequest req,
-            ulong unixNs,
-            int captureWidth,
-            int captureHeight,
-            bool publishWebSocket,
-            bool publishProvider,
-            bool publishNativeFrame,
-            PublisherEffectiveEncoding webSocketEncoding,
-            double readbackLatencyMs,
-            byte[] frameBytes = null)
-        {
-            QueueJpegFrame(
-                req,
-                new CameraCaptureIdentity(0, unixNs, captureWidth, captureHeight),
-                publishWebSocket,
-                publishProvider,
-                publishNativeFrame,
-                webSocketEncoding,
-                readbackLatencyMs,
-                frameBytes);
-        }
-
-        private void QueueJpegFrame(
-            AsyncGPUReadbackRequest req,
             CameraCaptureIdentity identity,
             bool publishWebSocket,
             bool publishProvider,
@@ -268,14 +245,6 @@ namespace Unity.FoxgloveSDK.Components
         /// Synchronous JPEG fallback path; it still uses captured readback dimensions
         /// instead of mutable Inspector dimensions.
         /// </summary>
-        private void PublishJpegFrame(AsyncGPUReadbackRequest req, ulong unixNs, int captureWidth, int captureHeight, byte[] frameBytes = null)
-        {
-            PublishJpegFrame(
-                req,
-                new CameraCaptureIdentity(0, unixNs, captureWidth, captureHeight),
-                frameBytes);
-        }
-
         private void PublishJpegFrame(AsyncGPUReadbackRequest req, CameraCaptureIdentity identity, byte[] frameBytes = null)
         {
             var jpeg = frameBytes == null

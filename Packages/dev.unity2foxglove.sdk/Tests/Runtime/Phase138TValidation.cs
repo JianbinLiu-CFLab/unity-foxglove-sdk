@@ -175,7 +175,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("var publishJpegFrame = publishWebSocket || publishProvider || publishNativeFrame;", StringComparison.Ordinal),
                 "138T-4A: camera publisher tracks JPEG demand separately from raw demand");
             Check(source.Contains("if (!publishJpegFrame)", StringComparison.Ordinal)
-                  && source.Contains("PublishRawFrame(frameBytes, renderUnixNs, captureWidth, captureHeight);", StringComparison.Ordinal),
+                  && source.Contains("PublishRawFrame(frameBytes, identity, takeOwnership: true);", StringComparison.Ordinal),
                 "138T-4B: raw-only camera readbacks publish raw frames without forcing JPEG encode");
             Check(resolverSource.Contains("if (string.IsNullOrWhiteSpace(topic) || topic == activeDefaultTopic)", StringComparison.Ordinal)
                   && resolverSource.Contains("topic = ResolveCompressedImageTopic(profile, activeDefaultTopic);", StringComparison.Ordinal),

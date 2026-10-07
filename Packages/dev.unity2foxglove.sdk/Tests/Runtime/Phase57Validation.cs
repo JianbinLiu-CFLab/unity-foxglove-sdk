@@ -85,7 +85,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "57D-1: camera publisher inspector clamps max pending readbacks to at least one");
             Check(camera.Contains("Math.Max(1, _maxPendingReadbacks)") || camera.Contains("Mathf.Max(1, _maxPendingReadbacks)"),
                 "57D-2: camera publisher runtime clamps serialized max pending readbacks to at least one");
-            Check(camera.Contains("!isActiveAndEnabled"),
+            Check((camera.Contains("!isActiveAndEnabled")
+                   || (camera.Contains("CameraCaptureGenerationPolicy.Accepts(")
+                       && camera.Contains("isActiveAndEnabled")
+                       && camera.Contains("_destroyed"))),
                 "57D-3: camera readback callback suppresses publishes after component or GameObject disable");
         }
 

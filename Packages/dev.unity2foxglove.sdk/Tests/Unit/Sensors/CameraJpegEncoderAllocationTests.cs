@@ -123,9 +123,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             Assert.True(pipeline.TryQueueFrame(
                 new byte[] { 1, 2, 3 },
-                1UL,
-                1,
-                1,
+                new CameraCaptureIdentity(1, 1UL, 1, 1),
                 publishWebSocket: false,
                 publishProvider: false,
                 publishNativeFrame: false,
@@ -137,9 +135,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 onEncodeQueueDrop: () => drops++));
             Assert.True(pipeline.TryQueueFrame(
                 new byte[] { 4, 5, 6 },
-                2UL,
-                1,
-                1,
+                new CameraCaptureIdentity(1, 2UL, 1, 1),
                 publishWebSocket: false,
                 publishProvider: false,
                 publishNativeFrame: false,

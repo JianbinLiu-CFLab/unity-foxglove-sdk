@@ -25,23 +25,6 @@ namespace Unity.FoxgloveSDK.Components
         }
 
 
-        /// <summary>
-        /// Submits a rendered camera frame to the active video sidecar using the
-        /// dimensions captured with the same readback request.
-        /// </summary>
-        private void SubmitVideoFrame(
-            AsyncGPUReadbackRequest req,
-            CameraVideoOutputProfile profile,
-            ulong renderUnixNs,
-            int captureWidth,
-            int captureHeight)
-        {
-            SubmitVideoFrame(
-                req,
-                profile,
-                new CameraCaptureIdentity(0, renderUnixNs, captureWidth, captureHeight));
-        }
-
         private void SubmitVideoFrame(
             AsyncGPUReadbackRequest req,
             CameraVideoOutputProfile profile,

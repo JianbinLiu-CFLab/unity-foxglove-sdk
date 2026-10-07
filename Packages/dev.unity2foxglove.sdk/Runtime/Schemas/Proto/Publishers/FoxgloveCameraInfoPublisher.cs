@@ -188,15 +188,21 @@ namespace Unity.FoxgloveSDK.Components
         {
             var imagePublisher = ResolveImagePublisher();
             var imageSourceCamera = imagePublisher?.SensorCameraSourceCamera;
-            if (imageSourceCamera != null)
+            var selectedCamera = CameraInfoAuthorityPolicy.Select(
+                imageSourceCamera != null,
+                imageSourceCamera,
+                _sourceCamera);
+            if (selectedCamera != null)
             {
-                if (_sourceCamera != null && _sourceCamera != imageSourceCamera)
-                    WarnSourceCameraMismatch(_sourceCamera, imageSourceCamera);
-                return imageSourceCamera;
-            }
+                if (imageSourceCamera != null)
+                {
+                    if (_sourceCamera != null && _sourceCamera != imageSourceCamera)
+                        WarnSourceCameraMismatch(_sourceCamera, imageSourceCamera);
+                    return imageSourceCamera;
+                }
 
-            if (_sourceCamera != null)
-                return _sourceCamera;
+                return selectedCamera;
+            }
 
             if (!_sourceCameraCacheResolved)
             {

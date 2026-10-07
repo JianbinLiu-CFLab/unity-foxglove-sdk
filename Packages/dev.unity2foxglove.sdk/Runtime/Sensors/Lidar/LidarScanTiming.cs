@@ -39,6 +39,30 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         public float SyntheticIntensity { get; }
     }
 
+    /// <summary>Freezes serialized LiDAR settings for one enable cycle.</summary>
+    internal sealed class LidarRuntimeConfigurationLifecycle
+    {
+        private bool _active;
+        private LidarRuntimeConfiguration _configuration;
+
+        /// <summary>Whether an enable-cycle snapshot is currently active.</summary>
+        public bool IsActive => _active;
+
+        /// <summary>Returns the frozen enable-cycle configuration.</summary>
+        public LidarRuntimeConfiguration Configuration
+            => _active ? _configuration : throw new InvalidOperationException("LiDAR configuration is not active.");
+
+        /// <summary>Starts a new enable cycle with the supplied serialized snapshot.</summary>
+        public void Activate(LidarRuntimeConfiguration configuration)
+        {
+            _configuration = configuration;
+            _active = true;
+        }
+
+        /// <summary>Ends the current enable cycle without changing serialized values.</summary>
+        public void Deactivate() => _active = false;
+    }
+
     internal static class LidarPendingScanCompletionPolicy
     {
         internal static bool IsReady(bool scheduled, bool jobCompleted, int batchCount)
@@ -50,6 +74,33 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// </summary>
     public static class LidarScanTiming
     {
+        /// <summary>
+        /// Advances fractional scan-column progress from elapsed physics time and bounds
+        /// backlog to the current revolution plus one fixed-tick budget.
+        /// </summary>
+        public static double AdvanceColumnProgress(
+            double progress,
+            double elapsedPhysicsSeconds,
+            int scanColumnCount,
+            double scanPeriodSeconds,
+            int budgetColumns)
+        {
+            if (double.IsNaN(progress) || double.IsInfinity(progress) || progress < 0d)
+                progress = 0d;
+            if (double.IsNaN(elapsedPhysicsSeconds)
+                || double.IsInfinity(elapsedPhysicsSeconds)
+                || elapsedPhysicsSeconds <= 0d
+                || scanColumnCount <= 0
+                || double.IsNaN(scanPeriodSeconds)
+                || double.IsInfinity(scanPeriodSeconds)
+                || scanPeriodSeconds <= 0d)
+                return progress;
+
+            progress += elapsedPhysicsSeconds * scanColumnCount / scanPeriodSeconds;
+            var maxProgress = scanColumnCount + Math.Max(0, budgetColumns);
+            return Math.Min(progress, maxProgress);
+        }
+
         /// <summary>
         /// Convert a normalized offset inside one scan period into seconds.
         /// </summary>

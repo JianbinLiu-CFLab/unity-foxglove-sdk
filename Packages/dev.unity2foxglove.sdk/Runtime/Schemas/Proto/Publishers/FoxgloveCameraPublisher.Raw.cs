@@ -36,19 +36,6 @@ namespace Unity.FoxgloveSDK.Components
 
         private void PublishRawFrame(
             byte[] rgb24Readback,
-            ulong unixNs,
-            int captureWidth,
-            int captureHeight,
-            bool takeOwnership = false)
-        {
-            PublishRawFrame(
-                rgb24Readback,
-                new CameraCaptureIdentity(0, unixNs, captureWidth, captureHeight),
-                takeOwnership);
-        }
-
-        private void PublishRawFrame(
-            byte[] rgb24Readback,
             CameraCaptureIdentity identity,
             bool takeOwnership = false)
         {

@@ -17,6 +17,44 @@ using Unity.FoxgloveSDK.Components;
 
 namespace Foxglove.Schemas.Video
 {
+    /// <summary>Explicit ownership/allocation contract for one OpenH264 session.</summary>
+    internal readonly struct OpenH264AllocationContract
+    {
+        public OpenH264AllocationContract(
+            int inputOwnershipCopies,
+            int pooledConversionBuffers,
+            int protocolHeaderAllocationsPerSession,
+            int encodedOutputOwnershipAllocationsPerAccessUnit)
+        {
+            InputOwnershipCopies = inputOwnershipCopies;
+            PooledConversionBuffers = pooledConversionBuffers;
+            ProtocolHeaderAllocationsPerSession = protocolHeaderAllocationsPerSession;
+            EncodedOutputOwnershipAllocationsPerAccessUnit = encodedOutputOwnershipAllocationsPerAccessUnit;
+        }
+
+        public int InputOwnershipCopies { get; }
+        public int PooledConversionBuffers { get; }
+        public int ProtocolHeaderAllocationsPerSession { get; }
+        public int EncodedOutputOwnershipAllocationsPerAccessUnit { get; }
+    }
+
+    /// <summary>
+    /// Describes the intentional OpenH264 ownership boundary: pooled input and
+    /// conversion scratch, one reusable protocol header, and one owned output
+    /// byte array per encoded access unit.
+    /// </summary>
+    internal static class OpenH264AllocationPolicy
+    {
+        public const int ProtocolHeaderBytes = 12;
+
+        public static OpenH264AllocationContract Contract(bool rgbInput)
+            => new OpenH264AllocationContract(
+                inputOwnershipCopies: 1,
+                pooledConversionBuffers: rgbInput ? 1 : 0,
+                protocolHeaderAllocationsPerSession: 1,
+                encodedOutputOwnershipAllocationsPerAccessUnit: 1);
+    }
+
     /// <summary>
     /// Encodes I420 frames through an external OpenH264 helper process and
     /// exposes completed H.264 Annex B access units.
@@ -383,7 +421,7 @@ namespace Foxglove.Schemas.Video
             try
             {
                 var stream = process.StandardInput.BaseStream;
-                var protocolHeader = new byte[12];
+                var protocolHeader = new byte[OpenH264AllocationPolicy.ProtocolHeaderBytes];
                 while (!token.IsCancellationRequested && IsProcessRunning(process))
                 {
                     if (TryDequeueInputFrame(process, token, out var frame))
@@ -486,7 +524,7 @@ namespace Foxglove.Schemas.Video
                 var stream = process.StandardOutput.BaseStream;
                 if (Volatile.Read(ref _helperProtocolVersion) >= 2)
                 {
-                    var header = new byte[12];
+                    var header = new byte[OpenH264AllocationPolicy.ProtocolHeaderBytes];
                     while (!token.IsCancellationRequested)
                     {
                         if (!await ReadExact(stream, header, token).ConfigureAwait(false))
@@ -685,7 +723,7 @@ namespace Foxglove.Schemas.Video
 
         private static void PopulateProtocolHeader(byte[] header, ulong timestampNs, int length)
         {
-            if (header == null || header.Length < 12)
+            if (header == null || header.Length < OpenH264AllocationPolicy.ProtocolHeaderBytes)
                 throw new ArgumentException("The protocol header buffer must contain at least 12 bytes.", nameof(header));
 
             for (var i = 0; i < 8; i++)

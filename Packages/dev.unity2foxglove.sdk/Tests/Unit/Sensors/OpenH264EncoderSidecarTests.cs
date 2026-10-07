@@ -22,6 +22,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
     public sealed class OpenH264EncoderSidecarTests
     {
         [Fact]
+        public void OpenH264AllocationContractSeparatesPooledInputFromOwnedOutput()
+        {
+            var rgbContract = OpenH264AllocationPolicy.Contract(rgbInput: true);
+            var i420Contract = OpenH264AllocationPolicy.Contract(rgbInput: false);
+
+            Assert.Equal(1, rgbContract.InputOwnershipCopies);
+            Assert.Equal(1, rgbContract.PooledConversionBuffers);
+            Assert.Equal(1, i420Contract.InputOwnershipCopies);
+            Assert.Equal(0, i420Contract.PooledConversionBuffers);
+            Assert.Equal(1, rgbContract.ProtocolHeaderAllocationsPerSession);
+            Assert.Equal(1, rgbContract.EncodedOutputOwnershipAllocationsPerAccessUnit);
+            Assert.Equal(12, OpenH264AllocationPolicy.ProtocolHeaderBytes);
+
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs");
+            Assert.Contains("OpenH264AllocationPolicy.ProtocolHeaderBytes", source, StringComparison.Ordinal);
+            Assert.Contains("var payload = new byte[length];", source, StringComparison.Ordinal);
+            Assert.Contains("ArrayPool<byte>.Shared.Rent", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void EmptyAccessUnitIsRejectedWithoutConsumingTimestamp()
         {
             var sidecar = new OpenH264EncoderSidecar();
@@ -255,11 +275,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var source = File.ReadAllText(Path.Combine(
                 FindRepoRoot(),
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs"));
-            Assert.Equal(1, CountOccurrences(source, "var protocolHeader = new byte[12];"));
+            Assert.Equal(1, CountOccurrences(source, "var protocolHeader = new byte[OpenH264AllocationPolicy.ProtocolHeaderBytes];"));
             var writerStart = source.IndexOf("private async Task RunStdinWriter", StringComparison.Ordinal);
             var writerEnd = source.IndexOf("private Task RunStdoutReader", writerStart, StringComparison.Ordinal);
             var writer = source.Substring(writerStart, writerEnd - writerStart);
-            Assert.Equal(1, CountOccurrences(writer, "new byte[12]"));
+            Assert.Equal(1, CountOccurrences(writer, "new byte[OpenH264AllocationPolicy.ProtocolHeaderBytes]"));
             Assert.Contains("PopulateProtocolHeader(protocolHeader", writer, StringComparison.Ordinal);
             Assert.Contains("WriteAsync(protocolHeader", writer, StringComparison.Ordinal);
             Assert.DoesNotContain("WriteProtocolHeaderAsync", source, StringComparison.Ordinal);
@@ -655,7 +675,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 for (var frame = 1; frame <= 2; frame++)
                 {
                     var source = new ObservedFrameSource(12);
-                    var result = pipeline.SubmitVideoFrame(source, (ulong)frame, 2, 2);
+                    var result = pipeline.SubmitVideoFrame(
+                        source,
+                        new CameraCaptureIdentity(1, (ulong)frame, 2, 2));
 
                     Assert.True(result.Submitted, result.Reason);
                     Assert.Equal(1, source.Observation.CopyCount);
@@ -910,6 +932,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             return count;
         }
+
+        private static string Read(string relativePath)
+            => File.ReadAllText(Path.Combine(FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
         private static string FindRepoRoot()
         {
