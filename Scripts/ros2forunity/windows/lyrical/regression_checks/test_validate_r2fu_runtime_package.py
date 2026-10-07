@@ -178,6 +178,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             package.mkdir(parents=True)
 
             def git(*args: str) -> str:
+                """Run a git command in the temporary repository."""
                 result = subprocess.run(
                     ["git", *args],
                     cwd=root,
