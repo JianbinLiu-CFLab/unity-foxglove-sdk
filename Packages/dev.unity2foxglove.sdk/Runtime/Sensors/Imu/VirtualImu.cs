@@ -13,6 +13,7 @@ using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.Imu;
 using Unity.FoxgloveSDK.Sensors.Imu;
+using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
 {
