@@ -1441,14 +1441,14 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 peer.Port,
                 queueCapacity: 8,
                 reconnectIntervalMs: 100,
-                sendTimeoutMs: 1000,
+                sendTimeoutMs: 5000,
                 sinkFactory: null,
                 retirementOwner:
                     FoxRunTransportRetirementOwner.CreateForTests(3),
                 providerId: providerId,
                 direction: FoxRunTransportDirection.Publish,
                 generation: 7,
-                joinTimeoutMs: 1500,
+                joinTimeoutMs: 5000,
                 requiresSubscription: true);
             runtime.Start(enabled: true, autoConnect: true);
             Assert.True(

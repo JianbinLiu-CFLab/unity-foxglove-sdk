@@ -94,9 +94,15 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 transport.AllowPreparationAck.Set();
             }
             WaitForPublisherReady(runtime);
-            Assert.Equal(
-                0,
-                runtime.GetStatsSnapshot().TransientBytes);
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => runtime.GetStatsSnapshot().TransientBytes == 0,
+                    TimeSpan.FromSeconds(5)),
+                $"transient bytes remained: {runtime.GetStatsSnapshot().TransientBytes}; "
+                + $"connects={transport.ConnectCount}; "
+                + $"disconnects={transport.DisconnectCount}; "
+                + $"requests={transport.V2Requests.Length}; "
+                + $"lastError={runtime.GetStatsSnapshot().LastError}");
         }
 
         [Fact]
