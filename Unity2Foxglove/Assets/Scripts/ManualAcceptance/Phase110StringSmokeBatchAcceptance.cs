@@ -65,6 +65,7 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
         private bool _inboundDeadlineArmed;
         private float _inboundDeadlineAt = float.PositiveInfinity;
         private RunInBackgroundLease _runInBackgroundLease;
+        private readonly OptionalStartExecutorGate _executorStartGate = new OptionalStartExecutorGate();
         private bool _executorsStarted;
         private bool _warnedMissingStartExecutor;
         private bool _previousEnterPlayModeOptionsEnabled;
@@ -242,24 +243,26 @@ public sealed class Phase110StringSmokeBatchAcceptance : MonoBehaviour
             if (_executorsStarted)
                 return;
 
-            if (_startExecutor == null)
-            {
-                if (!_warnedMissingStartExecutor)
+            var started = _executorStartGate.TryStart(
+                _startExecutor == null
+                    ? null
+                    : () =>
+                    {
+                        var components = UnityEngine.Object.FindObjectsByType<ROS2UnityComponent>(
+                            FindObjectsInactive.Include,
+                            FindObjectsSortMode.None);
+                        for (var i = 0; i < components.Length; i++)
+                            _startExecutor.Invoke(components[i], null);
+                    },
+                () =>
                 {
-                    _warnedMissingStartExecutor = true;
-                    Debug.LogWarning(LogPrefix + " StartExecutor reflection hook was not found; continuing without explicit executor start.");
-                }
-
-                _executorsStarted = true;
-                return;
-            }
-
-            var components = UnityEngine.Object.FindObjectsByType<ROS2UnityComponent>(
-                FindObjectsInactive.Include,
-                FindObjectsSortMode.None);
-            for (var i = 0; i < components.Length; i++)
-                _startExecutor.Invoke(components[i], null);
-            _executorsStarted = true;
+                    if (!_warnedMissingStartExecutor)
+                    {
+                        _warnedMissingStartExecutor = true;
+                        Debug.LogWarning(LogPrefix + " StartExecutor reflection hook was not found; continuing without explicit executor start.");
+                    }
+                });
+            _executorsStarted = started || _executorStartGate.Attempted;
         }
 
         private void Pass(int published, int received, string status)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 
 namespace Unity.FoxgloveSDK.Utilities
@@ -63,9 +64,55 @@ namespace Unity.FoxgloveSDK.Utilities
                 return;
 
             _disposed = true;
+            Exception firstFailure = null;
             for (var i = _cleanup.Count - 1; i >= 0; i--)
-                _cleanup[i]();
+            {
+                try
+                {
+                    _cleanup[i]();
+                }
+                catch (Exception ex)
+                {
+                    firstFailure ??= ex;
+                }
+            }
+
             _cleanup.Clear();
+            if (firstFailure != null)
+                ExceptionDispatchInfo.Capture(firstFailure).Throw();
+        }
+    }
+
+    public sealed class OptionalStartExecutorGate
+    {
+        private bool _attempted;
+        private bool _started;
+
+        public bool Attempted => _attempted;
+        public bool Started => _started;
+
+        public bool TryStart(Action start, Action warnMissing)
+        {
+            if (_attempted)
+                return _started;
+
+            if (start == null)
+            {
+                _attempted = true;
+                warnMissing?.Invoke();
+                return false;
+            }
+
+            start();
+            _attempted = true;
+            _started = true;
+            return true;
+        }
+
+        public void Reset()
+        {
+            _attempted = false;
+            _started = false;
         }
     }
 }

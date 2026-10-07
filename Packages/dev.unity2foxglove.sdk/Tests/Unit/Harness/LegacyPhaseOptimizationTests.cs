@@ -419,6 +419,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void WorkstreamGHistoricalLedgerAndLifecycleGuardsRemainAuditable()
         {
             var ledger = TestSources.Text("docs/research-workstream-g-closure.md");
+            Assert.Contains("reconstructed closure mapping", ledger, StringComparison.Ordinal);
+            Assert.Contains("original validation checks use the `140-27A-1` through `140-27F-4` namespace", ledger, StringComparison.Ordinal);
+            Assert.Contains("140-27A-1..A-4", ledger, StringComparison.Ordinal);
+            Assert.Contains("140-27C-1..C-2", ledger, StringComparison.Ordinal);
             foreach (var finding in new[]
                      {
                          "Phase140-27/P2-1",
