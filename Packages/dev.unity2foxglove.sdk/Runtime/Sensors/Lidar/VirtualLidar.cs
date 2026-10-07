@@ -111,6 +111,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Range(0, 1)] private float _syntheticIntensity = 1f;
         private readonly PlayModeConfigurationWarningGate _playModeConfigurationWarningGate =
             new PlayModeConfigurationWarningGate();
+        private readonly LidarRuntimeConfigurationLifecycle _configurationLifecycle =
+            new LidarRuntimeConfigurationLifecycle();
         private LidarRuntimeConfiguration _activeConfiguration;
 
         /// <summary>The most recently generated PointCloudFrame, or null before the first scan.</summary>
@@ -319,6 +321,7 @@ namespace Unity.FoxgloveSDK.Components
                 _maxRaycastCommandsPerFixedUpdate,
                 _syntheticReflectivity,
                 _syntheticIntensity);
+            _configurationLifecycle.Activate(_activeConfiguration);
             _scanPattern = null;
             if (_sensorUnitProfile != null)
                 _scanPattern = _sensorUnitProfile.CreateScanPattern(_columnStep);
@@ -351,6 +354,7 @@ namespace Unity.FoxgloveSDK.Components
         private void OnDisable()
         {
             DisposeScanBuffers();
+            _configurationLifecycle.Deactivate();
         }
 
         private Sensors.Lidar.LidarProfile LoadProfile()
@@ -399,10 +403,11 @@ namespace Unity.FoxgloveSDK.Components
                 if (_manager != null
                     && _sharedClockGeneration != _manager.SharedSensorClockGeneration)
                 {
-                    ScanScheduler.DrainPendingScan();
-                    _sharedClockGeneration = _manager.SharedSensorClockGeneration;
-                    _scanClock.Reset();
-                    ResetScanState(Time.fixedTimeAsDouble);
+                    SensorGenerationTransition.Apply(
+                        ref _sharedClockGeneration,
+                        _manager.SharedSensorClockGeneration,
+                        ScanScheduler.DrainPendingScan,
+                        ResetSensorGenerationState);
                 }
 
                 EnsureScanClock(Time.fixedTimeAsDouble);
@@ -438,7 +443,12 @@ namespace Unity.FoxgloveSDK.Components
                     return;
 
                 // Columns this scan rate wants to advance this tick; carry the remainder.
-                _scanColumnProgress += dt * _scanBuffers.ScanColumnCount / Math.Max(1e-12, (double)_scanPeriod);
+                _scanColumnProgress = LidarScanTiming.AdvanceColumnProgress(
+                    _scanColumnProgress,
+                    dt,
+                    _scanBuffers.ScanColumnCount,
+                    Math.Max(1e-12, (double)_scanPeriod),
+                    BudgetColumnsPerTick());
 
                 // Hard cap on per-tick raycast work: the real fix. PhysX must finish the batch
                 // within one fixed step or RaycastCommand.Complete() blocks the physics loop and
@@ -507,6 +517,12 @@ namespace Unity.FoxgloveSDK.Components
 
         private long BeginLidarFixedUpdateTiming()
             => _activeConfiguration.LogPerformanceDiagnostics ? Stopwatch.GetTimestamp() : 0L;
+
+        private void ResetSensorGenerationState()
+        {
+            _scanClock.Reset();
+            ResetScanState(Time.fixedTimeAsDouble);
+        }
 
         private static double ElapsedLidarFixedUpdateTiming(long startTicks)
             => startTicks == 0L ? 0d : (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;

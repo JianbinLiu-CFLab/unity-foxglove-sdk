@@ -179,13 +179,14 @@ namespace Unity.FoxgloveSDK.Components
             if (_rigidbody == null || Time.fixedDeltaTime <= 0f)
                 return;
 
-            if (_manager != null && _sharedClockGeneration != _manager.SharedSensorClockGeneration)
+            if (_manager != null
+                && _sharedClockGeneration != _manager.SharedSensorClockGeneration)
             {
-                RetireQueuedSamplesForLifecycleTransition();
-                _hasLastVelocity = false;
-                _hasEpoch = false;
-                _sharedClockGeneration = _manager.SharedSensorClockGeneration;
-                _nextSampleIndex = 0;
+                SensorGenerationTransition.Apply(
+                    ref _sharedClockGeneration,
+                    _manager.SharedSensorClockGeneration,
+                    RetireQueuedSamplesForLifecycleTransition,
+                    ResetSensorGenerationState);
             }
 
             var worldVelocity = _rigidbody.linearVelocity;
@@ -265,6 +266,13 @@ namespace Unity.FoxgloveSDK.Components
             _lastBodyAcceleration = linearBody;
             _lastBodyAngularVelocity = angularBody;
             _lastBodyRotation = bodyRotation;
+        }
+
+        private void ResetSensorGenerationState()
+        {
+            _hasLastVelocity = false;
+            _hasEpoch = false;
+            _nextSampleIndex = 0;
         }
 
         private void Update()

@@ -243,9 +243,10 @@ namespace Unity.FoxgloveSDK.Components
             var unixNs = _manager == null
                 ? CurrentLogTimeNs
                 : _manager.GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble);
-            var motionTransform = _motionCompensationTransformOverride != null
-                ? _motionCompensationTransformOverride
-                : transform;
+            var motionTransform = SensorTransformAuthorityPolicy.Select(
+                _motionCompensationTransformOverride,
+                transform,
+                candidate => candidate != null);
             var foxglovePosition = CoordinateConverter.UnityToFoxglovePosition(motionTransform.position);
             var foxgloveRotation = CoordinateConverter.UnityToFoxgloveRotation(motionTransform.rotation);
 

@@ -129,21 +129,6 @@ namespace Unity.FoxgloveSDK.Components
             return false;
         }
 
-        /// <summary>
-        /// Makes one durable ArrayPool-backed handoff copy for asynchronous encoders; format
-        /// conversion remains on the worker side whenever the sidecar supports frame sources.
-        /// </summary>
-        public CameraVideoSubmitResult SubmitVideoFrame<TFrameBytes>(
-            TFrameBytes frameBytes,
-            ulong renderUnixNs,
-            int captureWidth,
-            int captureHeight) where TFrameBytes : struct, ICameraVideoFrameBytesSource
-        {
-            return SubmitVideoFrame(
-                frameBytes,
-                new CameraCaptureIdentity(0, renderUnixNs, captureWidth, captureHeight));
-        }
-
         public CameraVideoSubmitResult SubmitVideoFrame<TFrameBytes>(
             TFrameBytes frameBytes,
             CameraCaptureIdentity identity) where TFrameBytes : struct, ICameraVideoFrameBytesSource

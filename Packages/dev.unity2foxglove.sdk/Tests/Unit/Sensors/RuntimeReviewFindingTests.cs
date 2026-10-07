@@ -176,6 +176,34 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void MultiTickLidarProgressUsesElapsedPhysicsTicksAndBudget()
+        {
+            var progress = 0d;
+            var emitted = 0;
+            for (var tick = 0; tick < 4; tick++)
+            {
+                progress = LidarScanTiming.AdvanceColumnProgress(
+                    progress,
+                    elapsedPhysicsSeconds: 0.02d,
+                    scanColumnCount: 100,
+                    scanPeriodSeconds: 1.0d,
+                    budgetColumns: 2);
+
+                Assert.True(LidarScanTiming.TryReserveColumns(
+                    hasPendingScan: false,
+                    progress: progress,
+                    budgetColumns: 2,
+                    remainingColumns: 100 - emitted,
+                    out var columns,
+                    out progress));
+                emitted += columns;
+            }
+
+            Assert.Equal(8, emitted);
+            Assert.Equal(0d, progress, 10);
+        }
+
+        [Fact]
         public void LidarBoundaryTimestampAdvancesFromScanTimeline()
         {
             Assert.Equal(
@@ -206,6 +234,40 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(1, clock.Generation);
             Assert.Equal(2_000_000_000UL, clock.GetUnixTime(20.0d, 2_000_000_000UL));
             Assert.Equal(2_250_000_000UL, clock.GetUnixTime(20.25d, 9_000_000_000UL));
+        }
+
+        [Fact]
+        public void SensorGenerationTransitionRetiresBeforeResetAndKeepsActiveGeneration()
+        {
+            var observedGeneration = 0;
+            var queuedSamples = new List<string> { "old" };
+            var events = new List<string>();
+
+            Assert.True(SensorGenerationTransition.Apply(
+                ref observedGeneration,
+                currentGeneration: 1,
+                retireQueuedWork: () =>
+                {
+                    events.Add("retire");
+                    queuedSamples.Clear();
+                },
+                resetEpoch: () => events.Add(queuedSamples.Count == 0 ? "reset" : "reset-with-stale-data")));
+
+            Assert.Empty(queuedSamples);
+            Assert.Equal(new[] { "retire", "reset" }, events);
+            Assert.Equal(1, observedGeneration);
+            Assert.False(SensorGenerationTransition.Apply(
+                ref observedGeneration,
+                currentGeneration: 1,
+                retireQueuedWork: () => events.Add("unexpected-retire"),
+                resetEpoch: () => events.Add("unexpected-reset")));
+            Assert.DoesNotContain("unexpected-retire", events);
+            Assert.DoesNotContain("unexpected-reset", events);
+
+            var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var imu = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            Assert.Contains("SensorGenerationTransition.Apply", lidar, StringComparison.Ordinal);
+            Assert.Contains("SensorGenerationTransition.Apply", imu, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -292,6 +354,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(identity.Width, request.Width);
             Assert.Equal(identity.Height, request.Height);
             Assert.Equal(identity.Generation, request.Generation);
+
+            var jpegPipeline = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraJpegPublishPipeline.cs");
+            var videoPipeline = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
+            var rawPublisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Raw.cs");
+            var jpegPublisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Jpeg.cs");
+            var videoPublisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Video.cs");
+            Assert.DoesNotContain("new CameraCaptureIdentity(0", jpegPipeline, StringComparison.Ordinal);
+            Assert.DoesNotContain("new CameraCaptureIdentity(0", videoPipeline, StringComparison.Ordinal);
+            Assert.DoesNotContain("new CameraCaptureIdentity(0", rawPublisher, StringComparison.Ordinal);
+            Assert.DoesNotContain("new CameraCaptureIdentity(0", jpegPublisher, StringComparison.Ordinal);
+            Assert.DoesNotContain("new CameraCaptureIdentity(0", videoPublisher, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -380,22 +453,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         {
             var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             var imu = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
-
-            var lidarGeneration = lidar.IndexOf(
-                "_sharedClockGeneration != _manager.SharedSensorClockGeneration",
-                StringComparison.Ordinal);
-            var lidarDrain = lidar.IndexOf("ScanScheduler.DrainPendingScan();", lidarGeneration, StringComparison.Ordinal);
-            var lidarClockReset = lidar.IndexOf("_scanClock.Reset();", lidarGeneration, StringComparison.Ordinal);
-            Assert.True(lidarGeneration >= 0);
-            Assert.InRange(lidarDrain, lidarGeneration, lidarClockReset - 1);
-
-            var imuGeneration = imu.IndexOf(
-                "_sharedClockGeneration != _manager.SharedSensorClockGeneration",
-                StringComparison.Ordinal);
-            var imuRetire = imu.IndexOf("RetireQueuedSamplesForLifecycleTransition();", imuGeneration, StringComparison.Ordinal);
-            var imuEpochReset = imu.IndexOf("_hasEpoch = false;", imuGeneration, StringComparison.Ordinal);
-            Assert.True(imuGeneration >= 0);
-            Assert.InRange(imuRetire, imuGeneration, imuEpochReset - 1);
+            Assert.Contains("SensorGenerationTransition.Apply", lidar, StringComparison.Ordinal);
+            Assert.Contains("ScanScheduler.DrainPendingScan", lidar, StringComparison.Ordinal);
+            Assert.Contains("_scanClock.Reset", lidar, StringComparison.Ordinal);
+            Assert.Contains("SensorGenerationTransition.Apply", imu, StringComparison.Ordinal);
+            Assert.Contains("RetireQueuedSamplesForLifecycleTransition", imu, StringComparison.Ordinal);
+            Assert.Contains("_hasEpoch = false", imu, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -423,6 +486,37 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.True(tracker.HasPending(2));
             Assert.True(tracker.Complete(2));
             Assert.False(tracker.HasPending(2));
+        }
+
+        [Fact]
+        public void CameraReadbackResizeKeepsOldGenerationUntilItsCallbackDrains()
+        {
+            var tracker = new CameraReadbackGenerationTracker();
+            tracker.Register(10);
+            Assert.False(tracker.IsDrained(10));
+
+            var currentGeneration = 11;
+            tracker.Register(currentGeneration);
+            Assert.False(CameraCaptureGenerationPolicy.Accepts(
+                destroyed: false,
+                active: true,
+                callbackGeneration: 10,
+                currentGeneration: currentGeneration));
+            Assert.False(tracker.IsDrained(10));
+
+            Assert.True(tracker.Complete(10));
+            Assert.True(tracker.IsDrained(10));
+            Assert.True(tracker.HasPending(currentGeneration));
+            Assert.True(CameraCaptureGenerationPolicy.Accepts(
+                destroyed: false,
+                active: true,
+                callbackGeneration: currentGeneration,
+                currentGeneration: currentGeneration));
+
+            var resources = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraCaptureResources.cs");
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            Assert.Contains("_readbackGenerations.IsDrained", resources, StringComparison.Ordinal);
+            Assert.Contains("CameraCaptureGenerationPolicy.Accepts", publisher, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -468,6 +562,42 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                     imageSourceIsOrthographic,
                     autoFromCamera,
                     fallbackSourceIsOrthographic));
+        }
+
+        [Fact]
+        public void CameraInfoAuthoritySelectsOneImageCameraSnapshotForAllCalibrationFields()
+        {
+            var imageCamera = new CameraAuthorityProbe(1920, 1080, 900, 901, 960, 540, false);
+            var configuredCamera = new CameraAuthorityProbe(640, 480, 300, 301, 320, 240, false);
+
+            var selected = CameraInfoAuthorityPolicy.Select(true, imageCamera, configuredCamera);
+
+            Assert.Equal(imageCamera.Width, selected.Width);
+            Assert.Equal(imageCamera.Height, selected.Height);
+            Assert.Equal(imageCamera.Fx, selected.Fx);
+            Assert.Equal(imageCamera.Fy, selected.Fy);
+            Assert.Equal(imageCamera.Cx, selected.Cx);
+            Assert.Equal(imageCamera.Cy, selected.Cy);
+
+            var info = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraInfoPublisher.cs");
+            Assert.Contains("CameraInfoAuthorityPolicy.Select", info, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void LidarTransformAuthorityUsesSensorPoseInsteadOfPublisherPose()
+        {
+            var selected = SensorTransformAuthorityPolicy.Select(
+                sensorTransform: 1,
+                publisherTransform: 100,
+                isValid: value => value > 0);
+
+            Assert.Equal(1, selected);
+            Assert.Equal(
+                100,
+                SensorTransformAuthorityPolicy.Select(0, 100, value => value > 0));
+
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            Assert.Contains("SensorTransformAuthorityPolicy.Select", publisher, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -544,6 +674,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("_activeConfiguration.LayerMaskValue", lidar, StringComparison.Ordinal);
             Assert.Contains("_activeConfiguration.PublishEmptyFrames", lidar, StringComparison.Ordinal);
             Assert.DoesNotContain("_maxRangeMeters,\n                    _syntheticIntensity", lidar, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void LidarConfigurationLifecycleRequiresReenableToApplyEditedValues()
+        {
+            var lifecycle = new LidarRuntimeConfigurationLifecycle();
+            var initial = new LidarRuntimeConfiguration(
+                "initial", 50f, 1, false, false, 256, 1f, 1f);
+            var edited = new LidarRuntimeConfiguration(
+                "edited", 10f, 2, true, true, 512, 0.5f, 0.5f);
+
+            lifecycle.Activate(initial);
+            Assert.True(lifecycle.IsActive);
+            Assert.Equal("initial", lifecycle.Configuration.FrameId);
+            lifecycle.Deactivate();
+            Assert.False(lifecycle.IsActive);
+            lifecycle.Activate(edited);
+            Assert.Equal("edited", lifecycle.Configuration.FrameId);
+
+            var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            Assert.Contains("_configurationLifecycle.Activate(_activeConfiguration)", lidar, StringComparison.Ordinal);
+            Assert.Contains("_configurationLifecycle.Deactivate()", lidar, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -667,6 +819,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 return true;
             }
             public void Dispose() { }
+        }
+
+        private readonly struct CameraAuthorityProbe
+        {
+            internal CameraAuthorityProbe(uint width, uint height, double fx, double fy, double cx, double cy, bool orthographic)
+            {
+                Width = width;
+                Height = height;
+                Fx = fx;
+                Fy = fy;
+                Cx = cx;
+                Cy = cy;
+                Orthographic = orthographic;
+            }
+
+            internal uint Width { get; }
+            internal uint Height { get; }
+            internal double Fx { get; }
+            internal double Fy { get; }
+            internal double Cx { get; }
+            internal double Cy { get; }
+            internal bool Orthographic { get; }
         }
 
         private static string Text(string relativePath)

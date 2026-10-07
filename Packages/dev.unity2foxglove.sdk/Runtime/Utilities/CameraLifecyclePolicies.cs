@@ -4,6 +4,7 @@
 // Module: Runtime/Utilities
 // Purpose: Unity-free lifecycle policies shared by camera publishers and sensors.
 
+using System;
 using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.Util
@@ -50,12 +51,62 @@ namespace Unity.FoxgloveSDK.Util
                 return _pendingByGeneration.ContainsKey(generation);
         }
 
+        /// <summary>Returns whether every readback owned by a generation has completed.</summary>
+        public bool IsDrained(int generation)
+            => !HasPending(generation);
+
         /// <summary>Forgets all tracked requests after the owning resources are fully drained.</summary>
         public void Clear()
         {
             lock (_gate)
                 _pendingByGeneration.Clear();
         }
+    }
+
+    /// <summary>Applies a manager sensor-clock generation transition in a fixed order.</summary>
+    internal static class SensorGenerationTransition
+    {
+        /// <summary>
+        /// Retire queued work before resetting sensor epoch state and publishing the new generation.
+        /// </summary>
+        public static bool Apply(
+            ref int observedGeneration,
+            int currentGeneration,
+            Action retireQueuedWork,
+            Action resetEpoch)
+        {
+            if (observedGeneration == currentGeneration)
+                return false;
+
+            retireQueuedWork?.Invoke();
+            resetEpoch?.Invoke();
+            observedGeneration = currentGeneration;
+            return true;
+        }
+    }
+
+    /// <summary>Chooses the actual image-source authority over a configured fallback.</summary>
+    internal static class CameraInfoAuthorityPolicy
+    {
+        /// <summary>Returns the image source whenever one is present.</summary>
+        public static T Select<T>(bool hasImageSource, T imageSource, T configuredSource)
+            => hasImageSource ? imageSource : configuredSource;
+    }
+
+    /// <summary>Chooses the actual sensor transform over a publisher fallback.</summary>
+    internal static class SensorTransformAuthorityPolicy
+    {
+        /// <summary>Returns a valid sensor transform before the publisher transform.</summary>
+        public static T Select<T>(T sensorTransform, T publisherTransform, Func<T, bool> isValid)
+            => isValid != null && isValid(sensorTransform) ? sensorTransform : publisherTransform;
+    }
+
+    /// <summary>Rejects callbacks that belong to a retired camera capture generation.</summary>
+    internal static class CameraCaptureGenerationPolicy
+    {
+        /// <summary>Accepts only callbacks from a live component and current generation.</summary>
+        public static bool Accepts(bool destroyed, bool active, int callbackGeneration, int currentGeneration)
+            => !destroyed && active && callbackGeneration == currentGeneration;
     }
 
     /// <summary>Decides when an orthographic camera is incompatible with CameraInfo output.</summary>

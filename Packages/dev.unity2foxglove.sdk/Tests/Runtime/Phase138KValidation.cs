@@ -38,14 +38,13 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadCameraPublisherPartials();
 
-            Check(source.Contains("SubmitVideoFrame(req, profile, renderUnixNs, captureWidth, captureHeight)", StringComparison.Ordinal),
-                "138K-1A: video readback path carries captured dimensions into submission");
+            Check(source.Contains("SubmitVideoFrame(req, profile, identity)", StringComparison.Ordinal),
+                "138K-1A: video readback path carries one capture identity into submission");
             Check(source.Contains("private void SubmitVideoFrame(", StringComparison.Ordinal)
                   && source.Contains("CameraVideoOutputProfile profile", StringComparison.Ordinal)
-                  && source.Contains("ulong renderUnixNs", StringComparison.Ordinal)
-                  && source.Contains("int captureWidth", StringComparison.Ordinal)
-                  && source.Contains("int captureHeight", StringComparison.Ordinal),
-                "138K-1B: video submission accepts captured dimensions");
+                  && source.Contains("CameraCaptureIdentity identity", StringComparison.Ordinal)
+                  && !source.Contains("new CameraCaptureIdentity(0", StringComparison.Ordinal),
+                "138K-1B: video submission accepts the captured identity without a legacy reconstruction");
         }
 
         private static void CameraPublisherUsesCapturedDimensionsForOpenH264Conversion()
@@ -54,8 +53,8 @@ namespace Unity.FoxgloveSDK.Tests
                 Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs"),
                 "public CameraVideoSubmitResult SubmitVideoFrame");
 
-            Check(method.Contains("Math.Max(1, captureWidth)", StringComparison.Ordinal)
-                  && method.Contains("Math.Max(1, captureHeight)", StringComparison.Ordinal),
+            Check(method.Contains("var captureWidth = identity.Width", StringComparison.Ordinal)
+                  && method.Contains("var captureHeight = identity.Height", StringComparison.Ordinal),
                 "138K-2A: video conversion dimensions come from captured readback size");
             Check(!method.Contains("Math.Max(1, _width)", StringComparison.Ordinal)
                   && !method.Contains("Math.Max(1, _height)", StringComparison.Ordinal),

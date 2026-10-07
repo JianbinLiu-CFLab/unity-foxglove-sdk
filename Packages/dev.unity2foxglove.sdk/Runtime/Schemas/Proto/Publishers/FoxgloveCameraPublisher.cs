@@ -311,7 +311,12 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 // Equivalent to generation != _captureGeneration, but with a cross-thread visible read.
-                if (_destroyed || !isActiveAndEnabled || identity.Generation != Volatile.Read(ref _captureGeneration)) return;
+                if (!CameraCaptureGenerationPolicy.Accepts(
+                        _destroyed,
+                        isActiveAndEnabled,
+                        identity.Generation,
+                        Volatile.Read(ref _captureGeneration)))
+                    return;
                 if (IsReplaySuppressed) return;
                 if (req.hasError)
                 {
