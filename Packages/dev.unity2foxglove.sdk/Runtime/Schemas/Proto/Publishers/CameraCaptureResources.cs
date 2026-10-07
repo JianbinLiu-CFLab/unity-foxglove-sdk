@@ -95,7 +95,7 @@ namespace Unity.FoxgloveSDK.Components
             var data = req.GetData<byte>();
             var flipped = EnsureRgbScratch(data.Length);
             data.CopyTo(flipped);
-            FlipRgb24RowsInPlace(flipped, width, height, ref _rowScratch);
+            Rgb24Orientation.FlipRowsInPlace(flipped, width, height, ref _rowScratch);
             _texture2D.LoadRawTextureData(flipped);
             _texture2D.Apply(false);
             return _texture2D.EncodeToJPG(quality);
@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.Components
 
             var flipped = EnsureRgbScratch(expectedBytes);
             Buffer.BlockCopy(rgb24Readback, 0, flipped, 0, expectedBytes);
-            FlipRgb24RowsInPlace(flipped, width, height, ref _rowScratch);
+            Rgb24Orientation.FlipRowsInPlace(flipped, width, height, ref _rowScratch);
             _texture2D.LoadRawTextureData(flipped);
             _texture2D.Apply(false);
             return _texture2D.EncodeToJPG(quality);
@@ -133,20 +133,6 @@ namespace Unity.FoxgloveSDK.Components
             if (_rgbScratch == null || _rgbScratch.Length != length)
                 _rgbScratch = new byte[length];
             return _rgbScratch;
-        }
-
-        private static void FlipRgb24RowsInPlace(byte[] data, int width, int height, ref byte[] rowScratch)
-        {
-            var rowBytes = width * 3;
-            if (rowScratch == null || rowScratch.Length != rowBytes)
-                rowScratch = new byte[rowBytes];
-            for (var top = 0; top < height / 2; top++)
-            {
-                var bottom = height - 1 - top;
-                Buffer.BlockCopy(data, top * rowBytes, rowScratch, 0, rowBytes);
-                Buffer.BlockCopy(data, bottom * rowBytes, data, top * rowBytes, rowBytes);
-                Buffer.BlockCopy(rowScratch, 0, data, bottom * rowBytes, rowBytes);
-            }
         }
 
         public void Cleanup()

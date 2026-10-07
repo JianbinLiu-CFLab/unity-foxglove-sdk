@@ -302,7 +302,10 @@ namespace Unity.FoxgloveSDK.Components
             NormalizeSerializedNumericConfiguration();
             ResolveSensorUnitProfile();
             if (_scanPattern != null)
+            {
                 RebuildScanConfiguration();
+                WarnIfOwnLayerIncludedInRaycastMask();
+            }
         }
 
         private void RebuildScanConfiguration()

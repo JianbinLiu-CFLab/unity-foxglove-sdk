@@ -139,6 +139,15 @@ namespace Unity.FoxgloveSDK.Components
             int captureWidth,
             int captureHeight) where TFrameBytes : struct, ICameraVideoFrameBytesSource
         {
+            return SubmitVideoFrame(
+                frameBytes,
+                new CameraCaptureIdentity(0, renderUnixNs, captureWidth, captureHeight));
+        }
+
+        public CameraVideoSubmitResult SubmitVideoFrame<TFrameBytes>(
+            TFrameBytes frameBytes,
+            CameraCaptureIdentity identity) where TFrameBytes : struct, ICameraVideoFrameBytesSource
+        {
             var submitStart = Stopwatch.GetTimestamp();
             if (frameBytes.Length <= 0)
                 return new CameraVideoSubmitResult(CameraVideoSubmitOutcome.FrameDataMissing, "Video frame data is empty.", 0d);
@@ -166,8 +175,8 @@ namespace Unity.FoxgloveSDK.Components
                 return result;
             }
 
-            captureWidth = Math.Max(1, captureWidth);
-            captureHeight = Math.Max(1, captureHeight);
+            var captureWidth = identity.Width;
+            var captureHeight = identity.Height;
             if (!CameraVideoFrameValidator.TryValidateCapturedFrame(
                 captureWidth,
                 captureHeight,
@@ -187,7 +196,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_videoSidecarSession.IsOpenH264Mode
                 && _videoSidecarSession.SupportsRgbFrameSource)
             {
-                if (!_videoSidecarSession.TrySubmitRgbFrame(frameBytes, renderUnixNs))
+                if (!_videoSidecarSession.TrySubmitRgbFrame(frameBytes, identity.TimestampNs))
                 {
                     _diagnostics.RecordVideoSubmitFailure();
                     var result = new CameraVideoSubmitResult(
@@ -207,7 +216,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!_videoSidecarSession.IsOpenH264Mode
                 && _videoSidecarSession.SupportsFrameSource)
             {
-                if (!_videoSidecarSession.TrySubmitFrame(frameBytes, renderUnixNs))
+                if (!_videoSidecarSession.TrySubmitFrame(frameBytes, identity.TimestampNs))
                 {
                     _diagnostics.RecordVideoSubmitFailure();
                     var result = new CameraVideoSubmitResult(
@@ -254,7 +263,7 @@ namespace Unity.FoxgloveSDK.Components
                 ownedFrameBytes = i420;
             }
 
-            if (!_videoSidecarSession.TrySubmitFrame(ownedFrameBytes, renderUnixNs))
+            if (!_videoSidecarSession.TrySubmitFrame(ownedFrameBytes, identity.TimestampNs))
             {
                 _diagnostics.RecordVideoSubmitFailure();
                 var result = new CameraVideoSubmitResult(

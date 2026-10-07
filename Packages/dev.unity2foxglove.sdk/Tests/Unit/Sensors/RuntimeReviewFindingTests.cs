@@ -211,6 +211,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Fact]
         public void CameraSubscriberFanoutCatchesPerSubscriberFailure()
         {
+            var calls = new List<int>();
+            var failures = new List<Exception>();
+            Action<int> handlers = value => throw new InvalidOperationException("first");
+            handlers += value => calls.Add(value);
+
+            SubscriberFanout.Invoke(handlers, 7, failures.Add);
+
+            Assert.Equal(new[] { 7 }, calls);
+            Assert.Single(failures);
+
             foreach (var relativePath in new[]
                      {
                          "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraInfoPublisher.cs",
@@ -219,9 +229,69 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                      })
             {
                 var source = Text(relativePath);
-                Assert.Contains("handlers.GetInvocationList()", source, StringComparison.Ordinal);
-                Assert.Contains("catch (Exception ex)", source, StringComparison.Ordinal);
+                Assert.Contains("SubscriberFanout.Invoke", source, StringComparison.Ordinal);
             }
+        }
+
+        [Fact]
+        public void Rgb24OrientationUsesOneSharedImplementation()
+        {
+            var source = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+            var expected = new byte[] { 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6 };
+            var destination = new byte[source.Length];
+
+            Rgb24Orientation.CopyRows(source, destination, 2, 2, flipVertical: true);
+            Assert.Equal(expected, destination);
+
+            var inPlace = (byte[])source.Clone();
+            byte[] scratch = null;
+            Rgb24Orientation.FlipRowsInPlace(inPlace, 2, 2, ref scratch);
+            Assert.Equal(expected, inPlace);
+
+            var copyInPlace = (byte[])source.Clone();
+            Rgb24Orientation.CopyRows(copyInPlace, copyInPlace, 2, 2, flipVertical: true);
+            Assert.Equal(expected, copyInPlace);
+
+            var managedJpeg = Text("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/ManagedJpegEncoder.cs");
+            var rawBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraRawImageFrameBuilder.cs");
+            var captureResources = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraCaptureResources.cs");
+            Assert.Contains("Rgb24Orientation", managedJpeg, StringComparison.Ordinal);
+            Assert.Contains("Rgb24Orientation", rawBuilder, StringComparison.Ordinal);
+            Assert.Contains("Rgb24Orientation", captureResources, StringComparison.Ordinal);
+            Assert.DoesNotContain("FlipRgb24Rows", managedJpeg, StringComparison.Ordinal);
+            Assert.DoesNotContain("FlipRgb24Rows", rawBuilder, StringComparison.Ordinal);
+            Assert.DoesNotContain("FlipRgb24Rows", captureResources, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CameraCaptureIdentityKeepsReadbackMetadataTogether()
+        {
+            var identity = new CameraCaptureIdentity(4, 123UL, 0, -2);
+
+            Assert.Equal(4, identity.Generation);
+            Assert.Equal(123UL, identity.TimestampNs);
+            Assert.Equal(1, identity.Width);
+            Assert.Equal(1, identity.Height);
+
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            Assert.Contains("new CameraCaptureIdentity(", publisher, StringComparison.Ordinal);
+            Assert.Contains("OnReadbackComplete(req, captureIdentity)", publisher, StringComparison.Ordinal);
+
+            var request = new JpegEncodeRequest(
+                new byte[] { 1, 2, 3 },
+                identity,
+                70,
+                "camera",
+                publishWebSocket: false,
+                publishProvider: false,
+                publishNativeFrame: false,
+                PublisherEffectiveEncoding.Json,
+                maxEncodedBytes: 0,
+                jpegWorkerGeneration: 2);
+            Assert.Equal(identity.TimestampNs, request.CaptureUnixNs);
+            Assert.Equal(identity.Width, request.Width);
+            Assert.Equal(identity.Height, request.Height);
+            Assert.Equal(identity.Generation, request.Generation);
         }
 
         [Fact]
@@ -301,8 +371,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.True(release > resize);
             Assert.Contains("private readonly List<RetiredRenderTexture> _retiredRenderTextures", source, StringComparison.Ordinal);
             Assert.Contains("CameraReadbackGenerationTracker", source, StringComparison.Ordinal);
-            Assert.Contains("_captureResources.RegisterReadback(generation);", publisher, StringComparison.Ordinal);
-            Assert.Contains("_captureResources.CompleteReadback(generation);", publisher, StringComparison.Ordinal);
+            Assert.Contains("_captureResources.RegisterReadback(captureIdentity.Generation);", publisher, StringComparison.Ordinal);
+            Assert.Contains("CompletePendingReadback(identity.Generation);", publisher, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -412,6 +482,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             Assert.Contains("_playModeConfigurationWarningGate.Reset();", lidar, StringComparison.Ordinal);
             Assert.Contains("TryIssue(Application.isPlaying && isActiveAndEnabled)", lidar, StringComparison.Ordinal);
+            Assert.Contains("RebuildScanConfiguration();\n                WarnIfOwnLayerIncludedInRaycastMask();", lidar, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CameraHealthGateRunsBeforeRender()
+        {
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs");
+            var gate = publisher.IndexOf("AllowCameraCaptureByHealthPolicy(profile)", StringComparison.Ordinal);
+            var render = publisher.IndexOf("_captureResources.CaptureCamera.Render();", StringComparison.Ordinal);
+
+            Assert.True(gate >= 0);
+            Assert.True(render > gate);
         }
 
         [Fact]
@@ -507,7 +589,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("VideoInputQueueFull", policy, StringComparison.Ordinal);
             Assert.Contains("InputQueueDepth", pipeline, StringComparison.Ordinal);
             Assert.Contains("flipVertical: true", asyncJpeg, StringComparison.Ordinal);
-            Assert.Contains("FlipRgb24RowsInPlace", syncJpeg, StringComparison.Ordinal);
+            Assert.Contains("Rgb24Orientation.FlipRowsInPlace", syncJpeg, StringComparison.Ordinal);
         }
 
         private sealed class FakeVideoSidecar : ICameraVideoEncoderSidecar
