@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Threading;
 
 namespace Unity.FoxgloveSDK.Utilities
@@ -29,6 +31,41 @@ namespace Unity.FoxgloveSDK.Utilities
         {
             return Volatile.Read(ref _active) == 1
                    && Volatile.Read(ref _generation) == generation;
+        }
+    }
+
+    public sealed class DemoWiringOwnership : IDisposable
+    {
+        private readonly List<Action> _cleanup = new List<Action>();
+        private bool _disposed;
+
+        public void Add(IDisposable resource)
+        {
+            if (resource == null)
+                return;
+
+            Add(resource.Dispose);
+        }
+
+        public void Add(Action cleanup)
+        {
+            if (cleanup == null)
+                throw new ArgumentNullException(nameof(cleanup));
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(DemoWiringOwnership));
+
+            _cleanup.Add(cleanup);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            for (var i = _cleanup.Count - 1; i >= 0; i--)
+                _cleanup[i]();
+            _cleanup.Clear();
         }
     }
 }
