@@ -1356,8 +1356,15 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             using var registerSeen = new ManualResetEventSlim(false);
             using var allowRegistration = new ManualResetEventSlim(false);
             using var unregisterSeen = new ManualResetEventSlim(false);
-            using var peer = LoopbackPeer.Start(stream =>
+            var connectionAttempt = 0;
+            using var peer = LoopbackPeer.StartAcceptingReconnects(stream =>
             {
+                if (Interlocked.Increment(ref connectionAttempt) == 1)
+                {
+                    ReadWireFrame(stream);
+                    throw new IOException("intentional initial handshake disconnect");
+                }
+
                 var hello = Parse(ReadWireFrame(stream));
                 WriteFrame(
                     stream,
@@ -1455,7 +1462,11 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 SpinWait.SpinUntil(
                     () => runtime.IsConnected,
                     TimeSpan.FromSeconds(30)),
-                "the generated duplex runtime did not complete hello");
+                "the generated duplex runtime did not complete hello; connections="
+                + peer.Connections
+                + "; lastError="
+                + runtime.GetStatsSnapshot().LastError);
+            Assert.True(peer.Connections >= 2);
             Assert.True(runtime.HasInboundPipeline);
 
             using var subscriptions =
@@ -1852,8 +1863,9 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             private readonly ManualResetEventSlim _done =
                 new ManualResetEventSlim(false);
             private Exception _error;
+            private int _connections;
 
-            private LoopbackPeer(Action<Stream> behavior)
+            private LoopbackPeer(Action<Stream> behavior, int maxConnections)
             {
                 _listener = new TcpListener(IPAddress.Loopback, 0);
                 _listener.Start(1);
@@ -1862,9 +1874,20 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 {
                     try
                     {
-                        using var client = _listener.AcceptTcpClient();
-                        using var stream = client.GetStream();
-                        behavior(stream);
+                        for (var attempt = 1; ; attempt++)
+                        {
+                            using var client = _listener.AcceptTcpClient();
+                            Interlocked.Increment(ref _connections);
+                            try
+                            {
+                                using var stream = client.GetStream();
+                                behavior(stream);
+                                break;
+                            }
+                            catch (IOException) when (attempt < maxConnections)
+                            {
+                            }
+                        }
                     }
                     catch (Exception exception)
                     {
@@ -1884,9 +1907,20 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             internal int Port { get; }
 
+            internal int Connections => Volatile.Read(ref _connections);
+
             internal static LoopbackPeer Start(
                 Action<Stream> behavior)
-                => new LoopbackPeer(behavior);
+                => new LoopbackPeer(behavior, maxConnections: 1);
+
+            /// <summary>
+            /// Restarts the scripted conversation on a new connection when the client
+            /// drops the current one, as an auto-reconnecting runtime does after a
+            /// handshake timeout.
+            /// </summary>
+            internal static LoopbackPeer StartAcceptingReconnects(
+                Action<Stream> behavior)
+                => new LoopbackPeer(behavior, maxConnections: 5);
 
             internal void AssertCompleted()
             {
