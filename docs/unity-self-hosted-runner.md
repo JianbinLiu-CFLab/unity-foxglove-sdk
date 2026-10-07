@@ -3,14 +3,15 @@
 The `Unity batch compile and path-aware gate` workflow (`.github/workflows/unity-compile.yml`) compiles the Unity
 project on a self-hosted Windows runner. Branch protection requires its `unity-required` check.
 
-- A pull request that changes Unity import inputs (`Packages/*/Runtime|Editor/`, `Packages/*/package.json`,
+- A pull request that changes Unity import inputs (`Packages/*/Runtime|Editor|Plugins/`, `Packages/*/package.json`,
   `Unity2Foxglove/Assets|Packages|ProjectSettings/`, `*.asmdef`, `*.asmref`, `*.meta`) needs a successful
   `unity-compile` run before it can merge.
 - Other pull requests skip `unity-compile`, and `unity-required` passes.
 - When no runner is online, a Unity-scoped pull request waits. Merging it requires a runner; the gate does not fall
   back to an advisory result.
-- Pull requests from forks never run on the self-hosted runner. A maintainer must move their Unity-scoped changes to a
-  branch in this repository.
+- Fork pull requests are blocked from self-hosted execution by the trusted `pull_request_target` workflow and require
+  maintainer approval under the repository's `all_external_contributors` policy. Do not treat the workflow guard as a
+  substitute for review; a maintainer must move trusted Unity-scoped changes to a branch in this repository.
 
 ## Machine prerequisites
 

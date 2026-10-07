@@ -31,7 +31,7 @@ can distinguish closure evidence from a new regression.
 | Phase140-27/P2-6 | P2 | Closed | 140-27E-1, 140-27E-3 | Input System references are guarded, the legacy input path compiles without the optional package, and the fallback fixture is tested. |
 | Phase140-27/P3-1 | P3 | Closed | 140-27D-2 | FoxRun trigger fixed-rate telemetry uses a 64-bit counter. |
 | Phase140-27/P3-2 | P3 | Closed | 140-27A-2 | Full Demo resolves an explicitly assigned cube or a scene cube publisher, not a fragile Player-tagged object lookup. |
-| Phase140-27/P3-3 | P3 | Closed | 140-27E-5 | The live and package sample scenes bind the manager and cube fields explicitly. |
+| Phase140-27/P3-3 | P3 | Closed | 140-27E-5 | The live and package sample scenes provide the cube binding where available; manager and cube consumers retain fallback discovery for unbound optional fields. |
 | Phase140-27/P3-4 | P3 | Closed | 140-27F-1, 140-27F-2 | Phase109 separates the side-effect-free availability query from initialization. |
 | Phase140-27/P3-5 | P3 | Closed | 140-27E-2 | Mouse drag caches the main camera and only retries lookup after the cached camera is unavailable. |
 | Phase140-27/P3-6 | P3 | Closed | 140-27D-1 | The long-running FoxRun probe keeps its frame counter wide and bounds the float sample to its exact integer range. |

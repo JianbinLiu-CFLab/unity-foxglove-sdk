@@ -345,9 +345,14 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void DisposeDirectEndpoints()
     {
-        if (_directRos2Node == null && (_directSubscription != null || _directPublisher != null))
+        if (_directRos2Unity == null)
         {
-            Debug.LogWarning(LogPrefix + "direct child handles remain but their ROS2 node owner is missing; retaining handles for retry.");
+            _directSubscription = null;
+            _directPublisher = null;
+            _directRos2Node = null;
+            _ownsDirectRos2Unity = false;
+            lock (_directReceiveGate)
+                _directReceived.Clear();
             return;
         }
 
@@ -366,12 +371,6 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
                 ref _directPublisher,
                 publisher => _directRos2Node.RemovePublisher<std_msgs.msg.String>(publisher),
                 ex => Debug.LogWarning(LogPrefix + "publisher cleanup failed; retaining handle for retry: " + ex.Message));
-        }
-
-        if (!cleanupFailed && _directRos2Node != null && _directRos2Unity == null)
-        {
-            Debug.LogWarning(LogPrefix + "direct ROS2 node remains but its ROS2 Unity owner is missing; retaining handles for retry.");
-            return;
         }
 
         if (!cleanupFailed && _directRos2Node != null)

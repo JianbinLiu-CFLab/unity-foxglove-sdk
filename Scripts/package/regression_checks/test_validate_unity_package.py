@@ -68,7 +68,17 @@ class ValidatePackageTests(unittest.TestCase):
         project = (ROOT / "Unity2Foxglove" / "ProjectSettings" / "ProjectSettings.asset").read_text(encoding="utf-8")
         self.assertIn("Standalone: UNITY2FOXGLOVE_ROS2_FOR_UNITY", project)
         offenders = []
-        for path in (ROOT / "Unity2Foxglove" / "Assets").rglob("*.cs"):
+        tracked_assets = [
+            ROOT / relative
+            for relative in subprocess.run(
+                ["git", "ls-files", "-z", "--", "Unity2Foxglove/Assets"],
+                cwd=ROOT,
+                check=True,
+                stdout=subprocess.PIPE,
+            ).stdout.decode("utf-8").split("\0")
+            if relative.endswith(".cs")
+        ]
+        for path in tracked_assets:
             lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
             for line_number, line in enumerate(lines, 1):
                 if (line.lstrip().startswith("#if") or line.lstrip().startswith("#elif")) and "UNITY2FOXGLOVE_ROS2_FOR_UNITY" in line:
@@ -81,7 +91,7 @@ class ValidatePackageTests(unittest.TestCase):
             "Phase181FoxRunCustomRos2InterfaceAcceptance.cs": "#if !(UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN))",
         }
         for name, guard in negative_guards.items():
-            matches = list((ROOT / "Unity2Foxglove" / "Assets").rglob(name))
+            matches = [path for path in tracked_assets if path.name == name]
             self.assertEqual(1, len(matches), name)
             self.assertIn(guard, matches[0].read_text(encoding="utf-8"))
 

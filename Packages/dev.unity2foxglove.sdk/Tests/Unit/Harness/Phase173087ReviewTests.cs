@@ -17,6 +17,15 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
 {
+    internal sealed class WindowsFactAttribute : FactAttribute
+    {
+        public WindowsFactAttribute()
+        {
+            if (!OperatingSystem.IsWindows())
+                Skip = "Windows CRT branch requires Windows.";
+        }
+    }
+
     [Trait("Phase", "173-087")]
     [Trait("Domain", "UnityReview")]
     public sealed class Phase173087ReviewTests
@@ -965,12 +974,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
         }
 
-        [Fact]
+        [WindowsFact]
         public void RuntimeEnvironmentLeaseExecutesWindowsCrtBranch()
         {
-            if (!OperatingSystem.IsWindows())
-                return;
-
             foreach (var distro in RuntimeDistros)
             {
                 var name = "U2F_LEASE_WINDOWS_" + distro.ToUpperInvariant();

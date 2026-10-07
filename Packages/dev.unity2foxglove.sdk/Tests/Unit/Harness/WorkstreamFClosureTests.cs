@@ -255,16 +255,18 @@ namespace Unity.FoxgloveSDK.Components
                 offsetX: 0.5f,
                 offsetY: -0.25f,
                 offsetZ: 1f,
-                offsetRotationX: 0f,
-                offsetRotationY: 0f,
-                offsetRotationZ: 0f,
-                offsetRotationW: 1f);
+                offsetRotationX: 0.2f,
+                offsetRotationY: -0.3f,
+                offsetRotationZ: 0.4f,
+                offsetRotationW: 0.8f);
 
             Assert.Equal(3.5f, pose.TranslationX, 4);
             Assert.Equal(-1.25f, pose.TranslationY, 4);
             Assert.Equal(3f, pose.TranslationZ, 4);
-            Assert.NotEqual(1f, pose.RotationW);
-            Assert.NotEqual(0f, pose.RotationX);
+            Assert.Equal(-0.42426406f, pose.RotationX, 4);
+            Assert.Equal(0.07071068f, pose.RotationY, 4);
+            Assert.Equal(0.49497474f, pose.RotationZ, 4);
+            Assert.Equal(0.70710677f, pose.RotationW, 4);
         }
 
         [Fact]
@@ -275,6 +277,11 @@ namespace Unity.FoxgloveSDK.Components
             var bridge = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPackedPointCloudBridge.cs");
             var phase138 = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Samples~/Virtual LiDAR PointCloud2 Digital Twin/Phase138VirtualLidarPointCloud2Smoke.cs");
             var batch = TestSources.Text("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase110StringSmokeBatchAcceptance.cs");
+            var directCleanupSources = new[]
+            {
+                TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Samples~/ROS2 For Unity External Adapter/Phase110Ros2ForUnityStringSmoke.cs"),
+                TestSources.Text("Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/ROS2 For Unity External Adapter/Phase110Ros2ForUnityStringSmoke.cs")
+            };
 
             foreach (var source in new[] { fullDemo, importedFullDemo })
             {
@@ -291,6 +298,11 @@ namespace Unity.FoxgloveSDK.Components
             Assert.Contains("PackedPointCloudTfAnchorResolver.Resolve", bridge, StringComparison.Ordinal);
             Assert.DoesNotContain("TransformStamped", phase138, StringComparison.Ordinal);
             Assert.Contains("RunInBackgroundLease", batch, StringComparison.Ordinal);
+            foreach (var directCleanup in directCleanupSources)
+            {
+                Assert.Contains("if (_directRos2Unity == null)", directCleanup, StringComparison.Ordinal);
+                Assert.Contains("_directRos2Node = null;", directCleanup, StringComparison.Ordinal);
+            }
 
             var phase110 = TestSources.Text("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase110StringSmokeBatchAcceptance.cs");
             var phase127 = TestSources.Text("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase127R2FURealProjectSmoke.cs");
@@ -359,6 +371,11 @@ namespace Unity.FoxgloveSDK.Components
         [Fact]
         public void DemoWiringBootstrapRollsBackPartiallyAcquiredResourcesBeforeRetry()
         {
+            var production = TestSources.Text("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/FoxgloveDemoSetup.cs");
+            Assert.Contains("TryInitializeDemo", production, StringComparison.Ordinal);
+            Assert.Contains("if (!committed)", production, StringComparison.Ordinal);
+            Assert.Contains("ownership.Dispose()", production, StringComparison.Ordinal);
+
             var store = new FoxgloveParameterStore();
             var activeCallbacks = new HashSet<string>(StringComparer.Ordinal);
             var committed = false;

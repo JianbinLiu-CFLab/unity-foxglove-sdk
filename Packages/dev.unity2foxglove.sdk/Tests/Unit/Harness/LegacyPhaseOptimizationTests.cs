@@ -479,6 +479,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase109Ros2ForUnityStringSmoke.cs");
             VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase110StringSmokeBatchAcceptance.cs");
             VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase127R2FURealProjectSmoke.cs");
+            VerifyRunInBackgroundRestore("Packages/dev.unity2foxglove.ros2forunity/Samples~/RViz2 Standard Visualization Acceptance/Phase128Rviz2TfLaserScanSmoke.cs");
+            VerifyRunInBackgroundRestore("Packages/dev.unity2foxglove.ros2forunity/Samples~/RViz2 PointCloud2 Acceptance/Phase129Rviz2PointCloud2Smoke.cs");
+            VerifyRunInBackgroundRestore("Packages/dev.unity2foxglove.ros2forunity/Samples~/RViz2 MarkerArray Acceptance/Phase130Rviz2MarkerArraySmoke.cs");
+            VerifyRunInBackgroundRestore("Packages/dev.unity2foxglove.ros2forunity/Samples~/ROS2 Standard Message Expansion/Phase132StandardMessagesSmoke.cs");
+            VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/RViz2 Standard Visualization Acceptance/Phase128Rviz2TfLaserScanSmoke.cs");
+            VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/RViz2 PointCloud2 Acceptance/Phase129Rviz2PointCloud2Smoke.cs");
+            VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/RViz2 MarkerArray Acceptance/Phase130Rviz2MarkerArraySmoke.cs");
+            VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/ROS2 Standard Message Expansion/Phase132StandardMessagesSmoke.cs");
 
             var demo = TestSources.Text("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/FoxgloveDemoSetup.cs");
             Assert.Contains("FindFirstObjectByType<FoxgloveSceneCubePublisher>()", demo, StringComparison.Ordinal);

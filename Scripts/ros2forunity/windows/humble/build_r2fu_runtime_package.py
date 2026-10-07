@@ -562,10 +562,36 @@ def apply_meta_overlays(package: Path, overlays: dict[str, bytes]) -> None:
         asset_relative = relative.removesuffix(".meta")
         if not path_exists(package / asset_relative):
             continue
+        data = normalize_meta_overlay(relative, data)
         target = package / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         with open(windows_long_path(target), "wb") as stream:
             stream.write(data)
+
+
+def normalize_meta_overlay(relative: str, data: bytes) -> bytes:
+    """Preserve legacy GUIDs while upgrading generated DLL metas to PluginImporter."""
+    if not relative.lower().endswith(".dll.meta") or b"PluginImporter:" in data:
+        return data
+
+    guid = extract_unity_meta_guid(data.decode("utf-8", errors="replace"))
+    if not guid:
+        return data
+
+    asset_relative = relative.removesuffix(".meta")
+    text = generated_meta_text(Path(asset_relative), asset_relative, is_dir=False, guid=guid)
+    return text.encode("utf-8")
+
+
+def extract_unity_meta_guid(text: str) -> str:
+    """Extract a Unity meta GUID from a small generated metadata file."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("guid:"):
+            value = stripped.split(":", 1)[1].strip()
+            if len(value) == 32 and all(c in "0123456789abcdefABCDEF" for c in value):
+                return value.lower()
+    return ""
 
 
 def deterministic_guid(relative_path: str) -> str:
@@ -585,9 +611,9 @@ def meta_importer_for(path: Path) -> str:
     return "TextScriptImporter"
 
 
-def generated_meta_text(path: Path, relative_path: str, is_dir: bool) -> str:
+def generated_meta_text(path: Path, relative_path: str, is_dir: bool, guid: str | None = None) -> str:
     """Return deterministic Unity .meta text for a generated path."""
-    guid = deterministic_guid(relative_path)
+    guid = guid or deterministic_guid(relative_path)
     if is_dir:
         return (
             "fileFormatVersion: 2\n"
@@ -601,6 +627,44 @@ def generated_meta_text(path: Path, relative_path: str, is_dir: bool) -> str:
         )
 
     importer = meta_importer_for(path)
+    if importer == "PluginImporter":
+        return (
+            "fileFormatVersion: 2\n"
+            f"guid: {guid}\n"
+            "PluginImporter:\n"
+            "  externalObjects: {}\n"
+            "  serializedVersion: 2\n"
+            "  iconMap: {}\n"
+            "  executionOrder: {}\n"
+            "  defineConstraints: []\n"
+            "  isPreloaded: 0\n"
+            "  isOverridable: 0\n"
+            "  isExplicitlyReferenced: 0\n"
+            "  validateReferences: 1\n"
+            "  platformData:\n"
+            "  - first:\n"
+            "      Any:\n"
+            "    second:\n"
+            "      enabled: 0\n"
+            "      settings: {}\n"
+            "  - first:\n"
+            "      Editor: Editor\n"
+            "    second:\n"
+            "      enabled: 1\n"
+            "      settings:\n"
+            "        CPU: x86_64\n"
+            "        OS: Windows\n"
+            "  - first:\n"
+            "      Standalone: Windows\n"
+            "    second:\n"
+            "      enabled: 1\n"
+            "      settings:\n"
+            "        CPU: x86_64\n"
+            "  userData:\n"
+            "  assetBundleName:\n"
+            "  assetBundleVariant:\n"
+        )
+
     return (
         "fileFormatVersion: 2\n"
         f"guid: {guid}\n"
@@ -632,6 +696,14 @@ def write_generated_metas(package: Path) -> None:
     for directory in directories:
         ensure_generated_meta(package, directory, is_dir=True, existing_paths=existing_paths)
     for path in files:
+        if path.name.lower().endswith(".dll.meta"):
+            asset = path.with_suffix("")
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if asset.exists() and "PluginImporter:" not in text:
+                guid = extract_unity_meta_guid(text)
+                if guid:
+                    write_text(path, generated_meta_text(asset, asset.relative_to(package).as_posix(), is_dir=False, guid=guid))
+            continue
         if path.name.endswith(".meta") or path.name == ".gitkeep":
             continue
         ensure_generated_meta(package, path, is_dir=False, existing_paths=existing_paths)

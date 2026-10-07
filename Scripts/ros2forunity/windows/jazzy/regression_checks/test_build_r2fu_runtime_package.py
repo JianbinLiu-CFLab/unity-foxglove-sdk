@@ -425,7 +425,7 @@ class RuntimePackageExtractionTests(unittest.TestCase):
         legacy = b"fileFormatVersion: 2\nguid: abcdefabcdefabcdefabcdefabcdefab\n"
 
         data = self.builder.normalize_meta_overlay(
-            "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/rcl.dll.meta",
+            "Runtime/Ros2ForUnity/Plugins/ros2cs_core.dll.meta",
             legacy,
         ).decode("utf-8")
 

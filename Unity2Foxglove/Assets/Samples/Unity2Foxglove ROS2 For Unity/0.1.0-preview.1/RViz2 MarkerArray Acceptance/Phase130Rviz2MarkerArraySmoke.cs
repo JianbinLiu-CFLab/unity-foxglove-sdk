@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using UnityEngine;
+using Unity.FoxgloveSDK.Utilities;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using ROS2;
 #endif
@@ -55,7 +56,7 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
     private bool _postReadyInitializationBlocked;
     private float _nextPostReadyRetryTime;
     private bool _warnedMissingStartExecutor;
-    private bool _previousRunInBackground;
+    private RunInBackgroundLease _runInBackgroundLease;
     private double _realtimeStartSeconds;
     private long _unixStartSeconds;
     private double _lastStampSeconds;
@@ -72,8 +73,10 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 
     private void OnEnable()
     {
-        _previousRunInBackground = Application.runInBackground;
-        Application.runInBackground = true;
+        _runInBackgroundLease?.Release();
+        _runInBackgroundLease = RunInBackgroundLease.Acquire(
+            () => Application.runInBackground,
+            value => Application.runInBackground = value);
         _nextPublishAt = 0f;
         _publishedTfCount = 0;
         _publishedMarkerArrayCount = 0;
@@ -121,7 +124,11 @@ public sealed class Phase130Rviz2MarkerArraySmoke : MonoBehaviour
 
     private void OnDisable()
     {
-        Application.runInBackground = _previousRunInBackground;
+        if (_runInBackgroundLease != null)
+        {
+            _runInBackgroundLease.Release();
+            _runInBackgroundLease = null;
+        }
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         CleanupRuntime();
 #endif

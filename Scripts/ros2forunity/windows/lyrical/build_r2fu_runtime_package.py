@@ -604,10 +604,27 @@ def apply_meta_overlays(package: Path, overlays: dict[str, bytes]) -> None:
         asset_relative = relative.removesuffix(".meta")
         if not path_exists(package / asset_relative):
             continue
+        data = normalize_meta_overlay(relative, data)
         target = package / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         with open(windows_long_path(target), "wb") as stream:
             stream.write(data)
+
+
+def normalize_meta_overlay(relative: str, data: bytes) -> bytes:
+    """Preserve legacy GUIDs while upgrading generated DLL metas to PluginImporter."""
+    if not relative.lower().endswith(".dll.meta") or b"PluginImporter:" in data:
+        return data
+    guid = extract_unity_meta_guid(data.decode("utf-8", errors="replace"))
+    if not guid:
+        return data
+    asset_relative = relative.removesuffix(".meta")
+    return generated_meta_text(
+        Path(asset_relative),
+        asset_relative,
+        is_dir=False,
+        guid=guid,
+    ).encode("utf-8")
 
 
 def extract_unity_meta_guid(text: str) -> str:
@@ -714,13 +731,12 @@ def ensure_generated_meta(package: Path, target: Path, is_dir: bool) -> None:
 def write_generated_metas(package: Path) -> None:
     """Generate metadata for package-owned files and directories lacking upstream metadata."""
     paths = list(package.rglob("*"))
-    native_plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
     directories = sorted((path for path in paths if path.is_dir()), key=lambda item: item.as_posix())
     files = sorted((path for path in paths if path.is_file()), key=lambda item: item.as_posix())
     for directory in directories:
         ensure_generated_meta(package, directory, is_dir=True)
     for path in files:
-        if path.name.lower().endswith(".dll.meta") and path.parent == native_plugin_root:
+        if path.name.lower().endswith(".dll.meta"):
             asset = path.with_suffix("")
             text = path.read_text(encoding="utf-8", errors="replace")
             if asset.exists() and "PluginImporter:" not in text:
