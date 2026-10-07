@@ -192,6 +192,10 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             git("config", "user.name", "validator-test")
             git("config", "user.email", "validator-test@example.invalid")
             (package / "payload.txt").write_text("accepted\n", encoding="utf-8")
+            (package / "RuntimeSupport").mkdir()
+            (package / "RuntimeSupport/runtime-manifest.json").write_text(
+                '{"payloadVersion":1}\n', encoding="utf-8"
+            )
             git("add", ".")
             git("commit", "-q", "-m", "acceptance")
             acceptance_sha = git("rev-parse", "HEAD")
@@ -206,6 +210,20 @@ class RuntimePackageValidatorTests(unittest.TestCase):
                 self.validator.acceptance_commit_is_ancestor_and_package_unchanged(
                     acceptance_sha,
                     unchanged_candidate_sha,
+                )
+            )
+
+            (package / "RuntimeSupport/runtime-manifest.json").write_text(
+                '{"payloadVersion":1,"freshProjectAcceptance":{"status":"passed"}}\n',
+                encoding="utf-8",
+            )
+            git("add", ".")
+            git("commit", "-q", "-m", "record-acceptance")
+            acceptance_record_candidate_sha = git("rev-parse", "HEAD")
+            self.assertTrue(
+                self.validator.acceptance_commit_is_ancestor_and_package_unchanged(
+                    acceptance_sha,
+                    acceptance_record_candidate_sha,
                 )
             )
 

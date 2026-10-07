@@ -6,8 +6,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  pull_request_target:
-    branches: [main]
 
 permissions:
   actions: read
@@ -20,39 +18,15 @@ concurrency:
 jobs:
   unity_scope:
     name: unity-scope
-    if: >-
-      github.event_name != 'pull_request_target'
-      || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     outputs:
       unity_required: ${{ steps.scope.outputs.unity_required }}
     steps:
       - name: Checkout comparison tree
-        if: github.event_name != 'pull_request_target'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Checkout pull request head for read-only scope detection
-        if: github.event_name == 'pull_request_target'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Fetch trusted pull request base
-        if: github.event_name == 'pull_request_target'
-        shell: bash
-        env:
-          BASE_REPOSITORY: ${{ github.repository }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          set -euo pipefail
-          git remote add upstream "https://github.com/${BASE_REPOSITORY}.git"
-          git fetch --no-tags upstream "$BASE_SHA"
 
       - name: Determine whether Unity evidence is required
         id: scope
@@ -61,14 +35,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BEFORE_SHA: ${{ github.event.before }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.head.sha || github.sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           required=false
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             changed="$(git diff-tree --no-commit-id --no-renames --name-only -r "$HEAD_SHA")"
             required=true
-          elif [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "pull_request_target" ]; then
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
             changed="$(git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA")"
           elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
             changed="$(git diff --no-renames --name-only "$BEFORE_SHA" "$HEAD_SHA")"
@@ -89,7 +63,6 @@ jobs:
     if: >-
       needs.unity_scope.outputs.unity_required == 'true'
       && vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'
-      && github.event_name != 'pull_request_target'
       && (github.event_name != 'pull_request'
           || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
@@ -116,20 +89,11 @@ jobs:
           git config --global core.longpaths true
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        if: github.event_name != 'pull_request_target'
         with:
           fetch-depth: 1
           persist-credentials: false
           clean: false
 
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        if: github.event_name == 'pull_request_target'
-        with:
-          repository: ${{ github.repository }}
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 1
-          persist-credentials: false
-          clean: false
 
       - name: Clean runner workspace while preserving Unity Library
         shell: pwsh
@@ -160,10 +124,7 @@ jobs:
     needs:
       - unity_scope
       - unity_compile
-    if: >-
-      always()
-      && (github.event_name != 'pull_request_target'
-          || github.event.pull_request.head.repo.full_name != github.repository)
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Enforce path-aware Unity evidence policy
@@ -186,7 +147,7 @@ jobs:
             echo "UNITY_GATE_NOT_REQUIRED"
             exit 0
           fi
-          if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "pull_request_target" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
             if [ "$HEAD_REPOSITORY" != "$BASE_REPOSITORY" ]; then
               echo "::error::Unity changes from fork PRs require a trusted maintainer branch; self-hosted execution is blocked."
               exit 1
