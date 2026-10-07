@@ -955,8 +955,8 @@ class RunCiTests(unittest.TestCase):
         self.assertNotIn("continue-on-error:", workflow)
         self.assertIn("run_unity_batch_compile.py", workflow)
         self.assertIn("  push:\n    branches: [main]", workflow)
+        self.assertIn("  pull_request:\n    branches: [main]", workflow)
         self.assertIn("  pull_request_target:\n    branches: [main]", workflow)
-        self.assertNotIn("  pull_request:\n", workflow)
 
         scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
         self.assertIn("unity_required: ${{ steps.scope.outputs.unity_required }}", scope)
@@ -970,7 +970,7 @@ class RunCiTests(unittest.TestCase):
         self.assertNotIn("GH_TOKEN", workflow)
 
         aggregate = workflow.split("  unity_required:\n", 1)[1]
-        self.assertIn("if: always()", aggregate)
+        self.assertIn("always()", aggregate)
         self.assertIn("UNITY_GATE_NOT_REQUIRED", aggregate)
         self.assertIn("UNITY_SELF_HOSTED_RUNNER", aggregate)
         self.assertIn("UNITY_GATE_PASS", aggregate)
@@ -1058,19 +1058,19 @@ printf '%s' "$required"
         self.assertIn("vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'", job)
         self.assertNotIn("needs.unity_scope.outputs.runner_available", job)
         self.assertIn("github.event_name != 'pull_request_target'", job)
+        self.assertIn("github.event_name != 'pull_request'", job)
         self.assertIn("github.event.pull_request.head.repo.full_name == github.repository", job)
         self.assertLess(job.index("if:"), job.index("runs-on:"))
 
     def test_unity_scope_uses_trusted_workflow_for_fork_pull_requests(self) -> None:
-        """Fork pull requests must use the base workflow and never execute on the self-hosted runner."""
+        """The base workflow must fail fork gates without using the self-hosted runner."""
         workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
         self.assertIn("pull_request_target", workflow)
         self.assertIn("github.event.pull_request.head.repo.full_name", workflow)
         self.assertIn("Checkout pull request head for read-only scope detection", workflow)
         self.assertIn("Fetch trusted pull request base", workflow)
         self.assertIn("github.event_name == 'pull_request_target'", workflow)
-        self.assertIn("github.event_name == 'pull_request_target' && github.event.pull_request.head.sha", workflow)
-        self.assertNotIn("on:\n  pull_request:\n", workflow)
+        self.assertIn("github.event_name == 'pull_request' || github.event_name == 'pull_request_target'", workflow)
 
     def test_unity_batch_gate_enables_git_long_paths_before_checkout(self) -> None:
         """The runner checkout must support the repository's longest tracked paths on Windows."""

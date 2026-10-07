@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   pull_request_target:
     branches: [main]
 
@@ -18,6 +20,9 @@ concurrency:
 jobs:
   unity_scope:
     name: unity-scope
+    if: >-
+      github.event_name != 'pull_request_target'
+      || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     outputs:
       unity_required: ${{ steps.scope.outputs.unity_required }}
@@ -56,14 +61,14 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BEFORE_SHA: ${{ github.event.before }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+          HEAD_SHA: ${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           required=false
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             changed="$(git diff-tree --no-commit-id --no-renames --name-only -r "$HEAD_SHA")"
             required=true
-          elif [ "$EVENT_NAME" = "pull_request_target" ]; then
+          elif [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "pull_request_target" ]; then
             changed="$(git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA")"
           elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
             changed="$(git diff --no-renames --name-only "$BEFORE_SHA" "$HEAD_SHA")"
@@ -84,7 +89,8 @@ jobs:
     if: >-
       needs.unity_scope.outputs.unity_required == 'true'
       && vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'
-      && (github.event_name != 'pull_request_target'
+      && github.event_name != 'pull_request_target'
+      && (github.event_name != 'pull_request'
           || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
     steps:
@@ -154,7 +160,10 @@ jobs:
     needs:
       - unity_scope
       - unity_compile
-    if: always()
+    if: >-
+      always()
+      && (github.event_name != 'pull_request_target'
+          || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     steps:
       - name: Enforce path-aware Unity evidence policy
@@ -177,9 +186,11 @@ jobs:
             echo "UNITY_GATE_NOT_REQUIRED"
             exit 0
           fi
-          if [ "$EVENT_NAME" = "pull_request_target" ] && [ "$HEAD_REPOSITORY" != "$BASE_REPOSITORY" ]; then
-            echo "::error::Unity changes from fork PRs require a trusted maintainer branch; self-hosted execution is blocked."
-            exit 1
+          if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "pull_request_target" ]; then
+            if [ "$HEAD_REPOSITORY" != "$BASE_REPOSITORY" ]; then
+              echo "::error::Unity changes from fork PRs require a trusted maintainer branch; self-hosted execution is blocked."
+              exit 1
+            fi
           fi
           if [ "$RUNNER_ENABLED" != "enabled" ]; then
             echo "::error::UNITY_SELF_HOSTED_RUNNER is not enabled; Unity changes cannot merge without the gate."
