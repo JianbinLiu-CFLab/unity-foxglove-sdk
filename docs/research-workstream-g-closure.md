@@ -13,7 +13,9 @@ scope is:
 - Unity2Foxglove/Assets/Editor/**
 - Unity2Foxglove/Assets/Experimental/**
 
-The current live baseline for this closure pass is 67d34efbdab3e7f42c1670c0dd4deb1270f4ed5d.
+The reviewed main baseline for this closure pass is
+4b940af4e1395ff4ae9af95949187f8f1614b6c8; the closure changes are carried by
+the feature commit that follows that baseline.
 The historical register is retained by finding ID and severity so later reviews
 can distinguish closure evidence from a new regression.
 
