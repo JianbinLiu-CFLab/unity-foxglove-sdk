@@ -113,7 +113,6 @@ namespace Unity.FoxgloveSDK.Components
             new PlayModeConfigurationWarningGate();
         private readonly LidarRuntimeConfigurationLifecycle _configurationLifecycle =
             new LidarRuntimeConfigurationLifecycle();
-        private LidarRuntimeConfiguration _activeConfiguration;
 
         /// <summary>The most recently generated PointCloudFrame, or null before the first scan.</summary>
         public PointCloudFrame LastFrame { get; private set; }
@@ -312,7 +311,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void RebuildScanConfiguration()
         {
-            _activeConfiguration = new LidarRuntimeConfiguration(
+            _configurationLifecycle.Activate(new LidarRuntimeConfiguration(
                 _frameId,
                 _maxRangeMeters,
                 _layerMask.value,
@@ -320,8 +319,7 @@ namespace Unity.FoxgloveSDK.Components
                 _logPerformanceDiagnostics,
                 _maxRaycastCommandsPerFixedUpdate,
                 _syntheticReflectivity,
-                _syntheticIntensity);
-            _configurationLifecycle.Activate(_activeConfiguration);
+                _syntheticIntensity));
             _scanPattern = null;
             if (_sensorUnitProfile != null)
                 _scanPattern = _sensorUnitProfile.CreateScanPattern(_columnStep);
@@ -413,7 +411,7 @@ namespace Unity.FoxgloveSDK.Components
                 EnsureScanClock(Time.fixedTimeAsDouble);
 
                 ScanScheduler.ConsumePendingScan(
-                    _activeConfiguration.LogPerformanceDiagnostics,
+                    _configurationLifecycle.Configuration.LogPerformanceDiagnostics,
                     Time.fixedDeltaTime,
                     _activeScanRepresentation.UseNativeSnapshot,
                     _scanBuffers,
@@ -484,8 +482,8 @@ namespace Unity.FoxgloveSDK.Components
                 var scheduleStart = BeginLidarFixedUpdateTiming();
                 ScanScheduler.SchedulePendingScan(
                     columnsToEmit,
-                    _activeConfiguration.MaxRaycastCommandsPerFixedUpdate,
-                    _activeConfiguration.LogPerformanceDiagnostics,
+                    _configurationLifecycle.Configuration.MaxRaycastCommandsPerFixedUpdate,
+                    _configurationLifecycle.Configuration.LogPerformanceDiagnostics,
                     Time.fixedDeltaTime,
                     Time.fixedTimeAsDouble,
                     _activeScanStartPhysSeconds,
@@ -494,16 +492,16 @@ namespace Unity.FoxgloveSDK.Components
                     ref _scanColumnRayCursor,
                     transform.position,
                     transform.rotation,
-                    new LayerMask { value = _activeConfiguration.LayerMaskValue },
-                    _activeConfiguration.MaxRangeMeters,
-                    _activeConfiguration.SyntheticIntensity,
-                    _activeConfiguration.SyntheticReflectivity,
+                    new LayerMask { value = _configurationLifecycle.Configuration.LayerMaskValue },
+                    _configurationLifecycle.Configuration.MaxRangeMeters,
+                    _configurationLifecycle.Configuration.SyntheticIntensity,
+                    _configurationLifecycle.Configuration.SyntheticReflectivity,
                     _scanPattern,
                     _activeScanWorldToLocal,
                     _activeScanRepresentation.RequiresNativeAcquisitionFrame,
                     _scanBuffers);
                 LogLidarFixedUpdateTiming(
-                    _activeConfiguration.LogPerformanceDiagnostics,
+                    _configurationLifecycle.Configuration.LogPerformanceDiagnostics,
                     this,
                     columnsToEmit,
                     budgetColumns,
@@ -516,7 +514,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private long BeginLidarFixedUpdateTiming()
-            => _activeConfiguration.LogPerformanceDiagnostics ? Stopwatch.GetTimestamp() : 0L;
+            => _configurationLifecycle.Configuration.LogPerformanceDiagnostics ? Stopwatch.GetTimestamp() : 0L;
 
         private void ResetSensorGenerationState()
         {
@@ -570,7 +568,7 @@ namespace Unity.FoxgloveSDK.Components
             _activeScanFrame = new PointCloudFrame
             {
                 UnixNs = _scanClock.GetScanStartUnixNs(_activeScanStartPhysSeconds),
-                FrameId = _activeConfiguration.FrameId,
+                FrameId = _configurationLifecycle.Configuration.FrameId,
                 ValidCount = 0,
                 // SLAM front-ends (FAST-LIO/LIVO2) consume the Ouster-style absolute-ns `t`.
                 EmitAbsoluteTimeNs = true
@@ -623,7 +621,7 @@ namespace Unity.FoxgloveSDK.Components
 
             _scanFramePublisher.TryPublishActiveScan(
                 _pointCloudPublisher,
-                _activeConfiguration.PublishEmptyFrames,
+                _configurationLifecycle.Configuration.PublishEmptyFrames,
                 _activeScanFrame,
                 _activeScanValidPoints,
                 _activeScanRepresentation,
@@ -640,7 +638,7 @@ namespace Unity.FoxgloveSDK.Components
         // i.e. ~1.2 Hz full-fidelity at 50 Hz physics: slow but rock-steady, with TF/camera
         // and the main loop fully protected.
         private int BudgetColumnsPerTick()
-            => _scanBuffers.BudgetColumnsPerTick(_activeConfiguration.MaxRaycastCommandsPerFixedUpdate);
+            => _scanBuffers.BudgetColumnsPerTick(_configurationLifecycle.Configuration.MaxRaycastCommandsPerFixedUpdate);
 
         private void EnsureScanClock(double physNow)
         {
@@ -692,7 +690,7 @@ namespace Unity.FoxgloveSDK.Components
         private void WarnIfOwnLayerIncludedInRaycastMask()
         {
             var ownLayerMask = 1 << gameObject.layer;
-            if ((_activeConfiguration.LayerMaskValue & ownLayerMask) == 0)
+            if ((_configurationLifecycle.Configuration.LayerMaskValue & ownLayerMask) == 0)
                 return;
 
             Debug.LogWarning(

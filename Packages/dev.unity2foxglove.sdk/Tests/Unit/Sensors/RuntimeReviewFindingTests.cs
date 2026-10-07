@@ -612,7 +612,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             Assert.Contains("_playModeConfigurationWarningGate.Reset();", lidar, StringComparison.Ordinal);
             Assert.Contains("TryIssue(Application.isPlaying && isActiveAndEnabled)", lidar, StringComparison.Ordinal);
-            Assert.Contains("RebuildScanConfiguration();\n                WarnIfOwnLayerIncludedInRaycastMask();", lidar, StringComparison.Ordinal);
+            var rebuild = lidar.IndexOf("RebuildScanConfiguration();", StringComparison.Ordinal);
+            var warning = lidar.IndexOf("WarnIfOwnLayerIncludedInRaycastMask();", rebuild, StringComparison.Ordinal);
+            Assert.True(rebuild >= 0);
+            Assert.True(warning > rebuild);
         }
 
         [Fact]
@@ -669,10 +672,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         {
             var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
 
-            Assert.Contains("_activeConfiguration = new LidarRuntimeConfiguration(", lidar, StringComparison.Ordinal);
-            Assert.Contains("_activeConfiguration.MaxRangeMeters", lidar, StringComparison.Ordinal);
-            Assert.Contains("_activeConfiguration.LayerMaskValue", lidar, StringComparison.Ordinal);
-            Assert.Contains("_activeConfiguration.PublishEmptyFrames", lidar, StringComparison.Ordinal);
+            Assert.Contains("_configurationLifecycle.Activate(new LidarRuntimeConfiguration(", lidar, StringComparison.Ordinal);
+            Assert.Contains("_configurationLifecycle.Configuration.MaxRangeMeters", lidar, StringComparison.Ordinal);
+            Assert.Contains("_configurationLifecycle.Configuration.LayerMaskValue", lidar, StringComparison.Ordinal);
+            Assert.Contains("_configurationLifecycle.Configuration.PublishEmptyFrames", lidar, StringComparison.Ordinal);
             Assert.DoesNotContain("_maxRangeMeters,\n                    _syntheticIntensity", lidar, StringComparison.Ordinal);
         }
 
@@ -694,7 +697,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal("edited", lifecycle.Configuration.FrameId);
 
             var lidar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
-            Assert.Contains("_configurationLifecycle.Activate(_activeConfiguration)", lidar, StringComparison.Ordinal);
+            Assert.Contains("_configurationLifecycle.Activate(new LidarRuntimeConfiguration(", lidar, StringComparison.Ordinal);
+            Assert.Contains("_configurationLifecycle.Configuration", lidar, StringComparison.Ordinal);
+            Assert.DoesNotContain("_activeConfiguration", lidar, StringComparison.Ordinal);
             Assert.Contains("_configurationLifecycle.Deactivate()", lidar, StringComparison.Ordinal);
         }
 

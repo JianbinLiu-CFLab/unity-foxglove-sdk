@@ -459,13 +459,33 @@ def fresh_project_acceptance_passed(manifest: dict) -> bool:
 
 
 
+def _manifest_without_acceptance(commit_sha: str, manifest_relative: str) -> dict | None:
+    """Read a committed runtime manifest without its mutable acceptance record."""
+    result = subprocess.run(
+        ["git", "show", f"{commit_sha}:{manifest_relative}"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        manifest = json.loads(result.stdout)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(manifest, dict):
+        return None
+    manifest.pop("freshProjectAcceptance", None)
+    return manifest
+
+
 def acceptance_commit_is_ancestor_and_package_unchanged(acceptance_sha: str, candidate_sha: str) -> bool:
-    """Return whether an accepted commit is an ancestor with an unchanged runtime package."""
+    """Return whether an accepted commit is an ancestor with an unchanged runtime payload."""
     if re.fullmatch(r"[0-9a-fA-F]{40}", acceptance_sha or "") is None:
         return False
     if re.fullmatch(r"[0-9a-fA-F]{40}", candidate_sha or "") is None:
         return False
-    package_relative = PACKAGE.relative_to(ROOT).as_posix()
     try:
         ancestor = subprocess.run(
             ["git", "merge-base", "--is-ancestor", acceptance_sha, candidate_sha],
@@ -476,14 +496,23 @@ def acceptance_commit_is_ancestor_and_package_unchanged(acceptance_sha: str, can
         )
         if ancestor.returncode != 0:
             return False
-        unchanged = subprocess.run(
-            ["git", "diff", "--quiet", acceptance_sha, candidate_sha, "--", package_relative],
+        package_relative = PACKAGE.relative_to(ROOT).as_posix()
+        manifest_relative = f"{package_relative}/RuntimeSupport/runtime-manifest.json"
+        changed = subprocess.run(
+            ["git", "diff", "--no-renames", "--name-only", acceptance_sha, candidate_sha, "--", package_relative],
             cwd=ROOT,
             check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
         )
-        return unchanged.returncode == 0
+        if changed.returncode != 0:
+            return False
+        changed_paths = {line.replace("\\", "/") for line in changed.stdout.splitlines() if line}
+        if any(path != manifest_relative for path in changed_paths):
+            return False
+        acceptance_manifest = _manifest_without_acceptance(acceptance_sha, manifest_relative)
+        candidate_manifest = _manifest_without_acceptance(candidate_sha, manifest_relative)
+        return acceptance_manifest is not None and acceptance_manifest == candidate_manifest
     except (OSError, ValueError):
         return False
 
