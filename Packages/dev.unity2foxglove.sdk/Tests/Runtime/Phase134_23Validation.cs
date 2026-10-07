@@ -123,7 +123,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && demoSetup.Contains("ownership.Add(rt.Parameters.RegisterOwned", StringComparison.Ordinal)
                   && demoSetup.Contains("ownership.Add(() => rt.Parameters.OnParameterChanged -= parameterChangedHandler);", StringComparison.Ordinal)
                   && demoSetup.Contains("ownership.Add(() => manager.OnClientMessage -= OnClientMessageReceived);", StringComparison.Ordinal)
-                  && demoSetup.Contains("_wiringOwnership?.Dispose();", StringComparison.Ordinal)
+                  && demoSetup.Contains("var committed = false;", StringComparison.Ordinal)
+                  && demoSetup.Contains("var ownership = _wiringOwnership;", StringComparison.Ordinal)
+                  && demoSetup.Contains("ownership?.Dispose();", StringComparison.Ordinal)
                   && demoSetup.Contains("[FoxService(", StringComparison.Ordinal)
                   && !demoSetup.Contains("_resetSvcId", StringComparison.Ordinal),
                 "134-23-E1: Full demo setup unregisters runtime callbacks and uses declarative reset service ownership");
