@@ -447,6 +447,8 @@ def phase191_and_analyzers(root: Path, output: Path, paths: list[str]) -> None:
             analyzers.append([relative, sha256(root / relative), "tracked analyzer DLL"])
     write_tsv(identity / "analyzer-dll-hashes.tsv", ["path", "sha256", "source"], analyzers)
 def lane_manifest(root: Path, output: Path, paths: list[str]) -> None:
+    from Scripts.phase192.task0_entry import measured_lane_result
+
     identity = output / "identity"
     csharp = [path for path in paths if Path(path).suffix.casefold() == ".cs" and not is_vendor(path)]
     cs_test_count = sum(len(re.findall(r"\[(?:Fact|Theory)(?:[^]]*)\]", _read_text(root / path))) for path in csharp)
@@ -458,7 +460,8 @@ def lane_manifest(root: Path, output: Path, paths: list[str]) -> None:
         ["regression-inventory", "script", "Scripts/release/regression_inventory.py", "python -B Scripts/release/regression_inventory.py", "script", "n/a", 1, "PASS", "executed"],
     ]
     for name in names:
-        rows.append([f"run-ci:{name}", "ci-suite", "Scripts/release/run_ci.py", f"python -B Scripts/release/run_ci.py --only {name}", "ci-choice", "command-result", 1, "BASELINE_DEFINED", "command-invocation"])
+        status, measurement = measured_lane_result(identity / "lane-runs", name)
+        rows.append([f"run-ci:{name}", "ci-suite", "Scripts/release/run_ci.py", f"python -B Scripts/release/run_ci.py --only {name}", "ci-choice", "command-result", 1, status, measurement])
     rows.append(["csharp-attribute-scan", "xunit", "tracked .cs sources", "source attribute scan", "source-scan", "attribute-name", cs_test_count, "BASELINE_STATIC", "static-source"])
     write_tsv(identity / "lane-manifest.tsv", ["lane", "framework", "project_or_entrypoint", "command", "discovery_mode", "parameter_normalization", "expected_count", "status", "measurement"], rows)
 def main(argv: list[str] | None = None) -> int:

@@ -3,9 +3,13 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import re
 import subprocess
 from pathlib import Path
 from typing import Callable, Iterable
+
+
+CI_PASS_MARKER = "All CI checks passed."
 
 
 def command_snapshot(root: Path, output: Path, name: str, argv: list[str]) -> int:
@@ -102,3 +106,26 @@ def validate_classification(
         writer.writerows(errors)
     if errors:
         raise RuntimeError(f"Task 0 classification failed closed for {len(errors)} source paths")
+
+
+def measured_lane_result(lane_runs: Path, name: str) -> tuple[str, str]:
+    """Return a fail-closed status and measurement for one recorded CI lane."""
+    meta = lane_runs / f"{name}.meta"
+    if not meta.is_file():
+        return "NOT_RUN", "meta=missing"
+    metadata = meta.read_text(encoding="utf-8", errors="replace")
+    exit_match = re.search(r"(?:^|[|\r\n]\s*)EXIT_STATUS=(-?\d+)", metadata)
+    logs = [lane_runs / f"{name}.stdout.log", lane_runs / f"{name}.stderr.log"]
+    payload = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in logs if path.is_file())
+    marker = CI_PASS_MARKER in payload
+    if exit_match is None:
+        pid = re.search(r"(?:^|[|\r\n]\s*)PID=(\d+)", metadata)
+        return "RUNNING", f"pid={pid.group(1) if pid else 'unknown'}; exit_status=missing; marker={str(marker).lower()}"
+    exit_status = int(exit_match.group(1))
+    if exit_status == 0 and marker:
+        status = "PASS"
+    elif exit_status == 0:
+        status = "FAIL"
+    else:
+        status = "FAIL"
+    return status, f"exit_status={exit_status}; marker={str(marker).lower()}"
