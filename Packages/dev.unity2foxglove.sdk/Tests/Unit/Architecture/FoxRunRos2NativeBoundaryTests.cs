@@ -161,6 +161,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 "ros2forunity",
                 "interfaces",
                 "build_foxrun_custom_typesupport_addon.py"));
+            var candidateBuilderSerialization = File.ReadAllText(Path.Combine(
+                root,
+                "Scripts",
+                "ros2forunity",
+                "interfaces",
+                "build_foxrun_custom_typesupport_addon",
+                "serialization.py"));
 
             Assert.Contains("public interface IFoxRunRos2CustomTypesupportCatalog", contract, StringComparison.Ordinal);
             Assert.Contains("public static void Register(IFoxRunRos2CustomTypesupportCatalog catalog)", registry, StringComparison.Ordinal);
@@ -171,7 +178,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.DoesNotContain("CreateNode", registry, StringComparison.Ordinal);
             Assert.DoesNotContain("LoadLibrary", registry, StringComparison.Ordinal);
             Assert.DoesNotContain("AppDomain", registry, StringComparison.Ordinal);
-            Assert.Contains("FoxRunRos2CustomTypesupportCatalogRegistry.Register", candidateBuilder, StringComparison.Ordinal);
+            Assert.Contains("FoxRunRos2CustomTypesupportCatalogRegistry.Register", candidateBuilderSerialization, StringComparison.Ordinal);
             Assert.DoesNotContain("Ros2cs.Init", candidateBuilder, StringComparison.Ordinal);
             Assert.DoesNotContain("CreateNode", candidateBuilder, StringComparison.Ordinal);
 
