@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Linq;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -13,7 +14,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void ReplayEngineDocumentsOwnedTickBufferAndReaderOwnership()
         {
-            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var source = McapReplaySources();
             var reader = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs");
 
             Assert.Contains("The returned list is owned and reused by this engine", source, StringComparison.Ordinal);
@@ -31,7 +32,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void ReplayHistoryUsesSortThenTrimInsteadOfPerMessageInsert()
         {
-            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var source = McapReplaySources();
             var history = SourceMethod(source, "public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result, int maxMessages)");
 
             Assert.Contains("result.Add(new McapMessage", history, StringComparison.Ordinal);
@@ -63,6 +64,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
 
             throw new InvalidOperationException("Unterminated method: " + signature);
+        }
+
+        private static string McapReplaySources()
+        {
+            var root = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var paths = new[]
+            {
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/Load.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/History.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/TryReadIndexedBoundedHistory.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/HistoryCandidate.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/SortPending.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/FinishTickResult.cs"
+            };
+
+            return root + Environment.NewLine + string.Join(
+                Environment.NewLine,
+                paths.Select(TestSources.Text));
         }
     }
 }

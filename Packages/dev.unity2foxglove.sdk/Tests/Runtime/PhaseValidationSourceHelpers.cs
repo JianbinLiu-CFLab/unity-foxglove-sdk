@@ -42,7 +42,36 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static string ReadRequiredRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+        {
+            if (string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
+                    StringComparison.Ordinal))
+                return ReadMcapReplayEngineSources();
+
+            return File.ReadAllText(RepoPath(relativePath));
+        }
+
+        public static string ReadMcapReplayEngineSources()
+        {
+            var root = FindRequiredRepoRoot();
+            var paths = new[]
+            {
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "McapReplayEngine.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "Load.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "History.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "TryReadIndexedBoundedHistory.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "HistoryCandidate.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "SortPending.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "FinishTickResult.cs")
+            };
+
+            foreach (var path in paths)
+                if (!File.Exists(path))
+                    throw new FileNotFoundException("Missing MCAP replay source: " + path, path);
+
+            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+        }
 
         public static string ReadSplitPythonSource(string relativePath)
             => ReadSplitPythonSourcePath(RepoPath(relativePath));
