@@ -95,6 +95,7 @@
     <Compile Include="../Runtime/PhaseValidationCase.cs" Link="TestHarness/PhaseValidationCase.cs" />
     <Compile Include="../Runtime/PhaseValidationSourceHelpers.cs" Link="TestHelpers/PhaseValidationSourceHelpers.cs" />
     <Compile Include="../Runtime/FoxRunGenerationDescriptorJsonReader.cs" Link="TestHelpers/FoxRunGenerationDescriptorJsonReader.cs" />
+    <Compile Include="../Runtime/FoxRunGenerationDescriptorJsonReader.Part*.cs" Link="TestHelpers/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <Target Name="ValidatePhase179NativeCompileSurface" BeforeTargets="CoreCompile" Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
