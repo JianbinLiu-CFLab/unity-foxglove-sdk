@@ -5,10 +5,8 @@
 // Purpose: Phase 140-89/90/91/92/94 runtime validation optimization checks.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -60,7 +58,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
 
 
-internal static class TestSources
+class TestSources
     {
         private static readonly string CachedRepoRoot = FindRepoRoot();
 
@@ -69,191 +67,15 @@ internal static class TestSources
 
         public static string Text(string relativePath)
         {
-            var normalized = relativePath.Replace('\\', '/');
             if (string.Equals(
-                    normalized,
+                    relativePath.Replace('\\', '/'),
                     "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
                     StringComparison.Ordinal))
                 return McapReplayEngineSources();
-            if (string.Equals(
-                    normalized,
-                    "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs",
-                    StringComparison.Ordinal))
-                return FoxgloveRuntimeSources();
-            if (string.Equals(
-                    normalized,
-                    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs",
-                    StringComparison.Ordinal))
-                return MediaFoundationH264EncoderSidecarSources();
 
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
-            return ReadLogicalSource(path);
-        }
-
-        private static string FoxgloveRuntimeSources()
-        {
-            var root = Path.Combine(
-                RepoRoot,
-                "Packages",
-                "dev.unity2foxglove.sdk",
-                "Runtime",
-                "Core",
-                "Runtime");
-            var fileNames = new[]
-            {
-                "FoxgloveRuntime.cs",
-                "FoxgloveRuntime.Lifecycle.cs",
-                "FoxgloveRuntime.Publishing.cs",
-                "FoxgloveRuntime.RecordingAndReplay.cs",
-                "FoxgloveRuntime.RuntimeAndSchema.cs",
-                "FoxgloveRuntime.ReplaySuppression.cs",
-                "FoxgloveRuntime.SchemaRegistration.cs",
-            };
-            var paths = fileNames
-                .Select(name => Path.Combine(root, name))
-                .Where(File.Exists)
-                .ToArray();
-            Assert.NotEmpty(paths);
-            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
-        }
-
-        private static string MediaFoundationH264EncoderSidecarSources()
-        {
-            var root = Path.Combine(
-                RepoRoot,
-                "Packages",
-                "dev.unity2foxglove.sdk",
-                "Runtime",
-                "Schemas",
-                "Proto",
-                "Video");
-            var fileNames = new[]
-            {
-                "MediaFoundationH264EncoderSidecar.cs",
-                "MediaFoundationH264EncoderSidecar.Lifecycle.cs",
-                "MediaFoundationH264EncoderSidecar.NativeLifecycle.cs",
-                "MediaFoundationH264EncoderSidecar.Output.cs",
-                "MediaFoundationH264EncoderSidecar.ComInterop.cs",
-            };
-            var paths = fileNames
-                .Select(name => Path.Combine(root, name))
-                .Where(File.Exists)
-                .ToArray();
-            Assert.NotEmpty(paths);
-            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
-        }
-
-        private static string ReadLogicalSource(string facadePath)
-        {
-            var source = File.ReadAllText(facadePath);
-            var directory = Path.GetDirectoryName(facadePath);
-            Assert.NotNull(directory);
-            var package = Path.Combine(directory, Path.GetFileNameWithoutExtension(facadePath));
-            if (Path.GetExtension(facadePath).Equals(".py", StringComparison.OrdinalIgnoreCase)
-                && Directory.Exists(package)
-                && File.Exists(Path.Combine(package, "__init__.py")))
-            {
-                var sectionNames = Regex.Matches(
-                        File.ReadAllText(Path.Combine(package, "__init__.py")),
-                        @"from\s+\.\s*(?:import\s+)?(?<name>[A-Za-z_][A-Za-z0-9_]*)")
-                    .Cast<Match>()
-                    .Select(match => match.Groups["name"].Value)
-                    .Where(name => !name.Equals("__init__", StringComparison.Ordinal))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-                foreach (var name in sectionNames)
-                {
-                    var section = Path.Combine(package, name + ".py");
-                    Assert.True(File.Exists(section), "Source section not found: " + section);
-                    source += Environment.NewLine + File.ReadAllText(section);
-                }
-                return source;
-            }
-
-            var stem = Path.GetFileNameWithoutExtension(facadePath);
-            var directoryInfo = new DirectoryInfo(directory);
-            var sectionDirectories = new System.Collections.Generic.List<string>();
-            for (var ancestor = directoryInfo; ancestor != null; ancestor = ancestor.Parent)
-            {
-                var relativeDirectory = Path.GetRelativePath(ancestor.FullName, directoryInfo.FullName);
-                var decomposed = Path.Combine(ancestor.FullName, "Decomposed", relativeDirectory, stem);
-                if (Directory.Exists(decomposed))
-                    sectionDirectories.Add(Path.GetFullPath(decomposed));
-                if (File.Exists(Path.Combine(ancestor.FullName, ".git"))
-                    || Directory.Exists(Path.Combine(ancestor.FullName, ".git")))
-                    break;
-            }
-            var localDecomposed = Path.Combine(directoryInfo.FullName, "Decomposed");
-            if (Directory.Exists(localDecomposed))
-            {
-                var marker = File.ReadLines(facadePath)
-                    .Select(line => Regex.Match(
-                        line,
-                        @"^\s*///\s*<remarks>Phase192 source sections:\s*(?<names>[^<]+)</remarks>\s*$",
-                        RegexOptions.CultureInvariant))
-                    .FirstOrDefault(match => match.Success);
-                if (marker != null)
-                {
-                    var names = marker.Groups["names"].Value
-                        .Split(',')
-                        .Select(name => name.Trim())
-                        .Where(name => name.Length > 0)
-                        .ToArray();
-                    foreach (var child in Directory.GetDirectories(localDecomposed))
-                    {
-                        var files = Directory.GetFiles(child, "*.cs", SearchOption.TopDirectoryOnly);
-                        var fileNames = new HashSet<string>(
-                            files.Select(Path.GetFileName),
-                            StringComparer.OrdinalIgnoreCase);
-                        if (names.Length == files.Length
-                            && names.All(fileNames.Contains))
-                            sectionDirectories.Add(Path.GetFullPath(child));
-                    }
-                }
-            }
-            sectionDirectories = sectionDirectories
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(path => path, StringComparer.Ordinal)
-                .ToList();
-            Assert.True(
-                sectionDirectories.Count <= 1,
-                "Ambiguous decomposed source directories for " + facadePath + ": "
-                + string.Join(", ", sectionDirectories));
-            var sections = sectionDirectories.Count == 0
-                ? Array.Empty<string>()
-                : EnumerateCSharpSections(facadePath, sectionDirectories[0]).ToArray();
-            foreach (var section in sections)
-                source += Environment.NewLine + File.ReadAllText(section);
-            return source;
-        }
-
-        private static IEnumerable<string> EnumerateCSharpSections(
-            string facadePath,
-            string sectionDirectory)
-        {
-            var files = Directory.GetFiles(sectionDirectory, "*.cs", SearchOption.TopDirectoryOnly);
-            var marker = File.ReadLines(facadePath)
-                .Select(line => Regex.Match(
-                    line,
-                    @"^\s*///\s*<remarks>Phase192 source sections:\s*(?<names>[^<]+)</remarks>\s*$",
-                    RegexOptions.CultureInvariant))
-                .FirstOrDefault(match => match.Success);
-            if (marker == null)
-                return files.OrderBy(path => path, StringComparer.Ordinal);
-
-            var names = marker.Groups["names"].Value
-                .Split(',')
-                .Select(name => name.Trim())
-                .Where(name => name.Length > 0)
-                .ToArray();
-            var filesByName = files.ToDictionary(Path.GetFileName, StringComparer.OrdinalIgnoreCase);
-            Assert.True(
-                names.Length == filesByName.Count
-                && names.Distinct(StringComparer.OrdinalIgnoreCase).Count() == names.Length
-                && names.All(filesByName.ContainsKey),
-                "Invalid Phase192 source-section order in " + facadePath);
-            return names.Select(name => filesByName[name]);
+            return File.ReadAllText(path);
         }
 
         private static string McapReplayEngineSources()
