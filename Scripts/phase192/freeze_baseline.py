@@ -1,7 +1,6 @@
 """Freeze the Phase192 entry inventory and identity evidence."""
 from __future__ import annotations
 import argparse
-import ast
 import csv
 import hashlib
 import json
@@ -16,6 +15,7 @@ from typing import Iterable
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
+from Scripts.phase192.task0_entry import record_entry_commands, record_plan_hashes, validate_classification
 SOURCE_EXTENSIONS = frozenset({".cs", ".py", ".cpp", ".cc", ".c", ".h", ".hpp", ".ts"})
 GENERATED_PROTO_ROOT = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Generated/"
 GENERATED_CDR_ROOT = "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/"
@@ -181,17 +181,6 @@ def classify_boundary(root: Path, output: Path) -> None:
         } else "pre-existing workspace state"
         rows.append([relative, status, digest, owner])
     write_tsv(output / "boundary-manifest.tsv", ["path", "status", "sha256", "classification"], rows)
-def plan_hashes(root: Path, output: Path, plan192: Path, plan190: Path, plan191: Path) -> None:
-    candidates = [plan192, plan190, plan191]
-    rows = []
-    for candidate in candidates:
-        absolute = _rooted(candidate, root)
-        if not absolute.is_file() and candidate.name.startswith("191_"):
-            matches = sorted((root / "Plan").glob("191_*.md"))
-            absolute = matches[0] if len(matches) == 1 else absolute
-        relative = absolute.relative_to(root).as_posix() if absolute.is_file() else candidate.as_posix()
-        rows.append([relative, str(absolute.is_file()).lower(), sha256(absolute) if absolute.is_file() else ""])
-    write_tsv(output / "../review/plan-entry.tsv", ["path", "exists", "sha256"], rows)
 def source_inventory(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
     source_paths = [path for path in paths if Path(path).suffix.casefold() in SOURCE_EXTENSIONS]
     rows = []
@@ -484,10 +473,12 @@ def main(argv: list[str] | None = None) -> int:
     output = _rooted(args.output, root).resolve()
     output.mkdir(parents=True, exist_ok=True)
     paths = tracked_paths(root)
+    record_entry_commands(root, output)
     classify_boundary(root, output)
-    plan_hashes(root, output, args.plan192, args.plan190, args.plan191)
+    record_plan_hashes(root, output, [args.plan192, args.plan190, args.plan191])
     counts = source_inventory(root, output, paths)
     counts.update(excluded_manifests(root, output, paths))
+    validate_classification(output, paths, SOURCE_EXTENSIONS, is_generated, is_vendor)
     counts.update(identity_surfaces(root, output, paths))
     phase191_and_analyzers(root, output, paths)
     lane_manifest(root, output, paths)
