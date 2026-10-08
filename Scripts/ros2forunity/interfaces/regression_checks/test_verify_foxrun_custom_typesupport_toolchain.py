@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from Scripts.test_support.phase181_scratch import temporary_directory
+from Scripts.ros2forunity.interfaces import verify_foxrun_custom_typesupport_toolchain as toolchain
 
 from Scripts.ros2forunity.interfaces.verify_foxrun_custom_typesupport_toolchain import (
     ProcessResult,
@@ -58,6 +59,12 @@ class _FakeRunner:
 
 class ToolchainPreflightTests(unittest.TestCase):
     """Represent ToolchainPreflightTests."""
+    def test_source_uses_named_split_package(self) -> None:
+        """Require the toolchain facade to use its named source package."""
+        package = Path(toolchain.__file__).with_suffix("")
+        self.assertTrue(package.is_dir())
+        self.assertTrue((package / "__main__.py").is_file())
+
     def test_explicit_roots_select_pinned_tools_and_write_redacted_provenance(self) -> None:
         """Verify explicit roots select pinned tools and write redacted provenance."""
         with temporary_directory("toolchain-") as temporary_root:
