@@ -3,6 +3,12 @@ from .foundation import *
 class Phase181CustomTypesupportRefreshTests(unittest.TestCase):
     """Keep drift detection and the bounded build/sync/validate sequence explicit."""
 
+    def test_source_uses_named_split_package(self) -> None:
+        """The Phase181 refresh orchestrator keeps its lifecycle sections in one named package."""
+        package = Path(refresh.__file__).with_suffix("")
+        self.assertTrue(package.is_dir())
+        self.assertTrue((package / "__main__.py").is_file())
+
     def test_inspection_reports_runtime_manifest_drift_without_a_build(self) -> None:
         """A changed base runtime manifest marks only that add-on as stale."""
         with self._fixture() as fixture:
