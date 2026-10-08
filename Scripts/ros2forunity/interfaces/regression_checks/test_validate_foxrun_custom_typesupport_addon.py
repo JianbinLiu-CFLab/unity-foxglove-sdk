@@ -23,6 +23,12 @@ from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
 
 class CustomTypesupportAddonValidationTests(unittest.TestCase):
     """Represent CustomTypesupportAddonValidationTests."""
+    def test_source_uses_named_split_package(self) -> None:
+        """Require the common validator facade to use its named source package."""
+        package = Path(common.__file__).with_suffix("")
+        self.assertTrue(package.is_dir())
+        self.assertTrue((package / "__main__.py").is_file())
+
     def test_valid_matching_addon_passes(self) -> None:
         """Verify valid matching addon passes."""
         with self._fixture() as fixture:
