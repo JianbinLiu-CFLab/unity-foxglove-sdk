@@ -7,10 +7,12 @@ del _PHASE192_FACADE_FILE
 
 
 def _source_lines(raw: bytes) -> list[str]:
+    """Decode a source blob into its original physical lines."""
     return raw.decode("utf-8", errors="strict").splitlines()
 
 
 def _is_source_wrapper_line(line: str) -> bool:
+    """Identify syntax-only lines that should not count as implementation body."""
     stripped = line.strip()
     if not stripped:
         return True
@@ -51,6 +53,7 @@ def _validate_moved_fragment(
     end: int,
     path: str,
 ) -> list[str]:
+    """Verify that a moved range maps exactly to the implementation in its part."""
     fragment = original_lines[start - 1 : end]
     hits = [
         offset
