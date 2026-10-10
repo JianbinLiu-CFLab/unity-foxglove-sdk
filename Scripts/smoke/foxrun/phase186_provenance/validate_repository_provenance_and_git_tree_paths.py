@@ -16,15 +16,13 @@ def _is_source_wrapper_line(line: str) -> bool:
     stripped = line.strip()
     if not stripped:
         return True
-    if stripped.startswith(("//", "/*", "*", "*/", "#")):
+    if stripped.startswith(("//", "/*", "*", "*/")):
         return True
     if stripped.startswith("using ") and stripped.endswith(";"):
         return True
     if stripped.startswith("namespace ") and "(" not in stripped:
         return True
     if stripped in {"{", "}", "};"}:
-        return True
-    if stripped.startswith("[") and stripped.endswith("]"):
         return True
     declaration_words = {
         "public",
@@ -102,6 +100,7 @@ def _validate_decomposed_source_files(
         if not isinstance(original, str) or not isinstance(revision, str):
             continue
         original_lines: list[str] = []
+        decomposition_revision = record.get("decompositionRevision")
         try:
             original = _canonical_relative_path(
                 original,
@@ -143,6 +142,41 @@ def _validate_decomposed_source_files(
             line_count = 0
         if not isinstance(parts, list):
             continue
+        historical_revision_is_valid = False
+        if not isinstance(decomposition_revision, str):
+            errors.append(
+                "decomposed source decompositionRevision is required: "
+                f"{original}"
+            )
+        else:
+            try:
+                if _subprocess_lines(
+                    ["git", "cat-file", "-t", decomposition_revision],
+                    repository,
+                )[0] != "commit":
+                    errors.append(
+                        "decomposed source decompositionRevision is not a commit: "
+                        f"{decomposition_revision}"
+                    )
+                else:
+                    ancestor = subprocess.run(
+                        ["git", "merge-base", "--is-ancestor", decomposition_revision, "HEAD"],
+                        cwd=repository,
+                        check=False,
+                        capture_output=True,
+                    )
+                    if ancestor.returncode != 0:
+                        errors.append(
+                            "decomposed source decompositionRevision is not an ancestor of HEAD: "
+                            f"{decomposition_revision}"
+                        )
+                    else:
+                        historical_revision_is_valid = True
+            except (IndexError, OSError, RuntimeError, ValueError) as exc:
+                errors.append(
+                    "could not validate decomposed source decomposition baseline "
+                    f"{decomposition_revision}: {exc}"
+                )
         for part_index, part in enumerate(parts):
             if not isinstance(part, Mapping):
                 continue
@@ -187,16 +221,28 @@ def _validate_decomposed_source_files(
                     and original_lines
                     and type(start) is int
                     and type(end) is int
+                    and historical_revision_is_valid
                 ):
-                    errors.extend(
-                        _validate_moved_fragment(
-                            original_lines,
-                            _source_lines(raw),
-                            start,
-                            end,
+                    try:
+                        historical_part = _git_blob(
+                            repository,
+                            decomposition_revision,
                             path,
                         )
-                    )
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        errors.append(
+                            f"{path}: could not read decomposition baseline: {exc}"
+                        )
+                    else:
+                        errors.extend(
+                            _validate_moved_fragment(
+                                original_lines,
+                                _source_lines(historical_part),
+                                start,
+                                end,
+                                path,
+                            )
+                        )
 
     unmapped = discovered_sources - part_paths - original_paths
     unexpected = sorted(unmapped - set(introduced_sources))

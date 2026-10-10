@@ -395,6 +395,13 @@ class _Phase186ProvenanceTests_fixtures:
             part = repository / "Protocol/Decomposed/AuthorityPart.cs"
             part.parent.mkdir(parents=True)
             part.write_text("// header\nline one\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+            run_git(repository, "commit", "--quiet", "-m", "decompose")
+            decomposition_revision = run_git(repository, "rev-parse", "HEAD")
+            part.write_text(
+                "// header\nline one\nprivate static void AddedLater() {}\n",
+                encoding="utf-8",
+            )
             original_path = "Protocol/Authority.cs"
             part_path = "Protocol/Decomposed/AuthorityPart.cs"
             payload = {
@@ -402,6 +409,7 @@ class _Phase186ProvenanceTests_fixtures:
                     {
                         "originalPath": original_path,
                         "sourceRevision": revision,
+                        "decompositionRevision": decomposition_revision,
                         "originalSha256": module._sha256_bytes(
                             module._canonical_source_bytes(
                                 original.read_bytes()
@@ -447,6 +455,28 @@ class _Phase186ProvenanceTests_fixtures:
                 errors,
             )
 
+    def test_decomposed_source_map_rejects_semantic_attributes_and_directives(self) -> None:
+        """Source-map body checks must retain attributes and preprocessor directives."""
+
+        module = load_module()
+        for prefix in (
+            '[System.Diagnostics.Conditional("NEVER_DEFINED")]\n',
+            "#if NEVER_DEFINED\n",
+        ):
+            with self.subTest(prefix=prefix):
+                errors = module._validate_moved_fragment(
+                    ["line one"],
+                    (prefix + "line one\n").splitlines(),
+                    1,
+                    1,
+                    "Protocol/Decomposed/AuthorityPart.cs",
+                )
+                self.assertTrue(
+                    any("does not account for the part implementation body" in error
+                        for error in errors),
+                    errors,
+                )
+
     def test_decomposed_source_schema_rejects_invalid_ranges_and_paths(self) -> None:
         """Source-map records reject malformed path and range values."""
 
@@ -456,6 +486,7 @@ class _Phase186ProvenanceTests_fixtures:
             {
                 "originalPath": "",
                 "sourceRevision": "a" * 40,
+                "decompositionRevision": "a" * 40,
                 "originalSha256": "b" * 64,
                 "parts": [
                     {
@@ -487,6 +518,7 @@ class _Phase186ProvenanceTests_fixtures:
                 {
                     "originalPath": "Protocol/Authority.cs",
                     "sourceRevision": "a" * 40,
+                    "decompositionRevision": "a" * 40,
                     "originalSha256": "b" * 64,
                     "parts": [
                         {
@@ -514,6 +546,15 @@ class _Phase186ProvenanceTests_fixtures:
         missing_key_payload.pop("ledgerPath")
         errors = module._validate_canonical_ledger_schema(missing_key_payload, {})
         self.assertTrue(any("top-level schema" in error for error in errors), errors)
+
+        source_map = payload["decomposedSources"][0]
+        source_map.pop("decompositionRevision", None)
+        errors = module._validate_canonical_ledger_schema(payload, {})
+        self.assertTrue(
+            any("decomposedSources schema mismatch" in error
+                for error in errors),
+            errors,
+        )
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

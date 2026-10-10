@@ -375,6 +375,7 @@ def _validate_canonical_ledger_schema(
     source_map_keys = {
         "originalPath",
         "sourceRevision",
+        "decompositionRevision",
         "originalSha256",
         "parts",
     }
@@ -390,6 +391,7 @@ def _validate_canonical_ledger_schema(
             continue
         original_path = record.get("originalPath")
         source_revision = record.get("sourceRevision")
+        decomposition_revision = record.get("decompositionRevision")
         original_sha256 = record.get("originalSha256")
         parts = record.get("parts")
         if not isinstance(original_path, str) or not original_path:
@@ -414,6 +416,13 @@ def _validate_canonical_ledger_schema(
         ):
             errors.append(
                 f"decomposedSources[{index}].sourceRevision must be a full lowercase Git SHA"
+            )
+        if (
+            not isinstance(decomposition_revision, str)
+            or re.fullmatch(r"[0-9a-f]{40}", decomposition_revision) is None
+        ):
+            errors.append(
+                f"decomposedSources[{index}].decompositionRevision must be a full lowercase Git SHA"
             )
         if (
             not isinstance(original_sha256, str)
