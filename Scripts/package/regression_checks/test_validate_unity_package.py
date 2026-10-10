@@ -288,6 +288,39 @@ class ValidatePackageTests(unittest.TestCase):
             self.validator.check_sdk_script_meta(results)
             self.assertTrue(results[-1].ok)
 
+    def test_sdk_decomposed_folder_meta_checks_folder_sidecars(self) -> None:
+        """Decomposed SDK test folders need valid, unique folder .meta files."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "Ros2ForUnity"
+            child = root / "ExampleTests"
+            child.mkdir(parents=True)
+
+            results = []
+            self.validator.check_sdk_decomposed_folder_meta(results, root)
+            self.assertFalse(results[-1].ok)
+            self.assertIn("Ros2ForUnity.meta", results[-1].detail)
+
+            (root.with_suffix(".meta")).write_text(
+                "fileFormatVersion: 2\nguid: 11111111111111111111111111111111\nfolderAsset: yes\n",
+                encoding="utf-8",
+            )
+            (child.with_suffix(".meta")).write_text(
+                "fileFormatVersion: 2\nguid: 22222222222222222222222222222222\nfolderAsset: yes\n",
+                encoding="utf-8",
+            )
+            results = []
+            self.validator.check_sdk_decomposed_folder_meta(results, root)
+            self.assertTrue(results[-1].ok)
+
+            (child.with_suffix(".meta")).write_text(
+                "fileFormatVersion: 2\nguid: 11111111111111111111111111111111\nfolderAsset: yes\n",
+                encoding="utf-8",
+            )
+            results = []
+            self.validator.check_sdk_decomposed_folder_meta(results, root)
+            self.assertFalse(results[-1].ok)
+            self.assertIn("duplicates", results[-1].detail)
+
     def test_sample_meta_checks_prefab_files(self) -> None:
         """Common Unity assets such as prefabs need stable .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:
