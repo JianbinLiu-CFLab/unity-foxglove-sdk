@@ -55,9 +55,17 @@ namespace Unity.FoxgloveSDK.Tests
         public static string ReadMcapReplayEngineSources()
         {
             var root = FindRequiredRepoRoot();
-            var paths = new[]
+            var facadePath = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "IO",
+                "Mcap",
+                "Replay",
+                "McapReplayEngine.cs");
+            var fragmentPaths = new[]
             {
-                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "McapReplayEngine.cs"),
                 Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "Load.cs"),
                 Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "History.cs"),
                 Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "TryReadIndexedBoundedHistory.cs"),
@@ -66,11 +74,48 @@ namespace Unity.FoxgloveSDK.Tests
                 Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "FinishTickResult.cs")
             };
 
-            foreach (var path in paths)
+            if (!File.Exists(facadePath))
+                throw new FileNotFoundException("Missing MCAP replay source: " + facadePath, facadePath);
+
+            foreach (var path in fragmentPaths)
                 if (!File.Exists(path))
                     throw new FileNotFoundException("Missing MCAP replay source: " + path, path);
 
-            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+            var chunks = new List<string>
+            {
+                ReadMcapReplayFacadeBody(facadePath),
+            };
+            chunks.AddRange(fragmentPaths.Select(ReadMcapReplayFragmentBody));
+            return string.Join(Environment.NewLine + Environment.NewLine, chunks)
+                + Environment.NewLine
+                + "    }"
+                + Environment.NewLine
+                + "}";
+        }
+
+        private static string ReadMcapReplayFacadeBody(string path)
+        {
+            var lines = File.ReadAllLines(path);
+            if (lines.Length < 3)
+                throw new InvalidDataException("MCAP replay facade is too short: " + path);
+            return string.Join(Environment.NewLine, lines.Take(lines.Length - 2));
+        }
+
+        private static string ReadMcapReplayFragmentBody(string path)
+        {
+            var lines = File.ReadAllLines(path);
+            var classLine = Array.FindIndex(
+                lines,
+                line => line.Contains("partial class McapReplayEngine", StringComparison.Ordinal));
+            if (classLine < 0)
+                throw new InvalidDataException("MCAP replay fragment class is missing: " + path);
+            var openBrace = Array.FindIndex(
+                lines,
+                classLine,
+                line => line.Trim() == "{");
+            if (openBrace < 0 || lines.Length - openBrace < 4)
+                throw new InvalidDataException("MCAP replay fragment is too short: " + path);
+            return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
         }
 
         public static string ReadSplitPythonSource(string relativePath)
