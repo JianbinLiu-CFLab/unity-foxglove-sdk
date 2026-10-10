@@ -243,7 +243,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 + " resolved to "
                 + path);
 
+            if (relativePath.EndsWith(
+                    "MediaFoundationH264EncoderSidecar.cs",
+                    StringComparison.Ordinal))
+                return ReadMediaFoundationSidecarSources(path);
+
             return File.ReadAllText(path);
+        }
+
+        private static string ReadMediaFoundationSidecarSources(string mainPath)
+        {
+            var directory = Path.GetDirectoryName(mainPath);
+            Assert.False(
+                string.IsNullOrEmpty(directory),
+                "Media Foundation sidecar directory could not be resolved.");
+
+            var files = Directory.GetFiles(
+                directory,
+                "MediaFoundationH264EncoderSidecar*.cs");
+            Array.Sort(files, StringComparer.Ordinal);
+
+            var source = new System.Text.StringBuilder();
+            foreach (var file in files)
+            {
+                if (source.Length > 0)
+                    source.Append(Environment.NewLine);
+                source.Append(File.ReadAllText(file));
+            }
+
+            return source.ToString();
         }
 
         private static string PathOf(string relativePath)

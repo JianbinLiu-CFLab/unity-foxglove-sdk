@@ -619,7 +619,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(full))
                 throw new FileNotFoundException("Required validation fixture is missing: " + relativePath, full);
 
-            return File.ReadAllText(full);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private static string ReadCameraPublisherSources()
