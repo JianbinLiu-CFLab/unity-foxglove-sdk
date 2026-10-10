@@ -22,6 +22,7 @@ PROJECTS = (
     ("sdk-r2fu", "Unity2Foxglove.SdkR2fu.Compile.csproj"),
     ("sdk-bridge", "Unity2Foxglove.SdkBridge.Compile.csproj"),
     ("all-providers", "Unity2Foxglove.AllProviders.Compile.csproj"),
+    ("remote-gateway", "Unity2Foxglove.RemoteGateway.Compile.csproj"),
 )
 REPORT = ROOT / "build/phase186/package-matrix/report.json"
 GUID_PATTERN = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")

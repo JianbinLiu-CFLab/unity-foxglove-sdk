@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <IncludeRos2Bridge>false</IncludeRos2Bridge>
+    <IncludeRos2ForUnityAdapter>false</IncludeRos2ForUnityAdapter>
+    <IncludeRos2ForUnityNative>false</IncludeRos2ForUnityNative>
+    <MatrixName>RemoteGateway</MatrixName>
+    <ExpectR2fu>false</ExpectR2fu>
+    <ExpectBridge>false</ExpectBridge>
+    <AssemblyName>Unity2Foxglove.RemoteGateway.Compile</AssemblyName>
+  </PropertyGroup>
+  <Import Project="../FoxgloveSdk.TestSurface.props" />
+  <Import Project="PackageMatrix.Common.props" />
+  <ItemGroup>
+    <Compile Include="../../dev.unity2foxglove.remotegateway.win64/Runtime/**/*.cs" />
+    <Compile Include="RemoteGatewayCompileStubs.cs" />
+  </ItemGroup>
+</Project>
