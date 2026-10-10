@@ -17,6 +17,18 @@ namespace Unity.FoxgloveSDK.Tests
 {
     internal static class PhaseValidationSourceHelpers
     {
+        private const string FoxgloveRuntimeTrailingGateMarker =
+            "    /// <summary>Shared executable generation predicate for main-thread client events.";
+        private static readonly string[] FoxgloveRuntimeSourceFileNames =
+        {
+            "FoxgloveRuntime.cs",
+            "FoxgloveRuntime.Lifecycle.cs",
+            "FoxgloveRuntime.Publishing.cs",
+            "FoxgloveRuntime.RecordingAndReplay.cs",
+            "FoxgloveRuntime.RuntimeAndSchema.cs",
+            "FoxgloveRuntime.ReplaySuppression.cs",
+            "FoxgloveRuntime.SchemaRegistration.cs",
+        };
         private static readonly HashSet<string> PythonSectionKeywords = new HashSet<string>(StringComparer.Ordinal)
         {
             "False", "None", "True", "and", "as", "assert", "async", "await", "break",
@@ -554,26 +566,38 @@ namespace Unity.FoxgloveSDK.Tests
             if (!Directory.Exists(dir))
                 throw new DirectoryNotFoundException("FoxgloveRuntime directory was not found.");
 
-            var fileNames = new[]
+            var fileNames = FoxgloveRuntimeSourceFileNames;
+            var expected = new HashSet<string>(fileNames, StringComparer.Ordinal);
+            var actual = Directory.GetFiles(dir, "FoxgloveRuntime*.cs", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            if (!expected.SetEquals(actual))
             {
-                "FoxgloveRuntime.cs",
-                "FoxgloveRuntime.Lifecycle.cs",
-                "FoxgloveRuntime.Publishing.cs",
-                "FoxgloveRuntime.RecordingAndReplay.cs",
-                "FoxgloveRuntime.RuntimeAndSchema.cs",
-                "FoxgloveRuntime.ReplaySuppression.cs",
-                "FoxgloveRuntime.SchemaRegistration.cs",
-            };
+                var missing = expected.Except(actual).OrderBy(name => name, StringComparer.Ordinal);
+                var unexpected = actual.Except(expected).OrderBy(name => name, StringComparer.Ordinal);
+                throw new InvalidDataException(
+                    "FoxgloveRuntime source composition is incomplete or contains unregistered partial files. " +
+                    "Missing: " + string.Join(", ", missing) + "; unexpected: " + string.Join(", ", unexpected));
+            }
+
+            var facade = File.ReadAllText(Path.Combine(dir, fileNames[0]));
+            var trailingGateStart = facade.LastIndexOf(
+                FoxgloveRuntimeTrailingGateMarker,
+                StringComparison.Ordinal);
+            if (trailingGateStart < 0)
+                throw new InvalidDataException("FoxgloveRuntime facade is missing ClientEventGenerationGate.");
+
             var source = new StringBuilder();
-            foreach (var fileName in fileNames)
+            source.Append(facade.Substring(0, trailingGateStart).TrimEnd());
+            for (var i = 1; i < fileNames.Length; i++)
             {
-                var path = Path.Combine(dir, fileName);
-                if (!File.Exists(path))
-                    continue;
+                var path = Path.Combine(dir, fileNames[i]);
                 if (source.Length > 0)
                     source.Append(Environment.NewLine);
                 source.Append(File.ReadAllText(path));
             }
+            source.Append(Environment.NewLine);
+            source.Append(facade.Substring(trailingGateStart).TrimStart());
 
             return source.ToString();
         }

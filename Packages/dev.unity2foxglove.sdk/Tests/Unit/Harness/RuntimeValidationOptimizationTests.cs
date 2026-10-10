@@ -5,12 +5,38 @@
 // Purpose: Phase 140-89/90/91/92/94 runtime validation optimization checks.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
 {
+    [Trait("Phase", "192")]
+    [Trait("Domain", "Harness")]
+    public sealed class FoxgloveRuntimeSourceCompositionTests
+    {
+        [Fact]
+        public void FoxgloveRuntimeCompositionFailsClosedAndPreservesTrailingGateOrder()
+        {
+            var helper = TestSources.ExtractMethod(
+                TestSources.Runtime("PhaseValidationSourceHelpers.cs"),
+                "public static string ReadFoxgloveRuntimeSources()");
+            Assert.Contains(
+                "Directory.GetFiles(dir, \"FoxgloveRuntime*.cs\", SearchOption.TopDirectoryOnly)",
+                helper,
+                StringComparison.Ordinal);
+            Assert.Contains("expected.SetEquals(actual)", helper, StringComparison.Ordinal);
+            Assert.DoesNotContain(".Where(File.Exists)", helper, StringComparison.Ordinal);
+
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var start = source.IndexOf("public void Start(", StringComparison.Ordinal);
+            var gate = source.IndexOf("ClientEventGenerationGate", StringComparison.Ordinal);
+            Assert.True(start >= 0 && gate > start, "ClientEventGenerationGate must remain after runtime methods.");
+        }
+    }
+
     [Trait("Phase", "140-89")]
     [Trait("Domain", "Harness")]
     public sealed class Ros2BridgeSchemaOptimizationTests
@@ -316,6 +342,18 @@ private static void Next() { }
 
     internal static class TestSources
     {
+        private const string FoxgloveRuntimeTrailingGateMarker =
+            "    /// <summary>Shared executable generation predicate for main-thread client events.";
+        private static readonly string[] FoxgloveRuntimeSourceFileNames =
+        {
+            "FoxgloveRuntime.cs",
+            "FoxgloveRuntime.Lifecycle.cs",
+            "FoxgloveRuntime.Publishing.cs",
+            "FoxgloveRuntime.RecordingAndReplay.cs",
+            "FoxgloveRuntime.RuntimeAndSchema.cs",
+            "FoxgloveRuntime.ReplaySuppression.cs",
+            "FoxgloveRuntime.SchemaRegistration.cs",
+        };
         private static readonly string CachedRepoRoot = FindRepoRoot();
 
         public static string Runtime(string fileName)
@@ -349,22 +387,27 @@ private static void Next() { }
                 "Runtime",
                 "Core",
                 "Runtime");
-            var fileNames = new[]
-            {
-                "FoxgloveRuntime.cs",
-                "FoxgloveRuntime.Lifecycle.cs",
-                "FoxgloveRuntime.Publishing.cs",
-                "FoxgloveRuntime.RecordingAndReplay.cs",
-                "FoxgloveRuntime.RuntimeAndSchema.cs",
-                "FoxgloveRuntime.ReplaySuppression.cs",
-                "FoxgloveRuntime.SchemaRegistration.cs",
-            };
-            var paths = fileNames
-                .Select(name => Path.Combine(root, name))
-                .Where(File.Exists)
-                .ToArray();
-            Assert.NotEmpty(paths);
-            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+            var fileNames = FoxgloveRuntimeSourceFileNames;
+            var expected = new HashSet<string>(fileNames, StringComparer.Ordinal);
+            var actual = Directory.GetFiles(root, "FoxgloveRuntime*.cs", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            Assert.True(
+                expected.SetEquals(actual),
+                "FoxgloveRuntime source composition is incomplete or contains unregistered partial files. " +
+                "Missing: " + string.Join(", ", expected.Except(actual).OrderBy(name => name, StringComparer.Ordinal)) +
+                "; unexpected: " + string.Join(", ", actual.Except(expected).OrderBy(name => name, StringComparer.Ordinal)));
+
+            var facade = File.ReadAllText(Path.Combine(root, fileNames[0]));
+            var trailingGateStart = facade.LastIndexOf(
+                FoxgloveRuntimeTrailingGateMarker,
+                StringComparison.Ordinal);
+            Assert.True(trailingGateStart >= 0, "FoxgloveRuntime facade is missing ClientEventGenerationGate.");
+
+            var sources = new[] { facade.Substring(0, trailingGateStart).TrimEnd() }
+                .Concat(fileNames.Skip(1).Select(name => File.ReadAllText(Path.Combine(root, name))))
+                .Concat(new[] { facade.Substring(trailingGateStart).TrimStart() });
+            return string.Join(Environment.NewLine, sources);
         }
 
         private static string McapReplayEngineSources()
