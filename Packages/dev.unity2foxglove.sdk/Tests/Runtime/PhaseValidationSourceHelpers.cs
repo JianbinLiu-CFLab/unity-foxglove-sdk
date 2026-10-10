@@ -452,9 +452,9 @@ namespace Unity.FoxgloveSDK.Tests
             var files = new[] { main }
                 .Concat(Directory.GetFiles(dir, "MediaFoundationH264EncoderSidecar.*.cs")
                     .OrderBy(path => Path.GetFileName(path).Contains(
-                        ".NativeEncoding.",
-                        StringComparison.Ordinal) ? 0 : Path.GetFileName(path).Contains(
                         ".WorkerLifecycle.",
+                        StringComparison.Ordinal) ? 0 : Path.GetFileName(path).Contains(
+                        ".NativeEncoding.",
                         StringComparison.Ordinal) ? 1 : Path.GetFileName(path).Contains(
                         ".ComInterop.",
                         StringComparison.Ordinal) ? 2 : 3)
