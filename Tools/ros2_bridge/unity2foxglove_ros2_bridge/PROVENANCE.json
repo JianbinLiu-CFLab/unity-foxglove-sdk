@@ -53,6 +53,87 @@
     ],
     "canonicalSha256": "de79b8f992261a80b838589ce8660ce6a6a49b824c5e98015d1e63e958b55586"
   },
+  "decomposedSources": [
+    {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
+      "sourceRevision": "4a7bd01fd92df0f99c8639535a5c6116abe07898",
+      "originalSha256": "9cf22c0d0903000816095fa7bd54e35edc6d933156e8be315b4db10601853133",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.AdmissionAndBudget.cs",
+          "sha256": "c142d5fea1849d3fb3337cb9c0fbb7b83cbb8000e0cc44442649fdc161ed27c2",
+          "movedRange": {
+            "startLine": 833,
+            "endLine": 1221
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Cleanup.cs",
+          "sha256": "04daa5997ef9bbef7b77c358061d9fcb00f323c417eb5a317c48f7c4efbd8a08",
+          "movedRange": {
+            "startLine": 2885,
+            "endLine": 3061
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Concurrency.cs",
+          "sha256": "97f0cfb178993cf155cd16fdc0a39d31d1fd82310ecfef81407c103f9718ab51",
+          "movedRange": {
+            "startLine": 1222,
+            "endLine": 1552
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.CountersAndReplay.cs",
+          "sha256": "5ef060fe73fc19a1acdf18d1b206f7c89a59e8657eb1b95b21e90b77eee4a690",
+          "movedRange": {
+            "startLine": 1553,
+            "endLine": 1869
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Identity.cs",
+          "sha256": "749330b99c51ecbf6152cdb55d3acd2b1b54de2bb14084d9b4826c8e061e5e10",
+          "movedRange": {
+            "startLine": 2160,
+            "endLine": 2446
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Lifecycle.cs",
+          "sha256": "51502dd1c951c4980bd3d4df068d5e033cb6e9051829d11b61d63c4b2786b9be",
+          "movedRange": {
+            "startLine": 2447,
+            "endLine": 2884
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Limits.cs",
+          "sha256": "9798b437ae9cd466a9721754409239e0998cbc00d4e71813b141c21687b8f1ea",
+          "movedRange": {
+            "startLine": 1870,
+            "endLine": 2159
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Scenarios.cs",
+          "sha256": "790b5638d7432195b8f94148cedf32c668adb6685e0baa4d9fb2feec4577baec",
+          "movedRange": {
+            "startLine": 381,
+            "endLine": 832
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.TestHelpers.cs",
+          "sha256": "4be69fbf7271ed2fba7aa01dc3c9407002f356d32d5f5ebf7a478f0fa4ea942e",
+          "movedRange": {
+            "startLine": 3062,
+            "endLine": 3530
+          }
+        }
+      ]
+    }
+  ],
   "implementations": [
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/U2R2_PROTOCOL.md",
@@ -104,7 +185,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
-      "sha256": "9cf22c0d0903000816095fa7bd54e35edc6d933156e8be315b4db10601853133",
+      "sha256": "08908a86c4f62609a08fa51b4cfb06cdf8958002215500d5a098726403cd193c",
       "classification": "original",
       "influence": "Original C# behavioral coverage for replay, ordering, queues, limits, and contracts.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
