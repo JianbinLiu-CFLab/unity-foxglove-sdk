@@ -43,11 +43,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static string ReadRequiredRepoText(string relativePath)
         {
+            var normalized = relativePath.Replace('\\', '/');
             if (string.Equals(
-                    relativePath.Replace('\\', '/'),
+                    normalized,
                     "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
                     StringComparison.Ordinal))
                 return ReadMcapReplayEngineSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs",
+                    StringComparison.Ordinal))
+                return ReadMediaFoundationH264EncoderSidecarSources();
 
             return File.ReadAllText(RepoPath(relativePath));
         }
@@ -445,7 +451,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             var files = new[] { main }
                 .Concat(Directory.GetFiles(dir, "MediaFoundationH264EncoderSidecar.*.cs")
-                    .OrderBy(path => path, StringComparer.Ordinal))
+                    .OrderBy(path => Path.GetFileName(path).Contains(
+                        ".NativeEncoding.",
+                        StringComparison.Ordinal) ? 0 : Path.GetFileName(path).Contains(
+                        ".WorkerLifecycle.",
+                        StringComparison.Ordinal) ? 1 : Path.GetFileName(path).Contains(
+                        ".ComInterop.",
+                        StringComparison.Ordinal) ? 2 : 3)
+                    .ThenBy(path => path, StringComparer.Ordinal))
                 .ToArray();
 
             var source = new StringBuilder();

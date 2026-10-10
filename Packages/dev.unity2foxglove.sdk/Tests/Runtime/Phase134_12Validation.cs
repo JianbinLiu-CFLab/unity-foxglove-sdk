@@ -248,7 +248,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (path.EndsWith("FoxgloveCameraPublisher.cs", StringComparison.Ordinal))
                 return ReadCameraPublisherSources(path);
 
-            return File.ReadAllText(path);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(path);
         }
 
         private static string ReadCameraPublisherSources(string cameraPublisherPath)

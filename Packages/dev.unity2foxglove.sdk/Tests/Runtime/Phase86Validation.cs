@@ -234,7 +234,7 @@ namespace Unity.FoxgloveSDK.Tests
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new FileNotFoundException("Required repository file is missing.", path);
-            return File.ReadAllText(path);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
     }
 }

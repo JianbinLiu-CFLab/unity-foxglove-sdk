@@ -326,7 +326,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ContainsAll(string path, string label, params string[] tokens)
         {
-            var source = File.ReadAllText(path);
+            var source = PhaseValidationSourceHelpers.ReadRequiredRepoText(path);
             foreach (var token in tokens)
                 if (!source.Contains(token))
                     throw new Exception("[FAIL] " + label + " missing token: " + token);
