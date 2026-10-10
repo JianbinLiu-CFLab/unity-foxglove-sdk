@@ -433,7 +433,7 @@ class Fixture
             if (SourceCache.TryGetValue(relativePath, out var cached))
                 return cached;
 
-            var text = File.ReadAllText(RepoPath(relativePath));
+            var text = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             SourceCache[relativePath] = text;
             return text;
         }

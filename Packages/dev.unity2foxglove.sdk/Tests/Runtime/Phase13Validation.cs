@@ -1236,7 +1236,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         static string ReadRepoText(string relativePath)
         {
-            return File.ReadAllText(RepoPath(relativePath));
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         static bool TryReadRepoText(string relativePath, out string source)
@@ -1254,7 +1254,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(path))
                 throw new FileNotFoundException("Required validation source is missing.", path);
 
-            source = File.ReadAllText(path);
+            source = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             return true;
         }
 

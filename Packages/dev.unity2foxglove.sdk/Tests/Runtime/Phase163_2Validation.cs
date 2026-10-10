@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Read(string root, string relativePath)
-            => File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static string Slice(string text, string startMarker, string endMarker)
         {

@@ -323,15 +323,48 @@ private static void Next() { }
 
         public static string Text(string relativePath)
         {
+            var normalized = relativePath.Replace('\\', '/');
             if (string.Equals(
-                    relativePath.Replace('\\', '/'),
+                    normalized,
                     "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
                     StringComparison.Ordinal))
                 return McapReplayEngineSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs",
+                    StringComparison.Ordinal))
+                return FoxgloveRuntimeSources();
 
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
             return File.ReadAllText(path);
+        }
+
+        private static string FoxgloveRuntimeSources()
+        {
+            var root = Path.Combine(
+                RepoRoot,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Core",
+                "Runtime");
+            var fileNames = new[]
+            {
+                "FoxgloveRuntime.cs",
+                "FoxgloveRuntime.Lifecycle.cs",
+                "FoxgloveRuntime.Publishing.cs",
+                "FoxgloveRuntime.RecordingAndReplay.cs",
+                "FoxgloveRuntime.RuntimeAndSchema.cs",
+                "FoxgloveRuntime.ReplaySuppression.cs",
+                "FoxgloveRuntime.SchemaRegistration.cs",
+            };
+            var paths = fileNames
+                .Select(name => Path.Combine(root, name))
+                .Where(File.Exists)
+                .ToArray();
+            Assert.NotEmpty(paths);
+            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
         }
 
         private static string McapReplayEngineSources()

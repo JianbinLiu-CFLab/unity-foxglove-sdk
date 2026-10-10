@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/SessionFactory.cs";
             Check(File.Exists(path), "137F-1: SessionFactory.cs exists");
-            var content = File.ReadAllText(path);
+            var content = PhaseValidationSourceHelpers.ReadRequiredRepoText(path);
             Check(content.Contains("internal static class SessionFactory"),
                 "137F-2: SessionFactory is internal static class");
             Check(content.Contains("FoxgloveSession Create("),
@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayOrchestrator.cs";
             Check(File.Exists(path), "137F-4: ReplayOrchestrator.cs exists");
-            var content = File.ReadAllText(path);
+            var content = PhaseValidationSourceHelpers.ReadRequiredRepoText(path);
             Check(content.Contains("internal class ReplayOrchestrator"),
                 "137F-5: ReplayOrchestrator is internal class");
             Check(content.Contains("void Attach("), "137F-6: Attach method exists");
@@ -58,7 +58,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs";
             Check(File.Exists(path), "137F-8: TickCoordinator.cs exists");
-            var content = File.ReadAllText(path);
+            var content = PhaseValidationSourceHelpers.ReadRequiredRepoText(path);
             Check(content.Contains("internal class TickCoordinator"),
                 "137F-9: TickCoordinator is internal class");
             Check(content.Contains("void Tick("), "137F-10: Tick method exists");
@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyFoxgloveRuntimeDelegates()
         {
             var path = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs";
-            var content = File.ReadAllText(path);
+            var content = PhaseValidationSourceHelpers.ReadRequiredRepoText(path);
             Check(content.Contains("_replayOrchestrator"), "137F-11: FoxgloveRuntime uses ReplayOrchestrator");
             Check(content.Contains("_tickCoordinator"), "137F-12: FoxgloveRuntime uses TickCoordinator");
             Check(content.Contains("SessionFactory.Create("), "137F-13: Start() delegates to SessionFactory");
@@ -75,11 +75,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyNoCircularDependency()
         {
-            var factory = File.ReadAllText(
+            var factory = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/SessionFactory.cs");
-            var orchestrator = File.ReadAllText(
+            var orchestrator = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayOrchestrator.cs");
-            var coordinator = File.ReadAllText(
+            var coordinator = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
 
             Check(!factory.Contains("ReplayOrchestrator") && !factory.Contains("TickCoordinator"),
@@ -122,7 +122,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var orchestratorPath =
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayOrchestrator.cs";
-            var content = File.ReadAllText(orchestratorPath);
+            var content = PhaseValidationSourceHelpers.ReadRequiredRepoText(orchestratorPath);
 
             // Verify field writes happen before event subscriptions
             var forwardsIndex = content.IndexOf("_replayForwarder = replayForwarder;", StringComparison.Ordinal);
