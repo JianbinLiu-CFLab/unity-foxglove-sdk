@@ -350,6 +350,8 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyMediaFoundationGuidTable(sidecarType);
             CheckOrdered(source, "SetOutputType", "SetInputType",
                 "82C-16: MediaFoundation sidecar configures output type before input type");
+            CheckOrdered(source, "EncoderWorkerMain()", "InitializeMediaFoundation()",
+                "82C-16A: MediaFoundation worker entrypoint precedes native initialization");
             Check(source.Contains("ConvertRgb24ToNv12"),
                 "82C-17: MediaFoundation sidecar converts RGB24 input to NV12");
             Check(source.Contains("ProcessInput") && source.Contains("ProcessOutput"),
