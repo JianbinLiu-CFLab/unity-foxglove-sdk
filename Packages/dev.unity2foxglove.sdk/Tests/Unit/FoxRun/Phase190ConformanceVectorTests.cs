@@ -116,7 +116,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             var path = FindRepoFile("Packages", "dev.unity2foxglove.ros2bridge", "Runtime", "Protocol", "U2R2ContractAuthority.cs");
             Assert.True(File.Exists(path), "ROS2 protocol authority source is missing.");
-            var source = File.ReadAllText(path);
+            var source = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ContractAuthority.cs");
             Assert.Contains("U2R2ContractAuthority", source, StringComparison.Ordinal);
             Assert.Contains("ParseContract", source, StringComparison.Ordinal);
         }
