@@ -266,7 +266,7 @@ def _validate_canonical_ledger_schema(
         "implementations",
     }
     observed_top_level_keys = set(payload)
-    if not observed_top_level_keys.issubset(top_level_keys | {"decomposedSources"}):
+    if observed_top_level_keys - {"decomposedSources"} != top_level_keys:
         errors.append(
             "canonical ledger top-level schema must contain exactly "
             + ", ".join(sorted(top_level_keys | {"decomposedSources"}))
@@ -370,6 +370,8 @@ def _validate_canonical_ledger_schema(
 
     original_paths: list[str] = []
     part_paths: list[str] = []
+    original_identities: dict[str, str] = {}
+    part_identities: dict[str, str] = {}
     source_map_keys = {
         "originalPath",
         "sourceRevision",
@@ -396,6 +398,16 @@ def _validate_canonical_ledger_schema(
             )
         else:
             original_paths.append(original_path)
+            identity = unicodedata.normalize("NFC", original_path).casefold()
+            previous = original_identities.get(identity)
+            if previous is not None:
+                errors.append(
+                    "canonical ledger decomposedSources originalPath values "
+                    f"have a case-insensitive duplicate: {previous!r} and "
+                    f"{original_path!r}"
+                )
+            else:
+                original_identities[identity] = original_path
         if (
             not isinstance(source_revision, str)
             or re.fullmatch(r"[0-9a-f]{40}", source_revision) is None
@@ -415,6 +427,7 @@ def _validate_canonical_ledger_schema(
                 f"decomposedSources[{index}].parts must be a non-empty array"
             )
             continue
+        ranges: list[tuple[int, int, int]] = []
         for part_index, part in enumerate(parts):
             if not isinstance(part, Mapping) or set(part) != part_keys:
                 errors.append(
@@ -432,6 +445,15 @@ def _validate_canonical_ledger_schema(
                 )
             else:
                 part_paths.append(path)
+                identity = unicodedata.normalize("NFC", path).casefold()
+                previous = part_identities.get(identity)
+                if previous is not None:
+                    errors.append(
+                        "canonical ledger decomposedSources part paths have a "
+                        f"case-insensitive duplicate: {previous!r} and {path!r}"
+                    )
+                else:
+                    part_identities[identity] = path
             if not isinstance(digest, str) or _SHA256_PATTERN.fullmatch(digest) is None:
                 errors.append(
                     f"decomposedSources[{index}].parts[{part_index}].sha256 must be lowercase hex"
@@ -449,6 +471,21 @@ def _validate_canonical_ledger_schema(
                 errors.append(
                     f"decomposedSources[{index}].parts[{part_index}].movedRange must be a positive inclusive range"
                 )
+            else:
+                ranges.append(
+                    (
+                        moved_range["startLine"],
+                        moved_range["endLine"],
+                        part_index,
+                    )
+                )
+        ranges.sort()
+        for previous, current in zip(ranges, ranges[1:]):
+            if current[0] <= previous[1]:
+                errors.append(
+                    "canonical ledger decomposedSources movedRange values may "
+                    f"not overlap: parts {previous[2]} and {current[2]}"
+                )
     if original_paths != sorted(original_paths):
         errors.append("canonical ledger decomposedSources must be sorted by originalPath")
     if part_paths != sorted(part_paths):
@@ -459,6 +496,11 @@ def _validate_canonical_ledger_schema(
         errors.append("canonical ledger decomposedSources part paths must be unique")
     if set(original_paths) & set(part_paths):
         errors.append("canonical ledger decomposedSources cannot map an original onto itself")
+    if set(original_identities) & set(part_identities):
+        errors.append(
+            "canonical ledger decomposedSources cannot map case-insensitive "
+            "aliases of an original onto a part"
+        )
     return errors
 
 
