@@ -447,7 +447,7 @@ namespace Unity.FoxgloveSDK.Tests
             var path = RepoPath(relativePath);
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing required Phase115B file: " + relativePath, path);
-            return File.ReadAllText(path, Encoding.UTF8);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private static string RepoPath(string relativePath)

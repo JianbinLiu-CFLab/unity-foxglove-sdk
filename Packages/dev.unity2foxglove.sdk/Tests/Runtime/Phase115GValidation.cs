@@ -293,7 +293,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static bool ContainsTopicWithTolerance(FoxRunGenerationModel model, string topic, float expected)
         {

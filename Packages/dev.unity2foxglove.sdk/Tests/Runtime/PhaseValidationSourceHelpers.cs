@@ -55,6 +55,12 @@ namespace Unity.FoxgloveSDK.Tests
                     StringComparison.Ordinal))
                 return ReadMediaFoundationH264EncoderSidecarSources();
 
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs",
+                    StringComparison.Ordinal))
+                return ReadFoxgloveRuntimeSources();
+
             return File.ReadAllText(RepoPath(relativePath));
         }
 
@@ -538,7 +544,6 @@ namespace Unity.FoxgloveSDK.Tests
         public static string ReadFoxgloveRuntimeSources()
         {
             var root = FindRequiredRepoRoot();
-
             var dir = Path.Combine(
                 root,
                 "Packages",
@@ -549,16 +554,25 @@ namespace Unity.FoxgloveSDK.Tests
             if (!Directory.Exists(dir))
                 throw new DirectoryNotFoundException("FoxgloveRuntime directory was not found.");
 
-            var files = Directory.GetFiles(dir, "FoxgloveRuntime*.cs")
-                .OrderBy(path => path, StringComparer.Ordinal)
-                .ToArray();
-
-            var source = new StringBuilder();
-            foreach (var file in files)
+            var fileNames = new[]
             {
+                "FoxgloveRuntime.cs",
+                "FoxgloveRuntime.Lifecycle.cs",
+                "FoxgloveRuntime.Publishing.cs",
+                "FoxgloveRuntime.RecordingAndReplay.cs",
+                "FoxgloveRuntime.RuntimeAndSchema.cs",
+                "FoxgloveRuntime.ReplaySuppression.cs",
+                "FoxgloveRuntime.SchemaRegistration.cs",
+            };
+            var source = new StringBuilder();
+            foreach (var fileName in fileNames)
+            {
+                var path = Path.Combine(dir, fileName);
+                if (!File.Exists(path))
+                    continue;
                 if (source.Length > 0)
                     source.Append(Environment.NewLine);
-                source.Append(File.ReadAllText(file));
+                source.Append(File.ReadAllText(path));
             }
 
             return source.ToString();

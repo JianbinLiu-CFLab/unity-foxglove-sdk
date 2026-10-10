@@ -228,7 +228,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(path))
                 throw new InvalidOperationException("[FAIL] 171-file: required repository file not found: " + relativePath);
 
-            return File.ReadAllText(path);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private static string RepoPath(string relativePath)
