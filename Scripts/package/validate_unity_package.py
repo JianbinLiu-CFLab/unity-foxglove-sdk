@@ -64,6 +64,7 @@ CONSUMER_LOCAL_DEPENDENCY_PREFIXES = (
 )
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
+SDK_DECOMPOSED_TESTS = PACKAGE / "Tests" / "Unit" / "Decomposed"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 UNITY_DEMO_SCRIPTS = ROOT / "Unity2Foxglove" / "Assets" / "Scripts"
 UNITY_DEMO_ASSETS = ROOT / "Unity2Foxglove" / "Assets"
@@ -176,6 +177,7 @@ THIRD_PARTY_NOTICE_REQUIREMENTS = (
 
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 META_GUID_RE = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
+META_FOLDER_ASSET_RE = re.compile(r"(?mi)^folderAsset:\s*yes\s*$")
 VALIDATION_PHASE_FILENAME_RE = re.compile(r"^Phase(?P<phase>\d+)(?P<trailing>[A-Za-z0-9_-]*)Validation\.cs$")
 VALIDATION_PHASE_FILENAME_INDEX_RE = re.compile(r"^[_-](?P<index>\d+)")
 LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE = 164
@@ -735,6 +737,61 @@ def check_sdk_script_meta(results: list[CheckResult], sdk_files: list[Path] | No
     )
 
 
+def check_sdk_decomposed_folder_meta(
+    results: list[CheckResult],
+    root: Path | None = None,
+) -> None:
+    """Ensure decomposed SDK test folders have stable Unity folder identities."""
+    decomposed_root = root if root is not None else SDK_DECOMPOSED_TESTS
+    folders = [decomposed_root] if decomposed_root.is_dir() else []
+    if folders:
+        folders.extend(
+            sorted(
+                (path for path in decomposed_root.rglob("*") if path.is_dir()),
+                key=rel,
+            )
+        )
+
+    missing: list[str] = []
+    malformed: list[str] = []
+    duplicate: list[str] = []
+    guids: dict[str, str] = {}
+    for folder in folders:
+        meta = Path(str(folder) + ".meta")
+        if not meta.is_file():
+            missing.append(rel(meta))
+            continue
+        try:
+            meta_text = meta.read_text(encoding="utf-8")
+        except OSError:
+            malformed.append(rel(meta))
+            continue
+        guid_match = META_GUID_RE.search(meta_text)
+        if guid_match is None or META_FOLDER_ASSET_RE.search(meta_text) is None:
+            malformed.append(rel(meta))
+            continue
+        guid = guid_match.group(1).lower()
+        previous = guids.get(guid)
+        if previous is not None:
+            duplicate.append(f"{rel(meta)} duplicates {previous}")
+        else:
+            guids[guid] = rel(meta)
+
+    offenders = (
+        missing[:MAX_REPORTED_MISSING_META]
+        + malformed[:MAX_REPORTED_MISSING_META]
+        + duplicate[:MAX_REPORTED_MISSING_META]
+    )
+    add(
+        results,
+        "SDK decomposed test folder .meta files",
+        not offenders,
+        "; ".join(offenders)
+        if offenders
+        else f"{len(guids)} decomposed test folders have valid unique folder metas",
+    )
+
+
 def check_sample_boundaries(results: list[CheckResult]) -> None:
     """Verify Basic and FullDemo sample boundaries remain intentional."""
     basic = SAMPLES / "BasicVisualization"
@@ -1037,6 +1094,7 @@ def main() -> int:
     bridge_files = iter_bridge_asset_files()
     check_sample_meta(results, samples_files, bridge_files)
     check_sdk_script_meta(results, package_files)
+    check_sdk_decomposed_folder_meta(results)
     check_sample_boundaries(results)
     check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)
