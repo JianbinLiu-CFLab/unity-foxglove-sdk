@@ -200,8 +200,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string Read(string relativePath)
         {
-            var root = Phase16Validation.FindRepoRoot();
-            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private static int Count(string source, string needle)

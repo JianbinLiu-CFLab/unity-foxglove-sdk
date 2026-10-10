@@ -249,12 +249,12 @@ def _run_package_matrix(
     )
     report = repository / "build" / "phase186" / "package-matrix" / "report.json"
     if exit_code != 0 or not report.is_file():
-        raise CertificationFailure("four-composition package matrix did not pass")
+        raise CertificationFailure("five-composition package matrix did not pass")
     try:
         value = json.loads(report.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CertificationFailure("package matrix report is unavailable") from exc
-    expected = ["sdk-only", "sdk-r2fu", "sdk-bridge", "all-providers"]
+    expected = ["sdk-only", "sdk-r2fu", "sdk-bridge", "all-providers", "remote-gateway"]
     gates = value.get("compileGates") if isinstance(value, Mapping) else None
     if (
         value.get("verdict") != "PASS"

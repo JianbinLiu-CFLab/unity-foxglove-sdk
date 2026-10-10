@@ -13,7 +13,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void ReplayEngineDocumentsOwnedTickBufferAndReaderOwnership()
         {
-            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var source = McapReplaySources();
             var reader = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs");
 
             Assert.Contains("The returned list is owned and reused by this engine", source, StringComparison.Ordinal);
@@ -31,7 +31,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void ReplayHistoryUsesSortThenTrimInsteadOfPerMessageInsert()
         {
-            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var source = McapReplaySources();
             var history = SourceMethod(source, "public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result, int maxMessages)");
 
             Assert.Contains("result.Add(new McapMessage", history, StringComparison.Ordinal);
@@ -39,6 +39,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("TrimHistoryToLatestMessages(result, maxMessages)", history, StringComparison.Ordinal);
             Assert.DoesNotContain("result.Insert(", history, StringComparison.Ordinal);
             Assert.DoesNotContain("FindHistoryInsertIndex", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ReplaySourceCompositionPreservesOriginalMemberOrder()
+        {
+            var source = McapReplaySources();
+            var markers = new[]
+            {
+                "public void Load(string filePath)",
+                "public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result)",
+                "private bool TryReadIndexedBoundedHistory(",
+                "private sealed class HistoryCandidate",
+                "private void SortPending()",
+                "private List<McapMessage> FinishTickResult(List<McapMessage> result)",
+            };
+
+            var prior = -1;
+            foreach (var marker in markers)
+            {
+                var current = source.IndexOf(marker, StringComparison.Ordinal);
+                Assert.True(current > prior, "Replay source order changed before: " + marker);
+                prior = current;
+            }
         }
 
         private static string SourceMethod(string source, string signature)
@@ -64,5 +87,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             throw new InvalidOperationException("Unterminated method: " + signature);
         }
+
+        private static string McapReplaySources()
+            => TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
     }
 }

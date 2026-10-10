@@ -323,9 +323,62 @@ private static void Next() { }
 
         public static string Text(string relativePath)
         {
+            if (string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
+                    StringComparison.Ordinal))
+                return McapReplayEngineSources();
+
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
             return File.ReadAllText(path);
+        }
+
+        private static string McapReplayEngineSources()
+        {
+            var paths = new[]
+            {
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/Load.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/History.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/TryReadIndexedBoundedHistory.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/HistoryCandidate.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/SortPending.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/FinishTickResult.cs"
+            };
+
+            var facade = TextWithoutComposition(paths[0]);
+            var fragments = paths.Skip(1).Select(path => TextWithoutComposition(path));
+            return string.Join(
+                Environment.NewLine + Environment.NewLine,
+                new[] { facade }.Concat(fragments))
+                + Environment.NewLine
+                + "    }"
+                + Environment.NewLine
+                + "}";
+        }
+
+        private static string TextWithoutComposition(string relativePath)
+        {
+            var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
+            var lines = File.ReadAllLines(path);
+            if (relativePath.EndsWith("McapReplayEngine.cs", StringComparison.Ordinal))
+            {
+                Assert.True(lines.Length >= 3, "MCAP replay facade is too short: " + relativePath);
+                return string.Join(Environment.NewLine, lines.Take(lines.Length - 2));
+            }
+
+            var classLine = Array.FindIndex(
+                lines,
+                line => line.Contains("partial class McapReplayEngine", StringComparison.Ordinal));
+            Assert.True(classLine >= 0, "MCAP replay fragment class is missing: " + relativePath);
+            var openBrace = Array.FindIndex(
+                lines,
+                classLine,
+                line => line.Trim() == "{");
+            Assert.True(openBrace >= 0 && lines.Length - openBrace >= 4, "MCAP replay fragment is too short: " + relativePath);
+            return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
         }
 
         public static string SourceGeneratorSources()

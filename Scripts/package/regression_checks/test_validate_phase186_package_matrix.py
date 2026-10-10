@@ -54,6 +54,7 @@ class Phase186PackageMatrixTests(unittest.TestCase):
             subprocess.CompletedProcess([], 7, stdout="r2fu failed"),
             subprocess.CompletedProcess([], 0, stdout="bridge ok"),
             subprocess.CompletedProcess([], 0, stdout="all ok"),
+            subprocess.CompletedProcess([], 0, stdout="remote gateway ok"),
         ]
         with tempfile.TemporaryDirectory() as temp:
             report = Path(temp) / "report.json"
@@ -70,8 +71,8 @@ class Phase186PackageMatrixTests(unittest.TestCase):
             payload = json.loads(report.read_text(encoding="utf-8"))
 
         self.assertEqual("FAIL", payload["verdict"])
-        self.assertEqual(4, len(payload["compileGates"]))
-        self.assertEqual([0, 7, 0, 0], [row["exitCode"] for row in payload["compileGates"]])
+        self.assertEqual(5, len(payload["compileGates"]))
+        self.assertEqual([0, 7, 0, 0, 0], [row["exitCode"] for row in payload["compileGates"]])
 
     def test_guid_asmdef_reference_resolves_to_forbidden_assembly(self) -> None:
         """GUID-form references must enforce the same package boundary as names."""
