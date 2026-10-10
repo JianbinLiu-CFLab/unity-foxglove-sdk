@@ -1,0 +1,331 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Tests/Unit/Ros2ForUnity
+// Purpose: Prove the Phase181 custom typesupport manifest transaction is atomic and fail-closed.
+
+using System;
+using System.IO;
+using System.Linq;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
+using System.Security.Cryptography;
+using System.Text;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Unity2Foxglove.Ros2ForUnity.Editor;
+using Xunit;
+
+namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
+{
+
+
+public sealed partial class Ros2ForUnityCustomTypesupportSelectionTransactionTests
+    {
+        private sealed class SelectionFixture : IDisposable
+        {
+            private readonly string _root;
+
+            public SelectionFixture()
+            {
+                _root = Path.Combine(
+                    RepositoryBuildTestRoot(),
+                    "u2f-phase181-" + Guid.NewGuid().ToString("N"));
+                ProjectDirectory = Path.Combine(_root, "Unity2Foxglove");
+                PackagesDirectory = Path.Combine(_root, "Packages");
+                Directory.CreateDirectory(Path.Combine(ProjectDirectory, "Packages"));
+                Directory.CreateDirectory(PackagesDirectory);
+
+                WriteStaticSourceLock();
+                WriteBaseRuntime("humble");
+                WriteBaseRuntime("jazzy");
+            }
+
+            public string ProjectDirectory { get; }
+            public string PackagesDirectory { get; }
+            public string ScratchDirectory => _root;
+            public string ManifestPath => Path.Combine(ProjectDirectory, "Packages", "manifest.json");
+            public string PackagesLockPath => Path.Combine(ProjectDirectory, "Packages", "packages-lock.json");
+            public string HumbleRuntimePackage => "dev.unity2foxglove.ros2forunity.runtime.humble.win64";
+            public string JazzyRuntimePackage => "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
+            public string StaticInterfacePackage => "dev.unity2foxglove.foxrun.ros2.interfaces";
+            private string StaticRosPackageName { get; set; } = "unity2foxglove_foxrun_interfaces_v1";
+            private int StaticInterfaceRevision { get; set; } = 1;
+
+            public void SetStaticSourceIdentity(string rosPackageName, int interfaceRevision)
+            {
+                StaticRosPackageName = rosPackageName;
+                StaticInterfaceRevision = interfaceRevision;
+                WriteStaticSourceLock();
+            }
+
+            public string WriteAddOn(string suffix, bool valid, string baseRuntime = null)
+            {
+                var packageName = "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport." + suffix + ".win64";
+                var runtime = baseRuntime ?? HumbleRuntimePackage;
+                var directory = Path.Combine(PackagesDirectory, packageName);
+                Directory.CreateDirectory(Path.Combine(directory, "RuntimeSupport"));
+                Directory.CreateDirectory(Path.Combine(directory, "Runtime", "Ros2ForUnity", "Plugins", "Windows", "x86_64"));
+                var sourceDigest = StaticInterfaceDigest();
+                var runtimeManifest = ReadJson(Path.Combine(PackagesDirectory, runtime, "RuntimeSupport", "runtime-manifest.json"));
+                var nativePath = "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/custom.dll";
+                var nativeFile = Path.Combine(directory, nativePath.Replace('/', Path.DirectorySeparatorChar));
+                File.WriteAllText(nativeFile, "native");
+                File.WriteAllText(
+                    Path.Combine(directory, "package.json"),
+                    new JObject
+                    {
+                        ["name"] = packageName,
+                        ["unity2foxgloveFoxRunCustomTypesupportAddOn"] = valid,
+                        ["dependencies"] = new JObject
+                        {
+                            ["dev.unity2foxglove.ros2forunity"] = "0.1.0-preview.1",
+                            [runtime] = "0.1.0-preview.1"
+                        }
+                    }.ToString(Formatting.Indented));
+                var manifest = new JObject
+                {
+                    ["schemaVersion"] = 1,
+                    ["source"] = new JObject
+                    {
+                        ["upmPackageId"] = "dev.unity2foxglove.foxrun.ros2.interfaces",
+                        ["rosPackageName"] = StaticRosPackageName,
+                        ["interfaceRevision"] = StaticInterfaceRevision,
+                        ["interfaceDigest"] = sourceDigest,
+                        ["generatorSchemaVersion"] = 1
+                    },
+                    ["distro"] = runtime == HumbleRuntimePackage ? "humble" : "jazzy",
+                    ["baseRuntime"] = new JObject
+                    {
+                        ["packageId"] = runtime,
+                        ["runtimeManifestVersion"] = 1,
+                        ["runtimeManifestSha256"] = NormalizedJsonSha256(runtimeManifest)
+                    },
+                    ["platform"] = "win64",
+                    ["architecture"] = "x86_64",
+                    ["supportedRmwImplementations"] = new JArray("rmw_fastrtps_cpp"),
+                    ["managed"] = new JObject
+                    {
+                        ["ros2Message"] = new JObject
+                        {
+                            ["assemblyName"] = "ros2cs_common",
+                            ["version"] = "0.0.0.0",
+                            ["publicKeyToken"] = "",
+                            ["mvid"] = Ros2csMvid(runtime),
+                            ["sha256"] = FileSha256(Path.Combine(PackagesDirectory, runtime, "Runtime", "Ros2ForUnity", "Plugins", "ros2cs_common.dll"))
+                        }
+                    },
+                    ["nativeLibraries"] = new JArray
+                    {
+                        new JObject
+                        {
+                            ["path"] = nativePath,
+                            ["sha256"] = FileSha256(nativeFile),
+                            ["classification"] = "direct"
+                        }
+                    },
+                    ["rmwClosures"] = new JObject
+                    {
+                        ["rmw_fastrtps_cpp"] = new JObject
+                        {
+                            ["baseRuntimeLibraries"] = new JArray("rmw_fastrtps_cpp.dll"),
+                            ["addOnLibraries"] = new JArray(nativePath)
+                        }
+                    }
+                };
+                File.WriteAllText(
+                    Path.Combine(directory, "RuntimeSupport", "typesupport-manifest.json"),
+                    manifest.ToString(Formatting.Indented));
+                File.WriteAllText(
+                    Path.Combine(directory, "RuntimeSupport", "typesupport-inventory.json"),
+                    new JObject
+                    {
+                        ["schemaVersion"] = 1,
+                        ["entries"] = new JArray
+                        {
+                            new JObject
+                            {
+                                ["path"] = nativePath,
+                                ["byteLength"] = new FileInfo(nativeFile).Length,
+                                ["sha256"] = FileSha256(nativeFile),
+                                ["role"] = "native",
+                                ["classification"] = "direct"
+                            }
+                        }
+                    }.ToString(Formatting.Indented));
+                return packageName;
+            }
+
+            public FileStream OpenRos2csCommonWithUnityLikeSharing(string runtime)
+            {
+                var assemblyPath = Path.Combine(
+                    PackagesDirectory,
+                    runtime,
+                    "Runtime",
+                    "Ros2ForUnity",
+                    "Plugins",
+                    "ros2cs_common.dll");
+                return new FileStream(assemblyPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+            }
+
+            public void ReplaceRos2csMvid(string packageName, string mvid)
+            {
+                var path = Path.Combine(
+                    PackagesDirectory,
+                    packageName,
+                    "RuntimeSupport",
+                    "typesupport-manifest.json");
+                var manifest = ReadJson(path);
+                ((JObject)manifest["managed"]!["ros2Message"]!)["mvid"] = mvid;
+                File.WriteAllText(path, manifest.ToString(Formatting.Indented));
+            }
+
+            public void WriteManifest(params string[] packageNames)
+            {
+                var dependencies = new JObject { ["dev.unity2foxglove.sdk"] = "file:../../Packages/dev.unity2foxglove.sdk" };
+                foreach (var packageName in packageNames)
+                    dependencies[packageName] = "file:../../Packages/" + packageName;
+                File.WriteAllText(ManifestPath, new JObject { ["dependencies"] = dependencies }.ToString(Formatting.Indented) + "\n");
+            }
+
+            public void WriteEmptyManifest()
+            {
+                File.WriteAllText(
+                    ManifestPath,
+                    new JObject { ["dependencies"] = new JObject() }.ToString(Formatting.Indented) + "\n");
+            }
+
+            public void WritePackagesLock(string text)
+            {
+                File.WriteAllText(PackagesLockPath, text);
+            }
+
+            public string[] ManifestDependencyNames()
+            {
+                var dependencies = ReadJson(ManifestPath)["dependencies"] as JObject;
+                return dependencies.Properties()
+                    .Select(property => property.Name)
+                    .Where(name => name.StartsWith("dev.unity2foxglove.ros2forunity.runtime.", StringComparison.Ordinal)
+                                   || name.StartsWith("dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.", StringComparison.Ordinal)
+                                   || string.Equals(name, StaticInterfacePackage, StringComparison.Ordinal))
+                    .OrderBy(name => name, StringComparer.Ordinal)
+                    .ToArray();
+            }
+
+            public void Dispose()
+            {
+                if (Directory.Exists(_root))
+                    Directory.Delete(_root, recursive: true);
+            }
+
+            private void WriteStaticSourceLock()
+            {
+                var support = Path.Combine(PackagesDirectory, "dev.unity2foxglove.foxrun.ros2.interfaces", "RuntimeSupport");
+                Directory.CreateDirectory(support);
+                File.WriteAllText(
+                    Path.Combine(support, "foxrun-ros2-interface-lock.json"),
+                    new JObject
+                    {
+                        ["unityPackageId"] = "dev.unity2foxglove.foxrun.ros2.interfaces",
+                        ["rosPackageName"] = StaticRosPackageName,
+                        ["interfaceRevision"] = StaticInterfaceRevision,
+                        ["interfaceDigest"] = StaticInterfaceDigest()
+                    }.ToString(Formatting.Indented));
+            }
+
+            private void WriteBaseRuntime(string distro)
+            {
+                var packageName = "dev.unity2foxglove.ros2forunity.runtime." + distro + ".win64";
+                var support = Path.Combine(PackagesDirectory, packageName, "RuntimeSupport");
+                var native = Path.Combine(PackagesDirectory, packageName, "Runtime", "Ros2ForUnity", "Plugins", "Windows", "x86_64");
+                var managed = Path.Combine(PackagesDirectory, packageName, "Runtime", "Ros2ForUnity", "Plugins");
+                Directory.CreateDirectory(support);
+                Directory.CreateDirectory(native);
+                Directory.CreateDirectory(managed);
+                File.Copy(
+                    typeof(SelectionFixture).Assembly.Location,
+                    Path.Combine(managed, "ros2cs_common.dll"),
+                    overwrite: true);
+                File.WriteAllText(Path.Combine(native, "rmw_fastrtps_cpp.dll"), "rmw fixture");
+                File.WriteAllText(
+                    Path.Combine(support, "runtime-manifest.json"),
+                    new JObject
+                    {
+                        ["schemaVersion"] = 1,
+                        ["packageName"] = packageName,
+                        ["packageVersion"] = "0.1.0-preview.1",
+                        ["rosDistro"] = distro,
+                        ["platform"] = "win64",
+                        ["architecture"] = "x86_64"
+                    }.ToString(Formatting.Indented));
+            }
+
+            private static JObject ReadJson(string path)
+                => JObject.Parse(File.ReadAllText(path));
+
+            private static string StaticInterfaceDigest()
+                => new string('a', 64);
+
+            private static string FileSha256(string path)
+            {
+                using var sha = SHA256.Create();
+                return BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(path))).Replace("-", string.Empty).ToLowerInvariant();
+            }
+
+            private static string NormalizedJsonSha256(JToken token)
+            {
+                using var sha = SHA256.Create();
+                return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(CanonicalJson(token))))
+                    .Replace("-", string.Empty)
+                    .ToLowerInvariant();
+            }
+
+            private string Ros2csMvid(string runtime)
+            {
+                var assemblyPath = Path.Combine(
+                    PackagesDirectory,
+                    runtime,
+                    "Runtime",
+                    "Ros2ForUnity",
+                    "Plugins",
+                    "ros2cs_common.dll");
+                using var stream = File.OpenRead(assemblyPath);
+                using var reader = new PEReader(stream);
+                var metadata = reader.GetMetadataReader();
+                return metadata.GetGuid(metadata.GetModuleDefinition().Mvid).ToString("D");
+            }
+
+            private static string CanonicalJson(JToken token)
+            {
+                if (token is JObject obj)
+                {
+                    return "{" + string.Join(",", obj.Properties()
+                        .OrderBy(property => property.Name, StringComparer.Ordinal)
+                        .Select(property => CanonicalJson(new JValue(property.Name)) + ":" + CanonicalJson(property.Value))) + "}";
+                }
+
+                if (token is JArray array)
+                    return "[" + string.Join(",", array.Select(CanonicalJson)) + "]";
+
+                return token.ToString(Formatting.None);
+            }
+        }
+
+        private static string RepositoryBuildTestRoot()
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "README.md"))
+                    && Directory.Exists(Path.Combine(directory.FullName, "Packages")))
+                {
+                    return Path.Combine(directory.FullName, "build", "Tests", "Phase181");
+                }
+
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate repository root.");
+        }
+    }
+}

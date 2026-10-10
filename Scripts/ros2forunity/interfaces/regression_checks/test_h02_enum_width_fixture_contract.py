@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 ROOT = Path(__file__).resolve().parents[4]
-SRC = ROOT / 'Packages/dev.unity2foxglove.sdk/Tests/Unit/Ros2ForUnity/FoxRunRos2CustomMapperGenerationTests.cs'
+SRC = ROOT / 'Packages/dev.unity2foxglove.sdk/Tests/Unit/Decomposed/Ros2ForUnity/FoxRunRos2CustomMapperGenerationTests/CreateCustomMember.cs'
 
 class H02EnumWidthTests(unittest.TestCase):
     """R4.1 regression contract."""
