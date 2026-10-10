@@ -265,10 +265,11 @@ def _validate_canonical_ledger_schema(
         "v1Compatibility",
         "implementations",
     }
-    if set(payload) != top_level_keys:
+    observed_top_level_keys = set(payload)
+    if not observed_top_level_keys.issubset(top_level_keys | {"decomposedSources"}):
         errors.append(
             "canonical ledger top-level schema must contain exactly "
-            + ", ".join(sorted(top_level_keys))
+            + ", ".join(sorted(top_level_keys | {"decomposedSources"}))
         )
 
     reference = payload.get("reference")
@@ -361,6 +362,103 @@ def _validate_canonical_ledger_schema(
         errors.append(
             "canonical ledger implementations must be sorted by ordinal path"
         )
+
+    decomposed_sources = payload.get("decomposedSources", [])
+    if not isinstance(decomposed_sources, list):
+        errors.append("canonical ledger decomposedSources schema must be an array")
+        return errors
+
+    original_paths: list[str] = []
+    part_paths: list[str] = []
+    source_map_keys = {
+        "originalPath",
+        "sourceRevision",
+        "originalSha256",
+        "parts",
+    }
+    part_keys = {"path", "sha256", "movedRange"}
+    range_keys = {"startLine", "endLine"}
+    for index, record in enumerate(decomposed_sources):
+        if not isinstance(record, Mapping) or set(record) != source_map_keys:
+            errors.append(
+                "canonical ledger decomposedSources schema mismatch at "
+                f"index {index}: expected exactly "
+                + ", ".join(sorted(source_map_keys))
+            )
+            continue
+        original_path = record.get("originalPath")
+        source_revision = record.get("sourceRevision")
+        original_sha256 = record.get("originalSha256")
+        parts = record.get("parts")
+        if not isinstance(original_path, str) or not original_path:
+            errors.append(
+                f"decomposedSources[{index}].originalPath must be a non-empty string"
+            )
+        else:
+            original_paths.append(original_path)
+        if (
+            not isinstance(source_revision, str)
+            or re.fullmatch(r"[0-9a-f]{40}", source_revision) is None
+        ):
+            errors.append(
+                f"decomposedSources[{index}].sourceRevision must be a full lowercase Git SHA"
+            )
+        if (
+            not isinstance(original_sha256, str)
+            or _SHA256_PATTERN.fullmatch(original_sha256) is None
+        ):
+            errors.append(
+                f"decomposedSources[{index}].originalSha256 must be lowercase hex"
+            )
+        if not isinstance(parts, list) or not parts:
+            errors.append(
+                f"decomposedSources[{index}].parts must be a non-empty array"
+            )
+            continue
+        for part_index, part in enumerate(parts):
+            if not isinstance(part, Mapping) or set(part) != part_keys:
+                errors.append(
+                    "canonical ledger decomposedSources part schema mismatch at "
+                    f"{index}/{part_index}: expected exactly "
+                    + ", ".join(sorted(part_keys))
+                )
+                continue
+            path = part.get("path")
+            digest = part.get("sha256")
+            moved_range = part.get("movedRange")
+            if not isinstance(path, str) or not path:
+                errors.append(
+                    f"decomposedSources[{index}].parts[{part_index}].path must be a non-empty string"
+                )
+            else:
+                part_paths.append(path)
+            if not isinstance(digest, str) or _SHA256_PATTERN.fullmatch(digest) is None:
+                errors.append(
+                    f"decomposedSources[{index}].parts[{part_index}].sha256 must be lowercase hex"
+                )
+            if not isinstance(moved_range, Mapping) or set(moved_range) != range_keys:
+                errors.append(
+                    f"decomposedSources[{index}].parts[{part_index}].movedRange schema mismatch"
+                )
+            elif (
+                type(moved_range.get("startLine")) is not int
+                or type(moved_range.get("endLine")) is not int
+                or moved_range["startLine"] < 1
+                or moved_range["endLine"] < moved_range["startLine"]
+            ):
+                errors.append(
+                    f"decomposedSources[{index}].parts[{part_index}].movedRange must be a positive inclusive range"
+                )
+    if original_paths != sorted(original_paths):
+        errors.append("canonical ledger decomposedSources must be sorted by originalPath")
+    if part_paths != sorted(part_paths):
+        errors.append("canonical ledger decomposedSources parts must be sorted by path")
+    if len(set(original_paths)) != len(original_paths):
+        errors.append("canonical ledger decomposedSources originalPath values must be unique")
+    if len(set(part_paths)) != len(part_paths):
+        errors.append("canonical ledger decomposedSources part paths must be unique")
+    if set(original_paths) & set(part_paths):
+        errors.append("canonical ledger decomposedSources cannot map an original onto itself")
     return errors
 
 
