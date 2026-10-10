@@ -9,7 +9,10 @@ The script launches RViz2 by default for visual comparison and uses direct rclpy
 subscribers as the hard DDS acceptance gate. Pass --no-rviz when only the DDS
 subscription check is needed.
 """
+<<<<<<< HEAD
 
+=======
+>>>>>>> 0968c8feb (fix(phase192): preserve Python help and discovery parity)
 from __future__ import annotations
 
 from .pointcloud_metrics import *
