@@ -6,6 +6,77 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 
 
+def _source_lines(raw: bytes) -> list[str]:
+    """Decode a source blob into its original physical lines."""
+    return raw.decode("utf-8", errors="strict").splitlines()
+
+
+def _is_source_wrapper_line(line: str) -> bool:
+    """Identify syntax-only lines that should not count as implementation body."""
+    stripped = line.strip()
+    if not stripped:
+        return True
+    if stripped.startswith(("//", "/*", "*", "*/", "#")):
+        return True
+    if stripped.startswith("using ") and stripped.endswith(";"):
+        return True
+    if stripped.startswith("namespace ") and "(" not in stripped:
+        return True
+    if stripped in {"{", "}", "};"}:
+        return True
+    if stripped.startswith("[") and stripped.endswith("]"):
+        return True
+    declaration_words = {
+        "public",
+        "private",
+        "protected",
+        "internal",
+        "file",
+        "static",
+        "abstract",
+        "sealed",
+        "unsafe",
+        "partial",
+    }
+    words = stripped.split()
+    if declaration_words.intersection(words[: len(words) - 1]) and any(
+        token in words for token in ("class", "struct", "interface", "record", "enum")
+    ):
+        return True
+    return False
+
+
+def _validate_moved_fragment(
+    original_lines: list[str],
+    part_lines: list[str],
+    start: int,
+    end: int,
+    path: str,
+) -> list[str]:
+    """Verify that a moved range maps exactly to the implementation in its part."""
+    fragment = original_lines[start - 1 : end]
+    hits = [
+        offset
+        for offset in range(len(part_lines) - len(fragment) + 1)
+        if part_lines[offset : offset + len(fragment)] == fragment
+    ]
+    if len(hits) != 1:
+        return [
+            f"{path}: decomposed source movedRange does not identify one exact "
+            f"source fragment (matches={len(hits)})"
+        ]
+    meaningful_fragment = [
+        line for line in fragment if not _is_source_wrapper_line(line)
+    ]
+    meaningful_part = [line for line in part_lines if not _is_source_wrapper_line(line)]
+    if not meaningful_fragment or meaningful_part != meaningful_fragment:
+        return [
+            f"{path}: decomposed source movedRange does not account for the "
+            "part implementation body"
+        ]
+    return []
+
+
 def _validate_decomposed_source_files(
     repository: pathlib.Path,
     payload: Mapping[str, object],
@@ -30,6 +101,7 @@ def _validate_decomposed_source_files(
         parts = record.get("parts")
         if not isinstance(original, str) or not isinstance(revision, str):
             continue
+        original_lines: list[str] = []
         try:
             original = _canonical_relative_path(
                 original,
@@ -64,7 +136,8 @@ def _validate_decomposed_source_files(
                     f"{original}: decomposed source originalSha256 does not match "
                     f"{revision}:{original}"
                 )
-            line_count = len(original_bytes.decode("utf-8", errors="strict").splitlines())
+            original_lines = _source_lines(original_bytes)
+            line_count = len(original_lines)
         except (IndexError, OSError, RuntimeError, UnicodeDecodeError, ValueError) as exc:
             errors.append(f"could not validate decomposed source baseline {original}: {exc}")
             line_count = 0
@@ -89,6 +162,7 @@ def _validate_decomposed_source_files(
             part_paths.add(path)
             if path not in discovered_sources:
                 errors.append(f"decomposed source part is not discovered: {path}")
+            raw: bytes | None = None
             try:
                 raw = _resolve_regular_file_contained(
                     repository,
@@ -108,6 +182,21 @@ def _validate_decomposed_source_files(
                     and (start < 1 or end < start or (line_count and end > line_count))
                 ):
                     errors.append(f"{path}: decomposed source movedRange is outside the baseline")
+                elif (
+                    raw is not None
+                    and original_lines
+                    and type(start) is int
+                    and type(end) is int
+                ):
+                    errors.extend(
+                        _validate_moved_fragment(
+                            original_lines,
+                            _source_lines(raw),
+                            start,
+                            end,
+                            path,
+                        )
+                    )
 
     unmapped = discovered_sources - part_paths - original_paths
     unexpected = sorted(unmapped - set(introduced_sources))
