@@ -56,6 +56,16 @@ namespace Unity.FoxgloveSDK.Tests
             "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
             "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs",
         };
+        private static readonly string[] Ros2CustomCdrEmitterSourceFileNames =
+        {
+            "Ros2CustomCdrEmitter.cs",
+            "Decomposed/Ros2CustomCdrEmitter/Generation.cs",
+            "Decomposed/Ros2CustomCdrEmitter/Readers.cs",
+            "Decomposed/Ros2CustomCdrEmitter/Writers.cs",
+            "Decomposed/Ros2CustomCdrEmitter/ValidationAndProjection.cs",
+            "Decomposed/Ros2CustomCdrEmitter/NamingAndUtilities.cs",
+            "Decomposed/Ros2CustomCdrEmitter/Shapes.cs",
+        };
         private static readonly HashSet<string> PythonSectionKeywords = new HashSet<string>(StringComparer.Ordinal)
         {
             "False", "None", "True", "and", "as", "assert", "async", "await", "break",
@@ -119,6 +129,11 @@ namespace Unity.FoxgloveSDK.Tests
                     "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs",
                     StringComparison.Ordinal))
                 return ReadRos2BridgeRuntimeSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun/Ros2CustomCdrEmitter.cs",
+                    StringComparison.Ordinal))
+                return ReadRos2CustomCdrEmitterSources();
 
             return File.ReadAllText(RepoPath(relativePath));
         }
@@ -908,6 +923,102 @@ namespace Unity.FoxgloveSDK.Tests
                 source.Append(File.ReadAllText(path));
             }
             return source.ToString();
+        }
+
+        public static string ReadRos2CustomCdrEmitterSources()
+        {
+            var root = FindRequiredRepoRoot();
+            var emitterRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Editor",
+                "FoxRun");
+            var paths = Ros2CustomCdrEmitterSourceFileNames
+                .Select(relativePath => Path.Combine(
+                    emitterRoot,
+                    relativePath.Replace('/', Path.DirectorySeparatorChar)))
+                .ToArray();
+            foreach (var path in paths)
+                if (!File.Exists(path))
+                    throw new FileNotFoundException(
+                        "Missing ROS2 custom CDR emitter source: " + path,
+                        path);
+
+            var fragmentDirectory = Path.Combine(
+                emitterRoot,
+                "Decomposed",
+                "Ros2CustomCdrEmitter");
+            var expectedFragments = new HashSet<string>(
+                paths.Skip(1).Select(Path.GetFileName),
+                StringComparer.Ordinal);
+            var actualFragments = Directory.Exists(fragmentDirectory)
+                ? new HashSet<string>(
+                    Directory.GetFiles(
+                        fragmentDirectory,
+                        "*.cs",
+                        SearchOption.TopDirectoryOnly)
+                        .Select(Path.GetFileName),
+                    StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
+            if (!expectedFragments.SetEquals(actualFragments))
+                throw new InvalidDataException(
+                    "ROS2 custom CDR emitter source set does not match the expected files. Missing: "
+                    + string.Join(
+                        ", ",
+                        expectedFragments
+                            .Except(actualFragments)
+                            .OrderBy(name => name, StringComparer.Ordinal))
+                    + "; unexpected: "
+                    + string.Join(
+                        ", ",
+                        actualFragments
+                            .Except(expectedFragments)
+                            .OrderBy(name => name, StringComparer.Ordinal)));
+
+            var chunks = new List<string>
+            {
+                ReadRos2CustomCdrEmitterFacadeBody(paths[0]),
+            };
+            chunks.AddRange(
+                paths.Skip(1).Select(ReadRos2CustomCdrEmitterFragmentBody));
+            return string.Join(Environment.NewLine + Environment.NewLine, chunks)
+                + Environment.NewLine
+                + "    }"
+                + Environment.NewLine
+                + "}";
+        }
+
+        private static string ReadRos2CustomCdrEmitterFacadeBody(string path)
+        {
+            var lines = File.ReadAllLines(path);
+            if (lines.Length < 3)
+                throw new InvalidDataException(
+                    "ROS2 custom CDR emitter facade is too short: " + path);
+            return string.Join(Environment.NewLine, lines.Take(lines.Length - 2));
+        }
+
+        private static string ReadRos2CustomCdrEmitterFragmentBody(string path)
+        {
+            var lines = File.ReadAllLines(path);
+            var classLine = Array.FindIndex(
+                lines,
+                line => line.Contains(
+                    "partial class FoxRunBridgeSourceEmitter",
+                    StringComparison.Ordinal));
+            if (classLine < 0)
+                throw new InvalidDataException(
+                    "ROS2 custom CDR emitter fragment class is missing: " + path);
+            var openBrace = Array.FindIndex(
+                lines,
+                classLine,
+                line => line.Trim() == "{");
+            if (openBrace < 0 || lines.Length - openBrace < 3)
+                throw new InvalidDataException(
+                    "ROS2 custom CDR emitter fragment is too short: " + path);
+            return string.Join(
+                Environment.NewLine,
+                lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
         }
 
         public static string ReadMcapDataLoaderSources()

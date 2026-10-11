@@ -18,6 +18,12 @@
     <Compile Include="src\Shared\FoxgloveLogSourceGenerator.cs;src\Shared\FoxgloveLogSourceGenerator.Models.cs;src\Shared\FoxRunCanonicalTypeNormalizer.cs;src\Shared\FoxRunEmissionTypeNameFormatter.cs;src\Shared\FoxRunGenerationDescriptorConstants.cs;src\Shared\FoxRunGenerationModel.cs;src\Shared\FoxRunGenerationModelValidator.cs;src\Shared\FoxRunProtobufFieldNumber.cs;src\Shared\FoxRunRoslynGenerationModelLowerer.cs;src\Shared\FoxRunRoslynTypeShapeBuilder.cs;src\Shared\FoxRunTypeShape.cs;src\Shared\FoxServiceDtoRules.cs;src\Shared\FoxServiceDtoTypeNames.cs;src\Shared\FoxServiceRoslynTypeHelpers.cs;src\Shared\IdentifierUtils.cs" />
     <Compile Include="..\FoxRun\Ros2CustomCdrEmitter.cs"
              Link="Bridge\FoxRunBridgeSourceEmitter.cs" />
+    <Compile Include="..\FoxRun\Decomposed\Ros2CustomCdrEmitter\Generation.cs" Link="Bridge\Decomposed\Generation.cs" />
+    <Compile Include="..\FoxRun\Decomposed\Ros2CustomCdrEmitter\Readers.cs" Link="Bridge\Decomposed\Readers.cs" />
+    <Compile Include="..\FoxRun\Decomposed\Ros2CustomCdrEmitter\Writers.cs" Link="Bridge\Decomposed\Writers.cs" />
+    <Compile Include="..\FoxRun\Decomposed\Ros2CustomCdrEmitter\ValidationAndProjection.cs" Link="Bridge\Decomposed\ValidationAndProjection.cs" />
+    <Compile Include="..\FoxRun\Decomposed\Ros2CustomCdrEmitter\NamingAndUtilities.cs" Link="Bridge\Decomposed\NamingAndUtilities.cs" />
+    <Compile Include="..\FoxRun\Decomposed\Ros2CustomCdrEmitter\Shapes.cs" Link="Bridge\Decomposed\Shapes.cs" />
     <Compile Include="src\FoxRunBridgeAnalyzerPipeline.cs" />
     <Compile Include="src\FoxRunBridgeDiagnostics.cs" />
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
