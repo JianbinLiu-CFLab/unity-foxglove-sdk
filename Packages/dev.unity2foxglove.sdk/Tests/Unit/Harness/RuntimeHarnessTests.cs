@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         private static readonly SemaphoreSlim HarnessBuildLock = new SemaphoreSlim(1, 1);
         private static bool _harnessBuilt;
 
+#if !UNITY2FOXGLOVE_ROS2_FOR_UNITY
         [Fact]
         public async Task FoxgloveSessionCompositionHasValidSyntaxAndContainsAllMethods()
         {
@@ -65,6 +66,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Contains(session.Members.OfType<MethodDeclarationSyntax>(),
                 method => method.Identifier.ValueText == "OnClientBinary");
         }
+#endif
 
         [Fact]
         public async Task UnknownFlagFailsInsteadOfRunningDefaultSuite()
