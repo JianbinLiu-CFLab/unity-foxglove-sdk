@@ -732,6 +732,12 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("MCAP recorder directory was not found.");
 
             var files = Directory.GetFiles(dir, "McapRecorder*.cs")
+                .Concat(
+                    Directory.Exists(Path.Combine(dir, "Decomposed", "McapRecorder"))
+                        ? Directory.GetFiles(
+                            Path.Combine(dir, "Decomposed", "McapRecorder"),
+                            "*.cs")
+                        : Array.Empty<string>())
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToArray();
 

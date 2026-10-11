@@ -37,8 +37,6 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunTransportProviders.cs";
         private const string ManagerCoordinateMigrationPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs";
-        private const string McapRecorderPath =
-            "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs";
         private const string SessionClientPublishHandlerPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionClientPublishHandler.cs";
         private const string R2fuDrawerPath =
@@ -761,8 +759,7 @@ namespace Unity.FoxgloveSDK.Tests
                 PhaseValidationSourceHelpers.ReadRequiredRepoText(
                     ManagerCoordinateMigrationPath);
             var mcapRecorder =
-                PhaseValidationSourceHelpers.ReadRequiredRepoText(
-                    McapRecorderPath);
+                PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var sessionClientPublishHandler =
                 PhaseValidationSourceHelpers.ReadRequiredRepoText(
                     SessionClientPublishHandlerPath);
