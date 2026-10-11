@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.IO
 {
     public partial class McapRecorder
     {
+        /// <summary>
         /// Write a client-published message to the current chunk, lazily creating
         /// the channel record on first use.
         /// </summary>

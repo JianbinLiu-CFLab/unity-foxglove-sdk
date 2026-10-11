@@ -744,14 +744,51 @@ namespace Unity.FoxgloveSDK.Tests
             if (!Directory.Exists(dir))
                 throw new DirectoryNotFoundException("MCAP recorder directory was not found.");
 
-            var files = Directory.GetFiles(dir, "McapRecorder*.cs")
-                .Concat(
-                    Directory.Exists(Path.Combine(dir, "Decomposed", "McapRecorder"))
-                        ? Directory.GetFiles(
-                            Path.Combine(dir, "Decomposed", "McapRecorder"),
-                            "*.cs")
-                        : Array.Empty<string>())
-                .OrderBy(path => path, StringComparer.Ordinal)
+            var topLevelNames = new[]
+            {
+                "McapRecorder.cs",
+                "McapRecorder.Schema.cs",
+                "McapRecorder.TopicRouter.cs",
+                "McapRecorder.Types.cs"
+            };
+            var fragmentNames = new[]
+            {
+                "ChannelAdmission.cs",
+                "ChunkLifecycle.cs",
+                "CloseAndRecovery.cs",
+                "MessageWriting.cs",
+                "MetadataAndAttachments.cs"
+            };
+            var fragmentDir = Path.Combine(dir, "Decomposed", "McapRecorder");
+            if (!Directory.Exists(fragmentDir))
+                throw new DirectoryNotFoundException("MCAP recorder decomposed directory was not found.");
+
+            var actualTopLevelNames = Directory.GetFiles(dir, "McapRecorder*.cs")
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            var actualFragmentNames = Directory.GetFiles(fragmentDir, "*.cs")
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            var expectedTopLevelNames = topLevelNames.ToHashSet(StringComparer.Ordinal);
+            var expectedFragmentNames = fragmentNames.ToHashSet(StringComparer.Ordinal);
+            if (!expectedTopLevelNames.SetEquals(actualTopLevelNames)
+                || !expectedFragmentNames.SetEquals(actualFragmentNames))
+            {
+                throw new InvalidDataException(
+                    "MCAP recorder source composition is incomplete or contains unregistered partial files. "
+                    + "Top-level missing: "
+                    + string.Join(", ", expectedTopLevelNames.Except(actualTopLevelNames).OrderBy(name => name, StringComparer.Ordinal))
+                    + "; top-level unexpected: "
+                    + string.Join(", ", actualTopLevelNames.Except(expectedTopLevelNames).OrderBy(name => name, StringComparer.Ordinal))
+                    + "; fragments missing: "
+                    + string.Join(", ", expectedFragmentNames.Except(actualFragmentNames).OrderBy(name => name, StringComparer.Ordinal))
+                    + "; fragments unexpected: "
+                    + string.Join(", ", actualFragmentNames.Except(expectedFragmentNames).OrderBy(name => name, StringComparer.Ordinal)));
+            }
+
+            var files = topLevelNames
+                .Select(name => Path.Combine(dir, name))
+                .Concat(fragmentNames.Select(name => Path.Combine(fragmentDir, name)))
                 .ToArray();
 
             var source = new StringBuilder();
