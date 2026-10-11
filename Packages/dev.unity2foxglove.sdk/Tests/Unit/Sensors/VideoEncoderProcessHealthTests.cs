@@ -124,6 +124,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 await fixture.ExpectLine("FRAME_READ_" + (i + 1));
             }
 
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => fixture.InputCount == 0 && fixture.ProcessingFrameCount == 0,
+                    TimeSpan.FromSeconds(10)),
+                "Writer did not finish processing submitted frames.");
             Assert.Equal(submitted.Length, fixture.PendingTimestamps);
             Assert.Equal(submitted, fixture.PendingTimestampValues);
         }
