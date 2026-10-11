@@ -141,7 +141,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void RuntimeConnectContractAndWorkerGenerationAreExplicit()
         {
-            var source = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var source = PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources();
             var shell = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs");
 
             Check(source.Contains("_workerGeneration", StringComparison.Ordinal)
