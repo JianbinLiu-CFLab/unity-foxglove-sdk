@@ -227,6 +227,9 @@ namespace Unity.FoxgloveSDK.Tests
                         StringComparison.Ordinal)
                     && !path.StartsWith(
                         OptionalPackage + "/Editor/SourceGenerators/",
+                        StringComparison.Ordinal)
+                    && !path.StartsWith(
+                        OptionalPackage + "/Editor/Decomposed/",
                         StringComparison.Ordinal))
                 .ToList();
             Check(topLevelEditorFiles.SequenceEqual(expectedTopLevelEditorFiles)
