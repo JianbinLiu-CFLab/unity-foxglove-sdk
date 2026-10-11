@@ -314,7 +314,7 @@ namespace Unity.FoxgloveSDK.Tests
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing repository file: " + relativePath, path);
-            return File.ReadAllText(path);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private sealed class Phase134_2FakeTransport : IFoxgloveTransport
