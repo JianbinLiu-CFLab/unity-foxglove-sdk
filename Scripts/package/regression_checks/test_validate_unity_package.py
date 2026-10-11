@@ -250,6 +250,7 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertIn(ordinary, assets)
 
     def test_bridge_asset_inventory_excludes_documentation(self) -> None:
+        """Exclude documentation files from the Bridge Unity asset inventory."""
         with tempfile.TemporaryDirectory() as temp:
             package = Path(temp) / "dev.unity2foxglove.ros2bridge"
             documentation = package / "Documentation~" / "Examples" / "Route.proto"
@@ -265,6 +266,7 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertIn(runtime, assets)
 
     def test_bridge_guid_scan_rejects_orphan_sidecars(self) -> None:
+        """Reject orphan Unity metadata sidecars during the Bridge GUID scan."""
         with tempfile.TemporaryDirectory() as temp:
             package = Path(temp) / "dev.unity2foxglove.ros2bridge"
             orphan = package / "Runtime" / "Missing.cs.meta"
