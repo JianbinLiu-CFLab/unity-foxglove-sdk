@@ -114,11 +114,32 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void Ros2MappingSourceVector()
         {
-            var path = FindRepoFile("Packages", "dev.unity2foxglove.ros2bridge", "Runtime", "Protocol", "U2R2ContractAuthority.cs");
-            Assert.True(File.Exists(path), "ROS2 protocol authority source is missing.");
-            var source = File.ReadAllText(path);
+            var facade = FindRepoFile(
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Protocol",
+                "U2R2ContractAuthority.cs");
+            var root = Directory.GetParent(facade)!.FullName;
+            var paths = new[]
+            {
+                facade,
+                Path.Combine(root, "Decomposed", "U2R2ContractAuthority", "ContractAuthority.State.cs"),
+                Path.Combine(root, "Decomposed", "U2R2ContractAuthority", "ContractAuthority.Registration.cs"),
+                Path.Combine(root, "Decomposed", "U2R2ContractAuthority", "ContractAuthority.Removal.cs"),
+                Path.Combine(root, "Decomposed", "U2R2ContractAuthority", "ContractAuthority.Lifecycle.cs"),
+                Path.Combine(root, "Decomposed", "U2R2ContractAuthority", "SequenceAndAdmissions.cs")
+            };
+            Assert.All(paths, path => Assert.True(
+                File.Exists(path),
+                "ROS2 protocol authority source is missing: " + path));
+            var source = string.Join(
+                Environment.NewLine,
+                paths.Select(File.ReadAllText));
             Assert.Contains("U2R2ContractAuthority", source, StringComparison.Ordinal);
             Assert.Contains("ParseContract", source, StringComparison.Ordinal);
+            Assert.Contains("BeginRegistration", source, StringComparison.Ordinal);
+            Assert.Contains("BeginUnregister", source, StringComparison.Ordinal);
         }
 
         [Fact]

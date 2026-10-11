@@ -439,6 +439,18 @@ class _Phase186ProvenanceTests_fixtures:
             self.assertEqual({original_path}, originals)
             self.assertEqual([], errors)
 
+            _, _, errors = module._validate_decomposed_source_files(
+                repository,
+                payload,
+                {original_path},
+                {original_path: "baseline"},
+            )
+            self.assertTrue(
+                any("decomposed source part is not discovered" in error
+                    for error in errors),
+                errors,
+            )
+
             payload["decomposedSources"][0]["parts"][0]["movedRange"] = {
                 "startLine": 1,
                 "endLine": 1,

@@ -55,6 +55,102 @@
   },
   "decomposedSources": [
     {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ContractAuthority.cs",
+      "sourceRevision": "89a28f5d4aa5672759272b109af4fe325b719269",
+      "decompositionRevision": "cd3ab311439cf030ba98aa69121fa991d2b69471",
+      "originalSha256": "0cd052474afec9c204059fc20c9e365c34cdc74848a22a2a1bbde087f7b43c5f",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Lifecycle.cs",
+          "sha256": "33038ebc718993901ccc87313914f1e9d54002ff0f71429498f5eee8675a96a2",
+          "movedRange": {
+            "startLine": 1203,
+            "endLine": 1359
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Registration.cs",
+          "sha256": "4a8746f13cb7d7616583b297a1bbe8968906b7a2d71b99cc206f3cc5f0439129",
+          "movedRange": {
+            "startLine": 603,
+            "endLine": 903
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Removal.cs",
+          "sha256": "b7c034049bfa9b598c5c7c0109066781c53243a63670a65ea209f5045097605c",
+          "movedRange": {
+            "startLine": 904,
+            "endLine": 1202
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.State.cs",
+          "sha256": "c8f9271ac510e89de082c9df1711ae5cbf44ad839b3452b0564ee1be4ac9da99",
+          "movedRange": {
+            "startLine": 534,
+            "endLine": 601
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/SequenceAndAdmissions.cs",
+          "sha256": "b0db557b946dd02497138a5889ae6a6818f079b1b68dcefea5268756f706c23e",
+          "movedRange": {
+            "startLine": 428,
+            "endLine": 529
+          }
+        }
+      ]
+    },
+    {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolCodec.cs",
+      "sourceRevision": "89a28f5d4aa5672759272b109af4fe325b719269",
+      "decompositionRevision": "2c244abd4315dff66d6aa411495a151fbdafd1cc",
+      "originalSha256": "41c5b14efc0587dca32836b665f1dda6a00213abf5ffc0daaed92758cbe87f52",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/EncodingAndFrames.cs",
+          "sha256": "3da7daa23aeef6a1c589b703d5b39b9cdd4d45be84a586a523a767ef52484465",
+          "movedRange": {
+            "startLine": 20,
+            "endLine": 479
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/HeaderValidation.cs",
+          "sha256": "30ddfcf10087812f01c0e47486ca4a2d291848fb0901352693edbbcd754363af",
+          "movedRange": {
+            "startLine": 686,
+            "endLine": 989
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/JsonParser.cs",
+          "sha256": "ee1e7a7209932bae07ec01f1bdfe438d81ecf6882d1be2fe15e73a3b407aa99c",
+          "movedRange": {
+            "startLine": 990,
+            "endLine": 1290
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/LegacyCodec.cs",
+          "sha256": "c92efdd3965b6ac497f78599cad9aef5e841512e4872e8ef9261a4ec4ba9578f",
+          "movedRange": {
+            "startLine": 1293,
+            "endLine": 1353
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/MessageParsing.cs",
+          "sha256": "d037cd71db6806323c5a9865738f49f552d5dac2b37cd8a91192854eddf222a3",
+          "movedRange": {
+            "startLine": 480,
+            "endLine": 685
+          }
+        }
+      ]
+    },
+    {
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
       "sourceRevision": "4a7bd01fd92df0f99c8639535a5c6116abe07898",
       "decompositionRevision": "9b29240536bf7c31c42e1c111c467e8562a550e7",
@@ -144,7 +240,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ContractAuthority.cs",
-      "sha256": "0cd052474afec9c204059fc20c9e365c34cdc74848a22a2a1bbde087f7b43c5f",
+      "sha256": "cec0df3cc69b433c3cab960b0e374f4c32b93a2a98afd7503aaea9013b460c5d",
       "classification": "original",
       "influence": "Original C# contract identity and ordering authority.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -158,7 +254,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolCodec.cs",
-      "sha256": "41c5b14efc0587dca32836b665f1dda6a00213abf5ffc0daaed92758cbe87f52",
+      "sha256": "85f682f0c7beb7613b1fbdf1e15e784d13f00e544069b46d60b979290df6ac85",
       "classification": "original",
       "influence": "Original strict C# U2R2 v2 frame codec.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -278,7 +374,7 @@
     },
     {
       "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/class_phase186_provenance_tests_fixtures.py",
-      "sha256": "881c77347601fe48c314404f21070f56b9b219388919aef1b9d0494359505110",
+      "sha256": "3fcce3b504334e103833aa83324b7fde83b3adb43be60cfc61fe6a698234f36b",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator regression coverage."
     },
