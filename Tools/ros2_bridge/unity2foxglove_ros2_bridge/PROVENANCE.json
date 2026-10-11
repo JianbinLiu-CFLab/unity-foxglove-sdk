@@ -320,7 +320,7 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/discover_protocol_sources_and_phase186b_introduced_sources.py",
-      "sha256": "c1bbfc0957b02ab5fd7dcc74eb4b594d802f29b41842afda002bbbd0c86a36f0",
+      "sha256": "3e831b3cf4693025b58a88918ae7aac0b2a2900f98f66ae1c43e712cf33c3acb",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
@@ -350,7 +350,7 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/validate_repository_provenance_and_git_tree_paths.py",
-      "sha256": "c22e4e4d86db2f51e8f9ce0d32a71a367bf74eff20e19f2b0e809c9fbfd64ea1",
+      "sha256": "46affa1670579d7414245e3d73ee78ef25e804d85afe9d9100fec18698868ff7",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
