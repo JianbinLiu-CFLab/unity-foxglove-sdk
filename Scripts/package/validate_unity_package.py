@@ -110,6 +110,7 @@ UNITY_META_EXTENSIONS = {
     ".wav",
     ".xml",
 }
+NON_UNITY_BUILD_META_SUFFIXES = {".csproj", ".props"}
 
 # Text patterns that must not leak into public docs or sample files.
 FORBIDDEN_PUBLIC_PATTERNS = (
@@ -826,13 +827,16 @@ def check_sdk_meta_guid_uniqueness(
     guids: dict[str, str] = {}
     malformed: list[str] = []
     duplicate: list[str] = []
-    for path in sorted(package.rglob("*"), key=rel):
-        if path.name.endswith(".meta"):
-            continue
-        if not path.is_dir() and path.suffix.casefold() not in UNITY_META_EXTENSIONS:
-            continue
-        meta = Path(str(path) + ".meta")
+    for meta in sorted(package.rglob("*.meta"), key=rel):
         if not meta.is_file():
+            continue
+        asset = Path(str(meta)[:-len(".meta")])
+        if not asset.exists():
+            continue
+        if (
+            asset.is_file()
+            and asset.suffix.casefold() in NON_UNITY_BUILD_META_SUFFIXES
+        ):
             continue
         try:
             text = meta.read_text(encoding="utf-8")
