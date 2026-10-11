@@ -406,12 +406,35 @@ class ValidatePackageTests(unittest.TestCase):
             self.assertIn("Example.cs", results[-1].detail)
 
             (Path(str(source) + ".meta")).write_text(
-                "fileFormatVersion: 2\nguid: 0123456789abcdef0123456789abcdef\n",
+                "fileFormatVersion: 2\n"
+                "guid: 0123456789abcdef0123456789abcdef\n"
+                "MonoImporter:\n",
                 encoding="utf-8",
             )
             results = []
             self.validator.check_sdk_script_meta(results)
             self.assertTrue(results[-1].ok)
+
+    def test_sdk_meta_checks_csharp_importer_type(self) -> None:
+        """SDK C# source metas must use the MonoImporter type."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            sdk = root / "Packages" / "dev.unity2foxglove.sdk"
+            source = sdk / "Runtime" / "Example.cs"
+            source.parent.mkdir(parents=True)
+            source.write_text("class Example {}", encoding="utf-8")
+            (Path(str(source) + ".meta")).write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 0123456789abcdef0123456789abcdef\n"
+                "DefaultImporter:\n",
+                encoding="utf-8",
+            )
+
+            results = []
+            self.validator.check_sdk_script_meta(results, [source])
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Example.cs.meta", results[-1].detail)
 
     def test_sdk_decomposed_folder_meta_checks_folder_sidecars(self) -> None:
         """Decomposed SDK test folders need valid, unique folder .meta files."""
@@ -465,7 +488,7 @@ class ValidatePackageTests(unittest.TestCase):
             source.write_text("class Example {}", encoding="utf-8")
             guid = "33333333333333333333333333333333"
             (Path(str(source) + ".meta")).write_text(
-                f"fileFormatVersion: 2\nguid: {guid}\n",
+                f"fileFormatVersion: 2\nguid: {guid}\nMonoImporter:\n",
                 encoding="utf-8",
             )
             (root.with_suffix(".meta")).write_text(
@@ -529,6 +552,43 @@ class ValidatePackageTests(unittest.TestCase):
 
         self.assertFalse(results[-1].ok)
         self.assertIn("duplicates", results[-1].detail)
+
+    def test_sdk_meta_guid_uniqueness_rejects_orphan_folder_sidecars(self) -> None:
+        """Unknown folder metadata without a matching directory must fail."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.sdk"
+            orphan = package / "Runtime" / "MissingFolder.meta"
+            orphan.parent.mkdir(parents=True)
+            orphan.write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 88888888888888888888888888888888\n"
+                "folderAsset: yes\n",
+                encoding="utf-8",
+            )
+
+            results = []
+            self.validator.check_sdk_meta_guid_uniqueness(results, package)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("MissingFolder.meta", results[-1].detail)
+
+    def test_sdk_meta_guid_uniqueness_allows_known_optional_folder_sidecars(self) -> None:
+        """Known empty Unity folder sidecars remain valid package metadata."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.sdk"
+            optional = package / "Editor" / "SourceGenerators" / "build.meta"
+            optional.parent.mkdir(parents=True)
+            optional.write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 99999999999999999999999999999999\n"
+                "folderAsset: yes\n",
+                encoding="utf-8",
+            )
+
+            results = []
+            self.validator.check_sdk_meta_guid_uniqueness(results, package)
+
+        self.assertTrue(results[-1].ok)
 
     def test_sdk_meta_guid_uniqueness_ignores_non_unity_sidecars(self) -> None:
         """Build-tool sidecars are outside the Unity asset GUID scope."""

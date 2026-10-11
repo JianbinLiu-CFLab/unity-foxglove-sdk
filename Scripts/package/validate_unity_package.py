@@ -65,6 +65,15 @@ CONSUMER_LOCAL_DEPENDENCY_PREFIXES = (
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
 SDK_DECOMPOSED_TESTS = PACKAGE / "Tests" / "Unit" / "Decomposed"
+KNOWN_OPTIONAL_FOLDER_META_PATHS = frozenset(
+    {
+        "Editor/SourceGenerators/build.meta",
+        "Plugins/native.meta",
+        "Tests/Editor.meta",
+        "Tests/Runtime/build.meta",
+        "Tests/Unit/build.meta",
+    }
+)
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 UNITY_DEMO_SCRIPTS = ROOT / "Unity2Foxglove" / "Assets" / "Scripts"
 UNITY_DEMO_ASSETS = ROOT / "Unity2Foxglove" / "Assets"
@@ -181,6 +190,7 @@ THIRD_PARTY_NOTICE_REQUIREMENTS = (
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 META_GUID_RE = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
 META_FOLDER_ASSET_RE = re.compile(r"(?mi)^folderAsset:\s*yes\s*$")
+META_DEFAULT_IMPORTER_RE = re.compile(r"(?mi)^DefaultImporter:\s*$")
 VALIDATION_PHASE_FILENAME_RE = re.compile(r"^Phase(?P<phase>\d+)(?P<trailing>[A-Za-z0-9_-]*)Validation\.cs$")
 VALIDATION_PHASE_FILENAME_INDEX_RE = re.compile(r"^[_-](?P<index>\d+)")
 LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE = 164
@@ -748,7 +758,7 @@ def check_sdk_script_meta(
             malformed.append(rel(meta))
             continue
         match = META_GUID_RE.search(text)
-        if match is None:
+        if match is None or META_DEFAULT_IMPORTER_RE.search(text) is not None:
             malformed.append(rel(meta))
             continue
         guid = match.group(1).lower()
@@ -845,7 +855,15 @@ def _collect_meta_guid_offenders(
             continue
         asset = Path(str(meta)[:-len(".meta")])
         if not asset.exists():
-            if asset.suffix.casefold() in UNITY_META_EXTENSIONS:
+            relative_meta = meta.relative_to(package).as_posix()
+            try:
+                meta_text = meta.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                meta_text = ""
+            is_folder_meta = META_FOLDER_ASSET_RE.search(meta_text) is not None
+            if asset.suffix.casefold() in UNITY_META_EXTENSIONS or (
+                is_folder_meta and relative_meta not in KNOWN_OPTIONAL_FOLDER_META_PATHS
+            ):
                 orphan.append(rel(meta))
             continue
         if (
