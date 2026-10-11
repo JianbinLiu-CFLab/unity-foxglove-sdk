@@ -380,6 +380,56 @@ class ValidatePackageTests(unittest.TestCase):
 
         self.assertFalse(results[-1].ok)
 
+    def test_sdk_meta_guid_uniqueness_rejects_asmdef_folder_collision(self) -> None:
+        """SDK Unity assets and folders must not share a GUID."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.sdk"
+            folder = package / "Tests" / "Unit" / "Decomposed" / "Example"
+            asmdef = package / "Runtime" / "Example.asmdef"
+            folder.mkdir(parents=True)
+            asmdef.parent.mkdir(parents=True)
+            asmdef.write_text("{}", encoding="utf-8")
+            guid = "55555555555555555555555555555555"
+            (Path(str(folder) + ".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\nfolderAsset: yes\n",
+                encoding="utf-8",
+            )
+            (Path(str(asmdef) + ".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\n",
+                encoding="utf-8",
+            )
+
+            results = []
+            self.validator.check_sdk_meta_guid_uniqueness(results, package)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("duplicates", results[-1].detail)
+
+    def test_sdk_meta_guid_uniqueness_ignores_non_unity_sidecars(self) -> None:
+        """Build-tool sidecars are outside the Unity asset GUID scope."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.sdk"
+            props = package / "Tests" / "Directory.Build.props"
+            json_asset = package / "Samples~" / "Layout.json"
+            props.parent.mkdir(parents=True)
+            json_asset.parent.mkdir(parents=True)
+            guid = "66666666666666666666666666666666"
+            props.write_text("<Project />", encoding="utf-8")
+            json_asset.write_text("{}", encoding="utf-8")
+            (Path(str(props) + ".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\n",
+                encoding="utf-8",
+            )
+            (Path(str(json_asset) + ".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\n",
+                encoding="utf-8",
+            )
+
+            results = []
+            self.validator.check_sdk_meta_guid_uniqueness(results, package)
+
+        self.assertTrue(results[-1].ok)
+
     def test_sample_meta_checks_prefab_files(self) -> None:
         """Common Unity assets such as prefabs need stable .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:
