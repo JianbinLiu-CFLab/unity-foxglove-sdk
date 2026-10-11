@@ -336,8 +336,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void RequestDeadlineAtomicallySettlesAgainstAConcurrentResponse()
         {
-            var source = TestSources.Text(
-                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeConnection.cs");
+            var source = Ros2BridgeConnectionSource();
             var wait = TestSources.Slice(
                 source,
                 "private byte[] WaitForResponse(",
@@ -366,6 +365,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("private void RelinquishHealthCheck()", source, StringComparison.Ordinal);
             Assert.Contains("TaskContinuationOptions.ExecuteSynchronously", source, StringComparison.Ordinal);
             Assert.Contains("TaskScheduler.Default", source, StringComparison.Ordinal);
+        }
+
+        private static string Ros2BridgeConnectionSource()
+        {
+            var root = "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/";
+            var parts = new[]
+            {
+                root + "Ros2BridgeConnection.cs",
+                root + "Decomposed/Ros2BridgeConnection/SessionLifecycle.cs",
+                root + "Decomposed/Ros2BridgeConnection/WorkerLoops.cs",
+                root + "Decomposed/Ros2BridgeConnection/FaultAndDisposal.cs",
+                root + "Decomposed/Ros2BridgeConnection/RequestTypes.cs",
+            };
+            return string.Join("\n", parts.Select(TestSources.Text));
         }
 
         private static bool SourceMethodContains(string source, string signature, string text)

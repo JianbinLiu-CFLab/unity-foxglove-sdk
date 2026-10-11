@@ -77,7 +77,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var frameSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
             var writerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeFrameWriter.cs");
-            var schedulerSource = File.ReadAllText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeOutboundScheduler.cs");
+            var schedulerSource = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeOutboundScheduler.cs");
 
             Check(frameSource.Contains("private readonly byte[] _payload", StringComparison.Ordinal)
                   && frameSource.Contains("private readonly int _payloadOffset", StringComparison.Ordinal)
