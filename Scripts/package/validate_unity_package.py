@@ -76,7 +76,7 @@ EXPECTED_SAMPLES = {
 }
 EXPECTED_SAMPLE_COUNT = len(EXPECTED_SAMPLES)
 
-# File extensions that Unity tracks with .meta sidecar files in samples.
+# File extensions that Unity tracks with .meta sidecar files.
 UNITY_META_EXTENSIONS = {
     ".asmdef",
     ".anim",
@@ -808,6 +808,59 @@ def check_sdk_decomposed_folder_meta(
     )
 
 
+def check_sdk_meta_guid_uniqueness(
+    results: list[CheckResult],
+    root: Path | None = None,
+) -> None:
+    """Ensure Unity-tracked SDK assets and folders have unique GUIDs."""
+    package = root if root is not None else PACKAGE
+    if not package.is_dir():
+        add(
+            results,
+            "SDK Unity asset and folder .meta GUIDs",
+            False,
+            f"Required directory missing: {rel(package)}",
+        )
+        return
+
+    guids: dict[str, str] = {}
+    malformed: list[str] = []
+    duplicate: list[str] = []
+    for path in sorted(package.rglob("*"), key=rel):
+        if path.name.endswith(".meta"):
+            continue
+        if not path.is_dir() and path.suffix.casefold() not in UNITY_META_EXTENSIONS:
+            continue
+        meta = Path(str(path) + ".meta")
+        if not meta.is_file():
+            continue
+        try:
+            text = meta.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            malformed.append(rel(meta))
+            continue
+        match = META_GUID_RE.search(text)
+        if match is None:
+            malformed.append(rel(meta))
+            continue
+        guid = match.group(1).lower()
+        previous = guids.get(guid)
+        if previous is not None:
+            duplicate.append(f"{rel(meta)} duplicates {previous}")
+        else:
+            guids[guid] = rel(meta)
+
+    offenders = malformed[:MAX_REPORTED_MISSING_META] + duplicate[:MAX_REPORTED_MISSING_META]
+    add(
+        results,
+        "SDK Unity asset and folder .meta GUIDs",
+        not offenders,
+        "; ".join(offenders)
+        if offenders
+        else f"{len(guids)} Unity-tracked SDK metas have unique valid GUIDs",
+    )
+
+
 def check_sample_boundaries(results: list[CheckResult]) -> None:
     """Verify Basic and FullDemo sample boundaries remain intentional."""
     basic = SAMPLES / "BasicVisualization"
@@ -1112,6 +1165,7 @@ def main() -> int:
     sdk_meta_guids: dict[str, str] = {}
     check_sdk_script_meta(results, package_files, sdk_meta_guids)
     check_sdk_decomposed_folder_meta(results, known_guids=sdk_meta_guids)
+    check_sdk_meta_guid_uniqueness(results)
     check_sample_boundaries(results)
     check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)
