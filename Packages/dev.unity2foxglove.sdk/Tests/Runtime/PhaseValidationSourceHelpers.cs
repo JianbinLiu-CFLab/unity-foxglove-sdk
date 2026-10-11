@@ -169,7 +169,7 @@ namespace Unity.FoxgloveSDK.Tests
                 line => line.Trim() == "{");
             if (openBrace < 0 || lines.Length - openBrace < 4)
                 throw new InvalidDataException("Foxglove session fragment is too short: " + path);
-            return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
+            return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 2));
         }
 
         public static string ReadRos2BridgeOutboundSchedulerSources()

@@ -94,9 +94,11 @@ UNITY_META_EXTENSIONS = {
     ".json",
     ".mat",
     ".otf",
+    ".pb",
     ".physicmaterial",
     ".png",
     ".prefab",
+    ".proto",
     ".preset",
     ".rendertexture",
     ".shader",
@@ -239,6 +241,26 @@ def iter_bridge_asset_files(package: Path | None = None) -> list[Path]:
         for path in root.rglob("*")
         if path.is_file()
         and path.suffix.lower() in UNITY_META_EXTENSIONS
+        and not any(
+            part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES
+            for part in path.relative_to(root).parts
+        )
+    ]
+
+
+def iter_bridge_asset_directories(package: Path | None = None) -> list[Path]:
+    """Return Bridge asset folders while excluding package-only and build roots."""
+    root = package if package is not None else ROS2_BRIDGE_PACKAGE
+    if not root.exists():
+        return []
+    documentation_root = root / "Documentation~"
+    samples_root = root / "Samples~"
+    return [
+        path
+        for path in root.rglob("*")
+        if path.is_dir()
+        and path != samples_root
+        and not path_is_relative_to(path, documentation_root)
         and not any(
             part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES
             for part in path.relative_to(root).parts
@@ -809,21 +831,10 @@ def check_sdk_decomposed_folder_meta(
     )
 
 
-def check_sdk_meta_guid_uniqueness(
-    results: list[CheckResult],
-    root: Path | None = None,
-) -> None:
-    """Ensure Unity-tracked SDK assets and folders have unique GUIDs."""
-    package = root if root is not None else PACKAGE
-    if not package.is_dir():
-        add(
-            results,
-            "SDK Unity asset and folder .meta GUIDs",
-            False,
-            f"Required directory missing: {rel(package)}",
-        )
-        return
-
+def _collect_meta_guid_offenders(
+    package: Path,
+) -> tuple[dict[str, str], list[str], list[str]]:
+    """Collect malformed and duplicate GUID references under a package."""
     guids: dict[str, str] = {}
     malformed: list[str] = []
     duplicate: list[str] = []
@@ -853,15 +864,108 @@ def check_sdk_meta_guid_uniqueness(
             duplicate.append(f"{rel(meta)} duplicates {previous}")
         else:
             guids[guid] = rel(meta)
+    return guids, malformed, duplicate
+
+
+def check_package_meta_guid_uniqueness(
+    results: list[CheckResult],
+    root: Path,
+    check_name: str,
+    asset_label: str,
+) -> None:
+    """Ensure package Unity asset and folder metas have unique valid GUIDs."""
+    package = root
+    if not package.is_dir():
+        add(
+            results,
+            check_name,
+            False,
+            f"Required directory missing: {rel(package)}",
+        )
+        return
+
+    guids, malformed, duplicate = _collect_meta_guid_offenders(package)
 
     offenders = malformed[:MAX_REPORTED_MISSING_META] + duplicate[:MAX_REPORTED_MISSING_META]
     add(
         results,
-        "SDK Unity asset and folder .meta GUIDs",
+        check_name,
         not offenders,
         "; ".join(offenders)
         if offenders
-        else f"{len(guids)} Unity-tracked SDK metas have unique valid GUIDs",
+        else f"{len(guids)} {asset_label} metas have unique valid GUIDs",
+    )
+
+
+def check_sdk_meta_guid_uniqueness(
+    results: list[CheckResult],
+    root: Path | None = None,
+) -> None:
+    """Ensure Unity-tracked SDK assets and folders have unique GUIDs."""
+    check_package_meta_guid_uniqueness(
+        results,
+        root if root is not None else PACKAGE,
+        "SDK Unity asset and folder .meta GUIDs",
+        "Unity-tracked SDK",
+    )
+
+
+def check_ros2_bridge_meta(results: list[CheckResult]) -> None:
+    """Ensure Bridge Unity assets and tracked folders have complete metadata."""
+    package = ROS2_BRIDGE_PACKAGE
+    if not package.is_dir():
+        add(
+            results,
+            "ROS2 Bridge Unity asset and folder .meta files",
+            False,
+            f"Required directory missing: {rel(package)}",
+        )
+        check_package_meta_guid_uniqueness(
+            results,
+            package,
+            "ROS2 Bridge Unity asset and folder .meta GUIDs",
+            "Unity-tracked ROS2 Bridge",
+        )
+        return
+
+    missing: list[str] = []
+    malformed_folders: list[str] = []
+    for asset in iter_bridge_asset_files(package):
+        meta = Path(str(asset) + ".meta")
+        if not meta.is_file():
+            missing.append(rel(meta))
+
+    for folder in iter_bridge_asset_directories(package):
+        meta = Path(str(folder) + ".meta")
+        if not meta.is_file():
+            missing.append(rel(meta))
+            continue
+        try:
+            text = meta.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            malformed_folders.append(rel(meta))
+            continue
+        if META_FOLDER_ASSET_RE.search(text) is None:
+            malformed_folders.append(rel(meta))
+
+    offenders = (
+        missing[:MAX_REPORTED_MISSING_META]
+        + malformed_folders[:MAX_REPORTED_MISSING_META]
+    )
+    add(
+        results,
+        "ROS2 Bridge Unity asset and folder .meta files",
+        not offenders,
+        "; ".join(offenders)
+        if offenders
+        else f"{len(iter_bridge_asset_files(package))} assets and "
+        f"{len(iter_bridge_asset_directories(package))} folders have metadata",
+    )
+    check_package_meta_guid_uniqueness(
+        results,
+        package,
+        "ROS2 Bridge Unity asset and folder .meta GUIDs",
+        "Unity-tracked ROS2 Bridge",
     )
 
 
@@ -1162,6 +1266,7 @@ def main() -> int:
         check_package_identity(results, data)
         check_dependent_package_versions(results, data)
     check_ros2_bridge_package(results)
+    check_ros2_bridge_meta(results)
     check_optional_package_boundaries(results)
     check_required_files(results)
     bridge_files = iter_bridge_asset_files()
