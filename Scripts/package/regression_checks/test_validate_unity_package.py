@@ -374,6 +374,31 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertFalse(guids.ok)
         self.assertIn("duplicates", guids.detail)
 
+    def test_bridge_meta_rejects_non_mono_csharp_importers(self) -> None:
+        """Bridge C# metadata must not declare a non-Mono importer."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+            source = package / "Runtime" / "Example.cs"
+            source.parent.mkdir(parents=True)
+            source.write_text("class Example {}", encoding="utf-8")
+            (Path(str(source) + ".meta")).write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 12121212121212121212121212121212\n"
+                "TextureImporter:\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(self.validator, "ROS2_BRIDGE_PACKAGE", package):
+                results = []
+                self.validator.check_ros2_bridge_meta(results)
+
+        files = next(
+            item for item in results
+            if item.name == "ROS2 Bridge Unity asset and folder .meta files"
+        )
+        self.assertFalse(files.ok)
+        self.assertIn("Example.cs.meta", files.detail)
+
     def test_sample_meta_checks_asmdef_files(self) -> None:
         """Sample asmdef files need stable Unity .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:
@@ -561,8 +586,7 @@ class ValidatePackageTests(unittest.TestCase):
             orphan.parent.mkdir(parents=True)
             orphan.write_text(
                 "fileFormatVersion: 2\n"
-                "guid: 88888888888888888888888888888888\n"
-                "folderAsset: yes\n",
+                "guid: 88888888888888888888888888888888\n",
                 encoding="utf-8",
             )
 
@@ -589,6 +613,49 @@ class ValidatePackageTests(unittest.TestCase):
             self.validator.check_sdk_meta_guid_uniqueness(results, package)
 
         self.assertTrue(results[-1].ok)
+
+    def test_sdk_meta_guid_uniqueness_checks_optional_folder_guid_collisions(self) -> None:
+        """Allowed missing folder sidecars must still participate in GUID checks."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.sdk"
+            optional = package / "Editor" / "SourceGenerators" / "build.meta"
+            source = package / "Runtime" / "Example.cs"
+            optional.parent.mkdir(parents=True)
+            source.parent.mkdir(parents=True)
+            source.write_text("class Example {}", encoding="utf-8")
+            guid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            optional.write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\nfolderAsset: yes\n",
+                encoding="utf-8",
+            )
+            (Path(str(source) + ".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\n",
+                encoding="utf-8",
+            )
+
+            results = []
+            self.validator.check_sdk_meta_guid_uniqueness(results, package)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("duplicates", results[-1].detail)
+
+    def test_sdk_meta_guid_uniqueness_rejects_malformed_optional_folder_sidecars(self) -> None:
+        """Allowed missing folder sidecars must retain valid folder metadata."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.sdk"
+            optional = package / "Editor" / "SourceGenerators" / "build.meta"
+            optional.parent.mkdir(parents=True)
+            optional.write_text(
+                "fileFormatVersion: 2\n"
+                "guid: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n",
+                encoding="utf-8",
+            )
+
+            results = []
+            self.validator.check_sdk_meta_guid_uniqueness(results, package)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("build.meta", results[-1].detail)
 
     def test_sdk_meta_guid_uniqueness_ignores_non_unity_sidecars(self) -> None:
         """Build-tool sidecars are outside the Unity asset GUID scope."""

@@ -65,7 +65,7 @@ CONSUMER_LOCAL_DEPENDENCY_PREFIXES = (
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
 SDK_DECOMPOSED_TESTS = PACKAGE / "Tests" / "Unit" / "Decomposed"
-KNOWN_OPTIONAL_FOLDER_META_PATHS = frozenset(
+SDK_OPTIONAL_MISSING_META_PATHS = frozenset(
     {
         "Editor/SourceGenerators/build.meta",
         "Plugins/native.meta",
@@ -190,7 +190,7 @@ THIRD_PARTY_NOTICE_REQUIREMENTS = (
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 META_GUID_RE = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
 META_FOLDER_ASSET_RE = re.compile(r"(?mi)^folderAsset:\s*yes\s*$")
-META_DEFAULT_IMPORTER_RE = re.compile(r"(?mi)^DefaultImporter:\s*$")
+META_IMPORTER_RE = re.compile(r"(?mi)^([A-Za-z][A-Za-z0-9]*Importer):\s*$")
 VALIDATION_PHASE_FILENAME_RE = re.compile(r"^Phase(?P<phase>\d+)(?P<trailing>[A-Za-z0-9_-]*)Validation\.cs$")
 VALIDATION_PHASE_FILENAME_INDEX_RE = re.compile(r"^[_-](?P<index>\d+)")
 LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE = 164
@@ -232,6 +232,12 @@ def rel(path: Path) -> str:
         return path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _csharp_meta_importer_is_valid(text: str) -> bool:
+    """Accept minimal C# metadata and reject non-Mono importers."""
+    importers = {match.group(1) for match in META_IMPORTER_RE.finditer(text)}
+    return not importers or importers == {"MonoImporter"}
 
 
 def iter_files(root: Path) -> Iterable[Path]:
@@ -758,7 +764,7 @@ def check_sdk_script_meta(
             malformed.append(rel(meta))
             continue
         match = META_GUID_RE.search(text)
-        if match is None or META_DEFAULT_IMPORTER_RE.search(text) is not None:
+        if match is None or not _csharp_meta_importer_is_valid(text):
             malformed.append(rel(meta))
             continue
         guid = match.group(1).lower()
@@ -844,6 +850,7 @@ def check_sdk_decomposed_folder_meta(
 
 def _collect_meta_guid_offenders(
     package: Path,
+    optional_missing_meta_paths: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, str], list[str], list[str], list[str]]:
     """Collect malformed and duplicate GUID references under a package."""
     guids: dict[str, str] = {}
@@ -854,18 +861,11 @@ def _collect_meta_guid_offenders(
         if not meta.is_file():
             continue
         asset = Path(str(meta)[:-len(".meta")])
+        relative_meta = meta.relative_to(package).as_posix()
         if not asset.exists():
-            relative_meta = meta.relative_to(package).as_posix()
-            try:
-                meta_text = meta.read_text(encoding="utf-8")
-            except (OSError, UnicodeError):
-                meta_text = ""
-            is_folder_meta = META_FOLDER_ASSET_RE.search(meta_text) is not None
-            if asset.suffix.casefold() in UNITY_META_EXTENSIONS or (
-                is_folder_meta and relative_meta not in KNOWN_OPTIONAL_FOLDER_META_PATHS
-            ):
+            if relative_meta not in optional_missing_meta_paths:
                 orphan.append(rel(meta))
-            continue
+                continue
         if (
             asset.is_file()
             and asset.suffix.casefold() in NON_UNITY_BUILD_META_SUFFIXES
@@ -878,6 +878,13 @@ def _collect_meta_guid_offenders(
             continue
         match = META_GUID_RE.search(text)
         if match is None:
+            malformed.append(rel(meta))
+            continue
+        if (
+            not asset.exists()
+            and relative_meta in optional_missing_meta_paths
+            and META_FOLDER_ASSET_RE.search(text) is None
+        ):
             malformed.append(rel(meta))
             continue
         guid = match.group(1).lower()
@@ -894,6 +901,7 @@ def check_package_meta_guid_uniqueness(
     root: Path,
     check_name: str,
     asset_label: str,
+    optional_missing_meta_paths: frozenset[str] = frozenset(),
 ) -> None:
     """Ensure package Unity asset and folder metas have unique valid GUIDs."""
     package = root
@@ -906,7 +914,9 @@ def check_package_meta_guid_uniqueness(
         )
         return
 
-    guids, malformed, duplicate, orphan = _collect_meta_guid_offenders(package)
+    guids, malformed, duplicate, orphan = _collect_meta_guid_offenders(
+        package, optional_missing_meta_paths
+    )
 
     offenders = (
         orphan[:MAX_REPORTED_MISSING_META]
@@ -933,6 +943,7 @@ def check_sdk_meta_guid_uniqueness(
         root if root is not None else PACKAGE,
         "SDK Unity asset and folder .meta GUIDs",
         "Unity-tracked SDK",
+        SDK_OPTIONAL_MISSING_META_PATHS,
     )
 
 
@@ -956,10 +967,20 @@ def check_ros2_bridge_meta(results: list[CheckResult]) -> None:
 
     missing: list[str] = []
     malformed_folders: list[str] = []
+    malformed_scripts: list[str] = []
     for asset in iter_bridge_asset_files(package):
         meta = Path(str(asset) + ".meta")
         if not meta.is_file():
             missing.append(rel(meta))
+            continue
+        if asset.suffix.casefold() == ".cs":
+            try:
+                text = meta.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                malformed_scripts.append(rel(meta))
+            else:
+                if not _csharp_meta_importer_is_valid(text):
+                    malformed_scripts.append(rel(meta))
 
     for folder in iter_bridge_asset_directories(package):
         meta = Path(str(folder) + ".meta")
@@ -977,6 +998,7 @@ def check_ros2_bridge_meta(results: list[CheckResult]) -> None:
     offenders = (
         missing[:MAX_REPORTED_MISSING_META]
         + malformed_folders[:MAX_REPORTED_MISSING_META]
+        + malformed_scripts[:MAX_REPORTED_MISSING_META]
     )
     add(
         results,
