@@ -700,12 +700,17 @@ def check_sample_meta(
     )
 
 
-def check_sdk_script_meta(results: list[CheckResult], sdk_files: list[Path] | None = None) -> None:
+def check_sdk_script_meta(
+    results: list[CheckResult],
+    sdk_files: list[Path] | None = None,
+    known_guids: dict[str, str] | None = None,
+) -> None:
     """Ensure every C# source shipped in the SDK package has a Unity meta sidecar."""
     files = sdk_files if sdk_files is not None else list(PACKAGE.rglob("*.cs"))
     missing: list[str] = []
     malformed: list[str] = []
-    guids: dict[str, str] = {}
+    local_guids: dict[str, str] = {}
+    guids = known_guids if known_guids is not None else local_guids
     for path in files:
         if not path.is_file() or path.suffix.casefold() != ".cs":
             continue
@@ -727,35 +732,45 @@ def check_sdk_script_meta(results: list[CheckResult], sdk_files: list[Path] | No
             malformed.append(f"{rel(meta)} duplicates {guids[guid]}")
         else:
             guids[guid] = rel(meta)
+        local_guids.setdefault(guid, rel(meta))
 
     offenders = missing[:MAX_REPORTED_MISSING_META] + malformed[:MAX_REPORTED_MISSING_META]
     add(
         results,
         "SDK C# source .meta files",
         not missing and not malformed,
-        "; ".join(offenders) if offenders else f"{len(guids)} SDK C# sources have valid unique metas",
+        "; ".join(offenders) if offenders else f"{len(local_guids)} SDK C# sources have valid unique metas",
     )
 
 
 def check_sdk_decomposed_folder_meta(
     results: list[CheckResult],
     root: Path | None = None,
+    known_guids: dict[str, str] | None = None,
 ) -> None:
     """Ensure decomposed SDK test folders have stable Unity folder identities."""
     decomposed_root = root if root is not None else SDK_DECOMPOSED_TESTS
-    folders = [decomposed_root] if decomposed_root.is_dir() else []
-    if folders:
-        folders.extend(
-            sorted(
-                (path for path in decomposed_root.rglob("*") if path.is_dir()),
-                key=rel,
-            )
+    if not decomposed_root.is_dir():
+        add(
+            results,
+            "SDK decomposed test folder .meta files",
+            False,
+            f"Required directory missing: {rel(decomposed_root)}",
         )
+        return
+    folders = [decomposed_root]
+    folders.extend(
+        sorted(
+            (path for path in decomposed_root.rglob("*") if path.is_dir()),
+            key=rel,
+        )
+    )
 
     missing: list[str] = []
     malformed: list[str] = []
     duplicate: list[str] = []
-    guids: dict[str, str] = {}
+    local_guids: dict[str, str] = {}
+    guids = known_guids if known_guids is not None else local_guids
     for folder in folders:
         meta = Path(str(folder) + ".meta")
         if not meta.is_file():
@@ -776,6 +791,7 @@ def check_sdk_decomposed_folder_meta(
             duplicate.append(f"{rel(meta)} duplicates {previous}")
         else:
             guids[guid] = rel(meta)
+        local_guids.setdefault(guid, rel(meta))
 
     offenders = (
         missing[:MAX_REPORTED_MISSING_META]
@@ -788,7 +804,7 @@ def check_sdk_decomposed_folder_meta(
         not offenders,
         "; ".join(offenders)
         if offenders
-        else f"{len(guids)} decomposed test folders have valid unique folder metas",
+        else f"{len(local_guids)} decomposed test folders have valid unique folder metas",
     )
 
 
@@ -1093,8 +1109,9 @@ def main() -> int:
     check_required_files(results)
     bridge_files = iter_bridge_asset_files()
     check_sample_meta(results, samples_files, bridge_files)
-    check_sdk_script_meta(results, package_files)
-    check_sdk_decomposed_folder_meta(results)
+    sdk_meta_guids: dict[str, str] = {}
+    check_sdk_script_meta(results, package_files, sdk_meta_guids)
+    check_sdk_decomposed_folder_meta(results, known_guids=sdk_meta_guids)
     check_sample_boundaries(results)
     check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)
