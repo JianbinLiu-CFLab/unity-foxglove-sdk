@@ -9,6 +9,7 @@ from Scripts.phase192 import freeze_baseline, task0_entry
 
 class FreezeBaselineTests(unittest.TestCase):
     def test_measured_lane_result_is_fail_closed(self) -> None:
+        """Measured lane results fail closed for missing and failed evidence."""
         with tempfile.TemporaryDirectory() as temp:
             lane_runs = Path(temp)
             self.assertEqual(task0_entry.measured_lane_result(lane_runs, "missing"), ("NOT_RUN", "meta=missing"))
@@ -21,6 +22,7 @@ class FreezeBaselineTests(unittest.TestCase):
             self.assertEqual(task0_entry.measured_lane_result(lane_runs, "fail"), ("FAIL", "exit_status=1; marker=false"))
 
     def test_python_test_paths_excludes_package_initializers(self) -> None:
+        """Python test inventory excludes package initializer files."""
         paths = [
             "Scripts/smoke/foxrun/regression_checks/test_feature.py",
             "Scripts/smoke/foxrun/regression_checks/test_feature/__init__.py",
