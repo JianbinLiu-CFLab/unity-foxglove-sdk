@@ -43,8 +43,8 @@ VENDOR_ROOTS = {
     "third-party/foxglove-sdk": "b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba",
     "third-party/mcap": "c3cab6bd3ce79199e362766daec3a4689f3a0335",
     "third-party/ROS-TCP-Connector": "c27f00c6cf750d2d0564349b3039d19aa3925e7c",
-    "D:/ros2unity/third-party/ros2cs": "4252e38a5bafe6102c3f8f3dcb5cb591492ba087",
-    "D:/ros2unity/third-party/ros2-for-unity": "6ae8e285115e7ca72c48932df5d673f512b56dd7",
+    "external/ros2cs": "4252e38a5bafe6102c3f8f3dcb5cb591492ba087",
+    "external/ros2-for-unity": "6ae8e285115e7ca72c48932df5d673f512b56dd7",
 }
 AREA_RULES = (
     ("test-suites", "**/Tests/**", "generated and vendor manifests", "test"),
