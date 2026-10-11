@@ -8,6 +8,7 @@ from Scripts.phase192 import freeze_baseline, task0_entry
 
 
 class FreezeBaselineTests(unittest.TestCase):
+    """Verify Task 0 baseline inventory helpers."""
     def test_measured_lane_result_is_fail_closed(self) -> None:
         """Measured lane results fail closed for missing and failed evidence."""
         with tempfile.TemporaryDirectory() as temp:
