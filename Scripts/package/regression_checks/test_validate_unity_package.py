@@ -430,6 +430,56 @@ class ValidatePackageTests(unittest.TestCase):
 
         self.assertTrue(results[-1].ok)
 
+    def test_sdk_meta_guid_uniqueness_rejects_proto_asmdef_collision(self) -> None:
+        """Protocol assets and assembly definitions must not share a GUID."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.sdk"
+            proto = package / "Runtime" / "Schemas" / "Example.proto"
+            asmdef = package / "Runtime" / "Example.asmdef"
+            proto.parent.mkdir(parents=True)
+            proto.write_text("syntax = \"proto3\";", encoding="utf-8")
+            asmdef.write_text("{}", encoding="utf-8")
+            guid = "77777777777777777777777777777777"
+            (Path(str(proto) + ".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\n",
+                encoding="utf-8",
+            )
+            (Path(str(asmdef) + ".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\n",
+                encoding="utf-8",
+            )
+
+            results = []
+            self.validator.check_sdk_meta_guid_uniqueness(results, package)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("duplicates", results[-1].detail)
+
+    def test_sdk_meta_guid_uniqueness_rejects_pb_cs_collision(self) -> None:
+        """Generated protocol assets and C# sources must not share a GUID."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.sdk"
+            descriptor = package / "Runtime" / "Schemas" / "Example.pb"
+            source = package / "Runtime" / "Example.cs"
+            descriptor.parent.mkdir(parents=True)
+            descriptor.write_bytes(b"descriptor")
+            source.write_text("class Example {}", encoding="utf-8")
+            guid = "88888888888888888888888888888888"
+            (Path(str(descriptor) + ".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\n",
+                encoding="utf-8",
+            )
+            (Path(str(source) + ".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\n",
+                encoding="utf-8",
+            )
+
+            results = []
+            self.validator.check_sdk_meta_guid_uniqueness(results, package)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("duplicates", results[-1].detail)
+
     def test_sample_meta_checks_prefab_files(self) -> None:
         """Common Unity assets such as prefabs need stable .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:
