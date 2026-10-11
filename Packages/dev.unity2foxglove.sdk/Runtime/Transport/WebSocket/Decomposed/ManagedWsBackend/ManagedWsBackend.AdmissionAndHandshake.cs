@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Transport
     /// <remarks>Phase192 source sections: ManagedWsBackend.LifecycleAndMessaging.cs, ManagedWsBackend.AdmissionAndHandshake.cs, ManagedWsBackend.PublicationAndShutdown.cs, ManagedWsBackend.ReceiveAndDisconnect.cs</remarks>
     public partial class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IFoxgloveTransportCapacityProvider, IDisposable
     {
+        /// <summary>Continuously accept TCP clients and spawn handler tasks until canceled.</summary>
         private async Task AcceptLoop(TcpListener listener, CancellationToken ct)
         {
             while (!ct.IsCancellationRequested)
@@ -446,10 +447,5 @@ namespace Unity.FoxgloveSDK.Transport
             }
         }
 
-        /// <summary>
-        /// Atomically claims the final admission-to-publication transition. Stop
-        /// marks the same admission gate before it snapshots clients, so an
-        /// unannounced connection is removed instead of publishing after stop.
-        /// </summary>
     }
 }

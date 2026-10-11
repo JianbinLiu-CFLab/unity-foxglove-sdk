@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyManagedWsBackendAvoidsClientSnapshots()
         {
-            var backend = Read("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var backend = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             var broadcastText = SourceMethod(backend, "public void BroadcastText(string json)");
             var broadcastBinary = SourceMethod(backend, "public void BroadcastBinary(byte[] data)");
             var stats = SourceMethod(backend, "public TransportStatsSnapshot GetStatsSnapshot()");

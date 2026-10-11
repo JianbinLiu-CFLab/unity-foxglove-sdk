@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBroadcastTextEncodesOnceAndAvoidsClientSnapshots()
         {
-            var backend = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var backend = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             var connection = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsConnection.cs");
             var broadcastText = SourceMethod(backend, "public void BroadcastText(string json)");
             var broadcastBinary = SourceMethod(backend, "public void BroadcastBinary(byte[] data)");

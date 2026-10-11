@@ -17,7 +17,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("=== Phase 163-5: Transport, Queues, TLS/Auth, and Backpressure Review ===");
 
             var root = Phase16Validation.FindRepoRoot();
-            var backend = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var backend = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             var queue = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsSendQueue.cs");
             var handshake = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsHandshakeHandler.cs");
             var distributor = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Transport/Security/FoxgloveCertificateDistributor.cs");

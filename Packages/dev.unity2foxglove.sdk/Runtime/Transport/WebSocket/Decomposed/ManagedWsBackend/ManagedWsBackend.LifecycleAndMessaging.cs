@@ -429,8 +429,5 @@ namespace Unity.FoxgloveSDK.Transport
             return value.TrimEnd('/');
         }
 
-        // Internal
-
-        /// <summary>Continuously accept TCP clients and spawn handler tasks until canceled.</summary>
     }
 }
