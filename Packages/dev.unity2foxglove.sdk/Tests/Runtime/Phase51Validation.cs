@@ -355,7 +355,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "51B-19: live MessageData publish uses data binary priority");
 
             var transportSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/Abstractions/IFoxgloveTransport.cs");
-            var backendSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var backendSource = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             Check(transportSource.Contains("BroadcastDataBinary")
                   && Regex.IsMatch(backendSource, @"BroadcastBinary[\s\S]*FramePriority\.Control")
                   && Regex.IsMatch(backendSource, @"BroadcastDataBinary[\s\S]*FramePriority\.Data"),
@@ -380,7 +380,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyClientIdAllocationCannotWrapToZero()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var source = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             Check(source.Contains("long _nextClientId") && source.Contains("AllocateClientId")
                   && source.Contains("uint.MaxValue") && !source.Contains("(uint)Interlocked.Increment(ref _nextClientId)"),
                 "51B-21: ManagedWsBackend allocates nonzero client ids without uint wraparound");

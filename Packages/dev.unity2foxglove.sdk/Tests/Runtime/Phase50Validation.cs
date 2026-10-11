@@ -120,7 +120,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyManagedWebSocketOrderedShutdownSource()
         {
-            var backendSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var backendSource = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             var connectionSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsConnection.cs");
             Check(!backendSource.Contains("using (tcpClient)"),
                 "50B-1: HandleClient does not dispose TcpClient before the send loop owns shutdown");

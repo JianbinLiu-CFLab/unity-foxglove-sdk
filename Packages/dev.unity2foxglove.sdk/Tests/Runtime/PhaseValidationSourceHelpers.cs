@@ -40,6 +40,14 @@ namespace Unity.FoxgloveSDK.Tests
             "Decomposed/FoxgloveSession/FoxgloveSession.TimeAndEncoding.cs",
             "Decomposed/FoxgloveSession/FoxgloveSession.TransportEvents.cs",
         };
+        private static readonly string[] ManagedWsBackendSourceFileNames =
+        {
+            "ManagedWsBackend.cs",
+            "Decomposed/ManagedWsBackend/ManagedWsBackend.AdmissionAndHandshake.cs",
+            "Decomposed/ManagedWsBackend/ManagedWsBackend.LifecycleAndMessaging.cs",
+            "Decomposed/ManagedWsBackend/ManagedWsBackend.PublicationAndShutdown.cs",
+            "Decomposed/ManagedWsBackend/ManagedWsBackend.ReceiveAndDisconnect.cs",
+        };
         private static readonly HashSet<string> PythonSectionKeywords = new HashSet<string>(StringComparer.Ordinal)
         {
             "False", "None", "True", "and", "as", "assert", "async", "await", "break",
@@ -88,6 +96,11 @@ namespace Unity.FoxgloveSDK.Tests
                     "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs",
                     StringComparison.Ordinal))
                 return ReadFoxgloveSessionSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs",
+                    StringComparison.Ordinal))
+                return ReadManagedWsBackendSources();
             if (string.Equals(
                     normalized,
                     "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeOutboundScheduler.cs",
@@ -740,6 +753,53 @@ namespace Unity.FoxgloveSDK.Tests
                         : Array.Empty<string>())
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToArray();
+
+            var source = new StringBuilder();
+            foreach (var file in files)
+            {
+                if (source.Length > 0)
+                    source.Append(Environment.NewLine);
+                source.Append(File.ReadAllText(file));
+            }
+
+            return source.ToString();
+        }
+
+        public static string ReadManagedWsBackendSources()
+        {
+            var root = FindRequiredRepoRoot();
+            var transportRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Transport",
+                "WebSocket");
+            if (!Directory.Exists(transportRoot))
+                throw new DirectoryNotFoundException("Managed WebSocket directory was not found.");
+
+            var files = ManagedWsBackendSourceFileNames
+                .Select(relativePath => Path.Combine(
+                    transportRoot,
+                    relativePath.Replace('/', Path.DirectorySeparatorChar)))
+                .ToArray();
+            foreach (var file in files)
+                if (!File.Exists(file))
+                    throw new FileNotFoundException("Missing Managed WebSocket source: " + file, file);
+
+            var fragmentDirectory = Path.Combine(
+                transportRoot,
+                "Decomposed",
+                "ManagedWsBackend");
+            var expectedFragments = new HashSet<string>(
+                ManagedWsBackendSourceFileNames.Skip(1).Select(Path.GetFileName),
+                StringComparer.Ordinal);
+            var actualFragments = new HashSet<string>(
+                Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+                    .Select(Path.GetFileName),
+                StringComparer.Ordinal);
+            if (!expectedFragments.SetEquals(actualFragments))
+                throw new InvalidDataException("Managed WebSocket source fragment set does not match the expected files.");
 
             var source = new StringBuilder();
             foreach (var file in files)
