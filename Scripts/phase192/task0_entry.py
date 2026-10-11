@@ -92,6 +92,7 @@ def validate_classification(
 ) -> None:
     """Fail closed when source paths are not classified by a manifest."""
     def manifest_paths(name: str) -> set[str]:
+        """Return manifest paths from a Task 0 inventory file."""
         with (output / name).open(encoding="utf-8", newline="") as handle:
             return {row[0] for row in csv.reader(handle, delimiter="\t") if row and row[0] != "path"}
 

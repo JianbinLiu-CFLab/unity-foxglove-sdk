@@ -70,25 +70,32 @@ AREA_RULES = (
     ("remaining", "**", "generated and vendor manifests", "product"),
 )
 def _rooted(path: Path, root: Path) -> Path:
+    """Phase192 identity baseline helper."""
     return path if path.is_absolute() else (root / path)
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
+    """Phase192 identity baseline helper."""
     return subprocess.run(["git", *args], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 def tracked_paths(root: Path) -> list[str]:
+    """Phase192 identity baseline helper."""
     completed = _git(root, "ls-files", "-z")
     if completed.returncode:
         raise RuntimeError(completed.stderr.decode(errors="replace").strip())
     return sorted(item.decode("utf-8") for item in completed.stdout.split(b"\0") if item)
 def sha256(path: Path) -> str:
+    """Phase192 identity baseline helper."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest().upper()
 def line_count(path: Path) -> int:
+    """Phase192 identity baseline helper."""
     return len(path.read_bytes().splitlines())
 def is_vendor(path: str) -> bool:
+    """Phase192 identity baseline helper."""
     return path.startswith(VENDOR_PREFIXES)
 def is_generated(path: str) -> bool:
+    """Phase192 identity baseline helper."""
     if path.startswith(GENERATED_PROTO_ROOT):
         return True
     if path.startswith(GENERATED_CDR_ROOT) and Path(path).name in GENERATED_CDR_NAMES:
@@ -107,6 +114,7 @@ def is_generated(path: str) -> bool:
             return True
     return False
 def generated_owner(path: str) -> tuple[str, str]:
+    """Phase192 identity baseline helper."""
     if path.startswith(GENERATED_PROTO_ROOT):
         return "protobuf compiler / SDK schema generator", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto"
     if path.startswith(GENERATED_CDR_ROOT):
@@ -117,6 +125,7 @@ def generated_owner(path: str) -> tuple[str, str]:
         return "FoxRun source generator fixture", "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Fixtures"
     return "Unity generated asset output", "Unity2Foxglove/Assets/Scripts/Generated"
 def area_for(path: str) -> tuple[str, str, str, str]:
+    """Phase192 identity baseline helper."""
     lower = path.casefold()
     for area, include, exclude, classification in AREA_RULES:
         if area == "test-suites":
@@ -141,11 +150,13 @@ def area_for(path: str) -> tuple[str, str, str, str]:
             return area, include, exclude, "product"
     return "remaining", "**", "generated and vendor manifests", "product"
 def kind_for(path: str, default: str) -> str:
+    """Phase192 identity baseline helper."""
     lower = path.casefold()
     if default == "test" or "/tests/" in f"/{lower}" or "/regression_checks/" in f"/{lower}" or Path(path).name.casefold().startswith("test_"):
         return "test"
     return "product"
 def python_test_paths(paths: Iterable[str]) -> list[str]:
+    """Phase192 identity baseline helper."""
     return sorted(
         path
         for path in paths
@@ -154,12 +165,14 @@ def python_test_paths(paths: Iterable[str]) -> list[str]:
         and ("/regression_checks/" in f"/{path}" or Path(path).name.casefold().startswith("test_"))
     )
 def write_tsv(path: Path, fields: list[str], rows: Iterable[Iterable[object]]) -> None:
+    """Phase192 identity baseline helper."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(fields)
         writer.writerows(rows)
 def parse_status(root: Path) -> list[tuple[str, str]]:
+    """Phase192 identity baseline helper."""
     completed = _git(root, "status", "--porcelain=v1", "--untracked-files=all", "-z")
     if completed.returncode:
         raise RuntimeError(completed.stderr.decode(errors="replace").strip())
@@ -171,6 +184,7 @@ def parse_status(root: Path) -> list[tuple[str, str]]:
         result.append((record[:2], record[3:]))
     return result
 def classify_boundary(root: Path, output: Path) -> None:
+    """Phase192 identity baseline helper."""
     rows = []
     for status, relative in parse_status(root):
         path = _rooted(Path(relative), root)
@@ -182,6 +196,7 @@ def classify_boundary(root: Path, output: Path) -> None:
         rows.append([relative, status, digest, owner])
     write_tsv(output / "boundary-manifest.tsv", ["path", "status", "sha256", "classification"], rows)
 def source_inventory(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
+    """Phase192 identity baseline helper."""
     source_paths = [path for path in paths if Path(path).suffix.casefold() in SOURCE_EXTENSIONS]
     rows = []
     for relative in source_paths:
@@ -248,6 +263,7 @@ def source_inventory(root: Path, output: Path, paths: list[str]) -> dict[str, in
         "over1000_total": sum(int(row[1]) > 1000 and row[7] == "false" for row in rows),
     }
 def excluded_manifests(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
+    """Phase192 identity baseline helper."""
     generated_paths = [path for path in paths if is_generated(path)]
     vendor_paths = [path for path in paths if is_vendor(path)]
     generated_rows = []
@@ -281,8 +297,10 @@ def excluded_manifests(root: Path, output: Path, paths: list[str]) -> dict[str, 
             shutil.copyfile(source, target)
     return {"generated_files": len(generated_rows), "vendor_files": len(vendor_rows)}
 def _read_text(path: Path) -> str:
+    """Phase192 identity baseline helper."""
     return path.read_text(encoding="utf-8", errors="replace")
 def identity_surfaces(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
+    """Phase192 identity baseline helper."""
     from Scripts.phase192 import identity_contracts
     identity = output / "identity"
     identity.mkdir(parents=True, exist_ok=True)
@@ -298,6 +316,7 @@ def identity_surfaces(root: Path, output: Path, paths: list[str]) -> dict[str, i
     write_tsv(identity / "csharp-test-paths.tsv", ["path"], [[path] for path in csharp_tests])
     errors: list[list[str]] = []
     def collect(command: str, selected: list[str], function, filename: str, header: list[str]) -> int:
+        """Phase192 identity baseline helper."""
         rows = []
         for relative in selected:
             try:
@@ -340,12 +359,14 @@ def identity_surfaces(root: Path, output: Path, paths: list[str]) -> dict[str, i
         "identity_errors": len(errors),
     }
 def _module_name(root: Path, relative: str) -> str | None:
+    """Phase192 identity baseline helper."""
     del root
     path = Path(relative)
     if path.name == "__init__.py" or not relative.startswith("Scripts/"):
         return None
     return relative[:-3].replace("/", ".")
 def python_probes(root: Path, identity: Path, python: list[str]) -> None:
+    """Phase192 identity baseline helper."""
     rows: list[list[object]] = []
     for relative in sorted(python):
         module = _module_name(root, relative)
@@ -399,6 +420,7 @@ def python_probes(root: Path, identity: Path, python: list[str]) -> None:
                 rows.append([relative, module, "direct-entrypoint", command, "TIMEOUT", "124", str(error)])
     write_tsv(identity / "python-probes.tsv", ["path", "module", "probe", "command", "status", "returncode", "result"], rows)
 def assemblies(root: Path, csharp: list[str]) -> tuple[list[list[str]], list[list[str]], list[list[str]]]:
+    """Phase192 identity baseline helper."""
     definitions: list[tuple[Path, str, str]] = []
     for relative in tracked_paths(root):
         path = root / relative
@@ -434,6 +456,7 @@ def assemblies(root: Path, csharp: list[str]) -> tuple[list[list[str]], list[lis
             ivt.append([relative, friend])
     return rows, managed_map, ivt
 def phase191_and_analyzers(root: Path, output: Path, paths: list[str]) -> None:
+    """Phase192 identity baseline helper."""
     identity = output / "identity"
     golden = []
     for relative in paths:
@@ -447,6 +470,7 @@ def phase191_and_analyzers(root: Path, output: Path, paths: list[str]) -> None:
             analyzers.append([relative, sha256(root / relative), "tracked analyzer DLL"])
     write_tsv(identity / "analyzer-dll-hashes.tsv", ["path", "sha256", "source"], analyzers)
 def lane_manifest(root: Path, output: Path, paths: list[str]) -> None:
+    """Phase192 identity baseline helper."""
     from Scripts.phase192.task0_entry import measured_lane_result
 
     identity = output / "identity"
@@ -465,6 +489,7 @@ def lane_manifest(root: Path, output: Path, paths: list[str]) -> None:
     rows.append(["csharp-attribute-scan", "xunit", "tracked .cs sources", "source attribute scan", "source-scan", "attribute-name", cs_test_count, "BASELINE_STATIC", "static-source"])
     write_tsv(identity / "lane-manifest.tsv", ["lane", "framework", "project_or_entrypoint", "command", "discovery_mode", "parameter_normalization", "expected_count", "status", "measurement"], rows)
 def main(argv: list[str] | None = None) -> int:
+    """Phase192 identity baseline helper."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--output", type=Path, default=Path("build/phase192/baseline"))
