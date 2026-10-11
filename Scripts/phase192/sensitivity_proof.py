@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     """Phase192 main."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--identity", type=Path, default=Path("build/phase192/baseline/identity"))
-    parser.add_argument("--generated", type=Path, default=Path("build/phase192/baseline/generated-manifest.tsv"))
+    parser.add_argument("--generated", type=Path, default=Path("build/phase192/baseline/generated-hash-manifest.tsv"))
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args(argv)
