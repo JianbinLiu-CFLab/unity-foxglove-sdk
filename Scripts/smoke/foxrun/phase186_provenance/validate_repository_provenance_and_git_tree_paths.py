@@ -194,11 +194,7 @@ def _validate_decomposed_source_files(
                 errors.append(str(exc))
                 continue
             part_paths.add(path)
-            is_decomposed_path = any(
-                component.casefold() == "decomposed"
-                for component in pathlib.PurePosixPath(path).parts
-            )
-            if path not in discovered_sources and not is_decomposed_path:
+            if path not in discovered_sources:
                 errors.append(f"decomposed source part is not discovered: {path}")
             raw: bytes | None = None
             try:
