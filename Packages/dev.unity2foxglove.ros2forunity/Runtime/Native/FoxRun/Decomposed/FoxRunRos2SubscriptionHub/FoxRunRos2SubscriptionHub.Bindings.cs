@@ -16,8 +16,6 @@ using UnityEngine;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
-    internal interface IFoxRunRos2SubscriptionHostedCleanup
-    {
     internal sealed partial class FoxRunRos2SubscriptionHub : MonoBehaviour
     {
         private sealed class CollectingRegistrar : IFoxRunRos2SubscriptionRegistrar
