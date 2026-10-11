@@ -8,6 +8,7 @@ SOURCE_PARTS = (
 )
 
 def source_text():
+    """Read the split Ros2BridgeConnection source."""
     return '\n'.join(path.read_text(encoding='utf-8') for path in SOURCE_PARTS)
 
 class H07StartupRollbackTests(unittest.TestCase):

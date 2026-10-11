@@ -72,8 +72,31 @@ namespace Unity.FoxgloveSDK.Tests
                     "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs",
                     StringComparison.Ordinal))
                 return ReadFoxgloveRuntimeSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeOutboundScheduler.cs",
+                    StringComparison.Ordinal))
+                return ReadRos2BridgeOutboundSchedulerSources();
 
             return File.ReadAllText(RepoPath(relativePath));
+        }
+
+        public static string ReadRos2BridgeOutboundSchedulerSources()
+        {
+            var root = FindRequiredRepoRoot();
+            var paths = new[]
+            {
+                Path.Combine(root, "Packages", "dev.unity2foxglove.ros2bridge", "Runtime", "Ros2Bridge", "Ros2BridgeOutboundScheduler.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.ros2bridge", "Runtime", "Ros2Bridge", "Decomposed", "Ros2BridgeOutboundScheduler", "StateAndConstruction.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.ros2bridge", "Runtime", "Ros2Bridge", "Decomposed", "Ros2BridgeOutboundScheduler", "AdmissionAndWrites.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.ros2bridge", "Runtime", "Ros2Bridge", "Decomposed", "Ros2BridgeOutboundScheduler", "LifecycleAndAccounting.cs"),
+            };
+
+            foreach (var path in paths)
+                if (!File.Exists(path))
+                    throw new FileNotFoundException("Missing ROS2 Bridge outbound scheduler source: " + path, path);
+
+            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
         }
 
         public static string ReadMcapReplayEngineSources()
