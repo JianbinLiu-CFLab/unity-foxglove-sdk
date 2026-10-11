@@ -5,7 +5,6 @@
 // Purpose: Phase164-3 optimization regression coverage for session routing hot paths.
 
 using System;
-using System.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -143,15 +142,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
-
-        private static string RepoPath(string relativePath)
-        {
-            var root = Phase16Validation.FindRepoRoot();
-            if (root == null)
-                throw new DirectoryNotFoundException("Could not locate repository root.");
-            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-        }
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static void Check(bool condition, string label)
         {

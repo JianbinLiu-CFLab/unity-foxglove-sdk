@@ -249,6 +249,93 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertNotIn(generated, assets)
         self.assertIn(ordinary, assets)
 
+    def test_bridge_meta_requires_asset_and_folder_sidecars(self) -> None:
+        """Bridge Unity assets and tracked folders need metadata sidecars."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+            runtime = package / "Runtime"
+            source = runtime / "Example.cs"
+            protocol = runtime / "Example.proto"
+            runtime.mkdir(parents=True)
+            source.write_text("class Example {}", encoding="utf-8")
+            protocol.write_text("syntax = \"proto3\";", encoding="utf-8")
+
+            with mock.patch.object(self.validator, "ROS2_BRIDGE_PACKAGE", package):
+                results = []
+                self.validator.check_ros2_bridge_meta(results)
+            files = next(
+                item for item in results
+                if item.name == "ROS2 Bridge Unity asset and folder .meta files"
+            )
+            self.assertFalse(files.ok)
+            self.assertIn("Example.proto.meta", files.detail)
+
+            (runtime.with_suffix(".meta")).write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 11111111111111111111111111111111\n"
+                "folderAsset: yes\n",
+                encoding="utf-8",
+            )
+            (Path(str(source) + ".meta")).write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 22222222222222222222222222222222\n",
+                encoding="utf-8",
+            )
+            (Path(str(protocol) + ".meta")).write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 33333333333333333333333333333333\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(self.validator, "ROS2_BRIDGE_PACKAGE", package):
+                results = []
+                self.validator.check_ros2_bridge_meta(results)
+            self.assertTrue(
+                next(
+                    item for item in results
+                    if item.name == "ROS2 Bridge Unity asset and folder .meta files"
+                ).ok
+            )
+            self.assertTrue(
+                next(
+                    item for item in results
+                    if item.name == "ROS2 Bridge Unity asset and folder .meta GUIDs"
+                ).ok
+            )
+
+    def test_bridge_meta_guid_uniqueness_rejects_duplicate_sidecars(self) -> None:
+        """Bridge assets and folders must not share Unity GUIDs."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+            runtime = package / "Runtime"
+            first = runtime / "First.cs"
+            second = runtime / "Second.cs"
+            runtime.mkdir(parents=True)
+            first.write_text("class First {}", encoding="utf-8")
+            second.write_text("class Second {}", encoding="utf-8")
+            (runtime.with_suffix(".meta")).write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 44444444444444444444444444444444\n"
+                "folderAsset: yes\n",
+                encoding="utf-8",
+            )
+            for source in (first, second):
+                (Path(str(source) + ".meta")).write_text(
+                    "fileFormatVersion: 2\n"
+                    "guid: 55555555555555555555555555555555\n",
+                    encoding="utf-8",
+                )
+
+            with mock.patch.object(self.validator, "ROS2_BRIDGE_PACKAGE", package):
+                results = []
+                self.validator.check_ros2_bridge_meta(results)
+
+        guids = next(
+            item for item in results
+            if item.name == "ROS2 Bridge Unity asset and folder .meta GUIDs"
+        )
+        self.assertFalse(guids.ok)
+        self.assertIn("duplicates", guids.detail)
+
     def test_sample_meta_checks_asmdef_files(self) -> None:
         """Sample asmdef files need stable Unity .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:
