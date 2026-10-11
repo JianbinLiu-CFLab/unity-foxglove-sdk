@@ -29,6 +29,17 @@ namespace Unity.FoxgloveSDK.Tests
             "FoxgloveRuntime.ReplaySuppression.cs",
             "FoxgloveRuntime.SchemaRegistration.cs",
         };
+        private static readonly string[] FoxgloveSessionSourceFileNames =
+        {
+            "FoxgloveSession.cs",
+            "Decomposed/FoxgloveSession/FoxgloveSession.Lifecycle.cs",
+            "Decomposed/FoxgloveSession/FoxgloveSession.Channels.cs",
+            "Decomposed/FoxgloveSession/FoxgloveSession.SchemaChannels.cs",
+            "Decomposed/FoxgloveSession/FoxgloveSession.Publishing.cs",
+            "Decomposed/FoxgloveSession/FoxgloveSession.ServiceRegistration.cs",
+            "Decomposed/FoxgloveSession/FoxgloveSession.TimeAndEncoding.cs",
+            "Decomposed/FoxgloveSession/FoxgloveSession.TransportEvents.cs",
+        };
         private static readonly HashSet<string> PythonSectionKeywords = new HashSet<string>(StringComparer.Ordinal)
         {
             "False", "None", "True", "and", "as", "assert", "async", "await", "break",
@@ -74,11 +85,91 @@ namespace Unity.FoxgloveSDK.Tests
                 return ReadFoxgloveRuntimeSources();
             if (string.Equals(
                     normalized,
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs",
+                    StringComparison.Ordinal))
+                return ReadFoxgloveSessionSources();
+            if (string.Equals(
+                    normalized,
                     "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeOutboundScheduler.cs",
                     StringComparison.Ordinal))
                 return ReadRos2BridgeOutboundSchedulerSources();
 
             return File.ReadAllText(RepoPath(relativePath));
+        }
+
+        public static string ReadFoxgloveSessionSources()
+        {
+            var root = FindRequiredRepoRoot();
+            var sessionRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Core",
+                "Session");
+            var paths = FoxgloveSessionSourceFileNames
+                .Select(relativePath => Path.Combine(
+                    sessionRoot,
+                    relativePath.Replace('/', Path.DirectorySeparatorChar)))
+                .ToArray();
+
+            foreach (var path in paths)
+                if (!File.Exists(path))
+                    throw new FileNotFoundException("Missing Foxglove session source: " + path, path);
+
+            var fragmentDirectory = Path.Combine(
+                sessionRoot,
+                "Decomposed",
+                "FoxgloveSession");
+            var expectedFragments = new HashSet<string>(
+                paths.Skip(1).Select(Path.GetFileName),
+                StringComparer.Ordinal);
+            var actualFragments = new HashSet<string>(
+                Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+                    .Select(Path.GetFileName),
+                StringComparer.Ordinal);
+            if (!expectedFragments.SetEquals(actualFragments))
+                throw new InvalidDataException(
+                    "Foxglove session source set mismatch. Expected: "
+                    + string.Join(", ", expectedFragments.OrderBy(name => name, StringComparer.Ordinal))
+                    + "; actual: "
+                    + string.Join(", ", actualFragments.OrderBy(name => name, StringComparer.Ordinal)));
+
+            var chunks = new List<string>
+            {
+                ReadFoxgloveSessionFacadeBody(paths[0]),
+            };
+            chunks.AddRange(paths.Skip(1).Select(ReadFoxgloveSessionFragmentBody));
+            return string.Join(Environment.NewLine + Environment.NewLine, chunks)
+                + Environment.NewLine
+                + "    }"
+                + Environment.NewLine
+                + "}";
+        }
+
+        private static string ReadFoxgloveSessionFacadeBody(string path)
+        {
+            var lines = File.ReadAllLines(path);
+            if (lines.Length < 3)
+                throw new InvalidDataException("Foxglove session facade is too short: " + path);
+            return string.Join(Environment.NewLine, lines.Take(lines.Length - 2));
+        }
+
+        private static string ReadFoxgloveSessionFragmentBody(string path)
+        {
+            var lines = File.ReadAllLines(path);
+            var classLine = Array.FindIndex(
+                lines,
+                line => line.Contains("partial class FoxgloveSession", StringComparison.Ordinal));
+            if (classLine < 0)
+                throw new InvalidDataException("Foxglove session fragment class is missing: " + path);
+            var openBrace = Array.FindIndex(
+                lines,
+                classLine,
+                line => line.Trim() == "{");
+            if (openBrace < 0 || lines.Length - openBrace < 4)
+                throw new InvalidDataException("Foxglove session fragment is too short: " + path);
+            return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
         }
 
         public static string ReadRos2BridgeOutboundSchedulerSources()
