@@ -499,8 +499,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
             var fanout = Read(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Transport/FoxRunTransportContributions.cs");
-            var bridge = Read(
-                "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun/Ros2CustomCdrEmitter.cs");
+            var bridge = PhaseValidationSourceHelpers.ReadRos2CustomCdrEmitterSources();
             var provider = Read(
                 "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs");
 
