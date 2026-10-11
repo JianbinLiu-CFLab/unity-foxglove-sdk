@@ -250,6 +250,11 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             runtime.Start(enabled: true, autoConnect: true);
             Wait(sink.ConnectEntered, "worker did not connect");
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => sink.IsConnected && runtime.IsConnected,
+                    TimeSpan.FromSeconds(2)),
+                "worker did not complete connection");
             runtime.Stop();
             runtime.Stop();
 

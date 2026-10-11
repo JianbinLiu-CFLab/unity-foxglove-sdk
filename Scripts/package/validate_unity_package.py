@@ -245,6 +245,7 @@ def iter_bridge_asset_files(package: Path | None = None) -> list[Path]:
             part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES
             for part in path.relative_to(root).parts
         )
+        and not path_is_relative_to(path, root / "Documentation~")
     ]
 
 
@@ -833,16 +834,19 @@ def check_sdk_decomposed_folder_meta(
 
 def _collect_meta_guid_offenders(
     package: Path,
-) -> tuple[dict[str, str], list[str], list[str]]:
+) -> tuple[dict[str, str], list[str], list[str], list[str]]:
     """Collect malformed and duplicate GUID references under a package."""
     guids: dict[str, str] = {}
     malformed: list[str] = []
     duplicate: list[str] = []
+    orphan: list[str] = []
     for meta in sorted(package.rglob("*.meta"), key=rel):
         if not meta.is_file():
             continue
         asset = Path(str(meta)[:-len(".meta")])
         if not asset.exists():
+            if asset.suffix.casefold() in UNITY_META_EXTENSIONS:
+                orphan.append(rel(meta))
             continue
         if (
             asset.is_file()
@@ -864,7 +868,7 @@ def _collect_meta_guid_offenders(
             duplicate.append(f"{rel(meta)} duplicates {previous}")
         else:
             guids[guid] = rel(meta)
-    return guids, malformed, duplicate
+    return guids, malformed, duplicate, orphan
 
 
 def check_package_meta_guid_uniqueness(
@@ -884,9 +888,13 @@ def check_package_meta_guid_uniqueness(
         )
         return
 
-    guids, malformed, duplicate = _collect_meta_guid_offenders(package)
+    guids, malformed, duplicate, orphan = _collect_meta_guid_offenders(package)
 
-    offenders = malformed[:MAX_REPORTED_MISSING_META] + duplicate[:MAX_REPORTED_MISSING_META]
+    offenders = (
+        orphan[:MAX_REPORTED_MISSING_META]
+        + malformed[:MAX_REPORTED_MISSING_META]
+        + duplicate[:MAX_REPORTED_MISSING_META]
+    )
     add(
         results,
         check_name,

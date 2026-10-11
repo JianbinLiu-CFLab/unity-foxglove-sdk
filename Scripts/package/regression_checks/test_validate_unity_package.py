@@ -249,6 +249,42 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertNotIn(generated, assets)
         self.assertIn(ordinary, assets)
 
+    def test_bridge_asset_inventory_excludes_documentation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+            documentation = package / "Documentation~" / "Examples" / "Route.proto"
+            runtime = package / "Runtime" / "Route.proto"
+            documentation.parent.mkdir(parents=True)
+            runtime.parent.mkdir(parents=True)
+            documentation.write_text("syntax = \"proto3\";", encoding="utf-8")
+            runtime.write_text("syntax = \"proto3\";", encoding="utf-8")
+
+            assets = self.validator.iter_bridge_asset_files(package)
+
+        self.assertNotIn(documentation, assets)
+        self.assertIn(runtime, assets)
+
+    def test_bridge_guid_scan_rejects_orphan_sidecars(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+            orphan = package / "Runtime" / "Missing.cs.meta"
+            orphan.parent.mkdir(parents=True)
+            orphan.write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 66666666666666666666666666666666\n",
+                encoding="utf-8",
+            )
+            results = []
+            self.validator.check_package_meta_guid_uniqueness(
+                results,
+                package,
+                "Bridge GUIDs",
+                "Bridge",
+            )
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Missing.cs.meta", results[-1].detail)
+
     def test_bridge_meta_requires_asset_and_folder_sidecars(self) -> None:
         """Bridge Unity assets and tracked folders need metadata sidecars."""
         with tempfile.TemporaryDirectory() as temp:
