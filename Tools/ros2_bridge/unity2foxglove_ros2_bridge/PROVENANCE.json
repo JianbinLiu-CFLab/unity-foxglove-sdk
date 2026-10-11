@@ -57,7 +57,7 @@
     {
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ContractAuthority.cs",
       "sourceRevision": "89a28f5d4aa5672759272b109af4fe325b719269",
-      "decompositionRevision": "cd3ab311439cf030ba98aa69121fa991d2b69471",
+      "decompositionRevision": "3c3c402ddd7f80d685bb9027130239e257fd4f7f",
       "originalSha256": "0cd052474afec9c204059fc20c9e365c34cdc74848a22a2a1bbde087f7b43c5f",
       "parts": [
         {
@@ -105,7 +105,7 @@
     {
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolCodec.cs",
       "sourceRevision": "89a28f5d4aa5672759272b109af4fe325b719269",
-      "decompositionRevision": "2c244abd4315dff66d6aa411495a151fbdafd1cc",
+      "decompositionRevision": "3c3c402ddd7f80d685bb9027130239e257fd4f7f",
       "originalSha256": "41c5b14efc0587dca32836b665f1dda6a00213abf5ffc0daaed92758cbe87f52",
       "parts": [
         {
