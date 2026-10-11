@@ -13,6 +13,7 @@ CI_PASS_MARKER = "All CI checks passed."
 
 
 def command_snapshot(root: Path, output: Path, name: str, argv: list[str]) -> int:
+    """Record one Task 0 command and its exit status."""
     completed = subprocess.run(
         argv,
         cwd=root,
@@ -34,6 +35,7 @@ def command_snapshot(root: Path, output: Path, name: str, argv: list[str]) -> in
 
 
 def record_entry_commands(root: Path, output: Path) -> None:
+    """Record the live repository boundary commands."""
     commands = {
         "status": ["git", "status", "-sb", "--untracked-files=all"],
         "refs": ["git", "rev-parse", "HEAD", "main", "origin/main"],
@@ -46,6 +48,7 @@ def record_entry_commands(root: Path, output: Path) -> None:
 
 
 def write_plan_entry(output: Path, rows: Iterable[Iterable[str]]) -> None:
+    """Write the human-readable plan hash table."""
     review = output / "../review"
     rows = [list(row) for row in rows]
     lines = [
@@ -61,6 +64,7 @@ def write_plan_entry(output: Path, rows: Iterable[Iterable[str]]) -> None:
 
 
 def record_plan_hashes(root: Path, output: Path, plans: Iterable[Path]) -> None:
+    """Record the hashes of the governing phase plans."""
     rows = []
     for plan in plans:
         absolute = plan if plan.is_absolute() else root / plan
@@ -86,6 +90,7 @@ def validate_classification(
     is_generated: Callable[[str], bool],
     is_vendor: Callable[[str], bool],
 ) -> None:
+    """Fail closed when source paths are not classified by a manifest."""
     def manifest_paths(name: str) -> set[str]:
         with (output / name).open(encoding="utf-8", newline="") as handle:
             return {row[0] for row in csv.reader(handle, delimiter="\t") if row and row[0] != "path"}
