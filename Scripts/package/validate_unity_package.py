@@ -190,7 +190,9 @@ THIRD_PARTY_NOTICE_REQUIREMENTS = (
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 META_GUID_RE = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
 META_FOLDER_ASSET_RE = re.compile(r"(?mi)^folderAsset:\s*yes\s*$")
-META_IMPORTER_RE = re.compile(r"(?mi)^([A-Za-z][A-Za-z0-9]*Importer):\s*$")
+META_IMPORTER_RE = re.compile(
+    r"(?m)^([A-Za-z][A-Za-z0-9]*Importer)\s*:"
+)
 VALIDATION_PHASE_FILENAME_RE = re.compile(r"^Phase(?P<phase>\d+)(?P<trailing>[A-Za-z0-9_-]*)Validation\.cs$")
 VALIDATION_PHASE_FILENAME_INDEX_RE = re.compile(r"^[_-](?P<index>\d+)")
 LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE = 164
@@ -236,8 +238,8 @@ def rel(path: Path) -> str:
 
 def _csharp_meta_importer_is_valid(text: str) -> bool:
     """Accept minimal C# metadata and reject non-Mono importers."""
-    importers = {match.group(1) for match in META_IMPORTER_RE.finditer(text)}
-    return not importers or importers == {"MonoImporter"}
+    importers = [match.group(1) for match in META_IMPORTER_RE.finditer(text)]
+    return not importers or importers == ["MonoImporter"]
 
 
 def iter_files(root: Path) -> Iterable[Path]:

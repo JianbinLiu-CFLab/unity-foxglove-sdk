@@ -399,6 +399,30 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertFalse(files.ok)
         self.assertIn("Example.cs.meta", files.detail)
 
+    def test_bridge_meta_rejects_inline_importer_values(self) -> None:
+        """Bridge C# metadata must reject importer keys with inline values."""
+        for importer in ("DefaultImporter: {}", "DefaultImporter: # comment"):
+            with tempfile.TemporaryDirectory() as temp:
+                package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+                source = package / "Runtime" / "Example.cs"
+                source.parent.mkdir(parents=True)
+                source.write_text("class Example {}", encoding="utf-8")
+                (Path(str(source) + ".meta")).write_text(
+                    "fileFormatVersion: 2\n"
+                    "guid: 12121212121212121212121212121212\n"
+                    f"{importer}\n",
+                    encoding="utf-8",
+                )
+                with mock.patch.object(self.validator, "ROS2_BRIDGE_PACKAGE", package):
+                    results = []
+                    self.validator.check_ros2_bridge_meta(results)
+            files = next(
+                item for item in results
+                if item.name == "ROS2 Bridge Unity asset and folder .meta files"
+            )
+            self.assertFalse(files.ok)
+            self.assertIn("Example.cs.meta", files.detail)
+
     def test_sample_meta_checks_asmdef_files(self) -> None:
         """Sample asmdef files need stable Unity .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:
