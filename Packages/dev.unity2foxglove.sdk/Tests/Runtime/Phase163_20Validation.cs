@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Ros2BridgeTransportSourceShapeIsHardened()
         {
             var tcp = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeTcpClient.cs");
-            var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var runtime = PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources();
             var shell = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs");
 
             Check(tcp.Contains("client = null;", StringComparison.Ordinal)

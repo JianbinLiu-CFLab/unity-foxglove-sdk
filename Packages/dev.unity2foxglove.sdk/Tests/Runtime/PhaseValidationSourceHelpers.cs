@@ -48,6 +48,14 @@ namespace Unity.FoxgloveSDK.Tests
             "Decomposed/ManagedWsBackend/ManagedWsBackend.PublicationAndShutdown.cs",
             "Decomposed/ManagedWsBackend/ManagedWsBackend.ReceiveAndDisconnect.cs",
         };
+        private static readonly string[] Ros2BridgeRuntimeSourceFileNames =
+        {
+            "Ros2BridgeRuntime.cs",
+            "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+            "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+            "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+            "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs",
+        };
         private static readonly HashSet<string> PythonSectionKeywords = new HashSet<string>(StringComparer.Ordinal)
         {
             "False", "None", "True", "and", "as", "assert", "async", "await", "break",
@@ -106,6 +114,11 @@ namespace Unity.FoxgloveSDK.Tests
                     "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeOutboundScheduler.cs",
                     StringComparison.Ordinal))
                 return ReadRos2BridgeOutboundSchedulerSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs",
+                    StringComparison.Ordinal))
+                return ReadRos2BridgeRuntimeSources();
 
             return File.ReadAllText(RepoPath(relativePath));
         }
@@ -846,6 +859,54 @@ namespace Unity.FoxgloveSDK.Tests
                 source.Append(File.ReadAllText(file));
             }
 
+            return source.ToString();
+        }
+
+        public static string ReadRos2BridgeRuntimeSources()
+        {
+            var root = FindRequiredRepoRoot();
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            var paths = Ros2BridgeRuntimeSourceFileNames
+                .Select(relativePath => Path.Combine(
+                    runtimeRoot,
+                    relativePath.Replace('/', Path.DirectorySeparatorChar)))
+                .ToArray();
+            foreach (var path in paths)
+                if (!File.Exists(path))
+                    throw new FileNotFoundException("Missing ROS2 Bridge runtime source: " + path, path);
+
+            var fragmentDirectory = Path.Combine(
+                runtimeRoot,
+                "Decomposed",
+                "Ros2BridgeRuntime");
+            var expectedFragments = new HashSet<string>(
+                paths.Skip(1).Select(Path.GetFileName),
+                StringComparer.Ordinal);
+            var actualFragments = Directory.Exists(fragmentDirectory)
+                ? new HashSet<string>(
+                    Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+                        .Select(Path.GetFileName),
+                    StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
+            if (!expectedFragments.SetEquals(actualFragments))
+                throw new InvalidDataException(
+                    "ROS2 Bridge runtime source set mismatch. Expected: "
+                    + string.Join(", ", expectedFragments.OrderBy(name => name, StringComparer.Ordinal))
+                    + "; actual: "
+                    + string.Join(", ", actualFragments.OrderBy(name => name, StringComparer.Ordinal)));
+
+            var source = new StringBuilder();
+            foreach (var path in paths)
+            {
+                if (source.Length > 0)
+                    source.Append(Environment.NewLine);
+                source.Append(File.ReadAllText(path));
+            }
             return source.ToString();
         }
 
