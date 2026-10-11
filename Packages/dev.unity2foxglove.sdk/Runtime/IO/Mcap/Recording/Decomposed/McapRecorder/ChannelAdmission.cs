@@ -187,6 +187,5 @@ namespace Unity.FoxgloveSDK.IO
             return false;
         }
 
-        /// <summary>
     }
 }

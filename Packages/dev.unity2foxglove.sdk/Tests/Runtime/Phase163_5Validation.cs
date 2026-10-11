@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && backend.Contains("WaitForClientHandlers(clientHandlers)", StringComparison.Ordinal),
                 "163-5A: managed WebSocket stop closes the accept window and joins tracked client handlers");
 
-            Check(backend.Contains("TryRegisterClient(conn, out clientId, out var stopped)", StringComparison.Ordinal)
+            Check(backend.Contains("TryRegisterClient(conn, ct, out clientId, out var stopped)", StringComparison.Ordinal)
                   && backend.Contains("RemoveUnannouncedClient(clientId, conn)", StringComparison.Ordinal)
                   && backend.Contains("private bool IsStopping => Volatile.Read(ref _stopping) != 0;", StringComparison.Ordinal),
                 "163-5B: late clients cannot register or fire connect events during Stop");
@@ -44,12 +44,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(backend.Contains("Interlocked.Increment(ref _nextClientId)", StringComparison.Ordinal)
                   && !backend.Contains("Interlocked.Exchange(ref _nextClientId, 0);", StringComparison.Ordinal)
                   && stop.Contains("clients = _clients.ToArray();", StringComparison.Ordinal)
-                  && broadcastText.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal)
-                  && broadcastBinary.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal)
-                  && broadcastDataBinary.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal)
-                  && !broadcastText.Contains("ToArray()", StringComparison.Ordinal)
-                  && !broadcastBinary.Contains("ToArray()", StringComparison.Ordinal)
-                  && !broadcastDataBinary.Contains("ToArray()", StringComparison.Ordinal)
+                  && broadcastText.Contains("SnapshotAnnouncedClients(", StringComparison.Ordinal)
+                  && broadcastBinary.Contains("SnapshotAnnouncedClients(", StringComparison.Ordinal)
+                  && broadcastDataBinary.Contains("SnapshotAnnouncedClients(", StringComparison.Ordinal)
+                  && backend.Contains("return clients.ToArray();", StringComparison.Ordinal)
                   && backend.Contains("var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames);", StringComparison.Ordinal)
                   && !backend.Contains("activeDropped", StringComparison.Ordinal)
                   && backend.Contains("conn.SendClose(GoingAwayCloseCode)", StringComparison.Ordinal)
