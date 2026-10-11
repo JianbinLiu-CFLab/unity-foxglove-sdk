@@ -321,6 +321,65 @@ class ValidatePackageTests(unittest.TestCase):
             self.assertFalse(results[-1].ok)
             self.assertIn("duplicates", results[-1].detail)
 
+    def test_sdk_decomposed_folder_meta_requires_root_directory(self) -> None:
+        """The required decomposed test root must fail closed when absent."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "MissingDecomposed"
+            results = []
+            self.validator.check_sdk_decomposed_folder_meta(results, root)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Required directory missing", results[-1].detail)
+
+    def test_sdk_decomposed_folder_meta_rejects_csharp_guid_collision(self) -> None:
+        """Folder GUIDs must not collide with SDK C# source GUIDs."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "Decomposed"
+            root.mkdir(parents=True)
+            source = Path(temp) / "Example.cs"
+            source.write_text("class Example {}", encoding="utf-8")
+            guid = "33333333333333333333333333333333"
+            (Path(str(source) + ".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\n",
+                encoding="utf-8",
+            )
+            (root.with_suffix(".meta")).write_text(
+                f"fileFormatVersion: 2\nguid: {guid}\nfolderAsset: yes\n",
+                encoding="utf-8",
+            )
+
+            known_guids = {}
+            results = []
+            self.validator.check_sdk_script_meta(results, [source], known_guids)
+            self.assertTrue(results[-1].ok)
+            self.validator.check_sdk_decomposed_folder_meta(results, root, known_guids)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("duplicates", results[-1].detail)
+
+    def test_sdk_decomposed_folder_meta_rejects_malformed_metadata(self) -> None:
+        """Folder metadata must contain a valid GUID and folderAsset marker."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "Decomposed"
+            root.mkdir(parents=True)
+            meta = root.with_suffix(".meta")
+            meta.write_text(
+                "fileFormatVersion: 2\nguid: malformed\nfolderAsset: yes\n",
+                encoding="utf-8",
+            )
+            results = []
+            self.validator.check_sdk_decomposed_folder_meta(results, root)
+            self.assertFalse(results[-1].ok)
+
+            meta.write_text(
+                "fileFormatVersion: 2\nguid: 44444444444444444444444444444444\n",
+                encoding="utf-8",
+            )
+            results = []
+            self.validator.check_sdk_decomposed_folder_meta(results, root)
+
+        self.assertFalse(results[-1].ok)
+
     def test_sample_meta_checks_prefab_files(self) -> None:
         """Common Unity assets such as prefabs need stable .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:
