@@ -354,6 +354,13 @@ private static void Next() { }
             "FoxgloveRuntime.ReplaySuppression.cs",
             "FoxgloveRuntime.SchemaRegistration.cs",
         };
+        private static readonly string[] Ros2ForUnitySubscriptionHubSourceFileNames =
+        {
+            "FoxRunRos2SubscriptionHub.cs",
+            "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Scanning.cs",
+            "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Lifecycle.cs",
+            "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Bindings.cs",
+        };
         private static readonly string CachedRepoRoot = FindRepoRoot();
 
         public static string Runtime(string fileName)
@@ -372,6 +379,11 @@ private static void Next() { }
                     "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs",
                     StringComparison.Ordinal))
                 return FoxgloveRuntimeSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs",
+                    StringComparison.Ordinal))
+                return Ros2ForUnitySubscriptionHubSources();
 
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
@@ -432,6 +444,65 @@ private static void Next() { }
                 + "    }"
                 + Environment.NewLine
                 + "}";
+        }
+
+        private static string Ros2ForUnitySubscriptionHubSources()
+        {
+            var root = Path.Combine(
+                RepoRoot,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime",
+                "Native",
+                "FoxRun");
+            var paths = Ros2ForUnitySubscriptionHubSourceFileNames
+                .Select(relativePath => Path.Combine(
+                    root,
+                    relativePath.Replace('/', Path.DirectorySeparatorChar)))
+                .ToArray();
+            foreach (var path in paths)
+                Assert.True(File.Exists(path), "ROS2 for Unity subscription hub source not found: " + path);
+
+            var fragmentDirectory = Path.Combine(
+                root,
+                "Decomposed",
+                "FoxRunRos2SubscriptionHub");
+            var expectedFragments = Ros2ForUnitySubscriptionHubSourceFileNames
+                .Skip(1)
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            var actualFragments = Directory.Exists(fragmentDirectory)
+                ? Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+                    .Select(Path.GetFileName)
+                    .ToHashSet(StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
+            Assert.True(
+                expectedFragments.SetEquals(actualFragments),
+                "ROS2 for Unity subscription hub source composition is incomplete or contains unregistered partial files.");
+
+            var facadeLines = File.ReadAllLines(paths[0]);
+            Assert.True(facadeLines.Length >= 4, "ROS2 for Unity subscription hub facade is too short.");
+            var sources = new[]
+            {
+                string.Join(Environment.NewLine, facadeLines.Take(facadeLines.Length - 3))
+            }.Concat(paths.Skip(1).Select(path =>
+            {
+                var lines = File.ReadAllLines(path);
+                var classLine = Array.FindIndex(
+                    lines,
+                    line => line.Contains("partial class FoxRunRos2SubscriptionHub", StringComparison.Ordinal));
+                Assert.True(classLine >= 0, "ROS2 for Unity subscription hub fragment class is missing: " + path);
+                var openBrace = Array.FindIndex(lines, classLine, line => line.Trim() == "{");
+                Assert.True(openBrace >= 0 && lines.Length - openBrace >= 4, "ROS2 for Unity subscription hub fragment is too short: " + path);
+                return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
+            }));
+            return string.Join(Environment.NewLine, sources)
+                + Environment.NewLine
+                + "    }"
+                + Environment.NewLine
+                + "}"
+                + Environment.NewLine
+                + "#endif";
         }
 
         private static string TextWithoutComposition(string relativePath)
