@@ -5,11 +5,17 @@ import csv
 import hashlib
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Callable, Iterable
 
 
 CI_PASS_MARKER = "All CI checks passed."
+
+
+def _decode_git_path(value: bytes) -> str:
+    """Decode Git path bytes without losing undecodable filename bytes."""
+    return value.decode(sys.getfilesystemencoding(), errors="surrogateescape")
 
 
 def command_snapshot(
@@ -92,7 +98,11 @@ def write_plan_entry(output: Path, rows: Iterable[Iterable[str]]) -> None:
         "| --- | --- | --- |",
     ]
     lines.extend(f"| `{path}` | `{exists}` | `{digest}` |" for path, exists, digest in rows)
-    (review / "plan-entry.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (review / "plan-entry.md").write_text(
+        "\n".join(lines) + "\n",
+        encoding="utf-8",
+        errors="surrogateescape",
+    )
 
 
 def record_plan_hashes(root: Path, output: Path, plans: Iterable[Path]) -> list[str]:
@@ -111,7 +121,12 @@ def record_plan_hashes(root: Path, output: Path, plans: Iterable[Path]) -> list[
         rows.append([relative, str(absolute.is_file()).lower(), digest])
     review = output / "../review"
     review.mkdir(parents=True, exist_ok=True)
-    with (review / "plan-entry.tsv").open("w", encoding="utf-8", newline="") as handle:
+    with (review / "plan-entry.tsv").open(
+        "w",
+        encoding="utf-8",
+        errors="surrogateescape",
+        newline="",
+    ) as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["path", "exists", "sha256"])
         writer.writerows(rows)
@@ -125,24 +140,37 @@ def validate_classification(
     source_extensions: frozenset[str],
     is_generated: Callable[[str], bool],
     is_vendor: Callable[[str], bool],
+    missing_paths: Iterable[str] = (),
 ) -> None:
     """Fail closed when source paths are not classified by a manifest."""
     def manifest_paths(name: str) -> set[str]:
         """Return manifest paths from a Task 0 inventory file."""
-        with (output / name).open(encoding="utf-8", newline="") as handle:
+        with (output / name).open(
+            encoding="utf-8",
+            errors="surrogateescape",
+            newline="",
+        ) as handle:
             return {row[0] for row in csv.reader(handle, delimiter="\t") if row and row[0] != "path"}
 
     generated = manifest_paths("generated-manifest.tsv")
     vendor = manifest_paths("vendor-manifest.tsv")
+    missing = set(missing_paths)
     errors = []
     for relative in paths:
         if Path(relative).suffix.casefold() not in source_extensions:
             continue
         generated_flag = is_generated(relative)
         vendor_flag = is_vendor(relative)
-        if generated_flag and relative not in generated or vendor_flag and relative not in vendor or generated_flag and vendor_flag:
+        if generated_flag and vendor_flag:
             errors.append([relative, str(generated_flag).lower(), str(vendor_flag).lower(), "ambiguous-or-unmanifested"])
-    with (output / "classification-errors.tsv").open("w", encoding="utf-8", newline="") as handle:
+        elif relative not in missing and (generated_flag and relative not in generated or vendor_flag and relative not in vendor):
+            errors.append([relative, str(generated_flag).lower(), str(vendor_flag).lower(), "ambiguous-or-unmanifested"])
+    with (output / "classification-errors.tsv").open(
+        "w",
+        encoding="utf-8",
+        errors="surrogateescape",
+        newline="",
+    ) as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["path", "generated_excluded", "vendor_excluded", "error"])
         writer.writerows(errors)
@@ -150,12 +178,23 @@ def validate_classification(
         raise RuntimeError(f"Task 0 classification failed closed for {len(errors)} source paths")
 
 
-def measured_lane_result(lane_runs: Path, name: str) -> tuple[str, str]:
+def measured_lane_result(
+    lane_runs: Path,
+    name: str,
+    expected_head: str | None = None,
+) -> tuple[str, str]:
     """Return a fail-closed status and measurement for one recorded CI lane."""
     meta = lane_runs / f"{name}.meta"
     if not meta.is_file():
         return "NOT_RUN", "meta=missing"
-    metadata = meta.read_text(encoding="utf-8", errors="replace")
+    metadata = meta.read_text(encoding="utf-8", errors="surrogateescape")
+    if expected_head:
+        head_match = re.search(r"(?:^|[|\r\n]\s*)HEAD_SHA=([0-9a-fA-F]{40})", metadata)
+        if head_match is None:
+            return "STALE", "head_sha=missing"
+        recorded_head = head_match.group(1).lower()
+        if recorded_head != expected_head.lower():
+            return "STALE", f"head_sha={recorded_head}; expected_head={expected_head.lower()}"
     exit_match = re.search(r"(?:^|[|\r\n]\s*)EXIT_STATUS=(-?\d+)", metadata)
     logs = [lane_runs / f"{name}.stdout.log", lane_runs / f"{name}.stderr.log"]
     payload = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in logs if path.is_file())

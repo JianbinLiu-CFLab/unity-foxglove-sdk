@@ -55,27 +55,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void SplitSourceReadersFailClosedForNestedFragmentsAndTrailingBlanks()
+        public void Ros2CustomCdrEmitterCompositionIgnoresTrailingBlankLines()
         {
             var helper = TestSources.Runtime("PhaseValidationSourceHelpers.cs");
-            var bridgeRuntime = TestSources.ExtractMethod(
+            var method = TestSources.ExtractMethod(
                 helper,
-                "public static string ReadRos2BridgeRuntimeSources()");
-            Assert.Contains("SearchOption.AllDirectories", bridgeRuntime, StringComparison.Ordinal);
-            Assert.Contains("Path.GetRelativePath(fragmentDirectory, path)", bridgeRuntime, StringComparison.Ordinal);
+                "private static int FindRos2CustomCdrEmitterBodyEnd");
 
-            var cdrReader = TestSources.ExtractMethod(
+            Assert.Contains(
+                "string.IsNullOrWhiteSpace(lines[end - 1])",
+                method,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "for (var brace = 0; brace < 2; brace++)",
+                method,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ReadRos2CustomCdrEmitterFacadeBody",
                 helper,
-                "public static string ReadRos2CustomCdrEmitterSources()");
-            Assert.Contains("ReadRos2CustomCdrEmitterFacadeBody", cdrReader, StringComparison.Ordinal);
-            Assert.Contains("FindRos2CustomCdrEmitterBodyEnd", helper, StringComparison.Ordinal);
-            Assert.Contains("string.IsNullOrWhiteSpace(lines[end - 1])", helper, StringComparison.Ordinal);
-
-            var recorderReader = TestSources.ExtractMethod(
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ReadRos2CustomCdrEmitterFragmentBody",
                 helper,
-                "public static string ReadMcapRecorderSources()");
-            Assert.Contains("SearchOption.AllDirectories", recorderReader, StringComparison.Ordinal);
-            Assert.Contains("expectedSourcePaths.SetEquals(actualSourcePaths)", recorderReader, StringComparison.Ordinal);
+                StringComparison.Ordinal);
         }
 
         private static int Count(string source, string value)

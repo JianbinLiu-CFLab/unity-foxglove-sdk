@@ -24,6 +24,26 @@ class FreezeBaselineTests(unittest.TestCase):
             (lane_runs / "fail.meta").write_text("PID=123\nEXIT_STATUS=1\n", encoding="utf-8")
             self.assertEqual(task0_entry.measured_lane_result(lane_runs, "fail"), ("FAIL", "exit_status=1; marker=false"))
 
+    def test_measured_lane_result_rejects_stale_head(self) -> None:
+        """A lane result from another checkout cannot be reused as PASS."""
+        with tempfile.TemporaryDirectory() as temp:
+            lane_runs = Path(temp)
+            (lane_runs / "stale.meta").write_text(
+                "HEAD_SHA=" + "b" * 40 + "\nEXIT_STATUS=0\n",
+                encoding="utf-8",
+            )
+            (lane_runs / "stale.stdout.log").write_text(
+                "All CI checks passed.\n",
+                encoding="utf-8",
+            )
+            status, measurement = task0_entry.measured_lane_result(
+                lane_runs,
+                "stale",
+                "a" * 40,
+            )
+            self.assertEqual(status, "STALE")
+            self.assertIn("expected_head=" + "a" * 40, measurement)
+
     def test_python_test_paths_excludes_package_initializers(self) -> None:
         """Python test inventory excludes package initializer files."""
         paths = [
@@ -102,6 +122,49 @@ class FreezeBaselineTests(unittest.TestCase):
                 [Path("Plan/192_missing.md")],
             )
             self.assertEqual(missing, ["Plan/192_missing.md"])
+
+    def test_missing_generated_source_is_explicitly_classified(self) -> None:
+        """Allow-dirty classification accepts a tracked but missing generated source."""
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "baseline"
+            freeze_baseline.write_tsv(
+                output / "generated-manifest.tsv",
+                ["path", "generator_command", "owner", "sha256", "generated_excluded"],
+                [],
+            )
+            freeze_baseline.write_tsv(
+                output / "vendor-manifest.tsv",
+                ["path", "owner", "source_ref", "sha256", "vendor_excluded"],
+                [],
+            )
+            freeze_baseline.validate_classification(
+                output,
+                ["Generated.g.cs"],
+                frozenset({".cs"}),
+                lambda path: path == "Generated.g.cs",
+                lambda path: False,
+                {"Generated.g.cs"},
+            )
+
+    def test_lane_status_counts_preserve_independent_failures(self) -> None:
+        """Two failing or timed-out lanes remain two failures or timeouts."""
+        counts = freeze_baseline.lane_status_counts(
+            ["FAIL", "FAIL", "TIMEOUT", "TIMEOUT", "RUNNING", "STALE", "NOT_RUN"]
+        )
+        self.assertEqual(counts["baseline_lane_failures"], 2)
+        self.assertEqual(counts["baseline_lane_timeouts"], 2)
+        self.assertEqual(counts["baseline_lane_running"], 1)
+        self.assertEqual(counts["baseline_lane_stale"], 1)
+        self.assertEqual(counts["baseline_lane_not_run"], 1)
+
+    def test_parse_status_preserves_non_utf8_filename_bytes(self) -> None:
+        """Git NUL-delimited paths retain undecodable bytes through surrogateescape."""
+        payload = b"M  bad-\xff.cs\0"
+        completed = subprocess.CompletedProcess(["git"], 0, stdout=payload, stderr=b"")
+        with mock.patch.object(freeze_baseline, "_git", return_value=completed):
+            records = freeze_baseline.parse_status(Path("."))
+        self.assertEqual(records[0][0], "M ")
+        self.assertIn("\udcff", records[0][1])
 
     def test_generated_sources_are_absent_from_split_candidates(self) -> None:
         """Generated files do not inflate the hand-maintained split inventory."""
