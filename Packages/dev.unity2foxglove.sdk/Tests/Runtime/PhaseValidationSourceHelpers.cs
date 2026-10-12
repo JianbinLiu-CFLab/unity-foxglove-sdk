@@ -893,31 +893,29 @@ namespace Unity.FoxgloveSDK.Tests
                 "MessageWriting.cs",
                 "MetadataAndAttachments.cs"
             };
+            var expectedSourcePaths = topLevelNames
+                .Concat(new[] { "McapAmendmentWriter.cs" })
+                .Concat(fragmentNames.Select(name => Path.Combine(
+                    "Decomposed",
+                    "McapRecorder",
+                    name)))
+                .Select(path => path.Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
             var fragmentDir = Path.Combine(dir, "Decomposed", "McapRecorder");
             if (!Directory.Exists(fragmentDir))
                 throw new DirectoryNotFoundException("MCAP recorder decomposed directory was not found.");
 
-            var actualTopLevelNames = Directory.GetFiles(dir, "McapRecorder*.cs")
-                .Select(Path.GetFileName)
+            var actualSourcePaths = Directory.GetFiles(dir, "*.cs", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(dir, path).Replace('\\', '/'))
                 .ToHashSet(StringComparer.Ordinal);
-            var actualFragmentNames = Directory.GetFiles(fragmentDir, "*.cs")
-                .Select(Path.GetFileName)
-                .ToHashSet(StringComparer.Ordinal);
-            var expectedTopLevelNames = topLevelNames.ToHashSet(StringComparer.Ordinal);
-            var expectedFragmentNames = fragmentNames.ToHashSet(StringComparer.Ordinal);
-            if (!expectedTopLevelNames.SetEquals(actualTopLevelNames)
-                || !expectedFragmentNames.SetEquals(actualFragmentNames))
+            if (!expectedSourcePaths.SetEquals(actualSourcePaths))
             {
                 throw new InvalidDataException(
                     "MCAP recorder source composition is incomplete or contains unregistered partial files. "
-                    + "Top-level missing: "
-                    + string.Join(", ", expectedTopLevelNames.Except(actualTopLevelNames).OrderBy(name => name, StringComparer.Ordinal))
-                    + "; top-level unexpected: "
-                    + string.Join(", ", actualTopLevelNames.Except(expectedTopLevelNames).OrderBy(name => name, StringComparer.Ordinal))
-                    + "; fragments missing: "
-                    + string.Join(", ", expectedFragmentNames.Except(actualFragmentNames).OrderBy(name => name, StringComparer.Ordinal))
-                    + "; fragments unexpected: "
-                    + string.Join(", ", actualFragmentNames.Except(expectedFragmentNames).OrderBy(name => name, StringComparer.Ordinal)));
+                    + "Missing: "
+                    + string.Join(", ", expectedSourcePaths.Except(actualSourcePaths).OrderBy(name => name, StringComparer.Ordinal))
+                    + "; unexpected: "
+                    + string.Join(", ", actualSourcePaths.Except(expectedSourcePaths).OrderBy(name => name, StringComparer.Ordinal)));
             }
 
             var files = topLevelNames
@@ -1005,15 +1003,19 @@ namespace Unity.FoxgloveSDK.Tests
                 runtimeRoot,
                 "Decomposed",
                 "Ros2BridgeRuntime");
+            if (!Directory.Exists(fragmentDirectory))
+                throw new DirectoryNotFoundException(
+                    "ROS2 Bridge runtime decomposed directory was not found: " + fragmentDirectory);
             var expectedFragments = new HashSet<string>(
-                paths.Skip(1).Select(Path.GetFileName),
+                paths.Skip(1)
+                    .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/')),
                 StringComparer.Ordinal);
-            var actualFragments = Directory.Exists(fragmentDirectory)
-                ? new HashSet<string>(
-                    Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.TopDirectoryOnly)
-                        .Select(Path.GetFileName),
-                    StringComparer.Ordinal)
-                : new HashSet<string>(StringComparer.Ordinal);
+            var actualFragments = Directory.GetFiles(
+                    fragmentDirectory,
+                    "*.cs",
+                    SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
             if (!expectedFragments.SetEquals(actualFragments))
                 throw new InvalidDataException(
                     "ROS2 Bridge runtime source set mismatch. Expected: "
@@ -1098,10 +1100,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadRos2CustomCdrEmitterFacadeBody(string path)
         {
             var lines = File.ReadAllLines(path);
-            if (lines.Length < 3)
-                throw new InvalidDataException(
-                    "ROS2 custom CDR emitter facade is too short: " + path);
-            return string.Join(Environment.NewLine, lines.Take(lines.Length - 2));
+            var end = FindRos2CustomCdrEmitterBodyEnd(lines, 0, path);
+            return string.Join(Environment.NewLine, lines.Take(end));
         }
 
         private static string ReadRos2CustomCdrEmitterFragmentBody(string path)
@@ -1122,9 +1122,30 @@ namespace Unity.FoxgloveSDK.Tests
             if (openBrace < 0 || lines.Length - openBrace < 3)
                 throw new InvalidDataException(
                     "ROS2 custom CDR emitter fragment is too short: " + path);
+            var end = FindRos2CustomCdrEmitterBodyEnd(lines, openBrace + 1, path);
             return string.Join(
                 Environment.NewLine,
-                lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
+                lines.Skip(openBrace + 1).Take(end - openBrace - 1));
+        }
+
+        private static int FindRos2CustomCdrEmitterBodyEnd(
+            string[] lines,
+            int minimumExclusive,
+            string path)
+        {
+            var end = lines.Length;
+            while (end > minimumExclusive && string.IsNullOrWhiteSpace(lines[end - 1]))
+                end--;
+            for (var brace = 0; brace < 2; brace++)
+            {
+                if (end <= minimumExclusive || lines[end - 1].Trim() != "}")
+                    throw new InvalidDataException(
+                        "ROS2 custom CDR emitter outer brace is missing: " + path);
+                end--;
+                while (end > minimumExclusive && string.IsNullOrWhiteSpace(lines[end - 1]))
+                    end--;
+            }
+            return end;
         }
 
         public static string ReadMcapDataLoaderSources()
