@@ -54,6 +54,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("private void ScanAndReconcile()", source, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void SplitSourceReadersFailClosedForNestedFragmentsAndTrailingBlanks()
+        {
+            var helper = TestSources.Runtime("PhaseValidationSourceHelpers.cs");
+            var bridgeRuntime = TestSources.ExtractMethod(
+                helper,
+                "public static string ReadRos2BridgeRuntimeSources()");
+            Assert.Contains("SearchOption.AllDirectories", bridgeRuntime, StringComparison.Ordinal);
+            Assert.Contains("Path.GetRelativePath(fragmentDirectory, path)", bridgeRuntime, StringComparison.Ordinal);
+
+            var cdrReader = TestSources.ExtractMethod(
+                helper,
+                "public static string ReadRos2CustomCdrEmitterSources()");
+            Assert.Contains("FindRos2CustomCdrEmitterBodyEnd", cdrReader, StringComparison.Ordinal);
+            Assert.Contains("string.IsNullOrWhiteSpace(lines[end - 1])", helper, StringComparison.Ordinal);
+
+            var recorderReader = TestSources.ExtractMethod(
+                helper,
+                "public static string ReadMcapRecorderSources()");
+            Assert.Contains("SearchOption.AllDirectories", recorderReader, StringComparison.Ordinal);
+            Assert.Contains("expectedSourcePaths.SetEquals(actualSourcePaths)", recorderReader, StringComparison.Ordinal);
+        }
+
         private static int Count(string source, string value)
             => source.Split(new[] { value }, StringSplitOptions.None).Length - 1;
     }
