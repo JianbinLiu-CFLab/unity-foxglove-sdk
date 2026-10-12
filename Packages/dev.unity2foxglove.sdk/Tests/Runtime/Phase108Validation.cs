@@ -211,6 +211,11 @@ namespace Unity.FoxgloveSDK.Tests
                 OptionalPackage + "/Editor/Ros2ForUnityZenohRouterSettings.cs",
                 OptionalPackage + "/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef"
             };
+            var expectedDecomposedEditorFiles = new[]
+            {
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RuntimeDescriptor.cs",
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/SelectionStatus.cs"
+            };
             var topLevelEditorFiles = editorFiles
                 .Where(path =>
                     !path.Substring(
@@ -230,9 +235,16 @@ namespace Unity.FoxgloveSDK.Tests
                         StringComparison.Ordinal)
                     && !path.StartsWith(
                         OptionalPackage + "/Editor/Decomposed/",
-                        StringComparison.Ordinal))
+                        StringComparison.Ordinal)
+                    )
+                .ToList();
+            var decomposedEditorFiles = editorFiles
+                .Where(path => path.StartsWith(
+                    OptionalPackage + "/Editor/Decomposed/",
+                    StringComparison.Ordinal))
                 .ToList();
             Check(topLevelEditorFiles.SequenceEqual(expectedTopLevelEditorFiles)
+                  && decomposedEditorFiles.SequenceEqual(expectedDecomposedEditorFiles)
                   && unexpectedEditorFiles.Count == 0
                   && editorFiles.Contains(
                       OptionalPackage + "/Editor/Native/FoxRunR2fuEmitterContribution.cs",
