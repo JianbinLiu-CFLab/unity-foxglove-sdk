@@ -18,7 +18,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
 {
     [Trait("Phase", "186-B")]
     [Trait("Domain", "U2R2Protocol")]
-    public sealed class U2R2ProtocolV2Tests
+    public sealed partial class U2R2ProtocolV2Tests
     {
     }
 }
