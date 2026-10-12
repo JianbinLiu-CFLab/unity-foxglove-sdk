@@ -196,17 +196,27 @@ def parse_status(root: Path) -> list[tuple[str, str, str]]:
         if not records[index]:
             index += 1
             continue
-        record = records[index].decode("utf-8")
+        record = records[index].decode("utf-8", errors="surrogateescape")
         status, relative = record[:2], record[3:]
         previous = ""
         if any(marker in status for marker in "RC"):
             if index + 1 >= len(records) or not records[index + 1]:
                 raise RuntimeError(f"Malformed porcelain rename/copy record: {record!r}")
-            previous = records[index + 1].decode("utf-8")
+            previous = records[index + 1].decode("utf-8", errors="surrogateescape")
             index += 1
         result.append((status, relative, previous))
         index += 1
     return result
+
+def lane_status_counts(statuses: list[str]) -> dict[str, int]:
+    """Phase192 identity baseline helper."""
+    return {
+        "baseline_lane_failures": sum(status == "FAIL" for status in statuses),
+        "baseline_lane_timeouts": sum(status == "TIMEOUT" for status in statuses),
+        "baseline_lane_running": sum(status == "RUNNING" for status in statuses),
+        "baseline_lane_stale": sum(status == "STALE" for status in statuses),
+        "baseline_lane_not_run": sum(status == "NOT_RUN" for status in statuses),
+    }
 def classify_boundary(root: Path, output: Path, records: list[tuple[str, str, str]]) -> None:
     """Phase192 identity baseline helper."""
     rows = []
@@ -570,9 +580,12 @@ def lane_manifest(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
         ["identity-tooling", "unittest", "Scripts.phase192.regression_checks.test_identity_tooling", subprocess.list2cmdline(identity_command), "explicit-module", "fully-qualified", identity_count if identity_count is not None else "not-reported", identity_status, identity_measurement],
         ["regression-inventory", "script", "Scripts/release/regression_inventory.py", subprocess.list2cmdline(inventory_command), "script", "n/a", inventory_count if inventory_count is not None else "not-reported", inventory_status, inventory_measurement],
     ]
-    failures = int(identity_status == "FAIL" or inventory_status == "FAIL")
-    timeouts = int(identity_status == "TIMEOUT" or inventory_status == "TIMEOUT")
-    not_run = 0
+    counts = lane_status_counts([identity_status, inventory_status])
+    failures = counts["baseline_lane_failures"]
+    timeouts = counts["baseline_lane_timeouts"]
+    not_run = counts["baseline_lane_not_run"]
+    running = counts["baseline_lane_running"]
+    stale = counts["baseline_lane_stale"]
     for name in names:
         from Scripts.phase192.task0_entry import measured_lane_result
 
@@ -581,9 +594,17 @@ def lane_manifest(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
         failures += int(status == "FAIL")
         timeouts += int(status == "TIMEOUT")
         not_run += int(status == "NOT_RUN")
+        running += int(status == "RUNNING")
+        stale += int(status == "STALE")
     rows.append(["csharp-attribute-scan", "xunit", "tracked .cs sources", "source attribute scan", "source-scan", "attribute-name", cs_test_count, "BASELINE_STATIC", "static-source"])
     write_tsv(identity / "lane-manifest.tsv", ["lane", "framework", "project_or_entrypoint", "command", "discovery_mode", "parameter_normalization", "expected_count", "status", "measurement"], rows)
-    return {"baseline_lane_failures": failures, "baseline_lane_timeouts": timeouts, "baseline_lane_not_run": not_run}
+    return {
+        "baseline_lane_failures": failures,
+        "baseline_lane_timeouts": timeouts,
+        "baseline_lane_not_run": not_run,
+        "baseline_lane_running": running,
+        "baseline_lane_stale": stale,
+    }
 def main(argv: list[str] | None = None) -> int:
     """Phase192 identity baseline helper."""
     parser = argparse.ArgumentParser()
@@ -629,6 +650,10 @@ def main(argv: list[str] | None = None) -> int:
         hard_failures.append(reason)
     if counts.get("baseline_lane_not_run", 0):
         incomplete.append("required baseline lanes not run")
+    if counts.get("baseline_lane_running", 0):
+        incomplete.append("required baseline lanes still running")
+    if counts.get("baseline_lane_stale", 0):
+        incomplete.append("required baseline lanes are stale")
     if identity_counts.get("identity_errors", 0):
         reason = "identity extraction errors"
         incomplete.append(reason)
