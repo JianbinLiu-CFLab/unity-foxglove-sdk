@@ -54,6 +54,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("private void ScanAndReconcile()", source, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void Ros2CustomCdrEmitterCompositionIgnoresTrailingBlankLines()
+        {
+            var helper = TestSources.Runtime("PhaseValidationSourceHelpers.cs");
+            var method = TestSources.ExtractMethod(
+                helper,
+                "private static int FindRos2CustomCdrEmitterBodyEnd");
+
+            Assert.Contains(
+                "string.IsNullOrWhiteSpace(lines[end - 1])",
+                method,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "for (var brace = 0; brace < 2; brace++)",
+                method,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ReadRos2CustomCdrEmitterFacadeBody",
+                helper,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ReadRos2CustomCdrEmitterFragmentBody",
+                helper,
+                StringComparison.Ordinal);
+        }
+
         private static int Count(string source, string value)
             => source.Split(new[] { value }, StringSplitOptions.None).Length - 1;
     }
