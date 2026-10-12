@@ -229,6 +229,54 @@
           }
         }
       ]
+    },
+    {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
+      "sourceRevision": "004e23794c9e0c9ee167d8f0f80dd7d5038320b0",
+      "decompositionRevision": "34ffcce126ec1e91d63d5b21e805ec06596a8d81",
+      "originalSha256": "ad8d6f1349bce7a01ace37f435781eda90e9e62491f296da9b64af24609424ee",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/DecoderAndDialect.cs",
+          "sha256": "4e2d9b9f299ebbd32a364983bc63e86c9afbc00d73e8a6fff6d5178d15c715c9",
+          "movedRange": {
+            "startLine": 369,
+            "endLine": 647
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/EnvelopeAndCorrelation.cs",
+          "sha256": "0e279a0cc064256d3bd2efb013998f00969a6ffbe5376d515ab7a6f0181c9a56",
+          "movedRange": {
+            "startLine": 23,
+            "endLine": 368
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/FixtureHelpers.cs",
+          "sha256": "e0545952b110b149e66aa93efd6ce18453fd6723484c8dc15c6ffd6339f6c26d",
+          "movedRange": {
+            "startLine": 1154,
+            "endLine": 1261
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/NegativeVectors.cs",
+          "sha256": "ac6faf6382b6bd90059149aa543952114e0149699014bfa20029583b9c9bbd73",
+          "movedRange": {
+            "startLine": 648,
+            "endLine": 931
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/ResponseContracts.cs",
+          "sha256": "f5c0bf7e5614d331f02ea2225d665039acd28144b49b9d8782a4b46087369096",
+          "movedRange": {
+            "startLine": 932,
+            "endLine": 1153
+          }
+        }
+      ]
     }
   ],
   "implementations": [
@@ -289,7 +337,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
-      "sha256": "ad8d6f1349bce7a01ace37f435781eda90e9e62491f296da9b64af24609424ee",
+      "sha256": "3307dc401d1a975d3ae0aee2fc749597f23803dda1fffa9c49688a85bcc65e8b",
       "classification": "original",
       "influence": "Original C# byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"

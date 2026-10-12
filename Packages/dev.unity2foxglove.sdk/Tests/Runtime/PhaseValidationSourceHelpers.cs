@@ -1003,17 +1003,19 @@ namespace Unity.FoxgloveSDK.Tests
                 runtimeRoot,
                 "Decomposed",
                 "Ros2BridgeRuntime");
-            var expectedFragments = new HashSet<string>(
-                paths.Skip(1).Select(Path.GetFileName),
-                StringComparer.Ordinal);
-            var actualFragments = Directory.Exists(fragmentDirectory)
-                ? Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
-                    .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
-                    .ToHashSet(StringComparer.Ordinal)
-                : new HashSet<string>(StringComparer.Ordinal);
             if (!Directory.Exists(fragmentDirectory))
                 throw new DirectoryNotFoundException(
                     "ROS2 Bridge runtime decomposed directory was not found: " + fragmentDirectory);
+            var expectedFragments = new HashSet<string>(
+                paths.Skip(1)
+                    .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/')),
+                StringComparer.Ordinal);
+            var actualFragments = Directory.GetFiles(
+                    fragmentDirectory,
+                    "*.cs",
+                    SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
             if (!expectedFragments.SetEquals(actualFragments))
                 throw new InvalidDataException(
                     "ROS2 Bridge runtime source set mismatch. Expected: "
@@ -1117,7 +1119,7 @@ namespace Unity.FoxgloveSDK.Tests
                 lines,
                 classLine,
                 line => line.Trim() == "{");
-            if (openBrace < 0)
+            if (openBrace < 0 || lines.Length - openBrace < 3)
                 throw new InvalidDataException(
                     "ROS2 custom CDR emitter fragment is too short: " + path);
             var end = FindRos2CustomCdrEmitterBodyEnd(lines, openBrace + 1, path);
