@@ -345,6 +345,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
+            if (string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    NativeDir + "/FoxRun/FoxRunRos2SubscriptionHub.cs",
+                    StringComparison.Ordinal))
+                return PhaseValidationSourceHelpers.ReadRos2ForUnitySubscriptionHubSources();
+
             var root = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))

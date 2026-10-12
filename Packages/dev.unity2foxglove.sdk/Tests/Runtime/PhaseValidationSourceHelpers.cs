@@ -66,6 +66,13 @@ namespace Unity.FoxgloveSDK.Tests
             "Decomposed/Ros2CustomCdrEmitter/NamingAndUtilities.cs",
             "Decomposed/Ros2CustomCdrEmitter/Shapes.cs",
         };
+        private static readonly string[] Ros2ForUnitySubscriptionHubSourceFileNames =
+        {
+            "FoxRun/FoxRunRos2SubscriptionHub.cs",
+            "FoxRun/Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Scanning.cs",
+            "FoxRun/Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Lifecycle.cs",
+            "FoxRun/Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Bindings.cs",
+        };
         private static readonly HashSet<string> PythonSectionKeywords = new HashSet<string>(StringComparer.Ordinal)
         {
             "False", "None", "True", "and", "as", "assert", "async", "await", "break",
@@ -134,6 +141,11 @@ namespace Unity.FoxgloveSDK.Tests
                     "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun/Ros2CustomCdrEmitter.cs",
                     StringComparison.Ordinal))
                 return ReadRos2CustomCdrEmitterSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs",
+                    StringComparison.Ordinal))
+                return ReadRos2ForUnitySubscriptionHubSources();
 
             return File.ReadAllText(RepoPath(relativePath));
         }
@@ -229,6 +241,100 @@ namespace Unity.FoxgloveSDK.Tests
                     throw new FileNotFoundException("Missing ROS2 Bridge outbound scheduler source: " + path, path);
 
             return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+        }
+
+        private static string TrimRos2ForUnitySubscriptionHubFacade(string path)
+        {
+            var lines = File.ReadAllLines(path);
+            var end = TrimRos2ForUnitySubscriptionHubFooter(lines);
+            if (end < 2)
+                throw new InvalidDataException("ROS2 for Unity subscription hub facade is too short: " + path);
+            return string.Join(Environment.NewLine, lines.Take(end));
+        }
+
+        private static string TrimRos2ForUnitySubscriptionHubFragment(string path)
+        {
+            var lines = File.ReadAllLines(path);
+            var classLine = Array.FindIndex(
+                lines,
+                line => line.Contains("partial class FoxRunRos2SubscriptionHub", StringComparison.Ordinal));
+            if (classLine < 0)
+                throw new InvalidDataException("ROS2 for Unity subscription hub fragment class is missing: " + path);
+            var openBrace = Array.FindIndex(lines, classLine, line => line.Trim() == "{");
+            if (openBrace < 0)
+                throw new InvalidDataException("ROS2 for Unity subscription hub fragment class body is missing: " + path);
+            var end = TrimRos2ForUnitySubscriptionHubFooter(lines);
+            if (end <= openBrace + 1)
+                throw new InvalidDataException("ROS2 for Unity subscription hub fragment is too short: " + path);
+            while (end > openBrace + 1 && string.IsNullOrWhiteSpace(lines[end - 1]))
+                end--;
+            if (end <= openBrace + 1 || lines[end - 1].Trim() != "}")
+                throw new InvalidDataException("ROS2 for Unity subscription hub fragment class brace is missing: " + path);
+            end--;
+            return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(end - openBrace - 1));
+        }
+
+        private static int TrimRos2ForUnitySubscriptionHubFooter(string[] lines)
+        {
+            var end = lines.Length;
+            while (end > 0 && string.IsNullOrWhiteSpace(lines[end - 1]))
+                end--;
+            if (end > 0 && lines[end - 1].Trim() == "#endif")
+                end--;
+            while (end > 0 && string.IsNullOrWhiteSpace(lines[end - 1]))
+                end--;
+            return end;
+        }
+
+        public static string ReadRos2ForUnitySubscriptionHubSources()
+        {
+            var root = FindRequiredRepoRoot();
+            var nativeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime",
+                "Native");
+            var paths = Ros2ForUnitySubscriptionHubSourceFileNames
+                .Select(relativePath => Path.Combine(
+                    nativeRoot,
+                    relativePath.Replace('/', Path.DirectorySeparatorChar)))
+                .ToArray();
+            foreach (var path in paths)
+                if (!File.Exists(path))
+                    throw new FileNotFoundException("Missing ROS2 for Unity subscription hub source: " + path, path);
+
+            var fragmentDirectory = Path.Combine(
+                nativeRoot,
+                "FoxRun",
+                "Decomposed",
+                "FoxRunRos2SubscriptionHub");
+            if (!Directory.Exists(fragmentDirectory))
+                throw new DirectoryNotFoundException("ROS2 for Unity subscription hub decomposed directory was not found.");
+
+            var expectedFragments = Ros2ForUnitySubscriptionHubSourceFileNames
+                .Skip(1)
+                .Select(relativePath => relativePath.Substring(relativePath.LastIndexOf('/') + 1))
+                .ToHashSet(StringComparer.Ordinal);
+            var actualFragments = Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
+            if (!expectedFragments.SetEquals(actualFragments))
+                throw new InvalidDataException(
+                    "ROS2 for Unity subscription hub source set mismatch. Expected: "
+                    + string.Join(", ", expectedFragments.OrderBy(name => name, StringComparer.Ordinal))
+                    + "; actual: "
+                    + string.Join(", ", actualFragments.OrderBy(name => name, StringComparer.Ordinal)));
+
+            var facade = TrimRos2ForUnitySubscriptionHubFacade(paths[0]);
+            var fragments = paths.Skip(1).Select(TrimRos2ForUnitySubscriptionHubFragment);
+            return string.Join(Environment.NewLine + Environment.NewLine, new[] { facade }.Concat(fragments))
+                + Environment.NewLine
+                + "    }"
+                + Environment.NewLine
+                + "}"
+                + Environment.NewLine
+                + "#endif";
         }
 
         public static string ReadMcapReplayEngineSources()
