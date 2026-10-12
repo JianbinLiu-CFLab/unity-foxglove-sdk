@@ -15,7 +15,12 @@ from typing import Iterable
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
-from Scripts.phase192.task0_entry import record_entry_commands, record_plan_hashes, validate_classification
+from Scripts.phase192.task0_entry import (
+    _decode_git_path,
+    record_entry_commands,
+    record_plan_hashes,
+    validate_classification,
+)
 SOURCE_EXTENSIONS = frozenset({".cs", ".py", ".cpp", ".cc", ".c", ".h", ".hpp", ".ts"})
 GENERATED_PROTO_ROOT = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Generated/"
 GENERATED_CDR_ROOT = "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/"
@@ -85,7 +90,7 @@ def tracked_paths(root: Path) -> list[str]:
     completed = _git(root, "ls-files", "-z")
     if completed.returncode:
         raise RuntimeError(completed.stderr.decode(errors="replace").strip())
-    return sorted(item.decode("utf-8") for item in completed.stdout.split(b"\0") if item)
+    return sorted(_decode_git_path(item) for item in completed.stdout.split(b"\0") if item)
 def sha256(path: Path) -> str:
     """Phase192 identity baseline helper."""
     digest = hashlib.sha256()
@@ -180,7 +185,12 @@ def python_test_paths(paths: Iterable[str]) -> list[str]:
 def write_tsv(path: Path, fields: list[str], rows: Iterable[Iterable[object]]) -> None:
     """Phase192 identity baseline helper."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
+    with path.open(
+        "w",
+        encoding="utf-8",
+        errors="surrogateescape",
+        newline="",
+    ) as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(fields)
         writer.writerows(rows)
@@ -196,13 +206,13 @@ def parse_status(root: Path) -> list[tuple[str, str, str]]:
         if not records[index]:
             index += 1
             continue
-        record = records[index].decode("utf-8")
+        record = _decode_git_path(records[index])
         status, relative = record[:2], record[3:]
         previous = ""
         if any(marker in status for marker in "RC"):
             if index + 1 >= len(records) or not records[index + 1]:
                 raise RuntimeError(f"Malformed porcelain rename/copy record: {record!r}")
-            previous = records[index + 1].decode("utf-8")
+            previous = _decode_git_path(records[index + 1])
             index += 1
         result.append((status, relative, previous))
         index += 1
@@ -521,11 +531,25 @@ def lane_result(returncode: int, stdout: str, stderr: str) -> tuple[str, str, in
     count_text = str(count) if count is not None else "not-reported"
     return status, f"exit_status={returncode}; tests={count_text}", count
 
+
+def lane_status_counts(statuses: Iterable[str]) -> dict[str, int]:
+    """Count each incomplete lane state without collapsing independent failures."""
+    values = list(statuses)
+    return {
+        "baseline_lane_failures": sum(status == "FAIL" for status in values),
+        "baseline_lane_timeouts": sum(status == "TIMEOUT" for status in values),
+        "baseline_lane_not_run": sum(status == "NOT_RUN" for status in values),
+        "baseline_lane_running": sum(status == "RUNNING" for status in values),
+        "baseline_lane_stale": sum(status == "STALE" for status in values),
+    }
+
+
 def lane_manifest(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
     """Phase192 identity baseline helper."""
     identity = output / "identity"
     lane_runs = identity / "lane-runs"
     lane_runs.mkdir(parents=True, exist_ok=True)
+    head_sha = _git(root, "rev-parse", "HEAD").stdout.decode().strip()
 
     def execute_lane(name: str, argv: list[str]) -> tuple[str, str, int | None]:
         """Execute and record a baseline lane before declaring its status."""
@@ -542,13 +566,13 @@ def lane_manifest(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
             (lane_runs / f"{name}.stdout.log").write_text(completed.stdout, encoding="utf-8")
             (lane_runs / f"{name}.stderr.log").write_text(completed.stderr, encoding="utf-8")
             (lane_runs / f"{name}.meta").write_text(
-                f"COMMAND={subprocess.list2cmdline(argv)}\nEXIT_STATUS={completed.returncode}\n",
+                f"COMMAND={subprocess.list2cmdline(argv)}\nHEAD_SHA={head_sha}\nEXIT_STATUS={completed.returncode}\n",
                 encoding="utf-8",
             )
             return lane_result(completed.returncode, completed.stdout, completed.stderr)
         except subprocess.TimeoutExpired as error:
             (lane_runs / f"{name}.meta").write_text(
-                f"COMMAND={subprocess.list2cmdline(argv)}\nTIMEOUT=600\n",
+                f"COMMAND={subprocess.list2cmdline(argv)}\nHEAD_SHA={head_sha}\nTIMEOUT=600\n",
                 encoding="utf-8",
             )
             return "TIMEOUT", "timeout_seconds=600", None
@@ -570,20 +594,16 @@ def lane_manifest(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
         ["identity-tooling", "unittest", "Scripts.phase192.regression_checks.test_identity_tooling", subprocess.list2cmdline(identity_command), "explicit-module", "fully-qualified", identity_count if identity_count is not None else "not-reported", identity_status, identity_measurement],
         ["regression-inventory", "script", "Scripts/release/regression_inventory.py", subprocess.list2cmdline(inventory_command), "script", "n/a", inventory_count if inventory_count is not None else "not-reported", inventory_status, inventory_measurement],
     ]
-    failures = int(identity_status == "FAIL" or inventory_status == "FAIL")
-    timeouts = int(identity_status == "TIMEOUT" or inventory_status == "TIMEOUT")
-    not_run = 0
+    statuses = [identity_status, inventory_status]
     for name in names:
         from Scripts.phase192.task0_entry import measured_lane_result
 
-        status, measurement = measured_lane_result(lane_runs, name)
+        status, measurement = measured_lane_result(lane_runs, name, head_sha)
         rows.append([f"run-ci:{name}", "ci-suite", "Scripts/release/run_ci.py", f"python -B Scripts/release/run_ci.py --only {name}", "ci-choice", "command-result", 1, status, measurement])
-        failures += int(status == "FAIL")
-        timeouts += int(status == "TIMEOUT")
-        not_run += int(status == "NOT_RUN")
+        statuses.append(status)
     rows.append(["csharp-attribute-scan", "xunit", "tracked .cs sources", "source attribute scan", "source-scan", "attribute-name", cs_test_count, "BASELINE_STATIC", "static-source"])
     write_tsv(identity / "lane-manifest.tsv", ["lane", "framework", "project_or_entrypoint", "command", "discovery_mode", "parameter_normalization", "expected_count", "status", "measurement"], rows)
-    return {"baseline_lane_failures": failures, "baseline_lane_timeouts": timeouts, "baseline_lane_not_run": not_run}
+    return lane_status_counts(statuses)
 def main(argv: list[str] | None = None) -> int:
     """Phase192 identity baseline helper."""
     parser = argparse.ArgumentParser()
@@ -594,6 +614,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plan191", type=Path, default=Path("Plan/191_PHASE191_FOXRUN_CONTRACT_COMPATIBILITY_AND_DECOMPOSITION_PLAN.md"))
     parser.add_argument("--allow-missing-plans", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument("--allow-incomplete", action="store_true")
     args = parser.parse_args(argv)
     root = args.root.resolve()
     entry_records = parse_status(root)
@@ -607,11 +628,20 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError("Task 0 governing plan files are missing: " + ", ".join(missing_plans))
     counts = source_inventory(root, output, paths)
     counts.update(excluded_manifests(root, output, paths))
-    validate_classification(output, paths, SOURCE_EXTENSIONS, is_generated, is_vendor)
+    missing_paths = {path for path in paths if not (root / path).is_file()}
+    validate_classification(
+        output,
+        paths,
+        SOURCE_EXTENSIONS,
+        is_generated,
+        is_vendor,
+        missing_paths,
+    )
     identity_counts = identity_surfaces(root, output, paths)
     counts.update(identity_counts)
     phase191_and_analyzers(root, output, paths)
     counts.update(lane_manifest(root, output, paths))
+    counts["missing_governance_plans"] = len(missing_plans)
     incomplete = []
     hard_failures = []
     if counts.get("missing_tracked_sources", 0):
@@ -629,11 +659,23 @@ def main(argv: list[str] | None = None) -> int:
         hard_failures.append(reason)
     if counts.get("baseline_lane_not_run", 0):
         incomplete.append("required baseline lanes not run")
+    if counts.get("baseline_lane_running", 0):
+        reason = "required baseline lanes still running"
+        incomplete.append(reason)
+        hard_failures.append(reason)
+    if counts.get("baseline_lane_stale", 0):
+        reason = "stale baseline lane evidence"
+        incomplete.append(reason)
+        hard_failures.append(reason)
+    if counts.get("missing_governance_plans", 0):
+        incomplete.append("governing plans missing (explicitly allowed)")
     if identity_counts.get("identity_errors", 0):
         reason = "identity extraction errors"
         incomplete.append(reason)
         hard_failures.append(reason)
     counts["baseline_incomplete"] = bool(incomplete)
+    if incomplete and not args.allow_incomplete:
+        hard_failures.append("incomplete baseline evidence")
     summary = {"entry_head": _git(root, "rev-parse", "HEAD").stdout.decode().strip(), **counts}
     (output / "task0-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     if hard_failures:
