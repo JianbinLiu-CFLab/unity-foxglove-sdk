@@ -1098,10 +1098,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadRos2CustomCdrEmitterFacadeBody(string path)
         {
             var lines = File.ReadAllLines(path);
-            if (lines.Length < 3)
-                throw new InvalidDataException(
-                    "ROS2 custom CDR emitter facade is too short: " + path);
-            return string.Join(Environment.NewLine, lines.Take(lines.Length - 2));
+            var end = FindRos2CustomCdrEmitterBodyEnd(lines, 0, path);
+            return string.Join(Environment.NewLine, lines.Take(end));
         }
 
         private static string ReadRos2CustomCdrEmitterFragmentBody(string path)
@@ -1119,12 +1117,33 @@ namespace Unity.FoxgloveSDK.Tests
                 lines,
                 classLine,
                 line => line.Trim() == "{");
-            if (openBrace < 0 || lines.Length - openBrace < 3)
+            if (openBrace < 0)
                 throw new InvalidDataException(
                     "ROS2 custom CDR emitter fragment is too short: " + path);
+            var end = FindRos2CustomCdrEmitterBodyEnd(lines, openBrace + 1, path);
             return string.Join(
                 Environment.NewLine,
-                lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
+                lines.Skip(openBrace + 1).Take(end - openBrace - 1));
+        }
+
+        private static int FindRos2CustomCdrEmitterBodyEnd(
+            string[] lines,
+            int minimumExclusive,
+            string path)
+        {
+            var end = lines.Length;
+            while (end > minimumExclusive && string.IsNullOrWhiteSpace(lines[end - 1]))
+                end--;
+            for (var brace = 0; brace < 2; brace++)
+            {
+                if (end <= minimumExclusive || lines[end - 1].Trim() != "}")
+                    throw new InvalidDataException(
+                        "ROS2 custom CDR emitter outer brace is missing: " + path);
+                end--;
+                while (end > minimumExclusive && string.IsNullOrWhiteSpace(lines[end - 1]))
+                    end--;
+            }
+            return end;
         }
 
         public static string ReadMcapDataLoaderSources()
