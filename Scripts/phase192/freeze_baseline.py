@@ -513,6 +513,7 @@ def phase191_and_analyzers(root: Path, output: Path, paths: list[str]) -> None:
             analyzers.append([relative, sha256(root / relative), "tracked analyzer DLL"])
     write_tsv(identity / "analyzer-dll-hashes.tsv", ["path", "sha256", "source"], analyzers)
 def lane_result(returncode: int, stdout: str, stderr: str) -> tuple[str, str, int | None]:
+    """Measure a lane from its exit status and captured output streams."""
     combined = stdout + "\n" + stderr
     match = re.search(r"Ran (\d+) tests?", combined)
     count = int(match.group(1)) if match else None
