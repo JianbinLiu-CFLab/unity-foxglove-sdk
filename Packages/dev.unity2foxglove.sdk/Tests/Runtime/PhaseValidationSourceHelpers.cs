@@ -240,15 +240,7 @@ namespace Unity.FoxgloveSDK.Tests
                 if (!File.Exists(path))
                     throw new FileNotFoundException("Missing ROS2 Bridge outbound scheduler source: " + path, path);
 
-            var facade = TrimRos2ForUnitySubscriptionHubFacade(paths[0]);
-            var fragments = paths.Skip(1).Select(TrimRos2ForUnitySubscriptionHubFragment);
-            return string.Join(Environment.NewLine + Environment.NewLine, new[] { facade }.Concat(fragments))
-                + Environment.NewLine
-                + "    }"
-                + Environment.NewLine
-                + "}"
-                + Environment.NewLine
-                + "#endif";
+            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
         }
 
         private static string TrimRos2ForUnitySubscriptionHubFacade(string path)
@@ -334,7 +326,15 @@ namespace Unity.FoxgloveSDK.Tests
                     + "; actual: "
                     + string.Join(", ", actualFragments.OrderBy(name => name, StringComparer.Ordinal)));
 
-            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+            var facade = TrimRos2ForUnitySubscriptionHubFacade(paths[0]);
+            var fragments = paths.Skip(1).Select(TrimRos2ForUnitySubscriptionHubFragment);
+            return string.Join(Environment.NewLine + Environment.NewLine, new[] { facade }.Concat(fragments))
+                + Environment.NewLine
+                + "    }"
+                + Environment.NewLine
+                + "}"
+                + Environment.NewLine
+                + "#endif";
         }
 
         public static string ReadMcapReplayEngineSources()
