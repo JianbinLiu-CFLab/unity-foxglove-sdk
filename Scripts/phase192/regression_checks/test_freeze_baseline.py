@@ -62,6 +62,36 @@ class FreezeBaselineTests(unittest.TestCase):
                 [("R ", "new_name.cs", "old_name.cs"), ("M ", "changed.py", "")],
             )
 
+    def test_parse_status_keeps_worktree_rename_pair_together(self) -> None:
+        """Porcelain NUL records preserve renames in the worktree status column."""
+        payload = b" R new_name.cs\0old_name.cs\0"
+        completed = subprocess.CompletedProcess(["git"], 0, stdout=payload, stderr=b"")
+        with mock.patch.object(freeze_baseline, "_git", return_value=completed):
+            self.assertEqual(
+                freeze_baseline.parse_status(Path(".")),
+                [(" R", "new_name.cs", "old_name.cs")],
+            )
+
+    def test_lane_result_reads_unittest_count_from_stderr(self) -> None:
+        """Unittest counts are measured from either output stream."""
+        self.assertEqual(
+            freeze_baseline.lane_result(0, "ok\n", "Ran 17 tests in 0.1s\n"),
+            ("PASS", "exit_status=0; tests=17", 17),
+        )
+        self.assertEqual(
+            freeze_baseline.lane_result(0, "inventory complete\n", ""),
+            ("PASS", "exit_status=0; tests=not-reported", None),
+        )
+
+    def test_source_inventory_reports_missing_tracked_sources(self) -> None:
+        """Tracked source paths missing from the worktree are explicit evidence."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "baseline"
+            counts = freeze_baseline.source_inventory(root, output, ["Missing.cs"])
+            self.assertEqual(counts["missing_tracked_sources"], 1)
+            self.assertIn("Missing.cs", (output / "missing-tracked-sources.tsv").read_text(encoding="utf-8"))
+
     def test_plan_hashes_report_missing_paths(self) -> None:
         """Plan hashing exposes missing governance inputs to the caller."""
         with tempfile.TemporaryDirectory() as temp:
