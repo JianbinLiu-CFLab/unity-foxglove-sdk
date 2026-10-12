@@ -4,7 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Linq;
+using System.Linq;`r`nusing System.Text;
 using Unity2Foxglove.Ros2Bridge;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
