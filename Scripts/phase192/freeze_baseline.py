@@ -19,6 +19,11 @@ from Scripts.phase192.task0_entry import record_entry_commands, record_plan_hash
 SOURCE_EXTENSIONS = frozenset({".cs", ".py", ".cpp", ".cc", ".c", ".h", ".hpp", ".ts"})
 GENERATED_PROTO_ROOT = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Generated/"
 GENERATED_CDR_ROOT = "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/"
+GENERATED_TYPESUPPORT_ROOTS = (
+    "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64/Runtime/FoxRun/Generated/",
+    "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64/Runtime/FoxRun/Generated/",
+    "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64/Runtime/FoxRun/Generated/",
+)
 GENERATED_CDR_NAMES = frozenset(
     {
         "Ros2CdrGeneratedSerializers.g.cs",
@@ -96,6 +101,8 @@ def is_vendor(path: str) -> bool:
     return path.startswith(VENDOR_PREFIXES)
 def is_generated(path: str) -> bool:
     """Phase192 identity baseline helper."""
+    if path.casefold().endswith(".g.cs"):
+        return True
     if path.startswith(GENERATED_PROTO_ROOT):
         return True
     if path.startswith(GENERATED_CDR_ROOT) and Path(path).name in GENERATED_CDR_NAMES:
@@ -104,11 +111,15 @@ def is_generated(path: str) -> bool:
         return True
     if path.endswith(".meta"):
         source = path[:-5]
+        if source.casefold().endswith(".g.cs"):
+            return True
         if source in GENERATED_EXACT:
             return True
         if source.startswith(GENERATED_PROTO_ROOT):
             return True
         if source.startswith(GENERATED_CDR_ROOT) and Path(source).name in GENERATED_CDR_NAMES:
+            return True
+        if any(source.startswith(root) for root in GENERATED_TYPESUPPORT_ROOTS):
             return True
         if source.endswith("FoxgloveRos2MsgSchemaCatalog.cs"):
             return True
@@ -119,6 +130,8 @@ def generated_owner(path: str) -> tuple[str, str]:
         return "protobuf compiler / SDK schema generator", "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto"
     if path.startswith(GENERATED_CDR_ROOT):
         return "Scripts/schema/generate_ros2_cdr_serializers.py", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg"
+    if any(path.startswith(root) for root in GENERATED_TYPESUPPORT_ROOTS):
+        return "Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py", "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.*"
     if "FoxgloveRos2MsgSchemaCatalog" in path:
         return "ROS2 schema catalog generator", "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg"
     if "FoxRunGenerationModelFixture_FoxRun.golden" in path:
@@ -171,30 +184,39 @@ def write_tsv(path: Path, fields: list[str], rows: Iterable[Iterable[object]]) -
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(fields)
         writer.writerows(rows)
-def parse_status(root: Path) -> list[tuple[str, str]]:
+def parse_status(root: Path) -> list[tuple[str, str, str]]:
     """Phase192 identity baseline helper."""
     completed = _git(root, "status", "--porcelain=v1", "--untracked-files=all", "-z")
     if completed.returncode:
         raise RuntimeError(completed.stderr.decode(errors="replace").strip())
-    records = completed.stdout.decode("utf-8", errors="replace").split("\0")
-    result: list[tuple[str, str]] = []
-    for record in records:
-        if not record:
+    records = completed.stdout.split(b"\0")
+    result: list[tuple[str, str, str]] = []
+    index = 0
+    while index < len(records):
+        if not records[index]:
+            index += 1
             continue
-        result.append((record[:2], record[3:]))
+        record = records[index].decode("utf-8", errors="replace")
+        status, relative = record[:2], record[3:]
+        previous = ""
+        if status[0] in "RC" and index + 1 < len(records) and records[index + 1]:
+            previous = records[index + 1].decode("utf-8", errors="replace")
+            index += 1
+        result.append((status, relative, previous))
+        index += 1
     return result
-def classify_boundary(root: Path, output: Path) -> None:
+def classify_boundary(root: Path, output: Path, records: list[tuple[str, str, str]]) -> None:
     """Phase192 identity baseline helper."""
     rows = []
-    for status, relative in parse_status(root):
+    for status, relative, previous in records:
         path = _rooted(Path(relative), root)
         digest = sha256(path) if path.is_file() else ""
         owner = "protected package edit" if relative in {
             "Unity2Foxglove/Packages/manifest.json",
             "Unity2Foxglove/Packages/packages-lock.json",
         } else "pre-existing workspace state"
-        rows.append([relative, status, digest, owner])
-    write_tsv(output / "boundary-manifest.tsv", ["path", "status", "sha256", "classification"], rows)
+        rows.append([relative, previous, status, digest, owner])
+    write_tsv(output / "boundary-manifest.tsv", ["path", "previous_path", "status", "sha256", "classification"], rows)
 def source_inventory(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
     """Phase192 identity baseline helper."""
     source_paths = [path for path in paths if Path(path).suffix.casefold() in SOURCE_EXTENSIONS]
@@ -232,7 +254,11 @@ def source_inventory(root: Path, output: Path, paths: list[str]) -> dict[str, in
         "hand_maintained",
     ]
     for threshold in (500, 1000):
-        selected = [row for row in rows if int(row[1]) > threshold and row[7] == "false"]
+        selected = [
+            row
+            for row in rows
+            if int(row[1]) > threshold and row[6] == "false" and row[7] == "false"
+        ]
         write_tsv(output / f"over-{threshold}-lines.tsv", fields, sorted(selected))
     area_rows = []
     for relative in sorted(source_paths):
@@ -259,8 +285,8 @@ def source_inventory(root: Path, output: Path, paths: list[str]) -> dict[str, in
         "hand_maintained_source": sum(not is_generated(path) and not is_vendor(path) for path in source_paths),
         "over500_hand": sum(int(row[1]) > 500 and row[8] == "true" for row in rows),
         "over1000_hand": sum(int(row[1]) > 1000 and row[8] == "true" for row in rows),
-        "over500_total": sum(int(row[1]) > 500 and row[7] == "false" for row in rows),
-        "over1000_total": sum(int(row[1]) > 1000 and row[7] == "false" for row in rows),
+        "over500_total": sum(int(row[1]) > 500 and row[6] == "false" and row[7] == "false" for row in rows),
+        "over1000_total": sum(int(row[1]) > 1000 and row[6] == "false" and row[7] == "false" for row in rows),
     }
 def excluded_manifests(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
     """Phase192 identity baseline helper."""
@@ -304,7 +330,7 @@ def identity_surfaces(root: Path, output: Path, paths: list[str]) -> dict[str, i
     from Scripts.phase192 import identity_contracts
     identity = output / "identity"
     identity.mkdir(parents=True, exist_ok=True)
-    hand = [path for path in paths if not is_generated(path) and not is_vendor(path)]
+    hand = [path for path in paths if (root / path).is_file() and not is_generated(path) and not is_vendor(path)]
     csharp = [path for path in hand if Path(path).suffix.casefold() == ".cs"]
     python = [path for path in hand if Path(path).suffix.casefold() == ".py"]
     cpp = [path for path in hand if Path(path).suffix.casefold() in {".cpp", ".cc", ".c", ".h", ".hpp"}]
@@ -340,7 +366,7 @@ def identity_surfaces(root: Path, output: Path, paths: list[str]) -> dict[str, i
         except Exception as error:
             errors.append(["python-tests", relative, type(error).__name__, str(error)])
     write_tsv(identity / "python-test-names.tsv", ["path", "test_name", "framework"], sorted(python_test_rows))
-    python_probes(root, identity, python)
+    probe_counts = python_probes(root, identity, python)
     if errors:
         write_tsv(identity / "errors.tsv", ["command", "path", "error_type", "detail"], errors)
     else:
@@ -357,6 +383,7 @@ def identity_surfaces(root: Path, output: Path, paths: list[str]) -> dict[str, i
         "csharp_test_rows": csharp_test_count,
         "python_test_rows": python_test_count,
         "identity_errors": len(errors),
+        **probe_counts,
     }
 def _module_name(root: Path, relative: str) -> str | None:
     """Phase192 identity baseline helper."""
@@ -365,9 +392,11 @@ def _module_name(root: Path, relative: str) -> str | None:
     if path.name == "__init__.py" or not relative.startswith("Scripts/"):
         return None
     return relative[:-3].replace("/", ".")
-def python_probes(root: Path, identity: Path, python: list[str]) -> None:
+def python_probes(root: Path, identity: Path, python: list[str]) -> dict[str, int]:
     """Phase192 identity baseline helper."""
     rows: list[list[object]] = []
+    failures = 0
+    timeouts = 0
     for relative in sorted(python):
         module = _module_name(root, relative)
         if module is None:
@@ -397,8 +426,10 @@ def python_probes(root: Path, identity: Path, python: list[str]) -> None:
                 check=False,
             )
             status = "PASS" if completed.returncode == 0 else "FAIL"
+            failures += status == "FAIL"
             rows.append([relative, module, "import", command, status, completed.returncode, completed.stdout.strip()])
         except subprocess.TimeoutExpired as error:
+            timeouts += 1
             rows.append([relative, module, "import", command, "TIMEOUT", "124", str(error)])
         entrypoint = "__name__ == \"__main__\"" in _read_text(root / relative) or "__name__ == '__main__'" in _read_text(root / relative)
         if entrypoint:
@@ -415,10 +446,13 @@ def python_probes(root: Path, identity: Path, python: list[str]) -> None:
                     check=False,
                 )
                 status = "PASS" if completed.returncode == 0 else "FAIL"
+                failures += status == "FAIL"
                 rows.append([relative, module, "direct-entrypoint", command, status, completed.returncode, completed.stdout.strip()])
             except subprocess.TimeoutExpired as error:
+                timeouts += 1
                 rows.append([relative, module, "direct-entrypoint", command, "TIMEOUT", "124", str(error)])
     write_tsv(identity / "python-probes.tsv", ["path", "module", "probe", "command", "status", "returncode", "result"], rows)
+    return {"python_probe_failures": failures, "python_probe_timeouts": timeouts}
 def assemblies(root: Path, csharp: list[str]) -> tuple[list[list[str]], list[list[str]], list[list[str]]]:
     """Phase192 identity baseline helper."""
     definitions: list[tuple[Path, str, str]] = []
@@ -471,20 +505,60 @@ def phase191_and_analyzers(root: Path, output: Path, paths: list[str]) -> None:
     write_tsv(identity / "analyzer-dll-hashes.tsv", ["path", "sha256", "source"], analyzers)
 def lane_manifest(root: Path, output: Path, paths: list[str]) -> None:
     """Phase192 identity baseline helper."""
-    from Scripts.phase192.task0_entry import measured_lane_result
-
     identity = output / "identity"
+    lane_runs = identity / "lane-runs"
+    lane_runs.mkdir(parents=True, exist_ok=True)
+
+    def execute_lane(name: str, argv: list[str]) -> tuple[str, str, int]:
+        """Execute and record a baseline lane before declaring its status."""
+        try:
+            completed = subprocess.run(
+                argv,
+                cwd=root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=600,
+                check=False,
+            )
+            (lane_runs / f"{name}.stdout.log").write_text(completed.stdout, encoding="utf-8")
+            (lane_runs / f"{name}.stderr.log").write_text(completed.stderr, encoding="utf-8")
+            (lane_runs / f"{name}.meta").write_text(
+                f"COMMAND={subprocess.list2cmdline(argv)}\nEXIT_STATUS={completed.returncode}\n",
+                encoding="utf-8",
+            )
+            status = "PASS" if completed.returncode == 0 else "FAIL"
+            match = re.search(r"Ran (\d+) tests?", completed.stdout)
+            count = int(match.group(1)) if match else 0
+            return status, f"exit_status={completed.returncode}; tests={count}", count
+        except subprocess.TimeoutExpired as error:
+            (lane_runs / f"{name}.meta").write_text(
+                f"COMMAND={subprocess.list2cmdline(argv)}\nTIMEOUT=600\n",
+                encoding="utf-8",
+            )
+            return "TIMEOUT", "timeout_seconds=600", 0
+
     csharp = [path for path in paths if Path(path).suffix.casefold() == ".cs" and not is_vendor(path)]
-    cs_test_count = sum(len(re.findall(r"\[(?:Fact|Theory)(?:[^]]*)\]", _read_text(root / path))) for path in csharp)
+    cs_test_count = sum(
+        len(re.findall(r"\[(?:Fact|Theory)(?:[^]]*)\]", _read_text(root / path)))
+        for path in csharp
+        if (root / path).is_file()
+    )
     run_ci = _read_text(root / "Scripts/release/run_ci.py")
     choices = re.search(r"CI_ONLY_CHOICES\s*=\s*\((.*?)\)", run_ci, re.DOTALL)
     names = re.findall(r"\"([a-z0-9-]+)\"", choices.group(1)) if choices else []
+    identity_command = [sys.executable, "-m", "unittest", "Scripts.phase192.regression_checks.test_identity_tooling"]
+    identity_status, identity_measurement, identity_count = execute_lane("identity-tooling", identity_command)
+    inventory_command = [sys.executable, "-B", "Scripts/release/regression_inventory.py"]
+    inventory_status, inventory_measurement, inventory_count = execute_lane("regression-inventory", inventory_command)
     rows = [
-        ["identity-tooling", "unittest", "Scripts.phase192.regression_checks.test_identity_tooling", "python -m unittest Scripts.phase192.regression_checks.test_identity_tooling", "explicit-module", "fully-qualified", 169, "PASS", "executed"],
-        ["regression-inventory", "script", "Scripts/release/regression_inventory.py", "python -B Scripts/release/regression_inventory.py", "script", "n/a", 1, "PASS", "executed"],
+        ["identity-tooling", "unittest", "Scripts.phase192.regression_checks.test_identity_tooling", subprocess.list2cmdline(identity_command), "explicit-module", "fully-qualified", identity_count, identity_status, identity_measurement],
+        ["regression-inventory", "script", "Scripts/release/regression_inventory.py", subprocess.list2cmdline(inventory_command), "script", "n/a", inventory_count, inventory_status, inventory_measurement],
     ]
     for name in names:
-        status, measurement = measured_lane_result(identity / "lane-runs", name)
+        from Scripts.phase192.task0_entry import measured_lane_result
+
+        status, measurement = measured_lane_result(lane_runs, name)
         rows.append([f"run-ci:{name}", "ci-suite", "Scripts/release/run_ci.py", f"python -B Scripts/release/run_ci.py --only {name}", "ci-choice", "command-result", 1, status, measurement])
     rows.append(["csharp-attribute-scan", "xunit", "tracked .cs sources", "source attribute scan", "source-scan", "attribute-name", cs_test_count, "BASELINE_STATIC", "static-source"])
     write_tsv(identity / "lane-manifest.tsv", ["lane", "framework", "project_or_entrypoint", "command", "discovery_mode", "parameter_normalization", "expected_count", "status", "measurement"], rows)
@@ -496,18 +570,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plan192", type=Path, default=Path("Plan/192_PHASE192_SOURCE_DECOMPOSITION_PLAN.md"))
     parser.add_argument("--plan190", type=Path, default=Path("Plan/190_PHASE190_FOXRUN_FULL_VALIDATION_AND_REMEDIATION_PLAN.md"))
     parser.add_argument("--plan191", type=Path, default=Path("Plan/191_PHASE191_FOXRUN_CONTRACT_COMPATIBILITY_AND_DECOMPOSITION_PLAN.md"))
+    parser.add_argument("--allow-missing-plans", action="store_true")
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    entry_records = parse_status(root)
     output = _rooted(args.output, root).resolve()
     output.mkdir(parents=True, exist_ok=True)
     paths = tracked_paths(root)
     record_entry_commands(root, output)
-    classify_boundary(root, output)
-    record_plan_hashes(root, output, [args.plan192, args.plan190, args.plan191])
+    classify_boundary(root, output, entry_records)
+    missing_plans = record_plan_hashes(root, output, [args.plan192, args.plan190, args.plan191])
+    if missing_plans and not args.allow_missing_plans:
+        raise RuntimeError("Task 0 governing plan files are missing: " + ", ".join(missing_plans))
     counts = source_inventory(root, output, paths)
     counts.update(excluded_manifests(root, output, paths))
     validate_classification(output, paths, SOURCE_EXTENSIONS, is_generated, is_vendor)
-    counts.update(identity_surfaces(root, output, paths))
+    identity_counts = identity_surfaces(root, output, paths)
+    counts.update(identity_counts)
+    if identity_counts.get("identity_errors", 0):
+        raise RuntimeError(
+            "Phase192 identity evidence is incomplete; inspect identity/errors.tsv and identity/python-probes.tsv"
+        )
     phase191_and_analyzers(root, output, paths)
     lane_manifest(root, output, paths)
     (output / "task0-summary.json").write_text(json.dumps({"entry_head": _git(root, "rev-parse", "HEAD").stdout.decode().strip(), **counts}, indent=2) + "\n", encoding="utf-8")
