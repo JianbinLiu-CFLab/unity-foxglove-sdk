@@ -196,11 +196,13 @@ def parse_status(root: Path) -> list[tuple[str, str, str]]:
         if not records[index]:
             index += 1
             continue
-        record = records[index].decode("utf-8", errors="replace")
+        record = records[index].decode("utf-8")
         status, relative = record[:2], record[3:]
         previous = ""
-        if status[0] in "RC" and index + 1 < len(records) and records[index + 1]:
-            previous = records[index + 1].decode("utf-8", errors="replace")
+        if any(marker in status for marker in "RC"):
+            if index + 1 >= len(records) or not records[index + 1]:
+                raise RuntimeError(f"Malformed porcelain rename/copy record: {record!r}")
+            previous = records[index + 1].decode("utf-8")
             index += 1
         result.append((status, relative, previous))
         index += 1
@@ -220,6 +222,12 @@ def classify_boundary(root: Path, output: Path, records: list[tuple[str, str, st
 def source_inventory(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
     """Phase192 identity baseline helper."""
     source_paths = [path for path in paths if Path(path).suffix.casefold() in SOURCE_EXTENSIONS]
+    missing = [path for path in source_paths if not (root / path).is_file()]
+    write_tsv(
+        output / "missing-tracked-sources.tsv",
+        ["path", "generated_excluded", "vendor_excluded", "reason"],
+        [[path, str(is_generated(path)).lower(), str(is_vendor(path)).lower(), "tracked source missing from worktree"] for path in missing],
+    )
     rows = []
     for relative in source_paths:
         absolute = root / relative
@@ -282,6 +290,7 @@ def source_inventory(root: Path, output: Path, paths: list[str]) -> dict[str, in
     )
     return {
         "tracked_source": len(source_paths),
+        "missing_tracked_sources": len(missing),
         "hand_maintained_source": sum(not is_generated(path) and not is_vendor(path) for path in source_paths),
         "over500_hand": sum(int(row[1]) > 500 and row[8] == "true" for row in rows),
         "over1000_hand": sum(int(row[1]) > 1000 and row[8] == "true" for row in rows),
@@ -503,13 +512,22 @@ def phase191_and_analyzers(root: Path, output: Path, paths: list[str]) -> None:
         if relative.casefold().endswith(".dll") and "sourcegenerators" in relative.casefold() and (root / relative).is_file():
             analyzers.append([relative, sha256(root / relative), "tracked analyzer DLL"])
     write_tsv(identity / "analyzer-dll-hashes.tsv", ["path", "sha256", "source"], analyzers)
-def lane_manifest(root: Path, output: Path, paths: list[str]) -> None:
+def lane_result(returncode: int, stdout: str, stderr: str) -> tuple[str, str, int | None]:
+    """Measure a lane from its exit status and captured output streams."""
+    combined = stdout + "\n" + stderr
+    match = re.search(r"Ran (\d+) tests?", combined)
+    count = int(match.group(1)) if match else None
+    status = "PASS" if returncode == 0 else "FAIL"
+    count_text = str(count) if count is not None else "not-reported"
+    return status, f"exit_status={returncode}; tests={count_text}", count
+
+def lane_manifest(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
     """Phase192 identity baseline helper."""
     identity = output / "identity"
     lane_runs = identity / "lane-runs"
     lane_runs.mkdir(parents=True, exist_ok=True)
 
-    def execute_lane(name: str, argv: list[str]) -> tuple[str, str, int]:
+    def execute_lane(name: str, argv: list[str]) -> tuple[str, str, int | None]:
         """Execute and record a baseline lane before declaring its status."""
         try:
             completed = subprocess.run(
@@ -527,16 +545,13 @@ def lane_manifest(root: Path, output: Path, paths: list[str]) -> None:
                 f"COMMAND={subprocess.list2cmdline(argv)}\nEXIT_STATUS={completed.returncode}\n",
                 encoding="utf-8",
             )
-            status = "PASS" if completed.returncode == 0 else "FAIL"
-            match = re.search(r"Ran (\d+) tests?", completed.stdout)
-            count = int(match.group(1)) if match else 0
-            return status, f"exit_status={completed.returncode}; tests={count}", count
+            return lane_result(completed.returncode, completed.stdout, completed.stderr)
         except subprocess.TimeoutExpired as error:
             (lane_runs / f"{name}.meta").write_text(
                 f"COMMAND={subprocess.list2cmdline(argv)}\nTIMEOUT=600\n",
                 encoding="utf-8",
             )
-            return "TIMEOUT", "timeout_seconds=600", 0
+            return "TIMEOUT", "timeout_seconds=600", None
 
     csharp = [path for path in paths if Path(path).suffix.casefold() == ".cs" and not is_vendor(path)]
     cs_test_count = sum(
@@ -552,16 +567,23 @@ def lane_manifest(root: Path, output: Path, paths: list[str]) -> None:
     inventory_command = [sys.executable, "-B", "Scripts/release/regression_inventory.py"]
     inventory_status, inventory_measurement, inventory_count = execute_lane("regression-inventory", inventory_command)
     rows = [
-        ["identity-tooling", "unittest", "Scripts.phase192.regression_checks.test_identity_tooling", subprocess.list2cmdline(identity_command), "explicit-module", "fully-qualified", identity_count, identity_status, identity_measurement],
-        ["regression-inventory", "script", "Scripts/release/regression_inventory.py", subprocess.list2cmdline(inventory_command), "script", "n/a", inventory_count, inventory_status, inventory_measurement],
+        ["identity-tooling", "unittest", "Scripts.phase192.regression_checks.test_identity_tooling", subprocess.list2cmdline(identity_command), "explicit-module", "fully-qualified", identity_count if identity_count is not None else "not-reported", identity_status, identity_measurement],
+        ["regression-inventory", "script", "Scripts/release/regression_inventory.py", subprocess.list2cmdline(inventory_command), "script", "n/a", inventory_count if inventory_count is not None else "not-reported", inventory_status, inventory_measurement],
     ]
+    failures = int(identity_status == "FAIL" or inventory_status == "FAIL")
+    timeouts = int(identity_status == "TIMEOUT" or inventory_status == "TIMEOUT")
+    not_run = 0
     for name in names:
         from Scripts.phase192.task0_entry import measured_lane_result
 
         status, measurement = measured_lane_result(lane_runs, name)
         rows.append([f"run-ci:{name}", "ci-suite", "Scripts/release/run_ci.py", f"python -B Scripts/release/run_ci.py --only {name}", "ci-choice", "command-result", 1, status, measurement])
+        failures += int(status == "FAIL")
+        timeouts += int(status == "TIMEOUT")
+        not_run += int(status == "NOT_RUN")
     rows.append(["csharp-attribute-scan", "xunit", "tracked .cs sources", "source attribute scan", "source-scan", "attribute-name", cs_test_count, "BASELINE_STATIC", "static-source"])
     write_tsv(identity / "lane-manifest.tsv", ["lane", "framework", "project_or_entrypoint", "command", "discovery_mode", "parameter_normalization", "expected_count", "status", "measurement"], rows)
+    return {"baseline_lane_failures": failures, "baseline_lane_timeouts": timeouts, "baseline_lane_not_run": not_run}
 def main(argv: list[str] | None = None) -> int:
     """Phase192 identity baseline helper."""
     parser = argparse.ArgumentParser()
@@ -571,6 +593,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plan190", type=Path, default=Path("Plan/190_PHASE190_FOXRUN_FULL_VALIDATION_AND_REMEDIATION_PLAN.md"))
     parser.add_argument("--plan191", type=Path, default=Path("Plan/191_PHASE191_FOXRUN_CONTRACT_COMPATIBILITY_AND_DECOMPOSITION_PLAN.md"))
     parser.add_argument("--allow-missing-plans", action="store_true")
+    parser.add_argument("--allow-dirty", action="store_true")
     args = parser.parse_args(argv)
     root = args.root.resolve()
     entry_records = parse_status(root)
@@ -587,13 +610,38 @@ def main(argv: list[str] | None = None) -> int:
     validate_classification(output, paths, SOURCE_EXTENSIONS, is_generated, is_vendor)
     identity_counts = identity_surfaces(root, output, paths)
     counts.update(identity_counts)
-    if identity_counts.get("identity_errors", 0):
-        raise RuntimeError(
-            "Phase192 identity evidence is incomplete; inspect identity/errors.tsv and identity/python-probes.tsv"
-        )
     phase191_and_analyzers(root, output, paths)
-    lane_manifest(root, output, paths)
-    (output / "task0-summary.json").write_text(json.dumps({"entry_head": _git(root, "rev-parse", "HEAD").stdout.decode().strip(), **counts}, indent=2) + "\n", encoding="utf-8")
+    counts.update(lane_manifest(root, output, paths))
+    incomplete = []
+    hard_failures = []
+    if counts.get("missing_tracked_sources", 0):
+        reason = f"missing tracked sources: {counts['missing_tracked_sources']}"
+        incomplete.append(reason)
+        if not args.allow_dirty:
+            hard_failures.append(reason)
+    if counts.get("python_probe_failures", 0) or counts.get("python_probe_timeouts", 0):
+        reason = "python probe failures or timeouts"
+        incomplete.append(reason)
+        hard_failures.append(reason)
+    if counts.get("baseline_lane_failures", 0) or counts.get("baseline_lane_timeouts", 0):
+        reason = "required baseline lane failures or timeouts"
+        incomplete.append(reason)
+        hard_failures.append(reason)
+    if counts.get("baseline_lane_not_run", 0):
+        incomplete.append("required baseline lanes not run")
+    if identity_counts.get("identity_errors", 0):
+        reason = "identity extraction errors"
+        incomplete.append(reason)
+        hard_failures.append(reason)
+    counts["baseline_incomplete"] = bool(incomplete)
+    summary = {"entry_head": _git(root, "rev-parse", "HEAD").stdout.decode().strip(), **counts}
+    (output / "task0-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    if hard_failures:
+        print("PHASE192_TASK0_BASELINE_INCOMPLETE", json.dumps({"reasons": incomplete, **counts}, sort_keys=True))
+        return 2
+    if incomplete:
+        print("PHASE192_TASK0_BASELINE_INCOMPLETE", json.dumps({"reasons": incomplete, **counts}, sort_keys=True))
+        return 0
     print("PHASE192_TASK0_BASELINE_WRITTEN", json.dumps(counts, sort_keys=True))
     return 0
 if __name__ == "__main__":
