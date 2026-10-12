@@ -1003,17 +1003,19 @@ namespace Unity.FoxgloveSDK.Tests
                 runtimeRoot,
                 "Decomposed",
                 "Ros2BridgeRuntime");
-            var expectedFragments = new HashSet<string>(
-                paths.Skip(1).Select(Path.GetFileName),
-                StringComparer.Ordinal);
-            var actualFragments = Directory.Exists(fragmentDirectory)
-                ? Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
-                    .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
-                    .ToHashSet(StringComparer.Ordinal)
-                : new HashSet<string>(StringComparer.Ordinal);
             if (!Directory.Exists(fragmentDirectory))
                 throw new DirectoryNotFoundException(
                     "ROS2 Bridge runtime decomposed directory was not found: " + fragmentDirectory);
+            var expectedFragments = new HashSet<string>(
+                paths.Skip(1)
+                    .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/')),
+                StringComparer.Ordinal);
+            var actualFragments = Directory.GetFiles(
+                    fragmentDirectory,
+                    "*.cs",
+                    SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
             if (!expectedFragments.SetEquals(actualFragments))
                 throw new InvalidDataException(
                     "ROS2 Bridge runtime source set mismatch. Expected: "
