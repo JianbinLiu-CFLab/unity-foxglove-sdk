@@ -67,7 +67,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var cdrReader = TestSources.ExtractMethod(
                 helper,
                 "public static string ReadRos2CustomCdrEmitterSources()");
-            Assert.Contains("FindRos2CustomCdrEmitterBodyEnd", cdrReader, StringComparison.Ordinal);
+            Assert.Contains("ReadRos2CustomCdrEmitterFacadeBody", cdrReader, StringComparison.Ordinal);
+            Assert.Contains("FindRos2CustomCdrEmitterBodyEnd", helper, StringComparison.Ordinal);
             Assert.Contains("string.IsNullOrWhiteSpace(lines[end - 1])", helper, StringComparison.Ordinal);
 
             var recorderReader = TestSources.ExtractMethod(
