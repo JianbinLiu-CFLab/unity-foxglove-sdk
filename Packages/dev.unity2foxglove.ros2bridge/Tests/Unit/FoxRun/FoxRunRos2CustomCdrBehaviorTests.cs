@@ -20,6 +20,7 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
+    /// <remarks>Phase192 source sections: GeneratedContractCompilation.cs, GenerationFixtures.cs, OracleAndFixtureModels.cs</remarks>
     public sealed partial class FoxRunRos2CustomCdrBehaviorTests
     {
         private const int MaximumPayloadBytes = 4 * 1024 * 1024;
