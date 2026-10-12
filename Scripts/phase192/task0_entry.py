@@ -12,39 +12,71 @@ from typing import Callable, Iterable
 CI_PASS_MARKER = "All CI checks passed."
 
 
-def command_snapshot(root: Path, output: Path, name: str, argv: list[str]) -> int:
+def command_snapshot(
+    root: Path,
+    output: Path,
+    name: str,
+    argv: list[str],
+    *,
+    required: bool = True,
+    timeout_seconds: int = 30,
+) -> int:
     """Record one Task 0 command and its exit status."""
-    completed = subprocess.run(
-        argv,
-        cwd=root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+        output_text = completed.stdout
+        returncode = completed.returncode
+    except subprocess.TimeoutExpired as error:
+        output_text = f"UNAVAILABLE: timeout after {timeout_seconds}s\n{error}\n"
+        returncode = 124
+    except OSError as error:
+        output_text = f"UNAVAILABLE: {error}\n"
+        returncode = 127
     payload = (
         f"COMMAND={subprocess.list2cmdline(argv)}\n"
         "INPUT=working tree at Task 0 invocation\n"
         "LITERAL_OUTPUT_BEGIN\n"
-        f"{completed.stdout}"
+        f"{output_text}"
         "LITERAL_OUTPUT_END\n"
-        f"EXIT_STATUS={completed.returncode}\n"
+        f"EXIT_STATUS={returncode}\n"
     )
     (output / f"{name}.log").write_text(payload, encoding="utf-8")
-    return completed.returncode
+    return returncode if required else 0
 
 
 def record_entry_commands(root: Path, output: Path) -> None:
     """Record the live repository boundary commands."""
-    commands = {
+    required_commands = {
         "status": ["git", "status", "-sb", "--untracked-files=all"],
-        "refs": ["git", "rev-parse", "HEAD", "main", "origin/main"],
-        "remote-heads": ["git", "ls-remote", "--heads", "origin"],
+        "refs": ["git", "rev-parse", "HEAD"],
         "worktrees": ["git", "worktree", "list", "--porcelain"],
     }
-    failures = [name for name, argv in commands.items() if command_snapshot(root, output, name, argv)]
+    failures = [name for name, argv in required_commands.items() if command_snapshot(root, output, name, argv)]
     if failures:
         raise RuntimeError("Task 0 command failed: " + ", ".join(failures))
+    command_snapshot(
+        root,
+        output,
+        "remote-refs",
+        ["git", "rev-parse", "main", "origin/main"],
+        required=False,
+    )
+    command_snapshot(
+        root,
+        output,
+        "remote-heads",
+        ["git", "ls-remote", "--heads", "origin"],
+        required=False,
+        timeout_seconds=15,
+    )
 
 
 def write_plan_entry(output: Path, rows: Iterable[Iterable[str]]) -> None:
@@ -63,9 +95,10 @@ def write_plan_entry(output: Path, rows: Iterable[Iterable[str]]) -> None:
     (review / "plan-entry.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def record_plan_hashes(root: Path, output: Path, plans: Iterable[Path]) -> None:
+def record_plan_hashes(root: Path, output: Path, plans: Iterable[Path]) -> list[str]:
     """Record the hashes of the governing phase plans."""
     rows = []
+    missing: list[str] = []
     for plan in plans:
         absolute = plan if plan.is_absolute() else root / plan
         if not absolute.is_file() and plan.name.startswith("191_"):
@@ -73,6 +106,8 @@ def record_plan_hashes(root: Path, output: Path, plans: Iterable[Path]) -> None:
             absolute = matches[0] if len(matches) == 1 else absolute
         relative = absolute.relative_to(root).as_posix() if absolute.is_file() else plan.as_posix()
         digest = hashlib.sha256(absolute.read_bytes()).hexdigest().upper() if absolute.is_file() else ""
+        if not absolute.is_file():
+            missing.append(relative)
         rows.append([relative, str(absolute.is_file()).lower(), digest])
     review = output / "../review"
     review.mkdir(parents=True, exist_ok=True)
@@ -81,6 +116,7 @@ def record_plan_hashes(root: Path, output: Path, plans: Iterable[Path]) -> None:
         writer.writerow(["path", "exists", "sha256"])
         writer.writerows(rows)
     write_plan_entry(output, rows)
+    return missing
 
 
 def validate_classification(

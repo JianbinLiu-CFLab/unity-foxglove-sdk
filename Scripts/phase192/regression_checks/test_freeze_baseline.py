@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import unittest
 import tempfile
+import subprocess
 from pathlib import Path
+from unittest import mock
 
 from Scripts.phase192 import freeze_baseline, task0_entry
 
@@ -36,6 +38,55 @@ class FreezeBaselineTests(unittest.TestCase):
                 "Scripts/smoke/foxrun/regression_checks/test_feature/support.py",
             ],
         )
+
+    def test_generated_catalogs_are_excluded_from_hand_maintained_inventory(self) -> None:
+        """Generated CDR and FoxRun catalog sources stay out of split inventory."""
+        self.assertTrue(
+            freeze_baseline.is_generated(
+                "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64/Runtime/FoxRun/Generated/FoxRunCustomTypesupportCatalog.g.cs"
+            )
+        )
+        self.assertTrue(
+            freeze_baseline.is_generated(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs.meta"
+            )
+        )
+
+    def test_parse_status_keeps_rename_pair_together(self) -> None:
+        """Porcelain NUL records preserve both paths of a rename."""
+        payload = b"R  new_name.cs\0old_name.cs\0M  changed.py\0"
+        completed = subprocess.CompletedProcess(["git"], 0, stdout=payload, stderr=b"")
+        with mock.patch.object(freeze_baseline, "_git", return_value=completed):
+            self.assertEqual(
+                freeze_baseline.parse_status(Path(".")),
+                [("R ", "new_name.cs", "old_name.cs"), ("M ", "changed.py", "")],
+            )
+
+    def test_plan_hashes_report_missing_paths(self) -> None:
+        """Plan hashing exposes missing governance inputs to the caller."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            missing = task0_entry.record_plan_hashes(
+                root,
+                root / "baseline",
+                [Path("Plan/192_missing.md")],
+            )
+            self.assertEqual(missing, ["Plan/192_missing.md"])
+
+    def test_generated_sources_are_absent_from_split_candidates(self) -> None:
+        """Generated files do not inflate the hand-maintained split inventory."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            generated = root / "Generated.g.cs"
+            generated.write_text("class Generated {}\n" * 501, encoding="utf-8")
+            hand = root / "Hand.cs"
+            hand.write_text("class Hand {}\n" * 501, encoding="utf-8")
+            output = root / "baseline"
+            counts = freeze_baseline.source_inventory(root, output, ["Generated.g.cs", "Hand.cs"])
+            self.assertEqual(counts["over500_total"], 1)
+            rows = (output / "over-500-lines.tsv").read_text(encoding="utf-8")
+            self.assertNotIn("Generated.g.cs", rows)
+            self.assertIn("Hand.cs", rows)
 
 
 if __name__ == "__main__":
