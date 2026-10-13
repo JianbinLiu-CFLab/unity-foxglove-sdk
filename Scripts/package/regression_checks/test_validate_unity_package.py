@@ -518,6 +518,41 @@ class ValidatePackageTests(unittest.TestCase):
             self.assertFalse(results[-1].ok)
             self.assertIn("duplicates", results[-1].detail)
 
+    def test_sdk_decomposed_folder_meta_checks_nested_unit_roots_by_default(self) -> None:
+        """The default check must include every nested Tests/Unit Decomposed root."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "Packages" / "dev.unity2foxglove.sdk"
+            unit = package / "Tests" / "Unit"
+            required_root = unit / "Decomposed"
+            nested_root = unit / "Mcap" / "Decomposed"
+            required_root.mkdir(parents=True)
+            nested_root.mkdir(parents=True)
+            (required_root.with_suffix(".meta")).write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 11111111111111111111111111111111\n"
+                "folderAsset: yes\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(self.validator, "PACKAGE", package), mock.patch.object(
+                self.validator, "SDK_DECOMPOSED_TESTS", required_root
+            ):
+                results = []
+                self.validator.check_sdk_decomposed_folder_meta(results)
+                self.assertFalse(results[-1].ok)
+                self.assertIn("Mcap/Decomposed.meta", results[-1].detail)
+
+                (nested_root.with_suffix(".meta")).write_text(
+                    "fileFormatVersion: 2\n"
+                    "guid: 22222222222222222222222222222222\n"
+                    "folderAsset: yes\n",
+                    encoding="utf-8",
+                )
+                results = []
+                self.validator.check_sdk_decomposed_folder_meta(results)
+
+            self.assertTrue(results[-1].ok)
+
     def test_sdk_decomposed_folder_meta_requires_root_directory(self) -> None:
         """The required decomposed test root must fail closed when absent."""
         with tempfile.TemporaryDirectory() as temp:
