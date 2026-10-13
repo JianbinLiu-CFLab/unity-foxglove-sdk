@@ -279,6 +279,7 @@ class FreezeBaselineTests(unittest.TestCase):
     def test_worktree_fingerprint_uses_unambiguous_file_framing(self) -> None:
         """Different tracked file sets cannot share a serialized fingerprint stream."""
         def fingerprint(files: dict[str, bytes]) -> str:
+            """Build a worktree fingerprint from an isolated Git fixture."""
             with tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
                 subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
