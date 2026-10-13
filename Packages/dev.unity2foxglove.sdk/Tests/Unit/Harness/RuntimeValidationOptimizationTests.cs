@@ -757,7 +757,24 @@ private static void Next() { }
 
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
-            return File.ReadAllText(path);
+            return ReadLogicalSource(path);
+        }
+
+        private static string ReadLogicalSource(string facadePath)
+        {
+            var source = File.ReadAllText(facadePath);
+            var package = Path.Combine(
+                Path.GetDirectoryName(facadePath),
+                Path.GetFileNameWithoutExtension(facadePath));
+            if (!Directory.Exists(package))
+                return source;
+
+            var sections = Directory.GetFiles(package, "*.py", SearchOption.TopDirectoryOnly)
+                .Where(path => !string.Equals(Path.GetFileName(path), "__init__.py", StringComparison.Ordinal)
+                    && !string.Equals(Path.GetFileName(path), "__main__.py", StringComparison.Ordinal))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .Select(File.ReadAllText);
+            return source + Environment.NewLine + string.Join(Environment.NewLine, sections);
         }
 
         private static string FoxgloveRuntimeSources()
