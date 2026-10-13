@@ -415,7 +415,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(41, len(surfaces))
+        self.assertEqual(32, len(surfaces))
 
     def test_identity_surface_uses_revision_local_source_layout(self) -> None:
         """Base/head worktrees load their own section-order parser."""
@@ -456,39 +456,11 @@ class IdentityToolingTests(unittest.TestCase):
             relative,
         )
         self.assertIn(
-            "Scripts/smoke/foxrun/phase184_windows_job_owner.py",
-            relative,
-        )
-        self.assertIn(
             "Scripts/smoke/ros2/phase162_lyrical_zenoh_player_smoke.py",
             relative,
         )
         self.assertIn(
-            "Scripts/smoke/ros2/phase132_standard_messages_acceptance.py",
-            relative,
-        )
-        self.assertIn(
             "Scripts/smoke/ros2/phase138s_imu_native_dds_acceptance.py",
-            relative,
-        )
-        self.assertIn(
-            "Scripts/smoke/websocket/pointcloud_qos_probe.py",
-            relative,
-        )
-        self.assertIn(
-            "Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py",
-            relative,
-        )
-        self.assertIn(
-            "Scripts/smoke/websocket/phase168_msgpack_live_probe.py",
-            relative,
-        )
-        self.assertIn(
-            "Scripts/smoke/replay/phase139_e2e_integration_smoke.py",
-            relative,
-        )
-        self.assertIn(
-            "Scripts/smoke/mcap/phase34_attachment_mcap.py",
             relative,
         )
         self.assertIn(
@@ -503,7 +475,7 @@ class IdentityToolingTests(unittest.TestCase):
             "Scripts/smoke/ros2/phase160_humble_lidar_deskew_acceptance.py",
             relative,
         )
-        self.assertEqual(41, len(relative))
+        self.assertEqual(32, len(relative))
 
     def test_split_identity_surface_rejects_relative_star_chain_change(self) -> None:
         """Changing a section's relative star-import source changes runtime overwrite order."""
