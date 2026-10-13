@@ -126,7 +126,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var extra = Path.Combine(runtimeRoot, "Ros2BridgeRuntime.Extra.cs");
             try
             {
-                File.WriteAllText(extra, "internal partial class Ros2BridgeRuntime { }");
+                File.WriteAllText(extra, "internal sealed partial class Ros2BridgeWorkerLease { }");
                 Assert.Throws<InvalidDataException>(
                     () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
             }
@@ -156,7 +156,37 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 File.WriteAllText(
                     Path.Combine(runtimeRoot, "ExtraRuntime.cs"),
-                    "internal partial class Ros2BridgeRuntime { }");
+                    "internal sealed partial class Ros2BridgeWorkerLease { }");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsConditionalRootPartial()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(runtimeRoot, "ConditionalWorker.cs"),
+                    "#if UNDECLARED_RUNTIME_SYMBOL\ninternal sealed partial class Ros2BridgeWorkerLease { }\n#endif");
                 Assert.Throws<InvalidDataException>(
                     () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
             }

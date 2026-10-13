@@ -919,7 +919,7 @@ namespace Unity.FoxgloveSDK.Tests
                     Path.GetFullPath(path),
                     Path.GetFullPath(paths[0]),
                     StringComparison.OrdinalIgnoreCase))
-                .Where(path => ContainsPartialClassDeclaration(path, "Ros2BridgeRuntime"))
+                .Where(path => ContainsPartialClassDeclaration(path, "Ros2BridgeWorkerLease"))
                 .Select(Path.GetFileName)
                 .ToHashSet(StringComparer.Ordinal);
             if (actualRootSiblings.Count != 0)
@@ -1060,8 +1060,29 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static bool ContainsPartialClassDeclaration(string path, string className)
-            => CSharpSyntaxTree.ParseText(File.ReadAllText(path))
-                .GetRoot()
+        {
+            var source = File.ReadAllText(path);
+            var symbolSets = new[]
+            {
+                Array.Empty<string>(),
+                new[] { "UNITY_EDITOR" },
+                new[] { "UNITY_EDITOR_WIN" },
+                new[] { "UNITY_STANDALONE_WIN" },
+            };
+            foreach (var symbols in symbolSets)
+            {
+                var options = CSharpParseOptions.Default.WithPreprocessorSymbols(symbols);
+                if (ContainsPartialClassDeclaration(CSharpSyntaxTree.ParseText(source, options), className))
+                    return true;
+            }
+
+            return source.Contains("#if", StringComparison.Ordinal)
+                && source.Contains("partial", StringComparison.Ordinal)
+                && source.Contains(className, StringComparison.Ordinal);
+        }
+
+        private static bool ContainsPartialClassDeclaration(SyntaxTree tree, string className)
+            => tree.GetRoot()
                 .DescendantNodes()
                 .OfType<ClassDeclarationSyntax>()
                 .Any(declaration =>
