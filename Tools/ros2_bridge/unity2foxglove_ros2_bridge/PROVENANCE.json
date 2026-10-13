@@ -154,14 +154,14 @@
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs",
       "sourceRevision": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71",
       "decompositionRevision": "229b969dcf1e2f7e81a04a23b1e67fe53f6608c3",
-      "originalSha256": "c4d30a3e4051fc0cebbea33314a8c5d2a435f6ebf507a7f66bbe2ce8715397ee",
+      "originalSha256": "ac2df77e664005af2fdbbb46cc9adad8b0c5de2ee6c610cc6e89902f72a41909",
       "parts": [
         {
           "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolLimits/ResourceAccounting.cs",
           "sha256": "7232acc2f329b80fb23f190f1b4752438853f768f8c718c4324892e5f6c30171",
           "movedRange": {
-            "startLine": 270,
-            "endLine": 599
+            "startLine": 256,
+            "endLine": 585
           }
         }
       ]
