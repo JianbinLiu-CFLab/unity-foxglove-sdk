@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -186,7 +187,20 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(fullPath))
                 throw new FileNotFoundException("Missing repository file: " + relativePath, fullPath);
 
-            return File.ReadAllText(fullPath);
+            var source = File.ReadAllText(fullPath);
+            var package = Path.Combine(
+                Path.GetDirectoryName(fullPath),
+                Path.GetFileNameWithoutExtension(fullPath));
+            if (Path.GetExtension(fullPath).Equals(".py", StringComparison.Ordinal)
+                && Directory.Exists(package))
+            {
+                foreach (var section in Directory.GetFiles(package, "*.py")
+                             .Where(path => !path.EndsWith("__init__.py", StringComparison.Ordinal)
+                                 && !path.EndsWith("__main__.py", StringComparison.Ordinal))
+                             .OrderBy(path => path, StringComparer.Ordinal))
+                    source += Environment.NewLine + File.ReadAllText(section);
+            }
+            return source;
         }
 
         private static string RepoRoot
