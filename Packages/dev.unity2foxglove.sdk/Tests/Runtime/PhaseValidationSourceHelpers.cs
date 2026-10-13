@@ -1064,21 +1064,40 @@ namespace Unity.FoxgloveSDK.Tests
             var source = File.ReadAllText(path);
             var directiveSymbols = Regex.Matches(
                     source,
-                    @"^\s*#\s*(?:if|elif)\s+([A-Za-z_][A-Za-z0-9_]*)",
+                    @"^\s*#\s*(?:if|elif)\s+(.+?)\s*$",
                     RegexOptions.Multiline)
-                .Select(match => match.Groups[1].Value)
+                .SelectMany(match => Regex.Matches(
+                        match.Groups[1].Value,
+                        @"\b[A-Za-z_][A-Za-z0-9_]*\b")
+                    .Select(symbol => symbol.Value))
+                .Where(symbol => !string.Equals(symbol, "true", StringComparison.Ordinal)
+                    && !string.Equals(symbol, "false", StringComparison.Ordinal))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
-            var symbolSets = new List<string[]>
+            var allSymbols = new[]
+                {
+                    "UNITY_EDITOR",
+                    "UNITY_EDITOR_WIN",
+                    "UNITY_STANDALONE_WIN",
+                }
+                .Concat(directiveSymbols)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            const int maxEnumeratedSymbols = 12;
+            if (allSymbols.Length > maxEnumeratedSymbols)
+                return Regex.IsMatch(
+                    source,
+                    $@"\bpartial\s+(?:class|struct|interface)\s+{Regex.Escape(className)}\b");
+
+            var symbolSets = new List<string[]>();
+            var combinations = 1 << allSymbols.Length;
+            for (var mask = 0; mask < combinations; mask++)
             {
-                Array.Empty<string>(),
-                new[] { "UNITY_EDITOR" },
-                new[] { "UNITY_EDITOR_WIN" },
-                new[] { "UNITY_STANDALONE_WIN" },
-            };
-            symbolSets.AddRange(directiveSymbols.Select(symbol => new[] { symbol }));
-            if (directiveSymbols.Length > 0)
-                symbolSets.Add(directiveSymbols);
+                symbolSets.Add(
+                    allSymbols
+                        .Where((symbol, index) => (mask & (1 << index)) != 0)
+                        .ToArray());
+            }
             foreach (var symbols in symbolSets)
             {
                 var options = CSharpParseOptions.Default.WithPreprocessorSymbols(symbols);

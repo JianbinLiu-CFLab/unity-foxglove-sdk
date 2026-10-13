@@ -27,9 +27,9 @@ def _update_length_prefixed(digest: "hashlib._Hash", data: bytes) -> None:
 
 
 def index_fingerprint(root: Path) -> str:
-    """Hash Git index entries so staging changes alter checkout identity."""
+    """Hash Git index entries and flags so checkout identity tracks Git state."""
     completed = subprocess.run(
-        ["git", "ls-files", "--stage", "-z"],
+        ["git", "ls-files", "-v", "--stage", "-z"],
         cwd=root,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
