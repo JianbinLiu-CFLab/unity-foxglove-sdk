@@ -327,7 +327,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Phase162SelectorScopesCommunicationModeToZenohCapability()
         {
             var selector = ReadRepoText(AdapterPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs");
-            Check(selector.Contains("SupportsZenoh", StringComparison.Ordinal)
+            var descriptor = ReadRepoText(AdapterPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RuntimeDescriptor.cs");
+            Check(descriptor.Contains("public bool SupportsZenoh", StringComparison.Ordinal)
+                  && descriptor.Contains("SupportsZenoh = ContainsRmw(CommunicationModes, Ros2ForUnityRuntimeSelection.ZenohRmwImplementation)", StringComparison.Ordinal)
+                  && descriptor.Contains("BuildAvailableCommunicationModes(Capabilities.CommunicationModes, ZenohPayloadDiagnostic)", StringComparison.Ordinal)
                   && selector.Contains("GetZenohPayloadDiagnostic", StringComparison.Ordinal)
                   && selector.Contains("HasNativeLibrary(pluginRoot, \"rmw_zenoh_cpp\")", StringComparison.Ordinal)
                   && selector.Contains("DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5", StringComparison.Ordinal),
