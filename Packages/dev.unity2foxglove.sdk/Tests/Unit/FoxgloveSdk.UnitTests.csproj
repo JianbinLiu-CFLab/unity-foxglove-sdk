@@ -93,6 +93,7 @@
     <Compile Include="../Runtime/ValidationCategory.cs" Link="TestHarness/ValidationCategory.cs" />
     <Compile Include="../Runtime/ValidationEvidence.cs" Link="TestHarness/ValidationEvidence.cs" />
     <Compile Include="../Runtime/PhaseValidationCase.cs" Link="TestHarness/PhaseValidationCase.cs" />
+    <Compile Include="../Runtime/PhaseValidationSourceHelpers.cs" Link="TestHelpers/PhaseValidationSourceHelpers.cs" />
     <Compile Include="../Runtime/FoxRunGenerationDescriptorJsonReader.cs" Link="TestHelpers/FoxRunGenerationDescriptorJsonReader.cs" />
   </ItemGroup>
 

@@ -8,8 +8,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Unity.FoxgloveSDK.Tests;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -103,6 +105,249 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "SearchOption.AllDirectories",
                 helper,
                 StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsUnregisteredRootSiblingPartial()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            var extra = Path.Combine(runtimeRoot, "Ros2BridgeRuntime.Extra.cs");
+            try
+            {
+                File.WriteAllText(extra, "internal sealed partial class Ros2BridgeWorkerLease { }");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsUnregisteredRootPartialWithDifferentFileName()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(runtimeRoot, "ExtraRuntime.cs"),
+                    "internal sealed partial class Ros2BridgeWorkerLease { }");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsConditionalRootPartial()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(runtimeRoot, "ConditionalWorker.cs"),
+                    "#if UNDECLARED_RUNTIME_SYMBOL\ninternal sealed partial class Ros2BridgeWorkerLease { }\n#endif");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsMissingRegisteredFragment()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var fragment = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge",
+                "Decomposed",
+                "Ros2BridgeRuntime",
+                "Ros2BridgeRuntime.QueueAndStats.cs");
+            try
+            {
+                File.Delete(fragment);
+                Assert.Throws<FileNotFoundException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2CustomCdrEmitterCompositionRejectsNestedDuplicateFragmentName()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun",
+                "Ros2CustomCdrEmitter.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Generation.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Readers.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Writers.cs",
+                "Decomposed/Ros2CustomCdrEmitter/ValidationAndProjection.cs",
+                "Decomposed/Ros2CustomCdrEmitter/NamingAndUtilities.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Shapes.cs");
+            var fragmentDirectory = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Editor",
+                "FoxRun",
+                "Decomposed",
+                "Ros2CustomCdrEmitter");
+            var nestedDirectory = Path.Combine(fragmentDirectory, "Nested");
+            var duplicate = Path.Combine(nestedDirectory, "Generation.cs");
+            try
+            {
+                Directory.CreateDirectory(nestedDirectory);
+                File.WriteAllText(duplicate, "internal partial class FoxRunBridgeSourceEmitter { }");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2CustomCdrEmitterSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2CustomCdrEmitterCompositionWithTrailingBlanksParses()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun",
+                "Ros2CustomCdrEmitter.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Generation.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Readers.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Writers.cs",
+                "Decomposed/Ros2CustomCdrEmitter/ValidationAndProjection.cs",
+                "Decomposed/Ros2CustomCdrEmitter/NamingAndUtilities.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Shapes.cs");
+            var paths = new[]
+            {
+                Path.Combine(
+                    root,
+                    "Packages",
+                    "dev.unity2foxglove.ros2bridge",
+                    "Editor",
+                    "FoxRun",
+                    "Ros2CustomCdrEmitter.cs"),
+                Path.Combine(
+                    root,
+                    "Packages",
+                    "dev.unity2foxglove.ros2bridge",
+                    "Editor",
+                    "FoxRun",
+                    "Decomposed",
+                    "Ros2CustomCdrEmitter",
+                    "Generation.cs"),
+            };
+            try
+            {
+                foreach (var path in paths)
+                    File.AppendAllText(
+                        path,
+                        Environment.NewLine + Environment.NewLine,
+                        Encoding.UTF8);
+
+                var source = PhaseValidationSourceHelpers.ReadRos2CustomCdrEmitterSources(root);
+                var diagnostics = CSharpSyntaxTree.ParseText(source)
+                    .GetDiagnostics()
+                    .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                    .ToArray();
+                Assert.Empty(diagnostics);
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        private static string CreateSourceFixture(string relativeRoot, params string[] relativeFiles)
+        {
+            var repositoryRoot = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
+            var fixtureRoot = Path.Combine(
+                Path.GetTempPath(),
+                "phase192-source-fixture-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                foreach (var relativeFile in relativeFiles)
+                {
+                    var source = Path.Combine(
+                        repositoryRoot,
+                        relativeRoot.Replace('/', Path.DirectorySeparatorChar),
+                        relativeFile.Replace('/', Path.DirectorySeparatorChar));
+                    var target = Path.Combine(
+                        fixtureRoot,
+                        relativeRoot.Replace('/', Path.DirectorySeparatorChar),
+                        relativeFile.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target));
+                    File.Copy(source, target);
+                }
+            }
+            catch
+            {
+                DeleteSourceFixture(fixtureRoot);
+                throw;
+            }
+            return fixtureRoot;
+        }
+
+        private static void DeleteSourceFixture(string fixtureRoot)
+        {
+            if (Directory.Exists(fixtureRoot))
+                Directory.Delete(fixtureRoot, true);
         }
 
         private static int Count(string source, string value)

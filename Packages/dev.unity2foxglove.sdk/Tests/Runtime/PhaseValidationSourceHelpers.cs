@@ -75,10 +75,18 @@ namespace Unity.FoxgloveSDK.Tests
         };
         public static string FindRequiredRepoRoot()
         {
-            var root = Phase16Validation.FindRepoRoot();
-            if (root == null)
-                throw new DirectoryNotFoundException("Could not find repository root for source validation.");
-            return root;
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "Unity2Foxglove.sln"))
+                    || Directory.Exists(Path.Combine(directory.FullName, ".git"))
+                    || File.Exists(Path.Combine(directory.FullName, ".git")))
+                    return directory.FullName;
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException(
+                "Could not find repository root for source validation from " + AppContext.BaseDirectory);
         }
 
         public static string RepoPath(string relativePath)
@@ -884,8 +892,10 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static string ReadRos2BridgeRuntimeSources()
+            => ReadRos2BridgeRuntimeSources(FindRequiredRepoRoot());
+
+        public static string ReadRos2BridgeRuntimeSources(string root)
         {
-            var root = FindRequiredRepoRoot();
             var runtimeRoot = Path.Combine(
                 root,
                 "Packages",
@@ -900,6 +910,22 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var path in paths)
                 if (!File.Exists(path))
                     throw new FileNotFoundException("Missing ROS2 Bridge runtime source: " + path, path);
+
+            var actualRootSiblings = Directory.GetFiles(
+                    runtimeRoot,
+                    "*.cs",
+                    SearchOption.TopDirectoryOnly)
+                .Where(path => !string.Equals(
+                    Path.GetFullPath(path),
+                    Path.GetFullPath(paths[0]),
+                    StringComparison.OrdinalIgnoreCase))
+                .Where(path => ContainsPartialClassDeclaration(path, "Ros2BridgeWorkerLease"))
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            if (actualRootSiblings.Count != 0)
+                throw new InvalidDataException(
+                    "ROS2 Bridge runtime root contains unregistered sibling partials: "
+                    + string.Join(", ", actualRootSiblings.OrderBy(name => name, StringComparer.Ordinal)));
 
             var fragmentDirectory = Path.Combine(
                 runtimeRoot,
@@ -936,8 +962,10 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static string ReadRos2CustomCdrEmitterSources()
+            => ReadRos2CustomCdrEmitterSources(FindRequiredRepoRoot());
+
+        public static string ReadRos2CustomCdrEmitterSources(string root)
         {
-            var root = FindRequiredRepoRoot();
             var emitterRoot = Path.Combine(
                 root,
                 "Packages",
@@ -960,7 +988,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "Decomposed",
                 "Ros2CustomCdrEmitter");
             var expectedFragments = new HashSet<string>(
-                paths.Skip(1).Select(Path.GetFileName),
+                paths.Skip(1)
+                    .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/')),
                 StringComparer.Ordinal);
             var actualFragments = Directory.Exists(fragmentDirectory)
                 ? new HashSet<string>(
@@ -968,7 +997,7 @@ namespace Unity.FoxgloveSDK.Tests
                         fragmentDirectory,
                         "*.cs",
                         SearchOption.AllDirectories)
-                        .Select(Path.GetFileName),
+                        .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/')),
                     StringComparer.Ordinal)
                 : new HashSet<string>(StringComparer.Ordinal);
             if (!expectedFragments.SetEquals(actualFragments))
@@ -1029,6 +1058,44 @@ namespace Unity.FoxgloveSDK.Tests
                 Environment.NewLine,
                 lines.Skip(openBrace + 1).Take(end - openBrace - 1));
         }
+
+        private static bool ContainsPartialClassDeclaration(string path, string className)
+        {
+            var source = File.ReadAllText(path);
+            var directiveSymbols = Regex.Matches(
+                    source,
+                    @"^\s*#\s*(?:if|elif)\s+([A-Za-z_][A-Za-z0-9_]*)",
+                    RegexOptions.Multiline)
+                .Select(match => match.Groups[1].Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            var symbolSets = new List<string[]>
+            {
+                Array.Empty<string>(),
+                new[] { "UNITY_EDITOR" },
+                new[] { "UNITY_EDITOR_WIN" },
+                new[] { "UNITY_STANDALONE_WIN" },
+            };
+            symbolSets.AddRange(directiveSymbols.Select(symbol => new[] { symbol }));
+            if (directiveSymbols.Length > 0)
+                symbolSets.Add(directiveSymbols);
+            foreach (var symbols in symbolSets)
+            {
+                var options = CSharpParseOptions.Default.WithPreprocessorSymbols(symbols);
+                if (ContainsPartialClassDeclaration(CSharpSyntaxTree.ParseText(source, options), className))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool ContainsPartialClassDeclaration(SyntaxTree tree, string className)
+            => tree.GetRoot()
+                .DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .Any(declaration =>
+                    string.Equals(declaration.Identifier.ValueText, className, StringComparison.Ordinal)
+                    && declaration.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.PartialKeyword)));
 
         private static int FindRos2CustomCdrEmitterBodyEnd(
             string[] lines,

@@ -5,6 +5,7 @@ import csv
 import hashlib
 import os
 import re
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +20,30 @@ def _decode_git_path(value: bytes) -> str:
     return value.decode(sys.getfilesystemencoding(), errors="surrogateescape")
 
 
+def _update_length_prefixed(digest: "hashlib._Hash", data: bytes) -> None:
+    """Append one length-prefixed field to a digest."""
+    digest.update(len(data).to_bytes(8, "big"))
+    digest.update(data)
+
+
+def index_fingerprint(root: Path) -> str:
+    """Hash Git index entries so staging changes alter checkout identity."""
+    completed = subprocess.run(
+        ["git", "ls-files", "--stage", "-z"],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if completed.returncode:
+        raise RuntimeError(completed.stderr.decode(errors="replace").strip())
+    digest = hashlib.sha256()
+    for record in completed.stdout.split(b"\0"):
+        if record:
+            _update_length_prefixed(digest, record)
+    return digest.hexdigest()
+
+
 def worktree_fingerprint(root: Path) -> str:
     """Hash tracked and non-ignored working-tree content with stable path bytes."""
     completed = subprocess.run(
@@ -30,23 +55,31 @@ def worktree_fingerprint(root: Path) -> str:
     )
     if completed.returncode:
         raise RuntimeError(completed.stderr.decode(errors="replace").strip())
+
     digest = hashlib.sha256()
     paths = sorted(set(item for item in completed.stdout.split(b"\0") if item))
     for raw_path in paths:
         relative = _decode_git_path(raw_path)
         absolute = root / relative
-        digest.update(raw_path)
-        digest.update(b"\0")
-        if absolute.is_file():
-            digest.update(b"FILE\0")
+        _update_length_prefixed(digest, raw_path)
+        try:
+            metadata = absolute.lstat()
+        except FileNotFoundError:
+            _update_length_prefixed(digest, b"MISSING")
+            continue
+        _update_length_prefixed(digest, str(stat.S_IFMT(metadata.st_mode)).encode("ascii"))
+        _update_length_prefixed(digest, str(stat.S_IMODE(metadata.st_mode)).encode("ascii"))
+        if stat.S_ISLNK(metadata.st_mode):
+            _update_length_prefixed(digest, b"LINK")
+            _update_length_prefixed(digest, os.fsencode(os.readlink(absolute)))
+        elif stat.S_ISREG(metadata.st_mode):
+            _update_length_prefixed(digest, b"FILE")
+            _update_length_prefixed(digest, str(metadata.st_size).encode("ascii"))
             with absolute.open("rb") as handle:
                 for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                     digest.update(chunk)
-        elif absolute.is_symlink():
-            digest.update(b"LINK\0")
-            digest.update(os.fsencode(os.readlink(absolute)))
         else:
-            digest.update(b"MISSING\0")
+            _update_length_prefixed(digest, b"OTHER")
     return digest.hexdigest()
 
 
@@ -215,6 +248,7 @@ def measured_lane_result(
     name: str,
     expected_head: str | None = None,
     expected_worktree: str | None = None,
+    expected_index: str | None = None,
 ) -> tuple[str, str]:
     """Return a fail-closed status and measurement for one recorded CI lane."""
     meta = lane_runs / f"{name}.meta"
@@ -235,6 +269,13 @@ def measured_lane_result(
         recorded_worktree = worktree_match.group(1).lower()
         if recorded_worktree != expected_worktree.lower():
             return "STALE", f"worktree_sha={recorded_worktree}; expected_worktree={expected_worktree.lower()}"
+    if expected_index:
+        index_match = re.search(r"(?:^|[|\r\n]\s*)INDEX_SHA=([0-9a-fA-F]{64})", metadata)
+        if index_match is None:
+            return "STALE", "index_sha=missing"
+        recorded_index = index_match.group(1).lower()
+        if recorded_index != expected_index.lower():
+            return "STALE", f"index_sha={recorded_index}; expected_index={expected_index.lower()}"
     exit_match = re.search(r"(?:^|[|\r\n]\s*)EXIT_STATUS=(-?\d+)", metadata)
     logs = [lane_runs / f"{name}.stdout.log", lane_runs / f"{name}.stderr.log"]
     payload = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in logs if path.is_file())
@@ -254,5 +295,7 @@ def measured_lane_result(
         binding.append(f"head_sha={expected_head.lower()}")
     if expected_worktree:
         binding.append(f"worktree_sha={expected_worktree.lower()}")
+    if expected_index:
+        binding.append(f"index_sha={expected_index.lower()}")
     prefix = "; ".join(binding) + "; " if binding else ""
     return status, f"{prefix}exit_status={exit_status}; marker={str(marker).lower()}"

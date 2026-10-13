@@ -3,6 +3,9 @@ from __future__ import annotations
 import unittest
 import tempfile
 import subprocess
+import json
+import os
+import stat
 from pathlib import Path
 from unittest import mock
 
@@ -241,9 +244,10 @@ class FreezeBaselineTests(unittest.TestCase):
                     ["dotnet"],
                     "a" * 40,
                     "b" * 64,
+                    "c" * 64,
                 )
             self.assertEqual(rows, [("dotnet", "PASS", "bound")])
-            measured.assert_called_once_with(Path(temp), "dotnet", "a" * 40, "b" * 64)
+            measured.assert_called_once_with(Path(temp), "dotnet", "a" * 40, "b" * 64, "c" * 64)
 
     def test_main_classification_passes_missing_source_manifest(self) -> None:
         """The main classification path includes missing tracked sources."""
@@ -272,6 +276,120 @@ class FreezeBaselineTests(unittest.TestCase):
             rows = (output / "over-500-lines.tsv").read_text(encoding="utf-8")
             self.assertNotIn("Generated.g.cs", rows)
             self.assertIn("Hand.cs", rows)
+
+    def test_worktree_fingerprint_uses_unambiguous_file_framing(self) -> None:
+        """Different tracked file sets cannot share a serialized fingerprint stream."""
+        def fingerprint(files: dict[str, bytes]) -> str:
+            """Build a worktree fingerprint from an isolated Git fixture."""
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+                for relative, content in files.items():
+                    path = root / relative
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(content)
+                subprocess.run(["git", "add", "--", *files], cwd=root, check=True)
+                return task0_entry.worktree_fingerprint(root)
+
+        state_a = fingerprint({"a": b"hello", "y": b""})
+        state_b = fingerprint({"a": b"hello" + b"y\0FILE\0"})
+        self.assertNotEqual(state_a, state_b)
+
+    def test_index_fingerprint_changes_when_an_untracked_file_is_staged(self) -> None:
+        """Staging an untracked file changes the Git index fingerprint."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            (root / "new.cs").write_text("class New {}\n", encoding="utf-8")
+            before = task0_entry.index_fingerprint(root)
+            subprocess.run(["git", "add", "--", "new.cs"], cwd=root, check=True)
+            after = task0_entry.index_fingerprint(root)
+            self.assertNotEqual(before, after)
+
+    def test_worktree_fingerprint_distinguishes_symlink_from_file(self) -> None:
+        """A symlink and a regular file with equal target bytes have distinct identities."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            (root / "target").write_bytes(b"payload")
+            link = root / "entry"
+            try:
+                os.symlink("target", link)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            subprocess.run(["git", "add", "--all"], cwd=root, check=True)
+            symlink_fingerprint = task0_entry.worktree_fingerprint(root)
+            link.unlink()
+            link.write_bytes(b"payload")
+            subprocess.run(["git", "add", "--all"], cwd=root, check=True)
+            file_fingerprint = task0_entry.worktree_fingerprint(root)
+            self.assertNotEqual(symlink_fingerprint, file_fingerprint)
+
+    def test_worktree_fingerprint_distinguishes_permission_changes(self) -> None:
+        """A supported permission-bit change changes the working-tree identity."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            path = root / "entry"
+            path.write_bytes(b"payload")
+            subprocess.run(["git", "add", "--", "entry"], cwd=root, check=True)
+            original_mode = stat.S_IMODE(path.stat().st_mode)
+            changed_mode = original_mode ^ stat.S_IWUSR
+            os.chmod(path, changed_mode)
+            if stat.S_IMODE(path.stat().st_mode) == original_mode:
+                self.skipTest("filesystem does not expose permission-bit changes")
+            try:
+                original_fingerprint = task0_entry.worktree_fingerprint(root)
+                os.chmod(path, original_mode)
+                restored_fingerprint = task0_entry.worktree_fingerprint(root)
+            finally:
+                os.chmod(path, original_mode)
+            self.assertNotEqual(original_fingerprint, restored_fingerprint)
+
+    def test_main_marks_checkout_drift_as_incomplete(self) -> None:
+        """Task 0 fails closed when checkout identity changes during collection."""
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "baseline"
+            initial_head = "a" * 40
+            final_head = "b" * 40
+            initial_worktree = "c" * 64
+            final_worktree = "d" * 64
+            git_results = [
+                subprocess.CompletedProcess(["git"], 0, stdout=(initial_head + "\n").encode(), stderr=b""),
+                subprocess.CompletedProcess(["git"], 0, stdout=(final_head + "\n").encode(), stderr=b""),
+            ]
+            with (
+                mock.patch.object(freeze_baseline, "parse_status", return_value=[]),
+                mock.patch.object(freeze_baseline, "tracked_paths", return_value=[]),
+                mock.patch.object(freeze_baseline, "record_entry_commands"),
+                mock.patch.object(freeze_baseline, "record_plan_hashes", return_value=[]),
+                mock.patch.object(freeze_baseline, "source_inventory", return_value={}),
+                mock.patch.object(freeze_baseline, "excluded_manifests", return_value={}),
+                mock.patch.object(freeze_baseline, "validate_inventory_classification"),
+                mock.patch.object(freeze_baseline, "identity_surfaces", return_value={}),
+                mock.patch.object(freeze_baseline, "phase191_and_analyzers"),
+                mock.patch.object(freeze_baseline, "lane_manifest", return_value={}),
+                mock.patch.object(freeze_baseline, "_git", side_effect=git_results),
+                mock.patch.object(
+                    freeze_baseline,
+                    "worktree_fingerprint",
+                    side_effect=[initial_worktree, final_worktree],
+                ),
+                mock.patch.object(
+                    freeze_baseline,
+                    "index_fingerprint",
+                    side_effect=[initial_worktree, final_worktree],
+                ),
+            ):
+                result = freeze_baseline.main(
+                    ["--root", str(Path(temp)), "--output", str(output), "--allow-missing-plans"]
+                )
+            summary = json.loads((output / "task0-summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(result, 2)
+            self.assertTrue(summary["baseline_incomplete"])
+            self.assertEqual(summary["entry_head"], initial_head)
+            self.assertEqual(summary["final_head"], final_head)
+            self.assertIn("checkout identity changed during baseline collection", summary["incomplete_reasons"])
 
 
 if __name__ == "__main__":
