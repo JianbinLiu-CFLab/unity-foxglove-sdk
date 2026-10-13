@@ -52,6 +52,7 @@ class Phase186PackageMatrixTests(unittest.TestCase):
         outcomes = [
             subprocess.CompletedProcess([], 0, stdout="sdk ok"),
             subprocess.CompletedProcess([], 7, stdout="r2fu failed"),
+            subprocess.CompletedProcess([], 7, stdout="r2fu retry failed"),
             subprocess.CompletedProcess([], 0, stdout="bridge ok"),
             subprocess.CompletedProcess([], 0, stdout="all ok"),
             subprocess.CompletedProcess([], 0, stdout="remote gateway ok"),
