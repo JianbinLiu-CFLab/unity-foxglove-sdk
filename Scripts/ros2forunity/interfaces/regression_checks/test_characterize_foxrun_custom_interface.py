@@ -29,6 +29,12 @@ from Scripts.ros2forunity.interfaces.characterize_foxrun_custom_interface import
 
 class CustomInterfaceCharacterizationTests(unittest.TestCase):
     """Represent CustomInterfaceCharacterizationTests."""
+    def test_source_uses_named_split_package(self) -> None:
+        """Require the characterization facade to use its named source package."""
+        package = Path(characterization.__file__).with_suffix("")
+        self.assertTrue(package.is_dir())
+        self.assertTrue((package / "__main__.py").is_file())
+
     def test_windows_build_alias_is_required_only_for_an_overlong_projected_object_path(self) -> None:
         """Verify windows build alias is required only for an overlong projected object path."""
         with patch.object(characterization, "_is_windows_host", return_value=True):

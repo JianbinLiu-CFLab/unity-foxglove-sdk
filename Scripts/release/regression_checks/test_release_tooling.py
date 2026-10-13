@@ -2731,18 +2731,28 @@ class McapConformanceToolTests(unittest.TestCase):
         """Load a fresh conformance wrapper for each test."""
         self.conformance = load_module("mcap_conformance_under_test", MCAP_CONFORMANCE_PATH)
 
+    def test_conformance_wrapper_uses_named_split_package(self) -> None:
+        """The Phase121 wrapper keeps its execution sections in one named package."""
+        package = MCAP_CONFORMANCE_PATH.with_suffix("")
+        self.assertTrue(package.is_dir())
+        self.assertTrue((package / "__main__.py").is_file())
+
     def test_official_conformance_stages_have_no_hardcoded_deadlines(self) -> None:
         """Official finite stages should run to completion independent of host speed."""
-        tree = ast.parse(MCAP_CONFORMANCE_PATH.read_text(encoding="utf-8"))
         timeout_calls = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            if not any(keyword.arg == "timeout_seconds" for keyword in node.keywords):
-                continue
-            function_name = node.func.id if isinstance(node.func, ast.Name) else ""
-            if function_name in {"invoke_command_capture", "run_package_manager"}:
-                timeout_calls.append(node.lineno)
+        source_paths = [MCAP_CONFORMANCE_PATH]
+        package = MCAP_CONFORMANCE_PATH.with_suffix("")
+        source_paths.extend(sorted(package.glob("*.py")))
+        for source_path in source_paths:
+            tree = ast.parse(source_path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                if not any(keyword.arg == "timeout_seconds" for keyword in node.keywords):
+                    continue
+                function_name = node.func.id if isinstance(node.func, ast.Name) else ""
+                if function_name in {"invoke_command_capture", "run_package_manager"}:
+                    timeout_calls.append((source_path.name, node.lineno))
 
         self.assertEqual([], timeout_calls)
 

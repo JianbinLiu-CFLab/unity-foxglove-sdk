@@ -42,6 +42,12 @@ def load_smoke_module():
 class Phase179FoxRunRos2PlayerHostTests(unittest.TestCase):
     """Ensure the Windows helper proves a real Player lifecycle rather than launch success."""
 
+    def test_source_uses_named_split_package(self) -> None:
+        """Phase179 Player host keeps its runtime sections in one named package."""
+        package = SMOKE_PATH.with_suffix("")
+        self.assertTrue(package.is_dir())
+        self.assertTrue((package / "__main__.py").is_file())
+
     def setUp(self) -> None:
         """Load a fresh module for each test."""
 

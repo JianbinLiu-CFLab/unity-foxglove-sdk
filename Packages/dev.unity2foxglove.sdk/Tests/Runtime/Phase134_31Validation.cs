@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -61,7 +62,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Scripts/mcap/conformance/run_phase121_conformance.py");
 
             Check(source.Contains("RUNNER_ARRAY_DECLARATION", StringComparison.Ordinal)
-                  && source.Contains("if RUNNER_ARRAY_DECLARATION not in index", StringComparison.Ordinal)
+                  && source.Contains("if _configuration.RUNNER_ARRAY_DECLARATION not in index", StringComparison.Ordinal)
                   && source.Contains("overlay output is missing C# runners", StringComparison.Ordinal),
                 "134-31B-1: MCAP conformance overlay asserts runner injection success");
             Check(source.Contains("def read_target_framework()", StringComparison.Ordinal)
@@ -186,7 +187,20 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(fullPath))
                 throw new FileNotFoundException("Missing repository file: " + relativePath, fullPath);
 
-            return File.ReadAllText(fullPath);
+            var source = File.ReadAllText(fullPath);
+            var package = Path.Combine(
+                Path.GetDirectoryName(fullPath),
+                Path.GetFileNameWithoutExtension(fullPath));
+            if (Path.GetExtension(fullPath).Equals(".py", StringComparison.Ordinal)
+                && Directory.Exists(package))
+            {
+                foreach (var section in Directory.GetFiles(package, "*.py")
+                             .Where(path => !path.EndsWith("__init__.py", StringComparison.Ordinal)
+                                 && !path.EndsWith("__main__.py", StringComparison.Ordinal))
+                             .OrderBy(path => path, StringComparer.Ordinal))
+                    source += Environment.NewLine + File.ReadAllText(section);
+            }
+            return source;
         }
 
         private static string RepoRoot
