@@ -6,6 +6,10 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -239,6 +243,28 @@ namespace Unity.FoxgloveSDK.Tests
             var gate = ReadRepoText(LifecycleGateFile);
             var hub = ReadRepoText(
                 NativeDir + "/FoxRun/FoxRunRos2SubscriptionHub.cs");
+            var hubTree = CSharpSyntaxTree.ParseText(
+                hub,
+                CSharpParseOptions.Default.WithPreprocessorSymbols(
+                    "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                    "UNITY_EDITOR_WIN"));
+            var syntaxErrors = hubTree.GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+            var hubClass = hubTree.GetRoot()
+                .DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .SingleOrDefault(declaration =>
+                    declaration.Identifier.ValueText == "FoxRunRos2SubscriptionHub");
+            Check(syntaxErrors.Length == 0
+                  && hubClass != null
+                  && hubClass.Members.OfType<MethodDeclarationSyntax>()
+                      .Any(method => method.Identifier.ValueText == "Update")
+                  && hubClass.Members.OfType<MethodDeclarationSyntax>()
+                      .Any(method => method.Identifier.ValueText == "BeginShutdown")
+                  && hubClass.Members.OfType<MethodDeclarationSyntax>()
+                      .Any(method => method.Identifier.ValueText == "ScanAndReconcile"),
+                "165-C0: shared ROS2 subscription hub composer produces a symbol-active class with expected methods");
             var backend = ReadRepoText(
                 NativeDir + "/FoxRun/Ros2ForUnityFoxRunInboundBackend.cs");
             var update = RequiredMethod(

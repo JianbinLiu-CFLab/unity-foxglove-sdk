@@ -44,6 +44,48 @@ class FreezeBaselineTests(unittest.TestCase):
             self.assertEqual(status, "STALE")
             self.assertIn("expected_head=" + "a" * 40, measurement)
 
+    def test_measured_lane_result_rejects_stale_worktree(self) -> None:
+        """A lane result from another working tree cannot be reused as PASS."""
+        with tempfile.TemporaryDirectory() as temp:
+            lane_runs = Path(temp)
+            (lane_runs / "stale.meta").write_text(
+                "HEAD_SHA=" + "a" * 40 + "\nWORKTREE_SHA=" + "b" * 64 + "\nEXIT_STATUS=0\n",
+                encoding="utf-8",
+            )
+            (lane_runs / "stale.stdout.log").write_text(
+                "All CI checks passed.\n",
+                encoding="utf-8",
+            )
+            status, measurement = task0_entry.measured_lane_result(
+                lane_runs,
+                "stale",
+                "a" * 40,
+                "c" * 64,
+            )
+            self.assertEqual(status, "STALE")
+            self.assertIn("expected_worktree=" + "c" * 64, measurement)
+
+    def test_measured_lane_result_requires_bound_evidence(self) -> None:
+        """Bound lane evidence must contain both checkout identity fields."""
+        with tempfile.TemporaryDirectory() as temp:
+            lane_runs = Path(temp)
+            (lane_runs / "unbound.meta").write_text(
+                "EXIT_STATUS=0\n",
+                encoding="utf-8",
+            )
+            (lane_runs / "unbound.stdout.log").write_text(
+                "All CI checks passed.\n",
+                encoding="utf-8",
+            )
+            status, measurement = task0_entry.measured_lane_result(
+                lane_runs,
+                "unbound",
+                "a" * 40,
+                "b" * 64,
+            )
+            self.assertEqual(status, "STALE")
+            self.assertEqual(measurement, "head_sha=missing")
+
     def test_python_test_paths_excludes_package_initializers(self) -> None:
         """Python test inventory excludes package initializer files."""
         paths = [
@@ -165,6 +207,56 @@ class FreezeBaselineTests(unittest.TestCase):
             records = freeze_baseline.parse_status(Path("."))
         self.assertEqual(records[0][0], "M ")
         self.assertIn("\udcff", records[0][1])
+
+    def test_tracked_paths_preserves_non_utf8_filename_bytes(self) -> None:
+        """Tracked path bytes retain undecodable filename bytes through surrogateescape."""
+        completed = subprocess.CompletedProcess(["git"], 0, stdout=b"bad-\xff.cs\0", stderr=b"")
+        with mock.patch.object(freeze_baseline, "_git", return_value=completed):
+            paths = freeze_baseline.tracked_paths(Path("."))
+        self.assertIn("\udcff", paths[0])
+
+    def test_write_tsv_preserves_non_utf8_filename_bytes(self) -> None:
+        """TSV output retains undecodable filename bytes through surrogateescape."""
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "paths.tsv"
+            freeze_baseline.write_tsv(path, ["path"], [["bad-\udcff.cs"]])
+            self.assertIn(b"bad-\xff.cs", path.read_bytes())
+
+    def test_incomplete_baseline_requires_explicit_opt_in(self) -> None:
+        """Incomplete evidence fails unless the caller explicitly allows it."""
+        self.assertEqual(freeze_baseline.baseline_exit_code(True, False, False), 2)
+        self.assertEqual(freeze_baseline.baseline_exit_code(True, False, True), 0)
+        self.assertEqual(freeze_baseline.baseline_exit_code(False, False, False), 0)
+
+    def test_lane_manifest_binds_ci_evidence_to_current_checkout(self) -> None:
+        """The lane manifest passes both checkout identities to the evidence reader."""
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(
+                freeze_baseline,
+                "measured_lane_result",
+                return_value=("PASS", "bound"),
+            ) as measured:
+                rows = freeze_baseline.measured_run_ci_lanes(
+                    Path(temp),
+                    ["dotnet"],
+                    "a" * 40,
+                    "b" * 64,
+                )
+            self.assertEqual(rows, [("dotnet", "PASS", "bound")])
+            measured.assert_called_once_with(Path(temp), "dotnet", "a" * 40, "b" * 64)
+
+    def test_main_classification_passes_missing_source_manifest(self) -> None:
+        """The main classification path includes missing tracked sources."""
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp)
+            freeze_baseline.write_tsv(
+                output / "missing-tracked-sources.tsv",
+                ["path", "generated_excluded", "vendor_excluded", "reason"],
+                [["Generated.g.cs", "true", "false", "missing"]],
+            )
+            with mock.patch.object(freeze_baseline, "validate_classification") as validate:
+                freeze_baseline.validate_inventory_classification(output, ["Generated.g.cs"])
+            self.assertEqual(validate.call_args.args[-1], {"Generated.g.cs"})
 
     def test_generated_sources_are_absent_from_split_candidates(self) -> None:
         """Generated files do not inflate the hand-maintained split inventory."""

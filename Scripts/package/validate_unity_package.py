@@ -791,22 +791,60 @@ def check_sdk_decomposed_folder_meta(
     known_guids: dict[str, str] | None = None,
 ) -> None:
     """Ensure decomposed SDK test folders have stable Unity folder identities."""
-    decomposed_root = root if root is not None else SDK_DECOMPOSED_TESTS
-    if not decomposed_root.is_dir():
+    if root is not None:
+        decomposed_roots = [root]
+    else:
+        decomposed_root = SDK_DECOMPOSED_TESTS
+        if not decomposed_root.is_dir():
+            add(
+                results,
+                "SDK decomposed test folder .meta files",
+                False,
+                f"Required directory missing: {rel(decomposed_root)}",
+            )
+            return
+        unit_root = PACKAGE / "Tests" / "Unit"
+        decomposed_roots = [decomposed_root]
+        decomposed_roots.extend(
+            sorted(
+                (
+                    path
+                    for path in unit_root.rglob("Decomposed")
+                    if path.is_dir() and path != decomposed_root
+                ),
+                key=rel,
+            )
+        )
+
+    if any(not decomposed_root.is_dir() for decomposed_root in decomposed_roots):
+        missing_root = next(
+            decomposed_root
+            for decomposed_root in decomposed_roots
+            if not decomposed_root.is_dir()
+        )
         add(
             results,
             "SDK decomposed test folder .meta files",
             False,
-            f"Required directory missing: {rel(decomposed_root)}",
+            f"Required directory missing: {rel(missing_root)}",
         )
         return
-    folders = [decomposed_root]
-    folders.extend(
-        sorted(
-            (path for path in decomposed_root.rglob("*") if path.is_dir()),
-            key=rel,
+
+    folders: list[Path] = []
+    seen_folders: set[Path] = set()
+    for decomposed_root in decomposed_roots:
+        candidates = [decomposed_root]
+        candidates.extend(
+            sorted(
+                (path for path in decomposed_root.rglob("*") if path.is_dir()),
+                key=rel,
+            )
         )
-    )
+        for folder in candidates:
+            if folder not in seen_folders:
+                seen_folders.add(folder)
+                folders.append(folder)
+    folders.sort(key=rel)
 
     missing: list[str] = []
     malformed: list[str] = []

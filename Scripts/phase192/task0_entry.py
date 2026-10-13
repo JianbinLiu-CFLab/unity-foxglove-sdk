@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -16,6 +17,37 @@ CI_PASS_MARKER = "All CI checks passed."
 def _decode_git_path(value: bytes) -> str:
     """Decode Git path bytes without losing undecodable filename bytes."""
     return value.decode(sys.getfilesystemencoding(), errors="surrogateescape")
+
+
+def worktree_fingerprint(root: Path) -> str:
+    """Hash tracked and non-ignored working-tree content with stable path bytes."""
+    completed = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if completed.returncode:
+        raise RuntimeError(completed.stderr.decode(errors="replace").strip())
+    digest = hashlib.sha256()
+    paths = sorted(set(item for item in completed.stdout.split(b"\0") if item))
+    for raw_path in paths:
+        relative = _decode_git_path(raw_path)
+        absolute = root / relative
+        digest.update(raw_path)
+        digest.update(b"\0")
+        if absolute.is_file():
+            digest.update(b"FILE\0")
+            with absolute.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        elif absolute.is_symlink():
+            digest.update(b"LINK\0")
+            digest.update(os.fsencode(os.readlink(absolute)))
+        else:
+            digest.update(b"MISSING\0")
+    return digest.hexdigest()
 
 
 def command_snapshot(
@@ -182,6 +214,7 @@ def measured_lane_result(
     lane_runs: Path,
     name: str,
     expected_head: str | None = None,
+    expected_worktree: str | None = None,
 ) -> tuple[str, str]:
     """Return a fail-closed status and measurement for one recorded CI lane."""
     meta = lane_runs / f"{name}.meta"
@@ -195,6 +228,13 @@ def measured_lane_result(
         recorded_head = head_match.group(1).lower()
         if recorded_head != expected_head.lower():
             return "STALE", f"head_sha={recorded_head}; expected_head={expected_head.lower()}"
+    if expected_worktree:
+        worktree_match = re.search(r"(?:^|[|\r\n]\s*)WORKTREE_SHA=([0-9a-fA-F]{64})", metadata)
+        if worktree_match is None:
+            return "STALE", "worktree_sha=missing"
+        recorded_worktree = worktree_match.group(1).lower()
+        if recorded_worktree != expected_worktree.lower():
+            return "STALE", f"worktree_sha={recorded_worktree}; expected_worktree={expected_worktree.lower()}"
     exit_match = re.search(r"(?:^|[|\r\n]\s*)EXIT_STATUS=(-?\d+)", metadata)
     logs = [lane_runs / f"{name}.stdout.log", lane_runs / f"{name}.stderr.log"]
     payload = "\n".join(path.read_text(encoding="utf-8", errors="replace") for path in logs if path.is_file())
@@ -209,4 +249,10 @@ def measured_lane_result(
         status = "FAIL"
     else:
         status = "FAIL"
-    return status, f"exit_status={exit_status}; marker={str(marker).lower()}"
+    binding = []
+    if expected_head:
+        binding.append(f"head_sha={expected_head.lower()}")
+    if expected_worktree:
+        binding.append(f"worktree_sha={expected_worktree.lower()}")
+    prefix = "; ".join(binding) + "; " if binding else ""
+    return status, f"{prefix}exit_status={exit_status}; marker={str(marker).lower()}"
