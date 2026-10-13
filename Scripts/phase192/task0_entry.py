@@ -33,6 +33,7 @@ def worktree_fingerprint(root: Path) -> str:
         raise RuntimeError(completed.stderr.decode(errors="replace").strip())
 
     def update_field(data: bytes) -> None:
+        """Append one length-prefixed field to the fingerprint."""
         digest.update(len(data).to_bytes(8, "big"))
         digest.update(data)
 

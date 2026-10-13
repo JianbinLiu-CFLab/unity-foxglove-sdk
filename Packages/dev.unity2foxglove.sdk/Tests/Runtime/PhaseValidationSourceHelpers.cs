@@ -892,8 +892,10 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static string ReadRos2BridgeRuntimeSources()
+            => ReadRos2BridgeRuntimeSources(FindRequiredRepoRoot());
+
+        public static string ReadRos2BridgeRuntimeSources(string root)
         {
-            var root = FindRequiredRepoRoot();
             var runtimeRoot = Path.Combine(
                 root,
                 "Packages",
@@ -955,8 +957,10 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static string ReadRos2CustomCdrEmitterSources()
+            => ReadRos2CustomCdrEmitterSources(FindRequiredRepoRoot());
+
+        public static string ReadRos2CustomCdrEmitterSources(string root)
         {
-            var root = FindRequiredRepoRoot();
             var emitterRoot = Path.Combine(
                 root,
                 "Packages",

@@ -5,6 +5,7 @@ import tempfile
 import subprocess
 import json
 import os
+import stat
 from pathlib import Path
 from unittest import mock
 
@@ -310,6 +311,27 @@ class FreezeBaselineTests(unittest.TestCase):
             subprocess.run(["git", "add", "--all"], cwd=root, check=True)
             file_fingerprint = task0_entry.worktree_fingerprint(root)
             self.assertNotEqual(symlink_fingerprint, file_fingerprint)
+
+    def test_worktree_fingerprint_distinguishes_permission_changes(self) -> None:
+        """A supported permission-bit change changes the working-tree identity."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            path = root / "entry"
+            path.write_bytes(b"payload")
+            subprocess.run(["git", "add", "--", "entry"], cwd=root, check=True)
+            original_mode = stat.S_IMODE(path.stat().st_mode)
+            changed_mode = original_mode ^ stat.S_IWUSR
+            os.chmod(path, changed_mode)
+            if stat.S_IMODE(path.stat().st_mode) == original_mode:
+                self.skipTest("filesystem does not expose permission-bit changes")
+            try:
+                original_fingerprint = task0_entry.worktree_fingerprint(root)
+                os.chmod(path, original_mode)
+                restored_fingerprint = task0_entry.worktree_fingerprint(root)
+            finally:
+                os.chmod(path, original_mode)
+            self.assertNotEqual(original_fingerprint, restored_fingerprint)
 
     def test_main_marks_checkout_drift_as_incomplete(self) -> None:
         """Task 0 fails closed when checkout identity changes during collection."""
