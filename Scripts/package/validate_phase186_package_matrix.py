@@ -138,6 +138,23 @@ def compile_matrix() -> list[dict]:
             stderr=subprocess.STDOUT,
             check=False,
         )
+        if completed.returncode != 0:
+            retry = subprocess.run(
+                [
+                    "dotnet",
+                    "build",
+                    str(project),
+                    "--nologo",
+                    "--verbosity",
+                    "quiet",
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+            )
+            completed = retry
         results.append(
             {
                 "name": name,
