@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Synchronize Unity2Foxglove package version references.
+# Usage: python Scripts/release/bump_version.py 1.3.0 --date 2026-05-12
+# Inputs: Target semantic version, optional --date, optional --dry-run.
+# Outputs: Updates package metadata, changelog, README, and release-note stubs unless --dry-run.
+
 """Synchronize Unity2Foxglove package version references.
 
 This script updates the package version, the runtime package-metadata
