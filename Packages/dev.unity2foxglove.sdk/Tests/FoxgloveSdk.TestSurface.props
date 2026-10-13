@@ -61,6 +61,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/**/*.cs" LinkBase="Ros2BridgeSchemas" Condition="'$(IncludeRos2Bridge)' != 'false'" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/*.cs" Exclude="$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/*Publisher.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/Channels/**/*.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/FoxgloveCameraPublisher.*.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/FoxglovePointCloudPublisher.*.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/ImuMessageBuilder.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/PointCloudTransformFrameBuilder.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/CameraCaptureResources.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Utilities/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Runtime/Ros2ForUnitySubscriptionHubSourceComposer.cs" Link="TestHelpers/Ros2ForUnitySubscriptionHubSourceComposer.cs" />
 
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="('$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true') and Exists('$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime')" />
     <Compile Remove="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/**/*.cs" />

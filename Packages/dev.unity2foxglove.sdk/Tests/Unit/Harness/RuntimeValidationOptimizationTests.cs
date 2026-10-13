@@ -44,7 +44,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs");
 
-            var diagnostics = CSharpSyntaxTree.ParseText(source)
+            var parseOptions = CSharpParseOptions.Default.WithPreprocessorSymbols(
+                "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                "UNITY_EDITOR_WIN");
+            var diagnostics = CSharpSyntaxTree.ParseText(source, parseOptions)
                 .GetDiagnostics()
                 .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
                 .ToArray();
@@ -52,6 +55,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Equal(1, Count(source, "private void Update()"));
             Assert.Equal(1, Count(source, "private void BeginShutdown()"));
             Assert.Contains("private void ScanAndReconcile()", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SharedRos2ForUnitySubscriptionHubHelperRequiresWrapperTrimmingAndActiveSymbols()
+        {
+            var helper = TestSources.Runtime("Ros2ForUnitySubscriptionHubSourceComposer.cs");
+            Assert.Contains(
+                "TrimWrapperEnd",
+                helper,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "for (var brace = 0; brace < 2; brace++)",
+                helper,
+                StringComparison.Ordinal);
+            var validation = TestSources.Runtime("R2fuNativeBridgeHotPathLifecycleValidation.cs");
+            Assert.Contains("WithPreprocessorSymbols(", validation, StringComparison.Ordinal);
+            Assert.Contains("\"UNITY2FOXGLOVE_ROS2_FOR_UNITY\"", validation, StringComparison.Ordinal);
+            Assert.Contains("\"UNITY_EDITOR_WIN\"", validation, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -401,13 +422,6 @@ private static void Next() { }
             "FoxgloveRuntime.ReplaySuppression.cs",
             "FoxgloveRuntime.SchemaRegistration.cs",
         };
-        private static readonly string[] Ros2ForUnitySubscriptionHubSourceFileNames =
-        {
-            "FoxRunRos2SubscriptionHub.cs",
-            "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Scanning.cs",
-            "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Lifecycle.cs",
-            "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Bindings.cs",
-        };
         private static readonly string CachedRepoRoot = FindRepoRoot();
 
         public static string Runtime(string fileName)
@@ -494,103 +508,7 @@ private static void Next() { }
         }
 
         private static string Ros2ForUnitySubscriptionHubSources()
-        {
-            var root = Path.Combine(
-                RepoRoot,
-                "Packages",
-                "dev.unity2foxglove.ros2forunity",
-                "Runtime",
-                "Native",
-                "FoxRun");
-            var paths = Ros2ForUnitySubscriptionHubSourceFileNames
-                .Select(relativePath => Path.Combine(
-                    root,
-                    relativePath.Replace('/', Path.DirectorySeparatorChar)))
-                .ToArray();
-            foreach (var path in paths)
-                Assert.True(File.Exists(path), "ROS2 for Unity subscription hub source not found: " + path);
-
-            var fragmentDirectory = Path.Combine(
-                root,
-                "Decomposed",
-                "FoxRunRos2SubscriptionHub");
-            var expectedFragments = Ros2ForUnitySubscriptionHubSourceFileNames
-                .Skip(1)
-                .Select(Path.GetFileName)
-                .ToHashSet(StringComparer.Ordinal);
-            var actualFragments = Directory.Exists(fragmentDirectory)
-                ? Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
-                    .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
-                    .ToHashSet(StringComparer.Ordinal)
-                : new HashSet<string>(StringComparer.Ordinal);
-            Assert.True(
-                expectedFragments.SetEquals(actualFragments),
-                "ROS2 for Unity subscription hub source composition is incomplete or contains unregistered partial files.");
-
-            foreach (var path in paths)
-            {
-                var diagnostics = CSharpSyntaxTree.ParseText(File.ReadAllText(path))
-                    .GetDiagnostics()
-                    .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-                    .ToArray();
-                Assert.Empty(diagnostics);
-            }
-
-            var facade = TrimSubscriptionHubFacade(paths[0]);
-            var fragments = paths.Skip(1).Select(TrimSubscriptionHubFragment);
-            var sources = new[] { facade }.Concat(fragments);
-            return string.Join(Environment.NewLine, sources)
-                + Environment.NewLine
-                + "    }"
-                + Environment.NewLine
-                + "}"
-                + Environment.NewLine
-                + "#endif";
-        }
-
-        private static string TrimSubscriptionHubFacade(string path)
-        {
-            var lines = File.ReadAllLines(path);
-            var end = lines.Length;
-            while (end > 0 && string.IsNullOrWhiteSpace(lines[end - 1]))
-                end--;
-            if (end > 0 && lines[end - 1].Trim() == "#endif")
-                end--;
-            while (end > 0 && string.IsNullOrWhiteSpace(lines[end - 1]))
-                end--;
-            Assert.True(end > 0 && lines[end - 1].Trim() == "}", "ROS2 for Unity subscription hub namespace brace is missing: " + path);
-            end--;
-            while (end > 0 && string.IsNullOrWhiteSpace(lines[end - 1]))
-                end--;
-            Assert.True(end > 0 && lines[end - 1].Trim() == "}", "ROS2 for Unity subscription hub class brace is missing: " + path);
-            end--;
-            return string.Join(Environment.NewLine, lines.Take(end));
-        }
-
-        private static string TrimSubscriptionHubFragment(string path)
-        {
-            var lines = File.ReadAllLines(path);
-            var classLine = Array.FindIndex(
-                lines,
-                line => line.Contains("partial class FoxRunRos2SubscriptionHub", StringComparison.Ordinal));
-            Assert.True(classLine >= 0, "ROS2 for Unity subscription hub class is missing: " + path);
-            var openBrace = Array.FindIndex(lines, classLine, line => line.Trim() == "{");
-            Assert.True(openBrace >= 0, "ROS2 for Unity subscription hub class body is missing: " + path);
-            var end = lines.Length;
-            while (end > 0 && string.IsNullOrWhiteSpace(lines[end - 1]))
-                end--;
-            if (end > 0 && lines[end - 1].Trim() == "#endif")
-                end--;
-            while (end > 0 && string.IsNullOrWhiteSpace(lines[end - 1]))
-                end--;
-            Assert.True(end > openBrace + 1 && lines[end - 1].Trim() == "}", "ROS2 for Unity subscription hub fragment namespace brace is missing: " + path);
-            end--;
-            while (end > openBrace + 1 && string.IsNullOrWhiteSpace(lines[end - 1]))
-                end--;
-            Assert.True(end > openBrace + 1 && lines[end - 1].Trim() == "}", "ROS2 for Unity subscription hub fragment class brace is missing: " + path);
-            end--;
-            return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(end - openBrace - 1));
-        }
+            => Unity.FoxgloveSDK.Tests.Ros2ForUnitySubscriptionHubSourceComposer.Compose(RepoRoot);
 
         private static string TextWithoutComposition(string relativePath)
         {
