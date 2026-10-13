@@ -913,9 +913,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             var actualRootSiblings = Directory.GetFiles(
                     runtimeRoot,
-                    "Ros2BridgeRuntime.*.cs",
+                    "*.cs",
                     SearchOption.TopDirectoryOnly)
-                .Select(path => Path.GetFileName(path))
+                .Where(path => !string.Equals(
+                    Path.GetFullPath(path),
+                    Path.GetFullPath(paths[0]),
+                    StringComparison.OrdinalIgnoreCase))
+                .Where(path => ContainsPartialClassDeclaration(path, "Ros2BridgeRuntime"))
+                .Select(Path.GetFileName)
                 .ToHashSet(StringComparer.Ordinal);
             if (actualRootSiblings.Count != 0)
                 throw new InvalidDataException(
@@ -1053,6 +1058,15 @@ namespace Unity.FoxgloveSDK.Tests
                 Environment.NewLine,
                 lines.Skip(openBrace + 1).Take(end - openBrace - 1));
         }
+
+        private static bool ContainsPartialClassDeclaration(string path, string className)
+            => CSharpSyntaxTree.ParseText(File.ReadAllText(path))
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<ClassDeclarationSyntax>()
+                .Any(declaration =>
+                    string.Equals(declaration.Identifier.ValueText, className, StringComparison.Ordinal)
+                    && declaration.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.PartialKeyword)));
 
         private static int FindRos2CustomCdrEmitterBodyEnd(
             string[] lines,

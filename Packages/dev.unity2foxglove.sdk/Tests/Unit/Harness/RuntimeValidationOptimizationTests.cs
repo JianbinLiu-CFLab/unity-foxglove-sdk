@@ -137,6 +137,36 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsUnregisteredRootPartialWithDifferentFileName()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(runtimeRoot, "ExtraRuntime.cs"),
+                    "internal partial class Ros2BridgeRuntime { }");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
         public void Ros2BridgeRuntimeCompositionRejectsMissingRegisteredFragment()
         {
             var root = CreateSourceFixture(
@@ -260,18 +290,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var fixtureRoot = Path.Combine(
                 Path.GetTempPath(),
                 "phase192-source-fixture-" + Guid.NewGuid().ToString("N"));
-            foreach (var relativeFile in relativeFiles)
+            try
             {
-                var source = Path.Combine(
-                    repositoryRoot,
-                    relativeRoot.Replace('/', Path.DirectorySeparatorChar),
-                    relativeFile.Replace('/', Path.DirectorySeparatorChar));
-                var target = Path.Combine(
-                    fixtureRoot,
-                    relativeRoot.Replace('/', Path.DirectorySeparatorChar),
-                    relativeFile.Replace('/', Path.DirectorySeparatorChar));
-                Directory.CreateDirectory(Path.GetDirectoryName(target));
-                File.Copy(source, target);
+                foreach (var relativeFile in relativeFiles)
+                {
+                    var source = Path.Combine(
+                        repositoryRoot,
+                        relativeRoot.Replace('/', Path.DirectorySeparatorChar),
+                        relativeFile.Replace('/', Path.DirectorySeparatorChar));
+                    var target = Path.Combine(
+                        fixtureRoot,
+                        relativeRoot.Replace('/', Path.DirectorySeparatorChar),
+                        relativeFile.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target));
+                    File.Copy(source, target);
+                }
+            }
+            catch
+            {
+                DeleteSourceFixture(fixtureRoot);
+                throw;
             }
             return fixtureRoot;
         }
