@@ -75,10 +75,18 @@ namespace Unity.FoxgloveSDK.Tests
         };
         public static string FindRequiredRepoRoot()
         {
-            var root = Phase16Validation.FindRepoRoot();
-            if (root == null)
-                throw new DirectoryNotFoundException("Could not find repository root for source validation.");
-            return root;
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "Unity2Foxglove.sln"))
+                    || Directory.Exists(Path.Combine(directory.FullName, ".git"))
+                    || File.Exists(Path.Combine(directory.FullName, ".git")))
+                    return directory.FullName;
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException(
+                "Could not find repository root for source validation from " + AppContext.BaseDirectory);
         }
 
         public static string RepoPath(string relativePath)
@@ -901,6 +909,17 @@ namespace Unity.FoxgloveSDK.Tests
                 if (!File.Exists(path))
                     throw new FileNotFoundException("Missing ROS2 Bridge runtime source: " + path, path);
 
+            var actualRootSiblings = Directory.GetFiles(
+                    runtimeRoot,
+                    "Ros2BridgeRuntime.*.cs",
+                    SearchOption.TopDirectoryOnly)
+                .Select(path => Path.GetFileName(path))
+                .ToHashSet(StringComparer.Ordinal);
+            if (actualRootSiblings.Count != 0)
+                throw new InvalidDataException(
+                    "ROS2 Bridge runtime root contains unregistered sibling partials: "
+                    + string.Join(", ", actualRootSiblings.OrderBy(name => name, StringComparer.Ordinal)));
+
             var fragmentDirectory = Path.Combine(
                 runtimeRoot,
                 "Decomposed",
@@ -960,7 +979,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "Decomposed",
                 "Ros2CustomCdrEmitter");
             var expectedFragments = new HashSet<string>(
-                paths.Skip(1).Select(Path.GetFileName),
+                paths.Skip(1)
+                    .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/')),
                 StringComparer.Ordinal);
             var actualFragments = Directory.Exists(fragmentDirectory)
                 ? new HashSet<string>(
@@ -968,7 +988,7 @@ namespace Unity.FoxgloveSDK.Tests
                         fragmentDirectory,
                         "*.cs",
                         SearchOption.AllDirectories)
-                        .Select(Path.GetFileName),
+                        .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/')),
                     StringComparer.Ordinal)
                 : new HashSet<string>(StringComparer.Ordinal);
             if (!expectedFragments.SetEquals(actualFragments))

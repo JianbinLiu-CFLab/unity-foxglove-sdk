@@ -8,8 +8,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Unity.FoxgloveSDK.Tests;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -103,6 +105,129 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "SearchOption.AllDirectories",
                 helper,
                 StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsUnregisteredRootSiblingPartial()
+        {
+            var root = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            var extra = Path.Combine(runtimeRoot, "Ros2BridgeRuntime.Extra.cs");
+            File.WriteAllText(extra, "internal partial class Ros2BridgeRuntime { }");
+            try
+            {
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources());
+            }
+            finally
+            {
+                File.Delete(extra);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsMissingRegisteredFragment()
+        {
+            var root = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
+            var fragment = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge",
+                "Decomposed",
+                "Ros2BridgeRuntime",
+                "Ros2BridgeRuntime.QueueAndStats.cs");
+            var original = File.ReadAllBytes(fragment);
+            File.Delete(fragment);
+            try
+            {
+                Assert.Throws<FileNotFoundException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources());
+            }
+            finally
+            {
+                File.WriteAllBytes(fragment, original);
+            }
+        }
+
+        [Fact]
+        public void Ros2CustomCdrEmitterCompositionRejectsNestedDuplicateFragmentName()
+        {
+            var root = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
+            var fragmentDirectory = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Editor",
+                "FoxRun",
+                "Decomposed",
+                "Ros2CustomCdrEmitter");
+            var nestedDirectory = Path.Combine(fragmentDirectory, "Nested");
+            var duplicate = Path.Combine(nestedDirectory, "Generation.cs");
+            Directory.CreateDirectory(nestedDirectory);
+            File.WriteAllText(duplicate, "internal partial class FoxRunBridgeSourceEmitter { }");
+            try
+            {
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2CustomCdrEmitterSources());
+            }
+            finally
+            {
+                File.Delete(duplicate);
+                Directory.Delete(nestedDirectory);
+            }
+        }
+
+        [Fact]
+        public void Ros2CustomCdrEmitterCompositionWithTrailingBlanksParses()
+        {
+            var root = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
+            var paths = new[]
+            {
+                Path.Combine(
+                    root,
+                    "Packages",
+                    "dev.unity2foxglove.ros2bridge",
+                    "Editor",
+                    "FoxRun",
+                    "Ros2CustomCdrEmitter.cs"),
+                Path.Combine(
+                    root,
+                    "Packages",
+                    "dev.unity2foxglove.ros2bridge",
+                    "Editor",
+                    "FoxRun",
+                    "Decomposed",
+                    "Ros2CustomCdrEmitter",
+                    "Generation.cs"),
+            };
+            var originals = paths.Select(File.ReadAllBytes).ToArray();
+            try
+            {
+                foreach (var path in paths)
+                    File.AppendAllText(
+                        path,
+                        Environment.NewLine + Environment.NewLine,
+                        Encoding.UTF8);
+
+                var source = PhaseValidationSourceHelpers.ReadRos2CustomCdrEmitterSources();
+                var diagnostics = CSharpSyntaxTree.ParseText(source)
+                    .GetDiagnostics()
+                    .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                    .ToArray();
+                Assert.Empty(diagnostics);
+            }
+            finally
+            {
+                for (var index = 0; index < paths.Length; index++)
+                    File.WriteAllBytes(paths[index], originals[index]);
+            }
         }
 
         private static int Count(string source, string value)
