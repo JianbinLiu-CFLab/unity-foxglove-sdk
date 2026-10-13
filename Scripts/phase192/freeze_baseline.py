@@ -546,6 +546,14 @@ def baseline_exit_code(incomplete: bool, hard_failures: bool, allow_incomplete: 
     return 0
 
 
+def checkout_identity(root: Path) -> tuple[str, str]:
+    """Capture the commit and working-tree identity for one baseline run."""
+    completed = _git(root, "rev-parse", "HEAD")
+    if completed.returncode:
+        raise RuntimeError(completed.stderr.decode(errors="replace").strip())
+    return completed.stdout.decode("ascii", errors="strict").strip(), worktree_fingerprint(root)
+
+
 def manifest_paths(path: Path) -> set[str]:
     """Read the path column from a Task 0 manifest."""
     with path.open(encoding="utf-8", errors="surrogateescape", newline="") as handle:
@@ -555,13 +563,19 @@ def manifest_paths(path: Path) -> set[str]:
             if row and row[0] != "path"
         }
 
-def lane_manifest(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
+def lane_manifest(
+    root: Path,
+    output: Path,
+    paths: list[str],
+    expected_head: str | None = None,
+    expected_worktree: str | None = None,
+) -> dict[str, int]:
     """Phase192 identity baseline helper."""
     identity = output / "identity"
     lane_runs = identity / "lane-runs"
     lane_runs.mkdir(parents=True, exist_ok=True)
-    expected_head = _git(root, "rev-parse", "HEAD").stdout.decode("ascii", errors="strict").strip()
-    expected_worktree = worktree_fingerprint(root)
+    if expected_head is None or expected_worktree is None:
+        expected_head, expected_worktree = checkout_identity(root)
 
     def execute_lane(name: str, argv: list[str]) -> tuple[str, str, int | None]:
         """Execute and record a baseline lane before declaring its status."""
@@ -677,6 +691,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allow-incomplete", action="store_true")
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    entry_head, entry_worktree = checkout_identity(root)
     entry_records = parse_status(root)
     output = _rooted(args.output, root).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -692,7 +707,8 @@ def main(argv: list[str] | None = None) -> int:
     identity_counts = identity_surfaces(root, output, paths)
     counts.update(identity_counts)
     phase191_and_analyzers(root, output, paths)
-    counts.update(lane_manifest(root, output, paths))
+    counts.update(lane_manifest(root, output, paths, entry_head, entry_worktree))
+    final_head, final_worktree = checkout_identity(root)
     incomplete = []
     hard_failures = []
     if counts.get("missing_tracked_sources", 0):
@@ -718,8 +734,19 @@ def main(argv: list[str] | None = None) -> int:
         reason = "identity extraction errors"
         incomplete.append(reason)
         hard_failures.append(reason)
+    if (entry_head, entry_worktree) != (final_head, final_worktree):
+        reason = "checkout identity changed during baseline collection"
+        incomplete.append(reason)
+        hard_failures.append(reason)
     counts["baseline_incomplete"] = bool(incomplete)
-    summary = {"entry_head": _git(root, "rev-parse", "HEAD").stdout.decode().strip(), **counts}
+    summary = {
+        "entry_head": entry_head,
+        "entry_worktree": entry_worktree,
+        "final_head": final_head,
+        "final_worktree": final_worktree,
+        "incomplete_reasons": incomplete,
+        **counts,
+    }
     (output / "task0-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     exit_code = baseline_exit_code(bool(incomplete), bool(hard_failures), args.allow_incomplete)
     if incomplete:

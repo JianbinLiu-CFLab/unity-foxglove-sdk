@@ -5,6 +5,7 @@ import csv
 import hashlib
 import os
 import re
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -30,23 +31,35 @@ def worktree_fingerprint(root: Path) -> str:
     )
     if completed.returncode:
         raise RuntimeError(completed.stderr.decode(errors="replace").strip())
+
+    def update_field(data: bytes) -> None:
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
+
     digest = hashlib.sha256()
     paths = sorted(set(item for item in completed.stdout.split(b"\0") if item))
     for raw_path in paths:
         relative = _decode_git_path(raw_path)
         absolute = root / relative
-        digest.update(raw_path)
-        digest.update(b"\0")
-        if absolute.is_file():
-            digest.update(b"FILE\0")
+        update_field(raw_path)
+        try:
+            metadata = absolute.lstat()
+        except FileNotFoundError:
+            update_field(b"MISSING")
+            continue
+        update_field(str(stat.S_IFMT(metadata.st_mode)).encode("ascii"))
+        update_field(str(stat.S_IMODE(metadata.st_mode)).encode("ascii"))
+        if stat.S_ISLNK(metadata.st_mode):
+            update_field(b"LINK")
+            update_field(os.fsencode(os.readlink(absolute)))
+        elif stat.S_ISREG(metadata.st_mode):
+            update_field(b"FILE")
+            update_field(str(metadata.st_size).encode("ascii"))
             with absolute.open("rb") as handle:
                 for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                     digest.update(chunk)
-        elif absolute.is_symlink():
-            digest.update(b"LINK\0")
-            digest.update(os.fsencode(os.readlink(absolute)))
         else:
-            digest.update(b"MISSING\0")
+            update_field(b"OTHER")
     return digest.hexdigest()
 
 
