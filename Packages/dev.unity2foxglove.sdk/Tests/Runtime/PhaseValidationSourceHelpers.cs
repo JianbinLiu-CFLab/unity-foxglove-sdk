@@ -967,7 +967,7 @@ namespace Unity.FoxgloveSDK.Tests
                     Directory.GetFiles(
                         fragmentDirectory,
                         "*.cs",
-                        SearchOption.TopDirectoryOnly)
+                        SearchOption.AllDirectories)
                         .Select(Path.GetFileName),
                     StringComparer.Ordinal)
                 : new HashSet<string>(StringComparer.Ordinal);

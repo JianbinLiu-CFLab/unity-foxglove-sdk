@@ -99,6 +99,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "ReadRos2CustomCdrEmitterFragmentBody",
                 helper,
                 StringComparison.Ordinal);
+            Assert.Contains(
+                "SearchOption.AllDirectories",
+                helper,
+                StringComparison.Ordinal);
         }
 
         private static int Count(string source, string value)
