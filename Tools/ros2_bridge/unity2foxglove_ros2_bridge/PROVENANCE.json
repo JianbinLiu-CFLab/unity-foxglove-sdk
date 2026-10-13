@@ -293,6 +293,102 @@
           }
         }
       ]
+    },
+    {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2OutboundAuthority.cs",
+      "sourceRevision": "39b579f37850bc187072b5d9f68c1cfd080f73e6",
+      "decompositionRevision": "23bb50a11",
+      "originalSha256": "905c1135d7e0272ea9edd3dcf5903ad88512f4dd14f268537ccd3205c8799b96",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2OutboundAuthority/OutboundPrimitives.cs",
+          "sha256": "2241c18ca21418820121630a50fd3e02975cba1a35183f0cea796bc869d57e82",
+          "movedRange": {
+            "startLine": 13,
+            "endLine": 257
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2OutboundAuthority/Scheduler.State.cs",
+          "sha256": "db30299757bb1b324843f584214b1ab614b8d32eef909bcab04e8929058389c7",
+          "movedRange": {
+            "startLine": 261,
+            "endLine": 364
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2OutboundAuthority/Scheduler.Admission.cs",
+          "sha256": "0b45a6c6baedbe2ef701c226746bb96d28550fa19e2f3509d3d1933836ab73e8",
+          "movedRange": {
+            "startLine": 366,
+            "endLine": 555
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2OutboundAuthority/Scheduler.Lifecycle.cs",
+          "sha256": "fa9ecf0d72a1574c7238654318be471bd8bf96e25652d308b80005f3b7754486",
+          "movedRange": {
+            "startLine": 557,
+            "endLine": 710
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2OutboundAuthority/Scheduler.Selection.cs",
+          "sha256": "1707868df7303093886732059dc9c9f87fe9a6da6a3b9298557c8dba4f7ba96d",
+          "movedRange": {
+            "startLine": 712,
+            "endLine": 904
+          }
+        }
+      ]
+    },
+    {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ReplayAuthority.cs",
+      "sourceRevision": "39b579f37850bc187072b5d9f68c1cfd080f73e6",
+      "decompositionRevision": "23bb50a11",
+      "originalSha256": "d46bc54e7f092f75f459d3e7d699d1c76a0fa046574cfce38817071c251f227f",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ReplayAuthority/ReplayAdmission.cs",
+          "sha256": "a0e8b3920c2c05bcd3076fd7e468ac1773420f492486653198980094a94f3d96",
+          "movedRange": {
+            "startLine": 13,
+            "endLine": 57
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ReplayAuthority/ReplayAuthority.State.cs",
+          "sha256": "d3a3f6c74cac2799df0b7e671972b1e82381fa97d20a241b320de5e74763a273",
+          "movedRange": {
+            "startLine": 61,
+            "endLine": 150
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ReplayAuthority/ReplayAuthority.Admission.cs",
+          "sha256": "48377ce459956f0c448a182e7c9bf6168c70b97fdbda51ab10513cb6c708113f",
+          "movedRange": {
+            "startLine": 152,
+            "endLine": 321
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ReplayAuthority/ReplayAuthority.Completion.cs",
+          "sha256": "b5eab8b62f846813867d91f00dd09a6380f9f89e2858c073ca21b74ba3a6970e",
+          "movedRange": {
+            "startLine": 323,
+            "endLine": 472
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ReplayAuthority/ReplayAuthority.Eviction.cs",
+          "sha256": "428677f7efa7695f7e6aafb709bea5952fcd450d5efcbf816d9f0d3f8b561b35",
+          "movedRange": {
+            "startLine": 474,
+            "endLine": 662
+          }
+        }
+      ]
     }
   ],
   "implementations": [
