@@ -29,6 +29,8 @@ _SECTION_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
 SPLIT_ROOTS = (
+    Path("Scripts/smoke/mcap"),
+    Path("Scripts/smoke/replay"),
     Path("Scripts/smoke/foxrun"),
     Path("Scripts/smoke/ros2"),
     Path("Scripts/smoke/websocket"),
@@ -288,6 +290,171 @@ def _declared_public_names(tree: ast.Module) -> frozenset[str]:
         name for name in _top_level_names(tree, include_imports=True)
         if not name.startswith("_")
     )
+
+
+_PHASE192_TEMPLATE_IMPORTS = frozenset({"pathlib", "sys", "types", "unittest"})
+_PHASE192_TEMPLATE_CALLS = frozenset({
+    "add", "callable", "delattr", "getattr", "globals", "hasattr", "isinstance", "issubclass", "main", "print", "set",
+    "setattr", "sorted", "str", "super", "tuple", "SystemExit",
+})
+_PHASE192_TEMPLATE_METHODS = frozenset({
+    "__class__", "__delattr__", "__dict__", "__setattr__", "add", "get", "insert", "main", "pop", "resolve", "startswith",
+})
+
+
+def _phase192_template_name(name: str) -> bool:
+    """Return whether a name belongs to the generated forwarding template."""
+    return name.startswith("_phase192_") or name.startswith("_phase138u_") or name.startswith("_PHASE192_") or name.startswith("_PHASE138U_")
+
+
+def _phase192_template_call_is_safe(call: ast.Call) -> bool:
+    """Reject calls that could execute arbitrary import-time work in a wrapper."""
+    function = call.func
+    if isinstance(function, ast.Name):
+        return function.id in _PHASE192_TEMPLATE_CALLS or _phase192_template_name(function.id) or function.id.endswith("Path")
+    if isinstance(function, ast.Attribute):
+        return function.attr in _PHASE192_TEMPLATE_METHODS and (
+            isinstance(function.value, (ast.Name, ast.Attribute, ast.Call, ast.Subscript))
+        )
+    return False
+
+
+def _phase192_template_validate_calls(tree: ast.AST, path: str) -> None:
+    """Validate the deliberately small call vocabulary used by wrappers."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and not _phase192_template_call_is_safe(node):
+            raise ValueError(f"Unsupported generated-wrapper call in {path}")
+
+
+def _phase192_template_validate_imports(tree: ast.Module, path: str) -> None:
+    """Validate imports used by a generated facade or package initializer."""
+    local_facade = Path(path).stem
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".", 1)[0] not in _PHASE192_TEMPLATE_IMPORTS:
+                    raise ValueError(f"Unsupported generated-wrapper import in {path}")
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == "__future__":
+                if node.level or any(alias.name != "annotations" for alias in node.names):
+                    raise ValueError(f"Unsupported generated-wrapper future import in {path}")
+            elif node.level != 1:
+                root = (node.module or "").split(".", 1)[0]
+                if not (
+                    root in _PHASE192_TEMPLATE_IMPORTS
+                    or node.module == local_facade
+                    and any(alias.name == "*" for alias in node.names)
+                ):
+                    raise ValueError(f"Unsupported generated-wrapper import in {path}")
+
+
+def _phase192_template_validate_class(node: ast.ClassDef, path: str, *, package: bool) -> None:
+    """Validate the forwarding ModuleType subclass without executing it."""
+    expected = "_Phase192PackageModule" if package else "_Phase192FacadeModule"
+    if node.name not in {expected, "_Phase138UPackageModule"}:
+        raise ValueError(f"Unsupported generated-wrapper class in {path}")
+    if len(node.bases) != 1 or not isinstance(node.bases[0], ast.Attribute):
+        raise ValueError(f"Unsupported generated-wrapper base in {path}")
+    if node.bases[0].attr != "ModuleType":
+        raise ValueError(f"Unsupported generated-wrapper base in {path}")
+    for statement in node.body:
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant) and isinstance(statement.value.value, str):
+            continue
+        if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            raise ValueError(f"Unsupported generated-wrapper class body in {path}")
+        if statement.name not in {"__setattr__", "__delattr__"}:
+            raise ValueError(f"Unsupported generated-wrapper method in {path}")
+        if statement.decorator_list:
+            raise ValueError(f"Unsupported generated-wrapper method decorator in {path}")
+
+
+def _phase192_template_validate_facade(tree: ast.Module, path: str) -> None:
+    """Validate the generated facade shape before allowing its namespace shim."""
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    if len(classes) != 1:
+        raise ValueError(f"Generated facade must contain one forwarding class: {path}")
+    _phase192_template_validate_class(classes[0], path, package=False)
+    _phase192_template_validate_imports(tree, path)
+    _phase192_template_validate_calls(tree, path)
+    for node in tree.body:
+        if isinstance(node, (ast.Expr, ast.Import, ast.ImportFrom, ast.Assign, ast.Delete, ast.If, ast.Try, ast.ClassDef)):
+            continue
+        raise ValueError(f"Unsupported generated facade statement in {path}")
+    if not any(
+        isinstance(node, ast.ImportFrom)
+        and (
+            node.level == 1
+            or (node.level == 0 and node.module == Path(path).stem)
+        )
+        for node in ast.walk(tree)
+    ):
+        raise ValueError(f"Generated facade has no package import in {path}")
+
+
+def _phase192_template_validate_initializer(tree: ast.Module, path: str) -> None:
+    """Validate the generated package initializer shape."""
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    if len(classes) != 1:
+        raise ValueError(f"Generated package must contain one forwarding class: {path}")
+    _phase192_template_validate_class(classes[0], path, package=True)
+    _phase192_template_validate_imports(tree, path)
+    _phase192_template_validate_calls(tree, path)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "load_tests":
+            if node.decorator_list or not node.body or any(
+                not isinstance(statement, (ast.Expr, ast.Return, ast.Pass))
+                for statement in node.body
+            ):
+                raise ValueError(f"Unsupported generated load_tests function in {path}")
+            continue
+        if isinstance(node, (ast.Expr, ast.Import, ast.ImportFrom, ast.Assign, ast.Delete, ast.If, ast.For, ast.ClassDef)):
+            continue
+        raise ValueError(f"Unsupported generated package statement in {path}")
+    if not any(
+        isinstance(node, ast.ImportFrom) and node.level == 1
+        for node in tree.body
+    ):
+        raise ValueError(f"Generated package has no relative section imports in {path}")
+
+
+def _phase192_generated_initializer(source: str) -> bool:
+    """Return whether source declares one of the reviewed package templates."""
+    return (
+        "_Phase192PackageModule" in source
+        or "_Phase138UPackageModule" in source
+        or (
+            "POINTCLOUD2_METRIC_HELPERS" in source
+            and "from .pointcloud_metrics" in source
+        )
+    )
+
+
+def _phase138u_simple_initializer(source: str, path: str) -> None:
+    """Validate the earlier explicit Phase138U re-export initializer."""
+    tree = _parse_source(source, path)
+    allowed_modules = {"pointcloud_metrics", "subscription", "acceptance_cli"}
+    for node in tree.body:
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            continue
+        if isinstance(node, ast.ImportFrom):
+            if node.module == "__future__":
+                if node.level or any(alias.name != "annotations" for alias in node.names):
+                    raise ValueError(f"Unsupported Phase138U future import in {path}")
+                continue
+            if node.level != 1 or node.module not in allowed_modules:
+                raise ValueError(f"Unsupported Phase138U initializer import in {path}")
+            continue
+        if isinstance(node, ast.Assign):
+            if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets):
+                raise ValueError(f"Unsupported Phase138U initializer assignment in {path}")
+            try:
+                value = ast.literal_eval(node.value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Unsupported Phase138U __all__ in {path}") from exc
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                raise ValueError(f"Unsupported Phase138U __all__ in {path}")
+            continue
+        raise ValueError(f"Unsupported Phase138U initializer statement in {path}")
 
 def _is_public_globals_comprehension(value: ast.AST) -> bool:
     """Internal helper for _is_public_globals_comprehension."""
@@ -1446,7 +1613,14 @@ def _symbols(
             if any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
                 if _is_public_globals_comprehension(node.value):
                     allowed_nodes.update(id(item) for item in ast.walk(node.value))
-    _validate_namespace_access(tree, allowed_nodes, path)
+    if any(
+        isinstance(node, ast.ClassDef)
+        and node.name in {"_Phase192FacadeModule", "_Phase138UPackageModule"}
+        for node in tree.body
+    ):
+        _phase192_template_validate_facade(tree, path)
+    else:
+        _validate_namespace_access(tree, allowed_nodes, path)
     conditional = _conditional_only_public_names(tree)
     if reject_conditional and conditional:
         raise ValueError(f"Conditional public bindings are not supported in {path}: {','.join(sorted(conditional))}")
@@ -1483,6 +1657,22 @@ def _section_exports(
     for value in direct_values:
         if _is_public_globals_comprehension(value):
             allowed_nodes.update(id(item) for item in ast.walk(value))
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "exec"
+            and len(node.args) == 3
+            and not node.keywords
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id == "POINTCLOUD2_METRIC_HELPERS"
+            and isinstance(node.args[1], ast.Name)
+            and node.args[1].id == "namespace"
+            and isinstance(node.args[2], ast.Name)
+            and node.args[2].id == "namespace"
+        ):
+            continue
+        allowed_nodes.update(id(item) for item in ast.walk(node))
     _validate_namespace_access(tree, allowed_nodes, path, reject_module_registry=True)
     for node in ast.walk(tree):
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -1567,7 +1757,7 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             signatures.add(ast.dump(node, include_attributes=False))
     return frozenset(signatures)
 
-_ENTRYPOINT_IMPORT_ROOTS = frozenset({"argparse", "sys"})
+_ENTRYPOINT_IMPORT_ROOTS = frozenset({"argparse", "sys", "unittest"})
 
 def _entrypoint_contract(
     path: Path,
@@ -1786,15 +1976,87 @@ def _entrypoint_contract(
             safe_value(keyword_node.value) for keyword_node in node.keywords
         )
 
+    def is_unittest_suite_assignment(target: str, value: ast.AST) -> bool:
+        """Recognize the explicit section-by-section unittest entrypoint."""
+        if target == "suite":
+            return (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Attribute)
+                and isinstance(value.func.value, ast.Name)
+                and value.func.value.id == "unittest"
+                and value.func.attr == "TestSuite"
+                and len(value.args) == 1
+                and isinstance(value.args[0], ast.GeneratorExp)
+                and isinstance(value.args[0].elt, ast.Call)
+                and isinstance(value.args[0].elt.func, ast.Attribute)
+                and isinstance(value.args[0].elt.func.value, ast.Attribute)
+                and isinstance(value.args[0].elt.func.value.value, ast.Name)
+                and value.args[0].elt.func.value.value.id == "unittest"
+                and value.args[0].elt.func.value.attr == "defaultTestLoader"
+                and value.args[0].elt.func.attr == "loadTestsFromModule"
+                and len(value.args[0].elt.args) == 1
+                and isinstance(value.args[0].elt.args[0], ast.Name)
+                and len(value.args[0].generators) == 1
+                and isinstance(value.args[0].generators[0].target, ast.Name)
+                and value.args[0].elt.args[0].id == value.args[0].generators[0].target.id
+            )
+        if target == "result":
+            return (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Attribute)
+                and value.func.attr == "run"
+                and isinstance(value.func.value, ast.Call)
+                and isinstance(value.func.value.func, ast.Attribute)
+                and isinstance(value.func.value.func.value, ast.Name)
+                and value.func.value.func.value.id == "unittest"
+                and value.func.value.func.attr == "TextTestRunner"
+                and len(value.args) == 1
+                and isinstance(value.args[0], ast.Name)
+                and value.args[0].id == "suite"
+            )
+        return False
+
+    def is_unittest_exit_expression(node: ast.AST) -> bool:
+        """Recognize the success-derived SystemExit status expression."""
+        return (
+            isinstance(node, ast.IfExp)
+            and isinstance(node.test, ast.Call)
+            and isinstance(node.test.func, ast.Attribute)
+            and isinstance(node.test.func.value, ast.Name)
+            and node.test.func.value.id == "result"
+            and node.test.func.attr == "wasSuccessful"
+            and not node.test.args
+            and not node.test.keywords
+            and isinstance(node.body, ast.Constant)
+            and node.body.value == 0
+            and isinstance(node.orelse, ast.Constant)
+            and node.orelse.value == 1
+        )
+
     def validate_guard_statements(statements: list[ast.stmt]) -> bool:
         """Internal helper for validate_guard_statements."""
         delegated = False
         for statement in statements:
             if isinstance(statement, ast.Assign):
+                if (
+                    len(statement.targets) == 1
+                    and isinstance(statement.targets[0], ast.Subscript)
+                    and isinstance(statement.targets[0].value, ast.Attribute)
+                    and isinstance(statement.targets[0].value.value, ast.Name)
+                    and statement.targets[0].value.value.id == "sys"
+                    and statement.targets[0].value.attr == "argv"
+                    and isinstance(statement.targets[0].slice, ast.Constant)
+                    and statement.targets[0].slice.value == 0
+                    and isinstance(statement.value, ast.Constant)
+                    and isinstance(statement.value.value, str)
+                ):
+                    continue
                 if len(statement.targets) != 1 or not isinstance(statement.targets[0], ast.Name):
                     raise ValueError(f"unsafe module entrypoint assignment: {path}")
                 target = statement.targets[0].id
                 value = statement.value
+                if is_unittest_suite_assignment(target, value):
+                    continue
                 if not target.startswith("_phase192_") or not (
                     isinstance(value, ast.Call)
                     and isinstance(value.func, ast.Attribute)
@@ -1833,8 +2095,13 @@ def _entrypoint_contract(
                     and exception.func.id == "SystemExit"
                     and len(exception.args) == 1
                     and not exception.keywords
-                    and isinstance(exception.args[0], ast.Call)
-                    and is_safe_dispatch_call(exception.args[0])
+                    and (
+                        (
+                            isinstance(exception.args[0], ast.Call)
+                            and is_safe_dispatch_call(exception.args[0])
+                        )
+                        or is_unittest_exit_expression(exception.args[0])
+                    )
                 ):
                     raise ValueError(f"unsafe module entrypoint raise: {path}")
                 delegated = True
@@ -2134,7 +2401,7 @@ _SAFE_IMPORT_ROOTS = frozenset({
     "hashlib", "importlib", "inspect", "io", "itertools", "json", "logging",
     "math", "ntpath", "operator", "os", "pathlib", "platform", "re", "shlex",
     "socket", "ssl", "string", "subprocess", "sys", "tempfile", "textwrap",
-    "threading", "time", "types", "typing", "urllib", "uuid", "warnings", "weakref", "xml",
+    "threading", "time", "types", "typing", "unittest", "urllib", "uuid", "warnings", "weakref", "xml",
 })
 _SAFE_BUILTIN_NAMES = frozenset({
     "BaseException", "Exception", "False", "None", "NotImplemented", "True",
@@ -2528,6 +2795,93 @@ def _contract_preserves_order(base: tuple[str, ...], head: tuple[str, ...]) -> b
             cursor += 1
     return cursor == len(base)
 
+
+def _validate_generated_section(
+    source: str,
+    path: Path,
+    package_dir: Path,
+    section_names: frozenset[str],
+) -> None:
+    """Validate a moved implementation section without pretending it is inert.
+
+    Split sections intentionally contain the original classes and functions, so
+    the strict initializer validator is not applicable to their bodies.  The
+    section still goes through the ordinary export/namespace parser and this
+    pass rejects import-time dynamic execution that cannot be part of a source
+    section.
+    """
+    tree = _parse_source(source, path)
+    _relative_import_contract(tree, package_dir, path, section_names)
+    _section_exports(source, str(path), reject_conditional=False)
+    allowed_exec = {
+        id(node)
+        for node in ast.walk(tree)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "exec"
+            and len(node.args) == 3
+            and not node.keywords
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id == "POINTCLOUD2_METRIC_HELPERS"
+            and isinstance(node.args[1], ast.Name)
+            and node.args[1].id == "namespace"
+            and isinstance(node.args[2], ast.Name)
+            and node.args[2].id == "namespace"
+        )
+    }
+    parents: dict[int, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[id(child)] = parent
+
+    def is_inside_callable(node: ast.AST) -> bool:
+        """Return whether node executes only when a function is called."""
+        current = parents.get(id(node))
+        while current is not None:
+            if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                return True
+            current = parents.get(id(current))
+        return False
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Global) and not is_inside_callable(node):
+            raise ValueError(f"Global rebinding is not allowed in generated section: {path}")
+        if isinstance(node, ast.Call):
+            if is_inside_callable(node):
+                continue
+            if isinstance(node.func, ast.Name) and node.func.id in {
+                "__import__", "compile", "eval", "exec", "open",
+            } and id(node) not in allowed_exec:
+                if not (
+                    node.func.id == "__import__"
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                    and node.args[0].value == "pathlib"
+                    and all(
+                        keyword.arg == "fromlist"
+                        and isinstance(keyword.value, (ast.List, ast.Tuple))
+                        and all(
+                            isinstance(item, ast.Constant)
+                            and isinstance(item.value, str)
+                            for item in keyword.value.elts
+                        )
+                        for keyword in node.keywords
+                    )
+                ):
+                    raise ValueError(f"Unsupported dynamic execution in generated section: {path}")
+            if isinstance(node.func, ast.Attribute) and node.func.attr in {
+                "system", "popen", "run", "Popen", "check_call", "check_output",
+            } and isinstance(node.func.value, ast.Name) and node.func.value.id in {
+                "os", "subprocess",
+            }:
+                raise ValueError(f"Unsupported process execution in generated section: {path}")
+        if isinstance(node, ast.Attribute) and node.attr in {
+            "__class__", "__bases__", "__mro__", "__subclasses__",
+        } and isinstance(node.ctx, ast.Store):
+            raise ValueError(f"Unsupported type mutation in generated section: {path}")
+
 def _validate_import_time_section(
     source: str,
     path: Path,
@@ -2542,6 +2896,12 @@ def _validate_import_time_section(
         return
     seen.add(path)
     tree = _parse_source(source, path)
+    if path.name == "__init__.py" and _phase192_generated_initializer(source):
+        if "_Phase192PackageModule" in source or "_Phase138UPackageModule" in source:
+            _phase192_template_validate_initializer(tree, str(path))
+        else:
+            _phase138u_simple_initializer(source, str(path))
+        return
     postponed_annotations = any(
         isinstance(node, ast.ImportFrom)
         and node.module == "__future__"
@@ -2708,6 +3068,9 @@ def _validate_compatibility_new_sections(
         head_facade = head_root / relative
         head_package = head_facade.with_suffix("")
         head_sections = head_section_modules(head_package)
+        head_initializer = head_package / "__init__.py"
+        head_initializer_source = head_initializer.read_text(encoding="utf-8")
+        generated_package = _phase192_generated_initializer(head_initializer_source)
         base_package = (base_root / relative).with_suffix("")
         base_sections = (
             base_section_modules(base_package)
@@ -2717,15 +3080,39 @@ def _validate_compatibility_new_sections(
         old_names = frozenset(path.stem for path in base_sections)
         new_names = frozenset(path.stem for path in head_sections) - old_names
         if relative not in base_surfaces:
-            initializer = head_package / "__init__.py"
-            _validate_import_time_section(
-                initializer.read_text(encoding="utf-8"),
-                initializer,
-                head_package,
-                frozenset(path.stem for path in head_sections),
-            )
+            initializer = head_initializer
+            initializer_source = head_initializer_source
+            if generated_package:
+                initializer_tree = _parse_source(initializer_source, initializer)
+                if "_Phase192PackageModule" in initializer_source or "_Phase138UPackageModule" in initializer_source:
+                    _phase192_template_validate_initializer(initializer_tree, str(initializer))
+                else:
+                    _phase138u_simple_initializer(initializer_source, str(initializer))
+                section_names = frozenset(path.stem for path in head_sections)
+                for section in head_sections:
+                    _validate_generated_section(
+                        section.read_text(encoding="utf-8"),
+                        section,
+                        head_package,
+                        section_names,
+                    )
+            else:
+                _validate_import_time_section(
+                    initializer_source,
+                    initializer,
+                    head_package,
+                    frozenset(path.stem for path in head_sections),
+                )
         for section in head_sections:
             if section.stem not in new_names:
+                continue
+            if generated_package:
+                _validate_generated_section(
+                    section.read_text(encoding="utf-8"),
+                    section,
+                    head_package,
+                    frozenset(path.stem for path in head_sections),
+                )
                 continue
             _validate_import_time_section(
                 section.read_text(encoding="utf-8"),
