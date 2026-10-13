@@ -17,6 +17,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 from Scripts.phase192.task0_entry import (
     _decode_git_path,
+    index_fingerprint,
     measured_lane_result,
     record_entry_commands,
     record_plan_hashes,
@@ -546,12 +547,16 @@ def baseline_exit_code(incomplete: bool, hard_failures: bool, allow_incomplete: 
     return 0
 
 
-def checkout_identity(root: Path) -> tuple[str, str]:
+def checkout_identity(root: Path) -> tuple[str, str, str]:
     """Capture the commit and working-tree identity for one baseline run."""
     completed = _git(root, "rev-parse", "HEAD")
     if completed.returncode:
         raise RuntimeError(completed.stderr.decode(errors="replace").strip())
-    return completed.stdout.decode("ascii", errors="strict").strip(), worktree_fingerprint(root)
+    return (
+        completed.stdout.decode("ascii", errors="strict").strip(),
+        worktree_fingerprint(root),
+        index_fingerprint(root),
+    )
 
 
 def manifest_paths(path: Path) -> set[str]:
@@ -569,13 +574,14 @@ def lane_manifest(
     paths: list[str],
     expected_head: str | None = None,
     expected_worktree: str | None = None,
+    expected_index: str | None = None,
 ) -> dict[str, int]:
     """Phase192 identity baseline helper."""
     identity = output / "identity"
     lane_runs = identity / "lane-runs"
     lane_runs.mkdir(parents=True, exist_ok=True)
     if expected_head is None or expected_worktree is None:
-        expected_head, expected_worktree = checkout_identity(root)
+        expected_head, expected_worktree, expected_index = checkout_identity(root)
 
     def execute_lane(name: str, argv: list[str]) -> tuple[str, str, int | None]:
         """Execute and record a baseline lane before declaring its status."""
@@ -592,13 +598,13 @@ def lane_manifest(
             (lane_runs / f"{name}.stdout.log").write_text(completed.stdout, encoding="utf-8")
             (lane_runs / f"{name}.stderr.log").write_text(completed.stderr, encoding="utf-8")
             (lane_runs / f"{name}.meta").write_text(
-                f"COMMAND={subprocess.list2cmdline(argv)}\nHEAD_SHA={expected_head}\nWORKTREE_SHA={expected_worktree}\nEXIT_STATUS={completed.returncode}\n",
+                f"COMMAND={subprocess.list2cmdline(argv)}\nHEAD_SHA={expected_head}\nWORKTREE_SHA={expected_worktree}\nINDEX_SHA={expected_index}\nEXIT_STATUS={completed.returncode}\n",
                 encoding="utf-8",
             )
             return lane_result(completed.returncode, completed.stdout, completed.stderr)
         except subprocess.TimeoutExpired as error:
             (lane_runs / f"{name}.meta").write_text(
-                f"COMMAND={subprocess.list2cmdline(argv)}\nHEAD_SHA={expected_head}\nWORKTREE_SHA={expected_worktree}\nTIMEOUT=600\n",
+                f"COMMAND={subprocess.list2cmdline(argv)}\nHEAD_SHA={expected_head}\nWORKTREE_SHA={expected_worktree}\nINDEX_SHA={expected_index}\nTIMEOUT=600\n",
                 encoding="utf-8",
             )
             return "TIMEOUT", "timeout_seconds=600", None
@@ -631,6 +637,7 @@ def lane_manifest(
         names,
         expected_head,
         expected_worktree,
+        expected_index,
     ):
         rows.append([f"run-ci:{name}", "ci-suite", "Scripts/release/run_ci.py", f"python -B Scripts/release/run_ci.py --only {name}", "ci-choice", "command-result", 1, status, measurement])
         failures += int(status == "FAIL")
@@ -669,12 +676,13 @@ def measured_run_ci_lanes(
     names: Iterable[str],
     expected_head: str,
     expected_worktree: str,
+    expected_index: str | None = None,
 ) -> list[tuple[str, str, str]]:
     """Measure CI evidence only when it is bound to the current checkout."""
     return [
         (
             name,
-            *measured_lane_result(lane_runs, name, expected_head, expected_worktree),
+            *measured_lane_result(lane_runs, name, expected_head, expected_worktree, expected_index),
         )
         for name in names
     ]
@@ -691,7 +699,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allow-incomplete", action="store_true")
     args = parser.parse_args(argv)
     root = args.root.resolve()
-    entry_head, entry_worktree = checkout_identity(root)
+    entry_head, entry_worktree, entry_index = checkout_identity(root)
     entry_records = parse_status(root)
     output = _rooted(args.output, root).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -707,8 +715,8 @@ def main(argv: list[str] | None = None) -> int:
     identity_counts = identity_surfaces(root, output, paths)
     counts.update(identity_counts)
     phase191_and_analyzers(root, output, paths)
-    counts.update(lane_manifest(root, output, paths, entry_head, entry_worktree))
-    final_head, final_worktree = checkout_identity(root)
+    counts.update(lane_manifest(root, output, paths, entry_head, entry_worktree, entry_index))
+    final_head, final_worktree, final_index = checkout_identity(root)
     incomplete = []
     hard_failures = []
     if counts.get("missing_tracked_sources", 0):
@@ -734,7 +742,7 @@ def main(argv: list[str] | None = None) -> int:
         reason = "identity extraction errors"
         incomplete.append(reason)
         hard_failures.append(reason)
-    if (entry_head, entry_worktree) != (final_head, final_worktree):
+    if (entry_head, entry_worktree, entry_index) != (final_head, final_worktree, final_index):
         reason = "checkout identity changed during baseline collection"
         incomplete.append(reason)
         hard_failures.append(reason)
@@ -742,8 +750,10 @@ def main(argv: list[str] | None = None) -> int:
     summary = {
         "entry_head": entry_head,
         "entry_worktree": entry_worktree,
+        "entry_index": entry_index,
         "final_head": final_head,
         "final_worktree": final_worktree,
+        "final_index": final_index,
         "incomplete_reasons": incomplete,
         **counts,
     }

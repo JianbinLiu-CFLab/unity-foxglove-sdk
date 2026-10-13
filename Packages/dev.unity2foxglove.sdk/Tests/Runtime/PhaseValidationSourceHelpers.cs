@@ -1062,13 +1062,23 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool ContainsPartialClassDeclaration(string path, string className)
         {
             var source = File.ReadAllText(path);
-            var symbolSets = new[]
+            var directiveSymbols = Regex.Matches(
+                    source,
+                    @"^\s*#\s*(?:if|elif)\s+([A-Za-z_][A-Za-z0-9_]*)",
+                    RegexOptions.Multiline)
+                .Select(match => match.Groups[1].Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            var symbolSets = new List<string[]>
             {
                 Array.Empty<string>(),
                 new[] { "UNITY_EDITOR" },
                 new[] { "UNITY_EDITOR_WIN" },
                 new[] { "UNITY_STANDALONE_WIN" },
             };
+            symbolSets.AddRange(directiveSymbols.Select(symbol => new[] { symbol }));
+            if (directiveSymbols.Length > 0)
+                symbolSets.Add(directiveSymbols);
             foreach (var symbols in symbolSets)
             {
                 var options = CSharpParseOptions.Default.WithPreprocessorSymbols(symbols);
@@ -1076,9 +1086,7 @@ namespace Unity.FoxgloveSDK.Tests
                     return true;
             }
 
-            return source.Contains("#if", StringComparison.Ordinal)
-                && source.Contains("partial", StringComparison.Ordinal)
-                && source.Contains(className, StringComparison.Ordinal);
+            return false;
         }
 
         private static bool ContainsPartialClassDeclaration(SyntaxTree tree, string className)

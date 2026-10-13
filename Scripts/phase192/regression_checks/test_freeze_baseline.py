@@ -244,9 +244,10 @@ class FreezeBaselineTests(unittest.TestCase):
                     ["dotnet"],
                     "a" * 40,
                     "b" * 64,
+                    "c" * 64,
                 )
             self.assertEqual(rows, [("dotnet", "PASS", "bound")])
-            measured.assert_called_once_with(Path(temp), "dotnet", "a" * 40, "b" * 64)
+            measured.assert_called_once_with(Path(temp), "dotnet", "a" * 40, "b" * 64, "c" * 64)
 
     def test_main_classification_passes_missing_source_manifest(self) -> None:
         """The main classification path includes missing tracked sources."""
@@ -293,6 +294,17 @@ class FreezeBaselineTests(unittest.TestCase):
         state_a = fingerprint({"a": b"hello", "y": b""})
         state_b = fingerprint({"a": b"hello" + b"y\0FILE\0"})
         self.assertNotEqual(state_a, state_b)
+
+    def test_index_fingerprint_changes_when_an_untracked_file_is_staged(self) -> None:
+        """Staging an untracked file changes the Git index fingerprint."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            (root / "new.cs").write_text("class New {}\n", encoding="utf-8")
+            before = task0_entry.index_fingerprint(root)
+            subprocess.run(["git", "add", "--", "new.cs"], cwd=root, check=True)
+            after = task0_entry.index_fingerprint(root)
+            self.assertNotEqual(before, after)
 
     def test_worktree_fingerprint_distinguishes_symlink_from_file(self) -> None:
         """A symlink and a regular file with equal target bytes have distinct identities."""
@@ -361,6 +373,11 @@ class FreezeBaselineTests(unittest.TestCase):
                 mock.patch.object(
                     freeze_baseline,
                     "worktree_fingerprint",
+                    side_effect=[initial_worktree, final_worktree],
+                ),
+                mock.patch.object(
+                    freeze_baseline,
+                    "index_fingerprint",
                     side_effect=[initial_worktree, final_worktree],
                 ),
             ):
