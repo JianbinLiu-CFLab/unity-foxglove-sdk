@@ -1730,7 +1730,13 @@ printf '%s' "$required"
 
     def test_phase162_bounded_runner_does_not_turn_timeout_into_success(self) -> None:
         """A timed-out ROS2 helper must return a nonzero status even if the child lingers."""
-        source = (ROOT / "Scripts" / "smoke" / "ros2" / "phase162_lyrical_zenoh_player_smoke.py").read_text(encoding="utf-8")
+        facade = ROOT / "Scripts" / "smoke" / "ros2" / "phase162_lyrical_zenoh_player_smoke.py"
+        package = facade.with_suffix("")
+        source = facade.read_text(encoding="utf-8") + "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(package.glob("*.py"))
+            if path.name not in {"__init__.py", "__main__.py"}
+        )
         self.assertIn("if process.poll() is None", source)
         self.assertIn("returncode = 124", source)
 
