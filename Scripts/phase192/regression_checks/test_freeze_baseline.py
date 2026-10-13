@@ -416,6 +416,7 @@ class FreezeBaselineTests(unittest.TestCase):
             self.assertIn("checkout identity changed during baseline collection", summary["incomplete_reasons"])
 
     def test_remote_gateway_controller_is_bounded(self) -> None:
+        """The remote gateway controller remains bounded after buffer extraction."""
         root = Path(__file__).resolve().parents[3]
         source = root / "Packages" / "dev.unity2foxglove.remotegateway.win64" / "Runtime" / "FoxgloveRemoteGatewayController.cs"
         self.assertLessEqual(len(source.read_text(encoding="utf-8").splitlines()), 500)
