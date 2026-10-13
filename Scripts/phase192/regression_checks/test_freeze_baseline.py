@@ -306,6 +306,30 @@ class FreezeBaselineTests(unittest.TestCase):
             after = task0_entry.index_fingerprint(root)
             self.assertNotEqual(before, after)
 
+    def test_index_fingerprint_changes_when_assume_unchanged_flag_changes(self) -> None:
+        """Changing assume-unchanged changes the Git index fingerprint."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            (root / "tracked.cs").write_text("class Tracked {}\n", encoding="utf-8")
+            subprocess.run(["git", "add", "--", "tracked.cs"], cwd=root, check=True)
+            before = task0_entry.index_fingerprint(root)
+            subprocess.run(["git", "update-index", "--assume-unchanged", "tracked.cs"], cwd=root, check=True)
+            after = task0_entry.index_fingerprint(root)
+            self.assertNotEqual(before, after)
+
+    def test_index_fingerprint_changes_when_skip_worktree_flag_changes(self) -> None:
+        """Changing skip-worktree changes the Git index fingerprint."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            (root / "tracked.cs").write_text("class Tracked {}\n", encoding="utf-8")
+            subprocess.run(["git", "add", "--", "tracked.cs"], cwd=root, check=True)
+            before = task0_entry.index_fingerprint(root)
+            subprocess.run(["git", "update-index", "--skip-worktree", "tracked.cs"], cwd=root, check=True)
+            after = task0_entry.index_fingerprint(root)
+            self.assertNotEqual(before, after)
+
     def test_worktree_fingerprint_distinguishes_symlink_from_file(self) -> None:
         """A symlink and a regular file with equal target bytes have distinct identities."""
         with tempfile.TemporaryDirectory() as temp:

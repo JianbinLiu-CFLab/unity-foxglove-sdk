@@ -197,6 +197,66 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsConjunctiveConditionalRootPartial()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(runtimeRoot, "ConjunctiveWorker.cs"),
+                    "#if EXTRA_WORKER_A && EXTRA_WORKER_B\ninternal sealed partial class Ros2BridgeWorkerLease { }\n#endif");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsNegatedConjunctiveConditionalRootPartial()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(runtimeRoot, "NegatedConjunctiveWorker.cs"),
+                    "#if EXTRA_WORKER_A && !EXTRA_WORKER_B\ninternal sealed partial class Ros2BridgeWorkerLease { }\n#endif");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
         public void Ros2BridgeRuntimeCompositionRejectsMissingRegisteredFragment()
         {
             var root = CreateSourceFixture(
