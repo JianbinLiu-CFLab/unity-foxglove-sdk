@@ -62,7 +62,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Scripts/mcap/conformance/run_phase121_conformance.py");
 
             Check(source.Contains("RUNNER_ARRAY_DECLARATION", StringComparison.Ordinal)
-                  && source.Contains("if RUNNER_ARRAY_DECLARATION not in index", StringComparison.Ordinal)
+                  && source.Contains("if _configuration.RUNNER_ARRAY_DECLARATION not in index", StringComparison.Ordinal)
                   && source.Contains("overlay output is missing C# runners", StringComparison.Ordinal),
                 "134-31B-1: MCAP conformance overlay asserts runner injection success");
             Check(source.Contains("def read_target_framework()", StringComparison.Ordinal)
