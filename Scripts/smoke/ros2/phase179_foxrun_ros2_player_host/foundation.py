@@ -2,6 +2,15 @@
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 
+"""Launch one Phase179 Player with an explicit ROS2 environment and collect proof.
+
+Run this helper on Windows before starting the Linux peer helper.  It owns only
+the Player it launches and an explicitly supplied Zenoh router executable.  A
+Player launch is not a pass: the final verdict also requires its READY marker,
+all required copied-value APPLIED markers, a successful COMPLETE marker, and a
+zero operating-system exit code.
+"""
+
 from __future__ import annotations
 
 """Launch one Phase179 Player with an explicit ROS2 environment and collect proof."""

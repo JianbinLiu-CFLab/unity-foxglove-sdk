@@ -1,3 +1,17 @@
+"""Offline MCAP timestamp sync validation helper.
+
+This script checks timestamp coherence for point-cloud and IMU streams:
+
+* Point-cloud topic logTime vs payload timestamp
+* IMU payload timestamp vs point-cloud payload timestamp (nearest-neighbor)
+
+Common usage:
+
+    python Scripts/mcap/mcap_time_sync.py
+    python Scripts/mcap/mcap_time_sync.py --mcap Unity2Foxglove/Recordings/my_run.mcap
+    python Scripts/mcap/mcap_time_sync.py --skip-frames 80
+"""
+
 from __future__ import annotations
 from .mcap_parsing_and_validation import *
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "mcap_time_sync.py"

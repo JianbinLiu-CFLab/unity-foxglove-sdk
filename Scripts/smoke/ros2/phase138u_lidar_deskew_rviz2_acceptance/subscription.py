@@ -1,3 +1,15 @@
+"""Validate raw and deskewed Phase138U PointCloud2 topics and launch RViz2.
+
+Start Unity Play Mode first with ROS2 Native (R2FU), PointCloud2 Native mode,
+and PointCloud Motion Compensation enabled in RawAndDeskewedTopic mode. Then run:
+
+    python Scripts/smoke/ros2/phase138u_lidar_deskew_rviz2_acceptance.py
+
+The script launches RViz2 by default for visual comparison and uses direct rclpy
+subscribers as the hard DDS acceptance gate. Pass --no-rviz when only the DDS
+subscription check is needed.
+"""
+
 from __future__ import annotations
 
 from .pointcloud_metrics import *

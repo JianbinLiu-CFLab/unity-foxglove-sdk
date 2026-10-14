@@ -38,9 +38,7 @@ def main(argv: list[str]) -> int:
     print("[phase146b-lyrical-lidar-deskew] Unity must run the Lyrical Win64 runtime package in standalone mode.")
     print("[phase146b-lyrical-lidar-deskew] External ROS2/RViz2 probes use the repo-local ros2-windows/ros2_lyrical entrypoint; Unity must not source that environment.")
     print("[phase146b-lyrical-lidar-deskew] Static captures are accepted by default for runtime/DDS wiring; pass --require-motion for strict deskew motion proof.")
-    from phase138u_lidar_deskew_rviz2_acceptance import acceptance_cli
-
-    return acceptance_cli._main_impl(args)
+    return phase138u.main(args)
 
 
 if __name__ == "__main__":

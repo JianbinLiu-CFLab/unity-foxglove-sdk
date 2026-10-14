@@ -2299,7 +2299,7 @@ def _entrypoint_contract(
                         handler_types = ()
                     allowed_handler_names = {
                         "KeyboardInterrupt", "Exception", "RuntimeError", "TimeoutError",
-                        "FileNotFoundError",
+                        "FileNotFoundError", "InconclusiveError",
                     }
                     def allowed_handler_type(item: ast.AST) -> bool:
                         """Return whether a legacy entrypoint handler type is allowed."""
@@ -2385,7 +2385,7 @@ def _entrypoint_contract(
                         or is_unittest_exit_expression(exception.args[0])
                         or (
                             isinstance(exception.args[0], ast.Constant)
-                            and exception.args[0].value in {1, 130}
+                            and exception.args[0].value in {1, 2, 130}
                         )
                     )
                 ):
@@ -2443,7 +2443,7 @@ def _entrypoint_contract(
                         isinstance(item, ast.Name)
                         and item.id in {
                             "KeyboardInterrupt", "Exception", "RuntimeError", "TimeoutError",
-                            "FileNotFoundError",
+                            "FileNotFoundError", "InconclusiveError",
                         }
                         or (
                             isinstance(item, ast.Attribute)
