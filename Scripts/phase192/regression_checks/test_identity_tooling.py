@@ -50,6 +50,35 @@ class IdentityToolingTests(unittest.TestCase):
         )
         self.assertEqual(rows, [["Fixture.cs", "KeepsName", "Fact"]])
 
+    def test_cpp_surface_detects_exported_symbol_rename(self) -> None:
+        """C++ identity rows must change when an exported function is renamed."""
+        source = 'extern "C" __declspec(dllexport) int U2FDracoGetVersion(\n    int value\n)\n{\n    return value;\n}\n'
+        changed = source.replace("U2FDracoGetVersion", "U2FDracoGetVersionX", 1)
+        self.assertNotEqual(
+            identity_contracts.cpp_rows("fixture.cpp", source),
+            identity_contracts.cpp_rows("fixture.cpp", changed),
+        )
+
+    def test_source_sensitivity_uses_real_source_mutations(self) -> None:
+        """Sensitivity proof must expose real source mutation helpers."""
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "fixture.cpp"
+            source.write_text('int Exported(int value) { return value; }\n', encoding="utf-8")
+            self.assertEqual(
+                sensitivity_proof.source_mutation_result(
+                    "cpp", source, lambda text: text.replace("Exported", "Renamed", 1)
+                ),
+                1,
+            )
+
+    def test_source_sensitivity_covers_all_four_source_surfaces(self) -> None:
+        """Managed, Python, C++, and test source mutations must all be RED."""
+        targets = sensitivity_proof._real_source_mutation_targets(Path.cwd())
+        self.assertEqual({"managed", "python", "cpp", "tests"}, {kind for kind, _, _ in targets})
+        for kind, source, mutate in targets:
+            with self.subTest(kind=kind):
+                self.assertEqual(1, sensitivity_proof.source_mutation_result(kind, source, mutate))
+
     def test_compare_gate_rejects_removed_row(self) -> None:
         """Phase192 test compare gate rejects removed row."""
         with tempfile.TemporaryDirectory() as temp:
