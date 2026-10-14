@@ -395,6 +395,7 @@ def _phase192_template_validate_facade(tree: ast.Module, path: str) -> None:
 def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) -> None:
     """Allow only the exact sys.modules forwarding mutations emitted by templates."""
     def modules_value(node: ast.AST) -> bool:
+        """Recognize the generated module registry aliases."""
         return (
             isinstance(node, ast.Attribute)
             and node.attr == "modules"
