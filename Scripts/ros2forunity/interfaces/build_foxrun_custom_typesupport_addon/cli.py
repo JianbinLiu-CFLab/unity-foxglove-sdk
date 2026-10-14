@@ -33,16 +33,6 @@ def _default_repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def _require_explicit_toolchain_sources(request: CandidateBuildRequest) -> tuple[Path, Path, Path]:
-    """Returns explicit build-toolchain paths without inventing machine-local defaults."""
-    if request.ros2cs_source is None:
-        raise CandidateBuildError("provide-ros2cs-source")
-    if request.r2fu_source is None:
-        raise CandidateBuildError("provide-r2fu-source")
-    ros2cs_install = request.ros2cs_install or request.ros2cs_source / ("install-" + request.distro)
-    return request.ros2cs_source, ros2cs_install, request.r2fu_source
-
-
 def _load_toolchain_provenance(request: CandidateBuildRequest) -> Path:
     """Require the preflight attestation that binds this candidate to its inputs."""
     path = _phase181_distro_root(request) / "provenance" / "toolchain.json"
@@ -129,5 +119,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     print("PASS:", result.distro, result.candidate_package, result.interface_digest)
     return 0
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]

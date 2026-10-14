@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
+import runpy
+import subprocess
+import sys
 import unittest
+from unittest import mock
 from dataclasses import replace
 from pathlib import Path
 
 from Scripts.test_support.phase181_scratch import temporary_directory
+from Scripts.ros2forunity.interfaces import build_foxrun_custom_typesupport_addon as builder
 
 from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon import (
     CandidateBuildError,
@@ -47,6 +52,45 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         ).__file__).with_suffix("")
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
+
+    def test_entrypoints_propagate_unexpected_failures(self) -> None:
+        """Entrypoints preserve unexpected failures from the main routine."""
+        for entrypoint in ("module", "facade"):
+            with self.subTest(entrypoint=entrypoint):
+                with mock.patch.object(builder, "main", side_effect=RuntimeError("boom")):
+                    with mock.patch.dict(sys.modules, {"build_foxrun_custom_typesupport_addon": builder}):
+                        with mock.patch.object(sys, "path", sys.path.copy()):
+                            with self.assertRaisesRegex(RuntimeError, "boom"):
+                                if entrypoint == "module":
+                                    runpy.run_module(builder.__name__ + ".__main__", run_name="__main__")
+                                else:
+                                    runpy.run_path(builder.__file__, run_name="__main__")
+
+    def test_entrypoints_propagate_keyboard_interrupt(self) -> None:
+        """Entrypoints preserve keyboard interrupts from the main routine."""
+        for entrypoint in ("module", "facade"):
+            with self.subTest(entrypoint=entrypoint):
+                with mock.patch.object(builder, "main", side_effect=KeyboardInterrupt()):
+                    with mock.patch.dict(sys.modules, {"build_foxrun_custom_typesupport_addon": builder}):
+                        with mock.patch.object(sys, "path", sys.path.copy()):
+                            with self.assertRaises(KeyboardInterrupt):
+                                if entrypoint == "module":
+                                    runpy.run_module(builder.__name__ + ".__main__", run_name="__main__")
+                                else:
+                                    runpy.run_path(builder.__file__, run_name="__main__")
+
+    def test_common_validator_preserves_noop_module_entrypoint(self) -> None:
+        """The common validator module remains a successful no-op entrypoint."""
+        completed = subprocess.run(
+            [sys.executable, "-B", "-m", "Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common"],
+            cwd=Path(builder.__file__).resolve().parents[3],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual("", completed.stdout)
+        self.assertEqual("", completed.stderr)
 
     def test_check_source_cli_does_not_invent_machine_specific_toolchain_sources(self) -> None:
         """Verify check source cli does not invent machine specific toolchain sources."""

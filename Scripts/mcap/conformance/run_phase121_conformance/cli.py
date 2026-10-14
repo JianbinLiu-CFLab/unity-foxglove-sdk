@@ -22,9 +22,11 @@ def main(argv: list[str]) -> int:
     args = _configuration.parse_args(argv)
     if args.report_path:
         _configuration.REPORT_PATH = Path(args.report_path).resolve()
+        _configuration.sync_public_state()
     if args.ci_smoke:
         _checkout.write_ci_smoke_report()
         return 0
     return _execution.run_conformance(bool(args.release_blocking), args.official_root)
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]

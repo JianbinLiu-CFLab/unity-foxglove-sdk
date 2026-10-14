@@ -26,13 +26,10 @@ class RuntimePackageExtractionTests(
 
     def test_source_uses_named_split_package(self) -> None:
         """Require this suite to keep one named package with a runnable entrypoint."""
-        module = __import__(
-            "Scripts.ros2forunity.windows.humble.regression_checks.test_build_r2fu_runtime_package",
-            fromlist=["__file__"],
-        )
-        package = Path(module.__file__).with_suffix("")
-        self.assertTrue(package.is_dir())
+        package = Path(__file__).resolve().parent
+        self.assertTrue((package / "__init__.py").is_file())
         self.assertTrue((package / "__main__.py").is_file())
+        self.assertTrue(package.with_suffix(".py").is_file())
 
 
 __all__ = ["RuntimePackageExtractionTests"]

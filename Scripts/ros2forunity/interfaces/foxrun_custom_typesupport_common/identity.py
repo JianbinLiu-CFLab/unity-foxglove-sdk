@@ -26,6 +26,7 @@ from .models import (
     ROS_PACKAGE_NAME,
     STATIC_INTERFACE_PACKAGE_ID,
     SUPPORTED_DISTROS,
+    _normalize_distro,
 )
 
 def addon_package_id(distro: str) -> str:

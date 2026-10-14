@@ -25,6 +25,17 @@ from .serialization import *
 from .repair import *
 from .unity import *
 
+
+def _require_explicit_toolchain_sources(request: CandidateBuildRequest) -> tuple[Path, Path, Path]:
+    """Return explicit build-toolchain paths without machine-local defaults."""
+
+    if request.ros2cs_source is None:
+        raise CandidateBuildError("provide-ros2cs-source")
+    if request.r2fu_source is None:
+        raise CandidateBuildError("provide-r2fu-source")
+    ros2cs_install = request.ros2cs_install or request.ros2cs_source / ("install-" + request.distro)
+    return request.ros2cs_source, ros2cs_install, request.r2fu_source
+
 def build_candidate(request: CandidateBuildRequest, *, check_source_only: bool = False) -> CandidateBuildResult:
     """Build, Unity-import, and validate one private candidate add-on."""
 

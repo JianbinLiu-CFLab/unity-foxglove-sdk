@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import runpy
+import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from Scripts.test_support.phase181_scratch import temporary_directory
@@ -64,6 +67,32 @@ class ToolchainPreflightTests(unittest.TestCase):
         package = Path(toolchain.__file__).with_suffix("")
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
+
+    def test_entrypoints_propagate_unexpected_failures(self) -> None:
+        """Entrypoints preserve unexpected failures from the main routine."""
+        for entrypoint in ("module", "facade"):
+            with self.subTest(entrypoint=entrypoint):
+                with mock.patch.object(toolchain, "main", side_effect=RuntimeError("boom")):
+                    with mock.patch.dict(sys.modules, {"verify_foxrun_custom_typesupport_toolchain": toolchain}):
+                        with mock.patch.object(sys, "path", sys.path.copy()):
+                            with self.assertRaisesRegex(RuntimeError, "boom"):
+                                if entrypoint == "module":
+                                    runpy.run_module(toolchain.__name__ + ".__main__", run_name="__main__")
+                                else:
+                                    runpy.run_path(toolchain.__file__, run_name="__main__")
+
+    def test_entrypoints_propagate_keyboard_interrupt(self) -> None:
+        """Entrypoints preserve keyboard interrupts from the main routine."""
+        for entrypoint in ("module", "facade"):
+            with self.subTest(entrypoint=entrypoint):
+                with mock.patch.object(toolchain, "main", side_effect=KeyboardInterrupt()):
+                    with mock.patch.dict(sys.modules, {"verify_foxrun_custom_typesupport_toolchain": toolchain}):
+                        with mock.patch.object(sys, "path", sys.path.copy()):
+                            with self.assertRaises(KeyboardInterrupt):
+                                if entrypoint == "module":
+                                    runpy.run_module(toolchain.__name__ + ".__main__", run_name="__main__")
+                                else:
+                                    runpy.run_path(toolchain.__file__, run_name="__main__")
 
     def test_explicit_roots_select_pinned_tools_and_write_redacted_provenance(self) -> None:
         """Verify explicit roots select pinned tools and write redacted provenance."""

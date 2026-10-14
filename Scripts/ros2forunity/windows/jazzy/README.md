@@ -18,5 +18,5 @@ python "Scripts\ros2forunity\windows\jazzy\sync_r2fu_artifact_to_unity2foxglove.
 Tooling tests:
 
 ```powershell
-python -m unittest discover -s "Scripts\ros2forunity\windows\jazzy\regression_checks" -p "test_*.py"
+python -B Scripts/release/regression_inventory.py --run-lane windows-parity-regression-tooling
 ```

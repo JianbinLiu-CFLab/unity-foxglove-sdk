@@ -15,8 +15,9 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _Phase192Path, _PHASE192_FACADE_FILE
 
 import json
+import subprocess
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Sequence
 
 from .environment import _normalize_request, build_toolchain_environment
 from .models import (
@@ -27,6 +28,21 @@ from .models import (
     ToolchainPreflightResult,
 )
 from .provenance import _toolchain_input_identity, _write_provenance
+
+
+def _default_runner(argv: Sequence[str], environment: Mapping[str, str]) -> ProcessResult:
+    """Run one explicit toolchain probe without shell expansion."""
+
+    completed = subprocess.run(
+        tuple(str(value) for value in argv),
+        capture_output=True,
+        check=False,
+        cwd=None,
+        env=dict(environment),
+        shell=False,
+        text=True,
+    )
+    return ProcessResult(completed.returncode, completed.stdout or "", completed.stderr or "")
 
 def preflight_toolchain(
     request: ToolchainPreflightRequest,

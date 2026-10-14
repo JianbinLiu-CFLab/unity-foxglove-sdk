@@ -47,6 +47,7 @@ CSHARP_RUNNER_INSERTION = (
 CSHARP_CONFORMANCE_DLL_NAME = "Unity2Foxglove.McapConformance.dll"
 FAILURE_DETAILS_MAX_CHARACTERS = 4000
 FAILURE_DETAILS_TAIL_CHARACTERS = 800
+_PUBLIC_STATE_NAMES = ("OFFICIAL_ROOT", "OFFICIAL_CONFORMANCE", "REPORT_PATH")
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,17 @@ def set_official_root(path: Path) -> None:
     global OFFICIAL_ROOT, OFFICIAL_CONFORMANCE
     OFFICIAL_ROOT = path.resolve()
     OFFICIAL_CONFORMANCE = OFFICIAL_ROOT / "tests/conformance"
+    sync_public_state()
+
+
+def sync_public_state() -> None:
+    """Mirror mutable configuration values into both compatibility facades."""
+
+    for module in tuple(sys.modules.values()):
+        if module is None or not module.__name__.endswith("run_phase121_conformance"):
+            continue
+        for name in _PUBLIC_STATE_NAMES:
+            module.__dict__[name] = globals()[name]
 
 
 def invoke_command_capture(

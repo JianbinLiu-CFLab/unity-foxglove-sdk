@@ -20,7 +20,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-
 ROOT = Path(__file__).resolve().parents[4]
 SMOKE_PATH = ROOT / "Scripts" / "smoke" / "ros2" / "phase179_foxrun_ros2_player_host.py"
 

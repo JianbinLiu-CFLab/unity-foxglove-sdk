@@ -35,6 +35,14 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
 
+    def test_package_reload_preserves_characterize_submodule(self) -> None:
+        """Reloading the facade must not replace the characterize submodule with its function."""
+        self.assertEqual("module", type(sys.modules[characterization.__name__ + ".characterization_core"]).__name__)
+        import importlib
+
+        importlib.reload(characterization)
+        self.assertEqual("module", type(sys.modules[characterization.__name__ + ".characterization_core"]).__name__)
+
     def test_windows_build_alias_is_required_only_for_an_overlong_projected_object_path(self) -> None:
         """Verify windows build alias is required only for an overlong projected object path."""
         with patch.object(characterization, "_is_windows_host", return_value=True):

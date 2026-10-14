@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 
+import importlib
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -15,6 +16,21 @@ class RegressionInventoryTests(unittest.TestCase):
         """The live repository has no unassigned regression module."""
         regression_inventory.validate_inventory()
 
+    def test_decomposed_python_regression_surfaces_keep_expected_counts(self):
+        """Explicit package loading keeps the four migrated suites complete."""
+        expected = {
+            "Scripts.package.regression_checks.test_validate_phase186_package_matrix": 11,
+            "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling": 23,
+            "Scripts.ros2forunity.windows.humble.regression_checks.test_build_r2fu_runtime_package": 23,
+            "Scripts.samples.regression_checks.test_sample_sync_tooling": 25,
+        }
+        loader = unittest.TestLoader()
+        observed = {
+            name: loader.loadTestsFromModule(importlib.import_module(name)).countTestCases()
+            for name in expected
+        }
+        self.assertEqual(expected, observed)
+
     def test_unassigned_module_is_rejected(self):
         """A synthetic orphan module must fail completeness validation."""
         errors = regression_inventory.inventory_errors(
@@ -23,6 +39,42 @@ class RegressionInventoryTests(unittest.TestCase):
             exclusions={},
         )
         self.assertTrue(any(error.startswith("UNASSIGNED:") for error in errors))
+
+    def test_windows_tooling_docs_use_complete_inventory_lane(self):
+        """Windows tooling documentation covers every declared distro lane."""
+        root = Path(__file__).resolve().parents[3]
+        lane = regression_inventory._WORKFLOW_RUNNER_MODULES["windows-parity-regression-tooling"]
+        self.assertEqual(len(lane), len(set(lane)))
+        command = "python -B Scripts/release/regression_inventory.py --run-lane windows-parity-regression-tooling"
+        for relative in (
+            "Scripts/ros2forunity/README.md",
+            "Scripts/ros2forunity/windows/humble/README.md",
+            "Scripts/ros2forunity/windows/jazzy/README.md",
+        ):
+            with self.subTest(path=relative):
+                self.assertIn(command, (root / relative).read_text(encoding="utf-8"))
+        for distro in ("humble", "jazzy", "lyrical"):
+            prefix = f"Scripts.ros2forunity.windows.{distro}.regression_checks."
+            directory = root / "Scripts/ros2forunity/windows" / distro / "regression_checks"
+            expected = {prefix + path.stem for path in directory.glob("test_*.py")}
+            self.assertTrue(expected)
+            self.assertEqual(expected, {name for name in lane if name.startswith(prefix)})
+
+    def test_split_cli_exit_contracts_are_documented(self):
+        """README documents the split CLI entrypoint exit contract."""
+        root = Path(__file__).resolve().parents[3]
+        readme = (root / "Scripts/ros2forunity/README.md").read_text(encoding="utf-8")
+        for marker in (
+            "build_foxrun_custom_typesupport_addon.py",
+            "verify_foxrun_custom_typesupport_toolchain.py",
+            "characterize_foxrun_custom_interface.py",
+            "run_phase121_conformance.py",
+            "phase179_foxrun_ros2_player_host.py",
+            "KeyboardInterrupt",
+            "130",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, readme)
 
     def test_runner_modules_require_a_workflow_lane(self):
         """A runner-only module counts only when a workflow invokes its lane."""
