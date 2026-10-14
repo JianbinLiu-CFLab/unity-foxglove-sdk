@@ -415,7 +415,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(35, len(surfaces))
+        self.assertEqual(49, len(surfaces))
 
     def test_identity_surface_uses_revision_local_source_layout(self) -> None:
         """Base/head worktrees load their own section-order parser."""
@@ -475,7 +475,7 @@ class IdentityToolingTests(unittest.TestCase):
             "Scripts/smoke/ros2/phase160_humble_lidar_deskew_acceptance.py",
             relative,
         )
-        self.assertEqual(35, len(relative))
+        self.assertEqual(49, len(relative))
 
     def test_split_identity_surface_rejects_relative_star_chain_change(self) -> None:
         """Changing a section's relative star-import source changes runtime overwrite order."""
@@ -2804,6 +2804,44 @@ class IdentityToolingTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     compare_identity_surfaces._entrypoint_contract(path)
 
+    def test_entrypoint_accepts_legacy_timeout_tuple_guard(self) -> None:
+        """The pre-split timeout guard remains a supported entrypoint contract."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text(
+                "def main(argv=None): pass\n", encoding="utf-8"
+            )
+            path = package / "__main__.py"
+            path.write_text(
+                "from __future__ import annotations\n"
+                "import subprocess\n"
+                "import sys\n"
+                "from . import main\n"
+                "try:\n"
+                "    raise SystemExit(main(sys.argv[1:]))\n"
+                "except (RuntimeError, TimeoutError, FileNotFoundError, subprocess.TimeoutExpired) as exc:\n"
+                "    raise SystemExit(1) from exc\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(compare_identity_surfaces._entrypoint_contract(path)[0])
+
+    def test_entrypoint_accepts_legacy_bare_dispatch_guards(self) -> None:
+        """The pre-split bare dispatch forms remain valid for -m wrappers."""
+        for dispatch in ("raise SystemExit(main(sys.argv[1:]))", "raise SystemExit(main())"):
+            with self.subTest(dispatch=dispatch), tempfile.TemporaryDirectory() as temp:
+                package = Path(temp)
+                (package / "__init__.py").write_text(
+                    "def main(argv=None): pass\n", encoding="utf-8"
+                )
+                path = package / "__main__.py"
+                path.write_text(
+                    "import sys\nfrom . import main\nif __name__ == '__main__':\n    "
+                    + dispatch
+                    + "\n",
+                    encoding="utf-8",
+                )
+                self.assertTrue(compare_identity_surfaces._entrypoint_contract(path)[0])
+
     def test_entrypoint_rejects_unknown_import_and_definition_side_effects(self) -> None:
         """Entrypoints reject unknown imports and import-time definition effects."""
         sources = (
@@ -3040,6 +3078,33 @@ class IdentityToolingTests(unittest.TestCase):
                 Path("Scripts/smoke/ros2/phase138u_lidar_deskew_rviz2_acceptance"),
                 frozenset({"pointcloud_metrics"}),
             )
+
+    def test_generated_section_rejects_import_time_alias_side_effects(self) -> None:
+        """Import-time process and filesystem calls cannot hide behind aliases."""
+        sources = (
+            "import os as operating_system\noperating_system.system('bad')\n",
+            "import subprocess as process\nprocess.run(['bad'])\n",
+            "import shutil\nshutil.rmtree('bad')\n",
+            "from pathlib import Path\nPath('bad').write_text('x')\n",
+            "import sys\nsys.path.insert(0, 'bad')\n",
+            "import os\n@os.system('bad')\ndef helper():\n    pass\n",
+        )
+        for source in sources:
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                compare_identity_surfaces._validate_generated_section(
+                    source + "PUBLIC = 1\n__all__ = ['PUBLIC']\n",
+                    Path("Scripts/smoke/fixture.py"),
+                    Path("Scripts/smoke"),
+                    frozenset({"fixture"}),
+                )
+
+    def test_generated_initializer_marker_requires_real_template_node(self) -> None:
+        """Comments and string literals cannot opt a package into generated mode."""
+        self.assertFalse(
+            compare_identity_surfaces._phase192_generated_initializer(
+                "# _Phase192PackageModule\nVALUE = '_Phase138UPackageModule'\n"
+            )
+        )
 
 if __name__ == "__main__":
     unittest.main()
