@@ -187,7 +187,8 @@ class Ros2WindowsEnvTests(unittest.TestCase):
         with mock.patch.object(foundation, "_USER32", FakeUser32()):
             with mock.patch.object(foundation, "_ENUM_WINDOWS_PROC_TYPE", lambda callback: callback):
                 with mock.patch.object(foundation, "ctypes", ctypes):
-                    self.assertEqual(["RViz2"], ros2env.visible_windows_for_pid(1234))
+                    with mock.patch.object(foundation, "wintypes", ctypes.wintypes):
+                        self.assertEqual(["RViz2"], ros2env.visible_windows_for_pid(1234))
 
     def test_launch_rviz_checks_visible_window_when_wait_requested(self) -> None:
         """A positive window wait must exercise the visible-window probe."""
