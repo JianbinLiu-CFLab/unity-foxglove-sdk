@@ -394,6 +394,8 @@ def _phase192_template_validate_facade(tree: ast.Module, path: str) -> None:
 
 def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) -> None:
     """Allow only the exact sys.modules forwarding mutations emitted by templates."""
+    expected_module_key = Path(path).stem
+
     def modules_value(node: ast.AST) -> bool:
         """Recognize the generated module registry aliases."""
         return (
@@ -410,6 +412,7 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
                     if not (
                         isinstance(target.slice, ast.Constant)
                         and isinstance(target.slice.value, str)
+                        and target.slice.value == expected_module_key
                         and isinstance(statement.value, ast.Name)
                         and statement.value.id.endswith("_self")
                     ):
@@ -425,6 +428,7 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
                 len(node.args) == 2
                 and isinstance(node.args[0], ast.Constant)
                 and isinstance(node.args[0].value, str)
+                and node.args[0].value == expected_module_key
                 and isinstance(node.args[1], ast.Constant)
                 and node.args[1].value is None
                 and not node.keywords
@@ -2018,6 +2022,7 @@ def _entrypoint_contract(
                 and value.func.value.id == "unittest"
                 and value.func.attr == "TestSuite"
                 and len(value.args) == 1
+                and not value.keywords
                 and isinstance(value.args[0], ast.GeneratorExp)
                 and isinstance(value.args[0].elt, ast.Call)
                 and isinstance(value.args[0].elt.func, ast.Attribute)
@@ -2027,6 +2032,7 @@ def _entrypoint_contract(
                 and value.args[0].elt.func.value.attr == "defaultTestLoader"
                 and value.args[0].elt.func.attr == "loadTestsFromModule"
                 and len(value.args[0].elt.args) == 1
+                and not value.args[0].elt.keywords
                 and isinstance(value.args[0].elt.args[0], ast.Name)
                 and len(value.args[0].generators) == 1
                 and isinstance(value.args[0].generators[0].target, ast.Name)
@@ -2071,7 +2077,30 @@ def _entrypoint_contract(
             and node.orelse.value == 1
         )
 
-    def validate_guard_statements(statements: list[ast.stmt]) -> bool:
+    def safe_log_argument(node: ast.AST, exception_names: frozenset[str]) -> bool:
+        """Allow literals and direct references to the caught exception in messages."""
+        if isinstance(node, ast.Constant):
+            return True
+        if not isinstance(node, ast.JoinedStr):
+            return False
+        for value in node.values:
+            if isinstance(value, ast.Constant):
+                continue
+            if (
+                isinstance(value, ast.FormattedValue)
+                and isinstance(value.value, ast.Name)
+                and value.value.id in exception_names
+                and value.conversion == -1
+                and value.format_spec is None
+            ):
+                continue
+            return False
+        return True
+
+    def validate_guard_statements(
+        statements: list[ast.stmt],
+        exception_names: frozenset[str] = frozenset(),
+    ) -> bool:
         """Internal helper for validate_guard_statements."""
         delegated = False
         for statement in statements:
@@ -2081,7 +2110,7 @@ def _entrypoint_contract(
                     isinstance(call.func, ast.Name)
                     and call.func.id == "print"
                     and call.args
-                    and all(isinstance(argument, (ast.Constant, ast.JoinedStr)) for argument in call.args)
+                    and all(safe_log_argument(argument, exception_names) for argument in call.args)
                     and len(call.keywords) == 1
                     and call.keywords[0].arg == "file"
                     and isinstance(call.keywords[0].value, ast.Attribute)
@@ -2098,7 +2127,8 @@ def _entrypoint_contract(
                 for handler in statement.handlers:
                     if handler.type is None or not isinstance(handler.type, ast.Name) or handler.type.id not in {"KeyboardInterrupt", "Exception"}:
                         raise ValueError(f"unsafe module entrypoint exception handler: {path}")
-                    validate_guard_statements(handler.body)
+                    handler_names = frozenset({handler.name}) if handler.name else frozenset()
+                    validate_guard_statements(handler.body, handler_names)
                 delegated = True
                 continue
             if isinstance(statement, ast.Assign):
@@ -2172,6 +2202,11 @@ def _entrypoint_contract(
                     )
                 ):
                     raise ValueError(f"unsafe module entrypoint raise: {path}")
+                if statement.cause is not None and not (
+                    isinstance(statement.cause, ast.Name)
+                    and statement.cause.id in exception_names
+                ):
+                    raise ValueError(f"unsafe module entrypoint raise cause: {path}")
                 delegated = True
                 continue
             raise ValueError(f"unsafe module entrypoint statement: {path}")

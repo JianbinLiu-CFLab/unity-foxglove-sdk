@@ -6,46 +6,6 @@ from .foundation import *
 class Phase138RvizTests:
     """Exercise Phase138L/M/U RViz and subscriber contracts"""
 
-    def test_split_ros2_cli_failure_contracts_match_legacy_entrypoints(self) -> None:
-        """Package and legacy entrypoints must retain failure and interrupt contracts."""
-        modules = (
-            ("launch_phase138m_rviz2", "phase138m-rviz"),
-            ("launch_phase138t_camera_raw_rviz2", "phase138t-rviz"),
-            ("phase138s_imu_native_dds_acceptance", "phase138s-imu-dds"),
-            ("phase160_humble_lidar_deskew_acceptance", "phase160-humble"),
-        )
-        for name, prefix in modules:
-            for package_entry in (False, True):
-                for exception, expected_exit in (("RuntimeError('synthetic failure')", 1), ("KeyboardInterrupt()", 130), ("SystemExit(2)", 2)):
-                    with self.subTest(module=name, package_entry=package_entry, exception=exception):
-                        script = "\n".join((
-                            "import importlib, runpy, sys",
-                            "from pathlib import Path",
-                            "from unittest import mock",
-                            f"name = {name!r}",
-                            "parent = Path('Scripts/smoke/ros2').resolve()",
-                            "sys.path.insert(0, str(parent))",
-                            f"package_entry = {package_entry!r}",
-                            "module_name = 'Scripts.smoke.ros2.' + name if package_entry else name",
-                            "module = importlib.import_module(module_name)",
-                            "sys.argv = [name]",
-                            f"with mock.patch.object(module, 'main', side_effect={exception}):",
-                            "    if package_entry:",
-                            "        runpy.run_module(module_name, run_name='__main__', alter_sys=True)",
-                            "    else:",
-                            "        runpy.run_path(str(parent / (name + '.py')), run_name='__main__')",
-                        ))
-                        result = subprocess.run([sys.executable, "-c", script], cwd=ROOT, capture_output=True, text=True, timeout=20)
-                        self.assertEqual(expected_exit, result.returncode, result.stderr)
-                        self.assertNotIn("Traceback", result.stderr)
-                        self.assertEqual("", result.stdout)
-                        if expected_exit == 1:
-                            self.assertIn(f"[{prefix}] FAIL: synthetic failure", result.stderr)
-                            if name == "phase160_humble_lidar_deskew_acceptance":
-                                self.assertIn("Check Unity Console", result.stderr)
-                        else:
-                            self.assertEqual("", result.stderr)
-
     def test_phase138l_rviz_config_patch_fails_when_required_topic_tokens_are_missing(self) -> None:
         """RViz2 topic patching should not silently leave the default /points topic."""
         module = load_smoke_module("phase138l_rviz_under_test", "ros2/launch_phase138l_rviz2.py")

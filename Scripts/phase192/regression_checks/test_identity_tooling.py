@@ -2875,6 +2875,20 @@ class IdentityToolingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare_identity_surfaces._symbols(source, str(facade))
 
+    def test_generated_facade_rejects_unrelated_module_registry_key(self) -> None:
+        """Generated facades may not restore an unrelated module key."""
+        facade = Path("Scripts/mcap/mcap_time_sync.py")
+        source = facade.read_text(encoding="utf-8") + '\n_phase192_sys.modules["unexpected_module"] = _phase192_self\n'
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._symbols(source, str(facade))
+
+    def test_generated_facade_rejects_unrelated_module_registry_pop(self) -> None:
+        """Generated facades may not remove an unrelated module key."""
+        facade = Path("Scripts/mcap/mcap_time_sync.py")
+        source = facade.read_text(encoding="utf-8") + '\n_phase192_sys.modules.pop("unexpected_module", None)\n'
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._symbols(source, str(facade))
+
     def test_generated_initializer_rejects_import_time_main_call(self) -> None:
         """Package initializers cannot invoke an exported CLI during import."""
         initializer = Path("Scripts/mcap/mcap_time_sync/__init__.py")
@@ -2892,6 +2906,44 @@ class IdentityToolingTests(unittest.TestCase):
                 "import unittest\nfrom . import modules\n"
                 "def side_effect():\n    return modules\n"
                 "suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromModule(m) for m in side_effect())\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_nested_f_string_side_effect(self) -> None:
+        """Generated entrypoints cannot execute calls inside error messages."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("def main(): return 0\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "import sys\nfrom . import main\n"
+                "if __name__ == \"__main__\":\n"
+                "    try:\n"
+                "        raise SystemExit(main())\n"
+                "    except Exception as exc:\n"
+                "        print(f\"FAIL {print('unexpected')}\", file=sys.stderr)\n"
+                "        raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_raise_cause_side_effect(self) -> None:
+        """Generated entrypoints cannot execute calls in raise causes."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("def main(): return 0\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "import sys\nfrom . import main\n"
+                "if __name__ == \"__main__\":\n"
+                "    try:\n"
+                "        raise SystemExit(main())\n"
+                "    except Exception as exc:\n"
+                "        print(\"FAIL\", file=sys.stderr)\n"
+                "        raise SystemExit(1) from print('unexpected')\n",
                 encoding="utf-8",
             )
             with self.assertRaises(ValueError):
