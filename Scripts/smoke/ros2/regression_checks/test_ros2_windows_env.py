@@ -149,6 +149,85 @@ class Ros2WindowsEnvTests(unittest.TestCase):
 
         self.assertIn(str(vendor_bin), captured_env["PATH"].split(os.pathsep))
 
+    def test_visible_windows_for_pid_is_callable_without_private_import_leakage(self) -> None:
+        """The RViz window probe must resolve its foundation dependencies explicitly."""
+        self.assertIsInstance(ros2env.visible_windows_for_pid(1234), list)
+
+    def test_visible_windows_for_pid_filters_fake_win32_windows(self) -> None:
+        """The Win32 callback must filter visibility, PID, and window titles."""
+        import ctypes
+        import importlib
+        from ctypes import wintypes
+
+        foundation = importlib.import_module("_ros2_windows_env.foundation")
+
+        class FakeUser32:
+            """Small user32 double that exposes three window cases."""
+
+            def IsWindowVisible(self, hwnd):
+                """Return visibility for one hidden and two visible handles."""
+                return hwnd != 1
+
+            def GetWindowThreadProcessId(self, hwnd, process_id):
+                """Assign the target PID only to the RViz handle."""
+                process_id._obj.value = 1234 if hwnd == 2 else 9876
+
+            def GetWindowTextLengthW(self, hwnd):
+                """Return the fake title length."""
+                return len("RViz2" if hwnd == 2 else "Other")
+
+            def GetWindowTextW(self, hwnd, buffer, _length):
+                """Write the fake title into the ctypes buffer."""
+                buffer.value = "RViz2" if hwnd == 2 else "Other"
+
+            def EnumWindows(self, callback, _lparam):
+                """Visit hidden, target, and unrelated windows."""
+                for hwnd in (1, 2, 3):
+                    callback(hwnd, 0)
+
+        with mock.patch.object(foundation, "_USER32", FakeUser32()):
+            with mock.patch.object(foundation, "_ENUM_WINDOWS_PROC_TYPE", lambda callback: callback):
+                with mock.patch.object(foundation, "ctypes", ctypes):
+                    with mock.patch.object(foundation, "wintypes", wintypes):
+                        self.assertEqual(["RViz2"], ros2env.visible_windows_for_pid(1234))
+
+    def test_launch_rviz_checks_visible_window_when_wait_requested(self) -> None:
+        """A positive window wait must exercise the visible-window probe."""
+        import importlib
+
+        rviz_module = importlib.import_module("_ros2_windows_env.rviz")
+        with tempfile.TemporaryDirectory() as temp:
+            ros2_root = Path(temp) / "ros2_lyrical"
+            rviz_exe = ros2_root / "bin" / "rviz2.exe"
+            rviz_exe.parent.mkdir(parents=True)
+            rviz_exe.write_bytes(b"")
+            config = Path(temp) / "view.rviz"
+            config.write_text("Visualization Manager: {}\n", encoding="utf-8")
+
+            class FakeProcess:
+                """Minimal live process double for the window wait path."""
+
+                pid = 1234
+
+                def poll(self):
+                    """Keep the fake RViz process alive while the window is found."""
+                    return None
+
+            fake_process = FakeProcess()
+            with mock.patch.object(ros2env.subprocess, "Popen", return_value=fake_process):
+                with mock.patch.object(rviz_module, "visible_windows_for_pid", return_value=["RViz2"]) as visible:
+                    process = ros2env.launch_rviz(
+                        ros2_root,
+                        config,
+                        {},
+                        "test",
+                        startup_check_seconds=0.0,
+                        window_wait_seconds=0.1,
+                    )
+
+        self.assertIs(process, fake_process)
+        visible.assert_called_once_with(1234)
+
     def test_launch_rviz_closes_parent_stdout_log_after_spawn(self) -> None:
         """The child owns redirection without leaking the parent's Python handle."""
         with tempfile.TemporaryDirectory() as temp:

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 import struct
+import sys
 
 from . import pointcloud_metrics as _phase192_metrics
 from .pointcloud_metrics import *
@@ -71,7 +72,7 @@ def run_self_test() -> int:
     return 0
 
 
-def main(argv: list[str]) -> int:
+def _main_impl(argv: list[str]) -> int:
     """Script entry point."""
 
     args = parse_args(argv)
@@ -168,4 +169,23 @@ def main(argv: list[str]) -> int:
     return 0
 
 
-__all__ = ["run_self_test", "main"]
+def main(argv: list[str]) -> int:
+    """Run the CLI and map process-level failures to stable exit codes."""
+    try:
+        return _main_impl(argv)
+    except KeyboardInterrupt:
+        return 130
+    except InconclusiveError as exc:
+        print(f"[phase138u-lidar-deskew] INCONCLUSIVE: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"[phase138u-lidar-deskew] FAIL: {exc}", file=sys.stderr)
+        return 1
+
+
+def run_cli(argv: list[str]) -> int:
+    """Run the acceptance CLI with stable process exit semantics."""
+    return main(argv)
+
+
+__all__ = ["run_self_test", "main", "run_cli"]

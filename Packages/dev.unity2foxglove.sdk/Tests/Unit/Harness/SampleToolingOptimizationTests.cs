@@ -268,8 +268,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             VerifyProbe("Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py", removePayloadLengthSlice: false);
             Assert.Contains("_ENUM_WINDOWS_PROC_TYPE = ctypes.WINFUNCTYPE", env, StringComparison.Ordinal);
             Assert.Contains("_USER32 = ctypes.windll.user32", env, StringComparison.Ordinal);
-            Assert.Contains("if _USER32 is None or _ENUM_WINDOWS_PROC_TYPE is None:", visibleWindows, StringComparison.Ordinal);
-            Assert.Contains("_USER32.EnumWindows(_ENUM_WINDOWS_PROC_TYPE(callback), 0)", visibleWindows, StringComparison.Ordinal);
+            Assert.Contains("if _foundation._USER32 is None or _foundation._ENUM_WINDOWS_PROC_TYPE is None:", visibleWindows, StringComparison.Ordinal);
+            Assert.Contains("_foundation._USER32.EnumWindows(_foundation._ENUM_WINDOWS_PROC_TYPE(callback), 0)", visibleWindows, StringComparison.Ordinal);
             Assert.DoesNotContain("ctypes.WINFUNCTYPE", visibleWindows, StringComparison.Ordinal);
             Assert.DoesNotContain("ctypes.windll.user32", visibleWindows, StringComparison.Ordinal);
             Assert.Contains("data = frame if isinstance(frame, bytes) else bytes(frame)", phase139, StringComparison.Ordinal);

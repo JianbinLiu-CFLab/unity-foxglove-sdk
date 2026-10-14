@@ -1,32 +1,33 @@
 from __future__ import annotations
 
+from . import foundation as _foundation
 from .foundation import *
 
 def visible_windows_for_pid(pid: int) -> list[str]:
     """Return visible top-level Windows titles owned by a process id."""
 
-    if _USER32 is None or _ENUM_WINDOWS_PROC_TYPE is None:
+    if _foundation._USER32 is None or _foundation._ENUM_WINDOWS_PROC_TYPE is None:
         return []
 
     titles: list[str] = []
 
-    def callback(hwnd: wintypes.HWND, _lparam: wintypes.LPARAM) -> bool:
+    def callback(hwnd: _foundation.wintypes.HWND, _lparam: _foundation.wintypes.LPARAM) -> bool:
         """Collect visible window titles owned by the target process."""
-        if not _USER32.IsWindowVisible(hwnd):
+        if not _foundation._USER32.IsWindowVisible(hwnd):
             return True
 
-        process_id = wintypes.DWORD()
-        _USER32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+        process_id = _foundation.wintypes.DWORD()
+        _foundation._USER32.GetWindowThreadProcessId(hwnd, _foundation.ctypes.byref(process_id))
         if process_id.value != pid:
             return True
 
-        length = _USER32.GetWindowTextLengthW(hwnd)
-        buffer = ctypes.create_unicode_buffer(length + 1)
-        _USER32.GetWindowTextW(hwnd, buffer, length + 1)
+        length = _foundation._USER32.GetWindowTextLengthW(hwnd)
+        buffer = _foundation.ctypes.create_unicode_buffer(length + 1)
+        _foundation._USER32.GetWindowTextW(hwnd, buffer, length + 1)
         titles.append(buffer.value or "<untitled>")
         return True
 
-    _USER32.EnumWindows(_ENUM_WINDOWS_PROC_TYPE(callback), 0)
+    _foundation._USER32.EnumWindows(_foundation._ENUM_WINDOWS_PROC_TYPE(callback), 0)
     return titles
 
 
