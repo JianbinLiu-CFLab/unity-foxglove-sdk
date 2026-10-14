@@ -54,25 +54,28 @@ class Phase186AssemblyReferenceTests:
             subprocess.CompletedProcess([], 0, stdout="all ok"),
             subprocess.CompletedProcess([], 0, stdout="remote gateway ok"),
         ]
-        report = self.validator.ROOT / "build" / "phase186" / "test-retry-report.json"
-        with mock.patch.object(self.validator, "REPORT", report), mock.patch.object(
-            self.validator.subprocess,
-            "run",
-            side_effect=outcomes,
-        ), mock.patch.object(
-            self.validator,
-            "validate_boundaries",
-            return_value=[],
-        ):
-            self.assertEqual(0, self.validator.main())
-        payload = json.loads(report.read_text(encoding="utf-8"))
-        report.unlink(missing_ok=True)
+        with tempfile.TemporaryDirectory(dir=self.validator.ROOT) as temp:
+            report = Path(temp) / "report.json"
+            with mock.patch.object(self.validator, "REPORT", report), mock.patch.object(
+                self.validator.subprocess,
+                "run",
+                side_effect=outcomes,
+            ), mock.patch.object(
+                self.validator,
+                "validate_boundaries",
+                return_value=[],
+            ):
+                self.assertEqual(0, self.validator.main())
+            payload = json.loads(report.read_text(encoding="utf-8"))
 
         recovered = payload["compileGates"][1]
         self.assertEqual(0, recovered["exitCode"])
         self.assertEqual([7, 0], [item["exitCode"] for item in recovered["attempts"]])
         self.assertEqual(["r2fu transient failure", "r2fu recovered"], [item["output"] for item in recovered["attempts"]])
         self.assertTrue(recovered["recoveredAfterRetry"])
+        self.assertEqual("initial build returned a nonzero exit code", recovered["attempts"][1]["retryReason"])
+        self.assertEqual(1, len(payload["compileGates"][0]["attempts"]))
+        self.assertFalse(payload["compileGates"][0]["recoveredAfterRetry"])
 
     def test_guid_asmdef_reference_resolves_to_forbidden_assembly(self) -> None:
         """GUID-form references must enforce the same package boundary as names."""

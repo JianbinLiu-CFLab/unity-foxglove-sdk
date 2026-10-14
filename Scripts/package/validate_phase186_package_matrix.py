@@ -165,6 +165,7 @@ def compile_matrix() -> list[dict]:
             attempts.append(
                 {
                     "attempt": 2,
+                    "retryReason": "initial build returned a nonzero exit code",
                     "exitCode": completed.returncode,
                     "output": completed.stdout,
                 }
