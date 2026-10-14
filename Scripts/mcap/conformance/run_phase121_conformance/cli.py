@@ -4,8 +4,6 @@
 
 from __future__ import annotations
 
-import sys
-
 from . import configuration as _configuration
 from . import checkout_reporting as _checkout
 from . import execution as _execution
@@ -30,16 +28,5 @@ def main(argv: list[str]) -> int:
         return 0
     return _execution.run_conformance(bool(args.release_blocking), args.official_root)
 
-
-def cli_entry(argv: list[str] | None = None) -> int:
-    """Run the CLI while preserving the compatibility facade exit contract."""
-
-    try:
-        return main(sys.argv[1:] if argv is None else argv)
-    except KeyboardInterrupt:
-        return 130
-    except Exception as exc:
-        print(f"[phase121-conformance] FAIL: {exc}", file=sys.stderr)
-        return 1
 
 __all__ = [name for name in globals() if not name.startswith("__")]

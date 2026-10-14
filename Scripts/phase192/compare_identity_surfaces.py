@@ -294,7 +294,7 @@ def _declared_public_names(tree: ast.Module) -> frozenset[str]:
 
 _PHASE192_TEMPLATE_IMPORTS = frozenset({"pathlib", "sys", "types", "unittest"})
 _PHASE192_TEMPLATE_CALLS = frozenset({
-    "add", "callable", "cli_entry", "delattr", "getattr", "globals", "hasattr", "isinstance", "issubclass", "main", "print", "set",
+    "add", "callable", "delattr", "getattr", "globals", "hasattr", "isinstance", "issubclass", "main", "print", "set",
     "setattr", "sorted", "str", "super", "tuple", "SystemExit",
 })
 _PHASE192_TEMPLATE_METHODS = frozenset({

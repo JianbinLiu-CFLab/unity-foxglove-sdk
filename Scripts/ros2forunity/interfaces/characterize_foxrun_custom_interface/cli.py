@@ -73,15 +73,4 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-def cli_entry(argv: Sequence[str] | None = None) -> int:
-    """Run the CLI while preserving the compatibility facade exit contract."""
-
-    try:
-        return main(argv)
-    except KeyboardInterrupt:
-        return 130
-    except Exception as exc:
-        print(f"[phase181-characterization] FAIL: {exc}", file=sys.stderr)
-        return 1
-
 __all__ = [name for name in globals() if not name.startswith("__")]

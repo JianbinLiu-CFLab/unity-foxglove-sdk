@@ -2724,6 +2724,28 @@ class LocalEntrypointValidatorTests(unittest.TestCase):
         )
 
 
+def _mcap_timeout_calls(source_paths: list[Path]) -> list[tuple[str, int]]:
+    """Return qualified MCAP helper calls that introduce a fixed timeout."""
+
+    timeout_calls: list[tuple[str, int]] = []
+    for source_path in source_paths:
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not any(keyword.arg == "timeout_seconds" for keyword in node.keywords):
+                continue
+            if isinstance(node.func, ast.Name):
+                function_name = node.func.id
+            elif isinstance(node.func, ast.Attribute):
+                function_name = node.func.attr
+            else:
+                function_name = ""
+            if function_name in {"invoke_command_capture", "run_package_manager"}:
+                timeout_calls.append((source_path.name, node.lineno))
+    return timeout_calls
+
+
 class McapConformanceToolTests(unittest.TestCase):
     """Regression coverage for the release-blocking official MCAP differential."""
 
@@ -2736,23 +2758,6 @@ class McapConformanceToolTests(unittest.TestCase):
         package = MCAP_CONFORMANCE_PATH.with_suffix("")
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
-
-    def test_cli_entry_reports_unexpected_failures(self) -> None:
-        """The package entrypoint preserves the compatibility facade failure contract."""
-        from Scripts.mcap.conformance.run_phase121_conformance import cli
-
-        stderr = io.StringIO()
-        with mock.patch.object(cli, "main", side_effect=RuntimeError("boom")):
-            with contextlib.redirect_stderr(stderr):
-                self.assertEqual(1, cli.cli_entry([]))
-        self.assertEqual("[phase121-conformance] FAIL: boom\n", stderr.getvalue())
-
-    def test_cli_entry_maps_keyboard_interrupt(self) -> None:
-        """The package entrypoint maps operator interruption to exit 130."""
-        from Scripts.mcap.conformance.run_phase121_conformance import cli
-
-        with mock.patch.object(cli, "main", side_effect=KeyboardInterrupt()):
-            self.assertEqual(130, cli.cli_entry([]))
 
     def test_public_configuration_state_tracks_configuration_module(self) -> None:
         """Facade configuration values stay synchronized after runtime updates."""
@@ -2771,36 +2776,20 @@ class McapConformanceToolTests(unittest.TestCase):
 
     def test_official_conformance_stages_have_no_hardcoded_deadlines(self) -> None:
         """Official finite stages should run to completion independent of host speed."""
-        timeout_calls = []
         source_paths = [MCAP_CONFORMANCE_PATH]
         package = MCAP_CONFORMANCE_PATH.with_suffix("")
         source_paths.extend(sorted(package.glob("*.py")))
-        for source_path in source_paths:
-            tree = ast.parse(source_path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Call):
-                    continue
-                if not any(keyword.arg == "timeout_seconds" for keyword in node.keywords):
-                    continue
-                if isinstance(node.func, ast.Name):
-                    function_name = node.func.id
-                elif isinstance(node.func, ast.Attribute):
-                    function_name = node.func.attr
-                else:
-                    function_name = ""
-                if function_name in {"invoke_command_capture", "run_package_manager"}:
-                    timeout_calls.append((source_path.name, node.lineno))
-
-        self.assertEqual([], timeout_calls)
+        self.assertEqual([], _mcap_timeout_calls(source_paths))
 
     def test_timeout_guard_detects_attribute_calls(self) -> None:
         """The timeout guard must inspect qualified helper calls, not only bare names."""
-        tree = ast.parse(
-            "_configuration.invoke_command_capture(['tool'], timeout_seconds=60)\n"
-        )
-        call = next(node for node in ast.walk(tree) if isinstance(node, ast.Call))
-        function_name = call.func.id if isinstance(call.func, ast.Name) else call.func.attr
-        self.assertEqual("invoke_command_capture", function_name)
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary) / "fixture.py"
+            fixture.write_text(
+                "_configuration.invoke_command_capture(['tool'], timeout_seconds=60)\n",
+                encoding="utf-8",
+            )
+            self.assertEqual([("fixture.py", 1)], _mcap_timeout_calls([fixture]))
 
     def test_timeout_failure_details_preserve_the_timeout_reason(self) -> None:
         """Large runner output must not truncate away the actionable timeout diagnosis."""

@@ -20,9 +20,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from Scripts.smoke.ros2.phase179_foxrun_ros2_player_host import cli as phase179_cli
-
-
 ROOT = Path(__file__).resolve().parents[4]
 SMOKE_PATH = ROOT / "Scripts" / "smoke" / "ros2" / "phase179_foxrun_ros2_player_host.py"
 
@@ -54,23 +51,6 @@ class Phase179FoxRunRos2PlayerHostTests(unittest.TestCase):
         """Load a fresh module for each test."""
 
         self.smoke = load_smoke_module()
-
-    def test_cli_entry_reports_unexpected_failures(self) -> None:
-        """The package entrypoint preserves the facade failure diagnostics."""
-        stderr = io.StringIO()
-        with mock.patch.object(phase179_cli, "main", side_effect=RuntimeError("boom")):
-            with contextlib.redirect_stderr(stderr):
-                self.assertEqual(1, phase179_cli.cli_entry([]))
-        self.assertEqual(
-            "[phase179-player-host] FAIL: boom\n"
-            "[phase179-player-host] Check the Player log, stale ROS2/Zenoh processes, and the supplied runtime selection.\n",
-            stderr.getvalue(),
-        )
-
-    def test_cli_entry_maps_keyboard_interrupt(self) -> None:
-        """The package entrypoint maps operator interruption to exit 130."""
-        with mock.patch.object(phase179_cli, "main", side_effect=KeyboardInterrupt()):
-            self.assertEqual(130, phase179_cli.cli_entry([]))
 
     def test_player_environment_sets_requested_ros_values_before_launch(self) -> None:
         """The Player gets its exact distro/RMW/domain/discovery selection in its process environment."""
