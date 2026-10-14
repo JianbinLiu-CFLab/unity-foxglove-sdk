@@ -21,8 +21,6 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Phase186
 {
-    [Trait("Phase", "186-A")]
-    [Trait("Domain", "PreMoveAuthority")]
     public sealed partial class PreMoveBridgeAndMcapAuthorityTests
     {
         private static JObject LoadFixture()
