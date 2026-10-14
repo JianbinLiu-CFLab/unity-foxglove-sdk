@@ -15,7 +15,15 @@
   <Import Project="../FoxgloveSdk.TestSurface.props" />
   <Import Project="PackageMatrix.Common.props" />
   <ItemGroup>
-    <Compile Include="../../dev.unity2foxglove.remotegateway.win64/Runtime/**/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)..\..\..\..\Packages\dev.unity2foxglove.remotegateway.win64\Runtime\**\*.cs" />
     <Compile Include="RemoteGatewayCompileStubs.cs" />
   </ItemGroup>
+  <Target Name="ValidateRemoteGatewaySurface" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <_RemoteGatewayCompile Include="@(Compile)"
+          Condition="$([System.String]::Copy('%(Compile.Identity)').Replace('\','/').Contains('/dev.unity2foxglove.remotegateway.win64/Runtime/'))" />
+    </ItemGroup>
+    <Error Condition="'@(_RemoteGatewayCompile)' == ''"
+           Text="Phase186 package matrix omitted the Remote Gateway runtime sources." />
+  </Target>
 </Project>

@@ -26,6 +26,9 @@ PROJECTS = (
 )
 REPORT = ROOT / "build/phase186/package-matrix/report.json"
 GUID_PATTERN = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
+TRANSIENT_BUILD_FAILURE_RE = re.compile(
+    r"(?i)(?:NU1301|NU1300|NU1101|restore (?:failed|failure)|unable to read file|being used by another process|MSB302[1-7])"
+)
 
 
 def fail(message: str) -> int:
@@ -38,6 +41,11 @@ def load_json(path: Path) -> object:
     """Load one UTF-8 JSON descriptor."""
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def _is_transient_build_failure(output: str) -> bool:
+    """Return whether build output identifies a retryable restore or file-lock failure."""
+    return bool(TRANSIENT_BUILD_FAILURE_RE.search(output))
 
 
 PACKAGE_MATRIX_SPECS = (
@@ -145,7 +153,7 @@ def compile_matrix() -> list[dict]:
                 "output": completed.stdout,
             }
         ]
-        if completed.returncode != 0:
+        if completed.returncode != 0 and _is_transient_build_failure(completed.stdout):
             retry = subprocess.run(
                 [
                     "dotnet",
@@ -165,7 +173,7 @@ def compile_matrix() -> list[dict]:
             attempts.append(
                 {
                     "attempt": 2,
-                    "retryReason": "initial build returned a nonzero exit code",
+                    "retryReason": "transient restore or file-lock failure",
                     "exitCode": completed.returncode,
                     "output": completed.stdout,
                 }
