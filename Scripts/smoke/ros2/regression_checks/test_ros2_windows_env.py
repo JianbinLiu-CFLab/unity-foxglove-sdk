@@ -149,6 +149,47 @@ class Ros2WindowsEnvTests(unittest.TestCase):
 
         self.assertIn(str(vendor_bin), captured_env["PATH"].split(os.pathsep))
 
+    def test_visible_windows_for_pid_is_callable_without_private_import_leakage(self) -> None:
+        """The RViz window probe must resolve its foundation dependencies explicitly."""
+        self.assertIsInstance(ros2env.visible_windows_for_pid(1234), list)
+
+    def test_launch_rviz_checks_visible_window_when_wait_requested(self) -> None:
+        """A positive window wait must exercise the visible-window probe."""
+        import importlib
+
+        rviz_module = importlib.import_module("_ros2_windows_env.rviz")
+        with tempfile.TemporaryDirectory() as temp:
+            ros2_root = Path(temp) / "ros2_lyrical"
+            rviz_exe = ros2_root / "bin" / "rviz2.exe"
+            rviz_exe.parent.mkdir(parents=True)
+            rviz_exe.write_bytes(b"")
+            config = Path(temp) / "view.rviz"
+            config.write_text("Visualization Manager: {}\n", encoding="utf-8")
+
+            class FakeProcess:
+                """Minimal live process double for the window wait path."""
+
+                pid = 1234
+
+                def poll(self):
+                    """Keep the fake RViz process alive while the window is found."""
+                    return None
+
+            fake_process = FakeProcess()
+            with mock.patch.object(ros2env.subprocess, "Popen", return_value=fake_process):
+                with mock.patch.object(rviz_module, "visible_windows_for_pid", return_value=["RViz2"]) as visible:
+                    process = ros2env.launch_rviz(
+                        ros2_root,
+                        config,
+                        {},
+                        "test",
+                        startup_check_seconds=0.0,
+                        window_wait_seconds=0.1,
+                    )
+
+        self.assertIs(process, fake_process)
+        visible.assert_called_once_with(1234)
+
     def test_launch_rviz_closes_parent_stdout_log_after_spawn(self) -> None:
         """The child owns redirection without leaking the parent's Python handle."""
         with tempfile.TemporaryDirectory() as temp:
