@@ -394,12 +394,12 @@ class _Phase186ProvenanceTests_fixtures:
             revision = run_git(repository, "rev-parse", "HEAD")
             part = repository / "Protocol/Decomposed/AuthorityPart.cs"
             part.parent.mkdir(parents=True)
-            part.write_text("// header\nline one\n", encoding="utf-8")
+            part.write_text("// header\nline two\n", encoding="utf-8")
             run_git(repository, "add", ".")
             run_git(repository, "commit", "--quiet", "-m", "decompose")
             decomposition_revision = run_git(repository, "rev-parse", "HEAD")
             part.write_text(
-                "// header\nline one\nprivate static void AddedLater() {}\n",
+                "// header\nline two\nprivate static void AddedLater() {}\n",
                 encoding="utf-8",
             )
             original_path = "Protocol/Authority.cs"
@@ -423,12 +423,13 @@ class _Phase186ProvenanceTests_fixtures:
                                         part.read_bytes()
                                     )
                                 ),
-                                "movedRange": {"startLine": 2, "endLine": 2},
+                                "movedRange": {"startLine": 3, "endLine": 3},
                             }
                         ],
                     }
                 ]
             }
+            original.write_text("// header\nline one\n", encoding="utf-8")
             part_paths, originals, errors = module._validate_decomposed_source_files(
                 repository,
                 payload,
@@ -438,6 +439,18 @@ class _Phase186ProvenanceTests_fixtures:
             self.assertEqual({part_path}, part_paths)
             self.assertEqual({original_path}, originals)
             self.assertEqual([], errors)
+
+            original.write_text("// header\n", encoding="utf-8")
+            _, _, errors = module._validate_decomposed_source_files(
+                repository,
+                payload,
+                {original_path, part_path},
+                {original_path: "baseline"},
+            )
+            self.assertTrue(
+                any("facade body does not cover" in error for error in errors),
+                errors,
+            )
 
             _, _, errors = module._validate_decomposed_source_files(
                 repository,

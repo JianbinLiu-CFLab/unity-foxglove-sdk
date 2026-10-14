@@ -44,6 +44,11 @@ def _is_source_wrapper_line(line: str) -> bool:
     return False
 
 
+def _is_facade_wrapper_line(line: str) -> bool:
+    """Identify syntax-only facade lines, including preprocessor directives."""
+    return _is_source_wrapper_line(line) or line.strip().startswith("#")
+
+
 def _validate_moved_fragment(
     original_lines: list[str],
     part_lines: list[str],
@@ -243,6 +248,43 @@ def _validate_decomposed_source_files(
                                 path,
                             )
                         )
+
+        if original_lines:
+            covered_lines: set[int] = set()
+            for part in parts:
+                if not isinstance(part, Mapping):
+                    continue
+                moved_range = part.get("movedRange")
+                if not isinstance(moved_range, Mapping):
+                    continue
+                start = moved_range.get("startLine")
+                end = moved_range.get("endLine")
+                if type(start) is int and type(end) is int and start >= 1 and end >= start:
+                    covered_lines.update(range(start, end + 1))
+            try:
+                facade_path = _resolve_regular_file_contained(
+                    repository,
+                    original,
+                    label="decomposed source facade",
+                )
+                facade_lines = _source_lines(facade_path.read_bytes())
+            except (OSError, ValueError, UnicodeDecodeError) as exc:
+                errors.append(f"{original}: could not read decomposed source facade: {exc}")
+            else:
+                expected_facade = [
+                    line
+                    for line_number, line in enumerate(original_lines, 1)
+                    if line_number not in covered_lines
+                    and not _is_facade_wrapper_line(line)
+                ]
+                actual_facade = [
+                    line for line in facade_lines if not _is_facade_wrapper_line(line)
+                ]
+                if expected_facade != actual_facade:
+                    errors.append(
+                        f"{original}: decomposed source facade body does not cover "
+                        "the unmoved baseline lines"
+                    )
 
     unmapped = discovered_sources - part_paths - original_paths
     unexpected = sorted(unmapped - set(introduced_sources))

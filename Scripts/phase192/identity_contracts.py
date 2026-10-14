@@ -23,9 +23,15 @@ CS_METHOD = re.compile(
     r"\b(?:public|private|protected|internal)\s+(?:static\s+)?"
     r"(?:async\s+)?[\w<>,.?\[\]]+\s+(\w+)\s*\("
 )
-CPP_DECLARATION = re.compile(
-    r"\b(?:namespace|class|struct|enum|union)\s+([A-Za-z_]\w*)|"
-    r"\b([A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:const\s*)?(?:\{|$)"
+CPP_TYPE_DECLARATION = re.compile(
+    r"\b(?:namespace|class|struct|enum|union)\s+([A-Za-z_]\w*)"
+)
+CPP_FUNCTION_DECLARATION = re.compile(
+    r"\b([A-Za-z_]\w*(?:::[A-Za-z_]\w*)?)\s*"
+    r"\(([^{};]*)\)\s*(?:const\b\s*)?(?:\{|;)"
+)
+CPP_CONTROL_NAMES = frozenset(
+    {"if", "for", "while", "switch", "catch", "sizeof", "decltype"}
 )
 SOURCE_NON_CODE = re.compile(
     r"//[^\r\n]*|/\*.*?\*/|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'",
@@ -436,15 +442,55 @@ def python_test_rows(
 
 
 def cpp_rows(path: str, text: str) -> list[list[str]]:
-    """Phase192 cpp rows."""
+    """Return stable C++ type and function declaration rows."""
+    stripped = _strip_c_like_source(text)
+    lines = stripped.splitlines()
     rows: list[list[str]] = []
-    for number, line in enumerate(text.splitlines(), 1):
+    for number, line in enumerate(lines, 1):
         stripped = line.strip()
         if not stripped or stripped.startswith(("//", "/*", "*", "#")):
             continue
-        match = CPP_DECLARATION.search(stripped)
+        match = CPP_TYPE_DECLARATION.search(stripped)
         if match:
-            rows.append([path, str(number), match.group(1) or match.group(2), clean(stripped)])
+            rows.append([path, str(number), match.group(1), clean(stripped)])
+        window = "\n".join(lines[number - 1 : number + 12])
+        candidates = list(
+            re.finditer(
+                r"(?<![.\w])([A-Za-z_]\w*(?:::[A-Za-z_]\w*)?)\s*\(",
+                line,
+            )
+        )
+        for candidate in candidates:
+            name = candidate.group(1).split("::")[-1]
+            prefix = line[: candidate.start(1)]
+            if name.startswith("__") or name in CPP_CONTROL_NAMES or any(
+                token in prefix for token in (".", "->", "=", "return ")
+            ):
+                continue
+            if re.search(r"\b(?:if|for|while|switch|catch)\b", prefix):
+                continue
+            if name in {"min", "max"} and ("numeric_limits" in window or "std::" in prefix):
+                continue
+            if not re.search(
+                r"\b(?:extern|static|inline|constexpr|__declspec|const|volatile|void|bool|char|short|int|long|float|double|auto|unsigned|signed)\b|::",
+                prefix,
+            ):
+                continue
+            tail = line[candidate.end() :] + "\n" + "\n".join(lines[number : number + 12])
+            if not re.search(r"\)\s*(?:const\b\s*)?(?:\{|;)", tail, re.DOTALL):
+                continue
+            rows.append([path, str(number), candidate.group(1), clean(window)])
+            break
+        else:
+            # Handle a return type and function name split across adjacent lines.
+            multiline = re.match(
+                r"\s*(?:extern\s+\"C\"\s+|__declspec\([^)]*\)\s+|(?:[A-Za-z_]\w*(?:::[A-Za-z_]\w*)?\s+)+)"
+                r"([A-Za-z_]\w*(?:::[A-Za-z_]\w*)?)\s*\(",
+                window,
+                re.DOTALL,
+            )
+            if multiline and multiline.group(1).split("::")[-1] not in CPP_CONTROL_NAMES:
+                rows.append([path, str(number), multiline.group(1), clean(window)])
     return rows
 
 
