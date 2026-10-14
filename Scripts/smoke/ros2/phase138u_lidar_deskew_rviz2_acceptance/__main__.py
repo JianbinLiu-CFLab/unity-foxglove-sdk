@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import sys
 
-from .acceptance_cli import InconclusiveError, main
+from .acceptance_cli import main
+from .pointcloud_metrics import InconclusiveError
 
 if __name__ == "__main__":
     try:

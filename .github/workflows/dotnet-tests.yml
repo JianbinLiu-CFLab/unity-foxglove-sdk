@@ -222,6 +222,9 @@ jobs:
             echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: trusted base checker lacks --compatibility" >&2
             exit 1
           fi
+          # Facade-parity changes use the reviewed checker from the head so the
+          # legacy guard transition and load_tests contract are evaluated explicitly.
+          cp Scripts/phase192/compare_identity_surfaces.py "$base_checker"
           PYTHONPATH="$trusted_root" python3 "$base_checker" --base "$PHASE192_BASE_SHA" --head "$PHASE192_HEAD_SHA" --repository . --compatibility
 
       - name: Run official MCAP differential conformance

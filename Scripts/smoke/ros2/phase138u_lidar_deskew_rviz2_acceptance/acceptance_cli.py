@@ -10,7 +10,6 @@ import sys
 
 from . import pointcloud_metrics as _phase192_metrics
 from .pointcloud_metrics import *
-from .pointcloud_metrics import InconclusiveError
 from .subscription import *
 
 def run_self_test() -> int:
@@ -175,4 +174,4 @@ def run_cli(argv: list[str]) -> int:
     return main(argv)
 
 
-__all__ = ["run_self_test", "main", "run_cli", "InconclusiveError"]
+__all__ = ["run_self_test", "main", "run_cli"]
