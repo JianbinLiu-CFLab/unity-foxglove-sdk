@@ -38,7 +38,7 @@ The script:
 - Runs `Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py`.
 - Writes a summary JSON under `build/r2fu-sync-evidence`.
 
-Unit tests for the Windows Jazzy tooling live beside the tools:
+The complete Windows tooling regression lane covers Humble, Jazzy, and Lyrical tooling:
 
 ```powershell
 python -B Scripts/release/regression_inventory.py --run-lane windows-parity-regression-tooling
