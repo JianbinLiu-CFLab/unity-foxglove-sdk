@@ -18,8 +18,6 @@ def _is_source_wrapper_line(line: str) -> bool:
         return True
     if stripped.startswith(("//", "/*", "*", "*/")):
         return True
-    if stripped.startswith("#"):
-        return True
     if stripped.startswith("using ") and stripped.endswith(";"):
         return True
     if stripped.startswith("namespace ") and "(" not in stripped:
@@ -44,6 +42,11 @@ def _is_source_wrapper_line(line: str) -> bool:
     ):
         return True
     return False
+
+
+def _is_facade_wrapper_line(line: str) -> bool:
+    """Identify syntax-only facade lines, including preprocessor directives."""
+    return _is_source_wrapper_line(line) or line.strip().startswith("#")
 
 
 def _validate_moved_fragment(
@@ -272,10 +275,10 @@ def _validate_decomposed_source_files(
                     line
                     for line_number, line in enumerate(original_lines, 1)
                     if line_number not in covered_lines
-                    and not _is_source_wrapper_line(line)
+                    and not _is_facade_wrapper_line(line)
                 ]
                 actual_facade = [
-                    line for line in facade_lines if not _is_source_wrapper_line(line)
+                    line for line in facade_lines if not _is_facade_wrapper_line(line)
                 ]
                 if expected_facade != actual_facade:
                     errors.append(
