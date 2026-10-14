@@ -52,7 +52,7 @@ class RegressionInventoryTests(unittest.TestCase):
         ):
             with self.subTest(path=relative):
                 self.assertIn(command, (root / relative).read_text(encoding="utf-8"))
-        for distro in ("humble", "jazzy"):
+        for distro in ("humble", "jazzy", "lyrical"):
             prefix = f"Scripts.ros2forunity.windows.{distro}.regression_checks."
             directory = root / "Scripts/ros2forunity/windows" / distro / "regression_checks"
             expected = {prefix + path.stem for path in directory.glob("test_*.py")}
