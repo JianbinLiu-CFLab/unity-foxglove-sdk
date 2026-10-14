@@ -15,7 +15,6 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _Phase192Path, _PHASE192_FACADE_FILE
 
 import argparse
-import subprocess
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -28,20 +27,6 @@ from .models import (
     ToolchainPreflightRequest,
 )
 from .probes import preflight_toolchain
-
-def _default_runner(argv: Sequence[str], environment: Mapping[str, str]) -> ProcessResult:
-    """Implement the internal default runner step."""
-    completed = subprocess.run(
-        tuple(str(value) for value in argv),
-        capture_output=True,
-        check=False,
-        cwd=None,
-        env=dict(environment),
-        shell=False,
-        text=True,
-    )
-    return ProcessResult(completed.returncode, completed.stdout or "", completed.stderr or "")
-
 
 def _repository_root() -> Path:
     """Implement the internal repository root step."""
@@ -85,5 +70,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     print("PASS: " + result.distro + " / " + result.generator)
     return 0
+
+
+def cli_entry(argv: Sequence[str] | None = None) -> int:
+    """Run the CLI while preserving the compatibility facade exit contract."""
+
+    try:
+        return main(argv)
+    except KeyboardInterrupt:
+        return 130
+    except Exception as exc:
+        print(f"[phase181-toolchain] FAIL: {exc}", file=sys.stderr)
+        return 1
 
 __all__ = [name for name in globals() if not name.startswith("__")]

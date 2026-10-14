@@ -21,7 +21,6 @@ from typing import Any, Mapping, Sequence
 from .identity import compute_static_interface_digest, normalized_json_sha256
 from .inventory import (
     _load_json,
-    _normalize_distro,
     _reject_absolute_values,
     _validate_inventory,
 )
@@ -37,6 +36,7 @@ from .models import (
     ROS_PACKAGE_NAME,
     STATIC_INTERFACE_PACKAGE_ID,
     SUPPORTED_DISTROS,
+    _normalize_distro,
 )
 from .native import _validate_native_payload, _validate_rmw_closures
 

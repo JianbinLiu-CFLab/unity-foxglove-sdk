@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import contextlib
+import io
 import unittest
+from unittest import mock
 from dataclasses import replace
 from pathlib import Path
 
@@ -28,6 +31,7 @@ from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon impor
     select_candidate_native_libraries,
     verify_candidate_source_lock,
 )
+from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon import cli as builder_cli
 from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
     ROS_PACKAGE_NAME,
     STATIC_INTERFACE_PACKAGE_ID,
@@ -47,6 +51,25 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         ).__file__).with_suffix("")
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
+
+    def test_cli_entry_reports_unexpected_failures(self) -> None:
+        """The candidate package entrypoint preserves the facade failure contract."""
+        stderr = io.StringIO()
+        with mock.patch.object(builder_cli, "main", side_effect=RuntimeError("boom")):
+            with contextlib.redirect_stderr(stderr):
+                self.assertEqual(1, builder_cli.cli_entry([]))
+        self.assertEqual("[phase181-candidate] FAIL: boom\n", stderr.getvalue())
+
+    def test_cli_entry_maps_keyboard_interrupt(self) -> None:
+        """The candidate package entrypoint maps operator interruption to exit 130."""
+        with mock.patch.object(builder_cli, "main", side_effect=KeyboardInterrupt()):
+            self.assertEqual(130, builder_cli.cli_entry([]))
+
+    def test_common_validator_has_no_noop_module_entrypoint(self) -> None:
+        """The common validator library does not advertise a no-op CLI."""
+        from Scripts.ros2forunity.interfaces import foxrun_custom_typesupport_common as common
+
+        self.assertFalse((Path(common.__file__).with_suffix("") / "__main__.py").exists())
 
     def test_check_source_cli_does_not_invent_machine_specific_toolchain_sources(self) -> None:
         """Verify check source cli does not invent machine specific toolchain sources."""

@@ -47,6 +47,15 @@ class AddonValidationError(ValueError):
         super().__init__(self.code + ": " + remediation)
 
 
+def _normalize_distro(value: str) -> str:
+    """Normalize and validate one supported ROS2 distro name."""
+
+    normalized = (value or "").strip().lower()
+    if normalized not in SUPPORTED_DISTROS:
+        raise AddonValidationError("select-supported-ros-distro")
+    return normalized
+
+
 @dataclass(frozen=True)
 class AddonValidationRequest:
     """Explicit selected-package inputs for one add-on validation."""

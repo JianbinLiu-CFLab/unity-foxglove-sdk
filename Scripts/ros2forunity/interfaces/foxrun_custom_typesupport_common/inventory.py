@@ -21,18 +21,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
 
 from .identity import file_sha256
-from .models import AddonValidationError
+from .models import AddonValidationError, SUPPORTED_DISTROS, _normalize_distro
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _ABSOLUTE_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|[\\/]{2}|/)")
-
-def _normalize_distro(value: str) -> str:
-    """Implement the internal normalize distro step."""
-    normalized = (value or "").strip().lower()
-    if normalized not in SUPPORTED_DISTROS:
-        raise AddonValidationError("select-supported-ros-distro")
-    return normalized
-
 
 def _load_json(path: Path, remediation: str) -> dict[str, Any]:
     """Implement the internal load json step."""
