@@ -2867,5 +2867,98 @@ class IdentityToolingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare_identity_surfaces._section_exports(source, "fixture.py")
 
+
+    def test_generated_facade_rejects_unapproved_module_registry_assignment(self) -> None:
+        """Generated facades may only restore their own module alias."""
+        facade = Path("Scripts/mcap/mcap_time_sync.py")
+        source = facade.read_text(encoding="utf-8") + '\n_phase192_sys.modules["unexpected_module"] = None\n'
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._symbols(source, str(facade))
+
+    def test_generated_facade_rejects_unrelated_module_registry_key(self) -> None:
+        """Generated facades may not restore an unrelated module key."""
+        facade = Path("Scripts/mcap/mcap_time_sync.py")
+        source = facade.read_text(encoding="utf-8") + '\n_phase192_sys.modules["unexpected_module"] = _phase192_self\n'
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._symbols(source, str(facade))
+
+    def test_generated_facade_rejects_unrelated_module_registry_pop(self) -> None:
+        """Generated facades may not remove an unrelated module key."""
+        facade = Path("Scripts/mcap/mcap_time_sync.py")
+        source = facade.read_text(encoding="utf-8") + '\n_phase192_sys.modules.pop("unexpected_module", None)\n'
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._symbols(source, str(facade))
+
+    def test_generated_initializer_rejects_import_time_main_call(self) -> None:
+        """Package initializers cannot invoke an exported CLI during import."""
+        initializer = Path("Scripts/mcap/mcap_time_sync/__init__.py")
+        tree = ast.parse(initializer.read_text(encoding="utf-8") + "\nmain()\n", str(initializer))
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._phase192_template_validate_initializer(tree, str(initializer))
+
+    def test_entrypoint_rejects_untrusted_test_suite_generator(self) -> None:
+        """Generated test entrypoints cannot execute a side-effecting iterator."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("modules = ()\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "import unittest\nfrom . import modules\n"
+                "def side_effect():\n    return modules\n"
+                "suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromModule(m) for m in side_effect())\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_nested_f_string_side_effect(self) -> None:
+        """Generated entrypoints cannot execute calls inside error messages."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("def main(): return 0\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "import sys\nfrom . import main\n"
+                "if __name__ == \"__main__\":\n"
+                "    try:\n"
+                "        raise SystemExit(main())\n"
+                "    except Exception as exc:\n"
+                "        print(f\"FAIL {print('unexpected')}\", file=sys.stderr)\n"
+                "        raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_raise_cause_side_effect(self) -> None:
+        """Generated entrypoints cannot execute calls in raise causes."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("def main(): return 0\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "import sys\nfrom . import main\n"
+                "if __name__ == \"__main__\":\n"
+                "    try:\n"
+                "        raise SystemExit(main())\n"
+                "    except Exception as exc:\n"
+                "        print(\"FAIL\", file=sys.stderr)\n"
+                "        raise SystemExit(1) from print('unexpected')\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_generated_section_rejects_top_level_metric_exec(self) -> None:
+        """Metric helper exec is not allowed at generated-section import time."""
+        source = "POINTCLOUD2_METRIC_HELPERS = 'x'\nnamespace = {}\nexec(POINTCLOUD2_METRIC_HELPERS, namespace, namespace)\n"
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._validate_generated_section(
+                source,
+                Path("Scripts/smoke/ros2/phase138u_lidar_deskew_rviz2_acceptance/pointcloud_metrics.py"),
+                Path("Scripts/smoke/ros2/phase138u_lidar_deskew_rviz2_acceptance"),
+                frozenset({"pointcloud_metrics"}),
+            )
+
 if __name__ == "__main__":
     unittest.main()

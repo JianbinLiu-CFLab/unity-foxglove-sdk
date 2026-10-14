@@ -376,6 +376,7 @@ def _phase192_template_validate_facade(tree: ast.Module, path: str) -> None:
     _phase192_template_validate_class(classes[0], path, package=False)
     _phase192_template_validate_imports(tree, path)
     _phase192_template_validate_calls(tree, path)
+    _phase192_validate_template_registry_mutations(tree, path)
     for node in tree.body:
         if isinstance(node, (ast.Expr, ast.Import, ast.ImportFrom, ast.Assign, ast.Delete, ast.If, ast.Try, ast.ClassDef)):
             continue
@@ -391,6 +392,50 @@ def _phase192_template_validate_facade(tree: ast.Module, path: str) -> None:
         raise ValueError(f"Generated facade has no package import in {path}")
 
 
+def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) -> None:
+    """Allow only the exact sys.modules forwarding mutations emitted by templates."""
+    expected_module_key = Path(path).stem
+
+    def modules_value(node: ast.AST) -> bool:
+        """Recognize the generated module registry aliases."""
+        return (
+            isinstance(node, ast.Attribute)
+            and node.attr == "modules"
+            and isinstance(node.value, ast.Name)
+            and (node.value.id.endswith("_sys") or node.value.id.endswith("_sys_alias"))
+        )
+
+    for statement in ast.walk(tree):
+        if isinstance(statement, ast.Assign):
+            for target in statement.targets:
+                if isinstance(target, ast.Subscript) and modules_value(target.value):
+                    if not (
+                        isinstance(target.slice, ast.Constant)
+                        and isinstance(target.slice.value, str)
+                        and target.slice.value == expected_module_key
+                        and isinstance(statement.value, ast.Name)
+                        and statement.value.id.endswith("_self")
+                    ):
+                        raise ValueError(f"Unsupported generated module registry mutation in {path}")
+        if isinstance(statement, ast.Delete):
+            if any(isinstance(target, ast.Subscript) and modules_value(target.value) for target in statement.targets):
+                raise ValueError(f"Unsupported generated module registry deletion in {path}")
+        if isinstance(statement, ast.Subscript) and modules_value(statement.value) and isinstance(statement.ctx, ast.Store):
+            continue
+        node = statement
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "pop" and modules_value(node.func.value):
+            if not (
+                len(node.args) == 2
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+                and node.args[0].value == expected_module_key
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value is None
+                and not node.keywords
+            ):
+                raise ValueError(f"Unsupported generated module registry pop in {path}")
+
+
 def _phase192_template_validate_initializer(tree: ast.Module, path: str) -> None:
     """Validate the generated package initializer shape."""
     classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
@@ -399,7 +444,8 @@ def _phase192_template_validate_initializer(tree: ast.Module, path: str) -> None
     _phase192_template_validate_class(classes[0], path, package=True)
     _phase192_template_validate_imports(tree, path)
     _phase192_template_validate_calls(tree, path)
-    for node in tree.body:
+    _phase192_validate_template_registry_mutations(tree, path)
+    for index, node in enumerate(tree.body):
         if isinstance(node, ast.FunctionDef) and node.name == "load_tests":
             if node.decorator_list or not node.body or any(
                 not isinstance(statement, (ast.Expr, ast.Return, ast.Pass))
@@ -407,7 +453,11 @@ def _phase192_template_validate_initializer(tree: ast.Module, path: str) -> None
             ):
                 raise ValueError(f"Unsupported generated load_tests function in {path}")
             continue
-        if isinstance(node, (ast.Expr, ast.Import, ast.ImportFrom, ast.Assign, ast.Delete, ast.If, ast.For, ast.ClassDef)):
+        if isinstance(node, ast.Expr):
+            if index != 0 or not isinstance(node.value, ast.Constant) or not isinstance(node.value.value, str):
+                raise ValueError(f"Unsupported generated package expression in {path}")
+            continue
+        if isinstance(node, (ast.Import, ast.ImportFrom, ast.Assign, ast.Delete, ast.If, ast.For, ast.ClassDef)):
             continue
         raise ValueError(f"Unsupported generated package statement in {path}")
     if not any(
@@ -1619,6 +1669,8 @@ def _symbols(
         for node in tree.body
     ):
         _phase192_template_validate_facade(tree, path)
+        _validate_namespace_access(tree, allowed_nodes, path, reject_module_registry=False)
+        _phase192_validate_template_registry_mutations(tree, path)
     else:
         _validate_namespace_access(tree, allowed_nodes, path)
     conditional = _conditional_only_public_names(tree)
@@ -1657,22 +1709,6 @@ def _section_exports(
     for value in direct_values:
         if _is_public_globals_comprehension(value):
             allowed_nodes.update(id(item) for item in ast.walk(value))
-    for node in ast.walk(tree):
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "exec"
-            and len(node.args) == 3
-            and not node.keywords
-            and isinstance(node.args[0], ast.Name)
-            and node.args[0].id == "POINTCLOUD2_METRIC_HELPERS"
-            and isinstance(node.args[1], ast.Name)
-            and node.args[1].id == "namespace"
-            and isinstance(node.args[2], ast.Name)
-            and node.args[2].id == "namespace"
-        ):
-            continue
-        allowed_nodes.update(id(item) for item in ast.walk(node))
     _validate_namespace_access(tree, allowed_nodes, path, reject_module_registry=True)
     for node in ast.walk(tree):
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -1986,6 +2022,7 @@ def _entrypoint_contract(
                 and value.func.value.id == "unittest"
                 and value.func.attr == "TestSuite"
                 and len(value.args) == 1
+                and not value.keywords
                 and isinstance(value.args[0], ast.GeneratorExp)
                 and isinstance(value.args[0].elt, ast.Call)
                 and isinstance(value.args[0].elt.func, ast.Attribute)
@@ -1995,9 +2032,16 @@ def _entrypoint_contract(
                 and value.args[0].elt.func.value.attr == "defaultTestLoader"
                 and value.args[0].elt.func.attr == "loadTestsFromModule"
                 and len(value.args[0].elt.args) == 1
+                and not value.args[0].elt.keywords
                 and isinstance(value.args[0].elt.args[0], ast.Name)
                 and len(value.args[0].generators) == 1
                 and isinstance(value.args[0].generators[0].target, ast.Name)
+                and not value.args[0].generators[0].ifs
+                and not value.args[0].generators[0].is_async
+                and isinstance(value.args[0].generators[0].iter, ast.Name)
+                and value.args[0].generators[0].iter.id in {
+                    "modules", "_PHASE192_SECTION_MODULES", "_PHASE192_SECTIONS",
+                }
                 and value.args[0].elt.args[0].id == value.args[0].generators[0].target.id
             )
         if target == "result":
@@ -2033,10 +2077,60 @@ def _entrypoint_contract(
             and node.orelse.value == 1
         )
 
-    def validate_guard_statements(statements: list[ast.stmt]) -> bool:
+    def safe_log_argument(node: ast.AST, exception_names: frozenset[str]) -> bool:
+        """Allow literals and direct references to the caught exception in messages."""
+        if isinstance(node, ast.Constant):
+            return True
+        if not isinstance(node, ast.JoinedStr):
+            return False
+        for value in node.values:
+            if isinstance(value, ast.Constant):
+                continue
+            if (
+                isinstance(value, ast.FormattedValue)
+                and isinstance(value.value, ast.Name)
+                and value.value.id in exception_names
+                and value.conversion == -1
+                and value.format_spec is None
+            ):
+                continue
+            return False
+        return True
+
+    def validate_guard_statements(
+        statements: list[ast.stmt],
+        exception_names: frozenset[str] = frozenset(),
+    ) -> bool:
         """Internal helper for validate_guard_statements."""
         delegated = False
         for statement in statements:
+            if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+                call = statement.value
+                if (
+                    isinstance(call.func, ast.Name)
+                    and call.func.id == "print"
+                    and call.args
+                    and all(safe_log_argument(argument, exception_names) for argument in call.args)
+                    and len(call.keywords) == 1
+                    and call.keywords[0].arg == "file"
+                    and isinstance(call.keywords[0].value, ast.Attribute)
+                    and isinstance(call.keywords[0].value.value, ast.Name)
+                    and call.keywords[0].value.value.id == "sys"
+                    and call.keywords[0].value.attr == "stderr"
+                ):
+                    continue
+                raise ValueError(f"unsafe module entrypoint expression: {path}")
+            if isinstance(statement, ast.Try):
+                if statement.orelse or statement.finalbody or not statement.handlers:
+                    raise ValueError(f"unsafe module entrypoint try block: {path}")
+                validate_guard_statements(statement.body)
+                for handler in statement.handlers:
+                    if handler.type is None or not isinstance(handler.type, ast.Name) or handler.type.id not in {"KeyboardInterrupt", "Exception"}:
+                        raise ValueError(f"unsafe module entrypoint exception handler: {path}")
+                    handler_names = frozenset({handler.name}) if handler.name else frozenset()
+                    validate_guard_statements(handler.body, handler_names)
+                delegated = True
+                continue
             if isinstance(statement, ast.Assign):
                 if (
                     len(statement.targets) == 1
@@ -2101,9 +2195,18 @@ def _entrypoint_contract(
                             and is_safe_dispatch_call(exception.args[0])
                         )
                         or is_unittest_exit_expression(exception.args[0])
+                        or (
+                            isinstance(exception.args[0], ast.Constant)
+                            and exception.args[0].value in {1, 130}
+                        )
                     )
                 ):
                     raise ValueError(f"unsafe module entrypoint raise: {path}")
+                if statement.cause is not None and not (
+                    isinstance(statement.cause, ast.Name)
+                    and statement.cause.id in exception_names
+                ):
+                    raise ValueError(f"unsafe module entrypoint raise cause: {path}")
                 delegated = True
                 continue
             raise ValueError(f"unsafe module entrypoint statement: {path}")
@@ -2813,23 +2916,6 @@ def _validate_generated_section(
     tree = _parse_source(source, path)
     _relative_import_contract(tree, package_dir, path, section_names)
     _section_exports(source, str(path), reject_conditional=False)
-    allowed_exec = {
-        id(node)
-        for node in ast.walk(tree)
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "exec"
-            and len(node.args) == 3
-            and not node.keywords
-            and isinstance(node.args[0], ast.Name)
-            and node.args[0].id == "POINTCLOUD2_METRIC_HELPERS"
-            and isinstance(node.args[1], ast.Name)
-            and node.args[1].id == "namespace"
-            and isinstance(node.args[2], ast.Name)
-            and node.args[2].id == "namespace"
-        )
-    }
     parents: dict[int, ast.AST] = {}
     for parent in ast.walk(tree):
         for child in ast.iter_child_nodes(parent):
@@ -2852,7 +2938,7 @@ def _validate_generated_section(
                 continue
             if isinstance(node.func, ast.Name) and node.func.id in {
                 "__import__", "compile", "eval", "exec", "open",
-            } and id(node) not in allowed_exec:
+            }:
                 if not (
                     node.func.id == "__import__"
                     and node.args

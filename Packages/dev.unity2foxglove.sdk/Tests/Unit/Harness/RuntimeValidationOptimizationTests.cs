@@ -20,6 +20,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
     [Trait("Domain", "Harness")]
     public sealed class FoxgloveRuntimeSourceCompositionTests
     {
+        [Theory]
+        [InlineData("Phase163_40Validation.cs", "Scripts/release/bump_version.py", "def resolve_repo_root()")]
+        [InlineData("Phase164_40Validation.cs", "Scripts/release/bump_version.py", "def run(self)")]
+        [InlineData("Phase164_32Validation.cs", "Scripts/smoke/ros2/phase162_lyrical_zenoh_player_smoke.py", "def wait_for_marker(")]
+        [InlineData("Phase164_35Validation.cs", "Scripts/smoke/test_core_smoke_scripts.py", "def load_smoke_module(")]
+        [InlineData("Phase164_41Validation.cs", "Scripts/smoke/test_core_smoke_scripts.py", "def load_smoke_module(")]
+        [InlineData("Phase164_30Validation.cs", "Scripts/smoke/ros2/phase160_humble_lidar_deskew_acceptance.py", "def write_probe_script(")]
+        [InlineData("Phase163_33Validation.cs", "Scripts/smoke/ros2/phase160_humble_lidar_deskew_acceptance.py", "def pointcloud_display(")]
+        [InlineData("R2fuHumbleRuntimePackageValidation.cs", "Scripts/smoke/ros2/phase160_humble_lidar_deskew_acceptance.py", "def write_probe_script(")]
+        [InlineData("R2fuLyricalRuntimePackageValidation.cs", "Scripts/smoke/ros2/phase162_lyrical_zenoh_player_smoke.py", "def wait_for_marker(")]
+        public void SplitPythonScannersUseDeclaredSourceSections(string validator, string facade, string signature)
+        {
+            Assert.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSource", TestSources.Runtime(validator), StringComparison.Ordinal);
+            var source = PhaseValidationSourceHelpers.ReadSplitPythonSource(facade);
+            Assert.Contains(signature, source, StringComparison.Ordinal);
+        }
+
         [Fact]
         public void FoxgloveRuntimeCompositionFailsClosedAndPreservesTrailingGateOrder()
         {
