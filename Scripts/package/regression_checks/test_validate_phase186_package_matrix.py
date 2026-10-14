@@ -32,11 +32,13 @@ class _Phase192FacadeModule(_phase192_types.ModuleType):
     """Mirror facade attribute updates into the test package."""
 
     def __setattr__(self, name, value):
+        """Mirror assigned facade state into the decomposed test modules."""
         super().__setattr__(name, value)
         if _phase192_package_module is not None and _phase192_package_module is not self:
             setattr(_phase192_package_module, name, value)
 
     def __delattr__(self, name):
+        """Mirror deleted facade state into the decomposed test modules."""
         super().__delattr__(name)
         if _phase192_package_module is not None and _phase192_package_module is not self:
             try:
