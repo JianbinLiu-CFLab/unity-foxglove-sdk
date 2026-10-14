@@ -72,7 +72,7 @@ def run_self_test() -> int:
     return 0
 
 
-def main(argv: list[str]) -> int:
+def _main_impl(argv: list[str]) -> int:
     """Script entry point."""
 
     args = parse_args(argv)
@@ -169,10 +169,10 @@ def main(argv: list[str]) -> int:
     return 0
 
 
-def run_cli(argv: list[str]) -> int:
-    """Run the acceptance CLI with stable process exit semantics."""
+def main(argv: list[str]) -> int:
+    """Run the CLI and map process-level failures to stable exit codes."""
     try:
-        return main(argv)
+        return _main_impl(argv)
     except KeyboardInterrupt:
         return 130
     except InconclusiveError as exc:
@@ -181,6 +181,11 @@ def run_cli(argv: list[str]) -> int:
     except Exception as exc:
         print(f"[phase138u-lidar-deskew] FAIL: {exc}", file=sys.stderr)
         return 1
+
+
+def run_cli(argv: list[str]) -> int:
+    """Run the acceptance CLI with stable process exit semantics."""
+    return main(argv)
 
 
 __all__ = ["run_self_test", "main", "run_cli"]

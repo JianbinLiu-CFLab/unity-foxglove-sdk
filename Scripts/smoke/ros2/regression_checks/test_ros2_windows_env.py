@@ -153,6 +153,42 @@ class Ros2WindowsEnvTests(unittest.TestCase):
         """The RViz window probe must resolve its foundation dependencies explicitly."""
         self.assertIsInstance(ros2env.visible_windows_for_pid(1234), list)
 
+    def test_visible_windows_for_pid_filters_fake_win32_windows(self) -> None:
+        """The Win32 callback must filter visibility, PID, and window titles."""
+        import ctypes
+        import importlib
+
+        foundation = importlib.import_module("_ros2_windows_env.foundation")
+
+        class FakeUser32:
+            """Small user32 double that exposes three window cases."""
+
+            def IsWindowVisible(self, hwnd):
+                """Return visibility for one hidden and two visible handles."""
+                return hwnd != 1
+
+            def GetWindowThreadProcessId(self, hwnd, process_id):
+                """Assign the target PID only to the RViz handle."""
+                process_id._obj.value = 1234 if hwnd == 2 else 9876
+
+            def GetWindowTextLengthW(self, hwnd):
+                """Return the fake title length."""
+                return len("RViz2" if hwnd == 2 else "Other")
+
+            def GetWindowTextW(self, hwnd, buffer, _length):
+                """Write the fake title into the ctypes buffer."""
+                buffer.value = "RViz2" if hwnd == 2 else "Other"
+
+            def EnumWindows(self, callback, _lparam):
+                """Visit hidden, target, and unrelated windows."""
+                for hwnd in (1, 2, 3):
+                    callback(hwnd, 0)
+
+        with mock.patch.object(foundation, "_USER32", FakeUser32()):
+            with mock.patch.object(foundation, "_ENUM_WINDOWS_PROC_TYPE", lambda callback: callback):
+                with mock.patch.object(foundation, "ctypes", ctypes):
+                    self.assertEqual(["RViz2"], ros2env.visible_windows_for_pid(1234))
+
     def test_launch_rviz_checks_visible_window_when_wait_requested(self) -> None:
         """A positive window wait must exercise the visible-window probe."""
         import importlib

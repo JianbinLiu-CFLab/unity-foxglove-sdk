@@ -73,6 +73,8 @@ def run_phase138u_with_rviz_capture(
 ) -> int:
     """Run Phase138U while capturing RViz2 processes it launches."""
 
+    from phase138u_lidar_deskew_rviz2_acceptance import acceptance_cli
+
     original_launch_rviz = phase138u.ros2env.launch_rviz
 
     def launch_rviz_and_capture(*args, **kwargs):
@@ -84,7 +86,7 @@ def run_phase138u_with_rviz_capture(
 
     phase138u.ros2env.launch_rviz = launch_rviz_and_capture
     try:
-        return phase138u.main(rviz_args)
+        return acceptance_cli._main_impl(rviz_args)
     finally:
         phase138u.ros2env.launch_rviz = original_launch_rviz
 

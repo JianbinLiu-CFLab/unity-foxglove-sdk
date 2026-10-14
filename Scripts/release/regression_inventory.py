@@ -95,6 +95,7 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
         "Scripts.smoke.ros2.regression_checks.test_i10_phase109_cleanup",
         "Scripts.smoke.ros2.regression_checks.test_i10_remaining_cleanup",
         "Scripts.smoke.ros2.regression_checks.test_launch_phase138l_rviz2",
+        "Scripts.smoke.ros2.regression_checks.test_phase138u_followup",
     ),
 }
 

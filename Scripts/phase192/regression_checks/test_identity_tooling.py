@@ -2885,6 +2885,26 @@ class IdentityToolingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare_identity_surfaces._symbols(source, str(facade))
 
+    def test_generated_facade_rejects_propagated_module_registry_alias(self) -> None:
+        """Generated facades may not mutate sys.modules through a propagated alias."""
+        facade = Path("Scripts/mcap/mcap_time_sync.py")
+        source = facade.read_text(encoding="utf-8") + (
+            '\n_phase192_registry = _phase192_sys.modules\n'
+            '_phase192_registry.pop("unrelated_module", None)\n'
+        )
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._symbols(source, str(facade))
+
+    def test_generated_facade_rejects_imported_private_helper_alias(self) -> None:
+        """Generated facades may not disguise sys.exit as an approved helper."""
+        facade = Path("Scripts/mcap/mcap_time_sync.py")
+        source = facade.read_text(encoding="utf-8") + (
+            '\nfrom sys import exit as _phase192_main\n'
+            '_phase192_main(0)\n'
+        )
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._symbols(source, str(facade))
+
     def test_generated_facade_rejects_module_registry_attribute_mutation(self) -> None:
         """Generated facades may not mutate attributes through a registry subscript."""
         facade = Path("Scripts/mcap/mcap_time_sync.py")

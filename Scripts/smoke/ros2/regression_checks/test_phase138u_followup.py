@@ -20,7 +20,7 @@ class Phase138UFollowupTests(unittest.TestCase):
     @staticmethod
     def _run_entrypoint(side_effect: BaseException) -> BaseException:
         """Execute the module entrypoint with a controlled CLI failure."""
-        with mock.patch.object(acceptance_cli, "main", side_effect=side_effect):
+        with mock.patch.object(acceptance_cli, "_main_impl", side_effect=side_effect):
             try:
                 runpy.run_module(
                     "Scripts.smoke.ros2.phase138u_lidar_deskew_rviz2_acceptance.__main__",

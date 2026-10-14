@@ -325,6 +325,17 @@ def _phase192_template_call_is_safe(call: ast.Call) -> bool:
 
 def _phase192_template_validate_calls(tree: ast.AST, path: str) -> None:
     """Validate the deliberately small call vocabulary used by wrappers."""
+    trusted_path_imports = {"pathlib.Path"}
+    trusted_special_aliases = {"_phase192_entrypoint", "_phase192_main", "_phase192_repository_root"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            for alias in node.names:
+                bound_name = alias.asname or alias.name
+                if bound_name.endswith("Path") and f"{module}.{alias.name}" not in trusted_path_imports:
+                    raise ValueError(f"Untrusted Path alias in {path}")
+                if bound_name in trusted_special_aliases:
+                    raise ValueError(f"Untrusted generated-wrapper alias in {path}")
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and not _phase192_template_call_is_safe(node):
             raise ValueError(f"Unsupported generated-wrapper call in {path}")
@@ -422,6 +433,19 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
             and node.value.id in sys_aliases
         )
 
+    changed = True
+    while changed:
+        changed = False
+        for statement in ast.walk(tree):
+            if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+                continue
+            target = statement.targets[0]
+            if not isinstance(target, ast.Name) or not modules_value(statement.value):
+                continue
+            if target.id not in registry_aliases:
+                registry_aliases.add(target.id)
+                changed = True
+
     def contains_registry_reference(node: ast.AST) -> bool:
         """Recognize mutation targets rooted in the module registry."""
         if modules_value(node):
@@ -435,6 +459,11 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
     for statement in ast.walk(tree):
         if isinstance(statement, ast.Assign):
             for target in statement.targets:
+                if (
+                    isinstance(target, ast.Name)
+                    and modules_value(statement.value)
+                ):
+                    continue
                 if contains_registry_reference(target):
                     if not (
                         isinstance(target, ast.Subscript)
