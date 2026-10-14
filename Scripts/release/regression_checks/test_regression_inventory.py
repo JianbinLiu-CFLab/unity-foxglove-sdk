@@ -41,6 +41,7 @@ class RegressionInventoryTests(unittest.TestCase):
         self.assertTrue(any(error.startswith("UNASSIGNED:") for error in errors))
 
     def test_windows_tooling_docs_use_complete_inventory_lane(self):
+        """Windows tooling documentation covers every declared distro lane."""
         root = Path(__file__).resolve().parents[3]
         lane = regression_inventory._WORKFLOW_RUNNER_MODULES["windows-parity-regression-tooling"]
         self.assertEqual(len(lane), len(set(lane)))
