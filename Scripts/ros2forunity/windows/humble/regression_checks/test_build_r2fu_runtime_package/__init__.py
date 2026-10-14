@@ -74,6 +74,8 @@ _phase192_load_tests_used = False
 def load_tests(loader, tests, pattern):
     """Collect split facade tests once during unittest discovery."""
     global _phase192_load_tests_used
+    if pattern is None:
+        return tests
     if _phase192_load_tests_used:
         return loader.suiteClass()
     _phase192_load_tests_used = True
