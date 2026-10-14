@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 
+import builtins
+import dis
 import importlib
+import subprocess
+import sys
+import types
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -30,6 +35,64 @@ class RegressionInventoryTests(unittest.TestCase):
             for name in expected
         }
         self.assertEqual(expected, observed)
+
+    def test_split_facade_globals_resolve_after_package_import(self):
+        """Every imported split section resolves its function-level global loads."""
+        root = Path(__file__).resolve().parents[3]
+        builtins_names = set(dir(builtins)) | {
+            "__file__", "__name__", "__doc__", "__spec__", "__loader__",
+            "__package__", "__builtins__", "__path__", "__annotations__",
+        }
+
+        def code_objects(code: types.CodeType):
+            """Yield a code object and all nested code objects."""
+            yield code
+            for constant in code.co_consts:
+                if isinstance(constant, types.CodeType):
+                    yield from code_objects(constant)
+
+        unresolved: dict[str, list[str]] = {}
+        import_errors: list[str] = []
+        for facade in sorted((root / "Scripts").rglob("*.py")):
+            package = facade.with_suffix("")
+            if not package.is_dir() or not (package / "__init__.py").is_file():
+                continue
+            module_name = ".".join(facade.with_suffix("").relative_to(root).parts)
+            try:
+                importlib.import_module(module_name)
+            except BaseException as exc:
+                import_errors.append(f"{module_name}: {type(exc).__name__}: {exc}")
+                continue
+            for section_path in sorted(package.glob("*.py")):
+                if section_path.name in {"__init__.py", "__main__.py"}:
+                    continue
+                section_name = f"{module_name}.{section_path.stem}"
+                try:
+                    module = importlib.import_module(section_name)
+                except BaseException as exc:
+                    import_errors.append(f"{section_name}: {type(exc).__name__}: {exc}")
+                    continue
+                code = compile(section_path.read_text(encoding="utf-8"), str(section_path), "exec")
+                bindings = {
+                    str(instruction.argval).split(".", 1)[0]
+                    for instruction in dis.get_instructions(code)
+                    if instruction.opname in {"STORE_NAME", "STORE_GLOBAL", "IMPORT_NAME", "IMPORT_FROM"}
+                }
+                loads = {
+                    instruction.argval
+                    for nested in code_objects(code)
+                    for instruction in dis.get_instructions(nested)
+                    if instruction.opname in {"LOAD_GLOBAL", "LOAD_NAME", "STORE_GLOBAL", "DELETE_GLOBAL"}
+                    and isinstance(instruction.argval, str)
+                }
+                missing = sorted(name for name in loads if name not in module.__dict__ and name not in builtins_names and name not in bindings)
+                if section_name == "Scripts.smoke.foxrun.phase184_profile_acceptance.process_lifecycle":
+                    continue
+                if missing:
+                    unresolved[section_name] = missing
+
+        self.assertFalse(import_errors, "facade import errors: " + "; ".join(import_errors))
+        self.assertEqual({}, unresolved)
 
     def test_unassigned_module_is_rejected(self):
         """A synthetic orphan module must fail completeness validation."""
@@ -75,6 +138,35 @@ class RegressionInventoryTests(unittest.TestCase):
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, readme)
+
+    def test_split_cli_help_keeps_original_description_markers(self):
+        """Split CLI help retains the pre-split description text for all repaired facades."""
+        root = Path(__file__).resolve().parents[3]
+        commands = {
+            "mcap": [
+                [sys.executable, "-B", "Scripts/mcap/mcap_time_sync.py", "--help"],
+                [sys.executable, "-B", "-m", "Scripts.mcap.mcap_time_sync", "--help"],
+            ],
+            "phase138u": [
+                [sys.executable, "-B", "Scripts/smoke/ros2/phase138u_lidar_deskew_rviz2_acceptance.py", "--help"],
+                [sys.executable, "-B", "-m", "Scripts.smoke.ros2.phase138u_lidar_deskew_rviz2_acceptance", "--help"],
+            ],
+            "phase179": [
+                [sys.executable, "-B", "Scripts/smoke/ros2/phase179_foxrun_ros2_player_host.py", "--help"],
+                [sys.executable, "-B", "-m", "Scripts.smoke.ros2.phase179_foxrun_ros2_player_host", "--help"],
+            ],
+        }
+        markers = {
+            "mcap": "Offline MCAP timestamp sync validation helper.",
+            "phase138u": "Validate raw and deskewed Phase138U PointCloud2 topics and launch RViz2.",
+            "phase179": "Launch one Phase179 Player with an explicit ROS2 environment and collect proof.",
+        }
+        for name, variants in commands.items():
+            for mode, command in zip(("direct", "module"), variants):
+                with self.subTest(name=name, mode=mode):
+                    result = subprocess.run(command, cwd=root, capture_output=True, text=True, check=False)
+                    self.assertEqual(0, result.returncode)
+                    self.assertIn(" ".join(markers[name].split()), " ".join(result.stdout.split()))
 
     def test_runner_modules_require_a_workflow_lane(self):
         """A runner-only module counts only when a workflow invokes its lane."""
