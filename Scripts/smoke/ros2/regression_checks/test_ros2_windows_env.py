@@ -157,6 +157,7 @@ class Ros2WindowsEnvTests(unittest.TestCase):
         """The Win32 callback must filter visibility, PID, and window titles."""
         import ctypes
         import importlib
+        from ctypes import wintypes
 
         foundation = importlib.import_module("_ros2_windows_env.foundation")
 
@@ -187,7 +188,7 @@ class Ros2WindowsEnvTests(unittest.TestCase):
         with mock.patch.object(foundation, "_USER32", FakeUser32()):
             with mock.patch.object(foundation, "_ENUM_WINDOWS_PROC_TYPE", lambda callback: callback):
                 with mock.patch.object(foundation, "ctypes", ctypes):
-                    with mock.patch.object(foundation, "wintypes", ctypes.wintypes):
+                    with mock.patch.object(foundation, "wintypes", wintypes):
                         self.assertEqual(["RViz2"], ros2env.visible_windows_for_pid(1234))
 
     def test_launch_rviz_checks_visible_window_when_wait_requested(self) -> None:
