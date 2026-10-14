@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from .foundation import *
 from .marker_protocol import *
 from .runtime import *
@@ -107,5 +109,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         finally:
             inbound.close_configured_topology(configured_topology)
     return 2 if summary["verdict"] == "PLAYER_PROOF_COMPLETE_LINUX_PEER_CORRELATION_PENDING" else 1
+
+
+def cli_entry(argv: Sequence[str] | None = None) -> int:
+    """Run the CLI while preserving the compatibility facade exit contract."""
+
+    try:
+        return main(argv)
+    except KeyboardInterrupt:
+        return 130
+    except Exception as exc:
+        print(f"[phase179-player-host] FAIL: {exc}", file=sys.stderr)
+        print(
+            "[phase179-player-host] Check the Player log, stale ROS2/Zenoh processes, and the supplied runtime selection.",
+            file=sys.stderr,
+        )
+        return 1
 
 __all__ = [name for name in globals() if not name.startswith("__")]

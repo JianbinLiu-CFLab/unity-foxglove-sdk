@@ -17,7 +17,7 @@ from . import foundation as _phase192_section_0
 from . import workspace as _phase192_section_1
 from . import evidence as _phase192_section_2
 from . import assembly as _phase192_section_3
-from . import characterize as _phase192_section_4
+from . import characterization_core as _phase192_section_4
 from . import cli as _phase192_section_5
 
 _PHASE192_SECTION_MODULES = (

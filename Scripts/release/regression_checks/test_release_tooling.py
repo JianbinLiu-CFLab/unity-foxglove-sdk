@@ -2737,6 +2737,38 @@ class McapConformanceToolTests(unittest.TestCase):
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
 
+    def test_cli_entry_reports_unexpected_failures(self) -> None:
+        """The package entrypoint preserves the compatibility facade failure contract."""
+        from Scripts.mcap.conformance.run_phase121_conformance import cli
+
+        stderr = io.StringIO()
+        with mock.patch.object(cli, "main", side_effect=RuntimeError("boom")):
+            with contextlib.redirect_stderr(stderr):
+                self.assertEqual(1, cli.cli_entry([]))
+        self.assertEqual("[phase121-conformance] FAIL: boom\n", stderr.getvalue())
+
+    def test_cli_entry_maps_keyboard_interrupt(self) -> None:
+        """The package entrypoint maps operator interruption to exit 130."""
+        from Scripts.mcap.conformance.run_phase121_conformance import cli
+
+        with mock.patch.object(cli, "main", side_effect=KeyboardInterrupt()):
+            self.assertEqual(130, cli.cli_entry([]))
+
+    def test_public_configuration_state_tracks_configuration_module(self) -> None:
+        """Facade configuration values stay synchronized after runtime updates."""
+        from Scripts.mcap.conformance import run_phase121_conformance as facade
+        from Scripts.mcap.conformance.run_phase121_conformance import configuration
+
+        chosen = ROOT / "build" / "review-official-root"
+        facade.set_official_root(chosen)
+        self.assertEqual(chosen.resolve(), facade.OFFICIAL_ROOT)
+        self.assertEqual(chosen.resolve(), configuration.OFFICIAL_ROOT)
+        report = ROOT / "build" / "review-report.json"
+        with mock.patch.object(facade._checkout, "write_ci_smoke_report"):
+            self.assertEqual(0, facade.main(["--report-path", str(report), "--ci-smoke"]))
+        self.assertEqual(report.resolve(), facade.REPORT_PATH)
+        self.assertEqual(report.resolve(), configuration.REPORT_PATH)
+
     def test_official_conformance_stages_have_no_hardcoded_deadlines(self) -> None:
         """Official finite stages should run to completion independent of host speed."""
         timeout_calls = []
@@ -2750,11 +2782,25 @@ class McapConformanceToolTests(unittest.TestCase):
                     continue
                 if not any(keyword.arg == "timeout_seconds" for keyword in node.keywords):
                     continue
-                function_name = node.func.id if isinstance(node.func, ast.Name) else ""
+                if isinstance(node.func, ast.Name):
+                    function_name = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    function_name = node.func.attr
+                else:
+                    function_name = ""
                 if function_name in {"invoke_command_capture", "run_package_manager"}:
                     timeout_calls.append((source_path.name, node.lineno))
 
         self.assertEqual([], timeout_calls)
+
+    def test_timeout_guard_detects_attribute_calls(self) -> None:
+        """The timeout guard must inspect qualified helper calls, not only bare names."""
+        tree = ast.parse(
+            "_configuration.invoke_command_capture(['tool'], timeout_seconds=60)\n"
+        )
+        call = next(node for node in ast.walk(tree) if isinstance(node, ast.Call))
+        function_name = call.func.id if isinstance(call.func, ast.Name) else call.func.attr
+        self.assertEqual("invoke_command_capture", function_name)
 
     def test_timeout_failure_details_preserve_the_timeout_reason(self) -> None:
         """Large runner output must not truncate away the actionable timeout diagnosis."""

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
 import os
@@ -25,6 +25,7 @@ from Scripts.ros2forunity.interfaces.characterize_foxrun_custom_interface import
     requires_short_windows_build_alias,
     characterization_root,
 )
+from Scripts.ros2forunity.interfaces.characterize_foxrun_custom_interface import cli as characterization_cli
 
 
 class CustomInterfaceCharacterizationTests(unittest.TestCase):
@@ -34,6 +35,27 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
         package = Path(characterization.__file__).with_suffix("")
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
+
+    def test_cli_entry_reports_unexpected_failures(self) -> None:
+        """The package entrypoint preserves the facade failure diagnostics."""
+        stderr = io.StringIO()
+        with patch.object(characterization_cli, "main", side_effect=RuntimeError("boom")):
+            with redirect_stderr(stderr):
+                self.assertEqual(1, characterization_cli.cli_entry([]))
+        self.assertEqual("[phase181-characterization] FAIL: boom\n", stderr.getvalue())
+
+    def test_cli_entry_maps_keyboard_interrupt(self) -> None:
+        """The package entrypoint maps operator interruption to exit 130."""
+        with patch.object(characterization_cli, "main", side_effect=KeyboardInterrupt()):
+            self.assertEqual(130, characterization_cli.cli_entry([]))
+
+    def test_package_reload_preserves_characterize_submodule(self) -> None:
+        """Reloading the facade must not replace the characterize submodule with its function."""
+        self.assertEqual("module", type(sys.modules[characterization.__name__ + ".characterization_core"]).__name__)
+        import importlib
+
+        importlib.reload(characterization)
+        self.assertEqual("module", type(sys.modules[characterization.__name__ + ".characterization_core"]).__name__)
 
     def test_windows_build_alias_is_required_only_for_an_overlong_projected_object_path(self) -> None:
         """Verify windows build alias is required only for an overlong projected object path."""

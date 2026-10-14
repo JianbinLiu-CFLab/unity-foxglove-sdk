@@ -50,11 +50,4 @@ if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192FacadeModule
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(main(_phase192_sys.argv[1:]))
-    except KeyboardInterrupt:
-        raise SystemExit(130)
-    except Exception as exc:
-        print(f"[phase179-player-host] FAIL: {exc}", file=_phase192_sys.stderr)
-        print("[phase179-player-host] Check the Player log, stale ROS2/Zenoh processes, and the supplied runtime selection.", file=_phase192_sys.stderr)
-        raise SystemExit(1)
+    raise SystemExit(cli_entry(_phase192_sys.argv[1:]))

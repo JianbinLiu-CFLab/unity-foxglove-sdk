@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .foundation import CharacterizationError, CharacterizationRequest
-from .characterize import characterize
+from .characterization_core import characterize
 
 def _default_repo_root() -> Path:
     """Implement the internal default repo root step."""
@@ -71,5 +71,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     print("PASS:", result.distro, result.evidence_path)
     return 0
+
+
+def cli_entry(argv: Sequence[str] | None = None) -> int:
+    """Run the CLI while preserving the compatibility facade exit contract."""
+
+    try:
+        return main(argv)
+    except KeyboardInterrupt:
+        return 130
+    except Exception as exc:
+        print(f"[phase181-characterization] FAIL: {exc}", file=sys.stderr)
+        return 1
 
 __all__ = [name for name in globals() if not name.startswith("__")]
