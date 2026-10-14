@@ -69,6 +69,7 @@ class ToolchainPreflightTests(unittest.TestCase):
         self.assertTrue((package / "__main__.py").is_file())
 
     def test_entrypoints_propagate_unexpected_failures(self) -> None:
+        """Entrypoints preserve unexpected failures from the main routine."""
         for entrypoint in ("module", "facade"):
             with self.subTest(entrypoint=entrypoint):
                 with mock.patch.object(toolchain, "main", side_effect=RuntimeError("boom")):
@@ -81,6 +82,7 @@ class ToolchainPreflightTests(unittest.TestCase):
                                     runpy.run_path(toolchain.__file__, run_name="__main__")
 
     def test_entrypoints_propagate_keyboard_interrupt(self) -> None:
+        """Entrypoints preserve keyboard interrupts from the main routine."""
         for entrypoint in ("module", "facade"):
             with self.subTest(entrypoint=entrypoint):
                 with mock.patch.object(toolchain, "main", side_effect=KeyboardInterrupt()):

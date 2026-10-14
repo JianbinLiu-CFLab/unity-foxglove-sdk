@@ -54,6 +54,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         self.assertTrue((package / "__main__.py").is_file())
 
     def test_entrypoints_propagate_unexpected_failures(self) -> None:
+        """Entrypoints preserve unexpected failures from the main routine."""
         for entrypoint in ("module", "facade"):
             with self.subTest(entrypoint=entrypoint):
                 with mock.patch.object(builder, "main", side_effect=RuntimeError("boom")):
@@ -66,6 +67,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
                                     runpy.run_path(builder.__file__, run_name="__main__")
 
     def test_entrypoints_propagate_keyboard_interrupt(self) -> None:
+        """Entrypoints preserve keyboard interrupts from the main routine."""
         for entrypoint in ("module", "facade"):
             with self.subTest(entrypoint=entrypoint):
                 with mock.patch.object(builder, "main", side_effect=KeyboardInterrupt()):
@@ -78,6 +80,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
                                     runpy.run_path(builder.__file__, run_name="__main__")
 
     def test_common_validator_preserves_noop_module_entrypoint(self) -> None:
+        """The common validator module remains a successful no-op entrypoint."""
         completed = subprocess.run(
             [sys.executable, "-B", "-m", "Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common"],
             cwd=Path(builder.__file__).resolve().parents[3],
