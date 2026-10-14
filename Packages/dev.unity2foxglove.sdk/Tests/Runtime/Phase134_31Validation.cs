@@ -182,26 +182,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-        {
-            var fullPath = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(fullPath))
-                throw new FileNotFoundException("Missing repository file: " + relativePath, fullPath);
-
-            var source = File.ReadAllText(fullPath);
-            var package = Path.Combine(
-                Path.GetDirectoryName(fullPath),
-                Path.GetFileNameWithoutExtension(fullPath));
-            if (Path.GetExtension(fullPath).Equals(".py", StringComparison.Ordinal)
-                && Directory.Exists(package))
-            {
-                foreach (var section in Directory.GetFiles(package, "*.py")
-                             .Where(path => !path.EndsWith("__init__.py", StringComparison.Ordinal)
-                                 && !path.EndsWith("__main__.py", StringComparison.Ordinal))
-                             .OrderBy(path => path, StringComparer.Ordinal))
-                    source += Environment.NewLine + File.ReadAllText(section);
-            }
-            return source;
-        }
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static string RepoRoot
         {
