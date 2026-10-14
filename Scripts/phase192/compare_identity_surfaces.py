@@ -311,7 +311,11 @@ def _phase192_template_call_is_safe(call: ast.Call) -> bool:
     """Reject calls that could execute arbitrary import-time work in a wrapper."""
     function = call.func
     if isinstance(function, ast.Name):
-        return function.id in _PHASE192_TEMPLATE_CALLS or _phase192_template_name(function.id) or function.id.endswith("Path")
+        return function.id in _PHASE192_TEMPLATE_CALLS or function.id in {
+            "_phase192_entrypoint",
+            "_phase192_main",
+            "_phase192_repository_root",
+        } or function.id.endswith("Path")
     if isinstance(function, ast.Attribute):
         return function.attr in _PHASE192_TEMPLATE_METHODS and (
             isinstance(function.value, (ast.Name, ast.Attribute, ast.Call, ast.Subscript))
@@ -395,22 +399,47 @@ def _phase192_template_validate_facade(tree: ast.Module, path: str) -> None:
 def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) -> None:
     """Allow only the exact sys.modules forwarding mutations emitted by templates."""
     expected_module_key = Path(path).stem
+    sys_aliases: set[str] = set()
+    registry_aliases: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "sys":
+                    sys_aliases.add(alias.asname or "sys")
+        elif isinstance(node, ast.ImportFrom) and node.module == "sys":
+            for alias in node.names:
+                if alias.name == "modules":
+                    registry_aliases.add(alias.asname or alias.name)
 
     def modules_value(node: ast.AST) -> bool:
         """Recognize the generated module registry aliases."""
+        if isinstance(node, ast.Name):
+            return node.id in registry_aliases
         return (
             isinstance(node, ast.Attribute)
             and node.attr == "modules"
             and isinstance(node.value, ast.Name)
-            and (node.value.id.endswith("_sys") or node.value.id.endswith("_sys_alias"))
+            and node.value.id in sys_aliases
         )
+
+    def contains_registry_reference(node: ast.AST) -> bool:
+        """Recognize mutation targets rooted in the module registry."""
+        if modules_value(node):
+            return True
+        if isinstance(node, ast.Subscript):
+            return contains_registry_reference(node.value)
+        if isinstance(node, ast.Attribute):
+            return contains_registry_reference(node.value)
+        return False
 
     for statement in ast.walk(tree):
         if isinstance(statement, ast.Assign):
             for target in statement.targets:
-                if isinstance(target, ast.Subscript) and modules_value(target.value):
+                if contains_registry_reference(target):
                     if not (
-                        isinstance(target.slice, ast.Constant)
+                        isinstance(target, ast.Subscript)
+                        and modules_value(target.value)
+                        and isinstance(target.slice, ast.Constant)
                         and isinstance(target.slice.value, str)
                         and target.slice.value == expected_module_key
                         and isinstance(statement.value, ast.Name)
@@ -418,11 +447,26 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
                     ):
                         raise ValueError(f"Unsupported generated module registry mutation in {path}")
         if isinstance(statement, ast.Delete):
-            if any(isinstance(target, ast.Subscript) and modules_value(target.value) for target in statement.targets):
+            if any(contains_registry_reference(target) for target in statement.targets):
                 raise ValueError(f"Unsupported generated module registry deletion in {path}")
-        if isinstance(statement, ast.Subscript) and modules_value(statement.value) and isinstance(statement.ctx, ast.Store):
-            continue
         node = statement
+        if (
+            isinstance(node, ast.Call)
+            and node.args
+            and (
+                (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in {"setattr", "delattr"}
+                    and contains_registry_reference(node.args[0])
+                )
+                or (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"__setattr__", "__delattr__"}
+                    and contains_registry_reference(node.func.value)
+                )
+            )
+        ):
+            raise ValueError(f"Unsupported generated module registry attribute mutation in {path}")
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "pop" and modules_value(node.func.value):
             if not (
                 len(node.args) == 2
@@ -2054,7 +2098,10 @@ def _entrypoint_contract(
                 and isinstance(value.func.value.func.value, ast.Name)
                 and value.func.value.func.value.id == "unittest"
                 and value.func.value.func.attr == "TextTestRunner"
+                and not value.func.value.args
+                and not value.func.value.keywords
                 and len(value.args) == 1
+                and not value.keywords
                 and isinstance(value.args[0], ast.Name)
                 and value.args[0].id == "suite"
             )
@@ -2123,13 +2170,13 @@ def _entrypoint_contract(
             if isinstance(statement, ast.Try):
                 if statement.orelse or statement.finalbody or not statement.handlers:
                     raise ValueError(f"unsafe module entrypoint try block: {path}")
-                validate_guard_statements(statement.body)
+                body_delegated = validate_guard_statements(statement.body)
                 for handler in statement.handlers:
                     if handler.type is None or not isinstance(handler.type, ast.Name) or handler.type.id not in {"KeyboardInterrupt", "Exception"}:
                         raise ValueError(f"unsafe module entrypoint exception handler: {path}")
                     handler_names = frozenset({handler.name}) if handler.name else frozenset()
                     validate_guard_statements(handler.body, handler_names)
-                delegated = True
+                delegated = delegated or body_delegated
                 continue
             if isinstance(statement, ast.Assign):
                 if (

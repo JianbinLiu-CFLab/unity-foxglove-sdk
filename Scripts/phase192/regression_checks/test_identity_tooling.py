@@ -2875,6 +2875,32 @@ class IdentityToolingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare_identity_surfaces._symbols(source, str(facade))
 
+    def test_generated_facade_rejects_imported_module_registry_alias(self) -> None:
+        """Generated facades may not mutate sys.modules through an imported alias."""
+        facade = Path("Scripts/mcap/mcap_time_sync.py")
+        source = facade.read_text(encoding="utf-8") + (
+            '\nfrom sys import modules as _phase192_registry\n'
+            '_phase192_registry.pop("unrelated_module", None)\n'
+        )
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._symbols(source, str(facade))
+
+    def test_generated_facade_rejects_module_registry_attribute_mutation(self) -> None:
+        """Generated facades may not mutate attributes through a registry subscript."""
+        facade = Path("Scripts/mcap/mcap_time_sync.py")
+        source = facade.read_text(encoding="utf-8") + (
+            '\n_phase192_sys.modules["sys"].__setattr__("unexpected_attribute", True)\n'
+        )
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._symbols(source, str(facade))
+
+    def test_generated_facade_rejects_unapproved_phase192_call(self) -> None:
+        """Generated facades may call only reviewed private helpers."""
+        facade = Path("Scripts/mcap/mcap_time_sync.py")
+        source = facade.read_text(encoding="utf-8") + '\n_phase192_stop(0)\n'
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._symbols(source, str(facade))
+
     def test_generated_facade_rejects_unrelated_module_registry_key(self) -> None:
         """Generated facades may not restore an unrelated module key."""
         facade = Path("Scripts/mcap/mcap_time_sync.py")
@@ -2944,6 +2970,41 @@ class IdentityToolingTests(unittest.TestCase):
                 "    except Exception as exc:\n"
                 "        print(\"FAIL\", file=sys.stderr)\n"
                 "        raise SystemExit(1) from print('unexpected')\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_try_without_delegated_call(self) -> None:
+        """Generated entrypoints must call an approved command on the normal path."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("def main(): return 0\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "import sys\nfrom . import main\n"
+                "if __name__ == \"__main__\":\n"
+                "    try:\n"
+                "        print(\"OK\", file=sys.stderr)\n"
+                "    except Exception as exc:\n"
+                "        print(\"FAIL\", file=sys.stderr)\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_entrypoint_rejects_text_runner_keywords(self) -> None:
+        """Generated test entrypoints cannot execute TextTestRunner arguments."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("__all__ = [\"modules\"]\nmodules = ()\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "import unittest\nfrom . import *\n"
+                "if __name__ == \"__main__\":\n"
+                "    suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromModule(m) for m in modules)\n"
+                "    result = unittest.TextTestRunner(print(\"unexpected\")).run(suite)\n"
+                "    raise SystemExit(1)\n",
                 encoding="utf-8",
             )
             with self.assertRaises(ValueError):
