@@ -49,12 +49,8 @@ if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192FacadeModule
 
 if __name__ == "__main__":
-    _phase192_main = globals().get("main")
-    if callable(_phase192_main):
-        try:
-            raise SystemExit(_phase192_main(_phase192_sys.argv[1:]))
-        except KeyboardInterrupt:
-            raise SystemExit(130)
-        except Exception as exc:
-            print(f"[phase138s-imu-dds] FAIL: {exc}", file=sys.stderr)
-            raise SystemExit(1)
+    try:
+        raise SystemExit(main(_phase192_sys.argv[1:]))
+    except (RuntimeError, TimeoutError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        print(f"[phase138s-imu-dds] FAIL: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc

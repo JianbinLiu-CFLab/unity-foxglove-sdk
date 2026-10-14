@@ -162,10 +162,7 @@ def main(argv: list[str] | None = None) -> int:
                 return_code = 2
             else:
                 summary["exitCodes"]["phase138uRviz2Acceptance"] = rviz_code
-                if rviz_code == 2:
-                    summary["verdict"] = "PHASE162_LYRICAL_ZENOH_RVIZ2_POINTCLOUD2_INCONCLUSIVE"
-                    return_code = 2
-                elif rviz_code != 0:
+                if rviz_code != 0:
                     raise RuntimeError(f"Phase162 Lyrical Zenoh RViz2 acceptance failed with exit code {rviz_code}.")
                 else:
                     summary["verdict"] = "PHASE162_LYRICAL_ZENOH_RVIZ2_POINTCLOUD2_PASS"
