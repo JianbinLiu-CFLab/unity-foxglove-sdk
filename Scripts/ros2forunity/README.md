@@ -44,6 +44,12 @@ The complete Windows tooling regression lane covers Humble, Jazzy, and Lyrical t
 python -B Scripts/release/regression_inventory.py --run-lane windows-parity-regression-tooling
 ```
 
+## Split CLI entry contracts
+
+The Phase181 builder and toolchain keep the pre-split `raise SystemExit(main())` entrypoint. The characterization, Phase121 conformance, and Phase179 player-host facades retain the main-branch compatibility mapping: `KeyboardInterrupt` exits `130`, while unexpected exceptions print a `FAIL` diagnostic and exit `1`.
+
+The covered entrypoints are `build_foxrun_custom_typesupport_addon.py`, `verify_foxrun_custom_typesupport_toolchain.py`, `characterize_foxrun_custom_interface.py`, `run_phase121_conformance.py`, and `phase179_foxrun_ros2_player_host.py`.
+
 ## Explicit Artifact
 
 ```powershell

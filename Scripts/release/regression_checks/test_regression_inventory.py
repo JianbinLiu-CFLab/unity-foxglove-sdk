@@ -59,6 +59,21 @@ class RegressionInventoryTests(unittest.TestCase):
             self.assertTrue(expected)
             self.assertEqual(expected, {name for name in lane if name.startswith(prefix)})
 
+    def test_split_cli_exit_contracts_are_documented(self):
+        root = Path(__file__).resolve().parents[3]
+        readme = (root / "Scripts/ros2forunity/README.md").read_text(encoding="utf-8")
+        for marker in (
+            "build_foxrun_custom_typesupport_addon.py",
+            "verify_foxrun_custom_typesupport_toolchain.py",
+            "characterize_foxrun_custom_interface.py",
+            "run_phase121_conformance.py",
+            "phase179_foxrun_ros2_player_host.py",
+            "KeyboardInterrupt",
+            "130",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, readme)
+
     def test_runner_modules_require_a_workflow_lane(self):
         """A runner-only module counts only when a workflow invokes its lane."""
         with TemporaryDirectory() as temporary:
