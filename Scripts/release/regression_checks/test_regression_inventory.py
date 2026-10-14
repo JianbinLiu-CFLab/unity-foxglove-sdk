@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 
+import importlib
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -14,6 +15,21 @@ class RegressionInventoryTests(unittest.TestCase):
     def test_repository_inventory_is_complete(self):
         """The live repository has no unassigned regression module."""
         regression_inventory.validate_inventory()
+
+    def test_decomposed_python_regression_surfaces_keep_expected_counts(self):
+        """Explicit package loading keeps the four migrated suites complete."""
+        expected = {
+            "Scripts.package.regression_checks.test_validate_phase186_package_matrix": 11,
+            "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling": 23,
+            "Scripts.ros2forunity.windows.humble.regression_checks.test_build_r2fu_runtime_package": 23,
+            "Scripts.samples.regression_checks.test_sample_sync_tooling": 25,
+        }
+        loader = unittest.TestLoader()
+        observed = {
+            name: loader.loadTestsFromModule(importlib.import_module(name)).countTestCases()
+            for name in expected
+        }
+        self.assertEqual(expected, observed)
 
     def test_unassigned_module_is_rejected(self):
         """A synthetic orphan module must fail completeness validation."""

@@ -41,7 +41,7 @@ The script:
 Unit tests for the Windows Jazzy tooling live beside the tools:
 
 ```powershell
-python -m unittest discover -s "Scripts\ros2forunity\windows\jazzy\regression_checks" -p "test_*.py"
+python -m unittest Scripts.ros2forunity.windows.jazzy.regression_checks.test_build_r2fu_runtime_package
 ```
 
 ## Explicit Artifact
