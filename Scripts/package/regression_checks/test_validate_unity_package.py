@@ -791,6 +791,60 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertFalse(results[-1].ok)
         self.assertIn("duplicates", results[-1].detail)
 
+    def test_all_package_meta_requires_csharp_and_folder_sidecars(self) -> None:
+        """Every first-party package asset and folder must retain Unity metadata."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2forunity"
+            source = package / "Runtime" / "Example.cs"
+            folder = package / "Runtime" / "Nested"
+            folder.mkdir(parents=True)
+            source.write_text("class Example {}", encoding="utf-8")
+            results = []
+            self.validator.check_package_asset_meta(results, package, "R2FU")
+            self.assertFalse(results[-1].ok)
+            self.assertIn("Example.cs.meta", results[-1].detail)
+            self.assertIn("Nested.meta", results[-1].detail)
+
+    def test_all_package_meta_rejects_default_importer_for_csharp(self) -> None:
+        """C# sidecars in every package must use MonoImporter metadata."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2forunity"
+            source = package / "Samples~" / "Example.cs"
+            source.parent.mkdir(parents=True)
+            source.write_text("class Example {}", encoding="utf-8")
+            (Path(str(source) + ".meta")).write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 12121212121212121212121212121212\n"
+                "DefaultImporter:\n",
+                encoding="utf-8",
+            )
+            results = []
+            self.validator.check_package_asset_meta(results, package, "R2FU")
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Example.cs.meta", results[-1].detail)
+
+    def test_all_package_guid_scan_rejects_cross_package_duplicate(self) -> None:
+        """A GUID reused by two first-party packages must fail closed."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "Packages"
+            first = root / "dev.unity2foxglove.sdk" / "Runtime" / "One.cs"
+            second = root / "dev.unity2foxglove.ros2bridge" / "Runtime" / "Two.cs"
+            first.parent.mkdir(parents=True)
+            second.parent.mkdir(parents=True)
+            first.write_text("class One {}", encoding="utf-8")
+            second.write_text("class Two {}", encoding="utf-8")
+            for source in (first, second):
+                Path(str(source) + ".meta").write_text(
+                    "fileFormatVersion: 2\n"
+                    "guid: 12121212121212121212121212121212\n"
+                    "MonoImporter:\n",
+                    encoding="utf-8",
+                )
+            results = []
+            self.validator.check_packages_meta_guid_uniqueness(results, root)
+        self.assertFalse(results[-1].ok)
+        self.assertIn("duplicates", results[-1].detail)
+
     def test_sample_meta_checks_prefab_files(self) -> None:
         """Common Unity assets such as prefabs need stable .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:

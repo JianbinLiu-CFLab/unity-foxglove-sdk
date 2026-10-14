@@ -40,6 +40,12 @@ ROS2_BRIDGE_PACKAGE = (
     ROOT / "Packages" / "dev.unity2foxglove.ros2bridge"
 )
 REMOTE_GATEWAY_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.remotegateway.win64"
+UNITY_SOURCE_PACKAGES = (
+    PACKAGE,
+    ROS2_FOR_UNITY_PACKAGE,
+    ROS2_BRIDGE_PACKAGE,
+    REMOTE_GATEWAY_PACKAGE,
+)
 ROS2_RUNTIME_PACKAGES = (
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
@@ -285,6 +291,97 @@ def iter_bridge_asset_directories(package: Path | None = None) -> list[Path]:
             for part in path.relative_to(root).parts
         )
     ]
+
+
+def _iter_package_assets(package: Path) -> tuple[list[Path], list[Path]]:
+    """Return Unity-tracked files and folders for one first-party package."""
+    files: list[Path] = []
+    folders: list[Path] = []
+    for path in package.rglob("*"):
+        relative = path.relative_to(package)
+        if any(part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES for part in relative.parts):
+            continue
+        if any(part in {"Documentation~", "Ros2Package~"} for part in relative.parts):
+            continue
+        if path.is_file() and path.suffix.casefold() in UNITY_META_EXTENSIONS:
+            files.append(path)
+        elif path.is_dir() and path != package and path.name != "Samples~":
+            folders.append(path)
+    return files, folders
+
+
+def check_package_asset_meta(
+    results: list[CheckResult], package: Path, label: str
+) -> None:
+    """Ensure every Unity asset and folder in a first-party package has valid metadata."""
+    if not package.is_dir():
+        add(results, f"{label} Unity asset and folder .meta files", False, rel(package))
+        return
+    files, folders = _iter_package_assets(package)
+    missing: list[str] = []
+    malformed: list[str] = []
+    for asset in files:
+        meta = Path(str(asset) + ".meta")
+        if not meta.is_file():
+            missing.append(rel(meta))
+            continue
+        text = meta.read_text(encoding="utf-8", errors="replace")
+        if META_GUID_RE.search(text) is None or (
+            asset.suffix.casefold() == ".cs" and not _csharp_meta_importer_is_valid(text)
+        ):
+            malformed.append(rel(meta))
+    for folder in folders:
+        meta = Path(str(folder) + ".meta")
+        if not meta.is_file():
+            missing.append(rel(meta))
+            continue
+        text = meta.read_text(encoding="utf-8", errors="replace")
+        if META_GUID_RE.search(text) is None or META_FOLDER_ASSET_RE.search(text) is None:
+            malformed.append(rel(meta))
+    offenders = missing[:MAX_REPORTED_MISSING_META] + malformed[:MAX_REPORTED_MISSING_META]
+    add(
+        results,
+        f"{label} Unity asset and folder .meta files",
+        not offenders,
+        "; ".join(offenders) if offenders else f"{len(files)} assets and {len(folders)} folders have metadata",
+    )
+
+
+def check_packages_meta_guid_uniqueness(
+    results: list[CheckResult], packages_root: Path | None = None
+) -> None:
+    """Ensure first-party package Unity GUIDs are valid and unique across packages."""
+    roots = (
+        tuple(sorted((p for p in (packages_root or ROOT / "Packages").iterdir() if p.is_dir()), key=rel))
+        if packages_root is not None
+        else UNITY_SOURCE_PACKAGES
+    )
+    guids: dict[str, str] = {}
+    offenders: list[str] = []
+    for package in roots:
+        files, folders = _iter_package_assets(package)
+        for asset in [*files, *folders]:
+            meta = Path(str(asset) + ".meta")
+            if not meta.is_file():
+                continue
+            text = meta.read_text(encoding="utf-8", errors="replace")
+            match = META_GUID_RE.search(text)
+            if match is None:
+                continue
+            guid = match.group(1).lower()
+            previous = guids.get(guid)
+            if previous is not None:
+                offenders.append(f"{rel(meta)} duplicates {previous}")
+            else:
+                guids[guid] = rel(meta)
+    add(
+        results,
+        "First-party package Unity .meta GUIDs",
+        not offenders,
+        "; ".join(offenders[:MAX_REPORTED_MISSING_META])
+        if offenders
+        else f"{len(guids)} Unity-tracked package metas have unique valid GUIDs",
+    )
 
 
 def path_is_relative_to(path: Path, root: Path) -> bool:
@@ -1355,6 +1452,9 @@ def main() -> int:
         check_dependent_package_versions(results, data)
     check_ros2_bridge_package(results)
     check_ros2_bridge_meta(results)
+    check_package_asset_meta(results, ROS2_FOR_UNITY_PACKAGE, "ROS2 For Unity")
+    check_package_asset_meta(results, REMOTE_GATEWAY_PACKAGE, "Remote Gateway")
+    check_packages_meta_guid_uniqueness(results)
     check_optional_package_boundaries(results)
     check_required_files(results)
     bridge_files = iter_bridge_asset_files()
