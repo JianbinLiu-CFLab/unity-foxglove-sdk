@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Unity.FoxgloveSDK.Tests;
@@ -35,6 +36,58 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSource", TestSources.Runtime(validator), StringComparison.Ordinal);
             var source = PhaseValidationSourceHelpers.ReadSplitPythonSource(facade);
             Assert.Contains(signature, source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RequiredRepoTextReadsPythonFacadesWithTheirSections()
+        {
+            var cases = new[]
+            {
+                ("Scripts/mcap/conformance/run_phase121_conformance.py", "OFFICIAL_REPOSITORY_URL"),
+                ("Scripts/smoke/ros2/phase128_rviz2_acceptance.py", "pixi"),
+                ("Scripts/smoke/ros2/phase129_pointcloud2_acceptance.py", "pixi"),
+                ("Scripts/smoke/ros2/phase130_markerarray_acceptance.py", "pixi"),
+                ("Scripts/smoke/ros2/phase131_standard_visualization_acceptance.py", "_ros2_windows_env"),
+                ("Scripts/smoke/ros2/_ros2_windows_env.py", "ros2_opt_bin_paths"),
+            };
+
+            foreach (var (facade, signature) in cases)
+                Assert.Contains(signature, PhaseValidationSourceHelpers.ReadRequiredRepoText(facade), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RuntimePythonReadersUseTheSplitAwareSourceEntryPoint()
+        {
+            var root = Path.Combine(
+                PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
+                "Packages/dev.unity2foxglove.sdk/Tests/Runtime");
+            var facadePaths = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "Scripts/mcap/conformance/run_phase121_conformance.py",
+                "Scripts/smoke/ros2/phase128_rviz2_acceptance.py",
+                "Scripts/smoke/ros2/phase129_pointcloud2_acceptance.py",
+                "Scripts/smoke/ros2/phase130_markerarray_acceptance.py",
+                "Scripts/smoke/ros2/phase131_standard_visualization_acceptance.py",
+                "Scripts/smoke/ros2/_ros2_windows_env.py",
+            };
+            var violations = new List<string>();
+            foreach (var path in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+            {
+                var source = File.ReadAllText(path);
+                foreach (Match match in Regex.Matches(
+                             source,
+                             "(?:ReadRepoText|Read)\\(\\s*\\\"(?<path>Scripts/[^\\\"]+\\.py)\\\"",
+                             RegexOptions.CultureInvariant))
+                {
+                    if (!facadePaths.Contains(match.Groups["path"].Value))
+                        continue;
+                    if (!source.Contains("PhaseValidationSourceHelpers.ReadRequiredRepoText", StringComparison.Ordinal)
+                        && !source.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSource", StringComparison.Ordinal))
+                        violations.Add(path + ": Python reader bypasses the split-aware helper");
+                }
+            }
+
+            Assert.Empty(violations);
         }
 
         [Fact]

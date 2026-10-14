@@ -101,6 +101,9 @@ namespace Unity.FoxgloveSDK.Tests
         public static string ReadRequiredRepoText(string relativePath)
         {
             var normalized = relativePath.Replace('\\', '/');
+            if (IsPythonFacadePath(normalized))
+                return ReadSplitPythonSource(normalized);
+
             if (string.Equals(
                     normalized,
                     "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
@@ -149,6 +152,21 @@ namespace Unity.FoxgloveSDK.Tests
                 return ReadRos2ForUnitySubscriptionHubSources();
 
             return File.ReadAllText(RepoPath(relativePath));
+        }
+
+        private static bool IsPythonFacadePath(string normalized)
+        {
+            if (!normalized.StartsWith("Scripts/", StringComparison.Ordinal)
+                || !normalized.EndsWith(".py", StringComparison.Ordinal))
+                return false;
+
+            var facadePath = RepoPath(normalized);
+            var packagePath = Path.Combine(
+                Path.GetDirectoryName(facadePath)
+                    ?? throw new DirectoryNotFoundException(facadePath),
+                Path.GetFileNameWithoutExtension(facadePath));
+            return Directory.Exists(packagePath)
+                && File.Exists(Path.Combine(packagePath, "__init__.py"));
         }
 
         public static string ReadFoxgloveSessionSources()
