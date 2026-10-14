@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
+import runpy
+import sys
 import unittest
-import contextlib
-import io
 from unittest import mock
 from pathlib import Path
 
@@ -20,7 +20,6 @@ from Scripts.ros2forunity.interfaces.verify_foxrun_custom_typesupport_toolchain 
     _write_provenance,
     preflight_toolchain,
 )
-from Scripts.ros2forunity.interfaces.verify_foxrun_custom_typesupport_toolchain import cli as toolchain_cli
 
 
 class _FakeRunner:
@@ -69,18 +68,29 @@ class ToolchainPreflightTests(unittest.TestCase):
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
 
-    def test_cli_entry_reports_unexpected_failures(self) -> None:
-        """The toolchain package entrypoint preserves the facade failure contract."""
-        stderr = io.StringIO()
-        with mock.patch.object(toolchain_cli, "main", side_effect=RuntimeError("boom")):
-            with contextlib.redirect_stderr(stderr):
-                self.assertEqual(1, toolchain_cli.cli_entry([]))
-        self.assertEqual("[phase181-toolchain] FAIL: boom\n", stderr.getvalue())
+    def test_entrypoints_propagate_unexpected_failures(self) -> None:
+        for entrypoint in ("module", "facade"):
+            with self.subTest(entrypoint=entrypoint):
+                with mock.patch.object(toolchain, "main", side_effect=RuntimeError("boom")):
+                    with mock.patch.dict(sys.modules, {"verify_foxrun_custom_typesupport_toolchain": toolchain}):
+                        with mock.patch.object(sys, "path", sys.path.copy()):
+                            with self.assertRaisesRegex(RuntimeError, "boom"):
+                                if entrypoint == "module":
+                                    runpy.run_module(toolchain.__name__ + ".__main__", run_name="__main__")
+                                else:
+                                    runpy.run_path(toolchain.__file__, run_name="__main__")
 
-    def test_cli_entry_maps_keyboard_interrupt(self) -> None:
-        """The toolchain package entrypoint maps operator interruption to exit 130."""
-        with mock.patch.object(toolchain_cli, "main", side_effect=KeyboardInterrupt()):
-            self.assertEqual(130, toolchain_cli.cli_entry([]))
+    def test_entrypoints_propagate_keyboard_interrupt(self) -> None:
+        for entrypoint in ("module", "facade"):
+            with self.subTest(entrypoint=entrypoint):
+                with mock.patch.object(toolchain, "main", side_effect=KeyboardInterrupt()):
+                    with mock.patch.dict(sys.modules, {"verify_foxrun_custom_typesupport_toolchain": toolchain}):
+                        with mock.patch.object(sys, "path", sys.path.copy()):
+                            with self.assertRaises(KeyboardInterrupt):
+                                if entrypoint == "module":
+                                    runpy.run_module(toolchain.__name__ + ".__main__", run_name="__main__")
+                                else:
+                                    runpy.run_path(toolchain.__file__, run_name="__main__")
 
     def test_explicit_roots_select_pinned_tools_and_write_redacted_provenance(self) -> None:
         """Verify explicit roots select pinned tools and write redacted provenance."""

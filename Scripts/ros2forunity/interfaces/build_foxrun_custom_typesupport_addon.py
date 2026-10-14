@@ -55,4 +55,4 @@ if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192FacadeModule
 
 if __name__ == "__main__":
-    raise SystemExit(cli_entry(_phase192_sys.argv[1:]))
+    raise SystemExit(main())

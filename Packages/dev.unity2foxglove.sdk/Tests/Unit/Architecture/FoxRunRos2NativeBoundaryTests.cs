@@ -206,7 +206,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 "build_foxrun_custom_typesupport_addon");
             var mutated = ReadBuilderSources(builderDirectory) + Environment.NewLine + "Ros2cs.Init";
 
-            Assert.Throws<TrueException>(() => AssertBuilderSourcesStayRosFree(mutated));
+            Assert.Throws<DoesNotContainException>(() => AssertBuilderSourcesStayRosFree(mutated));
         }
 
         private static string ReadBuilderSources(string builderDirectory)

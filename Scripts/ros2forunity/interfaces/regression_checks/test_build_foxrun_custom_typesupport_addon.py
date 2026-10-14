@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import json
-import contextlib
-import io
+import runpy
+import subprocess
+import sys
 import unittest
 from unittest import mock
 from dataclasses import replace
 from pathlib import Path
 
 from Scripts.test_support.phase181_scratch import temporary_directory
+from Scripts.ros2forunity.interfaces import build_foxrun_custom_typesupport_addon as builder
 
 from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon import (
     CandidateBuildError,
@@ -31,7 +33,6 @@ from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon impor
     select_candidate_native_libraries,
     verify_candidate_source_lock,
 )
-from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon import cli as builder_cli
 from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
     ROS_PACKAGE_NAME,
     STATIC_INTERFACE_PACKAGE_ID,
@@ -52,24 +53,41 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
 
-    def test_cli_entry_reports_unexpected_failures(self) -> None:
-        """The candidate package entrypoint preserves the facade failure contract."""
-        stderr = io.StringIO()
-        with mock.patch.object(builder_cli, "main", side_effect=RuntimeError("boom")):
-            with contextlib.redirect_stderr(stderr):
-                self.assertEqual(1, builder_cli.cli_entry([]))
-        self.assertEqual("[phase181-candidate] FAIL: boom\n", stderr.getvalue())
+    def test_entrypoints_propagate_unexpected_failures(self) -> None:
+        for entrypoint in ("module", "facade"):
+            with self.subTest(entrypoint=entrypoint):
+                with mock.patch.object(builder, "main", side_effect=RuntimeError("boom")):
+                    with mock.patch.dict(sys.modules, {"build_foxrun_custom_typesupport_addon": builder}):
+                        with mock.patch.object(sys, "path", sys.path.copy()):
+                            with self.assertRaisesRegex(RuntimeError, "boom"):
+                                if entrypoint == "module":
+                                    runpy.run_module(builder.__name__ + ".__main__", run_name="__main__")
+                                else:
+                                    runpy.run_path(builder.__file__, run_name="__main__")
 
-    def test_cli_entry_maps_keyboard_interrupt(self) -> None:
-        """The candidate package entrypoint maps operator interruption to exit 130."""
-        with mock.patch.object(builder_cli, "main", side_effect=KeyboardInterrupt()):
-            self.assertEqual(130, builder_cli.cli_entry([]))
+    def test_entrypoints_propagate_keyboard_interrupt(self) -> None:
+        for entrypoint in ("module", "facade"):
+            with self.subTest(entrypoint=entrypoint):
+                with mock.patch.object(builder, "main", side_effect=KeyboardInterrupt()):
+                    with mock.patch.dict(sys.modules, {"build_foxrun_custom_typesupport_addon": builder}):
+                        with mock.patch.object(sys, "path", sys.path.copy()):
+                            with self.assertRaises(KeyboardInterrupt):
+                                if entrypoint == "module":
+                                    runpy.run_module(builder.__name__ + ".__main__", run_name="__main__")
+                                else:
+                                    runpy.run_path(builder.__file__, run_name="__main__")
 
-    def test_common_validator_has_no_noop_module_entrypoint(self) -> None:
-        """The common validator library does not advertise a no-op CLI."""
-        from Scripts.ros2forunity.interfaces import foxrun_custom_typesupport_common as common
-
-        self.assertFalse((Path(common.__file__).with_suffix("") / "__main__.py").exists())
+    def test_common_validator_preserves_noop_module_entrypoint(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "-B", "-m", "Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common"],
+            cwd=Path(builder.__file__).resolve().parents[3],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual("", completed.stdout)
+        self.assertEqual("", completed.stderr)
 
     def test_check_source_cli_does_not_invent_machine_specific_toolchain_sources(self) -> None:
         """Verify check source cli does not invent machine specific toolchain sources."""
