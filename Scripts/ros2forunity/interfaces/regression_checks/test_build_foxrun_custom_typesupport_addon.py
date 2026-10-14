@@ -39,6 +39,15 @@ from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
 
 class CustomTypesupportCandidateBuildTests(unittest.TestCase):
     """Represent CustomTypesupportCandidateBuildTests."""
+    def test_source_uses_named_split_package(self) -> None:
+        """Require the candidate builder facade to use its named source package."""
+        package = Path(__import__(
+            "Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon",
+            fromlist=["__file__"],
+        ).__file__).with_suffix("")
+        self.assertTrue(package.is_dir())
+        self.assertTrue((package / "__main__.py").is_file())
+
     def test_check_source_cli_does_not_invent_machine_specific_toolchain_sources(self) -> None:
         """Verify check source cli does not invent machine specific toolchain sources."""
         request, check_source, repair_catalog, repair_license_eol = parse_args(("--distro", "humble", "--check-source"))
