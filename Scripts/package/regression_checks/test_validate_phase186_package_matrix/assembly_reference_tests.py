@@ -17,7 +17,7 @@ class Phase186AssemblyReferenceTests:
         """One failed composition must not suppress the remaining evidence."""
         outcomes = [
             subprocess.CompletedProcess([], 0, stdout="sdk ok"),
-            subprocess.CompletedProcess([], 7, stdout="r2fu failed"),
+            subprocess.CompletedProcess([], 7, stdout="r2fu transient restore failure"),
             subprocess.CompletedProcess([], 7, stdout="r2fu retry failed"),
             subprocess.CompletedProcess([], 0, stdout="bridge ok"),
             subprocess.CompletedProcess([], 0, stdout="all ok"),
@@ -48,7 +48,7 @@ class Phase186AssemblyReferenceTests:
         """A successful retry must retain the initial failure in the report."""
         outcomes = [
             subprocess.CompletedProcess([], 0, stdout="sdk ok"),
-            subprocess.CompletedProcess([], 7, stdout="r2fu transient failure"),
+            subprocess.CompletedProcess([], 7, stdout="r2fu transient restore failure"),
             subprocess.CompletedProcess([], 0, stdout="r2fu recovered"),
             subprocess.CompletedProcess([], 0, stdout="bridge ok"),
             subprocess.CompletedProcess([], 0, stdout="all ok"),
@@ -71,11 +71,64 @@ class Phase186AssemblyReferenceTests:
         recovered = payload["compileGates"][1]
         self.assertEqual(0, recovered["exitCode"])
         self.assertEqual([7, 0], [item["exitCode"] for item in recovered["attempts"]])
-        self.assertEqual(["r2fu transient failure", "r2fu recovered"], [item["output"] for item in recovered["attempts"]])
+        self.assertEqual(["r2fu transient restore failure", "r2fu recovered"], [item["output"] for item in recovered["attempts"]])
         self.assertTrue(recovered["recoveredAfterRetry"])
-        self.assertEqual("initial build returned a nonzero exit code", recovered["attempts"][1]["retryReason"])
+        self.assertEqual("transient restore or file-lock failure", recovered["attempts"][1]["retryReason"])
         self.assertEqual(1, len(payload["compileGates"][0]["attempts"]))
         self.assertFalse(payload["compileGates"][0]["recoveredAfterRetry"])
+
+    def test_compile_error_does_not_retry(self) -> None:
+        """A deterministic compiler error must fail without a second build."""
+        outcomes = [
+            subprocess.CompletedProcess([], 1, stdout="CS1002: ; expected"),
+            subprocess.CompletedProcess([], 0, stdout="must not run"),
+            subprocess.CompletedProcess([], 0, stdout="bridge ok"),
+            subprocess.CompletedProcess([], 0, stdout="all ok"),
+            subprocess.CompletedProcess([], 0, stdout="remote gateway ok"),
+        ]
+        with tempfile.TemporaryDirectory(dir=self.validator.ROOT) as temp:
+            report = Path(temp) / "report.json"
+            with mock.patch.object(self.validator, "REPORT", report), mock.patch.object(
+                self.validator.subprocess,
+                "run",
+                side_effect=outcomes,
+            ), mock.patch.object(
+                self.validator,
+                "validate_boundaries",
+                return_value=[],
+            ):
+                self.assertEqual(1, self.validator.main())
+            payload = json.loads(report.read_text(encoding="utf-8"))
+
+        failed = payload["compileGates"][0]
+        self.assertEqual(1, failed["exitCode"])
+        self.assertEqual(1, len(failed["attempts"]))
+        self.assertFalse(failed["recoveredAfterRetry"])
+
+    def test_compile_retry_requires_transient_marker(self) -> None:
+        """Restore and file-lock diagnostics are the only retryable failures."""
+        for output in ("error NU1301: package restore failed", "MSB3027: file locked"):
+            with self.subTest(output=output):
+                outcomes = [
+                    subprocess.CompletedProcess([], 1, stdout=output),
+                    subprocess.CompletedProcess([], 0, stdout="sdk recovered"),
+                    subprocess.CompletedProcess([], 0, stdout="r2fu ok"),
+                    subprocess.CompletedProcess([], 0, stdout="bridge ok"),
+                    subprocess.CompletedProcess([], 0, stdout="all ok"),
+                    subprocess.CompletedProcess([], 0, stdout="remote gateway ok"),
+                ]
+                with tempfile.TemporaryDirectory(dir=self.validator.ROOT) as temp:
+                    report = Path(temp) / "report.json"
+                    with mock.patch.object(self.validator, "REPORT", report), mock.patch.object(
+                        self.validator.subprocess,
+                        "run",
+                        side_effect=outcomes,
+                    ), mock.patch.object(
+                        self.validator,
+                        "validate_boundaries",
+                        return_value=[],
+                    ):
+                        self.assertEqual(0, self.validator.main())
 
     def test_guid_asmdef_reference_resolves_to_forbidden_assembly(self) -> None:
         """GUID-form references must enforce the same package boundary as names."""
