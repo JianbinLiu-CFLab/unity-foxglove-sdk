@@ -61,6 +61,7 @@ class RegressionInventoryTests(unittest.TestCase):
             self.assertEqual(expected, {name for name in lane if name.startswith(prefix)})
 
     def test_split_cli_exit_contracts_are_documented(self):
+        """README documents the split CLI entrypoint exit contract."""
         root = Path(__file__).resolve().parents[3]
         readme = (root / "Scripts/ros2forunity/README.md").read_text(encoding="utf-8")
         for marker in (
