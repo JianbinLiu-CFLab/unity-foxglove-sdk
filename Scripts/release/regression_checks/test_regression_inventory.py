@@ -40,6 +40,25 @@ class RegressionInventoryTests(unittest.TestCase):
         )
         self.assertTrue(any(error.startswith("UNASSIGNED:") for error in errors))
 
+    def test_windows_tooling_docs_use_complete_inventory_lane(self):
+        root = Path(__file__).resolve().parents[3]
+        lane = regression_inventory._WORKFLOW_RUNNER_MODULES["windows-parity-regression-tooling"]
+        self.assertEqual(len(lane), len(set(lane)))
+        command = "python -B Scripts/release/regression_inventory.py --run-lane windows-parity-regression-tooling"
+        for relative in (
+            "Scripts/ros2forunity/README.md",
+            "Scripts/ros2forunity/windows/humble/README.md",
+            "Scripts/ros2forunity/windows/jazzy/README.md",
+        ):
+            with self.subTest(path=relative):
+                self.assertIn(command, (root / relative).read_text(encoding="utf-8"))
+        for distro in ("humble", "jazzy"):
+            prefix = f"Scripts.ros2forunity.windows.{distro}.regression_checks."
+            directory = root / "Scripts/ros2forunity/windows" / distro / "regression_checks"
+            expected = {prefix + path.stem for path in directory.glob("test_*.py")}
+            self.assertTrue(expected)
+            self.assertEqual(expected, {name for name in lane if name.startswith(prefix)})
+
     def test_runner_modules_require_a_workflow_lane(self):
         """A runner-only module counts only when a workflow invokes its lane."""
         with TemporaryDirectory() as temporary:
