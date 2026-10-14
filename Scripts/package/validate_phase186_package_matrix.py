@@ -138,6 +138,13 @@ def compile_matrix() -> list[dict]:
             stderr=subprocess.STDOUT,
             check=False,
         )
+        attempts = [
+            {
+                "attempt": 1,
+                "exitCode": completed.returncode,
+                "output": completed.stdout,
+            }
+        ]
         if completed.returncode != 0:
             retry = subprocess.run(
                 [
@@ -155,12 +162,21 @@ def compile_matrix() -> list[dict]:
                 check=False,
             )
             completed = retry
+            attempts.append(
+                {
+                    "attempt": 2,
+                    "exitCode": completed.returncode,
+                    "output": completed.stdout,
+                }
+            )
         results.append(
             {
                 "name": name,
                 "project": project.relative_to(ROOT).as_posix(),
                 "exitCode": completed.returncode,
                 "output": completed.stdout,
+                "attempts": attempts,
+                "recoveredAfterRetry": len(attempts) > 1 and completed.returncode == 0,
             }
         )
         if completed.returncode == 0:

@@ -131,7 +131,9 @@ namespace Unity.FoxgloveSDK.Tests
             => PhaseValidationSourceHelpers.SourceMethod(source, signature);
 
         private static string Read(string relativePath)
-            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            => relativePath.EndsWith(".py", StringComparison.Ordinal)
+                ? PhaseValidationSourceHelpers.ReadSplitPythonSource(relativePath)
+                : PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static void Check(bool condition, string label)
         {
