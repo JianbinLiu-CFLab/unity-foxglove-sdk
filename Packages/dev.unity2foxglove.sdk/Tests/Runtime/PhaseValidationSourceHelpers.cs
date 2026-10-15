@@ -151,7 +151,80 @@ namespace Unity.FoxgloveSDK.Tests
                     StringComparison.Ordinal))
                 return ReadRos2ForUnitySubscriptionHubSources();
 
-            return File.ReadAllText(RepoPath(relativePath));
+            return ReadGenericCSharpSource(relativePath);
+        }
+
+        private static string ReadGenericCSharpSource(string relativePath)
+        {
+            var facadePath = RepoPath(relativePath);
+            if (!relativePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                return File.ReadAllText(facadePath);
+
+            var directory = new DirectoryInfo(
+                Path.GetDirectoryName(facadePath)
+                    ?? throw new DirectoryNotFoundException(facadePath));
+            var stem = Path.GetFileNameWithoutExtension(facadePath);
+            string sectionDirectory = null;
+            for (var ancestor = directory; ancestor != null; ancestor = ancestor.Parent)
+            {
+                var relativeDirectory = Path.GetRelativePath(ancestor.FullName, directory.FullName);
+                var candidate = Path.Combine(
+                    ancestor.FullName,
+                    "Decomposed",
+                    relativeDirectory,
+                    stem);
+                if (Directory.Exists(candidate))
+                {
+                    sectionDirectory = candidate;
+                    break;
+                }
+
+                if (File.Exists(Path.Combine(ancestor.FullName, ".git"))
+                    || Directory.Exists(Path.Combine(ancestor.FullName, ".git")))
+                    break;
+            }
+
+            if (sectionDirectory == null)
+                return File.ReadAllText(facadePath);
+
+            var sectionFiles = Directory.GetFiles(
+                sectionDirectory,
+                "*.cs",
+                SearchOption.TopDirectoryOnly);
+            var marker = File.ReadLines(facadePath)
+                .Select(line => Regex.Match(
+                    line,
+                    @"^\s*///\s*<remarks>Phase192 source sections:\s*(?<names>[^<]+)</remarks>\s*$",
+                    RegexOptions.CultureInvariant))
+                .FirstOrDefault(match => match.Success);
+            IEnumerable<string> orderedFiles = sectionFiles.OrderBy(
+                path => path,
+                StringComparer.Ordinal);
+            if (marker != null)
+            {
+                var names = marker.Groups["names"].Value
+                    .Split(',')
+                    .Select(name => name.Trim())
+                    .Where(name => name.Length > 0)
+                    .ToArray();
+                var filesByName = sectionFiles.ToDictionary(
+                    Path.GetFileName,
+                    StringComparer.OrdinalIgnoreCase);
+                if (names.Length != filesByName.Count
+                    || names.Distinct(StringComparer.OrdinalIgnoreCase).Count() != names.Length
+                    || names.Any(name => !filesByName.ContainsKey(name)))
+                    throw new InvalidDataException(
+                        "Invalid Phase192 source-section order in " + facadePath);
+                orderedFiles = names.Select(name => filesByName[name]);
+            }
+
+            var source = new StringBuilder(File.ReadAllText(facadePath));
+            foreach (var section in orderedFiles)
+            {
+                source.Append(Environment.NewLine);
+                source.Append(File.ReadAllText(section));
+            }
+            return source.ToString();
         }
 
         private static bool IsPythonFacadePath(string normalized)
