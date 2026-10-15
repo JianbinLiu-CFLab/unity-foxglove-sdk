@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Unity.FoxgloveSDK.UnitTests.Architecture
 {
