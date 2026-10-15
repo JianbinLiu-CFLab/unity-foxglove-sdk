@@ -3135,5 +3135,79 @@ class IdentityToolingTests(unittest.TestCase):
             )
         )
 
+    def test_entrypoint_rejects_dynamic_unittest_arguments(self) -> None:
+        """Unittest entrypoints must use literal module and exit options."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "import unittest\ndef module_name(): return 'bad'\n"
+                "if __name__ == '__main__':\n"
+                "    unittest.main(module=module_name())\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_namespace_risk_signatures_distinguish_import_time_defaults(self) -> None:
+        """Default expressions remain import-time risks unlike function bodies."""
+        body = ast.parse('def helper():\n    return eval("1+1")\n')
+        default = ast.parse('def helper(value=eval("1+1")):\n    return value\n')
+        self.assertNotEqual(
+            compare_identity_surfaces._namespace_risk_signatures(body),
+            compare_identity_surfaces._namespace_risk_signatures(default),
+        )
+
+    def test_generated_section_rejects_path_and_sys_path_mutations(self) -> None:
+        """Generated sections reject filesystem opens and path list mutation."""
+        sources = (
+            "from pathlib import Path\nPath('bad').open('w')\n",
+            "from pathlib import Path\nPath('bad').touch()\n",
+            "import sys\nsys.path.append('bad')\n",
+            "import sys\nsys.path.extend(['bad'])\n",
+        )
+        for source in sources:
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                compare_identity_surfaces._validate_generated_section(
+                    source + "PUBLIC = 1\n__all__ = ['PUBLIC']\n",
+                    Path("Scripts/smoke/fixture.py"),
+                    Path("Scripts/smoke"),
+                    frozenset({"fixture"}),
+                )
+
+    def test_configuration_exemption_is_phase121_specific(self) -> None:
+        """Only the reviewed Phase121 configuration gets the narrow exemption."""
+        self.assertTrue(
+            compare_identity_surfaces._is_phase121_configuration_path(
+                "Scripts/mcap/conformance/run_phase121_conformance/configuration.py"
+            )
+        )
+        self.assertFalse(
+            compare_identity_surfaces._is_phase121_configuration_path(
+                "Scripts/other/configuration.py"
+            )
+        )
+
+    def test_generated_initializer_kind_uses_ast_classification(self) -> None:
+        """Initializer routing follows AST nodes rather than source substrings."""
+        self.assertEqual(
+            "phase192",
+            compare_identity_surfaces._phase192_initializer_kind(
+                "class _Phase192PackageModule: pass\n"
+            ),
+        )
+        self.assertEqual(
+            "phase138u",
+            compare_identity_surfaces._phase192_initializer_kind(
+                "from .pointcloud_metrics import value\n"
+            ),
+        )
+        self.assertIsNone(
+            compare_identity_surfaces._phase192_initializer_kind(
+                "VALUE = '_Phase192PackageModule'\n"
+            )
+        )
+
 if __name__ == "__main__":
     unittest.main()

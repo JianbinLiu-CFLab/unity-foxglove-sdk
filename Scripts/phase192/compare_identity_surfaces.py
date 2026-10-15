@@ -534,19 +534,27 @@ def _phase192_template_validate_initializer(tree: ast.Module, path: str) -> None
         raise ValueError(f"Generated package has no relative section imports in {path}")
 
 
-def _phase192_generated_initializer(source: str) -> bool:
-    """Return whether source declares one of the reviewed package templates."""
+def _phase192_initializer_kind(source: str) -> str | None:
+    """Return the AST-derived generated package initializer kind."""
     tree = ast.parse(source)
-    return any(
-        isinstance(node, ast.ClassDef)
-        and node.name in {"_Phase192PackageModule", "_Phase138UPackageModule"}
-        for node in tree.body
-    ) or any(
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "_Phase192PackageModule":
+            return "phase192"
+        if isinstance(node, ast.ClassDef) and node.name == "_Phase138UPackageModule":
+            return "phase138u"
+    if any(
         isinstance(node, ast.ImportFrom)
         and node.level == 1
         and node.module == "pointcloud_metrics"
         for node in tree.body
-    )
+    ):
+        return "phase138u"
+    return None
+
+
+def _phase192_generated_initializer(source: str) -> bool:
+    """Return whether source declares one of the reviewed package templates."""
+    return _phase192_initializer_kind(source) is not None
 
 
 def _phase138u_simple_initializer(source: str, path: str) -> None:
@@ -952,14 +960,20 @@ def _validate_namespace_access(
         for child in ast.iter_child_nodes(parent):
             parents[id(child)] = parent
 
+    function_body_nodes: set[int] = set()
+    for definition in ast.walk(tree):
+        if isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            function_body_nodes.update(
+                id(node)
+                for statement in definition.body
+                for node in ast.walk(statement)
+            )
+        elif isinstance(definition, ast.Lambda):
+            function_body_nodes.update(id(node) for node in ast.walk(definition.body))
+
     def is_inside_callable(node: ast.AST) -> bool:
         """Return whether a node executes only when a callable is invoked."""
-        current = parents.get(id(node))
-        while current is not None:
-            if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-                return True
-            current = parents.get(id(current))
-        return False
+        return id(node) in function_body_nodes
 
     # Track objects that can expose the module registry while preserving
     # ordinary dynamic attribute access on runtime objects.
@@ -1520,7 +1534,7 @@ def _validate_namespace_access(
                 raise ValueError(f"Unsupported namespace escape in {path}")
         if isinstance(node, ast.Global) and any(not name.startswith("_") for name in node.names):
             if not (
-                path.replace("\\", "/").endswith("run_phase121_conformance/configuration.py")
+                _is_phase121_configuration_path(path)
                 and set(node.names) <= {"OFFICIAL_ROOT", "OFFICIAL_CONFORMANCE"}
             ):
                 raise ValueError(f"Unsupported public global binding in {path}")
@@ -1868,6 +1882,21 @@ _NAMESPACE_RISK_ATTRIBUTES = frozenset({
 
 def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
     """Return stable AST fingerprints for namespace and import escape surfaces."""
+    function_body_nodes: set[int] = set()
+    for parent in ast.walk(tree):
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            function_body_nodes.update(
+                id(node)
+                for statement in parent.body
+                for node in ast.walk(statement)
+            )
+        elif isinstance(parent, ast.Lambda):
+            function_body_nodes.update(id(node) for node in ast.walk(parent.body))
+
+    def import_time(node: ast.AST) -> bool:
+        """Return whether a node executes while the module is imported."""
+        return id(node) not in function_body_nodes
+
     signatures: set[str] = set()
     for node in ast.walk(tree):
         risky = False
@@ -1888,10 +1917,46 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
                 and node.func.id in _NAMESPACE_RISK_NAMES
             )
         if risky:
-            signatures.add(ast.dump(node, include_attributes=False))
+            signature = ast.dump(node, include_attributes=False)
+            signatures.add(signature)
+            if import_time(node):
+                signatures.add("import-time:" + signature)
     return frozenset(signatures)
 
+
+def _is_phase121_configuration_path(path: str | Path) -> bool:
+    """Return whether path is the reviewed Phase121 compatibility module."""
+    return str(path).replace("\\", "/").endswith(
+        "Scripts/mcap/conformance/run_phase121_conformance/configuration.py"
+    )
+
 _ENTRYPOINT_IMPORT_ROOTS = frozenset({"argparse", "sys", "unittest"})
+
+def _is_safe_unittest_main_call(call: ast.Call) -> bool:
+    """Return whether a unittest.main call has only literal safe options."""
+    return (
+        isinstance(call.func, ast.Attribute)
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "unittest"
+        and call.func.attr == "main"
+        and not call.args
+        and all(
+            keyword.arg in {"module", "exit"}
+            and (
+                (
+                    keyword.arg == "exit"
+                    and isinstance(keyword.value, ast.Constant)
+                    and isinstance(keyword.value.value, bool)
+                )
+                or (
+                    keyword.arg == "module"
+                    and isinstance(keyword.value, ast.Constant)
+                    and (keyword.value.value is None or isinstance(keyword.value.value, str))
+                )
+            )
+            for keyword in call.keywords
+        )
+    )
 
 def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
     """Return whether an entrypoint explicitly delegates to unittest.main."""
@@ -1925,16 +1990,7 @@ def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
                 call = call.args[0]
         else:
             call = statement.value
-        if not (
-            isinstance(call, ast.Call)
-            and isinstance(call.func, ast.Attribute)
-            and isinstance(call.func.value, ast.Name)
-            and call.func.value.id == "unittest"
-            and call.func.attr == "main"
-            and not call.args
-        ):
-            continue
-        if all(keyword.arg in {"module", "exit"} for keyword in call.keywords):
+        if _is_safe_unittest_main_call(call):
             return True
     return False
 
@@ -1997,9 +2053,9 @@ def _entrypoint_contract(
                             reject_module_registry=(
                                 "regression_checks" not in section_path.parts
                                 and not any(part.startswith("test_") for part in section_path.parts)
-                                and section_path.name != "configuration.py"
+                                and not _is_phase121_configuration_path(section_path)
                             ),
-                            validate_namespace=section_path.name != "configuration.py",
+                            validate_namespace=not _is_phase121_configuration_path(section_path),
                         )
                     )
 
@@ -2066,8 +2122,6 @@ def _entrypoint_contract(
             if not _absolute_import_resolves(node):
                 raise ValueError(f"unresolvable absolute module entrypoint import: {path}")
 
-    if unittest_entrypoint:
-        return True, hashlib.sha256(source.encode("utf-8")).hexdigest(), ("unittest.main",), frozenset()
 
     imported_names = {
         alias.asname or alias.name
@@ -2271,6 +2325,9 @@ def _entrypoint_contract(
         for statement in statements:
             if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
                 call = statement.value
+                if _is_safe_unittest_main_call(call):
+                    delegated = True
+                    continue
                 if (
                     isinstance(call.func, ast.Name)
                     and call.func.id == "print"
@@ -2380,7 +2437,10 @@ def _entrypoint_contract(
                     and (
                         (
                             isinstance(exception.args[0], ast.Call)
-                            and is_safe_dispatch_call(exception.args[0])
+                            and (
+                                is_safe_dispatch_call(exception.args[0])
+                                or _is_safe_unittest_main_call(exception.args[0])
+                            )
                         )
                         or is_unittest_exit_expression(exception.args[0])
                         or (
@@ -3214,7 +3274,8 @@ def _validate_generated_section(
                 in {
                     "system", "popen", "run", "Popen", "check_call", "check_output",
                     "rmtree", "remove", "unlink", "write_text", "write_bytes", "mkdir",
-                    "rmdir", "rename", "replace", "chmod", "insert",
+                    "rmdir", "rename", "replace", "chmod", "insert", "open", "touch",
+                    "append", "extend",
                 }
                 and (
                     qualified[0] in {"os", "subprocess", "shutil", "sys"}
@@ -3242,8 +3303,9 @@ def _validate_import_time_section(
         return
     seen.add(path)
     tree = _parse_source(source, path)
-    if path.name == "__init__.py" and _phase192_generated_initializer(source):
-        if "_Phase192PackageModule" in source or "_Phase138UPackageModule" in source:
+    initializer_kind = _phase192_initializer_kind(source)
+    if path.name == "__init__.py" and initializer_kind is not None:
+        if initializer_kind == "phase192":
             _phase192_template_validate_initializer(tree, str(path))
         else:
             _phase138u_simple_initializer(source, str(path))
@@ -3416,7 +3478,8 @@ def _validate_compatibility_new_sections(
         head_sections = head_section_modules(head_package)
         head_initializer = head_package / "__init__.py"
         head_initializer_source = head_initializer.read_text(encoding="utf-8")
-        generated_package = _phase192_generated_initializer(head_initializer_source)
+        generated_kind = _phase192_initializer_kind(head_initializer_source)
+        generated_package = generated_kind is not None
         base_package = (base_root / relative).with_suffix("")
         base_sections = (
             base_section_modules(base_package)
@@ -3430,7 +3493,7 @@ def _validate_compatibility_new_sections(
             initializer_source = head_initializer_source
             if generated_package:
                 initializer_tree = _parse_source(initializer_source, initializer)
-                if "_Phase192PackageModule" in initializer_source or "_Phase138UPackageModule" in initializer_source:
+                if generated_kind == "phase192":
                     _phase192_template_validate_initializer(initializer_tree, str(initializer))
                 else:
                     _phase138u_simple_initializer(initializer_source, str(initializer))
@@ -3509,8 +3572,8 @@ def _surface(
             section_source,
             str(section),
             reject_conditional=reject_conditional,
-            reject_module_registry=(not legacy_test_section and section.name != "configuration.py"),
-            validate_namespace=section.name != "configuration.py",
+            reject_module_registry=(not legacy_test_section and not _is_phase121_configuration_path(section)),
+            validate_namespace=not _is_phase121_configuration_path(section),
         )
         section_exports.update(exports)
         for name in exports:
