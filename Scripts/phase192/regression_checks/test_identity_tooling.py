@@ -3189,6 +3189,19 @@ class IdentityToolingTests(unittest.TestCase):
             )
         )
 
+    def test_workflow_keeps_identity_checker_trusted_base_only(self) -> None:
+        """The compatibility gate must not overwrite the trusted base checker."""
+        workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
+        self.assertNotIn('cp Scripts/phase192/compare_identity_surfaces.py "$base_checker"', workflow)
+
+    def test_compatibility_rejects_mutation_of_legacy_entrypoint(self) -> None:
+        """Legacy compatibility paths still reject an entrypoint digest mutation."""
+        relative = 'Scripts/mcap/conformance/run_phase121_conformance.py'
+        base = {relative: (frozenset({'main'}), (), (), frozenset(), 'base', frozenset(), True, (), frozenset(), (), 'entry-base', (), (), (), frozenset({'main'}))}
+        head = {relative: (frozenset({'main'}), (), (), frozenset(), 'base', frozenset(), True, (), frozenset(), (), 'entry-head', (), (), (), frozenset({'main'}))}
+        errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+        self.assertIn('MODULE_ENTRYPOINT_CHANGED ' + relative, errors)
+
     def test_generated_initializer_kind_uses_ast_classification(self) -> None:
         """Initializer routing follows AST nodes rather than source substrings."""
         self.assertEqual(

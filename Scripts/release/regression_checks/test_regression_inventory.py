@@ -8,6 +8,7 @@ import subprocess
 import sys
 import types
 import unittest
+from unittest import mock
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -35,6 +36,77 @@ class RegressionInventoryTests(unittest.TestCase):
             for name in expected
         }
         self.assertEqual(expected, observed)
+
+    def test_discovery_load_tests_is_repeatable(self):
+        """Repeated discovery loads the same split package tests without state loss."""
+        names = (
+            'Scripts.package.regression_checks.test_validate_phase186_package_matrix',
+            'Scripts.remotegateway.regression_checks.test_remote_gateway_tooling',
+            'Scripts.ros2forunity.interfaces.regression_checks.test_refresh_phase181_custom_typesupport_addons',
+            'Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon',
+            'Scripts.ros2forunity.windows.humble.regression_checks.test_build_r2fu_runtime_package',
+            'Scripts.samples.regression_checks.test_sample_sync_tooling',
+            'Scripts.smoke.test_core_smoke_scripts',
+        )
+        loader = unittest.TestLoader()
+        for name in names:
+            with self.subTest(name=name):
+                module = importlib.import_module(name)
+                first = loader.loadTestsFromModule(module, pattern='test*.py')
+                second = loader.loadTestsFromModule(module, pattern='test*.py')
+                self.assertGreater(first.countTestCases(), 0)
+                self.assertEqual(first.countTestCases(), second.countTestCases())
+                self.assertEqual(self._test_ids(first), self._test_ids(second))
+
+    @staticmethod
+    def _test_ids(suite):
+        """Return the stable test ids in a nested unittest suite."""
+        ids = []
+        for item in suite:
+            if hasattr(item, 'id'):
+                ids.append(item.id())
+            else:
+                ids.extend(RegressionInventoryTests._test_ids(item))
+        return sorted(ids)
+
+    def test_split_cli_guards_preserve_exception_contract(self):
+        """The three repaired facades retain stable direct-entry exception mapping."""
+        root = Path(__file__).resolve().parents[3]
+        expected = {
+            'Scripts/mcap/conformance/run_phase121_conformance.py': 'phase121-conformance',
+            'Scripts/smoke/ros2/phase179_foxrun_ros2_player_host.py': 'phase179-player-host',
+            'Scripts/ros2forunity/interfaces/characterize_foxrun_custom_interface.py': 'phase181-characterization',
+        }
+        for relative, label in expected.items():
+            source = (root / relative).read_text(encoding='utf-8')
+            with self.subTest(path=relative):
+                self.assertIn('except KeyboardInterrupt:', source)
+                self.assertIn('except Exception as exc:', source)
+                self.assertIn(f'[{label}] FAIL:', source)
+        module_entrypoint = (root / 'Scripts/ros2forunity/interfaces/characterize_foxrun_custom_interface/__main__.py').read_text(encoding='utf-8')
+        self.assertIn('main(sys.argv[1:])', module_entrypoint)
+
+    def test_phase138u_public_cli_maps_process_exceptions(self):
+        """Phase138U main and run_cli retain stable public exit-code mapping."""
+        module = importlib.import_module(
+            'Scripts.smoke.ros2.phase138u_lidar_deskew_rviz2_acceptance.acceptance_cli'
+        )
+        with mock.patch.object(module, '_main_impl', side_effect=KeyboardInterrupt):
+            self.assertEqual(130, module.main([]))
+            self.assertEqual(130, module.run_cli([]))
+        with mock.patch.object(module, '_main_impl', side_effect=RuntimeError('boom')):
+            self.assertEqual(1, module.main([]))
+            self.assertEqual(1, module.run_cli([]))
+        inconclusive = getattr(module, 'InconclusiveError', None)
+        if inconclusive is not None:
+            with mock.patch.object(module, '_main_impl', side_effect=inconclusive('later')):
+                self.assertEqual(2, module.main([]))
+                self.assertEqual(2, module.run_cli([]))
+
+    def test_split_cli_help_subprocess_has_timeout(self):
+        """CLI help probes have a deterministic subprocess timeout."""
+        source = Path(__file__).read_text(encoding='utf-8')
+        self.assertIn('timeout=30', source)
 
     def test_split_facade_globals_resolve_after_package_import(self):
         """Every imported split section resolves its function-level global loads."""
@@ -86,9 +158,14 @@ class RegressionInventoryTests(unittest.TestCase):
                     and isinstance(instruction.argval, str)
                 }
                 missing = sorted(name for name in loads if name not in module.__dict__ and name not in builtins_names and name not in bindings)
-                if section_name == "Scripts.smoke.foxrun.phase184_profile_acceptance.process_lifecycle":
-                    continue
-                if missing:
+                allowed_missing = {
+                    "Scripts.smoke.foxrun.phase184_profile_acceptance.process_lifecycle": {
+                        "_BASIC_LIMIT_INFORMATION",
+                        "_EXTENDED_LIMIT_INFORMATION",
+                        "_IO_COUNTERS",
+                    },
+                }.get(section_name, set())
+                if set(missing) != allowed_missing:
                     unresolved[section_name] = missing
 
         self.assertFalse(import_errors, "facade import errors: " + "; ".join(import_errors))

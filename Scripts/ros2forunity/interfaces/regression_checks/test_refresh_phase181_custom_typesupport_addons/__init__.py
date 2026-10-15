@@ -56,14 +56,7 @@ if _phase192_module is not None:
 del _phase192_sys, _phase192_types, _Phase192Path, _PHASE192_FACADE_FILE, _PHASE192_PARENT
 del _phase192_module, _phase192_section, _phase192_name
 
-_phase192_load_tests_used = False
 
 def load_tests(loader, tests, pattern):
-    """Collect split facade tests once during unittest discovery."""
-    global _phase192_load_tests_used
-    if pattern is None:
-        return tests
-    if _phase192_load_tests_used:
-        return loader.suiteClass()
-    _phase192_load_tests_used = True
+    """Return the discovered tests without process-global discovery state."""
     return tests

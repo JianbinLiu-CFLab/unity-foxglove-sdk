@@ -54,4 +54,10 @@ if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192FacadeModule
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        raise SystemExit(130)
+    except Exception as exc:
+        print(f"[phase181-characterization] FAIL: {exc}", file=_phase192_sys.stderr)
+        raise SystemExit(1)
