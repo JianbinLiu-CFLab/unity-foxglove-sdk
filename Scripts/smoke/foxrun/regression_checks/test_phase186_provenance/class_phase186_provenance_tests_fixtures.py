@@ -546,6 +546,7 @@ class _Phase186ProvenanceTests_fixtures:
             real_range = range
 
             def bounded_range(*args):
+                """Reject unbounded range construction in the validation probe."""
                 if args and args[-1] > 1000:
                     raise AssertionError("unbounded range construction")
                 return real_range(*args)
