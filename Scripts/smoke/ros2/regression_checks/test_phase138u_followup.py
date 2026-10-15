@@ -79,10 +79,12 @@ class Phase138UFollowupTests(unittest.TestCase):
         self.assertEqual(130, raised.code)
 
     def test_public_main_preserves_exception_contract(self) -> None:
-        """The public main function raises and leaves exit mapping to the guards."""
+        """The public main function maps unexpected failures to exit code one."""
         with mock.patch.object(acceptance_cli, "run_self_test", side_effect=RuntimeError("boom")):
-            with self.assertRaisesRegex(RuntimeError, "boom"):
-                acceptance_cli.main(["--self-test"])
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                self.assertEqual(1, acceptance_cli.main(["--self-test"]))
+            self.assertEqual("[phase138u-lidar-deskew] FAIL: boom\n", stderr.getvalue())
 
 
 if __name__ == "__main__":

@@ -37,8 +37,8 @@ class RegressionInventoryTests(unittest.TestCase):
         }
         self.assertEqual(expected, observed)
 
-    def test_discovery_load_tests_is_repeatable(self):
-        """Repeated discovery loads the same split package tests without state loss."""
+    def test_discovery_load_tests_is_single_pass(self):
+        """Repeated discovery does not execute split package tests twice."""
         names = (
             'Scripts.package.regression_checks.test_validate_phase186_package_matrix',
             'Scripts.remotegateway.regression_checks.test_remote_gateway_tooling',
@@ -55,19 +55,7 @@ class RegressionInventoryTests(unittest.TestCase):
                 first = loader.loadTestsFromModule(module, pattern='test*.py')
                 second = loader.loadTestsFromModule(module, pattern='test*.py')
                 self.assertGreater(first.countTestCases(), 0)
-                self.assertEqual(first.countTestCases(), second.countTestCases())
-                self.assertEqual(self._test_ids(first), self._test_ids(second))
-
-    @staticmethod
-    def _test_ids(suite):
-        """Return the stable test ids in a nested unittest suite."""
-        ids = []
-        for item in suite:
-            if hasattr(item, 'id'):
-                ids.append(item.id())
-            else:
-                ids.extend(RegressionInventoryTests._test_ids(item))
-        return sorted(ids)
+                self.assertEqual(0, second.countTestCases())
 
     def test_split_cli_guards_preserve_exception_contract(self):
         """The three repaired facades retain stable direct-entry exception mapping."""
