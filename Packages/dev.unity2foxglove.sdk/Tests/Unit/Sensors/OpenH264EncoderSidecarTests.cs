@@ -272,9 +272,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 },
                 stream.ToArray());
 
-            var source = File.ReadAllText(Path.Combine(
-                FindRepoRoot(),
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs"));
+            var source = Read(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs");
             Assert.Equal(1, CountOccurrences(source, "var protocolHeader = new byte[OpenH264AllocationPolicy.ProtocolHeaderBytes];"));
             var writerStart = source.IndexOf("private async Task RunStdinWriter", StringComparison.Ordinal);
             var writerEnd = source.IndexOf("private Task RunStdoutReader", writerStart, StringComparison.Ordinal);
