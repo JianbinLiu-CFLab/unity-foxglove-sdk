@@ -6,22 +6,17 @@
 
 from __future__ import annotations
 
-from . import win32_bindings as _win32_bindings
-from . import win32_create as _win32_create
-from . import win32_process as _win32_process
-from . import win32_wait as _win32_wait
+from .win32_bindings import _Win32ApiBindings
+from .win32_create import _Win32ApiCreate
+from .win32_process import _Win32ApiProcess
+from .win32_wait import _Win32ApiWait
 
-class _Win32Api:
-    """Lazy ctypes bindings for the bounded Win32 ownership operations."""
-
-for _phase192_part in (
-    _win32_bindings._Win32ApiBindings,
-    _win32_create._Win32ApiCreate,
-    _win32_process._Win32ApiProcess,
-    _win32_wait._Win32ApiWait,
+class _Win32Api(
+    _Win32ApiBindings,
+    _Win32ApiCreate,
+    _Win32ApiProcess,
+    _Win32ApiWait,
 ):
-    for _phase192_name, _phase192_value in vars(_phase192_part).items():
-        if _phase192_name not in {"__dict__", "__doc__", "__module__", "__weakref__"}:
-            setattr(_Win32Api, _phase192_name, _phase192_value)
+    """Lazy ctypes bindings for the bounded Win32 ownership operations."""
 
 __all__ = ["_Win32Api"]

@@ -286,4 +286,4 @@ class _Win32ApiCreate:
 
 del _Phase192Path
 
-__all__ = [name for name in globals() if not name.startswith("__")]
+__all__ = ['_Win32ApiCreate']

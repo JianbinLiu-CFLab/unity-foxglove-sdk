@@ -6,6 +6,8 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -25,7 +27,38 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.True(
                 File.Exists(path),
                 "Source file not found: " + relativePath + " (" + path + ")");
-            return File.ReadAllText(path);
+            var source = File.ReadAllText(path);
+            var sectionDirectory = Path.Combine(
+                Path.GetDirectoryName(path)!,
+                "Decomposed",
+                Path.GetFileNameWithoutExtension(path));
+            if (!Directory.Exists(sectionDirectory))
+                return source;
+
+            var sectionFiles = Directory.GetFiles(sectionDirectory, "*.cs");
+            var marker = source
+                .Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+                .Select(line => Regex.Match(
+                    line,
+                    @"^\s*///\s*<remarks>Phase192 source sections:\s*(?<names>[^<]+)</remarks>\s*$"))
+                .FirstOrDefault(match => match.Success);
+            var orderedFiles = sectionFiles.OrderBy(file => file, StringComparer.Ordinal);
+            if (marker != null)
+            {
+                var names = marker.Groups["names"].Value
+                    .Split(',')
+                    .Select(name => name.Trim())
+                    .Where(name => name.Length > 0)
+                    .ToArray();
+                var filesByName = sectionFiles.ToDictionary(
+                    file => Path.GetFileName(file),
+                    StringComparer.OrdinalIgnoreCase);
+                orderedFiles = names.Select(name => filesByName[name]);
+            }
+
+            return source + Environment.NewLine + string.Join(
+                Environment.NewLine,
+                orderedFiles.Select(File.ReadAllText));
         }
 
         public static string Slice(string source, string startText, string endText)

@@ -182,4 +182,4 @@ class _WindowsJobOwnerLaunch:
 
 del _Phase192Path
 
-__all__ = [name for name in globals() if not name.startswith("__")]
+__all__ = ['_WindowsJobOwnerLaunch']
