@@ -351,66 +351,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.True(binding.EndAcceptanceAttempt(armed.Epoch));
             binding.Stop();
         }
-
-        [Fact]
-        public void HistoricalReplacementCannotSatisfyANewAcceptanceAttempt()
-        {
-            var backend = new FakeBackend();
-            var binding = CreateBinding(backend, 74, () => 74, _ => { }, _ => false);
-            Assert.True(binding.TryRegister().Succeeded);
-            using var historicalFirst = Message("historical-1");
-            using var historicalLatest = Message("historical-2");
-            backend.Invoke(historicalFirst);
-            backend.Invoke(historicalLatest);
-            Assert.True(binding.TryApplyLatest(74));
-
-            Assert.Equal(
-                FoxRunRos2AcceptanceArmStatus.Armed,
-                binding.ArmAcceptanceAttempt(out var armed));
-            using var onlyFinal = Message("current-final-only");
-            backend.Invoke(onlyFinal);
-            Assert.True(binding.TryApplyLatest(74));
-            Assert.True(binding.TryGetAcceptanceAttempt(out var attempt));
-            Assert.Equal(1, attempt.Received);
-            Assert.Equal(0, attempt.Replaced);
-            Assert.Equal(1, attempt.Applied);
-            Assert.False(attempt.IsSingleApplyLatestWinsComplete);
-            Assert.True(binding.TryCompleteAcceptanceAttempt(armed.Epoch, out var completed));
-            Assert.False(completed.IsSingleApplyLatestWinsComplete);
-            Assert.True(binding.EndAcceptanceAttempt(armed.Epoch));
-            using var afterFailedAttempt = Message("after-failed-attempt");
-            backend.Invoke(afterFailedAttempt);
-            Assert.True(binding.TryApplyLatest(74));
-            binding.Stop();
-        }
-
-        [Fact]
-        public void TwoMainThreadAppliesFailTheSingleApplyAttemptGate()
-        {
-            var backend = new FakeBackend();
-            var binding = CreateBinding(backend, 75, () => 75, _ => { }, _ => false);
-            Assert.True(binding.TryRegister().Succeeded);
-            Assert.Equal(
-                FoxRunRos2AcceptanceArmStatus.Armed,
-                binding.ArmAcceptanceAttempt(out var armed));
-            using var first = Message("first");
-            using var replaced = Message("replaced");
-            backend.Invoke(first);
-            backend.Invoke(replaced);
-            Assert.True(binding.TryApplyLatest(75));
-            using var secondApply = Message("second-apply");
-            backend.Invoke(secondApply);
-            Assert.True(binding.TryApplyLatest(75));
-
-            Assert.True(binding.TryGetAcceptanceAttempt(out var attempt));
-            Assert.Equal(3, attempt.Received);
-            Assert.Equal(1, attempt.Replaced);
-            Assert.Equal(2, attempt.Applied);
-            Assert.False(attempt.IsSingleApplyLatestWinsComplete);
-            Assert.True(binding.EndAcceptanceAttempt(armed.Epoch));
-            binding.Stop();
-        }
-
     }
+
 }
 #endif

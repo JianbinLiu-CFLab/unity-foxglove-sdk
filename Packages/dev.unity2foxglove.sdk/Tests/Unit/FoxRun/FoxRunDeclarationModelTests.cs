@@ -293,5 +293,77 @@ namespace Demo
             Assert.Contains("/phase183/full-duplex", generated, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void ChangeWithoutHzPublishesAndAppliesOnlyFreshSemanticChanges()
+        {
+            Assert.True(FoxRunUpdatePolicy.ShouldPublish(
+                FoxRunPolicy.Change, 1d, false, false, 0d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldPublish(
+                FoxRunPolicy.Change, 2d, true, false, 1d, 0d));
+
+            Assert.True(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Change, true, false, false, 3d, 0d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Change, true, true, false, 3d, 1d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Change, false, true, true, 3d, 1d, 0d));
+        }
+
+        [Fact]
+        public void ChangeWithHzProvidesPublishHeartbeatAndFreshDuplicateRefresh()
+        {
+            Assert.True(FoxRunUpdatePolicy.ShouldPublish(
+                FoxRunPolicy.Change, 3d, true, false, 1d, 2d));
+            Assert.True(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Change, true, true, false, 3d, 1d, 2d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Change, false, true, false, 4d, 1d, 2d));
+        }
+
+        [Fact]
+        public void FixedRateAndTriggerRetainDirectionIndependentDecisions()
+        {
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.FixedRate, false, true, false, 3d, 1d, 0d));
+            Assert.True(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.FixedRate, true, true, false, 3d, 1d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Trigger, true, false, true, 1d, 0d, 0d));
+        }
+
+        [Fact]
+        public void UpdatePolicyFailsClosedForUnknownPolicyAndNonFiniteClock()
+        {
+            Assert.False(FoxRunUpdatePolicy.ShouldPublish(
+                (FoxRunPolicy)0, 1d, false, true, 0d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                (FoxRunPolicy)99, true, false, true, 1d, 0d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldPublish(
+                FoxRunPolicy.FixedRate, double.NaN, false, true, 0d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.FixedRate, true, false, true, double.PositiveInfinity, 0d, 0d));
+        }
+
+        [Fact]
+        public void FoxRunEncodingMembersAndValuesRemainStable()
+        {
+            var values = Enum.GetValues(typeof(FoxRunEncoding))
+                .Cast<FoxRunEncoding>()
+                .ToArray();
+
+            Assert.Equal(
+                new[]
+                {
+                    FoxRunEncoding.Protobuf,
+                    FoxRunEncoding.JSON,
+                    (FoxRunEncoding)3
+                },
+                values);
+            Assert.Equal(0, (int)(FoxRunEncoding)0);
+            Assert.Equal(1, (int)FoxRunEncoding.Protobuf);
+            Assert.Equal(2, (int)FoxRunEncoding.JSON);
+            Assert.Equal(3, (int)(FoxRunEncoding)3);
+        }
+
     }
 }

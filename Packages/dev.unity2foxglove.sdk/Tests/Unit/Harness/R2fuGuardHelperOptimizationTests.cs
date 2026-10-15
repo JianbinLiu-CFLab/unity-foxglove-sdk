@@ -106,7 +106,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             => CSharpSyntaxTree.ParseText(Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/" + fileName));
 
         private static string Text(string relativePath)
-            => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        {
+            var normalized = relativePath.Replace('\\', '/');
+            if (normalized == "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuJazzyRuntimeRefreshValidation.cs"
+                || normalized == "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuLyricalRuntimePackageValidation.cs")
+            {
+                var facadePath = Path.Combine(RepoRoot, normalized.Replace('/', Path.DirectorySeparatorChar));
+                var sectionDirectory = Path.Combine(
+                    Path.GetDirectoryName(facadePath),
+                    "Decomposed",
+                    Path.GetFileNameWithoutExtension(facadePath));
+                var sections = Directory.GetFiles(sectionDirectory, "*.cs")
+                    .OrderBy(path => path, StringComparer.Ordinal)
+                    .Select(File.ReadAllText);
+                return File.ReadAllText(facadePath) + Environment.NewLine + string.Join(Environment.NewLine, sections);
+            }
+
+            return File.ReadAllText(Path.Combine(RepoRoot, normalized.Replace('/', Path.DirectorySeparatorChar)));
+        }
 
         private static string RepoRoot
         {

@@ -238,7 +238,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             if (!File.Exists(path))
                 throw new XunitException("Required Unity demo sample asset is missing: " + relativePath + " (" + path + ")");
 
-            return File.ReadAllText(path);
+            return Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(relativePath);
         }
 
         private static string Path(string relativePath)
