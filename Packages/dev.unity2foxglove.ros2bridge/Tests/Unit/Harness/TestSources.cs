@@ -5,6 +5,7 @@
 // Purpose: Repository-source helpers owned by the ROS2 Bridge test assembly.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -42,7 +43,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     line,
                     @"^\s*///\s*<remarks>Phase192 source sections:\s*(?<names>[^<]+)</remarks>\s*$"))
                 .FirstOrDefault(match => match.Success);
-            var orderedFiles = sectionFiles.OrderBy(file => file, StringComparer.Ordinal);
+            IEnumerable<string> orderedFiles = sectionFiles.OrderBy(
+                file => file,
+                StringComparer.Ordinal);
             if (marker != null)
             {
                 var names = marker.Groups["names"].Value
