@@ -42,7 +42,7 @@ def source_mutation_result(kind: str, source: Path, mutate) -> int:
 
 def _real_source_mutation_targets(root: Path) -> tuple[tuple[str, Path, object], ...]:
     """Return representative tracked sources for each identity surface."""
-    managed = root / "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Phase186/BridgeProductSurfaceTests.AcceptanceHarness.cs"
+    managed = root / "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Phase186/Decomposed/BridgeProductSurfaceTests/BridgeProductAcceptance.cs"
     python = root / "Scripts/phase192/identity_contracts.py"
     cpp = root / "Scripts/native/draco_native/Unity2FoxgloveDracoNative.cpp"
     tests = managed
