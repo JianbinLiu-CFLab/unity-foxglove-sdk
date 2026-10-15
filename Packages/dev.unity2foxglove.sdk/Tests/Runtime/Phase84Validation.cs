@@ -164,7 +164,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(path))
                 throw new FileNotFoundException("Required validation fixture is missing: " + relativePath, path);
 
-            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            return File.ReadAllText(path);
         }
     }
 }

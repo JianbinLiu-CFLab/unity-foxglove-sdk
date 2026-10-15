@@ -168,6 +168,15 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Could not find repository root.");
+
+            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required repository file is missing.", path);
+            return File.ReadAllText(path);
+        }
     }
 }

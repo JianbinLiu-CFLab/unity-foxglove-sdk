@@ -341,8 +341,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            FindRepoRoot();
-            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            var root = FindRepoRoot();
+            return File.ReadAllText(Path.Combine(root, relativePath));
         }
 
         private static string FindRepoRoot()

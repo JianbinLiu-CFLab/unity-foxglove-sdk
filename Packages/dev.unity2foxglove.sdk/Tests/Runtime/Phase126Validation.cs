@@ -127,7 +127,12 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+        {
+            var path = RepoPath(relativePath);
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing required Phase126 file: " + relativePath, path);
+            return File.ReadAllText(path);
+        }
 
         private static string RepoPath(string relativePath)
         {

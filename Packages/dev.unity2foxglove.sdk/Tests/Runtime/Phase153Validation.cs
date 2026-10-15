@@ -204,10 +204,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            if (Phase16Validation.FindRepoRoot() == null)
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
-            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
         }
 
         private static void Check(bool condition, string label)

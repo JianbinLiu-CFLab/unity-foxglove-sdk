@@ -246,7 +246,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(path))
                 throw new FileNotFoundException("Required validation source file was not found.", path);
 
-            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            return File.ReadAllText(path);
         }
 
         private static string FindRepoRoot()

@@ -206,7 +206,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(path))
                 throw new FileNotFoundException("Could not find file '" + relativePath + "'.", path);
 
-            var text = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            var text = File.ReadAllText(path);
             SourceCache.Add(relativePath, text);
             return text;
         }

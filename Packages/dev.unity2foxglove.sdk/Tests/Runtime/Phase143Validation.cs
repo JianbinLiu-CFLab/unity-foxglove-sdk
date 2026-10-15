@@ -230,7 +230,7 @@ namespace Unity.FoxgloveSDK.Tests
             var path = RepoPath(relativePath);
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing required Phase143 file: " + relativePath, path);
-            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            return File.ReadAllText(path);
         }
 
         private static string RepoPath(string relativePath)

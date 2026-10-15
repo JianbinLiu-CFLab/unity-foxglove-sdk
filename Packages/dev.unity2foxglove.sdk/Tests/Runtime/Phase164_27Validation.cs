@@ -24,10 +24,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRuntimeSelectionCachesFilesystemInputs()
         {
             var source = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
-            var discover = PhaseValidationSourceHelpers.SourceMethod(source, "public static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> DiscoverCandidateRuntimes");
-            var readManifest = PhaseValidationSourceHelpers.SourceMethod(source, "public static IReadOnlyList<string> ReadManifestRuntimePackages");
-            var invalidate = PhaseValidationSourceHelpers.SourceMethod(source, "public static void InvalidateStatusCache");
-            var switchRuntime = PhaseValidationSourceHelpers.SourceMethod(source, "public static void SwitchActiveRuntimePackage");
+            var discover = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> DiscoverCandidateRuntimes", "UNITY_EDITOR");
+            var readManifest = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static IReadOnlyList<string> ReadManifestRuntimePackages", "UNITY_EDITOR");
+            var invalidate = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static void InvalidateStatusCache", "UNITY_EDITOR");
+            var switchRuntime = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static void SwitchActiveRuntimePackage", "UNITY_EDITOR");
+            var completeSelection = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "internal static void CompleteInteractiveSelection", "UNITY_EDITOR");
 
             Check(source.Contains("_cachedCandidatesProjectDirectory", StringComparison.Ordinal)
                   && source.Contains("_cachedManifestProjectDirectory", StringComparison.Ordinal)
@@ -45,19 +46,21 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-27A-3: manifest runtime package reads are reused when timestamp and length are unchanged");
             Check(invalidate.Contains("_cachedCandidates = null;", StringComparison.Ordinal)
                   && invalidate.Contains("_cachedManifestRuntimePackages = null;", StringComparison.Ordinal)
-                  && switchRuntime.Contains("InvalidateStatusCache();", StringComparison.Ordinal),
+                  && switchRuntime.Contains("CompleteInteractiveSelection(projectDirectory, Ros2ForUnityInteractiveSelectionKind.Runtime);", StringComparison.Ordinal)
+                  && completeSelection.Contains("InvalidateStatusCache();", StringComparison.Ordinal),
                 "164-27A-4: runtime status cache is invalidated after manifest runtime switches");
         }
 
         private static void VerifyRuntimeSelectionUsesCachedManifestCommunicationModes()
         {
             var source = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
-            var modes = PhaseValidationSourceHelpers.SourceMethod(source, "public static IReadOnlyList<string> GetCommunicationModeIds");
-            var labels = PhaseValidationSourceHelpers.SourceMethod(source, "public static string[] GetCommunicationModeLabels");
+            var descriptor = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RuntimeDescriptor.cs");
+            var modes = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static IReadOnlyList<string> GetCommunicationModeIds", "UNITY_EDITOR");
+            var labels = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static string[] GetCommunicationModeLabels", "UNITY_EDITOR");
 
-            Check(source.Contains("CommunicationModeIds = BuildCommunicationModeIds(CommunicationModes);", StringComparison.Ordinal)
-                  && source.Contains("CommunicationModeLabels = BuildCommunicationModeLabels(CommunicationModes);", StringComparison.Ordinal)
-                  && source.Contains("Ros2ForUnityRuntimeCapabilityParser.Parse", StringComparison.Ordinal),
+            Check(descriptor.Contains("CommunicationModeIds = BuildCommunicationModeIds(CommunicationModes);", StringComparison.Ordinal)
+                  && descriptor.Contains("CommunicationModeLabels = BuildCommunicationModeLabels(CommunicationModes);", StringComparison.Ordinal)
+                  && descriptor.Contains("Ros2ForUnityRuntimeCapabilityParser.Parse", StringComparison.Ordinal),
                 "164-27B-1: runtime descriptor caches manifest-derived communication ids and labels");
             Check(modes.Contains("runtime?.CommunicationModeIds", StringComparison.Ordinal)
                   && !modes.Contains("new[]", StringComparison.Ordinal),
@@ -70,9 +73,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRuntimeSelectionBindsManifestIdentityBeforeNativeInitialization()
         {
             var source = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
-            var applyEnvironment = PhaseValidationSourceHelpers.SourceMethod(source, "private static void ApplySelectedRuntimeEnvironment");
-            var applyCommunicationMode = PhaseValidationSourceHelpers.SourceMethod(source, "public static void ApplyCommunicationModeEnvironment");
-            var bindPlayMode = PhaseValidationSourceHelpers.SourceMethod(source, "public static void BindActiveRuntimeForPlayMode(Ros2ForUnityRuntimeSelectionStatus status)");
+            var applyEnvironment = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "private static void ApplySelectedRuntimeEnvironment", "UNITY_EDITOR");
+            var applyCommunicationMode = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static void ApplyCommunicationModeEnvironment", "UNITY_EDITOR");
+            var bindPlayMode = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static void BindActiveRuntimeForPlayMode(Ros2ForUnityRuntimeSelectionStatus status)", "UNITY_EDITOR");
 
             Check(applyEnvironment.Contains("Ros2ForUnityEditorEnvironmentLease.Set(\"ROS_DISTRO\", runtime.RosDistro)", StringComparison.Ordinal)
                   && applyEnvironment.Contains("Ros2ForUnityEditorEnvironmentLease.Set(\"RMW_IMPLEMENTATION\", rmwImplementation)", StringComparison.Ordinal)
@@ -87,8 +90,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var selection = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
             var guard = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
-            var compilationStarted = PhaseValidationSourceHelpers.SourceMethod(guard, "private static void OnCompilationStarted");
-            var stop = PhaseValidationSourceHelpers.SourceMethod(guard, "private static bool StopPlayModeBeforeNativeReload");
+            var compilationStarted = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(guard, "private static void OnCompilationStarted", "UNITY_EDITOR");
+            var stop = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(guard, "private static bool StopPlayModeBeforeNativeReload", "UNITY_EDITOR");
 
             Check(selection.Contains("public static bool HasManifestRuntimePackage(string projectDirectory)", StringComparison.Ordinal)
                   && selection.Contains("=> ReadManifestRuntimePackages(projectDirectory).Count > 0;", StringComparison.Ordinal),
@@ -104,9 +107,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyInspectorAvoidsLinqArrayChurn()
         {
             var source = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelectorInspector.cs");
-            var drawActive = PhaseValidationSourceHelpers.SourceMethod(source, "public static void DrawActiveRuntimeSelector");
-            var communication = PhaseValidationSourceHelpers.SourceMethod(source, "private static void DrawCommunicationModePopup");
-            var runtimePopup = PhaseValidationSourceHelpers.SourceMethod(source, "private static void DrawRuntimePopup");
+            var drawActive = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static void DrawActiveRuntimeSelector", "UNITY_EDITOR");
+            var communication = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "private static void DrawCommunicationModePopup", "UNITY_EDITOR");
+            var runtimePopup = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "private static void DrawRuntimePopup", "UNITY_EDITOR");
 
             Check(!source.Contains("using System.Linq;", StringComparison.Ordinal),
                 "164-27D-1: R2FU runtime selector inspector keeps LINQ out of repaint drawing");

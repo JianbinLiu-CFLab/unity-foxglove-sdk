@@ -5,12 +5,485 @@
 // Purpose: Phase 140-89/90/91/92/94 runtime validation optimization checks.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Unity.FoxgloveSDK.Tests;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
 {
+    [Trait("Phase", "192")]
+    [Trait("Domain", "Harness")]
+    public sealed class FoxgloveRuntimeSourceCompositionTests
+    {
+        [Theory]
+        [InlineData("Phase163_40Validation.cs", "Scripts/release/bump_version.py", "def resolve_repo_root()")]
+        [InlineData("Phase164_40Validation.cs", "Scripts/release/bump_version.py", "def run(self)")]
+        [InlineData("Phase164_32Validation.cs", "Scripts/smoke/ros2/phase162_lyrical_zenoh_player_smoke.py", "def wait_for_marker(")]
+        [InlineData("Phase164_35Validation.cs", "Scripts/smoke/test_core_smoke_scripts.py", "def load_smoke_module(")]
+        [InlineData("Phase164_41Validation.cs", "Scripts/smoke/test_core_smoke_scripts.py", "def load_smoke_module(")]
+        [InlineData("Phase164_30Validation.cs", "Scripts/smoke/ros2/phase160_humble_lidar_deskew_acceptance.py", "def write_probe_script(")]
+        [InlineData("Phase163_33Validation.cs", "Scripts/smoke/ros2/phase160_humble_lidar_deskew_acceptance.py", "def pointcloud_display(")]
+        [InlineData("R2fuHumbleRuntimePackageValidation.cs", "Scripts/smoke/ros2/phase160_humble_lidar_deskew_acceptance.py", "def write_probe_script(")]
+        [InlineData("R2fuLyricalRuntimePackageValidation.cs", "Scripts/smoke/ros2/phase162_lyrical_zenoh_player_smoke.py", "def wait_for_marker(")]
+        public void SplitPythonScannersUseDeclaredSourceSections(string validator, string facade, string signature)
+        {
+            Assert.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSource", TestSources.Runtime(validator), StringComparison.Ordinal);
+            var source = PhaseValidationSourceHelpers.ReadSplitPythonSource(facade);
+            Assert.Contains(signature, source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RequiredRepoTextReadsPythonFacadesWithTheirSections()
+        {
+            var cases = new[]
+            {
+                ("Scripts/mcap/conformance/run_phase121_conformance.py", "OFFICIAL_REPOSITORY_URL"),
+                ("Scripts/smoke/ros2/phase128_rviz2_acceptance.py", "pixi"),
+                ("Scripts/smoke/ros2/phase129_pointcloud2_acceptance.py", "pixi"),
+                ("Scripts/smoke/ros2/phase130_markerarray_acceptance.py", "pixi"),
+                ("Scripts/smoke/ros2/phase131_standard_visualization_acceptance.py", "_ros2_windows_env"),
+                ("Scripts/smoke/ros2/_ros2_windows_env.py", "ros2_opt_bin_paths"),
+            };
+
+            foreach (var (facade, signature) in cases)
+                Assert.Contains(signature, PhaseValidationSourceHelpers.ReadRequiredRepoText(facade), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RuntimePythonReadersUseTheSplitAwareSourceEntryPoint()
+        {
+            var root = Path.Combine(
+                PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
+                "Packages/dev.unity2foxglove.sdk/Tests/Runtime");
+            var facadePaths = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "Scripts/mcap/conformance/run_phase121_conformance.py",
+                "Scripts/smoke/ros2/phase128_rviz2_acceptance.py",
+                "Scripts/smoke/ros2/phase129_pointcloud2_acceptance.py",
+                "Scripts/smoke/ros2/phase130_markerarray_acceptance.py",
+                "Scripts/smoke/ros2/phase131_standard_visualization_acceptance.py",
+                "Scripts/smoke/ros2/_ros2_windows_env.py",
+            };
+            var violations = new List<string>();
+            foreach (var path in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+            {
+                var source = File.ReadAllText(path);
+                foreach (Match match in Regex.Matches(
+                             source,
+                             "(?:ReadRepoText|Read)\\(\\s*\\\"(?<path>Scripts/[^\\\"]+\\.py)\\\"",
+                             RegexOptions.CultureInvariant))
+                {
+                    if (!facadePaths.Contains(match.Groups["path"].Value))
+                        continue;
+                    if (!source.Contains("PhaseValidationSourceHelpers.ReadRequiredRepoText", StringComparison.Ordinal)
+                        && !source.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSource", StringComparison.Ordinal))
+                        violations.Add(path + ": Python reader bypasses the split-aware helper");
+                }
+            }
+
+            Assert.Empty(violations);
+        }
+
+        [Fact]
+        public void FoxgloveRuntimeCompositionFailsClosedAndPreservesTrailingGateOrder()
+        {
+            var helper = TestSources.ExtractMethod(
+                TestSources.Runtime("PhaseValidationSourceHelpers.cs"),
+                "public static string ReadFoxgloveRuntimeSources()");
+            Assert.Contains(
+                "Directory.GetFiles(dir, \"FoxgloveRuntime*.cs\", SearchOption.TopDirectoryOnly)",
+                helper,
+                StringComparison.Ordinal);
+            Assert.Contains("expected.SetEquals(actual)", helper, StringComparison.Ordinal);
+            Assert.DoesNotContain(".Where(File.Exists)", helper, StringComparison.Ordinal);
+
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var start = source.IndexOf("public void Start(", StringComparison.Ordinal);
+            var gate = source.IndexOf("ClientEventGenerationGate", StringComparison.Ordinal);
+            Assert.True(start >= 0 && gate > start, "ClientEventGenerationGate must remain after runtime methods.");
+        }
+
+        [Fact]
+        public void Ros2ForUnitySubscriptionHubCompositionPreservesSplitMethods()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs");
+
+            var parseOptions = CSharpParseOptions.Default.WithPreprocessorSymbols(
+                "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                "UNITY_EDITOR_WIN");
+            var diagnostics = CSharpSyntaxTree.ParseText(source, parseOptions)
+                .GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+            Assert.Empty(diagnostics);
+            Assert.Equal(1, Count(source, "private void Update()"));
+            Assert.Equal(1, Count(source, "private void BeginShutdown()"));
+            Assert.Contains("private void ScanAndReconcile()", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SharedRos2ForUnitySubscriptionHubHelperRequiresWrapperTrimmingAndActiveSymbols()
+        {
+            var helper = TestSources.Runtime("Ros2ForUnitySubscriptionHubSourceComposer.cs");
+            Assert.Contains(
+                "TrimWrapperEnd",
+                helper,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "for (var brace = 0; brace < 2; brace++)",
+                helper,
+                StringComparison.Ordinal);
+            var validation = TestSources.Runtime("R2fuNativeBridgeHotPathLifecycleValidation.cs");
+            Assert.Contains("WithPreprocessorSymbols(", validation, StringComparison.Ordinal);
+            Assert.Contains("\"UNITY2FOXGLOVE_ROS2_FOR_UNITY\"", validation, StringComparison.Ordinal);
+            Assert.Contains("\"UNITY_EDITOR_WIN\"", validation, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Ros2CustomCdrEmitterCompositionIgnoresTrailingBlankLines()
+        {
+            var helper = TestSources.Runtime("PhaseValidationSourceHelpers.cs");
+            var method = TestSources.ExtractMethod(
+                helper,
+                "private static int FindRos2CustomCdrEmitterBodyEnd");
+
+            Assert.Contains(
+                "string.IsNullOrWhiteSpace(lines[end - 1])",
+                method,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "for (var brace = 0; brace < 2; brace++)",
+                method,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ReadRos2CustomCdrEmitterFacadeBody",
+                helper,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ReadRos2CustomCdrEmitterFragmentBody",
+                helper,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "SearchOption.AllDirectories",
+                helper,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsUnregisteredRootSiblingPartial()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            var extra = Path.Combine(runtimeRoot, "Ros2BridgeRuntime.Extra.cs");
+            try
+            {
+                File.WriteAllText(extra, "internal sealed partial class Ros2BridgeWorkerLease { }");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsUnregisteredRootPartialWithDifferentFileName()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(runtimeRoot, "ExtraRuntime.cs"),
+                    "internal sealed partial class Ros2BridgeWorkerLease { }");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsConditionalRootPartial()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(runtimeRoot, "ConditionalWorker.cs"),
+                    "#if UNDECLARED_RUNTIME_SYMBOL\ninternal sealed partial class Ros2BridgeWorkerLease { }\n#endif");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsConjunctiveConditionalRootPartial()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(runtimeRoot, "ConjunctiveWorker.cs"),
+                    "#if EXTRA_WORKER_A && EXTRA_WORKER_B\ninternal sealed partial class Ros2BridgeWorkerLease { }\n#endif");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsNegatedConjunctiveConditionalRootPartial()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var runtimeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge");
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(runtimeRoot, "NegatedConjunctiveWorker.cs"),
+                    "#if EXTRA_WORKER_A && !EXTRA_WORKER_B\ninternal sealed partial class Ros2BridgeWorkerLease { }\n#endif");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2BridgeRuntimeCompositionRejectsMissingRegisteredFragment()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
+                "Ros2BridgeRuntime.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
+                "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+            var fragment = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Runtime",
+                "Ros2Bridge",
+                "Decomposed",
+                "Ros2BridgeRuntime",
+                "Ros2BridgeRuntime.QueueAndStats.cs");
+            try
+            {
+                File.Delete(fragment);
+                Assert.Throws<FileNotFoundException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2CustomCdrEmitterCompositionRejectsNestedDuplicateFragmentName()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun",
+                "Ros2CustomCdrEmitter.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Generation.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Readers.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Writers.cs",
+                "Decomposed/Ros2CustomCdrEmitter/ValidationAndProjection.cs",
+                "Decomposed/Ros2CustomCdrEmitter/NamingAndUtilities.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Shapes.cs");
+            var fragmentDirectory = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2bridge",
+                "Editor",
+                "FoxRun",
+                "Decomposed",
+                "Ros2CustomCdrEmitter");
+            var nestedDirectory = Path.Combine(fragmentDirectory, "Nested");
+            var duplicate = Path.Combine(nestedDirectory, "Generation.cs");
+            try
+            {
+                Directory.CreateDirectory(nestedDirectory);
+                File.WriteAllText(duplicate, "internal partial class FoxRunBridgeSourceEmitter { }");
+                Assert.Throws<InvalidDataException>(
+                    () => PhaseValidationSourceHelpers.ReadRos2CustomCdrEmitterSources(root));
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        [Fact]
+        public void Ros2CustomCdrEmitterCompositionWithTrailingBlanksParses()
+        {
+            var root = CreateSourceFixture(
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun",
+                "Ros2CustomCdrEmitter.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Generation.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Readers.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Writers.cs",
+                "Decomposed/Ros2CustomCdrEmitter/ValidationAndProjection.cs",
+                "Decomposed/Ros2CustomCdrEmitter/NamingAndUtilities.cs",
+                "Decomposed/Ros2CustomCdrEmitter/Shapes.cs");
+            var paths = new[]
+            {
+                Path.Combine(
+                    root,
+                    "Packages",
+                    "dev.unity2foxglove.ros2bridge",
+                    "Editor",
+                    "FoxRun",
+                    "Ros2CustomCdrEmitter.cs"),
+                Path.Combine(
+                    root,
+                    "Packages",
+                    "dev.unity2foxglove.ros2bridge",
+                    "Editor",
+                    "FoxRun",
+                    "Decomposed",
+                    "Ros2CustomCdrEmitter",
+                    "Generation.cs"),
+            };
+            try
+            {
+                foreach (var path in paths)
+                    File.AppendAllText(
+                        path,
+                        Environment.NewLine + Environment.NewLine,
+                        Encoding.UTF8);
+
+                var source = PhaseValidationSourceHelpers.ReadRos2CustomCdrEmitterSources(root);
+                var diagnostics = CSharpSyntaxTree.ParseText(source)
+                    .GetDiagnostics()
+                    .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                    .ToArray();
+                Assert.Empty(diagnostics);
+            }
+            finally
+            {
+                DeleteSourceFixture(root);
+            }
+        }
+
+        private static string CreateSourceFixture(string relativeRoot, params string[] relativeFiles)
+        {
+            var repositoryRoot = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
+            var fixtureRoot = Path.Combine(
+                Path.GetTempPath(),
+                "phase192-source-fixture-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                foreach (var relativeFile in relativeFiles)
+                {
+                    var source = Path.Combine(
+                        repositoryRoot,
+                        relativeRoot.Replace('/', Path.DirectorySeparatorChar),
+                        relativeFile.Replace('/', Path.DirectorySeparatorChar));
+                    var target = Path.Combine(
+                        fixtureRoot,
+                        relativeRoot.Replace('/', Path.DirectorySeparatorChar),
+                        relativeFile.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target));
+                    File.Copy(source, target);
+                }
+            }
+            catch
+            {
+                DeleteSourceFixture(fixtureRoot);
+                throw;
+            }
+            return fixtureRoot;
+        }
+
+        private static void DeleteSourceFixture(string fixtureRoot)
+        {
+            if (Directory.Exists(fixtureRoot))
+                Directory.Delete(fixtureRoot, true);
+        }
+
+        private static int Count(string source, string value)
+            => source.Split(new[] { value }, StringSplitOptions.None).Length - 1;
+    }
+
     [Trait("Phase", "140-89")]
     [Trait("Domain", "Harness")]
     public sealed class Ros2BridgeSchemaOptimizationTests
@@ -53,13 +526,281 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             => TestSources.AssertConsolePhaseRemoved("Phase140_89Validation.cs", "--phase140-89", "Phase140_89Validation.Validate");
     }
 
-
-
-
-
-
-class TestSources
+    [Trait("Phase", "140-90")]
+    [Trait("Domain", "Harness")]
+    public sealed class OptionalRos2ValidationOptimizationTests
     {
+        [Fact]
+        public void Phase115RoslynValidationsCacheMetadataReferences()
+        {
+            var phase115E = TestSources.Runtime("Phase115EValidation.cs");
+            var phase115F = TestSources.Runtime("Phase115FValidation.cs");
+            var phase115G = TestSources.Runtime("Phase115GValidation.cs");
+
+            Assert.Contains("private static readonly Lazy<MetadataReference[]> CachedReferences", phase115E, StringComparison.Ordinal);
+            Assert.Contains("private static MetadataReference[] References() => CachedReferences.Value;", phase115E, StringComparison.Ordinal);
+            Assert.Contains("private static readonly Lazy<MetadataReference[]> CachedReferences", phase115F, StringComparison.Ordinal);
+            Assert.Contains("private static MetadataReference[] References() => CachedReferences.Value;", phase115F, StringComparison.Ordinal);
+            Assert.Contains("private static readonly Lazy<MetadataReference[]> CachedReferences", phase115G, StringComparison.Ordinal);
+            Assert.Contains("CachedReferences.Value", phase115G, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Phase105ReusesNormalizedSummaryLines()
+        {
+            var source = TestSources.Runtime("Phase105Validation.cs");
+
+            Assert.Contains("private static readonly Dictionary<string, string[]> SummaryLineCache", source, StringComparison.Ordinal);
+            Assert.Contains("SummaryLineCache.Clear();", source, StringComparison.Ordinal);
+            Assert.Contains("private static string[] ReadRepoLines", source, StringComparison.Ordinal);
+            Assert.Contains("WindowBefore(lines, declaration", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void OptionalEditorAndRuntimeScansAvoidRepeatedEnumeration()
+        {
+            var phase107 = TestSources.Runtime("Phase107Validation.cs");
+            var phase108 = TestSources.Runtime("Phase108Validation.cs");
+
+            Assert.Equal(1, TestSources.Count(phase107, "Directory.GetFiles(editorRoot, \"*.*\", SearchOption.AllDirectories)"));
+            Assert.Contains("var editorFiles = Directory.GetFiles(editorRoot", phase107, StringComparison.Ordinal);
+            Assert.Contains("foreach (var path in editorFiles.Where(HasTextExtension))", phase107, StringComparison.Ordinal);
+            Assert.Contains("private static IReadOnlyList<string> _runtimeTextFiles", phase108, StringComparison.Ordinal);
+            Assert.Contains("_runtimeTextFiles = null;", phase108, StringComparison.Ordinal);
+            Assert.Contains("private static IReadOnlyList<string> RuntimeTextFiles()", phase108, StringComparison.Ordinal);
+            Assert.Contains("return _runtimeTextFiles;", phase108, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void HashSidecarsAreDecodedFromSingleByteRead()
+        {
+            var phase112 = TestSources.Runtime("Phase112Validation.cs");
+            var phase115 = TestSources.Runtime("Phase115Validation.cs");
+
+            Assert.DoesNotContain("File.ReadAllText(hashPath)", phase112, StringComparison.Ordinal);
+            Assert.Contains("Encoding.ASCII.GetString(hashBytes)", phase112, StringComparison.Ordinal);
+            Assert.DoesNotContain("File.ReadAllText(hashPath)", phase115, StringComparison.Ordinal);
+            Assert.Contains("Encoding.ASCII.GetString(hashBytes)", phase115, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Phase14090MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_90Validation.cs", "--phase140-90", "Phase140_90Validation.Validate");
+    }
+
+    [Trait("Phase", "140-91")]
+    [Trait("Domain", "Harness")]
+    public sealed class SchemaEvidencePackageOptimizationTests
+    {
+        [Fact]
+        public void Phase110CachesRepoRootAndForbiddenTokenArrays()
+        {
+            var source = TestSources.Runtime("Phase110Validation.cs");
+
+            Assert.Contains("private static string _repoRoot;", source, StringComparison.Ordinal);
+            Assert.Contains("_repoRoot = root;", source, StringComparison.Ordinal);
+            Assert.Contains("private static readonly string[] OptionalRuntimeForbiddenTokenList", source, StringComparison.Ordinal);
+            Assert.Contains("private static readonly string[] CoreProductionForbiddenTokenList", source, StringComparison.Ordinal);
+            Assert.Contains("private static readonly string[] R2fuReferenceTokens", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("private static IEnumerable<string> OptionalRuntimeForbiddenTokens()", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void FixtureManifestAndReflectionLookupsAreCached()
+        {
+            var phase113 = TestSources.Runtime("Phase113Validation.cs");
+            var phase114 = TestSources.Runtime("Phase114Validation.cs");
+            var phase116 = TestSources.Runtime("Phase116Validation.cs");
+
+            Assert.Contains("private static readonly Lazy<FoxRunCanonicalManifest> FixtureManifestCache", phase113, StringComparison.Ordinal);
+            Assert.Contains("private static FoxRunCanonicalManifest FixtureManifest() => FixtureManifestCache.Value;", phase113, StringComparison.Ordinal);
+            Assert.Contains("private static readonly Lazy<FoxRunCanonicalManifest> FixtureManifestCache", phase114, StringComparison.Ordinal);
+            Assert.Contains("private static FoxRunCanonicalManifest FixtureManifest() => FixtureManifestCache.Value;", phase114, StringComparison.Ordinal);
+            Assert.Contains("private static readonly Dictionary<string, MethodInfo> MethodCache", phase116, StringComparison.Ordinal);
+            Assert.Contains("private static readonly Dictionary<string, MemberInfo> MemberCache", phase116, StringComparison.Ordinal);
+            Assert.Contains("MethodCache.TryGetValue", phase116, StringComparison.Ordinal);
+            Assert.Contains("MemberCache.TryGetValue", phase116, StringComparison.Ordinal);
+            Assert.DoesNotContain(".GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)\r\n                .Where", phase116, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Phase122ReusesOpcodeCountsPerRecordArray()
+        {
+            var source = TestSources.Runtime("Phase122Validation.cs");
+
+            Assert.Contains("private static Dictionary<byte, int> OpcodeCounts", source, StringComparison.Ordinal);
+            Assert.Contains("counts.TryGetValue(opcode, out var count)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("=> records.Count(r => r.Opcode == opcode);", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Phase14091MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_91Validation.cs", "--phase140-91", "Phase140_91Validation.Validate");
+    }
+
+    [Trait("Phase", "140-92")]
+    [Trait("Domain", "Harness")]
+    public sealed class RvizStandardRos2ValidationOptimizationTests
+    {
+        [Fact]
+        public void BoundaryScansReadEachFileOncePerTokenGroup()
+        {
+            foreach (var file in new[] { "Phase128Validation.cs", "Phase129Validation.cs", "Phase130Validation.cs", "Phase131Validation.cs", "Phase132Validation.cs", "Phase143Validation.cs" })
+            {
+                var source = TestSources.Runtime(file);
+                Assert.DoesNotContain("File.ReadAllText(path).Contains", source, StringComparison.Ordinal);
+                Assert.Contains("var text = File.ReadAllText(path)", source, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void McapRecordWritersUseTryGetBufferWithFallback()
+        {
+            foreach (var file in new[] { "Phase11Validation.cs", "Phase12Validation.cs" })
+            {
+                var source = TestSources.Runtime(file);
+                Assert.Contains("content.TryGetBuffer(out var segment)", source, StringComparison.Ordinal);
+                Assert.Contains("s.Write(segment.Array, segment.Offset, length)", source, StringComparison.Ordinal);
+                Assert.Contains("var data = content.ToArray();", source, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void Phase12AndPhase13AvoidRepeatedTextAndSnapshotWork()
+        {
+            var phase12 = TestSources.Runtime("Phase12Validation.cs");
+            var phase13 = TestSources.Runtime("Phase13Validation.cs");
+
+            Assert.Contains("raw.SequenceEqual(lz4Result)", phase12, StringComparison.Ordinal);
+            Assert.Contains("raw.SequenceEqual(zstdResult)", phase12, StringComparison.Ordinal);
+            Assert.DoesNotContain("Encoding.UTF8.GetString(raw)", phase12, StringComparison.Ordinal);
+            Assert.Contains("private static readonly byte[] PlaybackControlRequestIdBytes", phase13, StringComparison.Ordinal);
+            Assert.Equal(1, TestSources.Count(phase13, "Encoding.UTF8.GetBytes(\"phase13-paused-seek\")"));
+            Assert.Contains("var requestIdBytes = PlaybackControlRequestIdBytes;", phase13, StringComparison.Ordinal);
+            Assert.Contains("public int SentBinaryFrameCount(uint clientId)", phase13, StringComparison.Ordinal);
+            Assert.Contains("transport.SentBinaryFrameCount(7)", phase13, StringComparison.Ordinal);
+            Assert.Contains("Contains(\"\\\"serverInfo\\\"\", StringComparison.Ordinal)", phase13, StringComparison.Ordinal);
+            Assert.Contains("Contains(\"\\\"advertise\\\"\", StringComparison.Ordinal)", phase13, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SecretScanAvoidsSplitArray()
+        {
+            var source = TestSources.Runtime("Phase134_1Validation.cs");
+
+            Assert.Contains("using var reader = new StringReader(text);", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("text.Split('\\n')", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Phase14092MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_92Validation.cs", "--phase140-92", "Phase140_92Validation.Validate");
+    }
+
+    [Trait("Phase", "140-94")]
+    [Trait("Domain", "Harness")]
+    public sealed class VirtualSensorThroughputOptimizationTests
+    {
+        [Fact]
+        public void CameraPublisherReadersUseStringBuilderAndSourceCaches()
+        {
+            foreach (var file in new[] { "Phase138MValidation.cs", "Phase138PValidation.cs", "Phase138QValidation.cs", "Phase138TValidation.cs" })
+            {
+                var method = TestSources.ExtractMethod(TestSources.Runtime(file), "private static string ReadCameraPublisherSources()");
+                Assert.Contains("StringBuilder", method, StringComparison.Ordinal);
+                Assert.Contains("AppendLine(File.ReadAllText(file))", method, StringComparison.Ordinal);
+                Assert.DoesNotContain("output += File.ReadAllText(file)", method, StringComparison.Ordinal);
+            }
+
+            foreach (var file in new[] { "Phase138HValidation.cs", "Phase138IValidation.cs", "Phase138JValidation.cs", "Phase138MValidation.cs", "Phase138QValidation.cs" })
+            {
+                var source = TestSources.Runtime(file);
+                Assert.Contains("private static readonly Dictionary<string, string>", source, StringComparison.Ordinal);
+                Assert.Contains("TryGetValue", source, StringComparison.Ordinal);
+                Assert.Contains("File.ReadAllText", source, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void VirtualSensorValidationHotPathsAvoidExtraReadsAndAllocations()
+        {
+            var phase138P = TestSources.ExtractMethod(TestSources.Runtime("Phase138PValidation.cs"), "private static SourceHygieneFile ReadSourceHygieneFile(");
+            var phase138PSource = TestSources.Runtime("Phase138PValidation.cs");
+            var phase138S = TestSources.ExtractMethod(TestSources.Runtime("Phase138SValidation.cs"), "private static string ReadDirectory(");
+            var phase138L = TestSources.ExtractMethod(TestSources.Runtime("Phase138LValidation.cs"), "private static bool HasField(");
+            var phase138C2 = TestSources.Runtime("Phase138C2Validation.cs");
+
+            Assert.Contains("FileStream", phase138P, StringComparison.Ordinal);
+            Assert.Contains("Span<byte>", phase138P, StringComparison.Ordinal);
+            Assert.Contains("stream.Read(header)", phase138P, StringComparison.Ordinal);
+            Assert.DoesNotContain("File.ReadAllBytes(path)", phase138PSource, StringComparison.Ordinal);
+            Assert.Contains("ScanTrackedSourceHygiene", phase138PSource, StringComparison.Ordinal);
+            Assert.DoesNotContain("private static bool TrackedSourceHasUtf8Bom()", phase138PSource, StringComparison.Ordinal);
+            Assert.Contains("var content = File.ReadAllText(file);", phase138S, StringComparison.Ordinal);
+            Assert.Contains("sb.AppendLine(content)", phase138S, StringComparison.Ordinal);
+            Assert.Contains("bytes += content.Length", phase138S, StringComparison.Ordinal);
+            Assert.Equal(1, TestSources.Count(phase138S, "File.ReadAllText(file)"));
+            Assert.Contains("for (var i = 0; i < fields.Length; i++)", phase138L, StringComparison.Ordinal);
+            Assert.DoesNotContain(".Any(", phase138L, StringComparison.Ordinal);
+            Assert.Contains("private static readonly byte[] OkPayload", phase138C2, StringComparison.Ordinal);
+            Assert.Equal(1, TestSources.Count(phase138C2, "Encoding.UTF8.GetBytes(\"{\\\"ok\\\":true}\")"));
+            Assert.Contains("session.Publish(77, OkPayload, 1)", phase138C2, StringComparison.Ordinal);
+            Assert.Contains("session.Publish(78, OkPayload, 2)", phase138C2, StringComparison.Ordinal);
+            Assert.Contains("session.Publish(79, OkPayload, 3)", phase138C2, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RayUnitChecksUseSquaredMagnitude()
+        {
+            foreach (var file in new[] { "Phase138Validation.cs", "Phase138BValidation.cs" })
+            {
+                var source = TestSources.Runtime(file);
+                Assert.Contains("LengthSquared()", source, StringComparison.Ordinal);
+                Assert.DoesNotContain("var mag = dir.Length();", source, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void Phase14094MigratedConsolePhaseIsRemoved()
+            => TestSources.AssertConsolePhaseRemoved("Phase140_94Validation.cs", "--phase140-94", "Phase140_94Validation.Validate");
+
+        [Fact]
+        public void SharedMethodExtractorIgnoresBracesInsideLiteralsAndComments()
+        {
+            const string source = @"
+private static void Probe()
+{
+    var json = ""}"";
+    var character = '}';
+    // }
+    /* } */
+    KeepThisStatement();
+}
+
+private static void Next() { }
+";
+
+            var method = TestSources.ExtractMethod(source, "private static void Probe()");
+
+            Assert.Contains("KeepThisStatement();", method, StringComparison.Ordinal);
+            Assert.DoesNotContain("private static void Next()", method, StringComparison.Ordinal);
+        }
+    }
+
+    internal static class TestSources
+    {
+        private const string FoxgloveRuntimeTrailingGateMarker =
+            "    /// <summary>Shared executable generation predicate for main-thread client events.";
+        private static readonly string[] FoxgloveRuntimeSourceFileNames =
+        {
+            "FoxgloveRuntime.cs",
+            "FoxgloveRuntime.Lifecycle.cs",
+            "FoxgloveRuntime.Publishing.cs",
+            "FoxgloveRuntime.RecordingAndReplay.cs",
+            "FoxgloveRuntime.RuntimeAndSchema.cs",
+            "FoxgloveRuntime.ReplaySuppression.cs",
+            "FoxgloveRuntime.SchemaRegistration.cs",
+        };
         private static readonly string CachedRepoRoot = FindRepoRoot();
 
         public static string Runtime(string fileName)
@@ -67,15 +808,75 @@ class TestSources
 
         public static string Text(string relativePath)
         {
+            var normalized = relativePath.Replace('\\', '/');
             if (string.Equals(
-                    relativePath.Replace('\\', '/'),
+                    normalized,
                     "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
                     StringComparison.Ordinal))
                 return McapReplayEngineSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs",
+                    StringComparison.Ordinal))
+                return FoxgloveRuntimeSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs",
+                    StringComparison.Ordinal))
+                return Ros2ForUnitySubscriptionHubSources();
 
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
-            return File.ReadAllText(path);
+            return ReadLogicalSource(path);
+        }
+
+        private static string ReadLogicalSource(string facadePath)
+        {
+            var source = File.ReadAllText(facadePath);
+            var package = Path.Combine(
+                Path.GetDirectoryName(facadePath),
+                Path.GetFileNameWithoutExtension(facadePath));
+            if (!Directory.Exists(package))
+                return source;
+
+            var sections = Directory.GetFiles(package, "*.py", SearchOption.TopDirectoryOnly)
+                .Where(path => !string.Equals(Path.GetFileName(path), "__init__.py", StringComparison.Ordinal)
+                    && !string.Equals(Path.GetFileName(path), "__main__.py", StringComparison.Ordinal))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .Select(File.ReadAllText);
+            return source + Environment.NewLine + string.Join(Environment.NewLine, sections);
+        }
+
+        private static string FoxgloveRuntimeSources()
+        {
+            var root = Path.Combine(
+                RepoRoot,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Core",
+                "Runtime");
+            var fileNames = FoxgloveRuntimeSourceFileNames;
+            var expected = new HashSet<string>(fileNames, StringComparer.Ordinal);
+            var actual = Directory.GetFiles(root, "FoxgloveRuntime*.cs", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            Assert.True(
+                expected.SetEquals(actual),
+                "FoxgloveRuntime source composition is incomplete or contains unregistered partial files. " +
+                "Missing: " + string.Join(", ", expected.Except(actual).OrderBy(name => name, StringComparer.Ordinal)) +
+                "; unexpected: " + string.Join(", ", actual.Except(expected).OrderBy(name => name, StringComparer.Ordinal)));
+
+            var facade = File.ReadAllText(Path.Combine(root, fileNames[0]));
+            var trailingGateStart = facade.LastIndexOf(
+                FoxgloveRuntimeTrailingGateMarker,
+                StringComparison.Ordinal);
+            Assert.True(trailingGateStart >= 0, "FoxgloveRuntime facade is missing ClientEventGenerationGate.");
+
+            var sources = new[] { facade.Substring(0, trailingGateStart).TrimEnd() }
+                .Concat(fileNames.Skip(1).Select(name => File.ReadAllText(Path.Combine(root, name))))
+                .Concat(new[] { facade.Substring(trailingGateStart).TrimStart() });
+            return string.Join(Environment.NewLine, sources);
         }
 
         private static string McapReplayEngineSources()
@@ -91,16 +892,41 @@ class TestSources
                 "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/FinishTickResult.cs"
             };
 
+            var facade = TextWithoutComposition(paths[0]);
+            var fragments = paths.Skip(1).Select(path => TextWithoutComposition(path));
             return string.Join(
-                Environment.NewLine,
-                paths.Select(path => TextWithoutComposition(path)));
+                Environment.NewLine + Environment.NewLine,
+                new[] { facade }.Concat(fragments))
+                + Environment.NewLine
+                + "    }"
+                + Environment.NewLine
+                + "}";
         }
+
+        private static string Ros2ForUnitySubscriptionHubSources()
+            => Unity.FoxgloveSDK.Tests.Ros2ForUnitySubscriptionHubSourceComposer.Compose(RepoRoot);
 
         private static string TextWithoutComposition(string relativePath)
         {
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
-            return File.ReadAllText(path);
+            var lines = File.ReadAllLines(path);
+            if (relativePath.EndsWith("McapReplayEngine.cs", StringComparison.Ordinal))
+            {
+                Assert.True(lines.Length >= 3, "MCAP replay facade is too short: " + relativePath);
+                return string.Join(Environment.NewLine, lines.Take(lines.Length - 2));
+            }
+
+            var classLine = Array.FindIndex(
+                lines,
+                line => line.Contains("partial class McapReplayEngine", StringComparison.Ordinal));
+            Assert.True(classLine >= 0, "MCAP replay fragment class is missing: " + relativePath);
+            var openBrace = Array.FindIndex(
+                lines,
+                classLine,
+                line => line.Trim() == "{");
+            Assert.True(openBrace >= 0 && lines.Length - openBrace >= 4, "MCAP replay fragment is too short: " + relativePath);
+            return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
         }
 
         public static string SourceGeneratorSources()
@@ -357,5 +1183,4 @@ class TestSources
             throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
         }
     }
-
 }

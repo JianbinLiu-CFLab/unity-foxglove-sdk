@@ -17,7 +17,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validation type for Phase113Validation.
     /// </summary>
-    public static partial class Phase113Validation
+    public static class Phase113Validation
     {
         private const string ExpectedGlobalFixtureHash = "1f649388de6fd74a3fd3edf52d16e1afd9ca4566231e9f3c1fea755d1e6441ec";
         private const string ExpectedFoxRunFixtureHash = "b35e6b56c8dd0da65b5d32b0835f130ae577bba655eefca8eef4fb66ddfec116";
@@ -487,6 +487,41 @@ namespace Unity.FoxgloveSDK.Tests
                    && paren == 0
                    && brace == 0
                    && bracket == 0;
+        }
+
+        private static string NormalizeNewlines(string value)
+            => value.Replace("\r\n", "\n").Replace("\r", "\n");
+
+        private static string ReadRepoText(string relativePath)
+        {
+            var path = RepoPath(relativePath);
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing required Phase113 file: " + relativePath, path);
+            return File.ReadAllText(path, Encoding.UTF8);
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            return Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static string RepoRoot()
+        {
+            if (_repoRoot != null)
+                return _repoRoot;
+            var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase113 validation.");
+            _repoRoot = root;
+            return _repoRoot;
+        }
+
+        private static void Check(bool condition, string message)
+        {
+            if (!condition)
+                throw new InvalidOperationException(message);
+            _passed++;
+            Console.WriteLine("[PASS] " + message);
         }
     }
 }

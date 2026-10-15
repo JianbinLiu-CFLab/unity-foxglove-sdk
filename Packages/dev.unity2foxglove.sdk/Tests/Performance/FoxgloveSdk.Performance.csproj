@@ -23,6 +23,5 @@
     <Compile Include="ReplayPerformanceScenarios.cs" />
     <Compile Include="FakePerformanceTransport.cs" />
     <Compile Include="../Unit/Fixtures/UnityEngineMathTypes.cs" Link="Fixtures/UnityEngineMathTypes.cs" />
-    <Compile Include="Decomposed/**/*.cs" />
   </ItemGroup>
 </Project>

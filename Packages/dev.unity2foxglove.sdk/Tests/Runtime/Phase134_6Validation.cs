@@ -53,8 +53,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(snap.MaxClients == 2, "134-6A-4: transport stats expose configured max-client budget");
             Check(snap.TotalRejectedClients == 0, "134-6A-5: transport stats expose rejected-client counter");
 
-            var backendSource = ReadRepoText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var backendSource = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             Check(backendSource.Contains("private readonly object _clientAdmissionLock", StringComparison.Ordinal)
                   && backendSource.Contains("private bool TryRegisterClient", StringComparison.Ordinal),
                 "134-6A-6: backend registers active clients through a bounded admission gate");
@@ -114,8 +113,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
             Check(true, "134-6C-1: managed WebSocket backend accepts localhost bind aliases");
 
-            var backendSource = ReadRepoText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var backendSource = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             var wssSource = ReadRepoText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWssBackend.cs");
             var certSource = ReadRepoText(
@@ -268,6 +266,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
+            var root = FindRepoRoot();
             return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 

@@ -114,7 +114,9 @@ namespace Unity.FoxgloveSDK.Tests
                ?? throw new DirectoryNotFoundException("Could not find repository root.");
 
         internal static string Read(string relativePath)
-            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            => File.ReadAllText(Path.Combine(
+                Root(),
+                relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
         internal static bool Exists(string relativePath)
             => File.Exists(Path.Combine(

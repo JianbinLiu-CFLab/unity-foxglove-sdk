@@ -9,9 +9,6 @@
     <Compile Include="../AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs"
              Link="CompileStubs/FoxgloveLogHubCompileStubs.cs"
              Condition="'$(ExpectR2fu)' == 'true'" />
-    <Compile Include="../../../dev.unity2foxglove.remotegateway.win64/Runtime/**/*.cs"
-             LinkBase="RemoteGatewayRuntime"
-             Condition="'$(IncludeRemoteGateway)' == 'true'" />
     <Compile Include="PackageMatrixNeutralProbe.cs" />
   </ItemGroup>
   <Target Name="ValidatePhase186PackageMatrixSurface" BeforeTargets="CoreCompile">
@@ -26,8 +23,6 @@
           Condition="$([System.String]::Copy('%(Compile.Identity)').Replace('\','/').EndsWith('/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeTransportProvider.cs'))" />
       <_MatrixBridgeCdr Include="@(Compile)"
           Condition="$([System.String]::Copy('%(Compile.Identity)').Replace('\','/').EndsWith('/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs'))" />
-      <_MatrixRemoteGateway Include="@(Compile)"
-          Condition="$([System.String]::Copy('%(Compile.Identity)').Replace('\','/').EndsWith('/Runtime/FoxgloveRemoteGatewayController.cs'))" />
     </ItemGroup>
     <Error Condition="'@(_MatrixCoreProviderRegistry)' == ''"
            Text="Phase186 package matrix omitted the neutral SDK Provider registry." />
@@ -39,9 +34,5 @@
            Text="Phase186 package matrix expected Bridge runtime/provider/CDR sources but compiled an incomplete surface." />
     <Error Condition="'$(ExpectBridge)' != 'true' and ('@(_MatrixBridgeRuntime)' != '' or '@(_MatrixBridgeProvider)' != '' or '@(_MatrixBridgeCdr)' != '')"
            Text="Phase186 package matrix unexpectedly included Bridge sources." />
-    <Error Condition="'$(IncludeRemoteGateway)' == 'true' and '@(_MatrixRemoteGateway)' == ''"
-           Text="Phase192 package matrix expected Remote Gateway sources but compiled none." />
-    <Error Condition="'$(IncludeRemoteGateway)' != 'true' and '@(_MatrixRemoteGateway)' != ''"
-           Text="Phase192 package matrix unexpectedly included Remote Gateway sources." />
   </Target>
 </Project>

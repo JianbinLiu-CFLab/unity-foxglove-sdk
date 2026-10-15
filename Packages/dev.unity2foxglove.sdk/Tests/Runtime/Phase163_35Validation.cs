@@ -121,7 +121,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-35H: validation registry exposes --phase163-35");
         }
 
-        private static string ReadRepoText(string relativePath) => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+        private static string ReadRepoText(string relativePath) => File.ReadAllText(RepoPath(relativePath));
 
         private static string RepoPath(string relativePath)
         {

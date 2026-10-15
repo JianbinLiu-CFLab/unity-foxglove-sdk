@@ -144,7 +144,13 @@ namespace Unity.FoxgloveSDK.Tests
             return next < 0 ? source.Substring(start) : source.Substring(start, next - start);
         }
 
-        private static string ReadRepoText(string relativePath) => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+        private static string ReadRepoText(string relativePath)
+        {
+            var path = RepoPath(relativePath);
+            return relativePath.EndsWith(".py", StringComparison.Ordinal)
+                ? PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(path)
+                : File.ReadAllText(path);
+        }
 
         private static string RepoPath(string relativePath)
         {

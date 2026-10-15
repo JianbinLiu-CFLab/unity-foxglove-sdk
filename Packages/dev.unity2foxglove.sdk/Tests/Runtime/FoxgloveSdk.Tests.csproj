@@ -35,7 +35,6 @@
     <Compile Include="../../Runtime/Components/FoxRun/IFoxRun*.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/Transport/*.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxgloveLogHub.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
-    <Compile Include="../../Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/*.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../Runtime/Components/FoxRun/IFoxgloveLogConditionSource.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2NativeOutputPolicy.cs"
              Link="Ros2ForUnityRuntime/Native/Ros2NativeOutputPolicy.cs"
@@ -133,6 +132,7 @@
     <Compile Include="OpenH264ValidationHelpers.cs" />
     <Compile Include="PhaseValidationReflectionHelpers.cs" />
     <Compile Include="PhaseValidationSourceHelpers.cs" />
+    <Compile Include="Ros2ForUnitySubscriptionHubSourceComposer.cs" />
     <Compile Include="Phase80Validation.cs" />
     <Compile Include="Phase81Validation.cs" />
     <Compile Include="Phase82Validation.cs" />
@@ -466,8 +466,6 @@
     <Compile Include="../../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityEditor/FoxRun" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" Link="Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" />
-    <Compile Include="Decomposed/**/*.cs" />
-    <Compile Remove="Decomposed/FoxRunCustomRos2InterfaceValidation/**/*.cs;Decomposed/FoxRunRos2NativeSubscriptionValidation/**/*.cs" Condition="'$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true'" />
   </ItemGroup>
   <ItemGroup Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
     <Reference Include="ros2cs_common" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/ros2cs_common.dll" Private="true" />

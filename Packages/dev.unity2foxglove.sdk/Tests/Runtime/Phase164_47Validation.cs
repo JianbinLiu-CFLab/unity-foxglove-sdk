@@ -50,12 +50,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMcapTestFixtureReuse()
         {
-            var indexing = Read("Packages/dev.unity2foxglove.sdk/Tests/Unit/Mcap/McapReaderIndexingTests.cs");
+            const string root = "Packages/dev.unity2foxglove.sdk/Tests/Unit/Mcap/";
+            const string parts = "Decomposed/McapReaderIndexingTests/";
+            var facade = Read(root + "McapReaderIndexingTests.cs");
+            var scenarios = Read(root + parts + "ValidationScenarios.cs");
+            var fixtures = Read(root + parts + "McapFixtures.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/TempMcapHelper.cs");
 
-            Check(indexing.Contains("private static readonly byte[] SimpleFiveMessageMcap", StringComparison.Ordinal)
-                  && indexing.Contains("OpenSimpleMessageMcap(SimpleFiveMessageMcap)", StringComparison.Ordinal)
-                  && indexing.Contains("CreateSimpleMessageMcapBytes(int messageCount)", StringComparison.Ordinal),
+            Check(facade.Contains("private static readonly byte[] SimpleFiveMessageMcap", StringComparison.Ordinal)
+                  && scenarios.Contains("OpenSimpleMessageMcap(SimpleFiveMessageMcap)", StringComparison.Ordinal)
+                  && fixtures.Contains("CreateSimpleMessageMcapBytes(int messageCount)", StringComparison.Ordinal),
                 "164-47C-1: deterministic MCAP reader fixture bytes are built once and reopened per test");
             Check(helper.Contains("private static readonly List<string> _paths = new(16);", StringComparison.Ordinal)
                   && helper.Contains("_paths.Clear();", StringComparison.Ordinal),

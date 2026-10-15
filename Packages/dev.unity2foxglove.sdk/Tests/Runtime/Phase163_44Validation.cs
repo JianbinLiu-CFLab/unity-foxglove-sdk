@@ -220,7 +220,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Read(string repoRoot, string relativePath)
-            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            => File.ReadAllText(Path.Combine(repoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
         private static void Check(bool condition, string description)
         {

@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBroadcastPathsAvoidPerClientEncodingAndSnapshots()
         {
-            var backend = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var backend = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             var connection = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsConnection.cs");
             var broadcastText = SourceMethod(backend, "public void BroadcastText(string json)");
             var broadcastBinary = SourceMethod(backend, "public void BroadcastBinary(byte[] data)");
@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyStatsAndMonotonicHotPaths()
         {
-            var backend = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var backend = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             var connection = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsConnection.cs");
             var stats = SourceMethod(backend, "public TransportStatsSnapshot GetStatsSnapshot()");
             var monotonic = SourceMethod(connection, "private static long MonotonicMilliseconds()");

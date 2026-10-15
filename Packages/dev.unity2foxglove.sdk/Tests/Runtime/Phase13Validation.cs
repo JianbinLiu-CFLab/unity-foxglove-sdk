@@ -20,8 +20,7 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
-    /// <remarks>Phase192 source sections: TestClientPublishMessageIndex.cs, TestPausedReplaySeekAppliesSceneOnlySnapshot.cs, CountPlaybackStateFrames.cs, FakeTransport.cs, ReplayRuntimeContext.cs, FakeClock.cs</remarks>
-    public static partial class Phase13Validation
+    public static class Phase13Validation
     {
         private static int _passCount;
         private static readonly byte[] PlaybackControlRequestIdBytes = Encoding.UTF8.GetBytes("phase13-paused-seek");
@@ -354,6 +353,308 @@ namespace Unity.FoxgloveSDK.Tests
             }
             finally { File.Delete(tmp); }
         }
+
+        /// <summary>
+        /// Mixes server and client channels in one MCAP and verifies the
+        /// statistics channel count includes both and the chunk records
+        /// are readable.
+        /// </summary>
+        static void TestClientPublishMessageIndex()
+        {
+            var ms = new MemoryStream();
+            var rec = new McapRecorder(ms);
+            // Server channel
+            rec.AddChannel(10, "/srv", "json", "", "", "");
+            rec.WriteMessage(10, 1000UL, new byte[] { 1 });
+            // Client channel
+            rec.WriteClientMessage(1, 5, 2000UL, new byte[] { 2 }, "/cli");
+            rec.Close();
+
+            ms.Position = 0;
+            var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
+            Assert(summary != null, "ClientPubIndex: summary non-null");
+            // Statistics should include both channels
+            var stats = summary.Statistics;
+            Assert(stats != null, "ClientPubIndex: statistics non-null");
+            Assert(stats.ChannelCount == 2,
+                "ClientPubIndex: channel count includes client channel (expected=2, actual=" + stats.ChannelCount + ")");
+
+            // MessageIndex should cover both channels
+            var chunkIdx = summary.ChunkIndexes;
+            Assert(chunkIdx != null && chunkIdx.Count > 0, "ClientPubIndex: chunk indexes exist");
+            var chunk = reader.ReadChunkRecords(chunkIdx[0].ChunkStartOffset, chunkIdx[0].ChunkLength);
+            Assert(chunk != null && chunk.Length > 0, "ClientPubIndex: chunk records readable");
+        }
+
+        /// <summary>
+        /// When a schemaless client publish targets the same topic as a
+        /// typed server channel, it must be skipped rather than creating
+        /// a conflicting duplicate channel.
+        /// </summary>
+        static void TestClientPublishDoesNotCreateMixedTopicSchemas()
+        {
+            var ms = new MemoryStream();
+            var rec = new McapRecorder(ms);
+            rec.AddChannel(10, "/unity/camera", "json", "foxglove.CompressedImage", "jsonschema", "{}");
+            rec.WriteMessage(10, 1000UL, new byte[] { 1 });
+            rec.WriteClientMessage(1, 5, 2000UL, new byte[] { 2 }, "/unity/camera");
+            rec.Close();
+
+            ms.Position = 0;
+            var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
+            var cameraChannels = summary.Channels.FindAll(ch => ch.Topic == "/unity/camera");
+            Assert(cameraChannels.Count == 1,
+                "ClientPubMixedSchema: schemaless client publish does not add second /unity/camera channel");
+            Assert(cameraChannels[0].SchemaId != 0,
+                "ClientPubMixedSchema: /unity/camera keeps CompressedImage schema");
+            Assert(summary.Statistics.ChannelMessageCounts[cameraChannels[0].Id] == 1,
+                "ClientPubMixedSchema: skipped client publish is not recorded");
+        }
+
+        /// <summary>Roundtrip: Unity→Foxglove→Unity position must return to original.</summary>
+        static void TestCoordinateRoundtrip()
+        {
+            // Position: U2F = (z, -x, y); F2U = (-y, z, x)
+            // Roundtrip: (x,y,z) → (z,-x,y) → (-(-x), z, z) = (x, z, z) — wait, that's wrong.
+            // Actually: F2U(z, -x, y) = (-(-x), y, z) = (x, y, z). Correct!
+            double x = 1, y = 2, z = 3;
+            double fx = z, fy = -x, fz = y;          // U2F
+            double bx = -fy, by = fz, bz = fx;        // F2U
+            Assert(System.Math.Abs(bx - x) < 0.001 && System.Math.Abs(by - y) < 0.001 && System.Math.Abs(bz - z) < 0.001,
+                "CoordRnd: position roundtrip ((1,2,3) → (" + bx + "," + by + "," + bz + "))");
+
+            // Rotation: U2F = (-z, x, -y, w); F2U = (y, -z, -x, w)
+            // Roundtrip: (x,y,z,w) → (-z,x,-y,w) → (-y,-(-z),-x,w) = (-y, z, -x, w)
+            // q and -q represent the same rotation, so (-y,z,-x,w) represents same as (y,-z,x,-w)
+            // But roundtrip should get back something equivalent.
+            // Let's test with specific basis rotations using component mapping:
+            // Unity绕Y90: (0, 0.707, 0, 0.707) → (-0, 0, -0.707, 0.707)=(0,0,-0.707,0.707)
+            // → F2U: (-0.707, -0, -0, 0.707) = (-0.707, 0, 0, 0.707) = Unity绕X-90
+            // That's wrong.
+            //
+            // The conversion is NOT a roundtrip quaternion-identity. It's a coordinate transform.
+            // Roundtrip for position is identity by construction. Rotation involves handness flip
+            // and the result won't be component-wise identical but represents equivalent rotation.
+            // Assert representative quaternion roundtrips directly; q and -q are treated as equivalent.
+            const double sqrtHalf = 0.7071067811865476;
+            Assert(QuaternionRoundtripEquivalent((0, 0, 0, 1)),
+                "CoordRnd: identity quaternion roundtrip is equivalent");
+            Assert(QuaternionRoundtripEquivalent((sqrtHalf, 0, 0, sqrtHalf)),
+                "CoordRnd: X-axis quaternion roundtrip is equivalent");
+            Assert(QuaternionRoundtripEquivalent((0, sqrtHalf, 0, sqrtHalf)),
+                "CoordRnd: Y-axis quaternion roundtrip is equivalent");
+            Assert(QuaternionRoundtripEquivalent((0, 0, sqrtHalf, sqrtHalf)),
+                "CoordRnd: Z-axis quaternion roundtrip is equivalent");
+
+            // Basis axis verification
+            // Unity (1,0,0) → Foxglove (0,-1,0) ✓ (validated via Foxglove live)
+            // Unity (0,1,0) → Foxglove (0,0,1)  ✓
+            // Unity (0,0,1) → Foxglove (1,0,0)  ✓
+            double[] ux = {1,0,0}, uy = {0,1,0}, uz = {0,0,1};
+            double[] fx_exp = {0,-1,0}, fy_exp = {0,0,1}, fz_exp = {1,0,0};
+            double[] f_ux = {uz[0], -ux[0], uy[0]};
+            double[] f_uy = {uz[1], -ux[1], uy[1]};
+            double[] f_uz = {uz[2], -ux[2], uy[2]};
+            Assert(f_ux[0]==fx_exp[0] && f_ux[1]==fx_exp[1] && f_ux[2]==fx_exp[2], "CoordRnd: UX→F basis correct");
+            Assert(f_uy[0]==fy_exp[0] && f_uy[1]==fy_exp[1] && f_uy[2]==fy_exp[2], "CoordRnd: UY→F basis correct");
+            Assert(f_uz[0]==fz_exp[0] && f_uz[1]==fz_exp[1] && f_uz[2]==fz_exp[2], "CoordRnd: UZ→F basis correct");
+        }
+
+        /// <summary>
+        /// After three Stop/Start cycles, firing a replay message must
+        /// invoke the handler exactly once (no duplicate subscriptions).
+        /// </summary>
+        static void TestReplayHandlerNoAccumulate()
+        {
+            int count = 0;
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(new Phase13FakeTransport(), clock, new DefaultSchemaRegistry());
+            rt.OnReplayMessage += (t, d) => count++;
+            rt.Start("test", "127.0.0.1", GetFreeLoopbackPort());
+            rt.Stop();
+            rt.Start("test", "127.0.0.1", GetFreeLoopbackPort());
+            rt.Stop();
+            rt.Start("test", "127.0.0.1", GetFreeLoopbackPort());
+
+            // Fire replay via internal test hook
+            rt.FireReplayForTests("/tf", new byte[] { });
+
+            Assert(count == 1, "HandlerNoAccum: trigger fires once after 3 Stop/Start cycles (expected=1, actual=" + count + ")");
+            rt.Dispose();
+        }
+
+        /// <summary>
+        /// Runtime-level ReplayPlay must start the playback clock as well
+        /// as the replay engine. Otherwise auto-play replay remains frozen
+        /// at the first MCAP timestamp and cannot drive scene adapters.
+        /// </summary>
+        static void TestRuntimeReplayPlayAdvancesPlaybackClock()
+        {
+            var tmp = CreateTempMcap(2, 1_000_000UL);
+            var rt = new FoxgloveRuntime(new Phase13FakeTransport(), new SystemClock(), new DefaultSchemaRegistry());
+            int count = 0;
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.OnReplayMessage += (topic, payload) => count++;
+                rt.Start("replay-clock-test", "127.0.0.1", GetFreeLoopbackPort());
+                rt.ReplayPlay();
+                for (var i = 0; i < 200 && count < 2; i++)
+                {
+                    Thread.Sleep(5);
+                    rt.Tick();
+                }
+
+                Assert(count == 2, "Runtime ReplayPlay advances playback clock and emits both messages (expected=2, actual=" + count + ")");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
+        /// <summary>
+        /// MCAP stores protobuf schemas as raw FileDescriptorSet bytes, while
+        /// Foxglove WebSocket advertise messages expect the schema string to be
+        /// base64. Replay must convert the bytes back to base64 instead of
+        /// treating them as UTF-8 text.
+        /// </summary>
+        static void TestReplayAdvertisesProtobufSchemaAsBase64()
+        {
+            var tmp = Path.GetTempFileName();
+            var schemaBytes = new byte[] { 0x0A, 0x05, (byte)'s', (byte)'c', (byte)'e', (byte)'n', (byte)'e', 0xFF };
+            var expectedSchema = Convert.ToBase64String(schemaBytes);
+            var transport = new Phase13FakeTransport();
+            var rt = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            try
+            {
+                using (var fs = new FileStream(tmp, FileMode.Truncate, FileAccess.Write))
+                {
+                    var rec = new McapRecorder(fs);
+                    rec.AddChannel(1, "/scene", "protobuf", "foxglove.SceneUpdate", "protobuf", expectedSchema);
+                    rec.WriteMessage(1, 1_000_000UL, new byte[] { 0x12, 0x00 });
+                    rec.Close();
+                }
+
+                rt.EnableReplay(tmp);
+                rt.Start("protobuf-replay-schema", "127.0.0.1", GetFreeLoopbackPort());
+
+                JObject replayChannel = null;
+                foreach (var text in transport.SentText)
+                {
+                    var obj = JObject.Parse(text);
+                    if ((string)obj["op"] != "advertise") continue;
+                    foreach (var ch in (JArray)obj["channels"])
+                    {
+                        if ((string)ch["topic"] == "/scene")
+                        {
+                            replayChannel = (JObject)ch;
+                            break;
+                        }
+                    }
+                    if (replayChannel != null) break;
+                }
+
+                Assert(replayChannel != null, "Replay protobuf channel is advertised");
+                Assert((string)replayChannel["encoding"] == "protobuf", "Replay protobuf channel keeps message encoding");
+                Assert((string)replayChannel["schemaEncoding"] == "protobuf", "Replay protobuf channel keeps schemaEncoding protobuf");
+                Assert((string)replayChannel["schema"] == expectedSchema,
+                    "Replay protobuf schema is advertised as base64, not raw UTF-8");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
+        static void TestReplayObjectAdapterRoutesProtobufBeforeJsonParse()
+        {
+            if (!TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs", out var source))
+                return;
+            Assert(source.Contains("OnReplayMessage(ReplayMessageContext context)", StringComparison.Ordinal)
+                && source.Contains("ResolveBehavior(context", StringComparison.Ordinal),
+                "Replay adapter routes by replay message context and behavior before protobuf parsing");
+            Assert(source.Contains("ReplayChannelBehavior.FrameTransformPose", StringComparison.Ordinal)
+                && source.Contains("ReplayChannelBehavior.ScenePrimitivePose", StringComparison.Ordinal),
+                "Replay adapter ignores non-pose replay messages through behavior classification");
+            Assert(source.Contains("ParseProtobuf(GetFrameTransformProtoTypeName", StringComparison.Ordinal),
+                "Replay adapter supports frame-transform protobuf payloads through optional assembly reflection");
+            Assert(source.Contains("ParseProtobuf(\"Foxglove.SceneUpdate\"", StringComparison.Ordinal),
+                "Replay adapter supports scene-update protobuf payloads through optional assembly reflection");
+            Assert(!source.Contains("global::Foxglove.", StringComparison.Ordinal),
+                "Replay adapter does not directly reference the optional protobuf assembly");
+        }
+
+        static void TestReplayControllerSerializesReplayCursorAccess()
+        {
+            var source = PhaseValidationSourceHelpers.ReadReplayControllerSources();
+
+            Assert(source.Contains("private readonly object _replayEngineLock", StringComparison.Ordinal),
+                "Replay controller has a dedicated replay cursor synchronization lock");
+            Assert(CountOccurrences(source, "lock (_replayEngineLock)") >= 5,
+                "Replay controller serializes Tick/Snapshot/Seek/Play/Pause access to the MCAP cursor");
+        }
+
+        static void TestPlaybackControlRunsOnRuntimeTick()
+        {
+            if (!TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Connection.cs", out var sessionSource)
+                || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs", out var playbackHandlerSource)
+                || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs", out var runtimeSource)
+                || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs", out var tickSource))
+                return;
+
+            var replaySource = PhaseValidationSourceHelpers.ReadReplayControllerSources();
+
+            Assert(playbackHandlerSource.Contains("_pendingPlaybackControls.Enqueue", StringComparison.Ordinal)
+                && playbackHandlerSource.Contains("public void Drain()", StringComparison.Ordinal)
+                && sessionSource.Contains("_playback.Drain()", StringComparison.Ordinal),
+                "Playback control requests are queued by the transport thread and drained by runtime Tick");
+            var drainIndex = tickSource.IndexOf("DrainPlaybackControls()", StringComparison.Ordinal);
+            var clockTickIndex = tickSource.IndexOf("playbackClock.Tick()", StringComparison.Ordinal);
+            Assert(drainIndex >= 0 && clockTickIndex > drainIndex,
+                "Runtime drains playback controls before advancing replay time");
+            Assert(replaySource.Contains("PublishMessages(session, messages, nowNs, \"Tick\", forwardToScene: true)", StringComparison.Ordinal),
+                "Replay Tick broadcasts playback time before replay message frames");
+        }
+
+        static void TestPlaybackSeekTargetsDidSeekStateToRequestingClient()
+        {
+            var tmp = CreateTempMcap(2, 1_000_000UL);
+            var transport = new Phase13FakeTransport();
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(transport, clock, new DefaultSchemaRegistry());
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.Start("playback-state-broadcast", "127.0.0.1", GetFreeLoopbackPort());
+                transport.SimulateConnect(7);
+                transport.SimulateConnect(8);
+                transport.ClearBinary(7);
+                transport.ClearBinary(8);
+
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 1_000_000UL));
+                rt.Tick();
+
+                var requestingFrames = transport.SentBinaryFrames(7);
+                Assert(CountPlaybackStateFrames(requestingFrames) == 1,
+                    "Playback seek sends didSeek PlaybackState to the requesting client");
+                Assert(CountPlaybackStateFrames(transport.SentBinaryFrames(8)) == 0,
+                    "Playback seek does not leak request-correlated PlaybackState to other clients");
+                Assert(TryDecodePlaybackState(requestingFrames[0], out _, out _, out _, out var didSeek, out _)
+                    && didSeek,
+                    "Targeted PlaybackState preserves didSeek=true for the requesting client");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
         static void TestPausedReplaySeekFollowsOfficialPlaybackControlFlow()
         {
             var tmp = CreateTempMcap(3, 1_000_000UL);
@@ -426,18 +727,338 @@ namespace Unity.FoxgloveSDK.Tests
                 File.Delete(tmp);
             }
         }
-        static byte[] BuildPlaybackControlRequest(byte command, bool hasSeek, ulong seekNs)
+
+        static void TestPausedReplaySeekAppliesSceneOnlySnapshot()
         {
-            var requestIdBytes = PlaybackControlRequestIdBytes;
-            var frame = new byte[19 + requestIdBytes.Length];
-            frame[0] = ClientOpcode.PlaybackControlRequest;
-            frame[1] = command;
-            BinaryEncoding.WriteF32LE(frame, 2, 1f);
-            frame[6] = hasSeek ? (byte)1 : (byte)0;
-            BinaryEncoding.WriteU64LE(frame, 7, seekNs);
-            BinaryEncoding.WriteU32LE(frame, 15, (uint)requestIdBytes.Length);
-            Buffer.BlockCopy(requestIdBytes, 0, frame, 19, requestIdBytes.Length);
-            return frame;
+            var tmp = CreateTempMcap(3, 1_000_000UL);
+            var transport = new Phase13FakeTransport();
+            var rt = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            var sceneMessageCount = 0;
+            string sceneTopic = null;
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.OnReplayMessage += (topic, _) =>
+                {
+                    sceneMessageCount++;
+                    sceneTopic = topic;
+                };
+                rt.Start("paused-seek-scene-only", "127.0.0.1", GetFreeLoopbackPort());
+
+                var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
+                transport.SimulateConnect(7);
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":" + replayChannelId + "}]}");
+
+                transport.ClearBinary(7);
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 2_500_000UL));
+                rt.Tick();
+
+                var messageFrames = 0;
+                foreach (var frame in transport.SentBinaryFrames(7))
+                {
+                    if (BinaryEncoding.TryDecodeServerMessageData(frame, out _, out _, out _))
+                        messageFrames++;
+                }
+
+                Assert(sceneMessageCount == 1,
+                    "Paused replay seek applies one scene-only snapshot message (expected=1, actual=" + sceneMessageCount + ")");
+                Assert(sceneTopic == "/test",
+                    "Paused replay seek forwards the snapshot topic to Unity scene listeners");
+                Assert(messageFrames == 0,
+                    "Paused replay seek scene snapshot is not published as Foxglove MessageData");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
+        static void TestActivePausedScrubDoesNotEmitPanelHistoryUntilSettled()
+        {
+            var second = 1_000_000_000UL;
+            var tmp = CreateTempTimedMcap(1 * second, 10 * second, 20 * second, 40 * second);
+            var transport = new Phase13FakeTransport();
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(transport, clock, new DefaultSchemaRegistry());
+            var sceneMessageCount = 0;
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.OnReplayMessage += (_, _) => sceneMessageCount++;
+                rt.Start("active-paused-scrub", "127.0.0.1", GetFreeLoopbackPort());
+
+                var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
+                transport.SimulateConnect(7);
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":" + replayChannelId + "}]}");
+                transport.ClearBinary(7);
+
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 40 * second));
+                rt.Tick();
+                clock.AdvanceNs(100_000_000UL);
+                rt.Tick();
+                Assert(CountMessageFrames(transport.SentBinaryFrames(7)) == 0,
+                    "Active paused scrub does not publish panel history before the settled debounce");
+
+                transport.ClearBinary(7);
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 20 * second));
+                rt.Tick();
+                clock.AdvanceNs(100_000_000UL);
+                rt.Tick();
+                Assert(CountMessageFrames(transport.SentBinaryFrames(7)) == 0,
+                    "Superseded paused scrub keeps panel history suppressed while drag is still active");
+
+                clock.AdvanceNs(ReplayController.ScrubHistoryDebounceNs - 100_000_000UL);
+                rt.Tick();
+
+                var logTimes = MessageLogTimes(transport.SentBinaryFrames(7));
+                Assert(logTimes.Count == 3
+                    && logTimes[0] == 1 * second
+                    && logTimes[1] == 10 * second
+                    && logTimes[2] == 20 * second,
+                    "Settled paused scrub publishes bounded chronological panel history");
+                Assert(sceneMessageCount >= 2,
+                    "Active paused scrub still updates the Unity scene immediately for each seek");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
+        static void TestReplayPlayInvalidatesPanelHistoryDeltaWatermark()
+        {
+            var second = 1_000_000_000UL;
+            var tmp = CreateTempTimedMcap(1 * second, 10 * second, 20 * second, 40 * second);
+            var transport = new Phase13FakeTransport();
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(transport, clock, new DefaultSchemaRegistry());
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.Start("play-invalidates-history-watermark", "127.0.0.1", GetFreeLoopbackPort());
+
+                var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
+                transport.SimulateConnect(7);
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":" + replayChannelId + "}]}");
+                transport.ClearBinary(7);
+
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 20 * second));
+                rt.Tick();
+                clock.AdvanceNs(ReplayController.ScrubHistoryDebounceNs);
+                rt.Tick();
+                Assert(MessageLogTimes(transport.SentBinaryFrames(7)).Count == 3,
+                    "Initial settled paused seek publishes history through the seek time");
+
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 0, hasSeek: false, seekNs: 0));
+                rt.Tick();
+                transport.ClearBinary(7);
+
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 40 * second));
+                rt.Tick();
+                clock.AdvanceNs(ReplayController.ScrubHistoryDebounceNs);
+                rt.Tick();
+
+                var logTimes = MessageLogTimes(transport.SentBinaryFrames(7));
+                Assert(logTimes.Count == 3
+                    && logTimes[0] == 10 * second
+                    && logTimes[1] == 20 * second
+                    && logTimes[2] == 40 * second,
+                    "Replay Play invalidates paused history delta watermark so the next paused seek rebuilds the bounded window");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
+        static void TestReplaySubscribeRequestsPanelHistoryBackfill()
+        {
+            var transport = new Phase13FakeTransport();
+            var runtime = new Phase13ReplayRuntimeContext();
+            var session = new FoxgloveSession("late-replay-subscribe", transport);
+            try
+            {
+                session.SetRuntimeContext(runtime);
+                session.RegisterChannel(new AdvertiseChannel
+                {
+                    Id = 1,
+                    Topic = "/replay",
+                    Encoding = "json",
+                    SchemaName = "",
+                    Schema = ""
+                });
+
+                transport.SimulateConnect(7);
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":1}]}");
+
+                Assert(runtime.BackfillRequests == 1,
+                    "Replay subscribe requests panel-history backfill for late subscribers");
+            }
+            finally
+            {
+                session.Dispose();
+            }
+        }
+
+        static void TestReplayLateSubscribeBackfillsMissedPanelHistory()
+        {
+            var second = 1_000_000_000UL;
+            var tmp = CreateTempTimedMcap(1 * second, 2 * second, 3 * second, 4 * second);
+            var transport = new Phase13FakeTransport();
+            var clock = new Phase13FakeClock();
+            var rt = new FoxgloveRuntime(transport, clock, new DefaultSchemaRegistry());
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.Start("late-replay-panel-subscribe", "127.0.0.1", GetFreeLoopbackPort());
+
+                var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
+                transport.SimulateConnect(7);
+                transport.SimulateBinary(7, BuildPlaybackControlRequest(command: 1, hasSeek: true, seekNs: 3 * second));
+                rt.Tick();
+
+                clock.AdvanceNs(ReplayController.ScrubHistoryDebounceNs);
+                rt.Tick();
+                transport.ClearBinary(7);
+
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":" + replayChannelId + "}]}");
+                Assert(CountMessageFrames(transport.SentBinaryFrames(7)) == 0,
+                    "Late replay subscribe defers panel-history backfill until debounce");
+
+                clock.AdvanceNs(ReplayController.ScrubHistoryDebounceNs);
+                rt.Tick();
+
+                var logTimes = MessageLogTimes(transport.SentBinaryFrames(7));
+                Assert(logTimes.Count == 3
+                    && logTimes[0] == 1 * second
+                    && logTimes[1] == 2 * second
+                    && logTimes[2] == 3 * second,
+                    "Late replay subscribe backfills missed panel history through the current replay time");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
+        static void TestReplaySuppressesRuntimeLivePublish()
+        {
+            var tmp = CreateTempMcap(1, 1_000_000UL);
+            var transport = new Phase13FakeTransport();
+            var rt = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.SetReplayLiveSuppression(true);
+                rt.Start("replay-live-gate", "127.0.0.1", GetFreeLoopbackPort());
+                transport.SimulateConnect(7);
+                rt.ReplayPause();
+
+                rt.RegisterChannel(new AdvertiseChannel
+                {
+                    Id = 42,
+                    Topic = "/live",
+                    Encoding = "json",
+                    SchemaName = "",
+                    Schema = ""
+                });
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":420,\"channelId\":42}]}");
+                transport.ClearBinary(7);
+
+                rt.Publish(42, Encoding.UTF8.GetBytes("{}"), 123UL);
+
+                var messageFrames = 0;
+                foreach (var frame in transport.SentBinaryFrames(7))
+                {
+                    if (BinaryEncoding.TryDecodeServerMessageData(frame, out _, out _, out _))
+                        messageFrames++;
+                }
+
+                Assert(messageFrames == 0,
+                    "Replay mode suppresses runtime live publish frames (expected=0, actual=" + messageFrames + ")");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
+        static void TestReplaySuppressesRuntimeLiveChannelAdvertise()
+        {
+            var tmp = CreateTempMcap(1, 1_000_000UL);
+            var transport = new Phase13FakeTransport();
+            var rt = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.SetReplayLiveSuppression(true);
+                rt.Start("replay-live-advertise-gate", "127.0.0.1", GetFreeLoopbackPort());
+                rt.ReplayPause();
+
+                var textCountBefore = transport.SentText.Count;
+                rt.RegisterChannel(new AdvertiseChannel
+                {
+                    Id = 42,
+                    Topic = "/live",
+                    Encoding = "json",
+                    SchemaName = "",
+                    Schema = ""
+                });
+
+                Assert(transport.SentText.Count == textCountBefore,
+                    "Replay mode suppresses runtime live channel advertisement");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
+        }
+
+        static void TestReplayUsesDataPriorityForSeekReset()
+        {
+            var tmp = CreateTempMcap(1, 1_000_000UL);
+            var transport = new Phase13FakeTransport();
+            var rt = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
+            try
+            {
+                rt.EnableReplay(tmp);
+                rt.Start("replay-priority", "127.0.0.1", GetFreeLoopbackPort());
+
+                var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
+                transport.SimulateConnect(7);
+                transport.SimulateText(7,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":" + replayChannelId + "}]}");
+
+                transport.ClearBinary(7);
+                transport.ResetPriorityCounters();
+                rt.Tick();
+
+                Assert(transport.DataBinaryCount > 0,
+                    "Replay MessageData uses data-priority binary sends so seek can clear stale queued frames");
+                Assert(transport.ControlBinaryCount == 0,
+                    "Replay MessageData does not use uncleared control-priority sends");
+                Assert(transport.DataBroadcastBinaryCount > 0,
+                    "Replay time frames use data-priority broadcasts so seek can clear stale queued time frames");
+                Assert(transport.ControlBroadcastBinaryCount == 0,
+                    "Replay time frames do not use uncleared control-priority broadcasts");
+            }
+            finally
+            {
+                rt.Dispose();
+                File.Delete(tmp);
+            }
         }
 
         static string FirstServerInfoSessionId(List<string> texts)
@@ -445,7 +1066,7 @@ namespace Unity.FoxgloveSDK.Tests
             return LastServerInfoSessionId(texts, 0, stopAfterFirst: true);
         }
 
-static string LastServerInfoSessionId(List<string> texts, int startIndex, bool stopAfterFirst = false)
+        static string LastServerInfoSessionId(List<string> texts, int startIndex, bool stopAfterFirst = false)
         {
             string result = null;
             for (var i = startIndex; i < texts.Count; i++)
@@ -464,7 +1085,7 @@ static string LastServerInfoSessionId(List<string> texts, int startIndex, bool s
             return result;
         }
 
-static bool ContainsAdvertiseForTopic(List<string> texts, int startIndex, string topic)
+        static bool ContainsAdvertiseForTopic(List<string> texts, int startIndex, string topic)
         {
             for (var i = startIndex; i < texts.Count; i++)
             {
@@ -483,18 +1104,396 @@ static bool ContainsAdvertiseForTopic(List<string> texts, int startIndex, string
 
             return false;
         }
-}
 
+        static byte[] BuildPlaybackControlRequest(byte command, bool hasSeek, ulong seekNs)
+        {
+            var requestIdBytes = PlaybackControlRequestIdBytes;
+            var frame = new byte[19 + requestIdBytes.Length];
+            frame[0] = ClientOpcode.PlaybackControlRequest;
+            frame[1] = command;
+            BinaryEncoding.WriteF32LE(frame, 2, 1f);
+            frame[6] = hasSeek ? (byte)1 : (byte)0;
+            BinaryEncoding.WriteU64LE(frame, 7, seekNs);
+            BinaryEncoding.WriteU32LE(frame, 15, (uint)requestIdBytes.Length);
+            Buffer.BlockCopy(requestIdBytes, 0, frame, 19, requestIdBytes.Length);
+            return frame;
+        }
 
+        static int CountPlaybackStateFrames(IReadOnlyList<byte[]> frames)
+        {
+            var count = 0;
+            foreach (var frame in frames)
+            {
+                if (frame.Length > 0 && frame[0] == ServerOpcode.PlaybackState)
+                    count++;
+            }
+            return count;
+        }
 
+        static bool TryDecodePlaybackState(
+            byte[] frame,
+            out byte status,
+            out ulong currentTimeNs,
+            out float speed,
+            out bool didSeek,
+            out string requestId)
+        {
+            status = 0;
+            currentTimeNs = 0;
+            speed = 0;
+            didSeek = false;
+            requestId = string.Empty;
 
-    internal sealed partial class Phase13FakeTransport
+            if (frame == null || frame.Length < 19 || frame[0] != ServerOpcode.PlaybackState)
+                return false;
+
+            status = frame[1];
+            currentTimeNs = BinaryEncoding.ReadU64LE(frame, 2);
+            speed = BinaryEncoding.ReadF32LE(frame, 10);
+            didSeek = frame[14] != 0;
+            var requestIdLength = BinaryEncoding.ReadU32LE(frame, 15);
+            if (requestIdLength > frame.Length - 19)
+                return false;
+
+            requestId = Encoding.UTF8.GetString(frame, 19, (int)requestIdLength);
+            return true;
+        }
+
+        static int CountMessageFrames(IReadOnlyList<byte[]> frames)
+        {
+            var count = 0;
+            foreach (var frame in frames)
+            {
+                if (BinaryEncoding.TryDecodeServerMessageData(frame, out _, out _, out _))
+                    count++;
+            }
+            return count;
+        }
+
+        static List<ulong> MessageLogTimes(IReadOnlyList<byte[]> frames)
+        {
+            var result = new List<ulong>();
+            foreach (var frame in frames)
+            {
+                if (BinaryEncoding.TryDecodeServerMessageData(frame, out _, out var logTimeNs, out _))
+                    result.Add(logTimeNs);
+            }
+            return result;
+        }
+
+        static int CountOccurrences(string text, string value)
+        {
+            var count = 0;
+            var index = 0;
+            while (true)
+            {
+                index = text.IndexOf(value, index, StringComparison.Ordinal);
+                if (index < 0)
+                    return count;
+                count++;
+                index += value.Length;
+            }
+        }
+
+        static bool QuaternionRoundtripEquivalent((double X, double Y, double Z, double W) unity)
+        {
+            var foxglove = UnityToFoxgloveQuaternion(unity);
+            var roundtrip = FoxgloveToUnityQuaternion(foxglove);
+            return QuaternionsEquivalent(unity, roundtrip);
+        }
+
+        static (double X, double Y, double Z, double W) UnityToFoxgloveQuaternion(
+            (double X, double Y, double Z, double W) q)
+        {
+            return (-q.Z, q.X, -q.Y, q.W);
+        }
+
+        static (double X, double Y, double Z, double W) FoxgloveToUnityQuaternion(
+            (double X, double Y, double Z, double W) q)
+        {
+            return (q.Y, -q.Z, -q.X, q.W);
+        }
+
+        static bool QuaternionsEquivalent(
+            (double X, double Y, double Z, double W) a,
+            (double X, double Y, double Z, double W) b)
+        {
+            var an = NormalizeQuaternion(a);
+            var bn = NormalizeQuaternion(b);
+            var dot = an.X * bn.X + an.Y * bn.Y + an.Z * bn.Z + an.W * bn.W;
+            return Math.Abs(Math.Abs(dot) - 1.0) < 0.000001;
+        }
+
+        static (double X, double Y, double Z, double W) NormalizeQuaternion(
+            (double X, double Y, double Z, double W) q)
+        {
+            var length = Math.Sqrt(q.X * q.X + q.Y * q.Y + q.Z * q.Z + q.W * q.W);
+            if (length <= double.Epsilon)
+                return (0, 0, 0, 1);
+
+            return (q.X / length, q.Y / length, q.Z / length, q.W / length);
+        }
+
+        static string ReadRepoText(string relativePath)
+        {
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+        }
+
+        static bool TryReadRepoText(string relativePath, out string source)
+        {
+            source = null;
+            var root = FindRepoRoot();
+            if (root == null)
+            {
+                Console.WriteLine("[WARN] repo root unavailable; skipping source inspection for " + relativePath);
+                return false;
+            }
+
+            var localPath = relativePath.Replace('/', Path.DirectorySeparatorChar);
+            var path = Path.Combine(root, localPath);
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Required validation source is missing.", path);
+
+            source = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            return true;
+        }
+
+        static string RepoPath(string relativePath)
+        {
+            var root = FindRepoRoot();
+            if (root == null)
+                throw new DirectoryNotFoundException("Could not locate repository root for " + relativePath);
+            var localPath = relativePath.Replace('/', Path.DirectorySeparatorChar);
+            return Path.Combine(root, localPath);
+        }
+
+        static int GetFreeLoopbackPort()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try
+            {
+                return ((IPEndPoint)listener.LocalEndpoint).Port;
+            }
+            finally
+            {
+                listener.Stop();
+            }
+        }
+
+        static string FindRepoRoot()
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (File.Exists(Path.Combine(dir.FullName, "Packages", "dev.unity2foxglove.sdk", "package.json")))
+                    return dir.FullName;
+                dir = dir.Parent;
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Fake transport for Phase 13 that tracks <c>IsRunning</c> state.
+    /// </summary>
+    class Phase13FakeTransport : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
     {
+        private readonly object _gate = new object();
+        public readonly List<string> SentText = new List<string>();
+        private readonly Dictionary<uint, List<byte[]>> _sentBinary = new Dictionary<uint, List<byte[]>>();
+        public int ClearDataQueuesCount { get; private set; }
+        public int ControlBinaryCount { get; private set; }
+        public int DataBinaryCount { get; private set; }
+        public int ControlBroadcastBinaryCount { get; private set; }
+        public int DataBroadcastBinaryCount { get; private set; }
+        public bool StatsSupported { get; set; } = true;
+        public int SimulatedQueuedFrames { get; set; }
+        public int SimulatedQueuedBytes { get; set; }
+        public bool IsRunning { get; private set; }
+        public void Start(string host, int port) { IsRunning = true; }
+        public void Stop() { IsRunning = false; }
+        public void Dispose() { Stop(); }
+        public void BroadcastText(string json) { lock (_gate) SentText.Add(json); }
+        public void BroadcastBinary(byte[] data)
+        {
+            List<uint> clientIds;
+            lock (_gate)
+            {
+                ControlBroadcastBinaryCount++;
+                clientIds = new List<uint>(_sentBinary.Keys);
+            }
+            foreach (var clientId in clientIds)
+                SendBinary(clientId, data);
+        }
+        public void SendText(uint clientId, string json) { lock (_gate) SentText.Add(json); }
+        public void SendBinary(uint clientId, byte[] data)
+        {
+            lock (_gate)
+            {
+                ControlBinaryCount++;
+                if (!_sentBinary.TryGetValue(clientId, out var frames))
+                {
+                    frames = new List<byte[]>();
+                    _sentBinary[clientId] = frames;
+                }
+                frames.Add(data);
+            }
+        }
+        public void BroadcastDataBinary(byte[] data)
+        {
+            List<uint> clientIds;
+            lock (_gate)
+            {
+                DataBroadcastBinaryCount++;
+                clientIds = new List<uint>(_sentBinary.Keys);
+            }
+            foreach (var clientId in clientIds)
+                SendDataBinary(clientId, data);
+        }
+        public void SendDataBinary(uint clientId, byte[] data)
+        {
+            lock (_gate)
+            {
+                DataBinaryCount++;
+                if (!_sentBinary.TryGetValue(clientId, out var frames))
+                {
+                    frames = new List<byte[]>();
+                    _sentBinary[clientId] = frames;
+                }
+                frames.Add(data);
+            }
+        }
+        public IReadOnlyList<byte[]> SentBinaryFrames(uint clientId)
+        {
+            lock (_gate)
+                return _sentBinary.TryGetValue(clientId, out var frames) ? frames.ToArray() : Array.Empty<byte[]>();
+        }
         public int SentBinaryFrameCount(uint clientId)
         {
             lock (_gate)
                 return _sentBinary.TryGetValue(clientId, out var frames) ? frames.Count : 0;
         }
+        public void ClearBinary(uint clientId)
+        {
+            lock (_gate)
+            {
+                if (_sentBinary.TryGetValue(clientId, out var frames))
+                    frames.Clear();
+            }
+        }
+        public void ResetPriorityCounters()
+        {
+            lock (_gate)
+            {
+                ControlBinaryCount = 0;
+                DataBinaryCount = 0;
+                ControlBroadcastBinaryCount = 0;
+                DataBroadcastBinaryCount = 0;
+            }
+        }
+        public void SimulateConnect(uint clientId)
+        {
+            lock (_gate)
+            {
+                if (!_sentBinary.ContainsKey(clientId))
+                    _sentBinary[clientId] = new List<byte[]>();
+            }
+            OnClientConnected?.Invoke(clientId);
+        }
+        public void ClearDataQueues() { lock (_gate) ClearDataQueuesCount++; }
+        public void ClearDataQueue(uint clientId) { ClearBinary(clientId); }
+        public TransportStatsSnapshot GetStatsSnapshot()
+        {
+            if (!StatsSupported)
+                return TransportStatsSnapshot.Unsupported;
+
+            var clients = new List<TransportClientStats>();
+            lock (_gate)
+            {
+                foreach (var clientId in _sentBinary.Keys)
+                {
+                    clients.Add(new TransportClientStats
+                    {
+                        ClientId = clientId,
+                        QueuedFrames = SimulatedQueuedFrames,
+                        QueuedBytes = SimulatedQueuedBytes
+                    });
+                }
+            }
+
+            return new TransportStatsSnapshot
+            {
+                Supported = true,
+                IsRunning = IsRunning,
+                ActiveClientCount = clients.Count,
+                Clients = clients
+            };
+        }
+        public void SimulateText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
+        public void SimulateBinary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);
+        public event Action<uint> OnClientConnected;
+        public event Action<uint> OnClientDisconnected;
+        public event Action<uint, string> OnTextReceived;
+        public event Action<uint, byte[]> OnBinaryReceived;
     }
 
+    /// <summary>
+    /// Minimal runtime context used to verify replay subscribe backfill requests.
+    /// </summary>
+    class Phase13ReplayRuntimeContext : IRuntimeContext
+    {
+        /// <summary>Number of replay subscriber backfill requests observed by the fake context.</summary>
+        public int BackfillRequests { get; private set; }
+
+        /// <summary>Gets whether playback is enabled for the replay subscribe tests.</summary>
+        public bool PlaybackEnabled => true;
+
+        /// <summary>Gets the asset registry required by the runtime context contract.</summary>
+        public FoxgloveAssetRegistry Assets { get; } = new FoxgloveAssetRegistry();
+
+        /// <summary>Gets the fake playback range start.</summary>
+        public ulong GetPlaybackStartNs() => 0;
+
+        /// <summary>Gets the fake playback range end.</summary>
+        public ulong GetPlaybackEndNs() => 0;
+
+        /// <summary>Accepts playback commands for the fake runtime context.</summary>
+        public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs) { }
+
+        /// <summary>Returns the default playback state for the fake runtime context.</summary>
+        public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
+            => default;
+
+        /// <summary>Applies playback control for the fake runtime context.</summary>
+        public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(
+            byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId)
+            => default;
+
+        /// <summary>Accepts replay seek requests for the fake runtime context.</summary>
+        public void ReplaySeek(ulong timeNs) { }
+
+        /// <summary>Accepts replay play requests for the fake runtime context.</summary>
+        public void ReplayPlay() { }
+
+        /// <summary>Accepts replay pause requests for the fake runtime context.</summary>
+        public void ReplayPause() { }
+
+        /// <summary>Records that a new replay subscriber requested panel-history backfill.</summary>
+        public void RequestReplaySubscriberBackfill()
+        {
+            BackfillRequests++;
+        }
+    }
+
+    class Phase13FakeClock : IFoxgloveClock
+    {
+        public ulong NowNs { get; private set; }
+
+        public void AdvanceNs(ulong deltaNs)
+        {
+            NowNs += deltaNs;
+        }
+    }
 }

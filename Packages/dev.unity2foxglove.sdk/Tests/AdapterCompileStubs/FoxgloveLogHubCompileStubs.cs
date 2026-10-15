@@ -38,18 +38,6 @@ namespace UnityEngine
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class SerializeField : Attribute { }
 
-    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Class)]
-    public sealed class HeaderAttribute : Attribute
-    {
-        public HeaderAttribute(string header) { }
-    }
-
-    [AttributeUsage(AttributeTargets.Field)]
-    public sealed class TooltipAttribute : Attribute
-    {
-        public TooltipAttribute(string tooltip) { }
-    }
-
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class MinAttribute : Attribute
     {
@@ -70,7 +58,6 @@ namespace UnityEngine
         public HideFlags hideFlags { get; set; }
         public int GetInstanceID() => _instanceId;
         public static T FindFirstObjectByType<T>() where T : class => null;
-        public static T FindObjectOfType<T>() where T : class => null;
         public static T[] FindObjectsByType<T>(FindObjectsInactive inactive, FindObjectsSortMode sortMode)
             => Array.Empty<T>();
         public static void DestroyImmediate(Object value) { }
@@ -114,7 +101,6 @@ namespace UnityEngine
 
     public static class Debug
     {
-        public static void Log(object message) { }
         public static void LogWarning(object message) { }
         public static void LogException(Exception exception) { }
     }
@@ -131,15 +117,6 @@ namespace Unity.Profiling
         {
             public void Dispose() { }
         }
-    }
-}
-
-namespace AOT
-{
-    [AttributeUsage(AttributeTargets.Method)]
-    public sealed class MonoPInvokeCallbackAttribute : Attribute
-    {
-        public MonoPInvokeCallbackAttribute(Type callbackType) { }
     }
 }
 
@@ -248,8 +225,6 @@ namespace Unity.FoxgloveSDK.Components
             string suppressedTransportId = "",
             ulong suppressedGeneration = 0)
             => default;
-
-        public void SetMirrorSink(object sink) { }
 
         internal bool IsActiveFoxRunPublishTransport(
             string transportId,

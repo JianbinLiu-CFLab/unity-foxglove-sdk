@@ -348,7 +348,7 @@ namespace Unity.FoxgloveSDK.Tests
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing required Phase109 file: " + relativePath, path);
-            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            return File.ReadAllText(path);
         }
 
         private static string Rel(string path)

@@ -224,7 +224,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (SourceCache.TryGetValue(relativePath, out var cached))
                 return cached;
 
-            var text = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            var text = File.ReadAllText(RepoPath(relativePath));
             SourceCache[relativePath] = text;
             return text;
         }

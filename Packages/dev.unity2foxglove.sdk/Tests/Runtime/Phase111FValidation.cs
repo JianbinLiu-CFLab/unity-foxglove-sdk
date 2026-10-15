@@ -70,7 +70,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBridgeLifecycle()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
+            var source = PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources();
             var shell = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs");
             Check(shell.Contains("if (!enabled || !autoConnect)", StringComparison.Ordinal)
                   && shell.Contains("runtime is not ready", StringComparison.Ordinal),

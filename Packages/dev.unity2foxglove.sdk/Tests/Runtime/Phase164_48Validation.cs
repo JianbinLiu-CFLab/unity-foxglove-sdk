@@ -11,7 +11,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("\n--- Phase 164-48 Tests ---");
             _passed = 0;
 
-            VerifyManagedWsBackendAvoidsClientSnapshots();
+            VerifyManagedWsBackendUsesAdmissionSnapshots();
             VerifyHandshakeAllocationOptimizations();
             VerifyTokenAndValidationWaitOptimizations();
             VerifyRegistry();
@@ -19,18 +19,17 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("Phase 164-48: " + _passed + " checks passed.\n");
         }
 
-        private static void VerifyManagedWsBackendAvoidsClientSnapshots()
+        private static void VerifyManagedWsBackendUsesAdmissionSnapshots()
         {
-            var backend = Read("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
+            var backend = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
             var broadcastText = SourceMethod(backend, "public void BroadcastText(string json)");
             var broadcastBinary = SourceMethod(backend, "public void BroadcastBinary(byte[] data)");
             var stats = SourceMethod(backend, "public TransportStatsSnapshot GetStatsSnapshot()");
 
-            Check(!broadcastText.Contains("_clients.ToArray()", StringComparison.Ordinal)
-                  && !broadcastBinary.Contains("_clients.ToArray()", StringComparison.Ordinal)
-                  && broadcastText.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal)
-                  && broadcastBinary.Contains("foreach (var (id, conn) in _clients)", StringComparison.Ordinal),
-                "164-48A-1: control broadcast paths iterate clients without array snapshots");
+            Check(broadcastText.Contains("SnapshotAnnouncedClients(", StringComparison.Ordinal)
+                  && broadcastBinary.Contains("SnapshotAnnouncedClients(", StringComparison.Ordinal)
+                  && backend.Contains("return clients.ToArray();", StringComparison.Ordinal),
+                "164-48A-1: control broadcast paths snapshot admitted clients under the admission gate");
             Check(!stats.Contains("_clients.ToArray()", StringComparison.Ordinal)
                   && stats.Contains("foreach (var kv in _clients)", StringComparison.Ordinal),
                 "164-48A-2: transport stats iterate clients without array snapshots");

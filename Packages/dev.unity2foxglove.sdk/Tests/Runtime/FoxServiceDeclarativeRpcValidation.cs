@@ -401,7 +401,7 @@ namespace Phase141B
             if (!File.Exists(path))
                 throw new InvalidOperationException("[FAIL] 141B-source: required source file missing: " + relativePath);
 
-            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            return File.ReadAllText(path);
         }
 
         private static string RepoPath(string relativePath)
