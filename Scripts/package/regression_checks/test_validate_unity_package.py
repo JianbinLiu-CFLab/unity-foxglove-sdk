@@ -845,6 +845,53 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertFalse(results[-1].ok)
         self.assertIn("duplicates", results[-1].detail)
 
+    def test_all_package_guid_scan_rejects_non_unity_extension_meta_collision(self) -> None:
+        """Metadata beside non-Unity extensions must participate in GUID checks."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "Packages"
+            first = root / "dev.unity2foxglove.sdk" / "README.md"
+            second = root / "dev.unity2foxglove.ros2bridge" / "LICENSE"
+            first.parent.mkdir(parents=True)
+            second.parent.mkdir(parents=True)
+            first.write_text("# SDK", encoding="utf-8")
+            second.write_text("license", encoding="utf-8")
+            for asset in (first, second):
+                Path(str(asset) + ".meta").write_text(
+                    "fileFormatVersion: 2\n"
+                    "guid: 34343434343434343434343434343434\n",
+                    encoding="utf-8",
+                )
+            results = []
+            self.validator.check_packages_meta_guid_uniqueness(results, root)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("duplicates", results[-1].detail)
+
+    def test_package_asset_meta_rejects_orphan_sidecar(self) -> None:
+        """R2FU and Remote Gateway package scans must reject orphan metadata."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2forunity"
+            orphan = package / "Runtime" / "Deleted.cs.meta"
+            orphan.parent.mkdir(parents=True)
+            orphan.write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 56565656565656565656565656565656\n",
+                encoding="utf-8",
+            )
+            results = []
+            self.validator.check_package_asset_meta(results, package, "R2FU")
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Deleted.cs.meta", results[-1].detail)
+
+    def test_csharp_meta_without_importer_is_valid(self) -> None:
+        """Minimal C# metadata remains valid when Unity omits an importer block."""
+        text = (
+            "fileFormatVersion: 2\n"
+            "guid: 78787878787878787878787878787878\n"
+        )
+        self.assertTrue(self.validator._csharp_meta_importer_is_valid(text))
+
     def test_sample_meta_checks_prefab_files(self) -> None:
         """Common Unity assets such as prefabs need stable .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:

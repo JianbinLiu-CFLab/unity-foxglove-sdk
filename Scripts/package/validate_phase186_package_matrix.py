@@ -27,7 +27,7 @@ PROJECTS = (
 REPORT = ROOT / "build/phase186/package-matrix/report.json"
 GUID_PATTERN = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
 TRANSIENT_BUILD_FAILURE_RE = re.compile(
-    r"(?i)(?:NU1301|NU1300|NU1101|restore (?:failed|failure)|unable to read file|being used by another process|MSB302[1-7])"
+    r"(?i)(?:NU1301|NU1300|restore (?:failed|failure)|unable to read file|being used by another process|MSB302[1-7])"
 )
 
 
