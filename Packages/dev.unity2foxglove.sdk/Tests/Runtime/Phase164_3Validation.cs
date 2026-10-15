@@ -5,6 +5,7 @@
 // Purpose: Phase164-3 optimization regression coverage for session routing hot paths.
 
 using System;
+using System.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -29,7 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBroadcastTextEncodesOnceAndAvoidsClientSnapshots()
         {
-            var backend = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
+            var backend = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs");
             var connection = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsConnection.cs");
             var broadcastText = SourceMethod(backend, "public void BroadcastText(string json)");
             var broadcastBinary = SourceMethod(backend, "public void BroadcastBinary(byte[] data)");
@@ -143,6 +144,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
             => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new DirectoryNotFoundException("Could not locate repository root.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
 
         private static void Check(bool condition, string label)
         {

@@ -251,12 +251,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoFile(string relativePath)
-        {
-            var path = RepoPath(relativePath);
-            if (!File.Exists(path))
-                throw new FileNotFoundException("Missing repository file: " + relativePath, path);
-            return File.ReadAllText(path);
-        }
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static string RepoPath(string relativePath)
         {

@@ -135,7 +135,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var path = Path.Combine(repoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
                 Assert(File.Exists(path), $"{relativePath} exists");
-                var text = File.ReadAllText(path);
+                var text = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
                 Assert(text.Contains("Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors."),
                     $"{relativePath} has Unity2Foxglove copyright header");
                 Assert(text.Contains("SPDX-License-Identifier: Apache-2.0"),

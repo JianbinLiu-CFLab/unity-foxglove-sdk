@@ -126,7 +126,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = RepoPath(relativePath);
             checks.Check(File.Exists(path), $"145-file: {relativePath} exists");
-            return File.ReadAllText(path);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private static string RepoPath(string relativePath)

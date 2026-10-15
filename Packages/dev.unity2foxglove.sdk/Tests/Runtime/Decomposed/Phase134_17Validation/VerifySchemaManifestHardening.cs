@@ -159,7 +159,7 @@ public partial class InvalidTopicProbe
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static string RepoPath(string relativePath)
             => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));

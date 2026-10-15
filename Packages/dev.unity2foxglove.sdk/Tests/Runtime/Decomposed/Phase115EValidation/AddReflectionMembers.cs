@@ -179,7 +179,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static string NormalizeNewlines(string value)
             => value.Replace("\r\n", "\n").Replace("\r", "\n");

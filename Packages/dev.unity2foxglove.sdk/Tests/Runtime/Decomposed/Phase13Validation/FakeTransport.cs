@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Fake transport for Phase 13 that tracks <c>IsRunning</c> state.
     /// </summary>
-    public sealed partial class Phase13FakeTransport : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
+    internal sealed partial class Phase13FakeTransport : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
     {
         private readonly object _gate = new object();
         public readonly List<string> SentText = new List<string>();

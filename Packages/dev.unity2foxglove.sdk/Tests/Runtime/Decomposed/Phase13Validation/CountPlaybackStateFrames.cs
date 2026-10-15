@@ -139,7 +139,7 @@ static int CountPlaybackStateFrames(IReadOnlyList<byte[]> frames)
 
         static string ReadRepoText(string relativePath)
         {
-            return File.ReadAllText(RepoPath(relativePath));
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         static bool TryReadRepoText(string relativePath, out string source)
@@ -157,7 +157,7 @@ static int CountPlaybackStateFrames(IReadOnlyList<byte[]> frames)
             if (!File.Exists(path))
                 throw new FileNotFoundException("Required validation source is missing.", path);
 
-            source = File.ReadAllText(path);
+            source = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             return true;
         }
 

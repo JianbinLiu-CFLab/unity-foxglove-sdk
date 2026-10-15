@@ -336,7 +336,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void DoesNotContain(string path, string label, string token)
         {
-            var source = File.ReadAllText(path);
+            var source = PhaseValidationSourceHelpers.ReadRequiredRepoText(path);
             if (source.Contains(token))
                 throw new Exception("[FAIL] " + label + " unexpected token: " + token);
 

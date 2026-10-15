@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validates Phase 51 maintainability and optimization closure.
     /// </summary>
+    /// <remarks>Phase192 source sections: VerifySessionCachesPrioritizedTransportCapability.cs, RepoPath.cs</remarks>
     public static partial class Phase51Validation
     {
         private static int _passed;

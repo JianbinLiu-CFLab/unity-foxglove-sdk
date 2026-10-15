@@ -42,7 +42,148 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static string ReadRequiredRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+        {
+            var normalized = relativePath.Replace('\\', '/');
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
+                    StringComparison.Ordinal))
+                return ReadMcapReplayEngineSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs",
+                    StringComparison.Ordinal))
+                return ReadFoxgloveRuntimeSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs",
+                    StringComparison.Ordinal))
+                return ReadMediaFoundationH264EncoderSidecarSources();
+
+            return ReadLogicalSource(RepoPath(relativePath));
+        }
+
+        internal static string ReadLogicalSource(string facadePath)
+        {
+            var normalized = facadePath.Replace('\\', '/');
+            if (normalized.EndsWith(".py", StringComparison.OrdinalIgnoreCase))
+                return ReadSplitPythonSourcePath(facadePath);
+
+            var source = new StringBuilder(File.ReadAllText(facadePath));
+            var directory = Path.GetDirectoryName(facadePath)
+                ?? throw new DirectoryNotFoundException(facadePath);
+            var stem = Path.GetFileNameWithoutExtension(facadePath);
+            var candidates = new List<string>();
+            var directoryInfo = new DirectoryInfo(directory);
+            for (var ancestor = directoryInfo; ancestor != null; ancestor = ancestor.Parent)
+            {
+                var relativeDirectory = Path.GetRelativePath(ancestor.FullName, directoryInfo.FullName);
+                var candidate = Path.Combine(ancestor.FullName, "Decomposed", relativeDirectory, stem);
+                if (Directory.Exists(candidate))
+                    candidates.Add(Path.GetFullPath(candidate));
+                if (File.Exists(Path.Combine(ancestor.FullName, ".git"))
+                    || Directory.Exists(Path.Combine(ancestor.FullName, ".git")))
+                    break;
+            }
+
+            var localDecomposed = Path.Combine(directoryInfo.FullName, "Decomposed");
+            if (Directory.Exists(localDecomposed))
+            {
+                var marker = File.ReadLines(facadePath)
+                    .Select(line => Regex.Match(
+                        line,
+                        @"^\s*///\s*<remarks>Phase192 source sections:\s*(?<names>[^<]+)</remarks>\s*$",
+                        RegexOptions.CultureInvariant))
+                    .FirstOrDefault(match => match.Success);
+                if (marker != null)
+                {
+                    var names = marker.Groups["names"].Value
+                        .Split(',')
+                        .Select(name => name.Trim())
+                        .Where(name => name.Length > 0)
+                        .ToArray();
+                    foreach (var child in Directory.GetDirectories(localDecomposed))
+                    {
+                        var files = Directory.GetFiles(child, "*.cs", SearchOption.TopDirectoryOnly);
+                        var fileNames = new HashSet<string>(
+                            files.Select(Path.GetFileName),
+                            StringComparer.OrdinalIgnoreCase);
+                        if (names.Length == files.Length
+                            && names.All(fileNames.Contains))
+                            candidates.Add(Path.GetFullPath(child));
+                    }
+                }
+            }
+
+            candidates = candidates
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+            if (candidates.Count > 1)
+                throw new InvalidOperationException(
+                    "Ambiguous decomposed source directories for " + facadePath + ": "
+                    + string.Join(", ", candidates));
+            if (candidates.Count == 0)
+                return source.ToString();
+
+            var sections = EnumerateCSharpSections(facadePath, candidates[0]);
+            foreach (var section in sections)
+            {
+                source.Append(Environment.NewLine);
+                source.Append(File.ReadAllText(section));
+            }
+            return source.ToString();
+        }
+
+        private static IEnumerable<string> EnumerateCSharpSections(
+            string facadePath,
+            string sectionDirectory)
+        {
+            var files = Directory.GetFiles(sectionDirectory, "*.cs", SearchOption.TopDirectoryOnly);
+            var marker = File.ReadLines(facadePath)
+                .Select(line => Regex.Match(
+                    line,
+                    @"^\s*///\s*<remarks>Phase192 source sections:\s*(?<names>[^<]+)</remarks>\s*$",
+                    RegexOptions.CultureInvariant))
+                .FirstOrDefault(match => match.Success);
+            if (marker == null)
+                return files.OrderBy(path => path, StringComparer.Ordinal);
+
+            var names = marker.Groups["names"].Value
+                .Split(',')
+                .Select(name => name.Trim())
+                .Where(name => name.Length > 0)
+                .ToArray();
+            var filesByName = files.ToDictionary(Path.GetFileName, StringComparer.OrdinalIgnoreCase);
+            if (names.Length != filesByName.Count
+                || names.Distinct(StringComparer.OrdinalIgnoreCase).Count() != names.Length
+                || names.Any(name => !filesByName.ContainsKey(name)))
+                throw new InvalidOperationException(
+                    "Invalid Phase192 source-section order in " + facadePath);
+
+            return names.Select(name => filesByName[name]);
+        }
+
+        public static string ReadMcapReplayEngineSources()
+        {
+            var root = FindRequiredRepoRoot();
+            var paths = new[]
+            {
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "McapReplayEngine.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "Load.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "History.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "TryReadIndexedBoundedHistory.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "HistoryCandidate.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "SortPending.cs"),
+                Path.Combine(root, "Packages", "dev.unity2foxglove.sdk", "Runtime", "IO", "Mcap", "Replay", "Decomposed", "McapReplayEngine", "FinishTickResult.cs")
+            };
+
+            foreach (var path in paths)
+                if (!File.Exists(path))
+                    throw new FileNotFoundException("Missing MCAP replay source: " + path, path);
+
+            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+        }
 
         public static string ReadSplitPythonSource(string relativePath)
             => ReadSplitPythonSourcePath(RepoPath(relativePath));

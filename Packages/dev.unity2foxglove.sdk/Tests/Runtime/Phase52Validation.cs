@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validation type for Phase52Validation.
     /// </summary>
+    /// <remarks>Phase192 source sections: TestWebSocketFrameProtocolRejectsInvalidClientFrames.cs, SendRawHandshake.cs, LogWarning.cs</remarks>
     public static partial class Phase52Validation
     {
         private const int TestTimeoutMs = 5000;

@@ -228,7 +228,6 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string Read(string relativePath)
         {
-            var root = Phase16Validation.FindRepoRoot();
             return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 

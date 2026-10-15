@@ -17,6 +17,7 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Tests;
 
 /// <summary>Console entry point for runtime validation and manual smoke servers.</summary>
+/// <remarks>Phase192 source sections: MainCore.cs, CollectOptionValues.cs</remarks>
 partial class Program
 {
 

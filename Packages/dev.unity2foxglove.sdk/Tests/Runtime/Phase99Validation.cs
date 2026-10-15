@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validation type for Phase99Validation.
     /// </summary>
+    /// <remarks>Phase192 source sections: VerifyPhase98BoundaryAlignment.cs, ReleaseGateReport.cs, EvidenceItem.cs</remarks>
     public static partial class Phase99Validation
     {
         public const int ReportSchemaVersion = 1;

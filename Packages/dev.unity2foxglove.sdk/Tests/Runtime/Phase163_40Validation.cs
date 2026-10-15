@@ -135,12 +135,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Read(string repoRoot, string relativePath)
-        {
-            var path = Path.Combine(repoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return relativePath.EndsWith(".py", StringComparison.Ordinal)
-                ? PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(path)
-                : File.ReadAllText(path);
-        }
+            => File.ReadAllText(Path.Combine(repoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
         private static void Check(bool condition, string description)
         {

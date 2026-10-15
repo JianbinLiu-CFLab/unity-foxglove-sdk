@@ -20,6 +20,7 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <remarks>Phase192 source sections: TestClientPublishMessageIndex.cs, TestPausedReplaySeekAppliesSceneOnlySnapshot.cs, CountPlaybackStateFrames.cs, FakeTransport.cs, ReplayRuntimeContext.cs, FakeClock.cs</remarks>
     public static partial class Phase13Validation
     {
         private static int _passCount;
@@ -487,7 +488,7 @@ static bool ContainsAdvertiseForTopic(List<string> texts, int startIndex, string
 
 
 
-    public sealed partial class Phase13FakeTransport
+    internal sealed partial class Phase13FakeTransport
     {
         public int SentBinaryFrameCount(uint clientId)
         {

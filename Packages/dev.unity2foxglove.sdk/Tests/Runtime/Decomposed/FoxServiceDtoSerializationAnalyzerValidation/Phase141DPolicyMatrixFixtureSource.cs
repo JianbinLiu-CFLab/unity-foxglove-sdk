@@ -299,7 +299,7 @@ namespace Phase141C
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static string RepoPath(string relativePath)
             => PhaseValidationSourceHelpers.RepoPath(relativePath);

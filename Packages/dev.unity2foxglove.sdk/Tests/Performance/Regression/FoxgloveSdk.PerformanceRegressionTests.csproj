@@ -28,6 +28,7 @@
     <Compile Include="../Phase188ReplayPerformanceProtocol.cs" Link="Phase188ReplayPerformanceProtocol.cs" />
     <Compile Include="../FakePerformanceTransport.cs" Link="FakePerformanceTransport.cs" />
     <Compile Include="../../Unit/Fixtures/UnityEngineMathTypes.cs" Link="Fixtures/UnityEngineMathTypes.cs" />
+    <Compile Include="../Decomposed/**/*.cs" Link="Decomposed/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="PerformanceMetricsTests.cs" />
     <Compile Include="Phase188ReplayPerformanceProtocolTests.cs" />
   </ItemGroup>

@@ -73,14 +73,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void RuntimeSelectorSurfacesMissingZenohPayload()
         {
             var selector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
-            var descriptor = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RuntimeDescriptor.cs");
             var inspector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelectorInspector.cs");
             var capabilities = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeCapabilityModel.cs");
-            var descriptorCtor = ExtractCSharpMethod(descriptor, "Ros2ForUnityRuntimeDescriptor");
+            var descriptorCtor = ExtractCSharpMethod(selector, "Ros2ForUnityRuntimeDescriptor");
             var descriptorFactory = ExtractCSharpMethod(selector, "TryCreateDescriptor");
             var diagnostic = ExtractCSharpMethod(selector, "ComputeZenohPayloadDiagnostic");
 
-            Check(descriptor.Contains("public string ZenohPayloadDiagnostic", StringComparison.Ordinal)
+            Check(selector.Contains("public string ZenohPayloadDiagnostic", StringComparison.Ordinal)
                   && descriptorCtor.Contains("ZenohPayloadDiagnostic = zenohPayloadDiagnostic", StringComparison.Ordinal)
                   && diagnostic.Contains("rmw_zenoh_cpp native library", StringComparison.Ordinal)
                   && diagnostic.Contains("StreamingAssets Zenoh router config", StringComparison.Ordinal)
@@ -303,9 +302,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadRepoText(string relativePath)
         {
             var path = Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return relativePath.EndsWith(".py", StringComparison.Ordinal)
-                ? PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(path)
-                : File.ReadAllText(path);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private static void Check(bool condition, string label)

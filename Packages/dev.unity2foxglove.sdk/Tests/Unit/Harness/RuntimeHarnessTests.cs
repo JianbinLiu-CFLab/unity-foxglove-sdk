@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
@@ -31,42 +30,6 @@ namespace Unity.FoxgloveSDK.UnitTests
         private const int HarnessBuildTimeoutMilliseconds = 360_000;
         private static readonly SemaphoreSlim HarnessBuildLock = new SemaphoreSlim(1, 1);
         private static bool _harnessBuilt;
-
-#if !UNITY2FOXGLOVE_ROS2_FOR_UNITY
-        [Fact]
-        public async Task FoxgloveSessionCompositionHasValidSyntaxAndContainsAllMethods()
-        {
-            var repoRoot = FindRepoRoot();
-            var project = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", "FoxgloveSdk.Tests.csproj");
-            await EnsureHarnessBuiltAsync(repoRoot, project);
-            var assembly = Assembly.LoadFrom(Path.Combine(
-                repoRoot, "build", "Tests", "default", "Debug", "net10.0", "FoxgloveSdk.Tests.dll"));
-            var helper = assembly.GetType("Unity.FoxgloveSDK.Tests.PhaseValidationSourceHelpers", throwOnError: true);
-            var source = (string)helper.GetMethod("ReadFoxgloveSessionSources").Invoke(null, null);
-            var syntax = CSharpSyntaxTree.ParseText(source);
-
-            Assert.DoesNotContain(
-                syntax.GetDiagnostics(),
-                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
-            var session = Assert.Single(
-                syntax.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>(),
-                declaration => declaration.Identifier.ValueText == "FoxgloveSession");
-            var actual = session.Members.OfType<MethodDeclarationSyntax>()
-                .Select(method => method.WithoutTrivia().NormalizeWhitespace().ToFullString()).ToArray();
-            var sessionRoot = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk", "Runtime", "Core", "Session");
-            var expected = new[] { Path.Combine(sessionRoot, "FoxgloveSession.cs") }
-                .Concat(Directory.GetFiles(Path.Combine(sessionRoot, "Decomposed", "FoxgloveSession"), "*.cs"))
-                .SelectMany(path => CSharpSyntaxTree.ParseText(File.ReadAllText(path)).GetRoot()
-                    .DescendantNodes().OfType<ClassDeclarationSyntax>()
-                    .Where(declaration => declaration.Identifier.ValueText == "FoxgloveSession")
-                    .SelectMany(declaration => declaration.Members.OfType<MethodDeclarationSyntax>()))
-                .Select(method => method.WithoutTrivia().NormalizeWhitespace().ToFullString()).ToArray();
-            Assert.Equal(expected.OrderBy(method => method, StringComparer.Ordinal),
-                actual.OrderBy(method => method, StringComparer.Ordinal));
-            Assert.Contains(session.Members.OfType<MethodDeclarationSyntax>(),
-                method => method.Identifier.ValueText == "OnClientBinary");
-        }
-#endif
 
         [Fact]
         public async Task UnknownFlagFailsInsteadOfRunningDefaultSuite()

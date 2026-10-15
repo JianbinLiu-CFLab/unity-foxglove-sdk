@@ -75,6 +75,24 @@
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportPreflight.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportPreflight.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityEditorRestartRelay.cs" Link="Ros2ForUnityEditor/Ros2ForUnityEditorRestartRelay.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Ros2CustomCdrEmitter.cs" Link="Ros2BridgeEditor/Ros2CustomCdrEmitter.cs" Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/DispatchEmission.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/DispatchEmission.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/CdrReaders.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/CdrReaders.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/CdrWriters.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/CdrWriters.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/ShapeProjection.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/ShapeProjection.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/NamingAndValidation.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/NamingAndValidation.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/DataModels.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/DataModels.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
     <!-- Certificate transaction and its production generator are linked so the
          test assembly exercises the same staging call sites as the Editor. -->
     <Compile Include="../../Editor/Certificates/FoxgloveCertificatePairTransaction.cs" Link="Editor/Certificates/FoxgloveCertificatePairTransaction.cs" />

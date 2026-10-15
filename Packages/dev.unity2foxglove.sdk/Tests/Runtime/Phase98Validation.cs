@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validation type for Phase98Validation.
     /// </summary>
+    /// <remarks>Phase192 source sections: VerifyAllSchemaFrameGeneration.cs, SendSummary.cs, LiveEvidence.cs, TopicEvidence.cs, AllSchemaEvidence.cs</remarks>
     public static partial class Phase98Validation
     {
         private const ulong SampleTimeNs = 1_700_098_000_000_000_000UL;

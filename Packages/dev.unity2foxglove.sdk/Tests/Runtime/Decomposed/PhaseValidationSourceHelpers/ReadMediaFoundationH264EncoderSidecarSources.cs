@@ -36,9 +36,17 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(main))
                 throw new FileNotFoundException("Missing Media Foundation H.264 sidecar facade.", main);
 
-            var files = new[] { main }
-                .Concat(Directory.GetFiles(dir, "MediaFoundationH264EncoderSidecar.*.cs")
-                    .OrderBy(path => path, StringComparer.Ordinal))
+            var fileNames = new[]
+            {
+                "MediaFoundationH264EncoderSidecar.cs",
+                "MediaFoundationH264EncoderSidecar.Lifecycle.cs",
+                "MediaFoundationH264EncoderSidecar.NativeLifecycle.cs",
+                "MediaFoundationH264EncoderSidecar.Output.cs",
+                "MediaFoundationH264EncoderSidecar.ComInterop.cs",
+            };
+            var files = fileNames
+                .Select(name => Path.Combine(dir, name))
+                .Where(File.Exists)
                 .ToArray();
 
             var source = new StringBuilder();
@@ -129,8 +137,19 @@ namespace Unity.FoxgloveSDK.Tests
             if (!Directory.Exists(dir))
                 throw new DirectoryNotFoundException("FoxgloveRuntime directory was not found.");
 
-            var files = Directory.GetFiles(dir, "FoxgloveRuntime*.cs")
-                .OrderBy(path => path, StringComparer.Ordinal)
+            var fileNames = new[]
+            {
+                "FoxgloveRuntime.cs",
+                "FoxgloveRuntime.Lifecycle.cs",
+                "FoxgloveRuntime.Publishing.cs",
+                "FoxgloveRuntime.RecordingAndReplay.cs",
+                "FoxgloveRuntime.RuntimeAndSchema.cs",
+                "FoxgloveRuntime.ReplaySuppression.cs",
+                "FoxgloveRuntime.SchemaRegistration.cs",
+            };
+            var files = fileNames
+                .Select(name => Path.Combine(dir, name))
+                .Where(File.Exists)
                 .ToArray();
 
             var source = new StringBuilder();
@@ -147,8 +166,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static string ReadMcapRecorderSources()
         {
             var root = FindRequiredRepoRoot();
-
-            var dir = Path.Combine(
+            var directory = Path.Combine(
                 root,
                 "Packages",
                 "dev.unity2foxglove.sdk",
@@ -156,18 +174,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "IO",
                 "Mcap",
                 "Recording");
-            if (!Directory.Exists(dir))
-                throw new DirectoryNotFoundException("MCAP recorder directory was not found.");
-
-            var files = Directory.GetFiles(dir, "McapRecorder*.cs")
-                .OrderBy(path => path, StringComparer.Ordinal)
-                .ToArray();
-
-            var source = new StringBuilder();
-            foreach (var file in files)
+            var source = new StringBuilder(
+                ReadRequiredRepoText(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs"));
+            foreach (var file in Directory.GetFiles(
+                         directory,
+                         "McapRecorder.*.cs")
+                     .OrderBy(path => path, StringComparer.Ordinal))
             {
-                if (source.Length > 0)
-                    source.Append(Environment.NewLine);
+                source.Append(Environment.NewLine);
                 source.Append(File.ReadAllText(file));
             }
 

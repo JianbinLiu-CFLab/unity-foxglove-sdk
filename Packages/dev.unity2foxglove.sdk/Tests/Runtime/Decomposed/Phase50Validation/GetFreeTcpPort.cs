@@ -90,10 +90,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            var root = Phase16Validation.FindRepoRoot();
-            if (root == null)
+            if (Phase16Validation.FindRepoRoot() == null)
                 throw new InvalidOperationException("Could not find repo root.");
-            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private static void SetPrivateField(object target, string name, object value)

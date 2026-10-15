@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRos2BridgeRuntimeHardening()
         {
-            var source = PhaseValidationSourceHelpers.ReadRos2BridgeRuntimeSources();
+            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntime.cs");
             var shell = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/Ros2BridgeRuntimeShell.cs");
             Check(source.Contains("DisconnectSink(_ownedSink)")
                   && source.Contains("_signal.Set()")

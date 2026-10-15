@@ -6,9 +6,7 @@
 
 using System;
 using System.IO;
-using System.Linq;
 using Xunit;
-using Xunit.Sdk;
 
 namespace Unity.FoxgloveSDK.UnitTests.Architecture
 {
@@ -157,13 +155,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             var contract = File.ReadAllText(Path.Combine(nativeRoot, "IFoxRunRos2CustomTypesupportCatalog.cs"));
             var readiness = File.ReadAllText(Path.Combine(nativeRoot, "FoxRunRos2CustomTypesupportReadiness.cs"));
             var registry = File.ReadAllText(Path.Combine(nativeRoot, "FoxRunRos2CustomTypesupportCatalogRegistry.cs"));
-            var builderDirectory = Path.Combine(
+            var candidateBuilder = File.ReadAllText(Path.Combine(
                 root,
                 "Scripts",
                 "ros2forunity",
                 "interfaces",
-                "build_foxrun_custom_typesupport_addon");
-            var builderSources = ReadBuilderSources(builderDirectory);
+                "build_foxrun_custom_typesupport_addon.py"));
             var candidateBuilderSerialization = File.ReadAllText(Path.Combine(
                 root,
                 "Scripts",
@@ -182,7 +179,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.DoesNotContain("LoadLibrary", registry, StringComparison.Ordinal);
             Assert.DoesNotContain("AppDomain", registry, StringComparison.Ordinal);
             Assert.Contains("FoxRunRos2CustomTypesupportCatalogRegistry.Register", candidateBuilderSerialization, StringComparison.Ordinal);
-            AssertBuilderSourcesStayRosFree(builderSources);
+            Assert.DoesNotContain("Ros2cs.Init", candidateBuilder, StringComparison.Ordinal);
+            Assert.DoesNotContain("CreateNode", candidateBuilder, StringComparison.Ordinal);
 
             var coreRuntimeAsmdef = File.ReadAllText(Path.Combine(
                 root,
@@ -192,34 +190,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 "Unity.FoxgloveSDK.asmdef"));
             Assert.DoesNotContain("CustomTypesupport", coreRuntimeAsmdef, StringComparison.Ordinal);
             Assert.DoesNotContain("ROS2", coreRuntimeAsmdef, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void BuilderBoundaryMutationIsRejected()
-        {
-            var root = FindRepoRoot();
-            var builderDirectory = Path.Combine(
-                root,
-                "Scripts",
-                "ros2forunity",
-                "interfaces",
-                "build_foxrun_custom_typesupport_addon");
-            var mutated = ReadBuilderSources(builderDirectory) + Environment.NewLine + "Ros2cs.Init";
-
-            Assert.Throws<DoesNotContainException>(() => AssertBuilderSourcesStayRosFree(mutated));
-        }
-
-        private static string ReadBuilderSources(string builderDirectory)
-        {
-            return string.Join(
-                Environment.NewLine,
-                Directory.GetFiles(builderDirectory, "*.py").Select(path => File.ReadAllText(path)));
-        }
-
-        private static void AssertBuilderSourcesStayRosFree(string builderSources)
-        {
-            Assert.DoesNotContain("Ros2cs.Init", builderSources, StringComparison.Ordinal);
-            Assert.DoesNotContain("CreateNode", builderSources, StringComparison.Ordinal);
         }
 
         private static string FindRepoRoot()

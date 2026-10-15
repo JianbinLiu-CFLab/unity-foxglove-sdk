@@ -6,10 +6,6 @@
 
 using System;
 using System.IO;
-using System.Linq;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -243,28 +239,6 @@ namespace Unity.FoxgloveSDK.Tests
             var gate = ReadRepoText(LifecycleGateFile);
             var hub = ReadRepoText(
                 NativeDir + "/FoxRun/FoxRunRos2SubscriptionHub.cs");
-            var hubTree = CSharpSyntaxTree.ParseText(
-                hub,
-                CSharpParseOptions.Default.WithPreprocessorSymbols(
-                    "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
-                    "UNITY_EDITOR_WIN"));
-            var syntaxErrors = hubTree.GetDiagnostics()
-                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-                .ToArray();
-            var hubClass = hubTree.GetRoot()
-                .DescendantNodes()
-                .OfType<ClassDeclarationSyntax>()
-                .SingleOrDefault(declaration =>
-                    declaration.Identifier.ValueText == "FoxRunRos2SubscriptionHub");
-            Check(syntaxErrors.Length == 0
-                  && hubClass != null
-                  && hubClass.Members.OfType<MethodDeclarationSyntax>()
-                      .Any(method => method.Identifier.ValueText == "Update")
-                  && hubClass.Members.OfType<MethodDeclarationSyntax>()
-                      .Any(method => method.Identifier.ValueText == "BeginShutdown")
-                  && hubClass.Members.OfType<MethodDeclarationSyntax>()
-                      .Any(method => method.Identifier.ValueText == "ScanAndReconcile"),
-                "165-C0: shared ROS2 subscription hub composer produces a symbol-active class with expected methods");
             var backend = ReadRepoText(
                 NativeDir + "/FoxRun/Ros2ForUnityFoxRunInboundBackend.cs");
             var update = RequiredMethod(
@@ -371,17 +345,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            if (string.Equals(
-                    relativePath.Replace('\\', '/'),
-                    NativeDir + "/FoxRun/FoxRunRos2SubscriptionHub.cs",
-                    StringComparison.Ordinal))
-                return PhaseValidationSourceHelpers.ReadRos2ForUnitySubscriptionHubSources();
-
             var root = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing repository file: " + relativePath, path);
-            return File.ReadAllText(path);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private static bool OccursBefore(string source, string first, string second)

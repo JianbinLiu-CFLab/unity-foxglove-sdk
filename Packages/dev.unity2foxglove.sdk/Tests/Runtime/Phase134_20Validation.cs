@@ -193,7 +193,7 @@ namespace Unity.FoxgloveSDK.Tests
             => Path.DirectorySeparatorChar == '\\';
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static byte[] ReadRepoBytes(string relativePath)
             => File.ReadAllBytes(RepoPath(relativePath));

@@ -15,6 +15,9 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase140_6Validation
     {
+        private const string ManagedWsBackendPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWsBackend.cs";
+
         private const string ManagedWssBackendPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/ManagedWssBackend.cs";
 
@@ -56,7 +59,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ManagedWebSocketStopAlwaysDisposesCancellationToken()
         {
-            var source = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
+            var source = ReadRepoText(ManagedWsBackendPath);
             var stop = ExtractMethodBody(source, "public virtual void Stop");
 
             Check(stop.Contains("finally", StringComparison.Ordinal)
@@ -178,7 +181,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void LiveDataBroadcastAvoidsClientArraySnapshot()
         {
-            var source = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
+            var source = ReadRepoText(ManagedWsBackendPath);
             var dataBroadcast = ExtractMethodBody(source, "public void BroadcastDataBinary");
             var controlBroadcast = ExtractMethodBody(source, "public void BroadcastBinary");
 
@@ -191,7 +194,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void BackendSnapshotsOriginsAndAggregatesStatsInOnePass()
         {
-            var source = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
+            var source = ReadRepoText(ManagedWsBackendPath);
             var stats = ExtractMethodBody(source, "public TransportStatsSnapshot GetStatsSnapshot");
 
             Check(source.Contains("return _allowedOrigins.ToArray();", StringComparison.Ordinal)
@@ -203,7 +206,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ManagedWebSocketSnapshotsDocumentRacesAndReuseFragmentBuffers()
         {
-            var source = PhaseValidationSourceHelpers.ReadManagedWsBackendSources();
+            var source = ReadRepoText(ManagedWsBackendPath);
             var stats = ExtractMethodBody(source, "public TransportStatsSnapshot GetStatsSnapshot");
             var receive = ExtractMethodBody(source, "private void ReceiveLoop");
 

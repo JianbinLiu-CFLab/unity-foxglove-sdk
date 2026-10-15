@@ -251,7 +251,12 @@ namespace Unity.FoxgloveSDK.Tests
             => "\"" + value.Replace("\"", "\\\"") + "\"";
 
         private static string ReadRepoText(string relativePath)
-            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+        {
+            var path = RepoPath(relativePath);
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing required Phase121 file: " + relativePath, path);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+        }
 
         private static string RepoPath(string relativePath)
             => Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
