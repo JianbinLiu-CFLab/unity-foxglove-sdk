@@ -1,5 +1,5 @@
 from __future__ import annotations
-import re
+import re as _phase192_re
 from .discover_protocol_sources_and_phase186b_introduced_sources import *
 from .foundation import __decomposed_authority_paths
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase186_provenance.py"
@@ -51,7 +51,7 @@ def _is_facade_wrapper_line(line: str) -> bool:
     return (
         _is_source_wrapper_line(line)
         or stripped == "#endif"
-        or re.fullmatch(r"#if\s+(?:false|0)", stripped) is not None
+        or _phase192_re.fullmatch(r"#if\s+(?:false|0)", stripped) is not None
     )
 
 
