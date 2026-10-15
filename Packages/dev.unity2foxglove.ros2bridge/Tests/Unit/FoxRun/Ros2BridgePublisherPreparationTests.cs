@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
     [Collection(
         Unity2Foxglove.Ros2Bridge.UnitTests
             .Ros2BridgeNetworkTimingSerialCollection.Name)]
+    /// <remarks>Phase192 source sections: PublisherRuntimeBehaviorTests.cs, PublisherTransportLifecycle.cs, PublisherAuthorityFixtures.cs, PublisherFrameCodec.cs</remarks>
     public sealed partial class Ros2BridgePublisherPreparationTests
     {
         [Fact]
@@ -389,45 +390,6 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     out var secondReason));
             Assert.Equal(firstReason, secondReason);
         }
-
-        [Fact]
-        public void OversizedTopicIsRejectedBeforeItConsumesRegistryCapacity()
-        {
-            var transport = new PreparationTransport("ok");
-            using var runtime = Runtime(() => transport, queueCapacity: 1);
-            runtime.Start(enabled: true, autoConnect: true);
-            var oversizedTopic = "/" + new string('a', Ros2BridgeFrameWriter.MaxHeaderBytes);
-
-            Assert.Equal(
-                Ros2BridgePublisherReadiness.Rejected,
-                runtime.PreparePublisher(
-                    oversizedTopic,
-                    "phase184_msgs/msg/Oversized",
-                    FoxRunResolvedQos.Default,
-                    out var rejectedReason));
-            Assert.Contains(
-                "topic is invalid",
-                rejectedReason,
-                StringComparison.OrdinalIgnoreCase);
-
-            Assert.Equal(
-                Ros2BridgePublisherReadiness.Pending,
-                runtime.PreparePublisher(
-                    "/phase184/after_oversized",
-                    "phase184_msgs/msg/AfterOversized",
-                    FoxRunResolvedQos.Default,
-                    out _));
-            Assert.True(SpinWait.SpinUntil(
-                () => runtime.PreparePublisher(
-                          "/phase184/after_oversized",
-                          "phase184_msgs/msg/AfterOversized",
-                          FoxRunResolvedQos.Default,
-                          out _)
-                      == Ros2BridgePublisherReadiness.Ready,
-                TimeSpan.FromSeconds(3)));
-            Assert.Single(transport.Requests);
-        }
-
 
     }
 }

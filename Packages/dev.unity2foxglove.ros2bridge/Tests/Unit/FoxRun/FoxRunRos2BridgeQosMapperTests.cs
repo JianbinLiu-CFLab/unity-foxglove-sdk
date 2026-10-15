@@ -5,7 +5,6 @@
 // Purpose: Locks Provider-local portable QoS preservation across U2R2.
 
 using System;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
@@ -246,31 +245,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                       | (bytes[offset + 3] << 24));
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(
-                Path.Combine(
-                    FindRepositoryRoot(),
-                    relativePath.Replace(
-                        '/',
-                        Path.DirectorySeparatorChar)));
+            => Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(relativePath);
 
-        private static string FindRepositoryRoot()
-        {
-            var directory = new DirectoryInfo(AppContext.BaseDirectory);
-            while (directory != null)
-            {
-                if (Directory.Exists(
-                        Path.Combine(
-                            directory.FullName,
-                            "Packages",
-                            "dev.unity2foxglove.sdk")))
-                {
-                    return directory.FullName;
-                }
-                directory = directory.Parent;
-            }
-
-            throw new DirectoryNotFoundException(
-                "Could not locate the Unity2Foxglove repository root.");
-        }
     }
 }
