@@ -34,5 +34,13 @@ class Phase186PackageMatrixTests(
         self.assertTrue((package / "__main__.py").is_file())
         self.assertTrue(package.with_suffix(".py").is_file())
 
+    def test_nu1101_is_not_transient(self) -> None:
+        """NU1101 package-not-found errors must not trigger an automatic retry."""
+        self.assertFalse(
+            self.validator._is_transient_build_failure(
+                "error NU1101: Unable to find package Missing.Package"
+            )
+        )
+
 
 __all__ = ["Phase186PackageMatrixTests"]

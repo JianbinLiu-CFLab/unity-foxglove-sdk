@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re as _phase192_re
 from .discover_protocol_sources_and_phase186b_introduced_sources import *
 from .foundation import __decomposed_authority_paths
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase186_provenance.py"
@@ -45,8 +46,13 @@ def _is_source_wrapper_line(line: str) -> bool:
 
 
 def _is_facade_wrapper_line(line: str) -> bool:
-    """Identify syntax-only facade lines, including preprocessor directives."""
-    return _is_source_wrapper_line(line) or line.strip().startswith("#")
+    """Identify syntax-only facade lines and explicitly inert conditionals."""
+    stripped = line.strip()
+    return (
+        _is_source_wrapper_line(line)
+        or stripped == "#endif"
+        or _phase192_re.fullmatch(r"#if\s+(?:false|0)", stripped) is not None
+    )
 
 
 def _validate_moved_fragment(
@@ -216,9 +222,11 @@ def _validate_decomposed_source_files(
                 start = moved_range.get("startLine")
                 end = moved_range.get("endLine")
                 if (
-                    type(start) is int
-                    and type(end) is int
-                    and (start < 1 or end < start or (line_count and end > line_count))
+                    type(start) is not int
+                    or type(end) is not int
+                    or start < 1
+                    or end < start
+                    or end > line_count
                 ):
                     errors.append(f"{path}: decomposed source movedRange is outside the baseline")
                 elif (
@@ -259,7 +267,11 @@ def _validate_decomposed_source_files(
                     continue
                 start = moved_range.get("startLine")
                 end = moved_range.get("endLine")
-                if type(start) is int and type(end) is int and start >= 1 and end >= start:
+                if (
+                    type(start) is int
+                    and type(end) is int
+                    and 1 <= start <= end <= len(original_lines)
+                ):
                     covered_lines.update(range(start, end + 1))
             try:
                 facade_path = _resolve_regular_file_contained(

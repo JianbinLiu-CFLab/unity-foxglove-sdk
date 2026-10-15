@@ -310,6 +310,26 @@ def _iter_package_assets(package: Path) -> tuple[list[Path], list[Path]]:
     return files, folders
 
 
+def _iter_scoped_meta_files(package: Path) -> Iterable[Path]:
+    """Yield package metadata in the validated Unity asset scope."""
+    if not package.is_dir():
+        return ()
+    metas: list[Path] = []
+    for meta in package.rglob("*.meta"):
+        if not meta.is_file():
+            continue
+        relative = meta.relative_to(package)
+        if any(part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES for part in relative.parts):
+            continue
+        if any(part in {"Documentation~", "Ros2Package~"} for part in relative.parts):
+            continue
+        asset = Path(str(meta)[:-len(".meta")])
+        if asset.is_file() and asset.suffix.casefold() in NON_UNITY_BUILD_META_SUFFIXES:
+            continue
+        metas.append(meta)
+    return sorted(metas, key=rel)
+
+
 def check_package_asset_meta(
     results: list[CheckResult], package: Path, label: str
 ) -> None:
@@ -320,6 +340,11 @@ def check_package_asset_meta(
     files, folders = _iter_package_assets(package)
     missing: list[str] = []
     malformed: list[str] = []
+    orphan = [
+        rel(meta)
+        for meta in _iter_scoped_meta_files(package)
+        if not Path(str(meta)[:-len(".meta")]).exists()
+    ]
     for asset in files:
         meta = Path(str(asset) + ".meta")
         if not meta.is_file():
@@ -338,7 +363,11 @@ def check_package_asset_meta(
         text = meta.read_text(encoding="utf-8", errors="replace")
         if META_GUID_RE.search(text) is None or META_FOLDER_ASSET_RE.search(text) is None:
             malformed.append(rel(meta))
-    offenders = missing[:MAX_REPORTED_MISSING_META] + malformed[:MAX_REPORTED_MISSING_META]
+    offenders = (
+        missing[:MAX_REPORTED_MISSING_META]
+        + malformed[:MAX_REPORTED_MISSING_META]
+        + orphan[:MAX_REPORTED_MISSING_META]
+    )
     add(
         results,
         f"{label} Unity asset and folder .meta files",
@@ -359,14 +388,29 @@ def check_packages_meta_guid_uniqueness(
     guids: dict[str, str] = {}
     offenders: list[str] = []
     for package in roots:
-        files, folders = _iter_package_assets(package)
-        for asset in [*files, *folders]:
-            meta = Path(str(asset) + ".meta")
-            if not meta.is_file():
-                continue
+        optional_missing = (
+            SDK_OPTIONAL_MISSING_META_PATHS
+            if package.resolve() == PACKAGE.resolve()
+            else frozenset()
+        )
+        for meta in _iter_scoped_meta_files(package):
+            asset = Path(str(meta)[:-len(".meta")])
+            relative_meta = meta.relative_to(package).as_posix()
+            if not asset.exists():
+                if relative_meta not in optional_missing:
+                    offenders.append(f"{rel(meta)} is an orphan metadata sidecar")
+                    continue
             text = meta.read_text(encoding="utf-8", errors="replace")
             match = META_GUID_RE.search(text)
             if match is None:
+                offenders.append(f"{rel(meta)} has no valid GUID")
+                continue
+            if (
+                not asset.exists()
+                and relative_meta in optional_missing
+                and META_FOLDER_ASSET_RE.search(text) is None
+            ):
+                offenders.append(f"{rel(meta)} is missing folderAsset: yes")
                 continue
             guid = match.group(1).lower()
             previous = guids.get(guid)

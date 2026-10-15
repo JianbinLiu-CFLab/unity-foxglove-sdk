@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -50,6 +52,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("MethodSignatureRegexes", source, StringComparison.Ordinal);
         }
 
+        [Theory]
+        [InlineData("Phase121Validation.cs", "ReadRepoText")]
+        [InlineData("Phase128Validation.cs", "ReadRepoText")]
+        [InlineData("Phase129Validation.cs", "ReadRepoText")]
+        [InlineData("Phase130Validation.cs", "ReadRepoText")]
+        [InlineData("Phase131Validation.cs", "ReadRepoText")]
+        [InlineData("Phase132Validation.cs", "ReadRepoText")]
+        [InlineData("Phase134_30Validation.cs", "ReadRepoText")]
+        [InlineData("Phase134_31Validation.cs", "ReadRepoText")]
+        [InlineData("Phase164_42Validation.cs", "Read")]
+        public void RuntimeReadersDelegateToSplitAwareHelper(string filename, string readerName)
+        {
+            var source = CSharpSyntaxTree.ParseText(TestSources.Runtime(filename));
+            var method = Assert.Single(
+                source.GetRoot()
+                    .DescendantNodes()
+                    .OfType<MethodDeclarationSyntax>(),
+                candidate => candidate.Identifier.ValueText == readerName);
+            var invocation = Assert.IsType<InvocationExpressionSyntax>(method.ExpressionBody?.Expression);
+
+            Assert.Equal(
+                "PhaseValidationSourceHelpers.ReadRequiredRepoText",
+                invocation.Expression.ToString());
+            var argument = Assert.Single(invocation.ArgumentList.Arguments);
+            Assert.Equal("relativePath", argument.Expression.ToString());
+        }
+
         [Fact]
         public void Phase14089MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_89Validation.cs", "--phase140-89", "Phase140_89Validation.Validate");
@@ -85,6 +114,11 @@ internal static class TestSources
                     "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs",
                     StringComparison.Ordinal))
                 return MediaFoundationH264EncoderSidecarSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs",
+                    StringComparison.Ordinal))
+                return Ros2ForUnitySubscriptionHubSources();
 
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
@@ -110,12 +144,58 @@ internal static class TestSources
                 "FoxgloveRuntime.ReplaySuppression.cs",
                 "FoxgloveRuntime.SchemaRegistration.cs",
             };
-            var paths = fileNames
-                .Select(name => Path.Combine(root, name))
-                .Where(File.Exists)
-                .ToArray();
-            Assert.NotEmpty(paths);
-            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+            var facade = File.ReadAllText(Path.Combine(root, fileNames[0]));
+            var marker = "    /// <summary>Shared executable generation predicate for main-thread client events.";
+            var gateStart = facade.LastIndexOf(marker, StringComparison.Ordinal);
+            Assert.True(gateStart >= 0, "FoxgloveRuntime facade is missing its trailing gate.");
+            var source = facade.Substring(0, gateStart).TrimEnd();
+            foreach (var fileName in fileNames.Skip(1))
+                source += Environment.NewLine + File.ReadAllText(Path.Combine(root, fileName));
+            return source + Environment.NewLine + facade.Substring(gateStart).TrimStart();
+        }
+
+        private static string Ros2ForUnitySubscriptionHubSources()
+        {
+            var root = Path.Combine(
+                RepoRoot,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime",
+                "Native",
+                "FoxRun");
+            var names = new[]
+            {
+                "FoxRunRos2SubscriptionHub.cs",
+                "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Scanning.cs",
+                "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Lifecycle.cs",
+                "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Bindings.cs",
+            };
+            var facadeLines = File.ReadAllLines(Path.Combine(root, names[0]));
+            var source = string.Join(Environment.NewLine, TrimWrapper(facadeLines, 0));
+            foreach (var name in names.Skip(1))
+            {
+                var lines = File.ReadAllLines(Path.Combine(root, name.Replace('/', Path.DirectorySeparatorChar)));
+                var classLine = Array.FindIndex(lines, line => line.Contains("partial class FoxRunRos2SubscriptionHub", StringComparison.Ordinal));
+                var open = Array.FindIndex(lines, classLine, line => line.Trim() == "{");
+                source += Environment.NewLine + string.Join(Environment.NewLine, TrimWrapper(lines, open + 1).Skip(open + 1));
+            }
+            return source + Environment.NewLine + "    }" + Environment.NewLine + "}" + Environment.NewLine + "#endif";
+        }
+
+        private static string[] TrimWrapper(string[] lines, int minimum)
+        {
+            var end = lines.Length;
+            while (end > 0 && string.IsNullOrWhiteSpace(lines[end - 1])) end--;
+            if (end > 0 && lines[end - 1].Trim() == "#endif") end--;
+            while (end > minimum && string.IsNullOrWhiteSpace(lines[end - 1])) end--;
+            for (var brace = 0; brace < 2; brace++)
+            {
+                while (end > minimum && string.IsNullOrWhiteSpace(lines[end - 1])) end--;
+                if (end <= minimum || lines[end - 1].Trim() != "}")
+                    throw new InvalidOperationException("Malformed ROS2 subscription hub wrapper.");
+                end--;
+            }
+            return lines.Take(end).ToArray();
         }
 
         private static string MediaFoundationH264EncoderSidecarSources()

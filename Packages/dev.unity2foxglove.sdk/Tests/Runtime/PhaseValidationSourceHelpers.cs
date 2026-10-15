@@ -165,8 +165,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Path.GetDirectoryName(facadePath)
                     ?? throw new DirectoryNotFoundException(facadePath),
                 Path.GetFileNameWithoutExtension(facadePath));
-            return Directory.Exists(packagePath)
-                && File.Exists(Path.Combine(packagePath, "__init__.py"));
+            return Directory.Exists(packagePath);
         }
 
         public static string ReadFoxgloveSessionSources()
@@ -329,6 +328,39 @@ namespace Unity.FoxgloveSDK.Tests
             if (openBrace < 0 || lines.Length - openBrace < 4)
                 throw new InvalidDataException("MCAP replay fragment is too short: " + path);
             return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
+        }
+
+        public static string ReadRegisteredCSharpSource(
+            string facadeRelativePath,
+            params string[] fragmentRelativePaths)
+        {
+            if (string.IsNullOrWhiteSpace(facadeRelativePath))
+                throw new ArgumentException("Facade path is required.", nameof(facadeRelativePath));
+
+            var allRelativePaths = new[] { facadeRelativePath }
+                .Concat(fragmentRelativePaths ?? Array.Empty<string>())
+                .ToArray();
+            var allPaths = allRelativePaths
+                .Select(RepoPath)
+                .ToArray();
+            var fragmentPaths = allPaths.Skip(1).ToArray();
+            foreach (var group in fragmentPaths.GroupBy(Path.GetDirectoryName))
+            {
+                var expected = new HashSet<string>(
+                    group.Select(Path.GetFileName),
+                    StringComparer.OrdinalIgnoreCase);
+                var actual = new HashSet<string>(
+                    Directory.GetFiles(group.Key, "*.cs", SearchOption.TopDirectoryOnly)
+                        .Select(Path.GetFileName),
+                    StringComparer.OrdinalIgnoreCase);
+                if (!expected.SetEquals(actual))
+                    throw new InvalidDataException(
+                        "Registered C# source set mismatch in " + group.Key
+                        + ". Expected: " + string.Join(", ", expected.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+                        + "; actual: " + string.Join(", ", actual.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)));
+            }
+
+            return string.Join(Environment.NewLine, allPaths.Select(File.ReadAllText));
         }
 
         public static string ReadSplitPythonSource(string relativePath)

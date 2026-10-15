@@ -54,10 +54,39 @@ class IdentityToolingTests(unittest.TestCase):
         """C++ identity rows must change when an exported function is renamed."""
         source = 'extern "C" __declspec(dllexport) int U2FDracoGetVersion(\n    int value\n)\n{\n    return value;\n}\n'
         changed = source.replace("U2FDracoGetVersion", "U2FDracoGetVersionX", 1)
+        rows = identity_contracts.cpp_rows("fixture.cpp", source)
+        self.assertEqual(1, len(rows))
+        self.assertEqual("U2FDracoGetVersion", rows[0][2])
+        self.assertNotIn("return value", rows[0][3])
         self.assertNotEqual(
+            rows,
+            identity_contracts.cpp_rows("fixture.cpp", changed),
+        )
+
+    def test_cpp_surface_ignores_function_body_changes(self) -> None:
+        """C++ identity remains stable when only an implementation body changes."""
+        source = "int Foo() {\n    return 1;\n}\n"
+        changed = source.replace("return 1", "return 2")
+        self.assertEqual(
             identity_contracts.cpp_rows("fixture.cpp", source),
             identity_contracts.cpp_rows("fixture.cpp", changed),
         )
+
+    def test_cpp_surface_does_not_record_calls_inside_function_bodies(self) -> None:
+        """Calls nested in a function body are not C++ interface declarations."""
+        source = "int Foo() {\n    return helper();\n}\n"
+        rows = identity_contracts.cpp_rows("fixture.cpp", source)
+        self.assertEqual(["Foo"], [row[2] for row in rows])
+
+    def test_cpp_surface_records_special_member_declarations(self) -> None:
+        """Constructors and destructors remain visible C++ identity rows."""
+        source = (
+            "Widget::Widget(int value) : value_(value) {}\n"
+            "Widget::~Widget() {}\n"
+        )
+        rows = identity_contracts.cpp_rows("fixture.cpp", source)
+        self.assertEqual(2, len(rows))
+        self.assertEqual(["Widget", "~Widget"], [row[2] for row in rows])
 
     def test_source_sensitivity_uses_real_source_mutations(self) -> None:
         """Sensitivity proof must expose real source mutation helpers."""
@@ -78,6 +107,32 @@ class IdentityToolingTests(unittest.TestCase):
         for kind, source, mutate in targets:
             with self.subTest(kind=kind):
                 self.assertEqual(1, sensitivity_proof.source_mutation_result(kind, source, mutate))
+
+    def test_source_sensitivity_compares_frozen_identity_rows(self) -> None:
+        """Sensitivity proof must reject a mutation against its frozen TSV baseline."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "fixture.cpp"
+            original = "int Exported(int value) { return value; }\n"
+            source.write_text(original, encoding="utf-8")
+            identity = root / "identity"
+            identity.mkdir()
+            baseline = identity_contracts.cpp_rows("fixture.cpp", original)
+            identity_contracts.write_rows(
+                identity / "cpp-symbol-surface.tsv",
+                ["path", "line", "symbol", "declaration"],
+                baseline,
+            )
+            self.assertEqual(
+                1,
+                sensitivity_proof.frozen_identity_mutation_result(
+                    "cpp", source, lambda text: text.replace("Exported", "Renamed", 1), identity, root
+                ),
+            )
+            with self.assertRaises(FileNotFoundError):
+                sensitivity_proof.frozen_identity_mutation_result(
+                    "cpp", source, lambda text: text.replace("Exported", "Renamed", 1), root / "missing", root
+                )
 
     def test_compare_gate_rejects_removed_row(self) -> None:
         """Phase192 test compare gate rejects removed row."""
@@ -3132,6 +3187,93 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertFalse(
             compare_identity_surfaces._phase192_generated_initializer(
                 "# _Phase192PackageModule\nVALUE = '_Phase138UPackageModule'\n"
+            )
+        )
+
+    def test_entrypoint_rejects_dynamic_unittest_arguments(self) -> None:
+        """Unittest entrypoints must use literal module and exit options."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "__init__.py").write_text("", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "import unittest\ndef module_name(): return 'bad'\n"
+                "if __name__ == '__main__':\n"
+                "    unittest.main(module=module_name())\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path)
+
+    def test_namespace_risk_signatures_distinguish_import_time_defaults(self) -> None:
+        """Default expressions remain import-time risks unlike function bodies."""
+        body = ast.parse('def helper():\n    return eval("1+1")\n')
+        default = ast.parse('def helper(value=eval("1+1")):\n    return value\n')
+        self.assertNotEqual(
+            compare_identity_surfaces._namespace_risk_signatures(body),
+            compare_identity_surfaces._namespace_risk_signatures(default),
+        )
+
+    def test_generated_section_rejects_path_and_sys_path_mutations(self) -> None:
+        """Generated sections reject filesystem opens and path list mutation."""
+        sources = (
+            "from pathlib import Path\nPath('bad').open('w')\n",
+            "from pathlib import Path\nPath('bad').touch()\n",
+            "import sys\nsys.path.append('bad')\n",
+            "import sys\nsys.path.extend(['bad'])\n",
+        )
+        for source in sources:
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                compare_identity_surfaces._validate_generated_section(
+                    source + "PUBLIC = 1\n__all__ = ['PUBLIC']\n",
+                    Path("Scripts/smoke/fixture.py"),
+                    Path("Scripts/smoke"),
+                    frozenset({"fixture"}),
+                )
+
+    def test_configuration_exemption_is_phase121_specific(self) -> None:
+        """Only the reviewed Phase121 configuration gets the narrow exemption."""
+        self.assertTrue(
+            compare_identity_surfaces._is_phase121_configuration_path(
+                "Scripts/mcap/conformance/run_phase121_conformance/configuration.py"
+            )
+        )
+        self.assertFalse(
+            compare_identity_surfaces._is_phase121_configuration_path(
+                "Scripts/other/configuration.py"
+            )
+        )
+
+    def test_workflow_keeps_identity_checker_trusted_base_only(self) -> None:
+        """The compatibility gate must not overwrite the trusted base checker."""
+        workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
+        self.assertNotIn('cp Scripts/phase192/compare_identity_surfaces.py "$base_checker"', workflow)
+
+    def test_compatibility_rejects_mutation_of_legacy_entrypoint(self) -> None:
+        """Legacy compatibility paths still reject an entrypoint digest mutation."""
+        relative = 'Scripts/mcap/conformance/run_phase121_conformance.py'
+        base = {relative: (frozenset({'main'}), (), (), frozenset(), 'base', frozenset(), True, (), frozenset(), (), 'entry-base', (), (), (), frozenset({'main'}))}
+        head = {relative: (frozenset({'main'}), (), (), frozenset(), 'base', frozenset(), True, (), frozenset(), (), 'entry-head', (), (), (), frozenset({'main'}))}
+        errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+        self.assertIn('MODULE_ENTRYPOINT_CHANGED ' + relative, errors)
+
+    def test_generated_initializer_kind_uses_ast_classification(self) -> None:
+        """Initializer routing follows AST nodes rather than source substrings."""
+        self.assertEqual(
+            "phase192",
+            compare_identity_surfaces._phase192_initializer_kind(
+                "class _Phase192PackageModule: pass\n"
+            ),
+        )
+        self.assertEqual(
+            "phase138u",
+            compare_identity_surfaces._phase192_initializer_kind(
+                "from .pointcloud_metrics import value\n"
+            ),
+        )
+        self.assertIsNone(
+            compare_identity_surfaces._phase192_initializer_kind(
+                "VALUE = '_Phase192PackageModule'\n"
             )
         )
 

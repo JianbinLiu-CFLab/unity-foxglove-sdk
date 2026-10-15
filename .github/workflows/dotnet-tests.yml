@@ -132,7 +132,7 @@ jobs:
         run: |
           set -uo pipefail
           status=0
-          for flag in --phase121 --phase128 --phase129 --phase130 --phase131 --phase138l --phase138m --phase138p --phase163-54 --phase164-41 --phase164-42; do
+          for flag in --phase121 --phase128 --phase129 --phase130 --phase131 --phase132 --phase138l --phase138m --phase138p --phase163-54 --phase164-41 --phase164-42; do
             dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- "$flag" || status=$?
           done
           exit "$status"
@@ -222,9 +222,6 @@ jobs:
             echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: trusted base checker lacks --compatibility" >&2
             exit 1
           fi
-          # Facade-parity changes use the reviewed checker from the head so the
-          # legacy guard transition and load_tests contract are evaluated explicitly.
-          cp Scripts/phase192/compare_identity_surfaces.py "$base_checker"
           PYTHONPATH="$trusted_root" python3 "$base_checker" --base "$PHASE192_BASE_SHA" --head "$PHASE192_HEAD_SHA" --repository . --compatibility
 
       - name: Run official MCAP differential conformance

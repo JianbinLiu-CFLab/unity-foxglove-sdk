@@ -154,15 +154,15 @@ namespace Unity.FoxgloveSDK.Tests
                    && !ContainsAny(smoke, new[] { "CreatePublisher<tf2_msgs", "/tf", "/clock", "rosgraph_msgs" }),
                 "132C-3: smoke driver publishes only the six Phase132 topics and no /tf or /clock");
             Check(AllTokens(smoke,
-                      "RemovePublisherIfPresent(_cameraInfoPublisher)",
-                      "RemovePublisherIfPresent(_imagePublisher)",
-                      "RemovePublisherIfPresent(_imuPublisher)",
-                      "RemovePublisherIfPresent(_odometryPublisher)",
-                      "RemovePublisherIfPresent(_posePublisher)",
-                      "RemovePublisherIfPresent(_navSatFixPublisher)",
+                      "RemovePublisherIfPresent(ref _cameraInfoPublisher)",
+                      "RemovePublisherIfPresent(ref _imagePublisher)",
+                      "RemovePublisherIfPresent(ref _imuPublisher)",
+                      "RemovePublisherIfPresent(ref _odometryPublisher)",
+                      "RemovePublisherIfPresent(ref _posePublisher)",
+                      "RemovePublisherIfPresent(ref _navSatFixPublisher)",
                       "RemoveNode(_node)",
                       "RemovePublisher<T>(publisher)")
-                  && smoke.IndexOf("RemovePublisherIfPresent(_navSatFixPublisher)", StringComparison.Ordinal)
+                   && smoke.IndexOf("RemovePublisherIfPresent(ref _navSatFixPublisher)", StringComparison.Ordinal)
                   < smoke.IndexOf("RemoveNode(_node)", StringComparison.Ordinal),
                 "132C-4: smoke cleanup removes all publishers before removing the node");
             Check(smoke.Contains("DefaultPublishIntervalSeconds = 0.5f", StringComparison.Ordinal)

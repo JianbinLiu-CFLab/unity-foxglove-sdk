@@ -30,8 +30,16 @@ CPP_FUNCTION_DECLARATION = re.compile(
     r"\b([A-Za-z_]\w*(?:::[A-Za-z_]\w*)?)\s*"
     r"\(([^{};]*)\)\s*(?:const\b\s*)?(?:\{|;)"
 )
+CPP_FUNCTION_NAME = re.compile(
+    r"(?<![.\w])((?:[A-Za-z_~][\w~]*(?:::[A-Za-z_~][\w~]*)*)|"
+    r"operator\s*[A-Za-z_~][\w~]*=?)\s*\("
+)
 CPP_CONTROL_NAMES = frozenset(
-    {"if", "for", "while", "switch", "catch", "sizeof", "decltype"}
+    {
+        "if", "for", "while", "switch", "catch", "sizeof", "decltype",
+        "void", "bool", "char", "short", "int", "long", "float", "double",
+        "auto", "const", "volatile", "unsigned", "signed",
+    }
 )
 SOURCE_NON_CODE = re.compile(
     r"//[^\r\n]*|/\*.*?\*/|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'",
@@ -446,51 +454,118 @@ def cpp_rows(path: str, text: str) -> list[list[str]]:
     stripped = _strip_c_like_source(text)
     lines = stripped.splitlines()
     rows: list[list[str]] = []
+    brace_depth = 0
+    function_body_depth: int | None = None
+    pending_function_body = False
+
+    def signature(start: int, name_start: int, name: str) -> tuple[str, bool] | None:
+        """Return a declaration signature without its implementation body."""
+        prefix_start = start
+        while prefix_start > 0 and start - prefix_start < 3:
+            previous = lines[prefix_start - 1]
+            if any(token in previous for token in ("{", "}", ";")):
+                break
+            prefix_start -= 1
+        combined = "\n".join(lines[prefix_start : min(len(lines), start + 32)])
+        candidate_offset = sum(len(line) + 1 for line in lines[prefix_start:start])
+        candidate_offset += name_start
+        open_paren = combined.find("(", candidate_offset)
+        if open_paren < 0:
+            return None
+        depth = 0
+        close_paren = None
+        for offset in range(open_paren, len(combined)):
+            if combined[offset] == "(":
+                depth += 1
+            elif combined[offset] == ")":
+                depth -= 1
+                if depth == 0:
+                    close_paren = offset
+                    break
+        if close_paren is None:
+            return None
+        end = close_paren + 1
+        suffix_depth = 0
+        while end < len(combined):
+            character = combined[end]
+            if character == "(":
+                suffix_depth += 1
+            elif character == ")" and suffix_depth:
+                suffix_depth -= 1
+            elif suffix_depth == 0 and character in "{:;":
+                break
+            end += 1
+        declaration = combined[:end]
+        declaration = re.sub(r"\s+:\s*[^;{]*$", "", declaration)
+        if name not in declaration:
+            return None
+        return clean(declaration), combined[end:end + 1] == "{"
+
     for number, line in enumerate(lines, 1):
         stripped = line.strip()
+        if function_body_depth is not None:
+            brace_depth += line.count("{") - line.count("}")
+            if brace_depth < function_body_depth:
+                function_body_depth = None
+            continue
+        if pending_function_body:
+            if "{" in line:
+                function_body_depth = brace_depth + 1
+                pending_function_body = False
+            brace_depth += line.count("{") - line.count("}")
+            if function_body_depth is not None and brace_depth < function_body_depth:
+                function_body_depth = None
+            continue
         if not stripped or stripped.startswith(("//", "/*", "*", "#")):
+            brace_depth += line.count("{") - line.count("}")
             continue
         match = CPP_TYPE_DECLARATION.search(stripped)
         if match:
             rows.append([path, str(number), match.group(1), clean(stripped)])
-        window = "\n".join(lines[number - 1 : number + 12])
-        candidates = list(
-            re.finditer(
-                r"(?<![.\w])([A-Za-z_]\w*(?:::[A-Za-z_]\w*)?)\s*\(",
-                line,
-            )
-        )
-        for candidate in candidates:
-            name = candidate.group(1).split("::")[-1]
-            prefix = line[: candidate.start(1)]
-            if name.startswith("__") or name in CPP_CONTROL_NAMES or any(
-                token in prefix for token in (".", "->", "=", "return ")
-            ):
-                continue
-            if re.search(r"\b(?:if|for|while|switch|catch)\b", prefix):
-                continue
-            if name in {"min", "max"} and ("numeric_limits" in window or "std::" in prefix):
-                continue
-            if not re.search(
-                r"\b(?:extern|static|inline|constexpr|__declspec|const|volatile|void|bool|char|short|int|long|float|double|auto|unsigned|signed)\b|::",
-                prefix,
-            ):
-                continue
-            tail = line[candidate.end() :] + "\n" + "\n".join(lines[number : number + 12])
-            if not re.search(r"\)\s*(?:const\b\s*)?(?:\{|;)", tail, re.DOTALL):
-                continue
-            rows.append([path, str(number), candidate.group(1), clean(window)])
-            break
-        else:
-            # Handle a return type and function name split across adjacent lines.
-            multiline = re.match(
-                r"\s*(?:extern\s+\"C\"\s+|__declspec\([^)]*\)\s+|(?:[A-Za-z_]\w*(?:::[A-Za-z_]\w*)?\s+)+)"
-                r"([A-Za-z_]\w*(?:::[A-Za-z_]\w*)?)\s*\(",
-                window,
-                re.DOTALL,
-            )
-            if multiline and multiline.group(1).split("::")[-1] not in CPP_CONTROL_NAMES:
-                rows.append([path, str(number), multiline.group(1), clean(window)])
+        for candidate in CPP_FUNCTION_NAME.finditer(line):
+                name = candidate.group(1)
+                prefix = line[: candidate.start(1)]
+                if re.fullmatch(r"[A-Z][A-Z0-9_]*", name):
+                    if name.startswith(("TEST", "SCENARIO")):
+                        if "{" in line[candidate.start(1) :]:
+                            function_body_depth = brace_depth + 1
+                        else:
+                            pending_function_body = True
+                    continue
+                context = "\n".join(lines[max(0, number - 4) : number])
+                control_prefix = re.search(r"\b(?:if|for|while|switch|catch)\b", prefix)
+                has_return_type = bool(
+                    re.search(
+                        r"\b(?:extern|static|inline|constexpr|__declspec|const|volatile|void|bool|char|short|int|long|float|double|auto|unsigned|signed|size_t|ssize_t|u?int\d*_t)\b",
+                        prefix + context,
+                    )
+                    or re.fullmatch(r"\s*[A-Za-z_]\w*\s*[*&]?\s*", prefix) is not None
+                )
+                if (
+                    not name.startswith("__")
+                    and name.split("::")[-1] not in CPP_CONTROL_NAMES
+                    and not any(token in prefix for token in (".", "->", "=", "return "))
+                    and control_prefix is None
+                    and (
+                        "::" in name
+                        or has_return_type
+                        or name.startswith("operator")
+                        or (brace_depth > 0 and line.rstrip().endswith((";", "{")))
+                    )
+                ):
+                    parsed = signature(number - 1, candidate.start(1), name)
+                    if parsed is not None:
+                        declaration, has_body = parsed
+                        rows.append([path, str(number), name.split("::")[-1], declaration])
+                        if has_body:
+                            if "{" in line[candidate.start(1) :]:
+                                function_body_depth = brace_depth + 1
+                            else:
+                                pending_function_body = True
+                        break
+        brace_depth += line.count("{") - line.count("}")
+        if function_body_depth is not None and brace_depth < function_body_depth:
+            function_body_depth = None
     return rows
 
 

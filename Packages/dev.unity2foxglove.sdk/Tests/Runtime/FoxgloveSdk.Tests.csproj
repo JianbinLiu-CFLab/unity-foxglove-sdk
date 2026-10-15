@@ -316,6 +316,8 @@
     <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="R2fuHumbleRuntimePackageValidation.cs" />
     <Compile Include="R2fuJazzyRuntimeRefreshValidation.cs" />
+    <Compile Include="Decomposed/R2fuJazzyRuntimeRefreshValidation/ReadLifecycleSource.cs" />
+    <Compile Include="Decomposed/R2fuLyricalRuntimePackageValidation/Phase162SmokeHelperCapturesZenohRouterFlow.cs" />
     <Compile Include="MessagePackRawChannelEncodingValidation.cs" />
     <Compile Include="RemoteGatewayBoundaryValidation.cs" />
     <Compile Include="CameraHealthCaptureAdmissionValidation.cs" />
