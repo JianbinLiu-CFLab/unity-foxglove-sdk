@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -48,6 +50,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("PhaseValidationSourceHelpers.SourceMethod(source, methodName)", method, StringComparison.Ordinal);
             Assert.DoesNotContain("FindMethodSignature", source, StringComparison.Ordinal);
             Assert.DoesNotContain("MethodSignatureRegexes", source, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("Phase121Validation.cs", "ReadRepoText")]
+        [InlineData("Phase128Validation.cs", "ReadRepoText")]
+        [InlineData("Phase129Validation.cs", "ReadRepoText")]
+        [InlineData("Phase130Validation.cs", "ReadRepoText")]
+        [InlineData("Phase131Validation.cs", "ReadRepoText")]
+        [InlineData("Phase132Validation.cs", "ReadRepoText")]
+        [InlineData("Phase134_30Validation.cs", "ReadRepoText")]
+        [InlineData("Phase134_31Validation.cs", "ReadRepoText")]
+        [InlineData("Phase164_42Validation.cs", "Read")]
+        public void RuntimeReadersDelegateToSplitAwareHelper(string filename, string readerName)
+        {
+            var source = CSharpSyntaxTree.ParseText(TestSources.Runtime(filename));
+            var method = Assert.Single(
+                source.GetRoot()
+                    .DescendantNodes()
+                    .OfType<MethodDeclarationSyntax>(),
+                candidate => candidate.Identifier.ValueText == readerName);
+            var invocation = Assert.IsType<InvocationExpressionSyntax>(method.ExpressionBody?.Expression);
+
+            Assert.Equal(
+                "PhaseValidationSourceHelpers.ReadRequiredRepoText",
+                invocation.Expression.ToString());
+            var argument = Assert.Single(invocation.ArgumentList.Arguments);
+            Assert.Equal("relativePath", argument.Expression.ToString());
         }
 
         [Fact]

@@ -165,8 +165,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Path.GetDirectoryName(facadePath)
                     ?? throw new DirectoryNotFoundException(facadePath),
                 Path.GetFileNameWithoutExtension(facadePath));
-            return Directory.Exists(packagePath)
-                && File.Exists(Path.Combine(packagePath, "__init__.py"));
+            return Directory.Exists(packagePath);
         }
 
         public static string ReadFoxgloveSessionSources()
