@@ -100,7 +100,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void HotPathAllocationCoverageRemainsFocused()
         {
-            var tests = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Unit/Sensors/PointCloudHotPathAllocationTests.cs");
+            var tests = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Sensors/PointCloudHotPathAllocationTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Decomposed/Sensors/PointCloudHotPathAllocationTests/PackedPointCloudFrameTracksValidCountSeparatelyFromPublishedPointSlots.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Decomposed/Sensors/PointCloudHotPathAllocationTests/PointCloudPackedByteBufferPoolRemovesEmptyExactSizeBuckets.cs");
 
             Check(tests.Contains("PointCloud2BuilderUsesOwnedArrayWithoutPooledFrameData", StringComparison.Ordinal)
                   && tests.Contains("PointCloud2BuilderPacksOnlyValidPointsIntoExactSizedData", StringComparison.Ordinal)

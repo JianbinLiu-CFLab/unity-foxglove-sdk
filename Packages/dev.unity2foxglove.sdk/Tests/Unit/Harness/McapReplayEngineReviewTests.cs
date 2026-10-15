@@ -83,5 +83,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 Environment.NewLine,
                 paths.Select(TestSources.Text));
         }
-    }
+
+
+        [Fact]
+        public void ReplaySourceCompositionPreservesOriginalMemberOrder()
+        {
+            var source = McapReplaySources();
+            var markers = new[]
+            {
+                "public void Load(string filePath)",
+                "public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result)",
+                "private bool TryReadIndexedBoundedHistory(",
+                "private sealed class HistoryCandidate",
+                "private void SortPending()",
+                "private List<McapMessage> FinishTickResult(List<McapMessage> result)",
+            };
+
+            var prior = -1;
+            foreach (var marker in markers)
+            {
+                var current = source.IndexOf(marker, StringComparison.Ordinal);
+                Assert.True(current > prior, "Replay source order changed before: " + marker);
+                prior = current;
+            }
+        }
+}
 }

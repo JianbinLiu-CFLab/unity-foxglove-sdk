@@ -56,7 +56,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyFoxRunAggregationReferencesAreCached()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxRunAggregationEmitterTests.cs");
+            var source = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxRunAggregationEmitterTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Decomposed/FoxRun/FoxRunAggregationEmitterTests/AggregateMessagePackEmitsOneDirectStableMapBuilderWithoutJsonFallback.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Decomposed/FoxRun/FoxRunAggregationEmitterTests/NullableIntegralFieldEmitsNumericJsonForSinkFanout.cs");
 
             Check(source.Contains("private static readonly MetadataReference[] BasicReferences", StringComparison.Ordinal)
                   && source.Contains("BasicReferences,", StringComparison.Ordinal)
