@@ -670,9 +670,7 @@ namespace Unity.FoxgloveSDK.Tests
             => JObject.Parse(Read(relativePath));
 
         private static string Read(string relativePath)
-            => File.ReadAllText(Path.Combine(
-                Root(),
-                relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static string ReadSplitPythonSource(string relativePath)
             => PhaseValidationSourceHelpers.ReadSplitPythonSource(relativePath);
