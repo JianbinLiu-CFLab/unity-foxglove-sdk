@@ -502,6 +502,70 @@ class _Phase186ProvenanceTests_fixtures:
                     errors,
                 )
 
+    def test_decomposed_source_rejects_unbounded_moved_range(self) -> None:
+        """An oversized movedRange must fail before constructing a huge range."""
+        module = load_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = pathlib.Path(temporary)
+            initialize_git_repository(repository)
+            original = repository / "Protocol/Authority.cs"
+            original.parent.mkdir(parents=True)
+            original.write_text("line one\nline two\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+            run_git(repository, "commit", "--quiet", "-m", "baseline")
+            revision = run_git(repository, "rev-parse", "HEAD")
+            part = repository / "Protocol/Decomposed/AuthorityPart.cs"
+            part.parent.mkdir(parents=True)
+            part.write_text("line two\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+            run_git(repository, "commit", "--quiet", "-m", "decompose")
+            decomposition_revision = run_git(repository, "rev-parse", "HEAD")
+            payload = {
+                "decomposedSources": [
+                    {
+                        "originalPath": "Protocol/Authority.cs",
+                        "sourceRevision": revision,
+                        "decompositionRevision": decomposition_revision,
+                        "originalSha256": module._sha256_bytes(
+                            module._canonical_source_bytes(
+                                module._git_blob(repository, revision, "Protocol/Authority.cs")
+                            )
+                        ),
+                        "parts": [
+                            {
+                                "path": "Protocol/Decomposed/AuthorityPart.cs",
+                                "sha256": module._sha256_bytes(
+                                    module._canonical_source_bytes(part.read_bytes())
+                                ),
+                                "movedRange": {"startLine": 1, "endLine": 10**9},
+                            }
+                        ],
+                    }
+                ]
+            }
+            real_range = range
+
+            def bounded_range(*args):
+                if args and args[-1] > 1000:
+                    raise AssertionError("unbounded range construction")
+                return real_range(*args)
+
+            with mock.patch("builtins.range", side_effect=bounded_range):
+                _, _, errors = module._validate_decomposed_source_files(
+                    repository,
+                    payload,
+                    {"Protocol/Authority.cs", "Protocol/Decomposed/AuthorityPart.cs"},
+                    {"Protocol/Authority.cs": "baseline"},
+                )
+        self.assertTrue(any("outside the baseline" in error for error in errors), errors)
+
+    def test_facade_wrapper_only_ignores_comment_conditionals(self) -> None:
+        """Facade comparison must retain semantic preprocessor directives."""
+        module = load_module()
+        self.assertTrue(module._is_facade_wrapper_line("#if false"))
+        self.assertTrue(module._is_facade_wrapper_line("#endif"))
+        self.assertFalse(module._is_facade_wrapper_line("#if NEVER_DEFINED"))
+
     def test_decomposed_source_schema_rejects_invalid_ranges_and_paths(self) -> None:
         """Source-map records reject malformed path and range values."""
 

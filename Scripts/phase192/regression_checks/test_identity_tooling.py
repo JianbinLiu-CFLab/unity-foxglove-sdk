@@ -54,10 +54,39 @@ class IdentityToolingTests(unittest.TestCase):
         """C++ identity rows must change when an exported function is renamed."""
         source = 'extern "C" __declspec(dllexport) int U2FDracoGetVersion(\n    int value\n)\n{\n    return value;\n}\n'
         changed = source.replace("U2FDracoGetVersion", "U2FDracoGetVersionX", 1)
+        rows = identity_contracts.cpp_rows("fixture.cpp", source)
+        self.assertEqual(1, len(rows))
+        self.assertEqual("U2FDracoGetVersion", rows[0][2])
+        self.assertNotIn("return value", rows[0][3])
         self.assertNotEqual(
+            rows,
+            identity_contracts.cpp_rows("fixture.cpp", changed),
+        )
+
+    def test_cpp_surface_ignores_function_body_changes(self) -> None:
+        """C++ identity remains stable when only an implementation body changes."""
+        source = "int Foo() {\n    return 1;\n}\n"
+        changed = source.replace("return 1", "return 2")
+        self.assertEqual(
             identity_contracts.cpp_rows("fixture.cpp", source),
             identity_contracts.cpp_rows("fixture.cpp", changed),
         )
+
+    def test_cpp_surface_does_not_record_calls_inside_function_bodies(self) -> None:
+        """Calls nested in a function body are not C++ interface declarations."""
+        source = "int Foo() {\n    return helper();\n}\n"
+        rows = identity_contracts.cpp_rows("fixture.cpp", source)
+        self.assertEqual(["Foo"], [row[2] for row in rows])
+
+    def test_cpp_surface_records_special_member_declarations(self) -> None:
+        """Constructors and destructors remain visible C++ identity rows."""
+        source = (
+            "Widget::Widget(int value) : value_(value) {}\n"
+            "Widget::~Widget() {}\n"
+        )
+        rows = identity_contracts.cpp_rows("fixture.cpp", source)
+        self.assertEqual(2, len(rows))
+        self.assertEqual(["Widget", "~Widget"], [row[2] for row in rows])
 
     def test_source_sensitivity_uses_real_source_mutations(self) -> None:
         """Sensitivity proof must expose real source mutation helpers."""
@@ -78,6 +107,32 @@ class IdentityToolingTests(unittest.TestCase):
         for kind, source, mutate in targets:
             with self.subTest(kind=kind):
                 self.assertEqual(1, sensitivity_proof.source_mutation_result(kind, source, mutate))
+
+    def test_source_sensitivity_compares_frozen_identity_rows(self) -> None:
+        """Sensitivity proof must reject a mutation against its frozen TSV baseline."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "fixture.cpp"
+            original = "int Exported(int value) { return value; }\n"
+            source.write_text(original, encoding="utf-8")
+            identity = root / "identity"
+            identity.mkdir()
+            baseline = identity_contracts.cpp_rows("fixture.cpp", original)
+            identity_contracts.write_rows(
+                identity / "cpp-symbol-surface.tsv",
+                ["path", "line", "symbol", "declaration"],
+                baseline,
+            )
+            self.assertEqual(
+                1,
+                sensitivity_proof.frozen_identity_mutation_result(
+                    "cpp", source, lambda text: text.replace("Exported", "Renamed", 1), identity, root
+                ),
+            )
+            with self.assertRaises(FileNotFoundError):
+                sensitivity_proof.frozen_identity_mutation_result(
+                    "cpp", source, lambda text: text.replace("Exported", "Renamed", 1), root / "missing", root
+                )
 
     def test_compare_gate_rejects_removed_row(self) -> None:
         """Phase192 test compare gate rejects removed row."""

@@ -15,6 +15,14 @@ if __package__ in (None, ""):
 from Scripts.phase192 import identity_contracts
 
 
+IDENTITY_SURFACE_FILES = {
+    "managed": ("managed-api-surface.tsv", ["path", "line", "visibility", "declaration"]),
+    "python": ("python-symbols.tsv", ["path", "all", "exports"]),
+    "cpp": ("cpp-symbol-surface.tsv", ["path", "line", "symbol", "declaration"]),
+    "tests": ("csharp-test-names.tsv", ["path", "test_name", "framework"]),
+}
+
+
 def drop_first_data_row(source: Path, target: Path) -> None:
     """Phase192 drop first data row."""
     lines = source.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -38,6 +46,40 @@ def source_mutation_result(kind: str, source: Path, mutate) -> int:
     before = extractors[kind](source.as_posix(), original)
     after = extractors[kind](source.as_posix(), changed)
     return 0 if before == after else 1
+
+
+def frozen_identity_mutation_result(
+    kind: str,
+    source: Path,
+    mutate,
+    identity_dir: Path,
+    root: Path,
+) -> int:
+    """Compare a mutated source surface against its frozen TSV baseline."""
+    try:
+        filename, header = IDENTITY_SURFACE_FILES[kind]
+    except KeyError as exc:
+        raise ValueError(f"unsupported source mutation kind: {kind}") from exc
+    baseline = identity_dir / filename
+    if not baseline.is_file():
+        raise FileNotFoundError(baseline)
+    original = source.read_text(encoding="utf-8")
+    changed = mutate(original)
+    extractor = {
+        "managed": identity_contracts.managed_rows,
+        "python": identity_contracts.python_surface,
+        "cpp": identity_contracts.cpp_rows,
+        "tests": identity_contracts.csharp_test_rows,
+    }[kind]
+    try:
+        relative = source.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        relative = source.as_posix()
+    rows = extractor(relative, changed)
+    with tempfile.TemporaryDirectory(prefix="phase192-identity-mutation-") as temp:
+        actual = Path(temp) / filename
+        identity_contracts.write_rows(actual, header, rows)
+        return identity_contracts.compare_tsv(baseline, actual)
 
 
 def _real_source_mutation_targets(root: Path) -> tuple[tuple[str, Path, object], ...]:
@@ -88,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args(argv)
+    if not args.identity.is_dir():
+        raise FileNotFoundError(args.identity)
     results: list[str] = []
     labels = {
         "managed": "managed-public-member",
@@ -99,12 +143,16 @@ def main(argv: list[str] | None = None) -> int:
         label = labels[kind]
         if not source.is_file():
             raise FileNotFoundError(source)
-        if source_mutation_result(
+        if source_mutation_result(kind, source, mutate) != 1:
+            raise AssertionError(f"{label} source mutation was not RED")
+        if frozen_identity_mutation_result(
             kind,
             source,
             mutate,
+            args.identity,
+            args.root.resolve(),
         ) != 1:
-            raise AssertionError(f"{label} source mutation was not RED")
+            raise AssertionError(f"{label} frozen identity comparison was not RED")
         results.append(f"MUTATION={label} RESULT=RED EXIT=1")
     generated_exit = generated_byte_mutation(args.generated, args.root)
     if generated_exit != 1:
