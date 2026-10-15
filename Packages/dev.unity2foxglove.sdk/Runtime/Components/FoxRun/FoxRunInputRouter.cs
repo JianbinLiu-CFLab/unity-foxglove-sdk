@@ -38,6 +38,7 @@ namespace Unity.FoxgloveSDK.Components
 
     public sealed partial class FoxRunInputRouter
     {
+        /// <remarks>Phase192 source sections: Dispatch.cs, Lifetime.cs</remarks>
         private const string RegistrationUnavailableDiagnostic =
             "A FoxRun input registration became unavailable during dispatch.";
         private const string SilentGeneratedRejectionDiagnostic =

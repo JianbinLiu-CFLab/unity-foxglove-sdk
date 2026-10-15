@@ -44,6 +44,7 @@
 
   <ItemGroup>
     <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs;../NativeCompileStubs/**/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/*.cs" />
     <Compile Remove="Fixtures/CertificateGeneratorUnityStubs.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Remove="Fixtures/CertificateGeneratorUnityStubs.cs;Fixtures/FoxgloveManagerClientEventsCompileStubs.cs;Manager/ClientEventAdmissionStateTests.cs"

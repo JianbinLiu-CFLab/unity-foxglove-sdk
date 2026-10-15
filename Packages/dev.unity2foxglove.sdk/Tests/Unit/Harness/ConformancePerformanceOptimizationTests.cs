@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         private static string Text(string relativePath)
-            => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            => TestSources.Text(relativePath);
 
         private static int Count(string source, string value)
         {

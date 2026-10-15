@@ -139,10 +139,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void RouterDispatchUsesRegistrationSnapshotWithoutPerMessageArrayCopy()
         {
-            var source = string.Concat(
-                TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs"),
-                TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.Dispatch.cs"),
-                TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.Lifetime.cs"));
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
             var dispatch = TestSources.Slice(
                 source,
                 "public FoxRunInputDispatchResult Dispatch",
