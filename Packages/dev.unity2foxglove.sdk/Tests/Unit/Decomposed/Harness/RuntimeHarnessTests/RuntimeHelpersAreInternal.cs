@@ -200,6 +200,10 @@ public partial class RuntimeHarnessTests
 
         private static string LoadRuntimeSource(string fileName)
         {
+            if (string.Equals(fileName, "Program.cs", StringComparison.Ordinal))
+                return Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                    "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+
             var path = Path.Combine(
                 FindRepoRoot(),
                 "Packages",
