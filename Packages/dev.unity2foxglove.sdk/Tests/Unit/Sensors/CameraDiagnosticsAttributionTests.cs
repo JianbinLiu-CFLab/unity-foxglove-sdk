@@ -305,7 +305,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         private static string Text(string relativePath)
-            => File.ReadAllText(PathOf(relativePath));
+            => string.Equals(
+                    relativePath,
+                    "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
+                    StringComparison.Ordinal)
+                ? Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(relativePath)
+                : File.ReadAllText(PathOf(relativePath));
 
         private static string PathOf(string relativePath)
             => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));

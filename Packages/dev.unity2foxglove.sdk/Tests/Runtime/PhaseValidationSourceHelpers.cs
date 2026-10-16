@@ -150,6 +150,11 @@ namespace Unity.FoxgloveSDK.Tests
                     "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs",
                     StringComparison.Ordinal))
                 return ReadRos2ForUnitySubscriptionHubSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
+                    StringComparison.Ordinal))
+                return ReadCameraPublisherEditorSources();
 
             return ReadGenericCSharpSource(relativePath);
         }
@@ -740,6 +745,40 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return source.ToString();
+        }
+
+        private static string ReadCameraPublisherEditorSources()
+        {
+            var root = FindRequiredRepoRoot();
+            var directory = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Editor",
+                "Publishers");
+            var sectionDirectory = Path.Combine(
+                directory,
+                "Decomposed",
+                "FoxgloveCameraPublisherEditor");
+            var sectionNames = new[]
+            {
+                "InspectorLifecycle.cs",
+                "DrawSections.cs",
+                "BrowsePaths.cs",
+                "StatusChecks.cs",
+                "InstallWindows.cs",
+            };
+            var paths = new[]
+                {
+                    Path.Combine(directory, "FoxgloveCameraPublisherEditor.cs"),
+                }
+                .Concat(sectionNames.Select(name => Path.Combine(sectionDirectory, name)))
+                .ToArray();
+            foreach (var path in paths)
+                if (!File.Exists(path))
+                    throw new FileNotFoundException("Missing camera publisher editor source: " + path, path);
+
+            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
         }
 
         public static string ReadMediaFoundationH264EncoderSidecarSources()
