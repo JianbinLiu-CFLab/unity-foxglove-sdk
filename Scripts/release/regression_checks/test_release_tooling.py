@@ -1701,13 +1701,35 @@ printf '%s' "$required"
 
     def test_phase13_try_read_repo_text_fails_closed_on_missing_source(self) -> None:
         """Phase 13 validation must not turn missing source files into silent early returns."""
-        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase13Validation.cs").read_text(encoding="utf-8")
+        source_path = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase13Validation.cs"
+        source = source_path.read_text(encoding="utf-8")
+        source += "\n".join(
+            (source_path.parent / "Decomposed" / "Phase13Validation" / name).read_text(encoding="utf-8")
+            for name in (
+                "RecordingAndReplayTests.cs",
+                "ReplayRuntimeTests.cs",
+                "PlaybackAndHistoryTests.cs",
+                "PriorityAndFixtures.cs",
+                "TransportFixtures.cs",
+            )
+        )
         self.assertIn("if (!File.Exists(path))", source)
         self.assertIn("throw new FileNotFoundException", source)
 
     def test_phase13_recording_fixture_owns_and_cleans_temp_path(self) -> None:
         """Recording validation must retain the temp-path identity through cleanup."""
-        source = (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase13Validation.cs").read_text(encoding="utf-8")
+        source_path = ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "Phase13Validation.cs"
+        source = source_path.read_text(encoding="utf-8")
+        source += "\n".join(
+            (source_path.parent / "Decomposed" / "Phase13Validation" / name).read_text(encoding="utf-8")
+            for name in (
+                "RecordingAndReplayTests.cs",
+                "ReplayRuntimeTests.cs",
+                "PlaybackAndHistoryTests.cs",
+                "PriorityAndFixtures.cs",
+                "TransportFixtures.cs",
+            )
+        )
         self.assertIn("var recordingPath = Path.GetTempFileName()", source)
         self.assertIn("File.Delete(recordingPath)", source)
 
