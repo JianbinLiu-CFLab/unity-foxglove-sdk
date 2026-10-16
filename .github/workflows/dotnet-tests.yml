@@ -337,6 +337,7 @@ jobs:
             -r -y
 
       - name: Build U2R2 C++ test target
+        shell: bash
         run: |
           . /opt/ros/jazzy/setup.bash
           colcon build \
@@ -348,6 +349,7 @@ jobs:
             --cmake-args -DBUILD_TESTING=ON
 
       - name: Run U2R2 protocol gtest target
+        shell: bash
         run: |
           . /opt/ros/jazzy/setup.bash
           colcon test \
