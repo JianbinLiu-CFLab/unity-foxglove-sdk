@@ -101,7 +101,7 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
             var full = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(full) ? File.ReadAllText(full) : "";
+            return File.Exists(full) ? PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath) : "";
         }
 
         private static string FindRepoRoot()

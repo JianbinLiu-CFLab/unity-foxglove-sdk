@@ -119,10 +119,66 @@ internal static class TestSources
                     "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs",
                     StringComparison.Ordinal))
                 return Ros2ForUnitySubscriptionHubSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
+                    StringComparison.Ordinal))
+                return CameraPublisherEditorSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs",
+                    StringComparison.Ordinal))
+                return ProgramSources();
 
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
             return ReadLogicalSource(path);
+        }
+
+        private static string CameraPublisherEditorSources()
+        {
+            var directory = Path.Combine(
+                RepoRoot,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Editor",
+                "Publishers");
+            var sectionDirectory = Path.Combine(
+                directory,
+                "Decomposed",
+                "FoxgloveCameraPublisherEditor");
+            var sectionNames = new[]
+            {
+                "InspectorLifecycle.cs",
+                "DrawSections.cs",
+                "BrowsePaths.cs",
+                "StatusChecks.cs",
+                "InstallWindows.cs",
+            };
+            var paths = new[]
+                {
+                    Path.Combine(directory, "FoxgloveCameraPublisherEditor.cs"),
+                }
+                .Concat(sectionNames.Select(name => Path.Combine(sectionDirectory, name)))
+                .ToArray();
+            foreach (var path in paths)
+                Assert.True(File.Exists(path), "Camera publisher editor source not found: " + path);
+
+            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+        }
+
+        private static string ProgramSources()
+        {
+            var directory = Path.Combine(RepoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime");
+            var sectionDirectory = Path.Combine(directory, "Decomposed", "Program");
+            var names = new[] { "ValidationExecution.cs", "LegacyTools.cs", "CiAndServer.cs" };
+            var paths = new[] { Path.Combine(directory, "Program.cs") }
+                .Concat(names.Select(name => Path.Combine(sectionDirectory, name)))
+                .ToArray();
+            foreach (var path in paths)
+                Assert.True(File.Exists(path), "Program source not found: " + path);
+
+            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
         }
 
         private static string FoxgloveRuntimeSources()

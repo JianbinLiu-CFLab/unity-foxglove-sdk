@@ -70,6 +70,7 @@
     <Compile Include="../../Runtime/Utilities/*.cs" />
     <Compile Include="../../Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionTypeShapeBuilder.cs" />
     <Compile Include="Program.cs" />
+    <Compile Include="Decomposed/Program/*.cs" />
     <Compile Include="Fixtures/FoxRunGenerationModelFixture.cs" />
     <Compile Include="ValidationCategory.cs" />
     <Compile Include="ValidationEvidence.cs" />
@@ -196,6 +197,8 @@
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="DataTransportInspectorValidation.cs" />
     <Compile Include="FoxRunCustomRos2InterfaceValidation.cs"
+             Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="Decomposed/FoxRunCustomRos2InterfaceValidation/*.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="FoxRunDeclarationModelValidation.cs" />
     <Compile Include="FoxRunProfileModelValidation.cs" />

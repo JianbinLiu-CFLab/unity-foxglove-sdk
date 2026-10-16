@@ -158,6 +158,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
         private static string Text(string relativePath)
         {
+            if (string.Equals(
+                    relativePath,
+                    "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
+                    StringComparison.Ordinal))
+                return Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(relativePath);
+
             var path = PathOf(relativePath);
             Assert.True(File.Exists(path), relativePath + " not found.");
             return File.ReadAllText(path);

@@ -180,7 +180,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(fullPath))
                 throw new FileNotFoundException("Missing repository file: " + relativePath, fullPath);
 
-            return File.ReadAllText(fullPath);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private static string RepoRoot

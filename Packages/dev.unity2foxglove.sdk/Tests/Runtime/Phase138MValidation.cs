@@ -352,7 +352,7 @@ namespace Unity.FoxgloveSDK.Tests
             return (byte[])method.Invoke(null, args);
         }
 
-        private static string Read(string path) => File.ReadAllText(RepoPath(path));
+        private static string Read(string path) => PhaseValidationSourceHelpers.ReadRequiredRepoText(path);
 
         private static string ReadDirectory(string path)
         {
