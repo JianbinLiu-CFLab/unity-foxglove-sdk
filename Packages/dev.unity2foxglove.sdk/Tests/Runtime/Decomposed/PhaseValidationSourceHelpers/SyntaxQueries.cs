@@ -153,6 +153,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             return method;
         }
+        /// <summary>
+        /// Resolves one method by identifier and a stable body marker. This is
+        /// useful for overloads whose tuple-heavy signatures are legitimately
+        /// reformatted by different C# writers; the marker still anchors the
+        /// intended implementation body and the Roslyn span keeps extraction
+        /// syntax-aware. Resolution is fail-closed: callers receive an
+        /// exception unless exactly one declaration matches.
+        /// </summary>
         public static string SourceMethodContaining(
             string source,
             string methodName,

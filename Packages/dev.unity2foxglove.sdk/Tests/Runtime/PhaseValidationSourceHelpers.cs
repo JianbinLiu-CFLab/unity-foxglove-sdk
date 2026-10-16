@@ -15,7 +15,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.Tests
 {
-    /// <remarks>Phase192 source sections: RepositoryReaders.cs, SplitReaders.cs, SyntaxQueries.cs</remarks>
+    /// <remarks>Phase192 source sections: RepositoryReaders.cs, SplitReaders.cs, PythonReaders.cs, SyntaxQueries.cs</remarks>
     internal static partial class PhaseValidationSourceHelpers
     {
         private const string FoxgloveRuntimeTrailingGateMarker =
@@ -74,76 +74,6 @@ namespace Unity.FoxgloveSDK.Tests
             "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
             "raise", "return", "try", "while", "with", "yield",
         };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        /// <summary>
-        /// Resolves one method by identifier and a stable body marker.  This is
-        /// useful for overloads whose tuple-heavy signatures are legitimately
-        /// reformatted by different C# writers; the marker still anchors the
-        /// intended implementation body and the Roslyn span keeps extraction
-        /// syntax-aware. Resolution is fail-closed: callers receive an
-        /// exception unless exactly one declaration matches.
-        /// </summary>
-
-
-
-
-
-
-
-
-
-
-
 
     }
 }
