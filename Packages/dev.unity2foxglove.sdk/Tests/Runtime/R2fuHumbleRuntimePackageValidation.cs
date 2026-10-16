@@ -373,14 +373,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            var path = RepoPath(relativePath);
-            Check(File.Exists(path), $"160-file: {relativePath} exists");
+            var path = PhaseValidationSourceHelpers.RepoPath(relativePath);
             if (FileTextCache.TryGetValue(path, out var cached))
                 return cached;
 
-            var text = relativePath.EndsWith(".py", StringComparison.Ordinal)
-                ? PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(path)
-                : File.ReadAllText(path);
+            var text = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             FileTextCache[path] = text;
             return text;
         }

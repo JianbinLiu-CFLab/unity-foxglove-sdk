@@ -419,11 +419,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-        {
-            var path = RepoPath(relativePath);
-            Check(File.Exists(path), $"146A-file: {relativePath} exists");
-            return File.ReadAllText(path);
-        }
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static string RepoPath(string relativePath)
             => Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
