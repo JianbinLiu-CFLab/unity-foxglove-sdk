@@ -179,10 +179,13 @@ def _phase186b_introduced_sources(
             errors.append(
                 f"could not inspect Phase186B source revision {revision}: {exc}"
             )
-    if len(introduced) != 14:
+    expected_source_count = sum(
+        count for _, _, count in _PHASE186B_SOURCE_COMMITS
+    )
+    if len(introduced) != expected_source_count:
         errors.append(
             f"Phase186B fixed introduced source set has {len(introduced)} paths, "
-            "expected 14"
+            f"expected {expected_source_count}"
         )
     return introduced, errors
 def _validate_v1_repository_authority(

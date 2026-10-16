@@ -37,6 +37,11 @@
       "revision": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71",
       "subject": "fix(186b): enforce U2R2 replay and ordering bounds",
       "sourceCount": 8
+    },
+    {
+      "revision": "896ca39467550cd1c9972601b04c5cd130c0d9fb",
+      "subject": "refactor(phase192): split U2R2 protocol gtests",
+      "sourceCount": 2
     }
   ],
   "v1Compatibility": {
