@@ -18,6 +18,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Protocol
 {
     [Trait("Phase", "186-B")]
     [Trait("Domain", "U2R2Protocol")]
+    /// <remarks>Phase192 source sections: DecoderAndDialect.cs, EnvelopeAndCorrelation.cs, FixtureHelpers.cs, NegativeVectors.cs, ResponseContracts.cs</remarks>
     public sealed partial class U2R2ProtocolV2Tests
     {
     }

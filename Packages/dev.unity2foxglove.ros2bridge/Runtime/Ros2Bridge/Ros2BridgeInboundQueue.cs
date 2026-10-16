@@ -10,6 +10,7 @@ using Unity2Foxglove.Ros2Bridge.Protocol;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
+    /// <remarks>Phase192 source sections: ApplyLifecycle.cs, SessionAndAdmission.cs</remarks>
     internal sealed class Ros2BridgeInboundQueueLimits
     {
         internal Ros2BridgeInboundQueueLimits(

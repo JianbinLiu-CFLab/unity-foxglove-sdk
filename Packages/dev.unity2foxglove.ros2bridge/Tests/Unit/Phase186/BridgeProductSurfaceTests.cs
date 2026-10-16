@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
 {
+    /// <remarks>Phase192 source sections: BridgeProductAcceptance.cs</remarks>
     public sealed partial class BridgeProductSurfaceTests
     {
         private const string SampleRoot =

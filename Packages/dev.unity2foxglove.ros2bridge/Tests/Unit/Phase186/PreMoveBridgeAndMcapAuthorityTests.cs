@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Phase186
 {
     [Trait("Phase", "186-A")]
     [Trait("Domain", "PreMoveAuthority")]
+    /// <remarks>Phase192 source sections: McapAuthorityFixtures.cs</remarks>
     public sealed partial class PreMoveBridgeAndMcapAuthorityTests
     {
         private const ulong SampleTimeNs = 1_700_092_000_000_000_000UL;
