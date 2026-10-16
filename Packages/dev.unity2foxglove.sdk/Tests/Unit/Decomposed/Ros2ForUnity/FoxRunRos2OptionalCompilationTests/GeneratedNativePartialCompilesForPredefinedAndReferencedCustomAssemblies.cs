@@ -441,7 +441,40 @@ namespace Demo
             => new string((value ?? string.Empty).Where(character => !char.IsWhiteSpace(character)).ToArray());
 
         private static string Text(string relativePath)
-            => File.ReadAllText(Path.Combine(FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        {
+            var root = FindRepoRoot();
+            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var source = File.ReadAllText(path);
+            if (string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs",
+                    StringComparison.Ordinal))
+            {
+                var sectionRoot = Path.Combine(
+                    root,
+                    "Packages",
+                    "dev.unity2foxglove.ros2forunity",
+                    "Editor",
+                    "Decomposed",
+                    "Ros2ForUnityRuntimeSelection");
+                foreach (var name in new[]
+                         {
+                             "RuntimeDescriptor.cs",
+                             "SelectionStatus.cs",
+                             "SessionAndCommunication.cs",
+                             "RestartAndEnvironment.cs",
+                             "Discovery.cs",
+                             "Manifest.cs",
+                             "EnvironmentLease.cs"
+                         })
+                {
+                    source += Environment.NewLine
+                              + File.ReadAllText(Path.Combine(sectionRoot, name));
+                }
+            }
+
+            return source;
+        }
 
         private static string FindRepoRoot()
         {

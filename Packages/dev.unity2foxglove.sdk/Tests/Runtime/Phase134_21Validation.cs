@@ -297,7 +297,12 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+            => string.Equals(
+                   relativePath.Replace('\\', '/'),
+                   "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs",
+                   StringComparison.Ordinal)
+                ? PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath)
+                : File.ReadAllText(RepoPath(relativePath));
 
         private static string RepoPath(string relativePath)
             => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));

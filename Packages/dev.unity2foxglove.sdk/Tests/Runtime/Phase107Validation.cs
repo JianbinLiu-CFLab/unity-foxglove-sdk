@@ -403,32 +403,40 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool IsSanctionedOptionalEditorMetadataToken(string path, string token, string text)
         {
             if (!String.Equals(token, "ros2cs", StringComparison.Ordinal)
-                || !HasMetadataOnlyRos2csIdentityVerifier(Path.GetDirectoryName(path) ?? string.Empty, path, text))
+                || !HasMetadataOnlyRos2csIdentityVerifier(Path.GetDirectoryName(path) ?? string.Empty))
             {
                 return false;
             }
 
             var relative = Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/');
-            return String.Equals(
-                relative,
-                OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs",
-                StringComparison.Ordinal);
+            var transaction = OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction";
+            return String.Equals(relative, transaction + ".cs", StringComparison.Ordinal)
+                   || relative.StartsWith(transaction + "/", StringComparison.Ordinal);
         }
 
         private static bool HasMetadataOnlyRos2csIdentityVerifier(string editorRoot)
         {
+            var relative = OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs";
             var selectionTransaction = Path.Combine(editorRoot, "Ros2ForUnityCustomTypesupportSelectionTransaction.cs");
             return File.Exists(selectionTransaction)
                    && HasMetadataOnlyRos2csIdentityVerifier(
                        editorRoot,
                        selectionTransaction,
-                       File.ReadAllText(selectionTransaction));
+                       PhaseValidationSourceHelpers.ReadRequiredRepoText(relative));
         }
 
         private static bool HasMetadataOnlyRos2csIdentityVerifier(string editorRoot, string path, string text)
         {
             var expected = Path.Combine(editorRoot, "Ros2ForUnityCustomTypesupportSelectionTransaction.cs");
-            return String.Equals(Path.GetFullPath(path), Path.GetFullPath(expected), StringComparison.OrdinalIgnoreCase)
+            var transactionDirectory = Path.Combine(
+                editorRoot,
+                "Decomposed",
+                "Ros2ForUnityCustomTypesupportSelectionTransaction");
+            var normalizedPath = Path.GetFullPath(path);
+            return (String.Equals(normalizedPath, Path.GetFullPath(expected), StringComparison.OrdinalIgnoreCase)
+                    || normalizedPath.StartsWith(
+                        Path.GetFullPath(transactionDirectory) + Path.DirectorySeparatorChar,
+                        StringComparison.OrdinalIgnoreCase))
                    && text.Contains("Ros2csCommonRelativePath", StringComparison.Ordinal)
                    && text.Contains("TryReadAssemblyMvid(baseAssembly", StringComparison.Ordinal)
                    && text.Contains("FileSha256(baseAssembly)", StringComparison.Ordinal)
@@ -521,6 +529,18 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
+            if (string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs",
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs",
+                    StringComparison.Ordinal))
+            {
+                return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            }
+
             var root = RepoRoot();
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
