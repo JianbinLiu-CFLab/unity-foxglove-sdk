@@ -282,6 +282,5 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             }
         }
     }
-    }
 }
 #endif
