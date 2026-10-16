@@ -553,6 +553,35 @@ class ValidatePackageTests(unittest.TestCase):
 
             self.assertTrue(results[-1].ok)
 
+    def test_sdk_decomposed_folder_meta_checks_runtime_and_performance_roots(self) -> None:
+        """SDK runtime and performance decomposition folders need valid sidecars too."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "Packages" / "dev.unity2foxglove.sdk"
+            required_root = package / "Tests" / "Unit" / "Decomposed"
+            runtime_root = package / "Runtime" / "Schemas" / "Proto" / "Video" / "Decomposed"
+            performance_root = package / "Tests" / "Performance" / "Decomposed"
+            for root in (required_root, runtime_root, performance_root):
+                root.mkdir(parents=True)
+            for index, root in enumerate((required_root, runtime_root, performance_root), 1):
+                (root.with_suffix(".meta")).write_text(
+                    f"fileFormatVersion: 2\nguid: {index:032x}\nfolderAsset: yes\n",
+                    encoding="utf-8",
+                )
+            with mock.patch.object(self.validator, "PACKAGE", package), mock.patch.object(
+                self.validator, "SDK_DECOMPOSED_TESTS", required_root
+            ):
+                results = []
+                self.validator.check_sdk_decomposed_folder_meta(results)
+                self.assertTrue(results[-1].ok)
+                (runtime_root.with_suffix(".meta")).write_text(
+                    "fileFormatVersion: 2\nguid: 22222222222222222222222222222222\n",
+                    encoding="utf-8",
+                )
+                results = []
+                self.validator.check_sdk_decomposed_folder_meta(results)
+                self.assertFalse(results[-1].ok)
+                self.assertIn("Runtime/Schemas/Proto/Video/Decomposed.meta", results[-1].detail)
+
     def test_sdk_decomposed_folder_meta_requires_root_directory(self) -> None:
         """The required decomposed test root must fail closed when absent."""
         with tempfile.TemporaryDirectory() as temp:

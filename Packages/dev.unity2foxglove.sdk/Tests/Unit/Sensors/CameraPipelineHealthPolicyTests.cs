@@ -202,6 +202,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 Assert.Contains("OutputQueueDepth", sidecar, StringComparison.Ordinal);
                 Assert.Contains("MaxOutputQueue", sidecar, StringComparison.Ordinal);
             }
+
+            var openH264Protocol = Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/Decomposed/OpenH264EncoderSidecar/ProtocolAndOutput.cs");
+            Assert.DoesNotContain(
+                "while (_outputCount >= _maxOutputQueue && _outputAccessUnits.TryDequeue(out _))",
+                openH264Protocol,
+                StringComparison.Ordinal);
         }
 
         [Fact]
@@ -234,48 +241,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         private static string Text(string relativePath)
-        {
-            if (string.Equals(
-                    relativePath,
-                    "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
-                    StringComparison.Ordinal))
-                return Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(relativePath);
-
-            var path = PathOf(relativePath);
-            Assert.True(
-                File.Exists(path),
-                "Required source file for camera health source-shape test was not found: "
-                + relativePath
-                + " resolved to "
-                + path);
-
-            return File.ReadAllText(path);
-        }
-
-        private static string PathOf(string relativePath)
-            => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-
-        private static string RepoRoot
-        {
-            get
-            {
-                var dir = new DirectoryInfo(AppContext.BaseDirectory);
-                while (dir != null)
-                {
-                    if (File.Exists(Path.Combine(dir.FullName, "README.md"))
-                        && Directory.Exists(Path.Combine(dir.FullName, "Unity2Foxglove"))
-                        && Directory.Exists(Path.Combine(dir.FullName, "Packages")))
-                        return dir.FullName;
-
-                    dir = dir.Parent;
-                }
-
-                Assert.Fail(
-                    "Could not locate repository root for camera health source-shape tests from "
-                    + AppContext.BaseDirectory
-                    + ". Expected README.md, Unity2Foxglove/, and Packages/.");
-                return string.Empty;
-            }
-        }
+            => Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(relativePath);
     }
 }
