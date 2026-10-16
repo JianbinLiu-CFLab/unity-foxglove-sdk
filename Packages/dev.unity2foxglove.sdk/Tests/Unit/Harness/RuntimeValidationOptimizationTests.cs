@@ -62,6 +62,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [InlineData("Phase134_30Validation.cs", "ReadRepoText")]
         [InlineData("Phase134_31Validation.cs", "ReadRepoText")]
         [InlineData("Phase164_42Validation.cs", "Read")]
+        [InlineData("Phase163_25Validation.cs", "ReadRepoText")]
+        [InlineData("Phase163_44Validation.cs", "Read")]
+        [InlineData("Phase105Validation.cs", "ReadRepoText")]
         public void RuntimeReadersDelegateToSplitAwareHelper(string filename, string readerName)
         {
             var source = CSharpSyntaxTree.ParseText(TestSources.Runtime(filename));
@@ -186,6 +189,17 @@ internal static class TestSources
                 "StatusChecks.cs",
                 "InstallWindows.cs",
             };
+            var actualSectionNames = Directory.GetFiles(
+                    sectionDirectory,
+                    "*.cs",
+                    SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            var expectedSectionNames = sectionNames
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(expectedSectionNames, actualSectionNames);
             var paths = new[]
                 {
                     Path.Combine(directory, "FoxgloveCameraPublisherEditor.cs"),
@@ -203,6 +217,17 @@ internal static class TestSources
             var directory = Path.Combine(RepoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime");
             var sectionDirectory = Path.Combine(directory, "Decomposed", "Program");
             var names = new[] { "ValidationExecution.cs", "LegacyTools.cs", "CiAndServer.cs" };
+            var actualNames = Directory.GetFiles(
+                    sectionDirectory,
+                    "*.cs",
+                    SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            var expectedNames = names
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(expectedNames, actualNames);
             var paths = new[] { Path.Combine(directory, "Program.cs") }
                 .Concat(names.Select(name => Path.Combine(sectionDirectory, name)))
                 .ToArray();
