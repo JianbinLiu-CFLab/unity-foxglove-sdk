@@ -190,6 +190,8 @@
     <Compile Include="FoxRunWireHardeningValidation.cs" />
     <Compile Include="FoxRunRos2NativeSubscriptionValidation.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="Decomposed/FoxRunRos2NativeSubscriptionValidation/*.cs"
+             Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="DataTransportInspectorValidation.cs" />
     <Compile Include="FoxRunCustomRos2InterfaceValidation.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
