@@ -107,7 +107,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             while (dir != null)
             {
                 if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                    || Directory.Exists(Path.Combine(dir.FullName, ".git"))
+                    || (Directory.Exists(Path.Combine(dir.FullName, "Packages", "dev.unity2foxglove.sdk"))
+                        && Directory.Exists(Path.Combine(dir.FullName, "Packages", "dev.unity2foxglove.ros2bridge"))))
+                    return dir.FullName;
+
+                dir = dir.Parent;
+            }
+
+            dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
                     || File.Exists(Path.Combine(dir.FullName, ".git")))
                     return dir.FullName;
 
