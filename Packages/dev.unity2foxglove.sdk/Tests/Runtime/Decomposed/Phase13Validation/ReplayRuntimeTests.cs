@@ -22,6 +22,10 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static partial class Phase13Validation
     {
+        /// <summary>
+        /// After three Stop/Start cycles, firing a replay message must
+        /// invoke the handler exactly once (no duplicate subscriptions).
+        /// </summary>
         static void TestReplayHandlerNoAccumulate()
         {
             int count = 0;

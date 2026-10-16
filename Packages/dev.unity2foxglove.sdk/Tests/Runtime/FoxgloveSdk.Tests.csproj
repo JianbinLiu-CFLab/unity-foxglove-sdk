@@ -459,6 +459,7 @@
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeRuntimeIdentity.cs" Link="Ros2ForUnityRuntime/Native/Ros2ForUnityNativeRuntimeIdentity.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeBridgeRecovery.cs" Link="Ros2ForUnityRuntime/Native/Ros2ForUnityNativeBridgeRecovery.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Link="AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2Route.cs" Link="Ros2ForUnityRuntime/Native/FoxRun/FoxRunRos2Route.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' and '$(IncludeRos2ForUnityNative)' != 'true'" />
     <Compile Include="../NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Link="NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Link="NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="McapRecordReader.cs" />
