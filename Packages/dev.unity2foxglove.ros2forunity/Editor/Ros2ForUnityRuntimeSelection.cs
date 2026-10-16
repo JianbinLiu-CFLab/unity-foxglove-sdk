@@ -223,7 +223,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (kind == Ros2ForUnityInteractiveSelectionKind.CustomTypesupport)
                 Ros2ForUnityCustomTypesupportDiscovery.InvalidateCache();
         }
-
-        public static string GetSessionRuntimePackage()    }
+    }
 }
 #endif

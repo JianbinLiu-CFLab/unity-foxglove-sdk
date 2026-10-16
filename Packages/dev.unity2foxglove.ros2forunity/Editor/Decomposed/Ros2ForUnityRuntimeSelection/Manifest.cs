@@ -18,7 +18,6 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace Unity2Foxglove.Ros2ForUnity.Editor
-namespace Unity2Foxglove.Ros2ForUnity.Editor
 {
     internal static partial class Ros2ForUnityRuntimeSelection
     {
