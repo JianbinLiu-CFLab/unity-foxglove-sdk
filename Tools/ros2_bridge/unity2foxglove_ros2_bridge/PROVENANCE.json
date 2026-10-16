@@ -604,7 +604,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol.cpp",
-      "sha256": "e8dbef356c98d471713f036d1b8881d99c5037bf328879a5881e0eb9a1a47bb1",
+      "sha256": "8d90d9f3fcdd2748833f0ea659b42307c2b446e8ecd22373da69032c4e29800d",
       "classification": "original",
       "influence": "Original C++ byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -615,6 +615,20 @@
       "classification": "original",
       "influence": "Original C++ behavioral coverage for replay, ordering, queues, limits, and contracts.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_rejections.cpp",
+      "sha256": "b975ce0affac5dd9b9d8d07b618b6dce42443995749c5383c036f4f25fd59f9a",
+      "classification": "original",
+      "influence": "Original U2R2 v2 rejection, error-transition, and replay coverage moved from the canonical test translation unit.",
+      "introducedIn": "896ca39467550cd1c9972601b04c5cd130c0d9fb"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/u2r2_protocol_test_support.hpp",
+      "sha256": "7c1b659bfe968b103f924410597166eb03ed0475cf7def23316f5e0263237a39",
+      "classification": "original",
+      "influence": "Original shared U2R2 v2 fixture and protocol test helpers moved into a shared test support header.",
+      "introducedIn": "896ca39467550cd1c9972601b04c5cd130c0d9fb"
     }
   ]
 }
