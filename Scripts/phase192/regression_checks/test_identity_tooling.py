@@ -3359,5 +3359,22 @@ for first, second in ((qualified_name, bare_name), (bare_name, qualified_name)):
             )
         )
 
+    def test_namespace_gate_rejects_import_time_local_subprocess_call(self) -> None:
+        """Import-time calls hidden behind a local function remain visible to the gate."""
+        tree = ast.parse("import subprocess\ndef hidden():\n    subprocess.run([\"bad\"])\nhidden()")
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("subprocess" in item and "run" in item for item in risks))
+
+    def test_namespace_gate_rejects_import_time_print(self) -> None:
+        """Top-level output is an observable import-time side effect."""
+        tree = ast.parse("print(\"unexpected\")")
+        self.assertTrue(compare_identity_surfaces._namespace_risk_signatures(tree))
+
+    def test_namespace_gate_rejects_side_effectful_decorator(self) -> None:
+        """Decorator calls execute while a facade is imported."""
+        tree = ast.parse("@subprocess.run()\ndef entry():\n    pass")
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("subprocess" in item and "run" in item for item in risks))
+
 if __name__ == "__main__":
     unittest.main()

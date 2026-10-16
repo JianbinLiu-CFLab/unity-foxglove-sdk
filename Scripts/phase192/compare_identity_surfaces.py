@@ -1873,7 +1873,7 @@ def _initializer_digest(initializer: Path) -> str:
 _NAMESPACE_RISK_NAMES = frozenset({
     "__builtins__", "__import__", "builtins", "compile", "delattr", "eval",
     "exec", "getattr", "globals", "import_module", "locals", "setattr",
-    "vars",
+    "vars", "print",
 })
 _NAMESPACE_RISK_ATTRIBUTES = frozenset({
     "__dict__", "__getattribute__", "__setattr__", "__delattr__",
@@ -1883,13 +1883,11 @@ _NAMESPACE_RISK_ATTRIBUTES = frozenset({
 def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
     """Return stable AST fingerprints for namespace and import escape surfaces."""
     function_body_nodes: set[int] = set()
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
     for parent in ast.walk(tree):
         if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            function_body_nodes.update(
-                id(node)
-                for statement in parent.body
-                for node in ast.walk(statement)
-            )
+            function_body_nodes.update(id(node) for statement in parent.body for node in ast.walk(statement))
+            functions.setdefault(parent.name, parent)
         elif isinstance(parent, ast.Lambda):
             function_body_nodes.update(id(node) for node in ast.walk(parent.body))
 
@@ -1897,32 +1895,54 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
         """Return whether a node executes while the module is imported."""
         return id(node) not in function_body_nodes
 
+    def risky_call(node: ast.Call) -> bool:
+        """Recognize calls that can mutate or expose import-time process state."""
+        if isinstance(node.func, ast.Name) and node.func.id in _NAMESPACE_RISK_NAMES:
+            return True
+        return (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "subprocess"
+            and node.func.attr in {"run", "Popen", "call", "check_call", "check_output"}
+        )
+
     signatures: set[str] = set()
+    seen_functions: set[str] = set()
+
+    def record_function(name: str) -> None:
+        """Record risks reachable through a function called during import."""
+        if name in seen_functions or name not in functions:
+            return
+        seen_functions.add(name)
+        function = functions[name]
+        for node in ast.walk(function):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node is not function:
+                continue
+            if isinstance(node, ast.Call):
+                if risky_call(node):
+                    signatures.add(ast.dump(node, include_attributes=False))
+                elif isinstance(node.func, ast.Name) and node.func.id in functions:
+                    record_function(node.func.id)
+
     for node in ast.walk(tree):
-        risky = False
-        if isinstance(node, ast.Global):
-            risky = True
-        elif isinstance(node, ast.ImportFrom):
-            risky = (
+        if isinstance(node, ast.Call) and import_time(node):
+            if risky_call(node):
+                signatures.add(ast.dump(node, include_attributes=False))
+            elif isinstance(node.func, ast.Name) and node.func.id in functions:
+                record_function(node.func.id)
+        elif isinstance(node, ast.Global) and import_time(node):
+            signatures.add(ast.dump(node, include_attributes=False))
+        elif isinstance(node, ast.ImportFrom) and import_time(node):
+            if (
                 (node.module or "").split(".", 1)[0] in {"builtins", "__builtins__", "__builtin__"}
                 or any(alias.name in {"modules", "getattr", "setattr", "delattr", "import_module", "__import__"} for alias in node.names)
-            )
-        elif isinstance(node, ast.Name):
-            risky = node.id in _NAMESPACE_RISK_NAMES
-        elif isinstance(node, ast.Attribute):
-            risky = node.attr in _NAMESPACE_RISK_ATTRIBUTES
-        elif isinstance(node, ast.Call):
-            risky = (
-                isinstance(node.func, ast.Name)
-                and node.func.id in _NAMESPACE_RISK_NAMES
-            )
-        if risky:
-            signature = ast.dump(node, include_attributes=False)
-            signatures.add(signature)
-            if import_time(node):
-                signatures.add("import-time:" + signature)
+            ):
+                signatures.add(ast.dump(node, include_attributes=False))
+        elif isinstance(node, ast.Name) and import_time(node) and node.id in _NAMESPACE_RISK_NAMES:
+            signatures.add(ast.dump(node, include_attributes=False))
+        elif isinstance(node, ast.Attribute) and import_time(node) and node.attr in _NAMESPACE_RISK_ATTRIBUTES:
+            signatures.add(ast.dump(node, include_attributes=False))
     return frozenset(signatures)
-
 
 def _is_phase121_configuration_path(path: str | Path) -> bool:
     """Return whether path is the reviewed Phase121 compatibility module."""

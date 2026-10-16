@@ -51,16 +51,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyMcapTestFixtureReuse()
         {
             const string root = "Packages/dev.unity2foxglove.sdk/Tests/Unit/Mcap/";
-            const string parts = "Decomposed/McapReaderIndexingTests/";
             var facade = Read(root + "McapReaderIndexingTests.cs");
-            var scenarios = Read(root + parts + "ValidationScenarios.cs");
-            var fixtures = Read(root + parts + "McapFixtures.cs");
             var helper = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/TempMcapHelper.cs");
 
             Check(facade.Contains("private static readonly byte[] SimpleFiveMessageMcap", StringComparison.Ordinal)
-                  && scenarios.Contains("OpenSimpleMessageMcap(SimpleFiveMessageMcap)", StringComparison.Ordinal)
-                  && fixtures.Contains("CreateSimpleMessageMcapBytes(int messageCount)", StringComparison.Ordinal),
-                "164-47C-1: deterministic MCAP reader fixture bytes are built once and reopened per test");
+                  && facade.Contains("CreateSimpleMessageMcapBytes(int messageCount)", StringComparison.Ordinal)
+                  && !facade.Contains("Decomposed/McapReaderIndexingTests", StringComparison.Ordinal),
+                "164-47C-1: deterministic MCAP reader fixture bytes are built once and owned by the facade");
             Check(helper.Contains("private static readonly List<string> _paths = new(16);", StringComparison.Ordinal)
                   && helper.Contains("_paths.Clear();", StringComparison.Ordinal),
                 "164-47C-2: TempMcapHelper has a small capacity hint and preserves cleanup");

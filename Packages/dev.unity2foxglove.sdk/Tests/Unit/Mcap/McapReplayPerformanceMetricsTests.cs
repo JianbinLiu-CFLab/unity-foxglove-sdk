@@ -113,8 +113,10 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 var unbounded = engine.History(1, 200, new List<McapMessage>(), 0, new HashSet<ushort> { 1 });
                 Assert.Equal(200, unbounded.Count);
                 Assert.Equal(1, engine.LastHistoryMetrics.PeakDecompressedChunkCount);
-                var replaySource = File.ReadAllText(
-                    RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs"));
+                var replaySource = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                    "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+                Assert.Contains("var boundedCandidates", replaySource, StringComparison.Ordinal);
+                Assert.Contains("TryReadIndexedBoundedHistory", replaySource, StringComparison.Ordinal);
                 Assert.DoesNotContain("Dictionary<int, byte[]> payloadChunks", replaySource, StringComparison.Ordinal);
                 Assert.DoesNotContain("payloadChunks = new Dictionary", replaySource, StringComparison.Ordinal);
                 Assert.DoesNotContain("retainedCandidateChunks", replaySource, StringComparison.Ordinal);
