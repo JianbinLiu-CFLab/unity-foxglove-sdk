@@ -137,7 +137,8 @@ namespace Unity.FoxgloveSDK.Tests
                     "118-C1: performance result schema exposes " + field);
             }
 
-            var runner = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Performance/PerformanceRunner.cs");
+            var runner = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.sdk/Tests/Performance/PerformanceRunner.cs");
             foreach (var scenario in new[]
             {
                 "McapDataLoaderInitializeIndexed",

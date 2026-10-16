@@ -23,6 +23,9 @@
   <ItemGroup>
     <Compile Include="../PerformanceResult.cs" Link="PerformanceResult.cs" />
     <Compile Include="../PerformanceRunner.cs" Link="PerformanceRunner.cs" />
+    <Compile Include="../Decomposed/PerformanceRunner/DataLoader.cs" Link="Decomposed/PerformanceRunner/DataLoader.cs" />
+    <Compile Include="../Decomposed/PerformanceRunner/PublishingAndMcap.cs" Link="Decomposed/PerformanceRunner/PublishingAndMcap.cs" />
+    <Compile Include="../Decomposed/PerformanceRunner/MicroScenarios.cs" Link="Decomposed/PerformanceRunner/MicroScenarios.cs" />
     <Compile Include="../Phase188ReplayPerformanceMetrics.cs" Link="Phase188ReplayPerformanceMetrics.cs" />
     <Compile Include="../Phase188ReplayPerformanceResult.cs" Link="Phase188ReplayPerformanceResult.cs" />
     <Compile Include="../Phase188ReplayPerformanceProtocol.cs" Link="Phase188ReplayPerformanceProtocol.cs" />
