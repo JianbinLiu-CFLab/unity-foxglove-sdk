@@ -24,11 +24,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Tests/Unit/Sensors/CameraPipelineHealthPolicyTests.cs");
 
-            Assert.Contains("\"README.md\"", source, StringComparison.Ordinal);
-            Assert.Contains("\"Unity2Foxglove\"", source, StringComparison.Ordinal);
-            Assert.Contains("\"Packages\"", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("Unity2Foxglove.sln", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("\".git\"", source, StringComparison.Ordinal);
+            Assert.Contains(
+                "Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(relativePath)",
+                source,
+                StringComparison.Ordinal);
         }
     }
 }

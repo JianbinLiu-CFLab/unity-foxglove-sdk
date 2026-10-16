@@ -377,7 +377,9 @@ namespace Unity.FoxgloveSDK.Tests
             if (FileTextCache.TryGetValue(path, out var cached))
                 return cached;
 
-            var text = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            var text = relativePath.EndsWith(".py", StringComparison.Ordinal)
+                ? PhaseValidationSourceHelpers.ReadSplitPythonSource(relativePath)
+                : PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             FileTextCache[path] = text;
             return text;
         }
