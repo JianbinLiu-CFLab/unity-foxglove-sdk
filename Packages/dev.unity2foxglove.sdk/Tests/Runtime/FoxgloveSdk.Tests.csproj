@@ -198,6 +198,8 @@
     <Compile Include="DataTransportInspectorValidation.cs" />
     <Compile Include="FoxRunCustomRos2InterfaceValidation.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="Decomposed/FoxRunCustomRos2InterfaceValidation/*.cs"
+             Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="FoxRunDeclarationModelValidation.cs" />
     <Compile Include="FoxRunProfileModelValidation.cs" />
     <Compile Include="FoxRunMessagePackPublicContractValidation.cs" />
