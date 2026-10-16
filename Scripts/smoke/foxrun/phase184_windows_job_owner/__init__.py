@@ -6,15 +6,22 @@
 
 from __future__ import annotations
 
+import importlib as _phase192_importlib
 import sys as _phase192_sys
 import types as _phase192_types
 from pathlib import Path as _Phase192Path
 
+if __name__ == "phase184_windows_job_owner":
+    _phase192_root = _Phase192Path(__file__).resolve().parents[3]
+    if str(_phase192_root) not in _phase192_sys.path:
+        _phase192_sys.path.insert(0, str(_phase192_root))
+    _phase192_self = _phase192_importlib.import_module(
+        "Scripts.smoke.foxrun.phase184_windows_job_owner")
+    _phase192_sys.modules["phase184_windows_job_owner"] = _phase192_self
+    __package__ = "Scripts.smoke.foxrun.phase184_windows_job_owner"
+
 _PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "phase184_windows_job_owner.py"
 __file__ = str(_PHASE192_FACADE_FILE)
-_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent
-if str(_PHASE192_PARENT) not in _phase192_sys.path:
-    _phase192_sys.path.insert(0, str(_PHASE192_PARENT))
 
 from . import foundation as _phase192_section_0
 from . import owner_validation as _phase192_section_1
@@ -69,5 +76,5 @@ __all__ = sorted(_PHASE192_EXPORT_NAMES)
 _phase192_module = _phase192_sys.modules.get(__name__)
 if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192PackageModule
-del _phase192_sys, _phase192_types, _Phase192Path, _PHASE192_FACADE_FILE, _PHASE192_PARENT
+del _phase192_sys, _phase192_types, _Phase192Path, _PHASE192_FACADE_FILE
 del _phase192_module, _phase192_section, _phase192_name

@@ -127,7 +127,7 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     [AddComponentMenu("")]
-    /// <remarks>Phase192 source sections: LifecycleAndRegistration.cs, PublishingAndEncoding.cs, DeferredSourceChanges.cs, ScanningAndDiagnostics.cs</remarks>
+    /// <remarks>Phase192 source sections: LifecycleAndRegistration.cs, PublishingAndEncoding.cs, TransportSelection.cs, DeferredSourceChanges.cs, ScanningAndDiagnostics.cs</remarks>
     public sealed partial class FoxgloveLogHub : MonoBehaviour
     {
         private const float ManagerSearchIntervalSeconds = 3f;

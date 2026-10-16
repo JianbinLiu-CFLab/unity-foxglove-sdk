@@ -80,6 +80,25 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void FoxgloveLogHubSectionsStayWithinSourceSizeBudget()
+        {
+            var files = new[]
+            {
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/DeferredSourceChanges.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/LifecycleAndRegistration.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/PublishingAndEncoding.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/TransportSelection.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/ScanningAndDiagnostics.cs",
+            };
+
+            foreach (var file in files)
+            {
+                var lineCount = TestSources.Text(file).Split('\n').Length;
+                Assert.True(lineCount <= 500, file + " has " + lineCount + " lines.");
+            }
+        }
+
+        [Fact]
         public void RegisteredCSharpSourceEnumerationIsRecursive()
         {
             var source = TestSources.Runtime("PhaseValidationSourceHelpers.cs");

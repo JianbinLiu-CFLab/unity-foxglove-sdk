@@ -10,16 +10,16 @@ if __package__:
     _phase192_package_module = _phase192_sys.modules.get(__package__ + ".phase184_windows_job_owner")
 else:
     from pathlib import Path as _Phase192Path
-    _phase192_parent = _Phase192Path(__file__).resolve().parent
-    if str(_phase192_parent) not in _phase192_sys.path:
-        _phase192_sys.path.insert(0, str(_phase192_parent))
-    _phase192_self = _phase192_sys.modules.get(__name__) if __name__ == "phase184_windows_job_owner" else None
-    if _phase192_self is not None: _phase192_sys.modules.pop("phase184_windows_job_owner", None)
-    try:
-        from phase184_windows_job_owner import *
-        _phase192_package_module = _phase192_sys.modules.get("phase184_windows_job_owner")
-    finally:
-        if _phase192_self is not None: _phase192_sys.modules["phase184_windows_job_owner"] = _phase192_self
+    _phase192_root = _Phase192Path(__file__).resolve().parents[3]
+    if str(_phase192_root) not in _phase192_sys.path:
+        _phase192_sys.path.insert(0, str(_phase192_root))
+    __package__ = "Scripts.smoke.foxrun"
+    from .phase184_windows_job_owner import *
+    _phase192_package_module = _phase192_sys.modules.get(
+        "Scripts.smoke.foxrun.phase184_windows_job_owner")
+    if __name__ != "__main__":
+        _phase192_self = _phase192_package_module
+        _phase192_sys.modules["phase184_windows_job_owner"] = _phase192_self
 
 class _Phase192FacadeModule(_phase192_types.ModuleType):
     """Mirror facade attribute updates into the decomposed implementation module."""
@@ -38,7 +38,7 @@ class _Phase192FacadeModule(_phase192_types.ModuleType):
                 pass
 
 _phase192_module = _phase192_sys.modules.get(__name__)
-if _phase192_module is not None:
+if _phase192_module is not None and _phase192_module is not _phase192_package_module:
     _phase192_module.__class__ = _Phase192FacadeModule
 
 if __name__ == "__main__":

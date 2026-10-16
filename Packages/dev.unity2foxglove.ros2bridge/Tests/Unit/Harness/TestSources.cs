@@ -43,21 +43,27 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     line,
                     @"^\s*///\s*<remarks>Phase192 source sections:\s*(?<names>[^<]+)</remarks>\s*$"))
                 .FirstOrDefault(match => match.Success);
-            IEnumerable<string> orderedFiles = sectionFiles.OrderBy(
-                file => file,
-                StringComparer.Ordinal);
-            if (marker != null)
+            if (marker == null)
+                throw new InvalidDataException(
+                    "Missing Phase192 source sections marker in " + path);
+
+            var names = marker.Groups["names"].Value
+                .Split(',')
+                .Select(name => name.Trim())
+                .Where(name => name.Length > 0)
+                .ToArray();
+            var filesByName = sectionFiles.ToDictionary(
+                file => Path.GetFileName(file),
+                StringComparer.OrdinalIgnoreCase);
+            if (names.Length != filesByName.Count
+                || names.Distinct(StringComparer.OrdinalIgnoreCase).Count() != names.Length
+                || names.Any(name => !filesByName.ContainsKey(name)))
             {
-                var names = marker.Groups["names"].Value
-                    .Split(',')
-                    .Select(name => name.Trim())
-                    .Where(name => name.Length > 0)
-                    .ToArray();
-                var filesByName = sectionFiles.ToDictionary(
-                    file => Path.GetFileName(file),
-                    StringComparer.OrdinalIgnoreCase);
-                orderedFiles = names.Select(name => filesByName[name]);
+                throw new InvalidDataException(
+                    "Invalid Phase192 source sections marker in " + path);
             }
+
+            var orderedFiles = names.Select(name => filesByName[name]);
 
             return source + Environment.NewLine + string.Join(
                 Environment.NewLine,
