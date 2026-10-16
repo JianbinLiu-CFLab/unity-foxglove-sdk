@@ -94,6 +94,7 @@
     <Compile Include="Phase11Validation.cs" />
     <Compile Include="Phase12Validation.cs" />
     <Compile Include="Phase13Validation.cs" />
+    <Compile Include="Decomposed/Phase13Validation/*.cs" />
     <Compile Include="Phase14Validation.cs" />
     <Compile Include="Phase16Validation.cs" />
     <Compile Include="Phase17Validation.cs" />
@@ -114,6 +115,7 @@
     <Compile Include="Phase50Validation.cs" />
     <Compile Include="Phase51Validation.cs" />
     <Compile Include="Phase52Validation.cs" />
+    <Compile Include="Decomposed/Phase52Validation/*.cs" />
     <Compile Include="Phase53Validation.cs" />
     <Compile Include="Phase54Validation.cs" />
     <Compile Include="Phase55Validation.cs" />
@@ -189,6 +191,8 @@
     <Compile Include="FoxRunSubscribeDataValidation.cs" />
     <Compile Include="FoxRunWireHardeningValidation.cs" />
     <Compile Include="FoxRunRos2NativeSubscriptionValidation.cs"
+             Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="Decomposed/FoxRunRos2NativeSubscriptionValidation/*.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="DataTransportInspectorValidation.cs" />
     <Compile Include="FoxRunCustomRos2InterfaceValidation.cs"
