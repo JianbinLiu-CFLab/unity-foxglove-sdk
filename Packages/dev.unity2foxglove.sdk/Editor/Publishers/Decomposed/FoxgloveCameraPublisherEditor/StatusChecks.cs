@@ -182,15 +182,5 @@ namespace Unity.FoxgloveSDK.Editor
                 Repaint();
         }
 
-        private sealed class OpenH264InstallWindow : EditorWindow
-        {
-            private Action<string, string> _onInstalled;
-            private Vector2 _scroll;
-            private string _installRoot;
-            private string _statusMessage;
-            private MessageType _statusType;
-            private Task<OpenH264InstallResult> _installTask;
-            private string _installRootInFlight;
-
     }
 }

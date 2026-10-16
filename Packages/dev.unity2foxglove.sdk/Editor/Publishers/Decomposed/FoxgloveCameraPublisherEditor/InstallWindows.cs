@@ -17,6 +17,18 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public partial class FoxgloveCameraPublisherEditor
     {
+        private sealed class OpenH264InstallWindow : EditorWindow
+        {
+            private Action<string, string> _onInstalled;
+            private Vector2 _scroll;
+            private string _installRoot;
+            private string _statusMessage;
+            private MessageType _statusType;
+            private Task<OpenH264InstallResult> _installTask;
+            private string _installRootInFlight;
+
+
+
             public static void ShowWindow(Action<string, string> onInstalled)
             {
                 var window = CreateInstance<OpenH264InstallWindow>();
