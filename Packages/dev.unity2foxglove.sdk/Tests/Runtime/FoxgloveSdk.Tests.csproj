@@ -137,6 +137,7 @@
     <Compile Include="OpenH264ValidationHelpers.cs" />
     <Compile Include="PhaseValidationReflectionHelpers.cs" />
     <Compile Include="PhaseValidationSourceHelpers.cs" />
+    <Compile Include="Decomposed/PhaseValidationSourceHelpers/*.cs" />
     <Compile Include="Ros2ForUnitySubscriptionHubSourceComposer.cs" />
     <Compile Include="Phase80Validation.cs" />
     <Compile Include="Phase81Validation.cs" />
@@ -196,6 +197,7 @@
     <Compile Include="Decomposed/FoxRunRos2NativeSubscriptionValidation/*.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="DataTransportInspectorValidation.cs" />
+    <Compile Include="Decomposed/DataTransportInspectorValidation/*.cs" />
     <Compile Include="FoxRunCustomRos2InterfaceValidation.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="Decomposed/FoxRunCustomRos2InterfaceValidation/*.cs"

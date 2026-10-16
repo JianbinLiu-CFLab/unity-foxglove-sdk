@@ -37,6 +37,11 @@
       "revision": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71",
       "subject": "fix(186b): enforce U2R2 replay and ordering bounds",
       "sourceCount": 8
+    },
+    {
+      "revision": "896ca39467550cd1c9972601b04c5cd130c0d9fb",
+      "subject": "refactor(phase192): split U2R2 protocol gtests",
+      "sourceCount": 2
     }
   ],
   "v1Compatibility": {
@@ -480,13 +485,13 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/discover_protocol_sources_and_phase186b_introduced_sources.py",
-      "sha256": "f5515e539bf15c008856aada2c8526697e7f4d4d7889cdfb9c2bda7b74049f42",
+      "sha256": "80b943712dbc2353e9b11a895f90c69f60fd4dda7907a4aac62f4448e59c9287",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/foundation.py",
-      "sha256": "098d20b84d4f20ab22b02bf22e174a212cc640a7ebe238d89292dae61dcd3539",
+      "sha256": "2bad8fa9fddc26f12a7b4fc2fc73d295e56a0a9a389908d73324c0c1ea54f233",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
@@ -604,7 +609,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol.cpp",
-      "sha256": "e8dbef356c98d471713f036d1b8881d99c5037bf328879a5881e0eb9a1a47bb1",
+      "sha256": "8d90d9f3fcdd2748833f0ea659b42307c2b446e8ecd22373da69032c4e29800d",
       "classification": "original",
       "influence": "Original C++ byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -615,6 +620,20 @@
       "classification": "original",
       "influence": "Original C++ behavioral coverage for replay, ordering, queues, limits, and contracts.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_rejections.cpp",
+      "sha256": "b975ce0affac5dd9b9d8d07b618b6dce42443995749c5383c036f4f25fd59f9a",
+      "classification": "original",
+      "influence": "Original U2R2 v2 rejection, error-transition, and replay coverage moved from the canonical test translation unit.",
+      "introducedIn": "896ca39467550cd1c9972601b04c5cd130c0d9fb"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/u2r2_protocol_test_support.hpp",
+      "sha256": "7c1b659bfe968b103f924410597166eb03ed0475cf7def23316f5e0263237a39",
+      "classification": "original",
+      "influence": "Original shared U2R2 v2 fixture and protocol test helpers moved into a shared test support header.",
+      "introducedIn": "896ca39467550cd1c9972601b04c5cd130c0d9fb"
     }
   ]
 }

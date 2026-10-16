@@ -84,6 +84,7 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_u2r2_protocol
     test/test_u2r2_protocol.cpp
+    test/test_u2r2_protocol_rejections.cpp
   )
   target_compile_features(test_u2r2_protocol PUBLIC cxx_std_20)
   target_include_directories(test_u2r2_protocol PRIVATE include)
