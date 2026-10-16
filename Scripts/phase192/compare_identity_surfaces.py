@@ -1926,9 +1926,15 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
 
 def _is_phase121_configuration_path(path: str | Path) -> bool:
     """Return whether path is the reviewed Phase121 compatibility module."""
-    return str(path).replace("\\", "/").endswith(
-        "Scripts/mcap/conformance/run_phase121_conformance/configuration.py"
+    target = (
+        "Scripts",
+        "mcap",
+        "conformance",
+        "run_phase121_conformance",
+        "configuration.py",
     )
+    parts = tuple(part for part in str(path).replace("\\", "/").split("/") if part)
+    return len(parts) >= len(target) and parts[-len(target):] == target
 
 _ENTRYPOINT_IMPORT_ROOTS = frozenset({"argparse", "sys", "unittest"})
 

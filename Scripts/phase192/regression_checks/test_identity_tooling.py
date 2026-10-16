@@ -88,6 +88,16 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertEqual(2, len(rows))
         self.assertEqual(["Widget", "~Widget"], [row[2] for row in rows])
 
+    def test_cpp_surface_does_not_record_constructor_body_calls(self) -> None:
+        """Constructor initializer lists do not expose body calls as declarations."""
+        source = (
+            "Widget::Widget(int value) : value_(value) {\n"
+            "    Initialize();\n"
+            "}\n"
+        )
+        rows = identity_contracts.cpp_rows("fixture.cpp", source)
+        self.assertEqual(["Widget"], [row[2] for row in rows])
+
     def test_source_sensitivity_uses_real_source_mutations(self) -> None:
         """Sensitivity proof must expose real source mutation helpers."""
         with tempfile.TemporaryDirectory() as temp:
@@ -133,6 +143,35 @@ class IdentityToolingTests(unittest.TestCase):
                 sensitivity_proof.frozen_identity_mutation_result(
                     "cpp", source, lambda text: text.replace("Exported", "Renamed", 1), root / "missing", root
                 )
+
+    def test_frozen_identity_compares_only_target_baseline_rows(self) -> None:
+        """Frozen identity checks ignore unrelated files but reject target mutations."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "fixture.cpp"
+            original = "int Exported(int value) { return value; }\n"
+            source.write_text(original, encoding="utf-8")
+            identity = root / "identity"
+            identity.mkdir()
+            rows = identity_contracts.cpp_rows("fixture.cpp", original)
+            rows.append(["other.cpp", "1", "Other", "int Other()"])
+            identity_contracts.write_rows(
+                identity / "cpp-symbol-surface.tsv",
+                ["path", "line", "symbol", "declaration"],
+                rows,
+            )
+            self.assertEqual(
+                0,
+                sensitivity_proof.frozen_identity_mutation_result(
+                    "cpp", source, lambda text: text, identity, root
+                ),
+            )
+            self.assertEqual(
+                1,
+                sensitivity_proof.frozen_identity_mutation_result(
+                    "cpp", source, lambda text: text.replace("Exported", "Renamed", 1), identity, root
+                ),
+            )
 
     def test_compare_gate_rejects_removed_row(self) -> None:
         """Phase192 test compare gate rejects removed row."""
@@ -3245,6 +3284,11 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertFalse(
             compare_identity_surfaces._is_phase121_configuration_path(
                 "Scripts/other/configuration.py"
+            )
+        )
+        self.assertFalse(
+            compare_identity_surfaces._is_phase121_configuration_path(
+                "Scripts/otherScripts/mcap/conformance/run_phase121_conformance/configuration.py"
             )
         )
 

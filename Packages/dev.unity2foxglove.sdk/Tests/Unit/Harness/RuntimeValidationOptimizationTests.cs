@@ -80,6 +80,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void RegisteredCSharpSourceEnumerationIsRecursive()
+        {
+            var source = TestSources.Runtime("PhaseValidationSourceHelpers.cs");
+            var method = TestSources.Slice(
+                source,
+                "public static string ReadRegisteredCSharpSource",
+                "        public static string ReadSplitPythonSource");
+
+            Assert.Contains("SearchOption.AllDirectories", method, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void Phase14089MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_89Validation.cs", "--phase140-89", "Phase140_89Validation.Validate");
     }

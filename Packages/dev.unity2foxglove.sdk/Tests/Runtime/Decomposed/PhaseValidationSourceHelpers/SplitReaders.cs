@@ -34,11 +34,11 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var group in fragmentPaths.GroupBy(Path.GetDirectoryName))
             {
                 var expected = new HashSet<string>(
-                    group.Select(Path.GetFileName),
+                    group.Select(path => Path.GetRelativePath(group.Key, path)),
                     StringComparer.OrdinalIgnoreCase);
                 var actual = new HashSet<string>(
-                    Directory.GetFiles(group.Key, "*.cs", SearchOption.TopDirectoryOnly)
-                        .Select(Path.GetFileName),
+                    Directory.GetFiles(group.Key, "*.cs", SearchOption.AllDirectories)
+                        .Select(path => Path.GetRelativePath(group.Key, path)),
                     StringComparer.OrdinalIgnoreCase);
                 if (!expected.SetEquals(actual))
                     throw new InvalidDataException(

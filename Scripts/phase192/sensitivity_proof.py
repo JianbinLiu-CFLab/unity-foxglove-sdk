@@ -75,11 +75,25 @@ def frozen_identity_mutation_result(
         relative = source.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
         relative = source.as_posix()
-    rows = extractor(relative, changed)
+    original_rows = extractor(relative, original)
+    changed_rows = extractor(relative, changed)
     with tempfile.TemporaryDirectory(prefix="phase192-identity-mutation-") as temp:
-        actual = Path(temp) / filename
-        identity_contracts.write_rows(actual, header, rows)
-        return identity_contracts.compare_tsv(baseline, actual)
+        with baseline.open(encoding="utf-8", newline="") as handle:
+            reader = csv.reader(handle, delimiter="\t")
+            if next(reader, None) != header:
+                raise ValueError(f"identity surface header mismatch: {baseline}")
+            baseline_rows = [row for row in reader if row and row[0] == relative]
+        if not baseline_rows and original_rows:
+            raise AssertionError(f"frozen identity baseline has no rows for {relative}")
+        target_baseline = Path(temp) / f"baseline-{filename}"
+        original_surface = Path(temp) / f"original-{filename}"
+        changed_surface = Path(temp) / f"changed-{filename}"
+        identity_contracts.write_rows(target_baseline, header, baseline_rows)
+        identity_contracts.write_rows(original_surface, header, original_rows)
+        if identity_contracts.compare_tsv(target_baseline, original_surface) != 0:
+            raise AssertionError(f"frozen identity baseline mismatch for {relative}")
+        identity_contracts.write_rows(changed_surface, header, changed_rows)
+        return identity_contracts.compare_tsv(target_baseline, changed_surface)
 
 
 def _real_source_mutation_targets(root: Path) -> tuple[tuple[str, Path, object], ...]:
