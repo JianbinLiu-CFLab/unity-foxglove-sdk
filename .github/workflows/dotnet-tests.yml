@@ -345,7 +345,6 @@ jobs:
             --packages-select unity2foxglove_ros2_bridge \
             --build-base build/u2r2-native/build \
             --install-base build/u2r2-native/install \
-            --log-base build/u2r2-native/log \
             --cmake-args -DBUILD_TESTING=ON
 
       - name: Run U2R2 protocol gtest target
@@ -357,7 +356,6 @@ jobs:
             --packages-select unity2foxglove_ros2_bridge \
             --build-base build/u2r2-native/build \
             --install-base build/u2r2-native/install \
-            --log-base build/u2r2-native/log \
             --ctest-args -R '^test_u2r2_protocol$' --output-on-failure
           colcon test-result --test-result-base build/u2r2-native/build
 
