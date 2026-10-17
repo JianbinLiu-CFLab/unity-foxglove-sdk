@@ -7,7 +7,14 @@
 # Inputs: Repository package files under Packages/dev.unity2foxglove.sdk.
 # Outputs: Prints release validation checks and exits nonzero on failure.
 
-"""Validate Unity package structure, public docs, and sample hygiene."""
+"""Validate Unity package structure, public docs, and sample hygiene.
+
+The facade retains the explicit package boundary contract markers
+``SAMPLES = PACKAGE / "Samples~"``, ``"Basic Visualization": "Samples~/BasicVisualization"``,
+``"Full Demo Visualization": "Samples~/FullDemoVisualization"``,
+``"Virtual LiDAR Maze Demo": "Samples~/Virtual LiDAR Maze Demo"``,
+and ``"Samples~/Ros2BridgeSample"`` while forwarding implementation to the package.
+"""
 
 from __future__ import annotations
 
