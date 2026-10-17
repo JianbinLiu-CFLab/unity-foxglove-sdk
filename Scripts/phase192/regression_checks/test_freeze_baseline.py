@@ -431,6 +431,7 @@ class FreezeBaselineTests(unittest.TestCase):
         self.assertTrue((facade.with_suffix("") / "__init__.py").is_file())
 
     def test_remote_gateway_controller_is_bounded(self) -> None:
+        """The split remote-gateway controller stays within the source-size budget."""
         root = Path(__file__).resolve().parents[3]
         source = root / "Packages" / "dev.unity2foxglove.remotegateway.win64" / "Runtime" / "FoxgloveRemoteGatewayController.cs"
         self.assertLessEqual(len(source.read_text(encoding="utf-8").splitlines()), 500)
