@@ -4140,6 +4140,60 @@ class IdentityToolingTests(unittest.TestCase):
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertTrue(any("merged-subscript" in item for item in risks))
 
+    def test_namespace_gate_preserves_loop_continue_paths(self) -> None:
+        """A continue before the first yield keeps the loop exit path reachable."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator():\n"
+            "    for item in [1]:\n"
+            "        continue\n"
+            "        yield item\n"
+            "    subprocess.run([\"after-continue\"])\n"
+            "next(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("after-continue" in item for item in risks))
+
+    def test_namespace_gate_handles_same_line_break_before_yield(self) -> None:
+        """Statement columns distinguish same-line break and yield operations."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator():\n"
+            "    while True:\n"
+            "        break; yield 1\n"
+            "    subprocess.run([\"same-line-break\"])\n"
+            "next(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("same-line-break" in item for item in risks))
+
+    def test_namespace_gate_drives_dynamic_subscript_candidates(self) -> None:
+        """A dynamic subscript conservatively drives every sequence candidate."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"dynamic-subscript\"])\n"
+            "    yield 1\n"
+            "index = 0\n"
+            "next([inner()][index])\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("dynamic-subscript" in item for item in risks))
+
+    def test_namespace_gate_does_not_drive_nonfinal_and_operands(self) -> None:
+        """Operands evaluated only for an and-condition are not consumed generators."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"and-left\"])\n"
+            "    yield 1\n"
+            "def safe():\n"
+            "    yield 2\n"
+            "next(inner() and safe())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertFalse(any("and-left" in item for item in risks))
+
     def test_namespace_gate_executes_bare_decorator_parameters(self) -> None:
         """Bare decorators are calls and their parameter-driven bodies execute."""
         tree = ast.parse(

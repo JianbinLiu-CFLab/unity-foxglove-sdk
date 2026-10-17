@@ -2435,10 +2435,52 @@ def _namespace_risk_signatures(
 
     def loop_breaks_before_yield(statements: list[ast.stmt]) -> bool:
         """Return whether an enclosing loop can break before its first yield."""
-        first_yield = min(
-            (line for statement in statements if (line := statement_yield_line(statement)) is not None),
-            default=None,
-        )
+        first_yield: tuple[int, int] | None = None
+
+        class YieldPositionVisitor(ast.NodeVisitor):
+            """Find the first direct yield position in the loop body."""
+
+            def visit_Yield(self, current: ast.Yield) -> None:
+                """Record a direct yield position."""
+                nonlocal first_yield
+                position = (current.lineno, current.col_offset)
+                if first_yield is None or position < first_yield:
+                    first_yield = position
+
+            def visit_YieldFrom(self, current: ast.YieldFrom) -> None:
+                """Record a direct yield-from position."""
+                nonlocal first_yield
+                position = (current.lineno, current.col_offset)
+                if first_yield is None or position < first_yield:
+                    first_yield = position
+
+            def visit_For(self, current: ast.For) -> None:
+                """Skip nested loop bodies."""
+                return
+
+            def visit_AsyncFor(self, current: ast.AsyncFor) -> None:
+                """Skip nested async loop bodies."""
+                return
+
+            def visit_While(self, current: ast.While) -> None:
+                """Skip nested while-loop bodies."""
+                return
+
+            def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                """Skip nested function bodies."""
+                return
+
+            def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                """Skip nested async-function bodies."""
+                return
+
+            def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                """Skip nested class bodies."""
+                return
+
+        position_visitor = YieldPositionVisitor()
+        for statement in statements:
+            position_visitor.visit(statement)
         if first_yield is None:
             return False
 
@@ -2448,25 +2490,37 @@ def _namespace_risk_signatures(
             found = False
 
             def visit_Break(self, current: ast.Break) -> None:
-                if current.lineno < first_yield:
+                """Record a break before the first yield."""
+                if (current.lineno, current.col_offset) < first_yield:
+                    self.found = True
+
+            def visit_Continue(self, current: ast.Continue) -> None:
+                """Record a continue before the first yield."""
+                if (current.lineno, current.col_offset) < first_yield:
                     self.found = True
 
             def visit_For(self, current: ast.For) -> None:
+                """Skip nested for-loop bodies."""
                 return
 
             def visit_AsyncFor(self, current: ast.AsyncFor) -> None:
+                """Skip nested async for-loop bodies."""
                 return
 
             def visit_While(self, current: ast.While) -> None:
+                """Skip nested while-loop bodies."""
                 return
 
             def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                """Skip nested function bodies."""
                 return
 
             def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                """Skip nested async-function bodies."""
                 return
 
             def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                """Skip nested class bodies."""
                 return
 
         visitor = BreakVisitor()
@@ -2482,22 +2536,24 @@ def _namespace_risk_signatures(
             found = False
 
             def visit_Yield(self, current: ast.Yield) -> None:
-                if current.value is not None and any(
-                    isinstance(child, (ast.Call, ast.Attribute, ast.Subscript, ast.BinOp, ast.Compare))
-                    for child in ast.walk(current.value)
-                ):
+                """Detect potentially raising yield-value evaluation."""
+                if current.value is not None and not isinstance(current.value, (ast.Constant, ast.Name)):
                     self.found = True
 
             def visit_YieldFrom(self, current: ast.YieldFrom) -> None:
+                """Treat delegate iteration as potentially raising."""
                 self.found = True
 
             def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                """Skip nested function bodies."""
                 return
 
             def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                """Skip nested async-function bodies."""
                 return
 
             def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                """Skip nested class bodies."""
                 return
 
         visitor = YieldValueVisitor()
@@ -2849,12 +2905,21 @@ def _namespace_risk_signatures(
                 scan_node(node.orelse, env, deferred_mode=deferred_mode)
             return
         if isinstance(node, ast.BoolOp):
+            if isinstance(node.op, ast.And):
+                for value in node.values[:-1]:
+                    scan_node(value, env)
+                    if constant_truth(value) is False:
+                        return
+                if node.values:
+                    scan_node(node.values[-1], env, deferred_mode=deferred_mode)
+                return
             for value in node.values:
-                scan_node(value, env, deferred_mode=deferred_mode)
-                if isinstance(node.op, ast.Or) and expression_always_truthy(value, env):
-                    break
-                if isinstance(node.op, ast.And) and constant_truth(value) is False:
-                    break
+                scan_node(value, env)
+                if expression_always_truthy(value, env):
+                    scan_node(value, env, deferred_mode=deferred_mode)
+                    return
+            if node.values:
+                scan_node(node.values[-1], env, deferred_mode=deferred_mode)
             return
         if isinstance(node, ast.NamedExpr):
             value = resolve_target(node.value, env)
@@ -2880,7 +2945,22 @@ def _namespace_risk_signatures(
                     if isinstance(resolved_node, ast.AST):
                         scan_node(resolved_node, env, deferred_mode=deferred_mode)
             else:
-                scan_node(node.value, env)
+                if isinstance(node.value, (ast.List, ast.Tuple, ast.Set)):
+                    for element in node.value.elts:
+                        scan_node(element, env, deferred_mode=deferred_mode)
+                else:
+                    base = resolve_target(node.value, env)
+                    sequence_candidates = [
+                        item
+                        for candidate in candidate_values(base)
+                        if isinstance(candidate, AliasSequence)
+                        for item in candidate.items
+                    ]
+                    if sequence_candidates:
+                        for item in sequence_candidates:
+                            scan_node(item, env, deferred_mode=deferred_mode)
+                    else:
+                        scan_node(node.value, env)
             scan_node(node.slice, env)
             return
         if isinstance(node, ast.Expr):
