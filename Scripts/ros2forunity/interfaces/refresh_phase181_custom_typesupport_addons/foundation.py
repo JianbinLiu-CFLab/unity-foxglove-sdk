@@ -146,4 +146,12 @@ def _runtime_manifest_hash(root: Path, distro: str) -> str:
     )
     return normalized_json_sha256(manifest)
 
-__all__ = [name for name in globals() if not name.startswith("__")]
+__all__ = [
+    "annotations", "argparse", "dataclass", "json", "os", "Path", "PurePosixPath",
+    "subprocess", "sys", "Callable", "Mapping", "Sequence",
+    "SUPPORTED_DISTROS", "addon_package_id", "base_runtime_package_id",
+    "normalized_json_sha256", "ERROR_CODE", "RUNTIME_PACKAGE_PREFIX",
+    "STATIC_INTERFACE_PACKAGE_ID", "AddonRefreshError", "AddonRefreshState",
+    "AddonRefreshRequest", "repository_root", "_read_object", "_mapping_text",
+    "_static_interface_digest", "_runtime_manifest_hash",
+]
