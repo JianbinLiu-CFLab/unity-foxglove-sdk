@@ -314,7 +314,7 @@ jobs:
     name: U2R2 C++ native gtest
     runs-on: ubuntu-latest
     container:
-      image: ros:jazzy
+      image: ros@sha256:066420e07f60aa18262f2479981def87ebcfcec42eefb0c0c57c4a46098348ca
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

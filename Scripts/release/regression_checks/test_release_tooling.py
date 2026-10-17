@@ -575,6 +575,15 @@ class RunCiTests(unittest.TestCase):
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
         self.assertNotIn("--ignore-failed-sources", workflow)
 
+    def test_u2r2_native_container_uses_an_immutable_ros_digest(self) -> None:
+        """The required native gate must use a reviewed immutable ROS image."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            "image: ros@sha256:066420e07f60aa18262f2479981def87ebcfcec42eefb0c0c57c4a46098348ca",
+            workflow,
+        )
+        self.assertNotIn("image: ros:jazzy", workflow)
+
     def test_local_restore_matches_remote_strict_source_semantics(self) -> None:
         """Local restore must not turn an unavailable feed into a cache-only green run."""
         with mock.patch.object(self.run_ci, "run", return_value=True) as run_command:
