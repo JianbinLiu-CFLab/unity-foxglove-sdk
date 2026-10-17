@@ -3361,5 +3361,36 @@ class IdentityToolingTests(unittest.TestCase):
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertTrue(any("print" in item for item in risks))
 
+    def test_namespace_gate_ignores_uninvoked_nested_function(self) -> None:
+        """Nested functions that are never called do not execute at import time."""
+        tree = ast.parse(
+            "def outer():\n"
+            "    def hidden():\n"
+            "        print(\"unexpected\")\n"
+            "    return 1\n"
+            "outer()"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertFalse(any("print" in item for item in risks))
+
+    def test_namespace_gate_rejects_aliased_subprocess_call(self) -> None:
+        """Import aliases for subprocess expose the same process risk as direct calls."""
+        tree = ast.parse("import subprocess as sp\nsp.run([\"bad\"])")
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("run" in item for item in risks))
+
+    def test_phase184_owner_callers_use_the_qualified_import_path(self) -> None:
+        """Production callers use the single qualified Phase184 owner import path."""
+        paths = (
+            Path("Scripts/smoke/foxrun/phase184_foxglove_desktop_live_acceptance.py"),
+            Path("Scripts/smoke/foxrun/regression_checks/test_phase184_windows_job_owner/foundation.py"),
+        )
+        for path in paths:
+            source = path.read_text(encoding="utf-8")
+            self.assertIn(
+                "from Scripts.smoke.foxrun import phase184_windows_job_owner",
+                source,
+            )
+
 if __name__ == "__main__":
     unittest.main()

@@ -1891,6 +1891,20 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             callables.setdefault(parent.name, parent)
         elif isinstance(parent, ast.Lambda):
             function_body_nodes.update(id(node) for node in ast.walk(parent.body))
+        elif isinstance(parent, ast.Import):
+            for imported in parent.names:
+                aliases[imported.asname or imported.name.split(".", 1)[0]] = ast.Name(
+                    id=imported.name.split(".", 1)[0],
+                    ctx=ast.Load(),
+                )
+        elif isinstance(parent, ast.ImportFrom) and parent.module:
+            for imported in parent.names:
+                if imported.name != "*":
+                    aliases[imported.asname or imported.name] = ast.Attribute(
+                        value=ast.Name(id=parent.module, ctx=ast.Load()),
+                        attr=imported.name,
+                        ctx=ast.Load(),
+                    )
         elif isinstance(parent, ast.Assign):
             for target in parent.targets:
                 if isinstance(target, ast.Name):
@@ -1904,12 +1918,18 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
 
     def resolve_target(node: ast.AST, seen: frozenset[str] = frozenset()) -> ast.AST:
         """Resolve local aliases to their callable or imported target."""
-        if not isinstance(node, ast.Name) or node.id in seen:
+        if isinstance(node, ast.Name):
+            if node.id in seen:
+                return node
+            if node.id in callables:
+                return callables[node.id]
+            if node.id in aliases:
+                return resolve_target(aliases[node.id], seen | {node.id})
             return node
-        if node.id in callables:
-            return callables[node.id]
-        if node.id in aliases:
-            return resolve_target(aliases[node.id], seen | {node.id})
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            value = resolve_target(node.value, seen)
+            if value is not node.value:
+                return ast.Attribute(value=value, attr=node.attr, ctx=ast.Load())
         return node
 
     def risky_target(node: ast.AST) -> bool:
@@ -1936,14 +1956,25 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
         if target_id in seen_callables:
             return
         seen_callables.add(target_id)
-        for node in ast.walk(target):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and node is not target:
-                continue
-            if isinstance(node, ast.Call):
-                if risky_target(node.func):
-                    signatures.add(ast.dump(node, include_attributes=False))
-                else:
-                    record_callable(node.func)
+        body = [target.body] if isinstance(target, ast.Lambda) else target.body
+
+        def executable_nodes(node: ast.AST):
+            """Walk executable statements without descending into nested definitions."""
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                return
+            yield node
+            for child in ast.iter_child_nodes(node):
+                yield from executable_nodes(child)
+
+        for statement in body:
+            for node in executable_nodes(statement):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                    continue
+                if isinstance(node, ast.Call):
+                    if risky_target(node.func):
+                        signatures.add(ast.dump(node, include_attributes=False))
+                    else:
+                        record_callable(node.func)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and import_time(node):
