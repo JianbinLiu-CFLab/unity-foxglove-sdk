@@ -1883,34 +1883,115 @@ _NAMESPACE_RISK_ATTRIBUTES = frozenset({
 def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
     """Return stable AST fingerprints for namespace and import escape surfaces."""
     signatures: set[str] = set()
-    seen_callables: set[int] = set()
-    AliasValue = ast.AST | None
+    seen_callables: set[tuple[int, tuple[tuple[str, str], ...]]] = set()
+    class FrozenAlias:
+        """Preserve the AST object captured by an alias assignment."""
 
-    def resolve_target(node: ast.AST, env: dict[str, AliasValue], seen: frozenset[str] = frozenset()) -> ast.AST:
+        def __init__(self, node: ast.AST) -> None:
+            """Store the AST node captured at assignment time."""
+            self.node = node
+
+    AliasAtom = ast.AST | FrozenAlias | None
+    AliasValue = AliasAtom | tuple[AliasAtom, ...]
+    definition_envs: dict[int, dict[str, AliasValue]] = {}
+    future_annotations = isinstance(tree, ast.Module) and any(
+        isinstance(statement, ast.ImportFrom)
+        and statement.module == "__future__"
+        and any(alias.name == "annotations" for alias in statement.names)
+        for statement in tree.body
+    )
+
+    def value_key(value: AliasValue) -> tuple[str, ...]:
+        """Return a stable key for one binding value."""
+        if value is None:
+            return ("<unknown>",)
+        if isinstance(value, tuple):
+            return ("<choice>", *sum((value_key(item) for item in value), ()))
+        if isinstance(value, FrozenAlias):
+            return ("<frozen>", ast.dump(value.node, include_attributes=False))
+        return (ast.dump(value, include_attributes=False),)
+
+    def candidate_values(value: AliasValue) -> tuple[AliasAtom, ...]:
+        """Expand a possibly merged binding into individual candidates."""
+        if isinstance(value, tuple):
+            return value
+        return (value,)
+
+    def freeze_value(value: AliasValue) -> AliasValue:
+        """Freeze aliases so later rebinding cannot change their captured target."""
+        if isinstance(value, tuple):
+            return tuple(freeze_value(item) for item in value)
+        if isinstance(value, FrozenAlias) or value is None:
+            return value
+        return FrozenAlias(value)
+
+    def merge_values(*values: AliasValue) -> AliasValue:
+        """Merge branch bindings while preserving every possible target."""
+        merged: list[AliasAtom] = []
+        seen: set[tuple[str, ...]] = set()
+        for value in values:
+            for candidate in candidate_values(value):
+                key = value_key(candidate)
+                if key not in seen:
+                    seen.add(key)
+                    merged.append(candidate)
+        if not merged:
+            return None
+        if len(merged) == 1:
+            return merged[0]
+        return tuple(merged)
+
+    def environment_key(env: dict[str, AliasValue]) -> tuple[tuple[str, str], ...]:
+        """Return a deterministic key for the callable's visible bindings."""
+        return tuple(sorted((name, repr(value_key(value))) for name, value in env.items()))
+
+    def resolve_target(
+        node: ast.AST,
+        env: dict[str, AliasValue],
+        seen: frozenset[str] = frozenset(),
+    ) -> AliasValue:
         """Resolve aliases using the bindings visible at the call site."""
         if isinstance(node, ast.Name):
             if node.id in seen or node.id not in env or env[node.id] is None:
                 return node
-            return resolve_target(env[node.id], env, seen | {node.id})
+            bound = env[node.id]
+            resolved: list[AliasAtom] = []
+            for candidate in candidate_values(bound):
+                if candidate is None:
+                    resolved.append(node)
+                elif isinstance(candidate, FrozenAlias):
+                    resolved.append(candidate)
+                else:
+                    value = resolve_target(candidate, env, seen | {node.id})
+                    resolved.extend(candidate_values(value))
+            return merge_values(*resolved)
         if isinstance(node, ast.Attribute):
             value = resolve_target(node.value, env, seen)
-            if value is not node.value:
-                return ast.Attribute(value=value, attr=node.attr, ctx=ast.Load())
+            resolved: list[AliasAtom] = []
+            for candidate in candidate_values(value):
+                if isinstance(candidate, FrozenAlias):
+                    resolved.append(
+                        ast.Attribute(value=candidate.node, attr=node.attr, ctx=ast.Load())
+                    )
+                elif isinstance(candidate, ast.AST):
+                    resolved.append(ast.Attribute(value=candidate, attr=node.attr, ctx=ast.Load()))
+                else:
+                    resolved.append(node)
+            return merge_values(*resolved)
         return node
 
-    def risky_target(node: ast.AST, env: dict[str, AliasValue]) -> bool:
-        """Recognize calls that can mutate or expose import-time process state."""
-        target = resolve_target(node, env)
+    def is_risky_resolved(target: AliasValue) -> bool:
+        """Return whether any resolved target exposes an import-time risk."""
+        if isinstance(target, tuple):
+            return any(is_risky_resolved(candidate) for candidate in target)
+        if isinstance(target, FrozenAlias):
+            return is_risky_resolved(target.node)
         if isinstance(target, ast.Name) and target.id in _NAMESPACE_RISK_NAMES:
             return True
         if isinstance(target, ast.Attribute):
             if target.attr in _NAMESPACE_RISK_ATTRIBUTES:
                 return True
-            if (
-                isinstance(target.value, ast.Name)
-                and target.value.id == "os"
-                and target.attr == "system"
-            ):
+            if isinstance(target.value, ast.Name) and target.value.id == "os" and target.attr == "system":
                 return True
             return (
                 isinstance(target.value, ast.Name)
@@ -1919,39 +2000,99 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             )
         return False
 
+    def risky_target(node: ast.AST, env: dict[str, AliasValue]) -> bool:
+        """Recognize calls that can mutate or expose import-time process state."""
+        return is_risky_resolved(resolve_target(node, env))
+
     def bind_import(node: ast.Import | ast.ImportFrom, env: dict[str, AliasValue]) -> None:
         """Bind only absolute imports to known targets; relative modules remain unknown."""
         if isinstance(node, ast.Import):
             for imported in node.names:
                 bound = imported.asname or imported.name.split(".", 1)[0]
-                env[bound] = ast.Name(id=imported.name.split(".", 1)[0], ctx=ast.Load())
+                env[bound] = freeze_value(
+                    ast.Name(id=imported.name.split(".", 1)[0], ctx=ast.Load())
+                )
             return
         for imported in node.names:
             if imported.name == "*":
                 continue
             bound = imported.asname or imported.name
             if node.level:
-                env[bound] = ast.Name(id=f"<relative:{node.module or ''}>", ctx=ast.Load())
+                env[bound] = freeze_value(
+                    ast.Name(id=f"<relative:{node.module or ''}>", ctx=ast.Load())
+                )
             else:
-                env[bound] = ast.Attribute(
-                    value=ast.Name(id=node.module or "", ctx=ast.Load()),
-                    attr=imported.name,
-                    ctx=ast.Load(),
+                env[bound] = freeze_value(
+                    ast.Attribute(
+                        value=ast.Name(id=node.module or "", ctx=ast.Load()),
+                        attr=imported.name,
+                        ctx=ast.Load(),
+                    )
                 )
 
     def bind_assignment(target: ast.AST, value: AliasValue, env: dict[str, AliasValue]) -> None:
         """Update only names bound by a simple assignment."""
         if isinstance(target, ast.Name):
-            env[target.id] = value
+            env[target.id] = freeze_value(value)
         elif isinstance(target, (ast.Tuple, ast.List)):
             for element in target.elts:
                 bind_assignment(element, None, env)
 
-    def inspect_definition(node: ast.FunctionDef | ast.AsyncFunctionDef, env: dict[str, AliasValue]) -> None:
-        """Inspect expressions evaluated while a nested function is defined."""
-        for expression in (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults):
+    def contains_yield(node: ast.FunctionDef) -> bool:
+        """Return whether a normal function is a generator function."""
+        found = False
+
+        class YieldVisitor(ast.NodeVisitor):
+            """Find yields without descending into nested deferred scopes."""
+
+            def visit_Yield(self, current: ast.Yield) -> None:
+                """Mark a direct yield expression."""
+                nonlocal found
+                found = True
+
+            def visit_YieldFrom(self, current: ast.YieldFrom) -> None:
+                """Mark a direct yield-from expression."""
+                nonlocal found
+                found = True
+
+            def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                """Visit only the function whose generator status is queried."""
+                if current is not node:
+                    return
+                self.generic_visit(current)
+
+            def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                """Visit only the root async function when encountered."""
+                if current is not node:
+                    return
+                self.generic_visit(current)
+
+            def visit_Lambda(self, current: ast.Lambda) -> None:
+                """Skip lambda bodies nested inside the function."""
+                return
+
+            def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                """Skip class bodies nested inside the function."""
+                return
+
+        YieldVisitor().visit(node)
+        return found
+
+    def inspect_definition(
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+        env: dict[str, AliasValue],
+    ) -> None:
+        """Inspect expressions evaluated while a callable is defined."""
+        definition_envs[id(node)] = dict(env)
+        if isinstance(node, ast.Lambda):
+            expressions = (*node.args.defaults, *node.args.kw_defaults)
+        else:
+            expressions = (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults)
+        for expression in expressions:
             if expression is not None:
                 scan_node(expression, env)
+        if isinstance(node, ast.Lambda) or future_annotations:
+            return
         for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
             if argument.annotation is not None:
                 scan_node(argument.annotation, env)
@@ -1962,20 +2103,75 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
         if node.returns is not None:
             scan_node(node.returns, env)
 
-    def record_callable(target: ast.AST, caller_env: dict[str, AliasValue]) -> None:
+    def bind_callable_parameters(
+        target: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+        call: ast.Call,
+        caller_env: dict[str, AliasValue],
+        local_env: dict[str, AliasValue],
+    ) -> None:
+        """Bind call arguments and definition-time defaults into a local environment."""
+        arguments = target.args
+        positional = [*arguments.posonlyargs, *arguments.args]
+        defaults = list(arguments.defaults)
+        definition_env = definition_envs.get(id(target), caller_env)
+        default_start = len(positional) - len(defaults)
+        for index, argument in enumerate(positional):
+            if index < len(call.args):
+                local_env[argument.arg] = freeze_value(
+                    resolve_target(call.args[index], caller_env)
+                )
+            elif index >= default_start:
+                local_env[argument.arg] = freeze_value(
+                    resolve_target(defaults[index - default_start], definition_env)
+                )
+            else:
+                local_env[argument.arg] = None
+        keyword_names = {argument.arg for argument in positional}
+        keyword_names.update(argument.arg for argument in arguments.kwonlyargs)
+        for keyword in call.keywords:
+            if keyword.arg is not None and keyword.arg in keyword_names:
+                local_env[keyword.arg] = freeze_value(
+                    resolve_target(keyword.value, caller_env)
+                )
+        kw_defaults = dict(zip((argument.arg for argument in arguments.kwonlyargs), arguments.kw_defaults))
+        for argument in arguments.kwonlyargs:
+            if argument.arg not in local_env:
+                default = kw_defaults[argument.arg]
+                local_env[argument.arg] = (
+                    None
+                    if default is None
+                    else freeze_value(resolve_target(default, definition_env))
+                )
+        if arguments.vararg:
+            local_env[arguments.vararg.arg] = None
+        if arguments.kwarg:
+            local_env[arguments.kwarg.arg] = None
+
+    def record_callable(
+        target: ast.AST,
+        caller_env: dict[str, AliasValue],
+        call: ast.Call,
+    ) -> None:
         """Record risks reachable through a function called during import."""
-        target = resolve_target(target, caller_env)
-        if not isinstance(target, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            return
-        target_id = id(target)
-        if target_id in seen_callables:
-            return
-        seen_callables.add(target_id)
-        local_env = dict(caller_env)
-        if isinstance(target, ast.Lambda):
-            scan_node(target.body, local_env)
-        else:
-            scan_sequence(target.body, local_env)
+        resolved = resolve_target(target, caller_env)
+        for candidate in candidate_values(resolved):
+            candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+            if not isinstance(candidate_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                continue
+            local_env = dict(caller_env)
+            bind_callable_parameters(candidate_node, call, caller_env, local_env)
+            callable_key = (id(candidate_node), environment_key(local_env))
+            if callable_key in seen_callables:
+                continue
+            seen_callables.add(callable_key)
+            if isinstance(candidate_node, ast.AsyncFunctionDef):
+                continue
+            if isinstance(candidate_node, ast.FunctionDef) and contains_yield(candidate_node):
+                continue
+            if isinstance(candidate_node, ast.Lambda):
+                scan_node(candidate_node.body, local_env)
+            else:
+                scan_sequence(candidate_node.body, local_env)
 
     def scan_node(node: ast.AST, env: dict[str, AliasValue]) -> None:
         """Scan an expression or definition without entering deferred function bodies."""
@@ -1984,13 +2180,14 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             env[node.name] = node
             return
         if isinstance(node, ast.Lambda):
+            inspect_definition(node, env)
             return
         if isinstance(node, ast.Call):
             if risky_target(node.func, env):
                 signatures.add(ast.dump(node, include_attributes=False))
             else:
                 scan_node(node.func, env)
-                record_callable(node.func, env)
+                record_callable(node.func, env, node)
             for argument in node.args:
                 scan_node(argument, env)
             for keyword in node.keywords:
@@ -2002,6 +2199,24 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             signatures.add(ast.dump(node, include_attributes=False))
         for child in ast.iter_child_nodes(node):
             scan_node(child, env)
+
+    def constant_truth(node: ast.AST) -> bool | None:
+        """Evaluate literal branch conditions without executing arbitrary code."""
+        try:
+            return bool(ast.literal_eval(node))
+        except (TypeError, ValueError, SyntaxError):
+            return None
+
+    def merge_branch_environments(
+        env: dict[str, AliasValue],
+        branches: tuple[dict[str, AliasValue], ...],
+    ) -> None:
+        """Keep every binding that can reach the next statement."""
+        names = set(env)
+        for branch in branches:
+            names.update(branch)
+        for name in names:
+            env[name] = merge_values(*(branch.get(name) for branch in branches))
 
     def scan_statement(statement: ast.stmt, env: dict[str, AliasValue]) -> None:
         """Scan one statement in execution order and update its scope bindings."""
@@ -2029,13 +2244,15 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             bind_import(statement, env)
             return
         if isinstance(statement, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
-            if isinstance(statement, ast.AnnAssign) and statement.annotation is not None:
+            value = None
+            if isinstance(statement, ast.AnnAssign) and statement.annotation is not None and not future_annotations:
                 scan_node(statement.annotation, env)
             if statement.value is not None:
+                value = resolve_target(statement.value, env)
                 scan_node(statement.value, env)
             targets = statement.targets if isinstance(statement, ast.Assign) else (statement.target,)
             for target in targets:
-                bind_assignment(target, statement.value, env)
+                bind_assignment(target, value, env)
             return
         if isinstance(statement, ast.AugAssign):
             scan_node(statement.value, env)
@@ -2048,8 +2265,18 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             return
         if isinstance(statement, (ast.If, ast.While)):
             scan_node(statement.test, env)
-            scan_sequence(statement.body, dict(env))
-            scan_sequence(statement.orelse, dict(env))
+            truth = constant_truth(statement.test)
+            if truth is True:
+                scan_sequence(statement.body, env)
+                return
+            if truth is False:
+                scan_sequence(statement.orelse, env)
+                return
+            body_env = dict(env)
+            else_env = dict(env)
+            scan_sequence(statement.body, body_env)
+            scan_sequence(statement.orelse, else_env)
+            merge_branch_environments(env, (body_env, else_env))
             return
         if isinstance(statement, (ast.With, ast.AsyncWith)):
             for item in statement.items:

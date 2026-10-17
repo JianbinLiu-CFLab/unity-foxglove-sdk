@@ -39,6 +39,9 @@ PHASE186_WINDOWS_LIVE_WORKFLOW_PATH = (
 )
 DOCS_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "docs-check.yml"
 DOTNET_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "dotnet-tests.yml"
+REVIEWED_ROS_JAZZY_IMAGE = (
+    "ros@sha256:066420e07f60aa18262f2479981def87ebcfcec42eefb0c0c57c4a46098348ca"
+)
 PACKAGE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "package-check.yml"
 REPOSITORY_BOUNDARY_WORKFLOW_PATH = (
     ROOT / ".github" / "workflows" / "repository-boundary-check.yml"
@@ -584,7 +587,7 @@ class RunCiTests(unittest.TestCase):
         self.assertIsNotNone(container)
         image = re.search(r"(?m)^      image:\s*(?P<image>[^\s#]+)", container.group("body"))
         self.assertIsNotNone(image)
-        self.assertRegex(image.group("image"), r"^ros@sha256:[0-9a-f]{64}$")
+        self.assertEqual(REVIEWED_ROS_JAZZY_IMAGE, image.group("image"))
 
     def test_local_restore_matches_remote_strict_source_semantics(self) -> None:
         """Local restore must not turn an unavailable feed into a cache-only green run."""
