@@ -4194,6 +4194,94 @@ class IdentityToolingTests(unittest.TestCase):
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertFalse(any("and-left" in item for item in risks))
 
+    def test_namespace_gate_scans_unbound_yield_handlers(self) -> None:
+        """An unbound yield value can enter a matching exception handler."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator():\n"
+            "    try:\n"
+            "        yield missing\n"
+            "    except NameError:\n"
+            "        subprocess.run([\"unbound-yield-handler\"])\n"
+            "next(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("unbound-yield-handler" in item for item in risks))
+
+    def test_namespace_gate_drives_or_left_generator_expression(self) -> None:
+        """An or expression can return its left generator to an eager consumer."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"or-generator-left\"])\n"
+            "    yield 1\n"
+            "def safe():\n"
+            "    yield 2\n"
+            "next((value for value in inner()) or safe())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("or-generator-left" in item for item in risks))
+
+    def test_namespace_gate_drives_yielded_comprehension_iterators(self) -> None:
+        """A comprehension in a yielded value fully consumes its iterator."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    yield 1\n"
+            "    subprocess.run([\"yielded-comprehension-tail\"])\n"
+            "def generator():\n"
+            "    yield [value for value in inner()]\n"
+            "next(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("yielded-comprehension-tail" in item for item in risks))
+
+    def test_namespace_gate_drives_generator_in_dynamic_return_subscript(self) -> None:
+        """A dynamically indexed returned sequence can contain a generator."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"dynamic-return-subscript\"])\n"
+            "    yield 1\n"
+            "def make():\n"
+            "    return [inner()]\n"
+            "index = 0\n"
+            "next(make()[index])\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("dynamic-return-subscript" in item for item in risks))
+
+    def test_namespace_gate_drives_lambda_returned_generator(self) -> None:
+        """A lambda returning a generator is driven by next."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"lambda-returned-generator\"])\n"
+            "    yield 1\n"
+            "factory = lambda: (value for value in inner())\n"
+            "next(factory())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("lambda-returned-generator" in item for item in risks))
+
+    def test_namespace_gate_scans_with_enter_before_first_yield(self) -> None:
+        """A context manager enter hook executes before a yielded body."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "class Context:\n"
+            "    def __enter__(self):\n"
+            "        subprocess.run([\"with-enter-before-yield\"])\n"
+            "        return self\n"
+            "    def __exit__(self, *args):\n"
+            "        return False\n"
+            "def generator():\n"
+            "    with Context():\n"
+            "        yield 1\n"
+            "next(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("with-enter-before-yield" in item for item in risks))
+
     def test_namespace_gate_executes_bare_decorator_parameters(self) -> None:
         """Bare decorators are calls and their parameter-driven bodies execute."""
         tree = ast.parse(
