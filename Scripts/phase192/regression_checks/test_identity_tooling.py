@@ -3656,6 +3656,196 @@ class IdentityToolingTests(unittest.TestCase):
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertTrue(any("import_module" in item for item in risks))
 
+    def test_namespace_gate_scans_mixed_callable_candidates(self) -> None:
+        """Every callable candidate is scanned when a merged alias is invoked."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def helper():\n"
+            "    subprocess.run([\"helper-only\"])\n"
+            "cb = helper\n"
+            "if flag:\n"
+            "    cb = subprocess.run\n"
+            "cb([\"direct\"])\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("helper-only" in item for item in risks))
+
+    def test_namespace_gate_scans_alias_of_next(self) -> None:
+        """An alias of next drives a generator until its first yield."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator():\n"
+            "    subprocess.run([\"before-yield\"])\n"
+            "    yield 1\n"
+            "next_fn = next\n"
+            "next_fn(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("before-yield" in item for item in risks))
+
+    def test_namespace_gate_scans_immediate_generator_consumers(self) -> None:
+        """Immediate iterable consumers scan the complete generator body."""
+        consumers = ("list", "tuple", "sum", "set", "frozenset", "sorted", "dict", "bytes", "bytearray")
+        for consumer in consumers:
+            with self.subTest(consumer=consumer):
+                tree = ast.parse(
+                    "import subprocess\n"
+                    "def generator():\n"
+                    "    yield 1\n"
+                    f"    subprocess.run([\"{consumer}-consumer\"])\n"
+                    f"{consumer}(generator())\n"
+                )
+                risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+                self.assertTrue(any(f"{consumer}-consumer" in item for item in risks))
+
+    def test_namespace_gate_resolves_expression_and_unpack_aliases(self) -> None:
+        """Conditional and tuple-unpacked aliases preserve every callable target."""
+        sources = (
+            "import subprocess\n"
+            "def helper():\n"
+            "    subprocess.run([\"ifexp-helper\"])\n"
+            "cb = helper if flag else subprocess.run\n"
+            "cb([\"ifexp-call\"])\n",
+            "import subprocess\n"
+            "def helper():\n"
+            "    subprocess.run([\"unpack-helper\"])\n"
+            "a, b = helper, subprocess.run\n"
+            "a([\"unpack-call\"])\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertTrue(any("helper" in item and "subprocess" in item for item in risks))
+
+    def test_namespace_gate_scans_bare_open_in_called_helper(self) -> None:
+        """A called helper using bare open is an import-time namespace risk."""
+        tree = ast.parse(
+            "def initialize():\n"
+            "    open(\"side-effect\", \"w\")\n"
+            "initialize()\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("open" in item for item in risks))
+
+    def test_namespace_gate_scans_bare_decorator_helper(self) -> None:
+        """A bare decorator alias executes its helper while the definition is created."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def decorator(function):\n"
+            "    subprocess.run([\"bare-decorator\"])\n"
+            "    return function\n"
+            "@decorator\n"
+            "def entry():\n"
+            "    pass\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("bare-decorator" in item for item in risks))
+
+    def test_namespace_gate_stops_after_first_yield_for_next(self) -> None:
+        """next scans only the prefix executed before the first yielded value."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator():\n"
+            "    yield 1\n"
+            "    subprocess.run([\"after-first-yield\"])\n"
+            "next(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertFalse(any("after-first-yield" in item for item in risks))
+
+    def test_namespace_gate_scans_after_first_yield_for_full_consumer(self) -> None:
+        """A full iterable consumer scans generator code after the first yield."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator():\n"
+            "    yield 1\n"
+            "    subprocess.run([\"after-full-consumer\"])\n"
+            "list(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("after-full-consumer" in item for item in risks))
+
+    def test_namespace_gate_scans_awaited_anext_alias(self) -> None:
+        """Awaiting an anext alias scans only the first async-generator step."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "async def generator():\n"
+            "    subprocess.run([\"async-before-yield\"])\n"
+            "    yield 1\n"
+            "    subprocess.run([\"async-after-yield\"])\n"
+            "anext_fn = anext\n"
+            "await anext_fn(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("async-before-yield" in item for item in risks))
+        self.assertFalse(any("async-after-yield" in item for item in risks))
+
+    def test_namespace_gate_ignores_unawaited_anext_alias(self) -> None:
+        """Creating an anext awaitable without awaiting it does not execute the body."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "async def generator():\n"
+            "    subprocess.run([\"unawaited-anext\"])\n"
+            "    yield 1\n"
+            "anext_fn = anext\n"
+            "anext_fn(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertFalse(any("unawaited-anext" in item for item in risks))
+
+    def test_namespace_gate_scans_path_and_sys_path_mutators(self) -> None:
+        """Path.open and sys.path mutation remain visible through called helpers."""
+        sources = (
+            "from pathlib import Path\n"
+            "def initialize():\n"
+            "    Path(\"side-effect\").open(\"w\")\n"
+            "initialize()\n",
+            "import sys\n"
+            "def initialize():\n"
+            "    sys.path.append(\"side-effect\")\n"
+            "initialize()\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertTrue(risks)
+
+    def test_generated_section_rejects_resolved_import_time_risks(self) -> None:
+        """Generated sections reject aliases that resolve to import-time side effects."""
+        sources = (
+            "import subprocess\n"
+            "def helper():\n"
+            "    subprocess.run([\"generated-helper\"])\n"
+            "cb = helper if flag else subprocess.run\n"
+            "cb([\"generated-call\"])\n"
+            "__all__ = [\"helper\"]\n",
+            "def helper():\n"
+            "    open(\"generated-open\", \"w\")\n"
+            "helper()\n"
+            "__all__ = [\"helper\"]\n",
+        )
+        for source in sources:
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                compare_identity_surfaces._validate_generated_section(
+                    source,
+                    Path("Scripts/smoke/fixture.py"),
+                    Path("Scripts/smoke"),
+                    frozenset({"fixture"}),
+                )
+
+    def test_namespace_gate_revisits_generator_for_full_consumer_after_next(self) -> None:
+        """A later full consumer is not hidden by an earlier first-yield scan."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator():\n"
+            "    yield 1\n"
+            "    subprocess.run([\"second-consumer\"])\n"
+            "next(generator())\n"
+            "list(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("second-consumer" in item for item in risks))
+
     def test_namespace_gate_ignores_relative_subprocess_module_aliases(self) -> None:
         """Relative modules are not silently classified as the stdlib subprocess module."""
         tree = ast.parse("from .subprocess import run as launch\nlaunch([\"local\"])\n")
