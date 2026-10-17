@@ -29,15 +29,6 @@ else:
         if __name__ == "validate_unity_package"
         else None
     )
-    for _phase192_name in tuple(_phase192_sys.modules):
-        if (
-            _phase192_name != __name__
-            and (
-                _phase192_name == "validate_unity_package"
-                or _phase192_name.startswith("validate_unity_package.")
-            )
-        ):
-            _phase192_sys.modules.pop(_phase192_name, None)
     if _phase192_self is not None:
         _phase192_sys.modules.pop("validate_unity_package", None)
     try:
