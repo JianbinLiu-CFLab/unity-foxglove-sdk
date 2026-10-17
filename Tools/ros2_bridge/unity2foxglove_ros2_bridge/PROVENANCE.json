@@ -205,9 +205,9 @@
     },
     {
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs",
-      "sourceRevision": "88197866346c9531dac84b7ab004c47247712d41",
+      "sourceRevision": "34892a676386f3d273f4300a33d0b7da242c9f6c",
       "decompositionRevision": "229b969dcf1e2f7e81a04a23b1e67fe53f6608c3",
-      "originalSha256": "2daddc6c2c629b410c4b18818308dd276625673f79951251470b570925f8cd2e",
+      "originalSha256": "c4d30a3e4051fc0cebbea33314a8c5d2a435f6ebf507a7f66bbe2ce8715397ee",
       "parts": [
         {
           "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolLimits/ResourceAccounting.cs",
@@ -349,9 +349,9 @@
     },
     {
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
-      "sourceRevision": "88197866346c9531dac84b7ab004c47247712d41",
+      "sourceRevision": "34ffcce126ec1e91d63d5b21e805ec06596a8d81",
       "decompositionRevision": "34ffcce126ec1e91d63d5b21e805ec06596a8d81",
-      "originalSha256": "44507b4049f9c89b1e56468e76ec35b7212b8f65d8f5a0a42d5096a9ea1c06a2",
+      "originalSha256": "ad8d6f1349bce7a01ace37f435781eda90e9e62491f296da9b64af24609424ee",
       "parts": [
         {
           "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/DecoderAndDialect.cs",
