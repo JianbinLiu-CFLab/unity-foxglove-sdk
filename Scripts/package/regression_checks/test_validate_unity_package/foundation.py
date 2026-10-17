@@ -19,13 +19,14 @@ VALIDATE_SOURCE_GENERATOR_PATH = ROOT / "Scripts" / "package" / "validate_source
 
 
 def load_module(name: str, path: Path):
-    """Load a Python script as an isolated module."""
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    """Load one maintained validator package fresh for the test case."""
+    del name
+    module_name = (
+        "Scripts.package.validate_unity_package"
+        if path == VALIDATE_PACKAGE_PATH
+        else "Scripts.package.validate_source_generator_dll"
+    )
+    return importlib.reload(importlib.import_module(module_name))
 
 
 __all__ = [
