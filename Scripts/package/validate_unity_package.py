@@ -945,14 +945,18 @@ def check_sdk_decomposed_folder_meta(
             )
             return
         unit_root = PACKAGE / "Tests" / "Unit"
+        extra_roots = (
+            PACKAGE / "Runtime" / "Schemas" / "Proto" / "Video" / "Decomposed",
+            PACKAGE / "Tests" / "Performance" / "Decomposed",
+        )
         decomposed_roots = [decomposed_root]
         decomposed_roots.extend(
             sorted(
-                (
+                {
                     path
                     for path in unit_root.rglob("Decomposed")
                     if path.is_dir() and path != decomposed_root
-                ),
+                } | {path for path in extra_roots if path.is_dir()},
                 key=rel,
             )
         )

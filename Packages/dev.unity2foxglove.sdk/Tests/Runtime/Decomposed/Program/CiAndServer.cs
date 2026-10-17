@@ -19,6 +19,11 @@ using Unity.FoxgloveSDK.Tests;
 /// <summary>Console entry point for runtime validation and manual smoke servers.</summary>
 partial class Program
 {
+    /// <summary>
+    /// Executes every supplied validation and returns the names of all entries
+    /// that report a non-zero result. Kept as a small seam so the default-runner
+    /// no-early-return contract can be verified without launching the full lane.
+    /// </summary>
     internal static List<string> CollectValidationFailures(
         IEnumerable<(string Name, Func<int> Run)> validations)
     {

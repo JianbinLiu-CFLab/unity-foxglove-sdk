@@ -14,6 +14,36 @@ namespace Unity.FoxgloveSDK.Components
 {
     public sealed partial class FoxRunInputRouter
     {
+        private static bool TryResolveWebSocketRegistration(
+            FoxgloveInputTopicInfo info,
+            string inheritedSubscribeTransportId,
+            FoxRunEncoding inheritedEncoding,
+            out FoxRunEncoding encoding)
+        {
+            encoding = (FoxRunEncoding)0;
+            if (!info.SupportsWebSocket)
+                return false;
+
+            var transportId = string.IsNullOrWhiteSpace(
+                info.SubscribeTransportId)
+                ? inheritedSubscribeTransportId
+                : info.SubscribeTransportId;
+            if (!string.Equals(
+                    transportId,
+                    FoxgloveWebSocketTransport.Id,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            encoding = info.HasExplicitEncoding
+                ? FoxRunEncodingResolver.ValidateProfileDefault(
+                    info.DeclaredEncoding)
+                : FoxRunEncodingResolver.ValidateProfileDefault(
+                    inheritedEncoding);
+            return true;
+        }
+
         public FoxRunInputDispatchResult Dispatch(
             string topic,
             byte[] payload,

@@ -113,8 +113,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var text = File.ReadAllText(path);
                 tokenHits.AddRange(OptionalEditorForbiddenTokens()
-                    .Where(token => text.Contains(token, StringComparison.Ordinal)
-                                    && !IsSanctionedOptionalEditorMetadataToken(path, token, text))
+                    .Where(token => text.Contains(token, StringComparison.Ordinal))
                     .Select(token => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/') + " -> " + token));
             }
             var installer = Path.Combine(editorRoot, "Ros2ForUnityRuntimeDefineInstaller.cs");
@@ -399,20 +398,6 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static IReadOnlyList<string> OptionalEditorForbiddenTokens()
             => OptionalEditorForbiddenTokenList;
-
-        private static bool IsSanctionedOptionalEditorMetadataToken(string path, string token, string text)
-        {
-            if (!String.Equals(token, "ros2cs", StringComparison.Ordinal)
-                || !HasMetadataOnlyRos2csIdentityVerifier(Path.GetDirectoryName(path) ?? string.Empty))
-            {
-                return false;
-            }
-
-            var relative = Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/');
-            var transaction = OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction";
-            return String.Equals(relative, transaction + ".cs", StringComparison.Ordinal)
-                   || relative.StartsWith(transaction + "/", StringComparison.Ordinal);
-        }
 
         private static bool HasMetadataOnlyRos2csIdentityVerifier(string editorRoot)
         {

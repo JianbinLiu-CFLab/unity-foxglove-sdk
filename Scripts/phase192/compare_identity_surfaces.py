@@ -1873,7 +1873,7 @@ def _initializer_digest(initializer: Path) -> str:
 _NAMESPACE_RISK_NAMES = frozenset({
     "__builtins__", "__import__", "builtins", "compile", "delattr", "eval",
     "exec", "getattr", "globals", "import_module", "locals", "setattr",
-    "vars",
+    "vars", "print",
 })
 _NAMESPACE_RISK_ATTRIBUTES = frozenset({
     "__dict__", "__getattribute__", "__setattr__", "__delattr__",
@@ -1883,52 +1883,99 @@ _NAMESPACE_RISK_ATTRIBUTES = frozenset({
 def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
     """Return stable AST fingerprints for namespace and import escape surfaces."""
     function_body_nodes: set[int] = set()
+    callables: dict[str, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda] = {}
+    aliases: dict[str, ast.AST] = {}
     for parent in ast.walk(tree):
         if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            function_body_nodes.update(
-                id(node)
-                for statement in parent.body
-                for node in ast.walk(statement)
-            )
+            function_body_nodes.update(id(node) for statement in parent.body for node in ast.walk(statement))
+            callables.setdefault(parent.name, parent)
         elif isinstance(parent, ast.Lambda):
             function_body_nodes.update(id(node) for node in ast.walk(parent.body))
+        elif isinstance(parent, ast.Assign):
+            for target in parent.targets:
+                if isinstance(target, ast.Name):
+                    aliases[target.id] = parent.value
+        elif isinstance(parent, ast.AnnAssign) and isinstance(parent.target, ast.Name) and parent.value is not None:
+            aliases[parent.target.id] = parent.value
 
     def import_time(node: ast.AST) -> bool:
         """Return whether a node executes while the module is imported."""
         return id(node) not in function_body_nodes
 
+    def resolve_target(node: ast.AST, seen: frozenset[str] = frozenset()) -> ast.AST:
+        """Resolve local aliases to their callable or imported target."""
+        if not isinstance(node, ast.Name) or node.id in seen:
+            return node
+        if node.id in callables:
+            return callables[node.id]
+        if node.id in aliases:
+            return resolve_target(aliases[node.id], seen | {node.id})
+        return node
+
+    def risky_target(node: ast.AST) -> bool:
+        """Recognize calls that can mutate or expose import-time process state."""
+        target = resolve_target(node)
+        if isinstance(target, ast.Name) and target.id in _NAMESPACE_RISK_NAMES:
+            return True
+        return (
+            isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "subprocess"
+            and target.attr in {"run", "Popen", "call", "check_call", "check_output"}
+        )
+
     signatures: set[str] = set()
+    seen_callables: set[int] = set()
+
+    def record_callable(target: ast.AST) -> None:
+        """Record risks reachable through a function called during import."""
+        target = resolve_target(target)
+        if not isinstance(target, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            return
+        target_id = id(target)
+        if target_id in seen_callables:
+            return
+        seen_callables.add(target_id)
+        for node in ast.walk(target):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and node is not target:
+                continue
+            if isinstance(node, ast.Call):
+                if risky_target(node.func):
+                    signatures.add(ast.dump(node, include_attributes=False))
+                else:
+                    record_callable(node.func)
+
     for node in ast.walk(tree):
-        risky = False
-        if isinstance(node, ast.Global):
-            risky = True
-        elif isinstance(node, ast.ImportFrom):
-            risky = (
+        if isinstance(node, ast.Call) and import_time(node):
+            if risky_target(node.func):
+                signatures.add(ast.dump(node, include_attributes=False))
+            else:
+                record_callable(node.func)
+        elif isinstance(node, ast.Global) and import_time(node):
+            signatures.add(ast.dump(node, include_attributes=False))
+        elif isinstance(node, ast.ImportFrom) and import_time(node):
+            if (
                 (node.module or "").split(".", 1)[0] in {"builtins", "__builtins__", "__builtin__"}
                 or any(alias.name in {"modules", "getattr", "setattr", "delattr", "import_module", "__import__"} for alias in node.names)
-            )
-        elif isinstance(node, ast.Name):
-            risky = node.id in _NAMESPACE_RISK_NAMES
-        elif isinstance(node, ast.Attribute):
-            risky = node.attr in _NAMESPACE_RISK_ATTRIBUTES
-        elif isinstance(node, ast.Call):
-            risky = (
-                isinstance(node.func, ast.Name)
-                and node.func.id in _NAMESPACE_RISK_NAMES
-            )
-        if risky:
-            signature = ast.dump(node, include_attributes=False)
-            signatures.add(signature)
-            if import_time(node):
-                signatures.add("import-time:" + signature)
+            ):
+                signatures.add(ast.dump(node, include_attributes=False))
+        elif isinstance(node, ast.Name) and import_time(node) and node.id in _NAMESPACE_RISK_NAMES:
+            signatures.add(ast.dump(node, include_attributes=False))
+        elif isinstance(node, ast.Attribute) and import_time(node) and node.attr in _NAMESPACE_RISK_ATTRIBUTES:
+            signatures.add(ast.dump(node, include_attributes=False))
     return frozenset(signatures)
-
 
 def _is_phase121_configuration_path(path: str | Path) -> bool:
     """Return whether path is the reviewed Phase121 compatibility module."""
-    return str(path).replace("\\", "/").endswith(
-        "Scripts/mcap/conformance/run_phase121_conformance/configuration.py"
+    target = (
+        "Scripts",
+        "mcap",
+        "conformance",
+        "run_phase121_conformance",
+        "configuration.py",
     )
+    parts = tuple(part for part in str(path).replace("\\", "/").split("/") if part)
+    return len(parts) >= len(target) and parts[-len(target):] == target
 
 _ENTRYPOINT_IMPORT_ROOTS = frozenset({"argparse", "sys", "unittest"})
 

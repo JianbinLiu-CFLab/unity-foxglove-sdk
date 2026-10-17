@@ -19,6 +19,7 @@ namespace Unity2Foxglove.Ros2Bridge
     /// Detached worker-reachable resource group. The public runtime shell may
     /// release this object after an in-place retirement transfer.
     /// </summary>
+    /// <remarks>Phase192 source sections: Ros2BridgeRuntime.ConnectionAndPreparation.cs, Ros2BridgeRuntime.QueueAndStats.cs, Ros2BridgeRuntime.RetirementAndNested.cs, Ros2BridgeRuntime.WorkerLifecycle.cs</remarks>
     internal sealed partial class Ros2BridgeWorkerLease :
         Components.IFoxRunDetachedRetirementLease
     {

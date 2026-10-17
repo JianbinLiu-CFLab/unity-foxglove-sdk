@@ -91,6 +91,7 @@ namespace Unity2Foxglove.Ros2Bridge
         }
     }
 
+    /// <remarks>Phase192 source sections: AdmissionAndWrites.cs, LifecycleAndAccounting.cs, StateAndConstruction.cs</remarks>
     internal sealed class Ros2BridgeOutboundWriteLease : IDisposable
     {
         private readonly Ros2BridgeOutboundScheduler _owner;

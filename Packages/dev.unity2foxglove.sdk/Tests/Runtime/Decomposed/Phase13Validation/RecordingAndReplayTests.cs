@@ -22,6 +22,11 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static partial class Phase13Validation
     {
+        /// <summary>
+        /// Verifies FoxgloveRuntime implements IRuntimeContext and a
+        /// session can be started after receiving the context via
+        /// <c>SetRuntimeContext</c>.
+        /// </summary>
         static void TestIruntimeContextIndirection()
         {
             var rt = new FoxgloveRuntime();
@@ -405,9 +410,5 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(f_uz[0]==fz_exp[0] && f_uz[1]==fz_exp[1] && f_uz[2]==fz_exp[2], "CoordRnd: UZ→F basis correct");
         }
 
-        /// <summary>
-        /// After three Stop/Start cycles, firing a replay message must
-        /// invoke the handler exactly once (no duplicate subscriptions).
-        /// </summary>
     }
 }

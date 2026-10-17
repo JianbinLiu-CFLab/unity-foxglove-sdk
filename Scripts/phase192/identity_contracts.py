@@ -485,21 +485,14 @@ def cpp_rows(path: str, text: str) -> list[list[str]]:
         if close_paren is None:
             return None
         end = close_paren + 1
-        suffix_depth = 0
-        while end < len(combined):
-            character = combined[end]
-            if character == "(":
-                suffix_depth += 1
-            elif character == ")" and suffix_depth:
-                suffix_depth -= 1
-            elif suffix_depth == 0 and character in "{:;":
-                break
-            end += 1
-        declaration = combined[:end]
+        body_marker = end
+        while body_marker < len(combined) and combined[body_marker] not in "{;":
+            body_marker += 1
+        declaration = combined[:body_marker]
         declaration = re.sub(r"\s+:\s*[^;{]*$", "", declaration)
         if name not in declaration:
             return None
-        return clean(declaration), combined[end:end + 1] == "{"
+        return clean(declaration), combined[body_marker:body_marker + 1] == "{"
 
     for number, line in enumerate(lines, 1):
         stripped = line.strip()

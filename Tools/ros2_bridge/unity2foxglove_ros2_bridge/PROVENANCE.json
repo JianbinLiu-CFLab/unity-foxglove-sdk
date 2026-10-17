@@ -426,7 +426,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs",
-      "sha256": "374baa211fbb3256047bb25a61899c5ed69daec01a93afce447c6e51f6087e9d",
+      "sha256": "2daddc6c2c629b410c4b18818308dd276625673f79951251470b570925f8cd2e",
       "classification": "original",
       "influence": "Original immutable C# protocol limit snapshot.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -454,7 +454,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
-      "sha256": "3307dc401d1a975d3ae0aee2fc749597f23803dda1fffa9c49688a85bcc65e8b",
+      "sha256": "44507b4049f9c89b1e56468e76ec35b7212b8f65d8f5a0a42d5096a9ea1c06a2",
       "classification": "original",
       "influence": "Original C# byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -609,7 +609,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol.cpp",
-      "sha256": "8d90d9f3fcdd2748833f0ea659b42307c2b446e8ecd22373da69032c4e29800d",
+      "sha256": "5c2494470370bec73e430c03e7d6e572dbec90a8467bdaf1c4bb00df31067344",
       "classification": "original",
       "influence": "Original C++ byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"

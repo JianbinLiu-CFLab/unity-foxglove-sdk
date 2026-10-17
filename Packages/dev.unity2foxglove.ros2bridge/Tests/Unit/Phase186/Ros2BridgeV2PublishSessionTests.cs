@@ -19,6 +19,7 @@ using Xunit;
 
 namespace Unity2Foxglove.Ros2Bridge.Tests
 {
+    /// <remarks>Phase192 source sections: V2SessionFramingTests.cs</remarks>
     public sealed partial class Ros2BridgeV2PublishSessionTests
     {
         [Fact]

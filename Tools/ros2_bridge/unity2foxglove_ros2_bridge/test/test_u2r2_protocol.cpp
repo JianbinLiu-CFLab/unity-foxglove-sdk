@@ -392,6 +392,3 @@ TEST(U2R2ProtocolV2, StrictDecoderRejectsEnvelopeUtf8DuplicateAndTrailingRoot)
   extra.push_back(0);
   ExpectProtocolError("invalid_frame", true, [&]() {decode_frame(extra);});
 }
-
-
-}

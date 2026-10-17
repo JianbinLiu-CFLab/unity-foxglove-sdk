@@ -13,6 +13,7 @@ using Unity.FoxgloveSDK.Editor;
 
 namespace Unity2Foxglove.Ros2Bridge.Editor
 {
+    /// <remarks>Phase192 source sections: Generation.cs, NamingAndUtilities.cs, Readers.cs, Shapes.cs, ValidationAndProjection.cs, Writers.cs</remarks>
     internal static partial class FoxRunBridgeSourceEmitter
     {
         private const string RosPackageName =

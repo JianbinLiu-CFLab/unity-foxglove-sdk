@@ -62,6 +62,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [InlineData("Phase134_30Validation.cs", "ReadRepoText")]
         [InlineData("Phase134_31Validation.cs", "ReadRepoText")]
         [InlineData("Phase164_42Validation.cs", "Read")]
+        [InlineData("Phase163_25Validation.cs", "ReadRepoText")]
+        [InlineData("Phase163_44Validation.cs", "Read")]
+        [InlineData("Phase105Validation.cs", "ReadRepoText")]
         public void RuntimeReadersDelegateToSplitAwareHelper(string filename, string readerName)
         {
             var source = CSharpSyntaxTree.ParseText(TestSources.Runtime(filename));
@@ -77,6 +80,37 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 invocation.Expression.ToString());
             var argument = Assert.Single(invocation.ArgumentList.Arguments);
             Assert.Equal("relativePath", argument.Expression.ToString());
+        }
+
+        [Fact]
+        public void FoxgloveLogHubSectionsStayWithinSourceSizeBudget()
+        {
+            var files = new[]
+            {
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/DeferredSourceChanges.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/LifecycleAndRegistration.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/PublishingAndEncoding.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/TransportSelection.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxgloveLogHub/ScanningAndDiagnostics.cs",
+            };
+
+            foreach (var file in files)
+            {
+                var lineCount = TestSources.Text(file).Split('\n').Length;
+                Assert.True(lineCount <= 500, file + " has " + lineCount + " lines.");
+            }
+        }
+
+        [Fact]
+        public void RegisteredCSharpSourceEnumerationIsRecursive()
+        {
+            var source = TestSources.Runtime("PhaseValidationSourceHelpers.cs");
+            var method = TestSources.Slice(
+                source,
+                "public static string ReadRegisteredCSharpSource",
+                "        public static string ReadSplitPythonSource");
+
+            Assert.Contains("SearchOption.AllDirectories", method, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -155,6 +189,17 @@ internal static class TestSources
                 "StatusChecks.cs",
                 "InstallWindows.cs",
             };
+            var actualSectionNames = Directory.GetFiles(
+                    sectionDirectory,
+                    "*.cs",
+                    SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            var expectedSectionNames = sectionNames
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(expectedSectionNames, actualSectionNames);
             var paths = new[]
                 {
                     Path.Combine(directory, "FoxgloveCameraPublisherEditor.cs"),
@@ -172,6 +217,17 @@ internal static class TestSources
             var directory = Path.Combine(RepoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime");
             var sectionDirectory = Path.Combine(directory, "Decomposed", "Program");
             var names = new[] { "ValidationExecution.cs", "LegacyTools.cs", "CiAndServer.cs" };
+            var actualNames = Directory.GetFiles(
+                    sectionDirectory,
+                    "*.cs",
+                    SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            var expectedNames = names
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(expectedNames, actualNames);
             var paths = new[] { Path.Combine(directory, "Program.cs") }
                 .Concat(names.Select(name => Path.Combine(sectionDirectory, name)))
                 .ToArray();

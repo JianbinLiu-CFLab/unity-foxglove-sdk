@@ -304,9 +304,4 @@ partial class Program
         return 1;
     }
 
-    /// <summary>
-    /// Executes every supplied validation and returns the names of all entries
-    /// that report a non-zero result. Kept as a small seam so the default-runner
-    /// no-early-return contract can be verified without launching the full lane.
-    /// </summary>
 }

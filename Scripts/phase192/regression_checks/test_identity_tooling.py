@@ -3,6 +3,9 @@ from __future__ import annotations
 import ast
 import hashlib
 import io
+import os
+import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -88,6 +91,16 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertEqual(2, len(rows))
         self.assertEqual(["Widget", "~Widget"], [row[2] for row in rows])
 
+    def test_cpp_surface_does_not_record_constructor_body_calls(self) -> None:
+        """Constructor initializer lists do not expose body calls as declarations."""
+        source = (
+            "Widget::Widget(int value) : value_(value) {\n"
+            "    Initialize();\n"
+            "}\n"
+        )
+        rows = identity_contracts.cpp_rows("fixture.cpp", source)
+        self.assertEqual(["Widget"], [row[2] for row in rows])
+
     def test_source_sensitivity_uses_real_source_mutations(self) -> None:
         """Sensitivity proof must expose real source mutation helpers."""
         with tempfile.TemporaryDirectory() as temp:
@@ -133,6 +146,35 @@ class IdentityToolingTests(unittest.TestCase):
                 sensitivity_proof.frozen_identity_mutation_result(
                     "cpp", source, lambda text: text.replace("Exported", "Renamed", 1), root / "missing", root
                 )
+
+    def test_frozen_identity_compares_only_target_baseline_rows(self) -> None:
+        """Frozen identity checks ignore unrelated files but reject target mutations."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "fixture.cpp"
+            original = "int Exported(int value) { return value; }\n"
+            source.write_text(original, encoding="utf-8")
+            identity = root / "identity"
+            identity.mkdir()
+            rows = identity_contracts.cpp_rows("fixture.cpp", original)
+            rows.append(["other.cpp", "1", "Other", "int Other()"])
+            identity_contracts.write_rows(
+                identity / "cpp-symbol-surface.tsv",
+                ["path", "line", "symbol", "declaration"],
+                rows,
+            )
+            self.assertEqual(
+                0,
+                sensitivity_proof.frozen_identity_mutation_result(
+                    "cpp", source, lambda text: text, identity, root
+                ),
+            )
+            self.assertEqual(
+                1,
+                sensitivity_proof.frozen_identity_mutation_result(
+                    "cpp", source, lambda text: text.replace("Exported", "Renamed", 1), identity, root
+                ),
+            )
 
     def test_compare_gate_rejects_removed_row(self) -> None:
         """Phase192 test compare gate rejects removed row."""
@@ -3247,6 +3289,11 @@ class IdentityToolingTests(unittest.TestCase):
                 "Scripts/other/configuration.py"
             )
         )
+        self.assertFalse(
+            compare_identity_surfaces._is_phase121_configuration_path(
+                "Scripts/otherScripts/mcap/conformance/run_phase121_conformance/configuration.py"
+            )
+        )
 
     def test_workflow_keeps_identity_checker_trusted_base_only(self) -> None:
         """The compatibility gate must not overwrite the trusted base checker."""
@@ -3280,6 +3327,39 @@ class IdentityToolingTests(unittest.TestCase):
                 "VALUE = '_Phase192PackageModule'\n"
             )
         )
+
+    def test_namespace_gate_rejects_import_time_local_subprocess_call(self) -> None:
+        """Import-time calls hidden behind a local function remain visible to the gate."""
+        tree = ast.parse("import subprocess\ndef hidden():\n    subprocess.run([\"bad\"])\nhidden()")
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("subprocess" in item and "run" in item for item in risks))
+
+    def test_namespace_gate_rejects_import_time_print(self) -> None:
+        """Top-level output is an observable import-time side effect."""
+        tree = ast.parse("print(\"unexpected\")")
+        self.assertTrue(compare_identity_surfaces._namespace_risk_signatures(tree))
+
+    def test_namespace_gate_rejects_side_effectful_decorator(self) -> None:
+        """Decorator calls execute while a facade is imported."""
+        tree = ast.parse("@subprocess.run()\ndef entry():\n    pass")
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("subprocess" in item and "run" in item for item in risks))
+
+    def test_namespace_gate_rejects_import_time_lambda_call(self) -> None:
+        """Import-time calls through lambda aliases remain visible to the gate."""
+        tree = ast.parse("callback = lambda: print(\"unexpected\")\ncallback()")
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("print" in item for item in risks))
+
+    def test_namespace_gate_rejects_import_time_function_alias_call(self) -> None:
+        """Import-time calls through function aliases remain visible to the gate."""
+        tree = ast.parse(
+            "def callback():\n    print(\"unexpected\")\n"
+            "alias = callback\n"
+            "alias()"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("print" in item for item in risks))
 
 if __name__ == "__main__":
     unittest.main()

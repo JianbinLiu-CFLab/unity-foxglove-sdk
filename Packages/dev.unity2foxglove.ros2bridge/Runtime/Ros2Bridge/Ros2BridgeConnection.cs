@@ -15,6 +15,7 @@ using Components = Unity.FoxgloveSDK.Components;
 
 namespace Unity2Foxglove.Ros2Bridge
 {
+    /// <remarks>Phase192 source sections: FaultAndDisposal.cs, RequestTypes.cs, SessionLifecycle.cs, WorkerLoops.cs</remarks>
     internal sealed partial class Ros2BridgeConnection :
         IDisposable,
         IRos2BridgeContractWireController

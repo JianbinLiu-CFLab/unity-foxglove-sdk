@@ -5,7 +5,6 @@
 // Purpose: Phase 163-25 validation for Inspector UI lifecycle and state guards.
 
 using System;
-using System.IO;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -138,24 +137,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
-
-        private static string RepoPath(string relativePath)
-        {
-            var root = AppContext.BaseDirectory;
-            for (var i = 0; i < 8; i++)
-            {
-                var candidate = Path.GetFullPath(Path.Combine(root, relativePath));
-                if (File.Exists(candidate))
-                    return candidate;
-                var parent = Directory.GetParent(root);
-                if (parent == null)
-                    break;
-                root = parent.FullName;
-            }
-
-            throw new FileNotFoundException("Could not locate repository file: " + relativePath);
-        }
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static void Check(bool condition, string label)
         {

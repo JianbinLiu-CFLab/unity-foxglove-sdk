@@ -367,6 +367,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("TaskScheduler.Default", source, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void DecomposedSourceReaderFailsClosedWithoutACompleteMarker()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Harness/TestSources.cs");
+
+            Assert.Contains("throw new InvalidDataException", source, StringComparison.Ordinal);
+            Assert.Contains("marker == null", source, StringComparison.Ordinal);
+        }
+
         private static string Ros2BridgeConnectionSource()
         {
             var root = "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/";

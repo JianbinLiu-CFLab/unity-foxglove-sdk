@@ -12,6 +12,7 @@ using System.Threading;
 
 namespace Unity2Foxglove.Ros2Bridge.Protocol
 {
+    /// <remarks>Phase192 source sections: ResourceAccounting.cs</remarks>
     public sealed class U2R2ProtocolLimits
     {
         internal const int MaximumRosTopicNameLength = 255;

@@ -17,6 +17,7 @@ using Xunit;
 
 namespace Unity2Foxglove.Ros2Bridge.Tests
 {
+    /// <remarks>Phase192 source sections: V2ReconnectRuntimeTests.cs</remarks>
     public sealed partial class Ros2BridgeV2LiveRuntimeTests
     {
         private const string Topic = "/phase186/v2/live_runtime";

@@ -75,10 +75,5 @@ namespace Unity.FoxgloveSDK.Tests
 
         // ── IRuntimeContext indirection ──
 
-        /// <summary>
-        /// Verifies FoxgloveRuntime implements IRuntimeContext and a
-        /// session can be started after receiving the context via
-        /// <c>SetRuntimeContext</c>.
-        /// </summary>
     }
 }

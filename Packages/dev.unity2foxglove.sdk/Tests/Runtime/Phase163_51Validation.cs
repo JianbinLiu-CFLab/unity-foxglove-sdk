@@ -78,7 +78,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool RepoRootValidation(string fileName)
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/" + fileName);
-            return source.Contains("Phase16Validation.FindRepoRoot()", StringComparison.Ordinal)
+            return (source.Contains("Phase16Validation.FindRepoRoot()", StringComparison.Ordinal)
+                    || source.Contains("PhaseValidationSourceHelpers.FindRequiredRepoRoot()", StringComparison.Ordinal))
                    && !source.Contains("AppContext.BaseDirectory, \"..\", \"..\", \"..\", \"..\"", StringComparison.Ordinal);
         }
 

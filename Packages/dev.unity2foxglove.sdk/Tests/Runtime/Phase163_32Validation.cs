@@ -301,12 +301,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "UNITY_EDITOR");
 
         private static string ReadRepoText(string relativePath)
-        {
-            var path = Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return relativePath.EndsWith(".py", StringComparison.Ordinal)
-                ? PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(path)
-                : File.ReadAllText(path);
-        }
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static void Check(bool condition, string label)
         {
