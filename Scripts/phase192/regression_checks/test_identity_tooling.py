@@ -3294,6 +3294,11 @@ class IdentityToolingTests(unittest.TestCase):
                 "Scripts/otherScripts/mcap/conformance/run_phase121_conformance/configuration.py"
             )
         )
+        self.assertFalse(
+            compare_identity_surfaces._is_phase121_configuration_path(
+                "C:/other/Scripts/mcap/conformance/run_phase121_conformance/configuration.py"
+            )
+        )
 
     def test_workflow_keeps_identity_checker_trusted_base_only(self) -> None:
         """The compatibility gate must not overwrite the trusted base checker."""
@@ -3378,6 +3383,23 @@ class IdentityToolingTests(unittest.TestCase):
         tree = ast.parse("import subprocess as sp\nsp.run([\"bad\"])")
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertTrue(any("run" in item for item in risks))
+
+    def test_namespace_gate_rejects_local_os_system_call(self) -> None:
+        """Import-time calls through a local os.system helper remain visible."""
+        tree = ast.parse("import os\ndef helper():\n    os.system(\"bad\")\nhelper()")
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("system" in item for item in risks))
+
+    def test_namespace_gate_rejects_dynamic_subprocess_dispatch(self) -> None:
+        """Dynamic subprocess dispatch and executable annotations remain visible."""
+        sources = (
+            'import subprocess\ngetattr(subprocess, "run")(["bad"])\n',
+            'import subprocess\nx: subprocess.run(["bad"]) = 1\n',
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertTrue(risks)
 
     def test_phase184_owner_callers_use_the_qualified_import_path(self) -> None:
         """Every Phase184 owner caller uses the single supported qualified import path."""
