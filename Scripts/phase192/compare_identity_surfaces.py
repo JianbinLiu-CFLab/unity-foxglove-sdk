@@ -2391,6 +2391,22 @@ def _namespace_risk_signatures(
         StatementYieldVisitor().visit(statement)
         return first
 
+    def definitely_nonempty_iterable(node: ast.AST) -> bool:
+        """Return whether a loop iterable is statically known to execute once."""
+        try:
+            value = ast.literal_eval(node)
+        except (TypeError, ValueError, SyntaxError):
+            value = None
+        if isinstance(value, (str, bytes, tuple, list, set, frozenset, dict)):
+            return bool(value)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "range":
+            try:
+                arguments = tuple(ast.literal_eval(argument) for argument in node.args)
+                return bool(range(*arguments))
+            except (TypeError, ValueError, SyntaxError):
+                return False
+        return False
+
     def scan_prefix_expression(
         node: ast.AST,
         env: dict[str, AliasValue],
@@ -2455,7 +2471,7 @@ def _namespace_risk_signatures(
                 evaluate_annotations=evaluate_annotations,
                 deferred_mode=deferred_mode,
             )
-            if body_stopped:
+            if body_stopped and definitely_nonempty_iterable(statement.iter):
                 return True
             if not statement.orelse:
                 return False
@@ -2471,7 +2487,7 @@ def _namespace_risk_signatures(
                 evaluate_annotations=evaluate_annotations,
                 deferred_mode=deferred_mode,
             )
-            if body_stopped:
+            if body_stopped and constant_truth(statement.test) is True:
                 return True
             if not statement.orelse:
                 return False
@@ -2497,6 +2513,13 @@ def _namespace_risk_signatures(
                 deferred_mode=deferred_mode,
             )
             if body_stopped:
+                if statement.finalbody:
+                    scan_prefix_sequence(
+                        statement.finalbody,
+                        env,
+                        evaluate_annotations=evaluate_annotations,
+                        deferred_mode=deferred_mode,
+                    )
                 return True
             handlers_stopped = True
             for handler in statement.handlers:
@@ -2616,10 +2639,19 @@ def _namespace_risk_signatures(
             record_callable(node.func, env, node, deferred_mode=deferred_mode)
             nested_mode = combine_deferred_modes(deferred_mode, driver_mode(node.func, env))
             for index, argument in enumerate(node.args):
+                argument_mode = (
+                    nested_mode
+                    if index == 0
+                    and isinstance(
+                        argument,
+                        (ast.Call, ast.Name, ast.Attribute, ast.GeneratorExp, ast.YieldFrom),
+                    )
+                    else _DEFERRED_NONE
+                )
                 scan_node(
                     argument,
                     env,
-                    deferred_mode=nested_mode if index == 0 else _DEFERRED_NONE,
+                    deferred_mode=argument_mode,
                 )
             for keyword in node.keywords:
                 scan_node(keyword.value, env)
@@ -2628,18 +2660,45 @@ def _namespace_risk_signatures(
             scan_node(node.value, env, deferred_mode=_DEFERRED_COROUTINE_COMPLETION)
             return
         if isinstance(node, ast.GeneratorExp):
-            scan_node(node.elt, env, deferred_mode=deferred_mode)
+            scan_node(node.elt, env)
             for generator in node.generators:
                 scan_node(generator.iter, env, deferred_mode=deferred_mode)
                 for condition in generator.ifs:
-                    scan_node(condition, env, deferred_mode=deferred_mode)
+                    scan_node(condition, env)
+            return
+        if isinstance(node, ast.Expr):
+            has_yield = any(
+                isinstance(candidate, (ast.Yield, ast.YieldFrom))
+                for candidate in ast.walk(node.value)
+            )
+            scan_node(
+                node.value,
+                env,
+                deferred_mode=deferred_mode if has_yield else _DEFERRED_NONE,
+            )
             return
         if isinstance(node, ast.Attribute) and node.attr in _NAMESPACE_RISK_ATTRIBUTES:
             signatures.add(ast.dump(node, include_attributes=False))
         elif isinstance(node, ast.Name) and node.id in _NAMESPACE_RISK_NAMES:
             signatures.add(ast.dump(node, include_attributes=False))
+        if deferred_mode != _DEFERRED_NONE and isinstance(node, (ast.Name, ast.Attribute)):
+            resolved = resolve_target(node, env)
+            for candidate in candidate_values(resolved):
+                candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+                if isinstance(candidate_node, ast.GeneratorExp):
+                    scan_node(candidate_node, env, deferred_mode=deferred_mode)
+                    return
+                if isinstance(candidate_node, ast.Call):
+                    target = resolve_target(candidate_node.func, env)
+                    if any(
+                        isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and contains_yield(function)
+                        for function in candidate_values(target)
+                    ):
+                        scan_node(candidate_node, env, deferred_mode=deferred_mode)
+                        return
         for child in ast.iter_child_nodes(node):
-            scan_node(child, env, deferred_mode=deferred_mode)
+            scan_node(child, env)
 
     def constant_truth(node: ast.AST) -> bool | None:
         """Evaluate literal branch conditions without executing arbitrary code."""
@@ -2708,16 +2767,32 @@ def _namespace_risk_signatures(
                 and evaluate_annotations
                 and not future_annotations
             ):
-                scan_node(statement.annotation, env, deferred_mode=deferred_mode)
+                scan_node(statement.annotation, env)
             if statement.value is not None:
                 value = resolve_target(statement.value, env)
-                scan_node(statement.value, env, deferred_mode=deferred_mode)
+                value_has_yield = any(
+                    isinstance(candidate, (ast.Yield, ast.YieldFrom))
+                    for candidate in ast.walk(statement.value)
+                )
+                scan_node(
+                    statement.value,
+                    env,
+                    deferred_mode=deferred_mode if value_has_yield else _DEFERRED_NONE,
+                )
             targets = statement.targets if isinstance(statement, ast.Assign) else (statement.target,)
             for target in targets:
                 bind_assignment(target, value, env)
             return
         if isinstance(statement, ast.AugAssign):
-            scan_node(statement.value, env, deferred_mode=deferred_mode)
+            value_has_yield = any(
+                isinstance(candidate, (ast.Yield, ast.YieldFrom))
+                for candidate in ast.walk(statement.value)
+            )
+            scan_node(
+                statement.value,
+                env,
+                deferred_mode=deferred_mode if value_has_yield else _DEFERRED_NONE,
+            )
             bind_assignment(statement.target, None, env)
             return
         if isinstance(statement, (ast.For, ast.AsyncFor)):
@@ -2736,7 +2811,7 @@ def _namespace_risk_signatures(
             )
             return
         if isinstance(statement, (ast.If, ast.While)):
-            scan_node(statement.test, env, deferred_mode=deferred_mode)
+            scan_node(statement.test, env)
             truth = constant_truth(statement.test)
             if truth is True:
                 scan_sequence(
@@ -2772,7 +2847,7 @@ def _namespace_risk_signatures(
             return
         if isinstance(statement, (ast.With, ast.AsyncWith)):
             for item in statement.items:
-                scan_node(item.context_expr, env, deferred_mode=deferred_mode)
+                scan_node(item.context_expr, env)
                 if item.optional_vars is not None:
                     bind_assignment(item.optional_vars, None, env)
             scan_sequence(
@@ -2811,7 +2886,15 @@ def _namespace_risk_signatures(
             return
         if isinstance(statement, ast.Global):
             signatures.add(ast.dump(statement, include_attributes=False))
-        scan_node(statement, env, deferred_mode=deferred_mode)
+        statement_has_yield = any(
+            isinstance(candidate, (ast.Yield, ast.YieldFrom))
+            for candidate in ast.walk(statement)
+        )
+        scan_node(
+            statement,
+            env,
+            deferred_mode=deferred_mode if statement_has_yield else _DEFERRED_NONE,
+        )
 
     def scan_sequence(
         statements: list[ast.stmt],

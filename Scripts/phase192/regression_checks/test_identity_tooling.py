@@ -3885,7 +3885,7 @@ class IdentityToolingTests(unittest.TestCase):
         )
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertFalse(any("try-else-tail" in item for item in risks))
-        self.assertFalse(any("try-finally-tail" in item for item in risks))
+        self.assertTrue(any("try-finally-tail" in item for item in risks))
 
     def test_namespace_gate_skips_loop_continuations_after_first_yield(self) -> None:
         """Loop else and post-loop code are deferred after a yielded value."""
@@ -3911,6 +3911,33 @@ class IdentityToolingTests(unittest.TestCase):
             with self.subTest(source=source):
                 risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
                 self.assertFalse(any("tail" in item for item in risks))
+
+    def test_namespace_gate_scans_empty_loop_paths_after_possible_yield(self) -> None:
+        """Possibly empty loops must retain the path that reaches following code."""
+        sources = (
+            "import subprocess\n"
+            "def generator(items):\n"
+            "    for item in items:\n"
+            "        yield item\n"
+            "    subprocess.run([\"empty-for-after\"])\n"
+            "next(generator([]))\n",
+            "import subprocess\n"
+            "def generator():\n"
+            "    for item in []:\n"
+            "        yield item\n"
+            "    subprocess.run([\"zero-for-after\"])\n"
+            "next(generator())\n",
+            "import subprocess\n"
+            "def generator(flag):\n"
+            "    while flag:\n"
+            "        yield 1\n"
+            "    subprocess.run([\"empty-while-after\"])\n"
+            "next(generator(False))\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertTrue(any("after" in item for item in risks))
 
     def test_namespace_gate_scans_all_pathlib_mutators(self) -> None:
         """Path link and permission mutators remain import-time filesystem risks."""
@@ -3938,6 +3965,38 @@ class IdentityToolingTests(unittest.TestCase):
                 )
                 risks = compare_identity_surfaces._namespace_risk_signatures(tree)
                 self.assertTrue(any("generator-expression-before" in item for item in risks))
+
+    def test_namespace_gate_does_not_drive_generators_nested_in_containers(self) -> None:
+        """Constructing a container of generator objects does not execute their bodies."""
+        sources = (
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"container-list\"])\n"
+            "    yield 1\n"
+            "list([inner()])\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"container-tuple\"])\n"
+            "    yield 1\n"
+            "next((inner(),))\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertFalse(any("container-" in item for item in risks))
+
+    def test_namespace_gate_drives_generator_object_aliases(self) -> None:
+        """Eager consumers drive generator objects retained in a simple alias."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"generator-alias\"])\n"
+            "    yield 1\n"
+            "iterator = inner()\n"
+            "list(iterator)\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("generator-alias" in item for item in risks))
 
     def test_namespace_gate_executes_bare_decorator_parameters(self) -> None:
         """Bare decorators are calls and their parameter-driven bodies execute."""
