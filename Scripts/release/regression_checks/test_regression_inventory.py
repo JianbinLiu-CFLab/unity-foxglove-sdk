@@ -335,6 +335,7 @@ jobs:
         ]
         expected = {
             "Scripts.mcap.regression_checks.test_mcap_time_sync",
+            "Scripts.package.regression_checks.test_validate_source_generator_dll_facade",
             "Scripts.smoke.foxrun.regression_checks.test_atomic_publication",
             "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_manual",
             "Scripts.smoke.foxrun.regression_checks.test_phase189_component_messagepack_probe",
