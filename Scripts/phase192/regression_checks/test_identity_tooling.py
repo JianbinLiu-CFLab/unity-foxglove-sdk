@@ -3810,6 +3810,119 @@ class IdentityToolingTests(unittest.TestCase):
                 risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
                 self.assertTrue(risks)
 
+    def test_namespace_gate_scans_after_partial_generator_branch_yield(self) -> None:
+        """A branch-local yield must not hide a later import-time path."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator(flag):\n"
+            "    if flag:\n"
+            "        yield 1\n"
+            "    else:\n"
+            "        pass\n"
+            "    subprocess.run([\"after-branch-yield\"])\n"
+            "next(generator(False))\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("after-branch-yield" in item for item in risks))
+
+    def test_namespace_gate_propagates_first_yield_through_nested_for(self) -> None:
+        """A generator consumed by a first-yield loop inherits deferred mode."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"nested-before-yield\"])\n"
+            "    yield 1\n"
+            "def outer():\n"
+            "    for value in inner():\n"
+            "        yield value\n"
+            "next(outer())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("nested-before-yield" in item for item in risks))
+
+    def test_namespace_gate_propagates_full_mode_through_yield_from(self) -> None:
+        """Full consumers must drive yield-from delegates to completion."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    yield 1\n"
+            "    subprocess.run([\"yield-from-tail\"])\n"
+            "def outer():\n"
+            "    yield from inner()\n"
+            "list(outer())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("yield-from-tail" in item for item in risks))
+
+    def test_namespace_gate_executes_bare_decorator_parameters(self) -> None:
+        """Bare decorators are calls and their parameter-driven bodies execute."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def decorator(function):\n"
+            "    function()\n"
+            "def decorated():\n"
+            "    subprocess.run([\"bare-decorator-body\"])\n"
+            "@decorator\n"
+            "def entry():\n"
+            "    decorated()\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("bare-decorator-body" in item for item in risks))
+
+    def test_namespace_gate_executes_bare_class_decorator_parameters(self) -> None:
+        """Bare class decorators are also calls with the decorated object argument."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def decorator(cls):\n"
+            "    subprocess.run([\"bare-class-decorator\"])\n"
+            "    return cls\n"
+            "@decorator\n"
+            "class Entry:\n"
+            "    pass\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("bare-class-decorator" in item for item in risks))
+
+    def test_namespace_gate_scans_path_mutators_inside_called_helpers(self) -> None:
+        """Path mutators beyond open remain import-time filesystem risks."""
+        for method in ("touch", "write_text", "write_bytes", "unlink", "mkdir"):
+            with self.subTest(method=method):
+                tree = ast.parse(
+                    "from pathlib import Path\n"
+                    "def initialize():\n"
+                    f"    Path(\"side-effect\").{method}()\n"
+                    "initialize()\n"
+                )
+                risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+                self.assertTrue(risks)
+
+    def test_namespace_gate_scans_all_eager_generator_consumers(self) -> None:
+        """Eager built-in consumers must include min, max, any and all."""
+        for consumer in ("min", "max", "any", "all"):
+            with self.subTest(consumer=consumer):
+                tree = ast.parse(
+                    "import subprocess\n"
+                    "def generator():\n"
+                    "    yield 1\n"
+                    f"    subprocess.run([\"{consumer}-tail\"])\n"
+                    f"{consumer}(generator())\n"
+                )
+                risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+                self.assertTrue(any(f"{consumer}-tail" in item for item in risks))
+
+    def test_namespace_gate_preserves_conditional_sequence_candidates(self) -> None:
+        """Conditional tuple destructuring retains every callable candidate."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def helper():\n"
+            "    subprocess.run([\"sequence-helper\"])\n"
+            "pair = (helper, subprocess.run) if flag else (subprocess.run, helper)\n"
+            "a, b = pair\n"
+            "a([\"sequence-call\"])\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("sequence-helper" in item for item in risks))
+
     def test_generated_section_rejects_resolved_import_time_risks(self) -> None:
         """Generated sections reject aliases that resolve to import-time side effects."""
         sources = (
