@@ -102,4 +102,4 @@ def _run_child(command: Sequence[str], *, root: Path, runner: Callable[..., subp
     if getattr(result, "returncode", 1) != 0:
         raise _inspection.AddonRefreshError("repair-phase181-add-on-command")
 
-__all__ = [name for name in globals() if not name.startswith("__")]
+__all__ = ["build_command", "sync_command", "validation_command"]
