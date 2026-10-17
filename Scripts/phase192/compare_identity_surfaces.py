@@ -953,6 +953,7 @@ def _validate_namespace_access(
     path: str,
     *,
     reject_module_registry: bool = False,
+    repository_root: Path | None = None,
 ) -> None:
     """Internal helper for _validate_namespace_access."""
     parents: dict[int, ast.AST] = {}
@@ -1534,7 +1535,7 @@ def _validate_namespace_access(
                 raise ValueError(f"Unsupported namespace escape in {path}")
         if isinstance(node, ast.Global) and any(not name.startswith("_") for name in node.names):
             if not (
-                _is_phase121_configuration_path(path)
+                _is_phase121_configuration_path(path, repository_root)
                 and set(node.names) <= {"OFFICIAL_ROOT", "OFFICIAL_CONFORMANCE"}
             ):
                 raise ValueError(f"Unsupported public global binding in {path}")
@@ -1786,6 +1787,7 @@ def _section_exports(
     reject_conditional: bool = True,
     reject_module_registry: bool = True,
     validate_namespace: bool = True,
+    repository_root: Path | None = None,
 ) -> frozenset[str]:
     """Internal helper for _section_exports."""
     tree = _parse_source(source, path)
@@ -1814,6 +1816,7 @@ def _section_exports(
             allowed_nodes,
             path,
             reject_module_registry=reject_module_registry,
+            repository_root=repository_root,
         )
     for node in ast.walk(tree):
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -1879,11 +1882,45 @@ _NAMESPACE_RISK_ATTRIBUTES = frozenset({
     "__dict__", "__getattribute__", "__setattr__", "__delattr__",
     "f_globals", "f_locals", "import_module", "modules", "_getframe",
 })
+_NAMESPACE_RISK_MODULE_ATTRIBUTES = {
+    "builtins": frozenset(_NAMESPACE_RISK_NAMES),
+    "os": frozenset({
+        "chmod", "mkdir", "open", "popen", "remove", "rename", "replace",
+        "rmdir", "system", "unlink",
+    }),
+    "shutil": frozenset({"copy", "copy2", "copytree", "make_archive", "move", "rmtree"}),
+    "subprocess": frozenset({"Popen", "call", "check_call", "check_output", "run"}),
+}
 
-def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
+def _namespace_risk_signatures(
+    tree: ast.AST,
+    *,
+    allow_public_globals: bool = False,
+) -> frozenset[str]:
     """Return stable AST fingerprints for namespace and import escape surfaces."""
     signatures: set[str] = set()
     seen_callables: set[tuple[int, tuple[tuple[str, str], ...]]] = set()
+    allowed_public_global_calls: set[int] = set()
+    if allow_public_globals and isinstance(tree, ast.Module):
+        for statement in tree.body:
+            targets = (
+                statement.targets
+                if isinstance(statement, ast.Assign)
+                else (statement.target,)
+                if isinstance(statement, ast.AnnAssign)
+                else ()
+            )
+            if any(
+                isinstance(target, ast.Name) and target.id == "__all__"
+                for target in targets
+            ) and _is_public_globals_comprehension(statement.value):
+                allowed_public_global_calls.update(
+                    id(node)
+                    for node in ast.walk(statement.value)
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "globals"
+                )
     class FrozenAlias:
         """Preserve the AST object captured by an alias assignment."""
 
@@ -1991,12 +2028,9 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
         if isinstance(target, ast.Attribute):
             if target.attr in _NAMESPACE_RISK_ATTRIBUTES:
                 return True
-            if isinstance(target.value, ast.Name) and target.value.id == "os" and target.attr == "system":
-                return True
             return (
                 isinstance(target.value, ast.Name)
-                and target.value.id == "subprocess"
-                and target.attr in {"run", "Popen", "call", "check_call", "check_output"}
+                and target.attr in _NAMESPACE_RISK_MODULE_ATTRIBUTES.get(target.value.id, ())
             )
         return False
 
@@ -2176,7 +2210,7 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             if isinstance(candidate_node, ast.Lambda):
                 scan_node(candidate_node.body, local_env)
             else:
-                scan_sequence(candidate_node.body, local_env)
+                scan_sequence(candidate_node.body, local_env, evaluate_annotations=False)
 
     def scan_node(
         node: ast.AST,
@@ -2193,6 +2227,8 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             inspect_definition(node, env)
             return
         if isinstance(node, ast.Call):
+            if id(node) in allowed_public_global_calls:
+                return
             if risky_target(node.func, env):
                 signatures.add(ast.dump(node, include_attributes=False))
             else:
@@ -2234,7 +2270,12 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
         for name in names:
             env[name] = merge_values(*(branch.get(name) for branch in branches))
 
-    def scan_statement(statement: ast.stmt, env: dict[str, AliasValue]) -> None:
+    def scan_statement(
+        statement: ast.stmt,
+        env: dict[str, AliasValue],
+        *,
+        evaluate_annotations: bool = True,
+    ) -> None:
         """Scan one statement in execution order and update its scope bindings."""
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
             inspect_definition(statement, env)
@@ -2248,7 +2289,7 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             for keyword in statement.keywords:
                 scan_node(keyword.value, env)
             class_env = dict(env)
-            scan_sequence(statement.body, class_env)
+            scan_sequence(statement.body, class_env, evaluate_annotations=True)
             env[statement.name] = statement
             return
         if isinstance(statement, (ast.Import, ast.ImportFrom)):
@@ -2261,7 +2302,12 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             return
         if isinstance(statement, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
             value = None
-            if isinstance(statement, ast.AnnAssign) and statement.annotation is not None and not future_annotations:
+            if (
+                isinstance(statement, ast.AnnAssign)
+                and statement.annotation is not None
+                and evaluate_annotations
+                and not future_annotations
+            ):
                 scan_node(statement.annotation, env)
             if statement.value is not None:
                 value = resolve_target(statement.value, env)
@@ -2276,22 +2322,22 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             return
         if isinstance(statement, (ast.For, ast.AsyncFor)):
             scan_node(statement.iter, env, execute_deferred=True)
-            scan_sequence(statement.body, env)
-            scan_sequence(statement.orelse, env)
+            scan_sequence(statement.body, env, evaluate_annotations=evaluate_annotations)
+            scan_sequence(statement.orelse, env, evaluate_annotations=evaluate_annotations)
             return
         if isinstance(statement, (ast.If, ast.While)):
             scan_node(statement.test, env)
             truth = constant_truth(statement.test)
             if truth is True:
-                scan_sequence(statement.body, env)
+                scan_sequence(statement.body, env, evaluate_annotations=evaluate_annotations)
                 return
             if truth is False:
-                scan_sequence(statement.orelse, env)
+                scan_sequence(statement.orelse, env, evaluate_annotations=evaluate_annotations)
                 return
             body_env = dict(env)
             else_env = dict(env)
-            scan_sequence(statement.body, body_env)
-            scan_sequence(statement.orelse, else_env)
+            scan_sequence(statement.body, body_env, evaluate_annotations=evaluate_annotations)
+            scan_sequence(statement.orelse, else_env, evaluate_annotations=evaluate_annotations)
             merge_branch_environments(env, (body_env, else_env))
             return
         if isinstance(statement, (ast.With, ast.AsyncWith)):
@@ -2299,23 +2345,28 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
                 scan_node(item.context_expr, env)
                 if item.optional_vars is not None:
                     bind_assignment(item.optional_vars, None, env)
-            scan_sequence(statement.body, env)
+            scan_sequence(statement.body, env, evaluate_annotations=evaluate_annotations)
             return
         if isinstance(statement, ast.Try):
-            scan_sequence(statement.body, env)
+            scan_sequence(statement.body, env, evaluate_annotations=evaluate_annotations)
             for handler in statement.handlers:
-                scan_sequence(handler.body, dict(env))
-            scan_sequence(statement.orelse, env)
-            scan_sequence(statement.finalbody, env)
+                scan_sequence(handler.body, dict(env), evaluate_annotations=evaluate_annotations)
+            scan_sequence(statement.orelse, env, evaluate_annotations=evaluate_annotations)
+            scan_sequence(statement.finalbody, env, evaluate_annotations=evaluate_annotations)
             return
         if isinstance(statement, ast.Global):
             signatures.add(ast.dump(statement, include_attributes=False))
         scan_node(statement, env)
 
-    def scan_sequence(statements: list[ast.stmt], env: dict[str, AliasValue]) -> None:
+    def scan_sequence(
+        statements: list[ast.stmt],
+        env: dict[str, AliasValue],
+        *,
+        evaluate_annotations: bool = True,
+    ) -> None:
         """Scan statements in source order within one lexical scope."""
         for statement in statements:
-            scan_statement(statement, env)
+            scan_statement(statement, env, evaluate_annotations=evaluate_annotations)
 
     if isinstance(tree, ast.Module):
         scan_sequence(tree.body, {})
@@ -2323,7 +2374,10 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
         scan_node(tree, {})
     return frozenset(signatures)
 
-def _is_phase121_configuration_path(path: str | Path) -> bool:
+def _is_phase121_configuration_path(
+    path: str | Path,
+    repository_root: Path | None = None,
+) -> bool:
     """Return whether path is the reviewed Phase121 compatibility module."""
     target = (
         "Scripts",
@@ -2333,6 +2387,16 @@ def _is_phase121_configuration_path(path: str | Path) -> bool:
         "configuration.py",
     )
     candidate = Path(str(path).replace("\\", "/"))
+    if repository_root is not None:
+        try:
+            root = Path(repository_root).resolve()
+            candidate_path = candidate if candidate.is_absolute() else root / candidate
+            relative = candidate_path.resolve().relative_to(root)
+        except OSError:
+            return False
+        except ValueError:
+            return False
+        return tuple(relative.parts) == target
     if candidate.is_absolute():
         try:
             return candidate.resolve() == (Path(__file__).resolve().parents[2] / Path(*target)).resolve()
@@ -2410,6 +2474,7 @@ def _entrypoint_contract(
     allowed_relative_modules: frozenset[str] | None = None,
     *,
     reject_conditional: bool = True,
+    repository_root: Path | None = None,
 ) -> tuple[bool, str | None, tuple[str, ...], frozenset[str]]:
     """Internal helper for _entrypoint_contract."""
     if not path.is_file():
@@ -2464,9 +2529,10 @@ def _entrypoint_contract(
                             reject_module_registry=(
                                 "regression_checks" not in section_path.parts
                                 and not any(part.startswith("test_") for part in section_path.parts)
-                                and not _is_phase121_configuration_path(section_path)
+                                and not _is_phase121_configuration_path(section_path, repository_root)
                             ),
-                            validate_namespace=not _is_phase121_configuration_path(section_path),
+                            validate_namespace=not _is_phase121_configuration_path(section_path, repository_root),
+                            repository_root=repository_root,
                         )
                     )
 
@@ -3607,6 +3673,8 @@ def _validate_generated_section(
     tree = _parse_source(source, path)
     _relative_import_contract(tree, package_dir, path, section_names)
     _section_exports(source, str(path), reject_conditional=False)
+    if _namespace_risk_signatures(tree, allow_public_globals=True):
+        raise ValueError(f"Unsupported import-time namespace risk in generated section: {path}")
     parents: dict[int, ast.AST] = {}
     for parent in ast.walk(tree):
         for child in ast.iter_child_nodes(parent):
@@ -3970,6 +4038,7 @@ def _surface(
     for section in sections:
         section_source = section.read_text(encoding="utf-8")
         section_tree = _parse_source(section_source, section)
+        phase121_configuration = _is_phase121_configuration_path(section, root)
         module_import_names.update(_direct_import_bound_names(section_tree))
         relative_star_contract.extend(
             _relative_import_contract(
@@ -3983,8 +4052,9 @@ def _surface(
             section_source,
             str(section),
             reject_conditional=reject_conditional,
-            reject_module_registry=(not legacy_test_section and not _is_phase121_configuration_path(section)),
-            validate_namespace=not _is_phase121_configuration_path(section),
+            reject_module_registry=(not legacy_test_section and not phase121_configuration),
+            validate_namespace=not phase121_configuration,
+            repository_root=root,
         )
         section_exports.update(exports)
         for name in exports:
@@ -4041,6 +4111,7 @@ def _surface(
         package / "__main__.py",
         frozenset(path.stem for path in sections),
         reject_conditional=reject_conditional,
+        repository_root=root,
     )
     risk_signatures.update(entrypoint_risks)
     _reject_unsupported_module_bindings(initializer_tree, str(initializer))

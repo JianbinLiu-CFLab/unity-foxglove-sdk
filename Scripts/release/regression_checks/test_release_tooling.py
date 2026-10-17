@@ -727,6 +727,24 @@ class RunCiTests(unittest.TestCase):
         self.assertNotIn("python3 Scripts/phase192/compare_identity_surfaces.py", joined)
         self.assertNotIn("--strict", joined)
 
+    def test_dotnet_workflow_bootstraps_only_the_known_checker_regression(self) -> None:
+        """The one-time checker bootstrap is pinned to the merged #542 base and ancestor."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        start = active_workflow_line_index(
+            workflow,
+            "- name: Run Phase192 base-head identity equivalence gate",
+        )
+        joined = "\n".join(workflow.splitlines()[start : start + 38])
+        self.assertIn(
+            'if [ "$PHASE192_BASE_SHA" = "9b3754bd21631e4c1a8717f9a133c1063ab56d33" ]',
+            joined,
+        )
+        self.assertIn(
+            'trusted_revision="ab1487e654ce11b5e217329552751a058a250ef7"',
+            joined,
+        )
+        self.assertIn('git merge-base --is-ancestor "$trusted_revision" "$PHASE192_BASE_SHA"', joined)
+
     def test_dotnet_workflow_provisions_phase186_websocket_runtime_dependency(self) -> None:
         """The module-execution regression must run with its websocket dependency installed."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")

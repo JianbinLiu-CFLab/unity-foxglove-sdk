@@ -3260,6 +3260,52 @@ class IdentityToolingTests(unittest.TestCase):
             compare_identity_surfaces._namespace_risk_signatures(default),
         )
 
+    def test_namespace_risk_signatures_detect_import_time_process_aliases(self) -> None:
+        """Import-time calls through process-module aliases remain visible to the gate."""
+        sources = (
+            "import os as host\n"
+            "def helper():\n"
+            "    host.popen('bad')\n"
+            "helper()\n",
+            "import shutil\n"
+            "def helper():\n"
+            "    shutil.rmtree('bad')\n"
+            "helper()\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                self.assertTrue(compare_identity_surfaces._namespace_risk_signatures(ast.parse(source)))
+
+    def test_generated_section_rejects_called_function_namespace_risks(self) -> None:
+        """Generated sections reject risky calls reachable from import-time helpers."""
+        sources = (
+            "def helper():\n"
+            "    exec('bad')\n"
+            "helper()\n",
+            "def helper():\n"
+            "    getattr(object(), 'bad')\n"
+            "helper()\n",
+            "def helper():\n"
+            "    globals()\n"
+            "helper()\n",
+            "import os\n"
+            "def helper():\n"
+            "    os.popen('bad')\n"
+            "helper()\n",
+            "import shutil\n"
+            "def helper():\n"
+            "    shutil.rmtree('bad')\n"
+            "helper()\n",
+        )
+        for source in sources:
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                compare_identity_surfaces._validate_generated_section(
+                    source + "PUBLIC = 1\n__all__ = ['PUBLIC']\n",
+                    Path("Scripts/smoke/fixture.py"),
+                    Path("Scripts/smoke"),
+                    frozenset({"fixture"}),
+                )
+
     def test_generated_section_rejects_path_and_sys_path_mutations(self) -> None:
         """Generated sections reject filesystem opens and path list mutation."""
         sources = (
@@ -3299,6 +3345,45 @@ class IdentityToolingTests(unittest.TestCase):
                 "C:/other/Scripts/mcap/conformance/run_phase121_conformance/configuration.py"
             )
         )
+
+    def test_configuration_exemption_uses_supplied_checkout_root(self) -> None:
+        """Archive paths are matched relative to the checkout being inspected."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            relative = "Scripts/mcap/conformance/run_phase121_conformance/configuration.py"
+            self.assertTrue(compare_identity_surfaces._is_phase121_configuration_path(relative, root))
+            self.assertTrue(
+                compare_identity_surfaces._is_phase121_configuration_path(root / relative, root)
+            )
+            self.assertFalse(
+                compare_identity_surfaces._is_phase121_configuration_path(
+                    root / "other" / relative,
+                    root,
+                )
+            )
+
+    def test_identity_surfaces_accept_archive_checkout_root(self) -> None:
+        """The identity gate accepts its Phase121 exception inside an archive checkout."""
+        repository = Path(__file__).resolve().parents[3]
+        with compare_identity_surfaces._revision_checkout(repository, "HEAD") as checkout:
+            surfaces = compare_identity_surfaces._surfaces(checkout, strict=False)
+        self.assertTrue(surfaces)
+
+    def test_namespace_gate_ignores_local_variable_annotations(self) -> None:
+        """Local and postponed variable annotations are not evaluated at import time."""
+        sources = (
+            "import subprocess\n"
+            "def initialize():\n"
+            "    value: subprocess.run([\"bad\"]) = 1\n"
+            "initialize()\n",
+            "from __future__ import annotations\n"
+            "import subprocess\n"
+            "value: subprocess.run([\"bad\"]) = 1\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertFalse(any("subprocess" in item for item in risks))
 
     def test_workflow_keeps_identity_checker_trusted_base_only(self) -> None:
         """The compatibility gate must not overwrite the trusted base checker."""

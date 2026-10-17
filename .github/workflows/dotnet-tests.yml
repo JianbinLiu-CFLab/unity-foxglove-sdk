@@ -212,7 +212,17 @@ jobs:
           set -euo pipefail
           trusted_root="$RUNNER_TEMP/phase192-trusted-base"
           mkdir -p "$trusted_root"
-          git archive "$PHASE192_BASE_SHA" -- Scripts/phase192 Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket | tar -x -C "$trusted_root"
+          trusted_revision="$PHASE192_BASE_SHA"
+          if [ "$PHASE192_BASE_SHA" = "9b3754bd21631e4c1a8717f9a133c1063ab56d33" ]; then
+            # Bootstrap the merged #542 checker regression from its reviewed predecessor once.
+            trusted_revision="ab1487e654ce11b5e217329552751a058a250ef7"
+            echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: using reviewed pre-#542 checker"
+          fi
+          if ! git merge-base --is-ancestor "$trusted_revision" "$PHASE192_BASE_SHA"; then
+            echo "Trusted identity checker revision is not an ancestor of the PR base" >&2
+            exit 1
+          fi
+          git archive "$trusted_revision" -- Scripts/phase192 Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket | tar -x -C "$trusted_root"
           base_checker="$trusted_root/Scripts/phase192/compare_identity_surfaces.py"
           if [ ! -f "$base_checker" ]; then
             echo "Trusted base identity checker is missing" >&2
