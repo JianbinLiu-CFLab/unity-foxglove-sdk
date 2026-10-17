@@ -2151,6 +2151,7 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
         target: ast.AST,
         caller_env: dict[str, AliasValue],
         call: ast.Call,
+        execute_deferred: bool = False,
     ) -> None:
         """Record risks reachable through a function called during import."""
         resolved = resolve_target(target, caller_env)
@@ -2164,16 +2165,25 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             if callable_key in seen_callables:
                 continue
             seen_callables.add(callable_key)
-            if isinstance(candidate_node, ast.AsyncFunctionDef):
+            if isinstance(candidate_node, ast.AsyncFunctionDef) and not execute_deferred:
                 continue
-            if isinstance(candidate_node, ast.FunctionDef) and contains_yield(candidate_node):
+            if (
+                isinstance(candidate_node, ast.FunctionDef)
+                and contains_yield(candidate_node)
+                and not execute_deferred
+            ):
                 continue
             if isinstance(candidate_node, ast.Lambda):
                 scan_node(candidate_node.body, local_env)
             else:
                 scan_sequence(candidate_node.body, local_env)
 
-    def scan_node(node: ast.AST, env: dict[str, AliasValue]) -> None:
+    def scan_node(
+        node: ast.AST,
+        env: dict[str, AliasValue],
+        *,
+        execute_deferred: bool = False,
+    ) -> None:
         """Scan an expression or definition without entering deferred function bodies."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             inspect_definition(node, env)
@@ -2187,11 +2197,17 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
                 signatures.add(ast.dump(node, include_attributes=False))
             else:
                 scan_node(node.func, env)
-                record_callable(node.func, env, node)
-            for argument in node.args:
-                scan_node(argument, env)
+                record_callable(node.func, env, node, execute_deferred=execute_deferred)
+            drives_deferred = execute_deferred or (
+                isinstance(node.func, ast.Name) and node.func.id in {"next", "anext"}
+            )
+            for index, argument in enumerate(node.args):
+                scan_node(argument, env, execute_deferred=drives_deferred and index == 0)
             for keyword in node.keywords:
                 scan_node(keyword.value, env)
+            return
+        if isinstance(node, ast.Await):
+            scan_node(node.value, env, execute_deferred=True)
             return
         if isinstance(node, ast.Attribute) and node.attr in _NAMESPACE_RISK_ATTRIBUTES:
             signatures.add(ast.dump(node, include_attributes=False))
@@ -2259,7 +2275,7 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             bind_assignment(statement.target, None, env)
             return
         if isinstance(statement, (ast.For, ast.AsyncFor)):
-            scan_node(statement.iter, env)
+            scan_node(statement.iter, env, execute_deferred=True)
             scan_sequence(statement.body, env)
             scan_sequence(statement.orelse, env)
             return

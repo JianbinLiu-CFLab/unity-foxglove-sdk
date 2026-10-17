@@ -3447,6 +3447,29 @@ class IdentityToolingTests(unittest.TestCase):
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertFalse(any("subprocess" in item for item in risks))
 
+    def test_namespace_gate_scans_driven_async_and_generator_bodies(self) -> None:
+        """Awaiting or iterating a deferred callable executes its body."""
+        async_tree = ast.parse(
+            "import subprocess\n"
+            "async def async_helper():\n"
+            "    subprocess.run([\"async\"])\n"
+            "await async_helper()\n"
+        )
+        generator_tree = ast.parse(
+            "import subprocess\n"
+            "def generator_helper():\n"
+            "    yield 1\n"
+            "    subprocess.run([\"generator\"])\n"
+            "for _ in generator_helper():\n"
+            "    pass\n"
+        )
+        self.assertTrue(
+            compare_identity_surfaces._namespace_risk_signatures(async_tree)
+        )
+        self.assertTrue(
+            compare_identity_surfaces._namespace_risk_signatures(generator_tree)
+        )
+
     def test_namespace_gate_ignores_postponed_annotations(self) -> None:
         """Future annotations are stored as strings and are not evaluated at definition time."""
         tree = ast.parse(
