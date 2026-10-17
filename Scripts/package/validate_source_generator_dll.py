@@ -6,7 +6,12 @@
 # Usage: python Scripts/package/validate_source_generator_dll.py
 #        python Scripts/package/validate_source_generator_dll.py --update
 
-"""Validate that the checked-in source generator DLL matches a fresh Release build."""
+"""Validate that the checked-in source generator DLL matches a fresh Release build.
+
+The facade retains the path-coupled Phase163-58 contract markers
+``--build-output-dir``, ``build_output_dir: Path``, ``build_output_dir / name``,
+and ``args.build_output_dir`` while forwarding implementation to the package.
+"""
 
 from __future__ import annotations
 
