@@ -21,7 +21,8 @@ from . import inspection as _phase192_section_1
 from . import commands as _phase192_section_2
 from . import refresh as _phase192_section_3
 from . import cli as _phase192_section_4
-from .inspection import _require_apply_toolchain, _ros2cs_install_build_is_active
+_require_apply_toolchain = _phase192_section_1._require_apply_toolchain
+_ros2cs_install_build_is_active = _phase192_section_1._ros2cs_install_build_is_active
 
 _PHASE192_SECTION_MODULES = (
     _phase192_section_0,
