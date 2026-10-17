@@ -1906,6 +1906,12 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
         if isinstance(target, ast.Attribute):
             if target.attr in _NAMESPACE_RISK_ATTRIBUTES:
                 return True
+            if (
+                isinstance(target.value, ast.Name)
+                and target.value.id == "os"
+                and target.attr == "system"
+            ):
+                return True
             return (
                 isinstance(target.value, ast.Name)
                 and target.value.id == "subprocess"
@@ -1983,6 +1989,7 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             if risky_target(node.func, env):
                 signatures.add(ast.dump(node, include_attributes=False))
             else:
+                scan_node(node.func, env)
                 record_callable(node.func, env)
             for argument in node.args:
                 scan_node(argument, env)
@@ -2022,6 +2029,8 @@ def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
             bind_import(statement, env)
             return
         if isinstance(statement, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            if isinstance(statement, ast.AnnAssign) and statement.annotation is not None:
+                scan_node(statement.annotation, env)
             if statement.value is not None:
                 scan_node(statement.value, env)
             targets = statement.targets if isinstance(statement, ast.Assign) else (statement.target,)
@@ -2080,8 +2089,14 @@ def _is_phase121_configuration_path(path: str | Path) -> bool:
         "run_phase121_conformance",
         "configuration.py",
     )
-    parts = tuple(part for part in str(path).replace("\\", "/").split("/") if part)
-    return len(parts) >= len(target) and parts[-len(target):] == target
+    candidate = Path(str(path).replace("\\", "/"))
+    if candidate.is_absolute():
+        try:
+            return candidate.resolve() == (Path(__file__).resolve().parents[2] / Path(*target)).resolve()
+        except OSError:
+            return False
+    parts = tuple(part for part in candidate.parts if part not in {".", ""})
+    return parts == target
 
 _ENTRYPOINT_IMPORT_ROOTS = frozenset({"argparse", "sys", "unittest"})
 

@@ -74,9 +74,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && !windowBefore.Contains("string.Join", StringComparison.Ordinal)
                   && !windowBefore.Contains("lines.Skip", StringComparison.Ordinal),
                 "164-53C-2: Phase105 scans cached line slices without allocating joined windows");
-            Check(readText.Contains("string.IsNullOrEmpty(root)", StringComparison.Ordinal)
-                  && readText.Contains("Could not find repository root for Phase105 validation.", StringComparison.Ordinal),
-                "164-53C-3: Phase105 fails clearly when the repository root cannot be resolved");
+            var sourceHelpers = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Decomposed/PhaseValidationSourceHelpers/RepositoryReaders.cs");
+            Check(sourceHelpers.Contains("Could not find repository root for source validation from", StringComparison.Ordinal)
+                  && readText.Contains("PhaseValidationSourceHelpers.ReadRequiredRepoText", StringComparison.Ordinal),
+                "164-53C-3: Phase105 delegates clear repository-root failure handling to the shared reader");
         }
 
         private static void VerifyPhase53CachesSourceReads()
