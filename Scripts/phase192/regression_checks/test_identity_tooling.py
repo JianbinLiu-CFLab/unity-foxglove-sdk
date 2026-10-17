@@ -4049,6 +4049,97 @@ class IdentityToolingTests(unittest.TestCase):
                 risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
                 self.assertTrue(any("-drive" in item for item in risks))
 
+    def test_namespace_gate_preserves_loop_break_paths(self) -> None:
+        """A break before the first yield keeps the loop exit path reachable."""
+        sources = (
+            "import subprocess\n"
+            "def generator():\n"
+            "    while True:\n"
+            "        break\n"
+            "        yield 1\n"
+            "    subprocess.run([\"after-break-while\"])\n"
+            "next(generator())\n",
+            "import subprocess\n"
+            "def generator(items):\n"
+            "    for item in items:\n"
+            "        break\n"
+            "        yield item\n"
+            "    subprocess.run([\"after-break-for\"])\n"
+            "next(generator([1]))\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertTrue(any("after-break" in item for item in risks))
+
+    def test_namespace_gate_scans_handlers_for_raising_yield_values(self) -> None:
+        """Exceptions while evaluating a yield value can enter an except handler."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator():\n"
+            "    try:\n"
+            "        yield iter([]).__next__()\n"
+            "    except Exception:\n"
+            "        subprocess.run([\"except-before-yield\"])\n"
+            "next(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("except-before-yield" in item for item in risks))
+
+    def test_namespace_gate_respects_constant_and_short_circuit_branches(self) -> None:
+        """Deferred mode follows only branches that are actually evaluated."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"unreachable-branch\"])\n"
+            "    yield 1\n"
+            "def safe():\n"
+            "    yield 2\n"
+            "next(safe() if True else inner())\n"
+            "next(safe() or inner())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertFalse(any("unreachable-branch" in item for item in risks))
+
+    def test_namespace_gate_drives_all_iterable_arguments(self) -> None:
+        """map, filter, and zip drive their iterable arguments under an eager consumer."""
+        sources = (
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"map-argument\"])\n"
+            "    yield 1\n"
+            "list(map(lambda value: value, inner()))\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"filter-argument\"])\n"
+            "    yield 1\n"
+            "list(filter(None, inner()))\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"zip-argument\"])\n"
+            "    yield 1\n"
+            "list(zip([1], inner()))\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertTrue(any("-argument" in item for item in risks))
+
+    def test_namespace_gate_scans_all_merged_subscript_candidates(self) -> None:
+        """A merged sequence alias retains every candidate selected by a subscript."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"merged-subscript\"])\n"
+            "    yield 1\n"
+            "def safe():\n"
+            "    yield 2\n"
+            "pair = (inner(), safe()) if flag else (safe(), inner())\n"
+            "next(pair[0])\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("merged-subscript" in item for item in risks))
+
     def test_namespace_gate_executes_bare_decorator_parameters(self) -> None:
         """Bare decorators are calls and their parameter-driven bodies execute."""
         tree = ast.parse(

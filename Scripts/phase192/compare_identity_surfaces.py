@@ -2139,6 +2139,34 @@ def _namespace_risk_signatures(
             return _DEFERRED_ASYNC_FIRST_YIELD
         return _DEFERRED_NONE
 
+    def resolved_callable_names(node: ast.AST, env: dict[str, AliasValue]) -> frozenset[str]:
+        """Return simple callable names visible at a call site."""
+        names: set[str] = set()
+        for candidate in candidate_values(resolve_target(node, env)):
+            candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+            if isinstance(candidate_node, ast.Name):
+                names.add(candidate_node.id)
+            elif isinstance(candidate_node, ast.Attribute):
+                names.add(candidate_node.attr)
+        return frozenset(names)
+
+    def expression_always_truthy(node: ast.AST, env: dict[str, AliasValue]) -> bool:
+        """Return whether an expression is known to produce a truthy value."""
+        truth = constant_truth(node)
+        if truth is True:
+            return True
+        for candidate in candidate_values(resolve_target(node, env)):
+            candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+            if isinstance(candidate_node, ast.Call):
+                target = resolve_target(candidate_node.func, env)
+                if any(
+                    isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and contains_yield(function)
+                    for function in candidate_values(target)
+                ):
+                    return True
+        return False
+
     def combine_deferred_modes(outer: str, driver: str) -> str:
         """Combine enclosing execution with the consumer's execution mode."""
         if outer == _DEFERRED_FULL_ITERATION or driver == _DEFERRED_FULL_ITERATION:
@@ -2405,6 +2433,78 @@ def _namespace_risk_signatures(
         StatementYieldVisitor().visit(statement)
         return first
 
+    def loop_breaks_before_yield(statements: list[ast.stmt]) -> bool:
+        """Return whether an enclosing loop can break before its first yield."""
+        first_yield = min(
+            (line for statement in statements if (line := statement_yield_line(statement)) is not None),
+            default=None,
+        )
+        if first_yield is None:
+            return False
+
+        class BreakVisitor(ast.NodeVisitor):
+            """Find breaks belonging to the enclosing loop only."""
+
+            found = False
+
+            def visit_Break(self, current: ast.Break) -> None:
+                if current.lineno < first_yield:
+                    self.found = True
+
+            def visit_For(self, current: ast.For) -> None:
+                return
+
+            def visit_AsyncFor(self, current: ast.AsyncFor) -> None:
+                return
+
+            def visit_While(self, current: ast.While) -> None:
+                return
+
+            def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                return
+
+            def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                return
+
+            def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                return
+
+        visitor = BreakVisitor()
+        for statement in statements:
+            visitor.visit(statement)
+        return visitor.found
+
+    def yield_value_may_raise(statements: list[ast.stmt]) -> bool:
+        """Return whether a yield value can raise before producing its first item."""
+        class YieldValueVisitor(ast.NodeVisitor):
+            """Detect calls and other evaluation operations inside yield values."""
+
+            found = False
+
+            def visit_Yield(self, current: ast.Yield) -> None:
+                if current.value is not None and any(
+                    isinstance(child, (ast.Call, ast.Attribute, ast.Subscript, ast.BinOp, ast.Compare))
+                    for child in ast.walk(current.value)
+                ):
+                    self.found = True
+
+            def visit_YieldFrom(self, current: ast.YieldFrom) -> None:
+                self.found = True
+
+            def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                return
+
+            def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                return
+
+            def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                return
+
+        visitor = YieldValueVisitor()
+        for statement in statements:
+            visitor.visit(statement)
+        return visitor.found
+
     def definitely_nonempty_iterable(node: ast.AST) -> bool:
         """Return whether a loop iterable is statically known to execute once."""
         try:
@@ -2485,7 +2585,11 @@ def _namespace_risk_signatures(
                 evaluate_annotations=evaluate_annotations,
                 deferred_mode=deferred_mode,
             )
-            if body_stopped and definitely_nonempty_iterable(statement.iter):
+            if (
+                body_stopped
+                and not loop_breaks_before_yield(statement.body)
+                and definitely_nonempty_iterable(statement.iter)
+            ):
                 return True
             if not statement.orelse:
                 return False
@@ -2501,7 +2605,11 @@ def _namespace_risk_signatures(
                 evaluate_annotations=evaluate_annotations,
                 deferred_mode=deferred_mode,
             )
-            if body_stopped and constant_truth(statement.test) is True:
+            if (
+                body_stopped
+                and not loop_breaks_before_yield(statement.body)
+                and constant_truth(statement.test) is True
+            ):
                 return True
             if not statement.orelse:
                 return False
@@ -2527,6 +2635,14 @@ def _namespace_risk_signatures(
                 deferred_mode=deferred_mode,
             )
             if body_stopped:
+                if yield_value_may_raise(statement.body):
+                    for handler in statement.handlers:
+                        scan_prefix_sequence(
+                            handler.body,
+                            dict(env),
+                            evaluate_annotations=evaluate_annotations,
+                            deferred_mode=deferred_mode,
+                        )
                 if statement.finalbody:
                     scan_prefix_sequence(
                         statement.finalbody,
@@ -2652,10 +2768,18 @@ def _namespace_risk_signatures(
                 scan_node(node.func, env)
             record_callable(node.func, env, node, deferred_mode=deferred_mode)
             nested_mode = combine_deferred_modes(deferred_mode, driver_mode(node.func, env))
+            callable_names = resolved_callable_names(node.func, env)
+            driven_indices = {0}
+            if "map" in callable_names:
+                driven_indices = set(range(1, len(node.args)))
+            elif "filter" in callable_names:
+                driven_indices = {1} if len(node.args) > 1 else set()
+            elif "zip" in callable_names:
+                driven_indices = set(range(len(node.args)))
             for index, argument in enumerate(node.args):
                 argument_mode = (
                     nested_mode
-                    if index == 0
+                    if index in driven_indices
                     and isinstance(
                         argument,
                         (
@@ -2715,12 +2839,22 @@ def _namespace_risk_signatures(
             return
         if isinstance(node, ast.IfExp):
             scan_node(node.test, env)
-            scan_node(node.body, env, deferred_mode=deferred_mode)
-            scan_node(node.orelse, env, deferred_mode=deferred_mode)
+            truth = constant_truth(node.test)
+            if truth is True:
+                scan_node(node.body, env, deferred_mode=deferred_mode)
+            elif truth is False:
+                scan_node(node.orelse, env, deferred_mode=deferred_mode)
+            else:
+                scan_node(node.body, env, deferred_mode=deferred_mode)
+                scan_node(node.orelse, env, deferred_mode=deferred_mode)
             return
         if isinstance(node, ast.BoolOp):
             for value in node.values:
                 scan_node(value, env, deferred_mode=deferred_mode)
+                if isinstance(node.op, ast.Or) and expression_always_truthy(value, env):
+                    break
+                if isinstance(node.op, ast.And) and constant_truth(value) is False:
+                    break
             return
         if isinstance(node, ast.NamedExpr):
             value = resolve_target(node.value, env)
@@ -2741,9 +2875,10 @@ def _namespace_risk_signatures(
         if isinstance(node, ast.Subscript):
             resolved = resolve_target(node, env)
             if resolved is not node:
-                resolved_node = resolved.node if isinstance(resolved, FrozenAlias) else resolved
-                if isinstance(resolved_node, ast.AST):
-                    scan_node(resolved_node, env, deferred_mode=deferred_mode)
+                for candidate in candidate_values(resolved):
+                    resolved_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+                    if isinstance(resolved_node, ast.AST):
+                        scan_node(resolved_node, env, deferred_mode=deferred_mode)
             else:
                 scan_node(node.value, env)
             scan_node(node.slice, env)
