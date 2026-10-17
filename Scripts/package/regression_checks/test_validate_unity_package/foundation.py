@@ -21,11 +21,24 @@ VALIDATE_SOURCE_GENERATOR_PATH = ROOT / "Scripts" / "package" / "validate_source
 def load_module(name: str, path: Path):
     """Load one maintained validator package fresh for the test case."""
     del name
-    module_name = (
-        "Scripts.package.validate_unity_package"
-        if path == VALIDATE_PACKAGE_PATH
-        else "Scripts.package.validate_source_generator_dll"
-    )
+    if path == VALIDATE_PACKAGE_PATH:
+        section_names = (
+            "foundation",
+            "asset_contracts",
+            "content_contracts",
+            "notice_contracts",
+            "package_contracts",
+            "cli",
+        )
+        for section_name in section_names:
+            importlib.reload(
+                importlib.import_module(
+                    "Scripts.package.validate_unity_package." + section_name
+                )
+            )
+        module_name = "Scripts.package.validate_unity_package"
+    else:
+        module_name = "Scripts.package.validate_source_generator_dll"
     return importlib.reload(importlib.import_module(module_name))
 
 
