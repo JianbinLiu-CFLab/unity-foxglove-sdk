@@ -323,6 +323,12 @@ def run_analyzer_composition_tests(msbuild_props: list[str]) -> bool:
 
 
 __all__ = [
+    "_active_test_attributes",
+    "_composition_contract_failures",
+    "_evaluated_msbuild_items",
+    "_ledger_ids",
+    "_project_sources",
+    "_provider_descriptor_ids",
     "run_analyzer_composition_tests",
     "validate_analyzer_contracts",
     "validate_shared_source_parity",

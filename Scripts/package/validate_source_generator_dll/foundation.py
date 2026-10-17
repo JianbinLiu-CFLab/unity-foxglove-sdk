@@ -220,6 +220,8 @@ _CORE_TYPE_SHAPE_EXTENSION = (
 
 
 __all__ = [
+    "_VERBATIM_PROVIDER_COPIES",
+    "_validate_analyzer_meta",
     "ANALYZER_DIRECTORY",
     "AnalyzerTarget",
     "BUILD_OUTPUT_DIR",

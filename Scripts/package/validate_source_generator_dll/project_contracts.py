@@ -261,4 +261,15 @@ def _provider_descriptor_ids(sources: list[Path], prefix: str) -> set[str]:
 
 
 
-__all__ = []
+__all__ = [
+    "_active_test_attributes",
+    "_compile_include_has_wildcard",
+    "_composition_contract_failures",
+    "_evaluated_msbuild_items",
+    "_ledger_ids",
+    "_method_body",
+    "_normalize_compile_include",
+    "_project_sources",
+    "_provider_descriptor_ids",
+    "_strip_csharp_comments_and_literals",
+]

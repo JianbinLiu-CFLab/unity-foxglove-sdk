@@ -185,6 +185,8 @@ def validate_unity_plugin_protobuf_match(analyzer_dependency: Path) -> bool:
 
 
 __all__ = [
+    "_CORE_TYPE_SHAPE_EXTENSION",
+    "_shared_core_type_shape",
     "run_build",
     "sha256",
     "validate_shared_source_parity",
