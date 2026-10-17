@@ -2683,7 +2683,7 @@ def _is_phase121_configuration_path(
     parts = tuple(part for part in candidate.parts if part not in {".", ""})
     return parts == target
 
-_ENTRYPOINT_IMPORT_ROOTS = frozenset({"argparse", "sys", "unittest"})
+_ENTRYPOINT_IMPORT_ROOTS = frozenset({"argparse", "subprocess", "sys", "unittest"})
 
 def _is_safe_unittest_main_call(call: ast.Call) -> bool:
     """Return whether a unittest.main call has only literal safe options."""
