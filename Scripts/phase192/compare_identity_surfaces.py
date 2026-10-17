@@ -1882,118 +1882,193 @@ _NAMESPACE_RISK_ATTRIBUTES = frozenset({
 
 def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
     """Return stable AST fingerprints for namespace and import escape surfaces."""
-    function_body_nodes: set[int] = set()
-    callables: dict[str, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda] = {}
-    aliases: dict[str, ast.AST] = {}
-    for parent in ast.walk(tree):
-        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            function_body_nodes.update(id(node) for statement in parent.body for node in ast.walk(statement))
-            callables.setdefault(parent.name, parent)
-        elif isinstance(parent, ast.Lambda):
-            function_body_nodes.update(id(node) for node in ast.walk(parent.body))
-        elif isinstance(parent, ast.Import):
-            for imported in parent.names:
-                aliases[imported.asname or imported.name.split(".", 1)[0]] = ast.Name(
-                    id=imported.name.split(".", 1)[0],
-                    ctx=ast.Load(),
-                )
-        elif isinstance(parent, ast.ImportFrom) and parent.module:
-            for imported in parent.names:
-                if imported.name != "*":
-                    aliases[imported.asname or imported.name] = ast.Attribute(
-                        value=ast.Name(id=parent.module, ctx=ast.Load()),
-                        attr=imported.name,
-                        ctx=ast.Load(),
-                    )
-        elif isinstance(parent, ast.Assign):
-            for target in parent.targets:
-                if isinstance(target, ast.Name):
-                    aliases[target.id] = parent.value
-        elif isinstance(parent, ast.AnnAssign) and isinstance(parent.target, ast.Name) and parent.value is not None:
-            aliases[parent.target.id] = parent.value
+    signatures: set[str] = set()
+    seen_callables: set[int] = set()
+    AliasValue = ast.AST | None
 
-    def import_time(node: ast.AST) -> bool:
-        """Return whether a node executes while the module is imported."""
-        return id(node) not in function_body_nodes
-
-    def resolve_target(node: ast.AST, seen: frozenset[str] = frozenset()) -> ast.AST:
-        """Resolve local aliases to their callable or imported target."""
+    def resolve_target(node: ast.AST, env: dict[str, AliasValue], seen: frozenset[str] = frozenset()) -> ast.AST:
+        """Resolve aliases using the bindings visible at the call site."""
         if isinstance(node, ast.Name):
-            if node.id in seen:
+            if node.id in seen or node.id not in env or env[node.id] is None:
                 return node
-            if node.id in callables:
-                return callables[node.id]
-            if node.id in aliases:
-                return resolve_target(aliases[node.id], seen | {node.id})
-            return node
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            value = resolve_target(node.value, seen)
+            return resolve_target(env[node.id], env, seen | {node.id})
+        if isinstance(node, ast.Attribute):
+            value = resolve_target(node.value, env, seen)
             if value is not node.value:
                 return ast.Attribute(value=value, attr=node.attr, ctx=ast.Load())
         return node
 
-    def risky_target(node: ast.AST) -> bool:
+    def risky_target(node: ast.AST, env: dict[str, AliasValue]) -> bool:
         """Recognize calls that can mutate or expose import-time process state."""
-        target = resolve_target(node)
+        target = resolve_target(node, env)
         if isinstance(target, ast.Name) and target.id in _NAMESPACE_RISK_NAMES:
             return True
-        return (
-            isinstance(target, ast.Attribute)
-            and isinstance(target.value, ast.Name)
-            and target.value.id == "subprocess"
-            and target.attr in {"run", "Popen", "call", "check_call", "check_output"}
-        )
+        if isinstance(target, ast.Attribute):
+            if target.attr in _NAMESPACE_RISK_ATTRIBUTES:
+                return True
+            return (
+                isinstance(target.value, ast.Name)
+                and target.value.id == "subprocess"
+                and target.attr in {"run", "Popen", "call", "check_call", "check_output"}
+            )
+        return False
 
-    signatures: set[str] = set()
-    seen_callables: set[int] = set()
+    def bind_import(node: ast.Import | ast.ImportFrom, env: dict[str, AliasValue]) -> None:
+        """Bind only absolute imports to known targets; relative modules remain unknown."""
+        if isinstance(node, ast.Import):
+            for imported in node.names:
+                bound = imported.asname or imported.name.split(".", 1)[0]
+                env[bound] = ast.Name(id=imported.name.split(".", 1)[0], ctx=ast.Load())
+            return
+        for imported in node.names:
+            if imported.name == "*":
+                continue
+            bound = imported.asname or imported.name
+            if node.level:
+                env[bound] = ast.Name(id=f"<relative:{node.module or ''}>", ctx=ast.Load())
+            else:
+                env[bound] = ast.Attribute(
+                    value=ast.Name(id=node.module or "", ctx=ast.Load()),
+                    attr=imported.name,
+                    ctx=ast.Load(),
+                )
 
-    def record_callable(target: ast.AST) -> None:
+    def bind_assignment(target: ast.AST, value: AliasValue, env: dict[str, AliasValue]) -> None:
+        """Update only names bound by a simple assignment."""
+        if isinstance(target, ast.Name):
+            env[target.id] = value
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for element in target.elts:
+                bind_assignment(element, None, env)
+
+    def inspect_definition(node: ast.FunctionDef | ast.AsyncFunctionDef, env: dict[str, AliasValue]) -> None:
+        """Inspect expressions evaluated while a nested function is defined."""
+        for expression in (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults):
+            if expression is not None:
+                scan_node(expression, env)
+        for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
+            if argument.annotation is not None:
+                scan_node(argument.annotation, env)
+        if node.args.vararg and node.args.vararg.annotation is not None:
+            scan_node(node.args.vararg.annotation, env)
+        if node.args.kwarg and node.args.kwarg.annotation is not None:
+            scan_node(node.args.kwarg.annotation, env)
+        if node.returns is not None:
+            scan_node(node.returns, env)
+
+    def record_callable(target: ast.AST, caller_env: dict[str, AliasValue]) -> None:
         """Record risks reachable through a function called during import."""
-        target = resolve_target(target)
+        target = resolve_target(target, caller_env)
         if not isinstance(target, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             return
         target_id = id(target)
         if target_id in seen_callables:
             return
         seen_callables.add(target_id)
-        body = [target.body] if isinstance(target, ast.Lambda) else target.body
+        local_env = dict(caller_env)
+        if isinstance(target, ast.Lambda):
+            scan_node(target.body, local_env)
+        else:
+            scan_sequence(target.body, local_env)
 
-        def executable_nodes(node: ast.AST):
-            """Walk executable statements without descending into nested definitions."""
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-                return
-            yield node
-            for child in ast.iter_child_nodes(node):
-                yield from executable_nodes(child)
-
-        for statement in body:
-            for node in executable_nodes(statement):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-                    continue
-                if isinstance(node, ast.Call):
-                    if risky_target(node.func):
-                        signatures.add(ast.dump(node, include_attributes=False))
-                    else:
-                        record_callable(node.func)
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and import_time(node):
-            if risky_target(node.func):
+    def scan_node(node: ast.AST, env: dict[str, AliasValue]) -> None:
+        """Scan an expression or definition without entering deferred function bodies."""
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            inspect_definition(node, env)
+            env[node.name] = node
+            return
+        if isinstance(node, ast.Lambda):
+            return
+        if isinstance(node, ast.Call):
+            if risky_target(node.func, env):
                 signatures.add(ast.dump(node, include_attributes=False))
             else:
-                record_callable(node.func)
-        elif isinstance(node, ast.Global) and import_time(node):
+                record_callable(node.func, env)
+            for argument in node.args:
+                scan_node(argument, env)
+            for keyword in node.keywords:
+                scan_node(keyword.value, env)
+            return
+        if isinstance(node, ast.Attribute) and node.attr in _NAMESPACE_RISK_ATTRIBUTES:
             signatures.add(ast.dump(node, include_attributes=False))
-        elif isinstance(node, ast.ImportFrom) and import_time(node):
-            if (
-                (node.module or "").split(".", 1)[0] in {"builtins", "__builtins__", "__builtin__"}
-                or any(alias.name in {"modules", "getattr", "setattr", "delattr", "import_module", "__import__"} for alias in node.names)
+        elif isinstance(node, ast.Name) and node.id in _NAMESPACE_RISK_NAMES:
+            signatures.add(ast.dump(node, include_attributes=False))
+        for child in ast.iter_child_nodes(node):
+            scan_node(child, env)
+
+    def scan_statement(statement: ast.stmt, env: dict[str, AliasValue]) -> None:
+        """Scan one statement in execution order and update its scope bindings."""
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            inspect_definition(statement, env)
+            env[statement.name] = statement
+            return
+        if isinstance(statement, ast.ClassDef):
+            for decorator in statement.decorator_list:
+                scan_node(decorator, env)
+            for base in statement.bases:
+                scan_node(base, env)
+            for keyword in statement.keywords:
+                scan_node(keyword.value, env)
+            class_env = dict(env)
+            scan_sequence(statement.body, class_env)
+            env[statement.name] = statement
+            return
+        if isinstance(statement, (ast.Import, ast.ImportFrom)):
+            if isinstance(statement, ast.ImportFrom) and (
+                (statement.module or "").split(".", 1)[0] in {"builtins", "__builtins__", "__builtin__"}
+                or any(alias.name in {"modules", "getattr", "setattr", "delattr", "import_module", "__import__"} for alias in statement.names)
             ):
-                signatures.add(ast.dump(node, include_attributes=False))
-        elif isinstance(node, ast.Name) and import_time(node) and node.id in _NAMESPACE_RISK_NAMES:
-            signatures.add(ast.dump(node, include_attributes=False))
-        elif isinstance(node, ast.Attribute) and import_time(node) and node.attr in _NAMESPACE_RISK_ATTRIBUTES:
-            signatures.add(ast.dump(node, include_attributes=False))
+                signatures.add(ast.dump(statement, include_attributes=False))
+            bind_import(statement, env)
+            return
+        if isinstance(statement, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            if statement.value is not None:
+                scan_node(statement.value, env)
+            targets = statement.targets if isinstance(statement, ast.Assign) else (statement.target,)
+            for target in targets:
+                bind_assignment(target, statement.value, env)
+            return
+        if isinstance(statement, ast.AugAssign):
+            scan_node(statement.value, env)
+            bind_assignment(statement.target, None, env)
+            return
+        if isinstance(statement, (ast.For, ast.AsyncFor)):
+            scan_node(statement.iter, env)
+            scan_sequence(statement.body, env)
+            scan_sequence(statement.orelse, env)
+            return
+        if isinstance(statement, (ast.If, ast.While)):
+            scan_node(statement.test, env)
+            scan_sequence(statement.body, dict(env))
+            scan_sequence(statement.orelse, dict(env))
+            return
+        if isinstance(statement, (ast.With, ast.AsyncWith)):
+            for item in statement.items:
+                scan_node(item.context_expr, env)
+                if item.optional_vars is not None:
+                    bind_assignment(item.optional_vars, None, env)
+            scan_sequence(statement.body, env)
+            return
+        if isinstance(statement, ast.Try):
+            scan_sequence(statement.body, env)
+            for handler in statement.handlers:
+                scan_sequence(handler.body, dict(env))
+            scan_sequence(statement.orelse, env)
+            scan_sequence(statement.finalbody, env)
+            return
+        if isinstance(statement, ast.Global):
+            signatures.add(ast.dump(statement, include_attributes=False))
+        scan_node(statement, env)
+
+    def scan_sequence(statements: list[ast.stmt], env: dict[str, AliasValue]) -> None:
+        """Scan statements in source order within one lexical scope."""
+        for statement in statements:
+            scan_statement(statement, env)
+
+    if isinstance(tree, ast.Module):
+        scan_sequence(tree.body, {})
+    else:
+        scan_node(tree, {})
     return frozenset(signatures)
 
 def _is_phase121_configuration_path(path: str | Path) -> bool:

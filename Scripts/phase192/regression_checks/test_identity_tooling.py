@@ -3380,17 +3380,63 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertTrue(any("run" in item for item in risks))
 
     def test_phase184_owner_callers_use_the_qualified_import_path(self) -> None:
-        """Production callers use the single qualified Phase184 owner import path."""
-        paths = (
-            Path("Scripts/smoke/foxrun/phase184_foxglove_desktop_live_acceptance.py"),
-            Path("Scripts/smoke/foxrun/regression_checks/test_phase184_windows_job_owner/foundation.py"),
+        """Every Phase184 owner caller uses the single supported qualified import path."""
+        found = []
+        for path in Path("Scripts").rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and any(
+                    alias.name == "phase184_windows_job_owner" for alias in node.names
+                ):
+                    found.append((path, node.module, node.level))
+                    self.assertEqual("Scripts.smoke.foxrun", node.module, path)
+                    self.assertEqual(0, node.level, path)
+        self.assertGreaterEqual(len(found), 2)
+
+    def test_namespace_gate_covers_nested_definition_time_expressions(self) -> None:
+        """Nested function defaults and decorators execute when the definition executes."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def outer():\n"
+            "    @subprocess.run([\"decorator\"])\n"
+            "    def decorated():\n"
+            "        pass\n"
+            "    def defaulted(value=subprocess.run([\"default\"])):\n"
+            "        pass\n"
+            "outer()\n"
         )
-        for path in paths:
-            source = path.read_text(encoding="utf-8")
-            self.assertIn(
-                "from Scripts.smoke.foxrun import phase184_windows_job_owner",
-                source,
-            )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertGreaterEqual(sum("subprocess" in item for item in risks), 2)
+
+    def test_namespace_gate_scopes_aliases_and_preserves_statement_order(self) -> None:
+        """Local rebinding and later assignments cannot hide earlier module calls."""
+        tree = ast.parse(
+            "import subprocess as sp\n"
+            "def helper():\n"
+            "    import os as sp\n"
+            "helper()\n"
+            "sp.run([\"before-rebind\"])\n"
+            "sp = None\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("before-rebind" in item for item in risks))
+
+    def test_namespace_gate_checks_namespace_attributes_in_import_time_helpers(self) -> None:
+        """Import-time helper calls retain namespace and dynamic-import fingerprints."""
+        tree = ast.parse(
+            "import importlib\n"
+            "def initialize():\n"
+            "    importlib.import_module(\"math\")\n"
+            "initialize()\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("import_module" in item for item in risks))
+
+    def test_namespace_gate_ignores_relative_subprocess_module_aliases(self) -> None:
+        """Relative modules are not silently classified as the stdlib subprocess module."""
+        tree = ast.parse("from .subprocess import run as launch\nlaunch([\"local\"])\n")
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertFalse(any("subprocess" in item and "run" in item for item in risks))
 
 if __name__ == "__main__":
     unittest.main()
