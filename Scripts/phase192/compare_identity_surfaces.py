@@ -1883,53 +1883,74 @@ _NAMESPACE_RISK_ATTRIBUTES = frozenset({
 def _namespace_risk_signatures(tree: ast.AST) -> frozenset[str]:
     """Return stable AST fingerprints for namespace and import escape surfaces."""
     function_body_nodes: set[int] = set()
-    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    callables: dict[str, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda] = {}
+    aliases: dict[str, ast.AST] = {}
     for parent in ast.walk(tree):
         if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
             function_body_nodes.update(id(node) for statement in parent.body for node in ast.walk(statement))
-            functions.setdefault(parent.name, parent)
+            callables.setdefault(parent.name, parent)
         elif isinstance(parent, ast.Lambda):
             function_body_nodes.update(id(node) for node in ast.walk(parent.body))
+        elif isinstance(parent, ast.Assign):
+            for target in parent.targets:
+                if isinstance(target, ast.Name):
+                    aliases[target.id] = parent.value
+        elif isinstance(parent, ast.AnnAssign) and isinstance(parent.target, ast.Name) and parent.value is not None:
+            aliases[parent.target.id] = parent.value
 
     def import_time(node: ast.AST) -> bool:
         """Return whether a node executes while the module is imported."""
         return id(node) not in function_body_nodes
 
-    def risky_call(node: ast.Call) -> bool:
+    def resolve_target(node: ast.AST, seen: frozenset[str] = frozenset()) -> ast.AST:
+        """Resolve local aliases to their callable or imported target."""
+        if not isinstance(node, ast.Name) or node.id in seen:
+            return node
+        if node.id in callables:
+            return callables[node.id]
+        if node.id in aliases:
+            return resolve_target(aliases[node.id], seen | {node.id})
+        return node
+
+    def risky_target(node: ast.AST) -> bool:
         """Recognize calls that can mutate or expose import-time process state."""
-        if isinstance(node.func, ast.Name) and node.func.id in _NAMESPACE_RISK_NAMES:
+        target = resolve_target(node)
+        if isinstance(target, ast.Name) and target.id in _NAMESPACE_RISK_NAMES:
             return True
         return (
-            isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "subprocess"
-            and node.func.attr in {"run", "Popen", "call", "check_call", "check_output"}
+            isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "subprocess"
+            and target.attr in {"run", "Popen", "call", "check_call", "check_output"}
         )
 
     signatures: set[str] = set()
-    seen_functions: set[str] = set()
+    seen_callables: set[int] = set()
 
-    def record_function(name: str) -> None:
+    def record_callable(target: ast.AST) -> None:
         """Record risks reachable through a function called during import."""
-        if name in seen_functions or name not in functions:
+        target = resolve_target(target)
+        if not isinstance(target, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             return
-        seen_functions.add(name)
-        function = functions[name]
-        for node in ast.walk(function):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node is not function:
+        target_id = id(target)
+        if target_id in seen_callables:
+            return
+        seen_callables.add(target_id)
+        for node in ast.walk(target):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and node is not target:
                 continue
             if isinstance(node, ast.Call):
-                if risky_call(node):
+                if risky_target(node.func):
                     signatures.add(ast.dump(node, include_attributes=False))
-                elif isinstance(node.func, ast.Name) and node.func.id in functions:
-                    record_function(node.func.id)
+                else:
+                    record_callable(node.func)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and import_time(node):
-            if risky_call(node):
+            if risky_target(node.func):
                 signatures.add(ast.dump(node, include_attributes=False))
-            elif isinstance(node.func, ast.Name) and node.func.id in functions:
-                record_function(node.func.id)
+            else:
+                record_callable(node.func)
         elif isinstance(node, ast.Global) and import_time(node):
             signatures.add(ast.dump(node, include_attributes=False))
         elif isinstance(node, ast.ImportFrom) and import_time(node):

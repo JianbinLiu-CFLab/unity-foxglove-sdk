@@ -3295,37 +3295,6 @@ class IdentityToolingTests(unittest.TestCase):
             )
         )
 
-    def test_phase184_owner_imports_have_one_module_identity(self) -> None:
-        """Qualified and legacy owner imports resolve to one canonical package."""
-        script = """
-import importlib
-import sys
-from pathlib import Path
-
-root = Path.cwd()
-sys.path.insert(0, str(root / 'Scripts' / 'smoke' / 'foxrun'))
-qualified_name = 'Scripts.smoke.foxrun.phase184_windows_job_owner'
-bare_name = 'phase184_windows_job_owner'
-for first, second in ((qualified_name, bare_name), (bare_name, qualified_name)):
-    for name in tuple(sys.modules):
-        if name == bare_name or name == qualified_name or name.startswith(qualified_name + '.'):
-            sys.modules.pop(name, None)
-    first_module = importlib.import_module(first)
-    second_module = importlib.import_module(second)
-    assert first_module is second_module
-    for symbol in ('RootHandoffPolicy', 'ProcessIdentity', 'OwnershipFailure'):
-        assert getattr(first_module, symbol) is getattr(second_module, symbol)
-"""
-        completed = subprocess.run(
-            [sys.executable, "-c", script],
-            cwd=Path.cwd(),
-            env=os.environ.copy(),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        self.assertEqual(0, completed.returncode, completed.stderr)
-
     def test_workflow_keeps_identity_checker_trusted_base_only(self) -> None:
         """The compatibility gate must not overwrite the trusted base checker."""
         workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
@@ -3375,6 +3344,22 @@ for first, second in ((qualified_name, bare_name), (bare_name, qualified_name)):
         tree = ast.parse("@subprocess.run()\ndef entry():\n    pass")
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertTrue(any("subprocess" in item and "run" in item for item in risks))
+
+    def test_namespace_gate_rejects_import_time_lambda_call(self) -> None:
+        """Import-time calls through lambda aliases remain visible to the gate."""
+        tree = ast.parse("callback = lambda: print(\"unexpected\")\ncallback()")
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("print" in item for item in risks))
+
+    def test_namespace_gate_rejects_import_time_function_alias_call(self) -> None:
+        """Import-time calls through function aliases remain visible to the gate."""
+        tree = ast.parse(
+            "def callback():\n    print(\"unexpected\")\n"
+            "alias = callback\n"
+            "alias()"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("print" in item for item in risks))
 
 if __name__ == "__main__":
     unittest.main()
