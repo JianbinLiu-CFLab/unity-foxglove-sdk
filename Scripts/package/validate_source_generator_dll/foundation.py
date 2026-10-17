@@ -219,4 +219,35 @@ _CORE_TYPE_SHAPE_EXTENSION = (
 
 
 
-__all__ = sorted(name for name in globals() if not name.startswith("__"))
+__all__ = [
+    "ANALYZER_DIRECTORY",
+    "AnalyzerTarget",
+    "BUILD_OUTPUT_DIR",
+    "CHECKED_IN_ARTIFACTS",
+    "COMPOSITION_TEST",
+    "CORE_TYPE_SHAPE",
+    "DIAGNOSTIC_PREFIXES",
+    "ET",
+    "EXACT_SHARED_SOURCE_GROUPS",
+    "HINT_CONTRACTS",
+    "META_GUID_PATTERN",
+    "PACKAGE_ROOTS",
+    "PHYSICAL_HINT_CONTRACTS",
+    "PROJECT",
+    "PROVIDER_DEPENDENCIES",
+    "PROVIDER_TYPE_SHAPE",
+    "Path",
+    "REPO_ROOT",
+    "TARGETS",
+    "UNITY_PLUGIN_GOOGLE_PROTOBUF",
+    "argparse",
+    "dataclass",
+    "hashlib",
+    "json",
+    "os",
+    "re",
+    "shutil",
+    "subprocess",
+    "sys",
+    "tempfile",
+]

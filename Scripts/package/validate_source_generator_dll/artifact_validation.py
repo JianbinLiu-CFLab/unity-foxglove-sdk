@@ -184,4 +184,9 @@ def validate_unity_plugin_protobuf_match(analyzer_dependency: Path) -> bool:
 
 
 
-__all__ = sorted(name for name in globals() if not name.startswith("__"))
+__all__ = [
+    "run_build",
+    "sha256",
+    "validate_shared_source_parity",
+    "validate_unity_plugin_protobuf_match",
+]

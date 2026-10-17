@@ -185,4 +185,12 @@ def main() -> int:
         return 1
     return 0
 
-__all__ = sorted(name for name in globals() if not name.startswith("__"))
+__all__ = [
+    "main",
+    "run_analyzer_composition_tests",
+    "run_build",
+    "sha256",
+    "validate_analyzer_contracts",
+    "validate_or_update",
+    "validate_unity_plugin_protobuf_match",
+]

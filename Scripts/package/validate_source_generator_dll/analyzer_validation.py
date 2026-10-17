@@ -322,4 +322,8 @@ def run_analyzer_composition_tests(msbuild_props: list[str]) -> bool:
 
 
 
-__all__ = sorted(name for name in globals() if not name.startswith("__"))
+__all__ = [
+    "run_analyzer_composition_tests",
+    "validate_analyzer_contracts",
+    "validate_shared_source_parity",
+]

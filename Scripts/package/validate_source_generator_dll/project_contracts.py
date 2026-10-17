@@ -261,4 +261,4 @@ def _provider_descriptor_ids(sources: list[Path], prefix: str) -> set[str]:
 
 
 
-__all__ = sorted(name for name in globals() if not name.startswith("__"))
+__all__ = []
