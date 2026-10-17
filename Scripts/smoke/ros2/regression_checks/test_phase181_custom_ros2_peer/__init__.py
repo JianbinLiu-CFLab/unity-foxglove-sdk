@@ -55,9 +55,3 @@ del _phase192_sys, _phase192_types, _Phase192Path, _PHASE192_FACADE_FILE, _PHASE
 del _phase192_module, _phase192_section, _phase192_name
 
 
-
-def load_tests(loader, tests, pattern):
-    """Expose package tests once when discovery sees the facade pair."""
-    if pattern is not None and __name__ not in getattr(loader, "_loading_packages", ()):
-        return loader.suiteClass()
-    return tests
