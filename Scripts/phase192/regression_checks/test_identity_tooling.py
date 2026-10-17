@@ -541,7 +541,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(50, len(surfaces))
+        self.assertEqual(51, len(surfaces))
 
     def test_identity_surface_uses_revision_local_source_layout(self) -> None:
         """Base/head worktrees load their own section-order parser."""
@@ -605,7 +605,11 @@ class IdentityToolingTests(unittest.TestCase):
             "Scripts/smoke/foxrun/phase184_windows_job_owner.py",
             relative,
         )
-        self.assertEqual(50, len(relative))
+        self.assertIn(
+            "Scripts/package/validate_source_generator_dll.py",
+            relative,
+        )
+        self.assertEqual(51, len(relative))
 
     def test_split_identity_surface_rejects_relative_star_chain_change(self) -> None:
         """Changing a section's relative star-import source changes runtime overwrite order."""
