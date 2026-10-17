@@ -36,6 +36,28 @@ for _phase192_section in _PHASE192_SECTION_MODULES:
     for _phase192_name in _PHASE192_EXPORT_NAMES:
         if _phase192_name in globals():
             _phase192_section.__dict__[_phase192_name] = globals()[_phase192_name]
+class _Phase192PackageModule(_phase192_types.ModuleType):
+    """Mirror facade state into the decomposed implementation modules."""
+
+    def __setattr__(self, name, value):
+        """Update this facade and its implementation modules."""
+        super().__setattr__(name, value)
+        if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
+            for _phase192_section in _PHASE192_SECTION_MODULES:
+                if hasattr(_phase192_section, name):
+                    setattr(_phase192_section, name, value)
+
+    def __delattr__(self, name):
+        """Remove an attribute from this facade and its implementation modules."""
+        super().__delattr__(name)
+        if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
+            for _phase192_section in _PHASE192_SECTION_MODULES:
+                if hasattr(_phase192_section, name):
+                    try:
+                        delattr(_phase192_section, name)
+                    except AttributeError:
+                        pass
+
 __all__ = sorted(_PHASE192_EXPORT_NAMES)
 _phase192_module = _phase192_sys.modules.get(__name__)
 if _phase192_module is not None:
