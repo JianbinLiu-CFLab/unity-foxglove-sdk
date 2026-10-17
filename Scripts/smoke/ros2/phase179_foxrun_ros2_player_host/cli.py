@@ -109,4 +109,4 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 2 if summary["verdict"] == "PLAYER_PROOF_COMPLETE_LINUX_PEER_CORRELATION_PENDING" else 1
 
 
-__all__ = [name for name in globals() if not name.startswith("__")]
+__all__ = ['_Phase192Path', '_PHASE192_FACADE_FILE', 'main']
