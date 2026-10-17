@@ -3854,6 +3854,91 @@ class IdentityToolingTests(unittest.TestCase):
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertTrue(any("yield-from-tail" in item for item in risks))
 
+    def test_namespace_gate_preserves_first_yield_mode_through_yield_from(self) -> None:
+        """First-yield consumers do not scan a delegate after its first yield."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    yield 1\n"
+            "    subprocess.run([\"yield-from-next-tail\"])\n"
+            "def outer():\n"
+            "    yield from inner()\n"
+            "next(outer())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertFalse(any("yield-from-next-tail" in item for item in risks))
+
+    def test_namespace_gate_skips_try_continuations_after_first_yield(self) -> None:
+        """Try else/finally code after a first yield is deferred."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator():\n"
+            "    try:\n"
+            "        yield 1\n"
+            "    except Exception:\n"
+            "        pass\n"
+            "    else:\n"
+            "        subprocess.run([\"try-else-tail\"])\n"
+            "    finally:\n"
+            "        subprocess.run([\"try-finally-tail\"])\n"
+            "next(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertFalse(any("try-else-tail" in item for item in risks))
+        self.assertFalse(any("try-finally-tail" in item for item in risks))
+
+    def test_namespace_gate_skips_loop_continuations_after_first_yield(self) -> None:
+        """Loop else and post-loop code are deferred after a yielded value."""
+        sources = (
+            "import subprocess\n"
+            "def generator():\n"
+            "    for item in [1]:\n"
+            "        yield item\n"
+            "    else:\n"
+            "        subprocess.run([\"for-else-tail\"])\n"
+            "    subprocess.run([\"for-after-tail\"])\n"
+            "next(generator())\n",
+            "import subprocess\n"
+            "def generator():\n"
+            "    while True:\n"
+            "        yield 1\n"
+            "    else:\n"
+            "        subprocess.run([\"while-else-tail\"])\n"
+            "    subprocess.run([\"while-after-tail\"])\n"
+            "next(generator())\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertFalse(any("tail" in item for item in risks))
+
+    def test_namespace_gate_scans_all_pathlib_mutators(self) -> None:
+        """Path link and permission mutators remain import-time filesystem risks."""
+        for method in ("symlink_to", "hardlink_to", "chmod", "lchmod"):
+            with self.subTest(method=method):
+                tree = ast.parse(
+                    "from pathlib import Path\n"
+                    "def initialize():\n"
+                    f"    Path(\"side-effect\").{method}(\"target\")\n"
+                    "initialize()\n"
+                )
+                risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+                self.assertTrue(risks)
+
+    def test_namespace_gate_propagates_deferred_mode_through_generator_expression(self) -> None:
+        """Generator expression iterators inherit the enclosing consumer mode."""
+        for consumer in ("next", "list"):
+            with self.subTest(consumer=consumer):
+                tree = ast.parse(
+                    "import subprocess\n"
+                    "def inner():\n"
+                    "    subprocess.run([\"generator-expression-before\"])\n"
+                    "    yield 1\n"
+                    f"{consumer}(item for item in inner())\n"
+                )
+                risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+                self.assertTrue(any("generator-expression-before" in item for item in risks))
+
     def test_namespace_gate_executes_bare_decorator_parameters(self) -> None:
         """Bare decorators are calls and their parameter-driven bodies execute."""
         tree = ast.parse(
