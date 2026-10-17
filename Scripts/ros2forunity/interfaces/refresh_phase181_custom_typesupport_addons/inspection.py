@@ -238,4 +238,15 @@ def _ros2cs_install_build_is_active(ros2cs_install: Path) -> bool:
         return False
     return result.returncode == 0 and bool(result.stdout.strip())
 
-__all__ = [name for name in globals() if not name.startswith("__")]
+__all__ = [
+    "annotations", "_foundation", "argparse", "dataclass", "json", "os", "Path",
+    "PurePosixPath", "subprocess", "sys", "Callable", "Mapping", "Sequence",
+    "SUPPORTED_DISTROS", "addon_package_id", "base_runtime_package_id",
+    "normalized_json_sha256", "ERROR_CODE", "RUNTIME_PACKAGE_PREFIX",
+    "STATIC_INTERFACE_PACKAGE_ID", "AddonRefreshError", "AddonRefreshState",
+    "AddonRefreshRequest", "repository_root", "_read_object", "_mapping_text",
+    "_static_interface_digest", "_runtime_manifest_hash", "_inspect_typesupport_package",
+    "inspect_addon_state", "_candidate_is_validated", "_candidate_inventory_is_exact",
+    "inspect_candidate_state", "require_single_active_runtime", "_require_apply_toolchain",
+    "_ros2cs_install_snapshot", "_ros2cs_install_build_is_active",
+]
