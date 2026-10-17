@@ -13,7 +13,12 @@ The facade retains the explicit package boundary contract markers
 ``SAMPLES = PACKAGE / "Samples~"``, ``"Basic Visualization": "Samples~/BasicVisualization"``,
 ``"Full Demo Visualization": "Samples~/FullDemoVisualization"``,
 ``"Virtual LiDAR Maze Demo": "Samples~/Virtual LiDAR Maze Demo"``,
-and ``"Samples~/Ros2BridgeSample"`` while forwarding implementation to the package.
+``EXPECTED_SAMPLE_COUNT = len(EXPECTED_SAMPLES)``, ``ROS2_BRIDGE_PACKAGE``,
+``"ROS2 Bridge Sample"``, ``"Samples~/Ros2BridgeSample"``, ``check_sample_meta``,
+``samples_files``, ``bridge_files``, ``check_sample_boundaries``,
+``check_forbidden_sample_artifacts``, ``FORBIDDEN_SAMPLE_PARTS``, ``"Generated"``,
+``__pycache__``, ``FullDemo avoids project-level input action assets``,
+and ``InputSystem_Actions.inputactions`` while forwarding implementation to the package.
 """
 
 from __future__ import annotations
