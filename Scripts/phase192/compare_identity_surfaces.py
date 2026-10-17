@@ -2031,6 +2031,20 @@ def _namespace_risk_signatures(
                 resolve_target(node.body, env, seen),
                 resolve_target(node.orelse, env, seen),
             )
+        if isinstance(node, ast.Subscript):
+            base = resolve_target(node.value, env, seen)
+            try:
+                index = ast.literal_eval(node.slice)
+            except (TypeError, ValueError, SyntaxError):
+                index = None
+            if isinstance(index, int):
+                resolved: list[AliasAtom] = []
+                for candidate in candidate_values(base):
+                    if isinstance(candidate, AliasSequence) and -len(candidate.items) <= index < len(candidate.items):
+                        resolved.append(candidate.items[index])
+                if resolved:
+                    return merge_values(*resolved)
+            return node
         if isinstance(node, (ast.Tuple, ast.List)):
             return AliasSequence(tuple(resolve_target(element, env, seen) for element in node.elts))
         return node
@@ -2644,7 +2658,25 @@ def _namespace_risk_signatures(
                     if index == 0
                     and isinstance(
                         argument,
-                        (ast.Call, ast.Name, ast.Attribute, ast.GeneratorExp, ast.YieldFrom),
+                        (
+                            ast.Call,
+                            ast.Name,
+                            ast.Attribute,
+                            ast.GeneratorExp,
+                            ast.YieldFrom,
+                            ast.IfExp,
+                            ast.BoolOp,
+                            ast.NamedExpr,
+                            ast.Subscript,
+                            ast.Starred,
+                            ast.List,
+                            ast.Tuple,
+                            ast.Set,
+                            ast.Dict,
+                            ast.ListComp,
+                            ast.SetComp,
+                            ast.DictComp,
+                        ),
                     )
                     else _DEFERRED_NONE
                 )
@@ -2665,6 +2697,56 @@ def _namespace_risk_signatures(
                 scan_node(generator.iter, env, deferred_mode=deferred_mode)
                 for condition in generator.ifs:
                     scan_node(condition, env)
+            return
+        if isinstance(node, (ast.ListComp, ast.SetComp)):
+            scan_node(node.elt, env)
+            for generator in node.generators:
+                scan_node(generator.iter, env, deferred_mode=deferred_mode)
+                for condition in generator.ifs:
+                    scan_node(condition, env)
+            return
+        if isinstance(node, ast.DictComp):
+            scan_node(node.key, env)
+            scan_node(node.value, env)
+            for generator in node.generators:
+                scan_node(generator.iter, env, deferred_mode=deferred_mode)
+                for condition in generator.ifs:
+                    scan_node(condition, env)
+            return
+        if isinstance(node, ast.IfExp):
+            scan_node(node.test, env)
+            scan_node(node.body, env, deferred_mode=deferred_mode)
+            scan_node(node.orelse, env, deferred_mode=deferred_mode)
+            return
+        if isinstance(node, ast.BoolOp):
+            for value in node.values:
+                scan_node(value, env, deferred_mode=deferred_mode)
+            return
+        if isinstance(node, ast.NamedExpr):
+            value = resolve_target(node.value, env)
+            scan_node(node.value, env, deferred_mode=deferred_mode)
+            bind_assignment(node.target, value, env)
+            return
+        if isinstance(node, ast.Starred):
+            scan_node(node.value, env, deferred_mode=deferred_mode)
+            return
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            for element in node.elts:
+                scan_node(
+                    element,
+                    env,
+                    deferred_mode=deferred_mode if isinstance(element, ast.Starred) else _DEFERRED_NONE,
+                )
+            return
+        if isinstance(node, ast.Subscript):
+            resolved = resolve_target(node, env)
+            if resolved is not node:
+                resolved_node = resolved.node if isinstance(resolved, FrozenAlias) else resolved
+                if isinstance(resolved_node, ast.AST):
+                    scan_node(resolved_node, env, deferred_mode=deferred_mode)
+            else:
+                scan_node(node.value, env)
+            scan_node(node.slice, env)
             return
         if isinstance(node, ast.Expr):
             has_yield = any(

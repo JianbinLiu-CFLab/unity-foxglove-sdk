@@ -3998,6 +3998,57 @@ class IdentityToolingTests(unittest.TestCase):
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertTrue(any("generator-alias" in item for item in risks))
 
+    def test_namespace_gate_propagates_mode_through_driving_expression_wrappers(self) -> None:
+        """Driving expressions retain deferred mode through wrappers and comprehensions."""
+        sources = (
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"ifexp-drive\"])\n"
+            "    yield 1\n"
+            "def safe():\n"
+            "    yield 2\n"
+            "next(inner() if True else safe())\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"boolop-drive\"])\n"
+            "    yield 1\n"
+            "next(inner() or iter(()))\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"namedexpr-drive\"])\n"
+            "    yield 1\n"
+            "next((iterator := inner()))\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"subscript-drive\"])\n"
+            "    yield 1\n"
+            "next([inner()][0])\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"starred-drive\"])\n"
+            "    yield 1\n"
+            "list([*inner()])\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"listcomp-drive\"])\n"
+            "    yield 1\n"
+            "list([value for value in inner()])\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"setcomp-drive\"])\n"
+            "    yield 1\n"
+            "set({value for value in inner()})\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"dictcomp-drive\"])\n"
+            "    yield 1\n"
+            "dict({value: value for value in inner()})\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertTrue(any("-drive" in item for item in risks))
+
     def test_namespace_gate_executes_bare_decorator_parameters(self) -> None:
         """Bare decorators are calls and their parameter-driven bodies execute."""
         tree = ast.parse(
