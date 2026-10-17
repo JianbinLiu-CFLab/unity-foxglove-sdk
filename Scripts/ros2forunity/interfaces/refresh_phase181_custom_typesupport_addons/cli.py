@@ -79,4 +79,4 @@ def main(argv: Sequence[str] | None = None) -> int:
     print("PASS: Phase181 custom typesupport add-ons are current and validated.")
     return 0
 
-__all__ = ['_foundation', '_refresh', '_Phase192Path', '_PHASE192_FACADE_FILE', 'parse_args', 'main']
+__all__ = ['_foundation', '_refresh', 'parse_args', 'main']
