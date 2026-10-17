@@ -205,7 +205,7 @@
     },
     {
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs",
-      "sourceRevision": "34892a676386f3d273f4300a33d0b7da242c9f6c",
+      "sourceRevision": "88197866346c9531dac84b7ab004c47247712d41",
       "decompositionRevision": "229b969dcf1e2f7e81a04a23b1e67fe53f6608c3",
       "originalSha256": "2daddc6c2c629b410c4b18818308dd276625673f79951251470b570925f8cd2e",
       "parts": [
@@ -349,7 +349,7 @@
     },
     {
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
-      "sourceRevision": "004e23794c9e0c9ee167d8f0f80dd7d5038320b0",
+      "sourceRevision": "88197866346c9531dac84b7ab004c47247712d41",
       "decompositionRevision": "34ffcce126ec1e91d63d5b21e805ec06596a8d81",
       "originalSha256": "44507b4049f9c89b1e56468e76ec35b7212b8f65d8f5a0a42d5096a9ea1c06a2",
       "parts": [
