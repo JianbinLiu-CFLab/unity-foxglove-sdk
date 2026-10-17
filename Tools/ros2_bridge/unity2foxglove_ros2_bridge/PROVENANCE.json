@@ -207,7 +207,7 @@
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs",
       "sourceRevision": "34892a676386f3d273f4300a33d0b7da242c9f6c",
       "decompositionRevision": "229b969dcf1e2f7e81a04a23b1e67fe53f6608c3",
-      "originalSha256": "c4d30a3e4051fc0cebbea33314a8c5d2a435f6ebf507a7f66bbe2ce8715397ee",
+      "originalSha256": "2daddc6c2c629b410c4b18818308dd276625673f79951251470b570925f8cd2e",
       "parts": [
         {
           "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolLimits/ResourceAccounting.cs",
@@ -351,7 +351,7 @@
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
       "sourceRevision": "004e23794c9e0c9ee167d8f0f80dd7d5038320b0",
       "decompositionRevision": "34ffcce126ec1e91d63d5b21e805ec06596a8d81",
-      "originalSha256": "ad8d6f1349bce7a01ace37f435781eda90e9e62491f296da9b64af24609424ee",
+      "originalSha256": "44507b4049f9c89b1e56468e76ec35b7212b8f65d8f5a0a42d5096a9ea1c06a2",
       "parts": [
         {
           "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/DecoderAndDialect.cs",
@@ -426,7 +426,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs",
-      "sha256": "374baa211fbb3256047bb25a61899c5ed69daec01a93afce447c6e51f6087e9d",
+      "sha256": "2daddc6c2c629b410c4b18818308dd276625673f79951251470b570925f8cd2e",
       "classification": "original",
       "influence": "Original immutable C# protocol limit snapshot.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
@@ -454,7 +454,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
-      "sha256": "3307dc401d1a975d3ae0aee2fc749597f23803dda1fffa9c49688a85bcc65e8b",
+      "sha256": "44507b4049f9c89b1e56468e76ec35b7212b8f65d8f5a0a42d5096a9ea1c06a2",
       "classification": "original",
       "influence": "Original C# byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
