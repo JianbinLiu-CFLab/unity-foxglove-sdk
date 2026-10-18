@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 import unittest
@@ -26,6 +27,27 @@ class ValidateSourceGeneratorFacadeTests(unittest.TestCase):
         )
         self.assertEqual(0, completed.returncode)
         self.assertIn("Validate the checked-in source generator DLL.", completed.stdout)
+
+    def test_canonical_spec_loader_exports_validator_entrypoints(self) -> None:
+        """A canonical file-spec load keeps the legacy facade exports available."""
+        module_name = "Scripts.package.validate_source_generator_dll"
+        path = ROOT / "Scripts" / "package" / "validate_source_generator_dll.py"
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        previous = sys.modules.get(module_name)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+            self.assertTrue(callable(module.main))
+            self.assertTrue(callable(module.validate_or_update))
+            self.assertTrue(callable(module.validate_analyzer_contracts))
+        finally:
+            if previous is None:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous
 
     def test_package_facade_exports_validator_entrypoints(self) -> None:
         """The package facade exposes the public validator callables."""

@@ -18,11 +18,29 @@ from __future__ import annotations
 import sys as _phase192_sys
 import types as _phase192_types
 
+_phase192_module = _phase192_sys.modules.get(__name__)
+_phase192_canonical_name = (
+    __package__ + ".validate_source_generator_dll"
+    if __package__
+    else None
+)
+_phase192_self_registered = (
+    _phase192_canonical_name == __name__
+    and _phase192_module is not None
+    and _phase192_sys.modules.get(_phase192_canonical_name) is _phase192_module
+)
+
 if __package__:
-    from .validate_source_generator_dll import *
-    _phase192_package_module = _phase192_sys.modules.get(
-        __package__ + ".validate_source_generator_dll"
-    )
+    if _phase192_self_registered:
+        _phase192_sys.modules.pop(_phase192_canonical_name, None)
+    try:
+        from .validate_source_generator_dll import *
+        _phase192_package_module = _phase192_sys.modules.get(
+            _phase192_canonical_name
+        )
+    finally:
+        if _phase192_self_registered:
+            _phase192_sys.modules[_phase192_canonical_name] = _phase192_module
 else:
     from pathlib import Path as _Phase192Path
     _phase192_parent = _Phase192Path(__file__).resolve().parent
@@ -64,7 +82,6 @@ class _Phase192FacadeModule(_phase192_types.ModuleType):
                 pass
 
 
-_phase192_module = _phase192_sys.modules.get(__name__)
 if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192FacadeModule
 

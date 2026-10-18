@@ -5,6 +5,7 @@
 // Purpose: Phase 140-21/22/23/24/27 legacy phase optimization checks.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Editor;
@@ -155,58 +156,61 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var ledger = TestSources.Text("docs/research-workstream-g-closure.md");
             Assert.Contains("reconstructed closure mapping", ledger, StringComparison.Ordinal);
             Assert.Contains("original validation checks use the `140-27A-1` through `140-27F-4` namespace", ledger, StringComparison.Ordinal);
+            Assert.Contains("Historical pre-migration check: the legacy console validation compiled", ledger, StringComparison.Ordinal);
+            Assert.Contains("Historical pre-migration check: the validation registry exposed", ledger, StringComparison.Ordinal);
+            Assert.Contains("The live scene explicit cube binding is covered", ledger, StringComparison.Ordinal);
+            Assert.Contains("fallback discovery when optional fields are unbound", ledger, StringComparison.Ordinal);
             Assert.Contains("## Supporting historical checks", ledger, StringComparison.Ordinal);
             var registerStart = ledger.IndexOf("## Reconstructed finding register", StringComparison.Ordinal);
+            var supportingStart = ledger.IndexOf("## Supporting historical checks", StringComparison.Ordinal);
             var checksStart = ledger.IndexOf("## Automated closure checks", StringComparison.Ordinal);
-            Assert.True(registerStart >= 0 && checksStart > registerStart);
-            var provenance = ledger.Substring(registerStart, checksStart - registerStart);
-            foreach (var check in new[]
-                     {
-                         "140-27A-1", "140-27A-2", "140-27A-3", "140-27A-4",
-                         "140-27B-1", "140-27B-2", "140-27C-1", "140-27C-2",
-                         "140-27C-3", "140-27D-1", "140-27D-2", "140-27E-1",
-                         "140-27E-2", "140-27E-3", "140-27E-4", "140-27E-5",
-                         "140-27F-1", "140-27F-2", "140-27F-3", "140-27F-4"
-                     })
-                Assert.Single(Regex.Matches(provenance, Regex.Escape(check)));
-
-            foreach (var mapping in new[]
-                     {
-                         "| Phase140-27/P2-1 | P2 | Closed | 140-27A-1 |",
-                         "| Phase140-27/P2-4 | P2 | Closed | 140-27C-1, 140-27C-2 |",
-                         "| Phase140-27/P3-1 | P3 | Closed | 140-27D-2 |",
-                         "| Phase140-27/P3-2 | P3 | Closed | 140-27A-2 |",
-                         "| Phase140-27/P3-5 | P3 | Closed | 140-27E-2 |",
-                         "| Phase140-27/P3-6 | P3 | Closed | 140-27D-1 |"
-                     })
-                Assert.Contains(mapping, ledger, StringComparison.Ordinal);
-
-            foreach (var supporting in new[]
-                     {
-                         "- `140-27A-3`",
-                         "- `140-27A-4`",
-                         "- `140-27E-4`",
-                         "- `140-27F-3`",
-                         "- `140-27F-4`"
-                     })
-                Assert.Contains(supporting, ledger, StringComparison.Ordinal);
-
-            foreach (var finding in new[]
-                     {
-                         "Phase140-27/P2-1",
-                         "Phase140-27/P2-2",
-                         "Phase140-27/P2-3",
-                         "Phase140-27/P2-4",
-                         "Phase140-27/P2-5",
-                         "Phase140-27/P2-6",
-                         "Phase140-27/P3-1",
-                         "Phase140-27/P3-2",
-                         "Phase140-27/P3-3",
-                         "Phase140-27/P3-4",
-                         "Phase140-27/P3-5",
-                         "Phase140-27/P3-6"
-                     })
-                Assert.Contains("| " + finding + " |", ledger, StringComparison.Ordinal);
+            Assert.True(registerStart >= 0 && supportingStart > registerStart && checksStart > supportingStart);
+            var provenance = ledger.Substring(registerStart, supportingStart - registerStart);
+            var supporting = ledger.Substring(supportingStart, checksStart - supportingStart);
+            var expectedMappings = new Dictionary<string, string[]>(StringComparer.Ordinal)
+            {
+                ["Phase140-27/P2-1"] = new[] { "140-27A-1" },
+                ["Phase140-27/P2-2"] = new[] { "140-27B-1" },
+                ["Phase140-27/P2-3"] = new[] { "140-27B-2" },
+                ["Phase140-27/P2-4"] = new[] { "140-27C-1", "140-27C-2" },
+                ["Phase140-27/P2-5"] = new[] { "140-27C-3" },
+                ["Phase140-27/P2-6"] = new[] { "140-27E-1", "140-27E-3" },
+                ["Phase140-27/P3-1"] = new[] { "140-27D-2" },
+                ["Phase140-27/P3-2"] = new[] { "140-27A-2" },
+                ["Phase140-27/P3-3"] = new[] { "140-27E-5" },
+                ["Phase140-27/P3-4"] = new[] { "140-27F-1", "140-27F-2" },
+                ["Phase140-27/P3-5"] = new[] { "140-27E-2" },
+                ["Phase140-27/P3-6"] = new[] { "140-27D-1" }
+            };
+            var tableRows = provenance.Split('\n')
+                .Select(line => line.Trim())
+                .Where(line => line.StartsWith("| Phase140-27/", StringComparison.Ordinal))
+                .ToArray();
+            Assert.Equal(expectedMappings.Count, tableRows.Length);
+            var observedFindings = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var row in tableRows)
+            {
+                var columns = row.Split('|').Select(column => column.Trim()).ToArray();
+                Assert.True(columns.Length >= 6, row);
+                var finding = columns[1];
+                Assert.True(expectedMappings.ContainsKey(finding), $"Unknown finding row: {finding}");
+                Assert.True(observedFindings.Add(finding), $"Duplicate finding row: {finding}");
+                var ids = Regex.Matches(columns[4], @"140-27[A-F]-[1-5]")
+                    .Select(match => match.Value)
+                    .ToArray();
+                Assert.Equal(expectedMappings[finding], ids);
+            }
+            var expectedSupportingIds = new[] { "140-27A-3", "140-27A-4", "140-27E-4", "140-27F-3", "140-27F-4" };
+            var observedSupportingIds = Regex.Matches(supporting, @"140-27[A-F]-[1-5]")
+                .Select(match => match.Value)
+                .ToArray();
+            Assert.Equal(string.Join("|", expectedSupportingIds), string.Join("|", observedSupportingIds));
+            var expectedAllIds = expectedMappings.Values.SelectMany(ids => ids).Concat(expectedSupportingIds).OrderBy(id => id).ToArray();
+            var observedAllIds = Regex.Matches(provenance + supporting, @"140-27[A-Z]-\d+")
+                .Select(match => match.Value)
+                .OrderBy(id => id)
+                .ToArray();
+            Assert.Equal(string.Join("|", expectedAllIds), string.Join("|", observedAllIds));
 
             VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/FoxgloveDebugOverlaySmoke.cs");
             VerifyRunInBackgroundRestore("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase106Ros2ForUnityAcceptance.cs");
