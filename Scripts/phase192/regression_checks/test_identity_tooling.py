@@ -3478,6 +3478,38 @@ class IdentityToolingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare_identity_surfaces._symbols(source, str(facade))
 
+    def test_generated_facade_rejects_closure_mutations(self) -> None:
+        """Generated facades cannot mutate protected state through wrappers or aliases."""
+        facade = Path("Scripts/package/validate_source_generator_dll.py")
+        source = facade.read_text(encoding="utf-8")
+        variants = {
+            "facade_method_body": source.replace(
+                "        super().__setattr__(name, value)\n",
+                "        super().__setattr__(name, value)\n"
+                "        setattr(_phase192_package_module, \"__name__\", \"evil\")\n",
+                1,
+            ),
+            "protected_types_alias": source + (
+                "\nimport types as _evil_types\n"
+                "_evil_types.ModuleType = object\n"
+            ),
+            "protected_metadata_alias": source + (
+                "\n_evil_spec = __spec__\n"
+                "_evil_spec.name = \"evil\"\n"
+            ),
+            "protected_metadata_store": source + '\n__spec__.name = "evil"\n',
+            "globals_protected_store": source + (
+                "\nglobals()[\"_phase192_package_module\"].__name__ = \"evil\"\n"
+            ),
+        }
+        for name, variant in variants.items():
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                compare_identity_surfaces._symbols(
+                    variant,
+                    str(facade),
+                    repository_root=Path.cwd(),
+                )
+
     def test_generated_initializer_rejects_import_time_main_call(self) -> None:
         """Package initializers cannot invoke an exported CLI during import."""
         initializer = Path("Scripts/mcap/mcap_time_sync/__init__.py")
