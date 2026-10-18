@@ -4364,6 +4364,20 @@ class IdentityToolingTests(unittest.TestCase):
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertFalse(any("constant-subscript-unselected" in item for item in risks))
 
+    def test_namespace_gate_scans_starred_constant_subscript_iteration(self) -> None:
+        """Starred elements are fully consumed while a literal container is built."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"starred-subscript-dangerous\"])\n"
+            "    yield 1\n"
+            "def safe():\n"
+            "    yield 2\n"
+            "next([*inner(), safe()][1])\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("starred-subscript-dangerous" in item for item in risks))
+
     def test_namespace_gate_does_not_drive_nonfinal_and_operands(self) -> None:
         """Operands evaluated only for an and-condition are not consumed generators."""
         tree = ast.parse(

@@ -24,40 +24,68 @@ _phase192_canonical_self = (
     if __package__ and _phase192_sys.modules.get(__name__) is not None
     else None
 )
-_phase192_previous_self = _phase192_sys.modules.get("validate_source_generator_dll")
-if _phase192_canonical_self is not None:
-    _phase192_canonical_self.__package__ = ""
-    _phase192_canonical_self.__name__ = "validate_source_generator_dll"
-    _phase192_sys.modules["validate_source_generator_dll"] = _phase192_canonical_self
+_phase192_previous_submodules = {
+    name: _phase192_sys.modules[name]
+    for name in _phase192_sys.modules
+    if name == "validate_source_generator_dll"
+    or name.startswith("validate_source_generator_dll.")
+}
+_phase192_previous_path = _phase192_sys.path[:]
+_phase192_previous_name = (
+    __name__ if _phase192_canonical_self is not None else None
+)
+_phase192_previous_package = (
+    __package__ if _phase192_canonical_self is not None else None
+)
 
-if __package__:
-    from .validate_source_generator_dll import *
-    _phase192_package_module = _phase192_sys.modules.get(
-        __package__ + ".validate_source_generator_dll"
-    )
-else:
-    from pathlib import Path as _Phase192Path
-    _phase192_parent = _Phase192Path(__file__).resolve().parent
-    if str(_phase192_parent) not in _phase192_sys.path:
-        _phase192_sys.path.insert(0, str(_phase192_parent))
-    _phase192_self = (
-        _phase192_sys.modules.get(__name__)
-        if __name__ == "validate_source_generator_dll"
-        else None
-    )
-    if _phase192_self is not None:
+try:
+    if _phase192_canonical_self is not None:
+        _phase192_canonical_self.__package__ = ""
+        _phase192_canonical_self.__name__ = "validate_source_generator_dll"
+        _phase192_sys.modules["validate_source_generator_dll"] = _phase192_canonical_self
         _phase192_sys.modules.pop("validate_source_generator_dll", None)
-    try:
-        from validate_source_generator_dll import *
-        _phase192_package_module = _phase192_sys.modules.get(
-            "validate_source_generator_dll"
-        )
-    finally:
-        if _phase192_self is not None:
-            _phase192_sys.modules["validate_source_generator_dll"] = _phase192_self
 
-if _phase192_canonical_self is not None and _phase192_previous_self is not None:
-    _phase192_sys.modules["validate_source_generator_dll"] = _phase192_previous_self
+    if __package__:
+        from .validate_source_generator_dll import *
+        _phase192_package_module = _phase192_sys.modules.get(
+            __package__ + ".validate_source_generator_dll"
+        )
+    else:
+        from pathlib import Path as _Phase192Path
+        _phase192_parent = _Phase192Path(__file__).resolve().parent
+        if str(_phase192_parent) not in _phase192_sys.path:
+            _phase192_sys.path.insert(0, str(_phase192_parent))
+        _phase192_self = (
+            _phase192_sys.modules.get(__name__)
+            if __name__ == "validate_source_generator_dll"
+            else None
+        )
+        if _phase192_self is not None:
+            _phase192_sys.modules.pop("validate_source_generator_dll", None)
+        try:
+            from validate_source_generator_dll import *
+            _phase192_package_module = _phase192_sys.modules.get(
+                "validate_source_generator_dll"
+            )
+        finally:
+            if _phase192_self is not None:
+                _phase192_sys.modules["validate_source_generator_dll"] = _phase192_self
+finally:
+    _phase192_sys.path[:] = _phase192_previous_path
+    for _phase192_name in tuple(_phase192_sys.modules):
+        if (
+            (
+                _phase192_name == "validate_source_generator_dll"
+                or _phase192_name.startswith("validate_source_generator_dll.")
+            )
+            and _phase192_name not in _phase192_previous_submodules
+        ):
+            _phase192_sys.modules.pop(_phase192_name, None)
+    for _phase192_name in _phase192_previous_submodules:
+        _phase192_sys.modules[_phase192_name] = _phase192_previous_submodules[_phase192_name]
+    if _phase192_canonical_self is not None:
+        setattr(_phase192_canonical_self, "__name__", _phase192_previous_name)
+        setattr(_phase192_canonical_self, "__package__", _phase192_previous_package)
 
 __package__ = __spec__.parent if __spec__ is not None else __package__
 __name__ = __spec__.name if __spec__ is not None else __name__
