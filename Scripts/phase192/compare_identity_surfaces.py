@@ -936,6 +936,29 @@ def _phase192_validate_template_registry_mutations(
                 and node.value.id == "_Phase192FacadeModule"
             )
         }
+        allowed_canonical_store_ids = {
+            id(node.targets[0])
+            for node in ast.walk(tree)
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Attribute)
+                and isinstance(node.targets[0].value, ast.Name)
+                and node.targets[0].value.id == "_phase192_canonical_self"
+                and (
+                    (
+                        node.targets[0].attr == "__package__"
+                        and isinstance(node.value, ast.Constant)
+                        and node.value.value == ""
+                    )
+                    or (
+                        node.targets[0].attr == "__name__"
+                        and isinstance(node.value, ast.Constant)
+                        and node.value.value == "validate_source_generator_dll"
+                    )
+                )
+            )
+        }
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign):
                 targets = node.targets
@@ -958,6 +981,7 @@ def _phase192_validate_template_registry_mutations(
                     isinstance(target, ast.Attribute)
                     and isinstance(target.value, ast.Name)
                     and target.value.id == "_phase192_canonical_self"
+                    and id(target) not in allowed_canonical_store_ids
                 ):
                     return False
         allowed_store_ids = {
@@ -1062,7 +1086,9 @@ def _phase192_validate_template_registry_mutations(
         ]
         if len(sys_imports) != 1 or sys_imports[0].name != "sys":
             return False
-        forbidden_import_bindings = transaction_binding_names | {"_phase192_name"}
+        forbidden_import_bindings = (
+            transaction_binding_names - {"_phase192_types"}
+        ) | {"_phase192_name"}
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
