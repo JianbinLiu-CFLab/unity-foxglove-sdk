@@ -133,6 +133,7 @@ class ValidateSourceGeneratorFacadeTests(unittest.TestCase):
         original_import = builtins.__import__
 
         def fail_legacy_import(name, globals=None, locals=None, fromlist=(), level=0):
+            """Force the legacy implementation import to fail for rollback coverage."""
             if name == "validate_source_generator_dll" and level == 0:
                 raise ImportError("forced facade import failure")
             return original_import(name, globals, locals, fromlist, level)
