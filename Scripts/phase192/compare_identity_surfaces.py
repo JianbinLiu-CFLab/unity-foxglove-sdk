@@ -635,6 +635,10 @@ def _phase192_validate_template_registry_mutations(
             "_phase192_previous_name",
             "_phase192_previous_package",
         }
+        transaction_binding_names = expected_top_level | {
+            "_phase192_self",
+            "_phase192_package_module",
+        }
         top_level_assignments = {
             target.id
             for statement in tree.body
@@ -720,6 +724,24 @@ def _phase192_validate_template_registry_mutations(
                 or exact_snapshot(statement)
             )
         }
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id in {"_phase192_self", "_phase192_package_module"}
+            ):
+                continue
+            expected_nodes = [
+                ast.parse(expression, mode="eval").body
+                for expression in expected_values[node.targets[0].id]
+            ]
+            if any(
+                ast.dump(node.value, include_attributes=False)
+                == ast.dump(expected, include_attributes=False)
+                for expected in expected_nodes
+            ):
+                allowed_store_ids.add(id(node.targets[0]))
         for loop_id, _ in cleanup_loops + restore_loops:
             loop = next(
                 node for node in ast.walk(transaction)
@@ -734,7 +756,7 @@ def _phase192_validate_template_registry_mutations(
             else:
                 targets = []
             for target in targets:
-                if isinstance(target, ast.Name) and target.id in expected_top_level:
+                if isinstance(target, ast.Name) and target.id in transaction_binding_names:
                     if id(target) not in allowed_store_ids:
                         return False
                 if (
@@ -753,7 +775,7 @@ def _phase192_validate_template_registry_mutations(
             if isinstance(node, ast.Delete) and any(
                 rooted_in(target, "_phase192_previous_submodules")
                 or isinstance(target, ast.Name)
-                and target.id in expected_top_level | {"_phase192_sys"}
+                and target.id in transaction_binding_names | {"_phase192_sys"}
                 for target in node.targets
             ):
                 return False
@@ -764,15 +786,15 @@ def _phase192_validate_template_registry_mutations(
             ):
                 return False
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
-                if node.id in expected_top_level | {"_phase192_sys", "_phase192_name"}:
+                if node.id in transaction_binding_names | {"_phase192_sys", "_phase192_name"}:
                     if id(node) not in allowed_store_ids:
                         return False
             if isinstance(node, ast.ExceptHandler) and node.name in (
-                expected_top_level | {"_phase192_sys", "_phase192_name"}
+                transaction_binding_names | {"_phase192_sys", "_phase192_name"}
             ):
                 return False
             if isinstance(node, ast.MatchAs) and node.name in (
-                expected_top_level | {"_phase192_sys", "_phase192_name"}
+                transaction_binding_names | {"_phase192_sys", "_phase192_name"}
             ):
                 return False
             if isinstance(node, ast.MatchStar) and node.name in (
@@ -788,7 +810,7 @@ def _phase192_validate_template_registry_mutations(
         ]
         if len(sys_imports) != 1 or sys_imports[0].name != "sys":
             return False
-        forbidden_import_bindings = expected_top_level | {"_phase192_name"}
+        forbidden_import_bindings = transaction_binding_names | {"_phase192_name"}
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -5929,3 +5951,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
