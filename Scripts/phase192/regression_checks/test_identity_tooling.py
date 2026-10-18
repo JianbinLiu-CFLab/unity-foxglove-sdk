@@ -2653,6 +2653,25 @@ class IdentityToolingTests(unittest.TestCase):
             compare_identity_surfaces._compare_surfaces(base, head, strict=True),
         )
 
+    def test_loader_compatibility_rejects_added_conditional_contract(self) -> None:
+        """Loader conditional contracts remain exact in compatibility mode."""
+        base = {
+            "Scripts/package/validate_source_generator_dll.py": (
+                frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
+                frozenset(), True, (), frozenset(), ("facade:base",), None, (), (), (), frozenset({"PUBLIC"}),
+            )
+        }
+        head = {
+            "Scripts/package/validate_source_generator_dll.py": (
+                frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
+                frozenset(), True, (), frozenset(), ("facade:base", "facade:added"), None, (), (), (), frozenset({"PUBLIC"}),
+            )
+        }
+        self.assertIn(
+            "CONDITIONAL_CONTRACT_CHANGED Scripts/package/validate_source_generator_dll.py",
+            compare_identity_surfaces._compare_surfaces(base, head, strict=False),
+        )
+
     def test_loader_registry_exception_rejects_unrelated_dynamic_keys(self) -> None:
         """Dynamic registry mutations are accepted only in the validated loader transaction."""
         source = ast.parse(
