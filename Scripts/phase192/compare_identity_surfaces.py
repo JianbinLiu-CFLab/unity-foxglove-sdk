@@ -653,6 +653,26 @@ def _phase192_validate_template_registry_mutations(
                 if isinstance(target, ast.Name) and target.id == name
             ) != 1:
                 return False
+        critical_order = [
+            "_phase192_canonical_self",
+            "_phase192_previous_submodules",
+            "_phase192_previous_path",
+            "_phase192_previous_name",
+            "_phase192_previous_package",
+        ]
+        critical_positions = {
+            name: index
+            for index, statement in enumerate(tree.body)
+            if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Name)
+            and target.id in critical_order
+            for name in [target.id]
+        }
+        if [critical_positions[name] for name in critical_order] != sorted(
+            critical_positions.values()
+        ):
+            return False
         expected_values = {
             "_phase192_canonical_self": [
                 "_phase192_sys.modules.get(__name__) if __package__ and _phase192_sys.modules.get(__name__) is not None else None",
