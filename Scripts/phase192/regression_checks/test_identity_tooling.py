@@ -2633,8 +2633,8 @@ class IdentityToolingTests(unittest.TestCase):
         errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
         self.assertIn("CONDITIONAL_CONTRACT_CHANGED fixture.py", errors)
 
-    def test_split_identity_surface_allows_only_exact_loader_metadata_restore(self) -> None:
-        """Only the two facade metadata restores are exempt from the loader risk delta."""
+    def test_split_identity_surface_rejects_loader_metadata_risk_delta(self) -> None:
+        """Loader metadata restore changes remain subject to the namespace contract."""
         base = {
             "Scripts/package/validate_source_generator_dll.py": (
                 frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
@@ -2648,15 +2648,9 @@ class IdentityToolingTests(unittest.TestCase):
             frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
             frozenset(), True, (), frozenset({name_restore, package_restore}), (), None, (), (), (), frozenset({"PUBLIC"}),
         )
-        self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=True))
-        unsafe = dict(head)
-        unsafe["Scripts/package/validate_source_generator_dll.py"] = (
-            frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
-            frozenset(), True, (), frozenset({name_restore, package_restore, "unsafe"}), (), None, (), (), (), frozenset({"PUBLIC"}),
-        )
         self.assertIn(
             "NAMESPACE_CONTRACT_CHANGED Scripts/package/validate_source_generator_dll.py",
-            compare_identity_surfaces._compare_surfaces(base, unsafe, strict=True),
+            compare_identity_surfaces._compare_surfaces(base, head, strict=True),
         )
 
     def test_loader_registry_exception_rejects_unrelated_dynamic_keys(self) -> None:
@@ -2672,6 +2666,44 @@ class IdentityToolingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsupported generated module registry mutation"):
             compare_identity_surfaces._phase192_validate_template_registry_mutations(
                 source, "Scripts/package/validate_source_generator_dll.py"
+            )
+
+    def test_loader_registry_transaction_rejects_control_flow_and_rebinding_variants(self) -> None:
+        """The loader exception rejects guard escapes, rebinding, and path spoofing."""
+        root = compare_identity_surfaces.REPOSITORY_ROOT
+        facade = root / "Scripts/package/validate_source_generator_dll.py"
+        source = facade.read_text(encoding="utf-8")
+        variants = {
+            "pop_outside_guard": source.replace(
+                "            _phase192_sys.modules.pop(_phase192_name, None)\n",
+                "            pass\n        _phase192_sys.modules.pop(_phase192_name, None)\n",
+                1,
+            ),
+            "cleanup_key_rebind": source.replace(
+                "            _phase192_sys.modules.pop(_phase192_name, None)\n",
+                '            _phase192_name = "os"\n            _phase192_sys.modules.pop(_phase192_name, None)\n',
+                1,
+            ),
+            "restore_key_rebind": source.replace(
+                "        _phase192_sys.modules[_phase192_name] = _phase192_previous_submodules[_phase192_name]\n",
+                '        _phase192_name = "os"\n        _phase192_sys.modules[_phase192_name] = _phase192_previous_submodules[_phase192_name]\n',
+                1,
+            ),
+            "snapshot_rebind": source + '\n_phase192_previous_submodules = {"os": None}\n',
+        }
+        for name, variant in variants.items():
+            with self.subTest(name=name):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._symbols(
+                        variant,
+                        str(facade),
+                        repository_root=root,
+                    )
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._phase192_validate_template_registry_mutations(
+                ast.parse(source),
+                str(root / "evil/Scripts/package/validate_source_generator_dll.py"),
+                root,
             )
 
     def test_split_identity_surface_allows_new_conditional_names_but_not_existing_bindings(self) -> None:
