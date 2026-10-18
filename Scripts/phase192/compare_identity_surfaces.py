@@ -463,6 +463,79 @@ def _phase192_validate_template_registry_mutations(
     except (TypeError, ValueError):
         relative_path = None
     loader_path = relative_path == "Scripts/package/validate_source_generator_dll.py"
+    if loader_path:
+        def exact_top_level_assignment(name: str, expression: str) -> bool:
+            """Recognize one exact top-level loader binding."""
+            expected = ast.parse(expression, mode="eval").body
+            matches = [
+                statement
+                for statement in tree.body
+                if isinstance(statement, ast.Assign)
+                and len(statement.targets) == 1
+                and isinstance(statement.targets[0], ast.Name)
+                and statement.targets[0].id == name
+                and ast.dump(statement.value, include_attributes=False)
+                == ast.dump(expected, include_attributes=False)
+            ]
+            return len(matches) == 1
+
+        if not (
+            exact_top_level_assignment(
+                "__name__",
+                "__spec__.name if __spec__ is not None else __name__",
+            )
+            and exact_top_level_assignment(
+                "__package__",
+                "__spec__.parent if __spec__ is not None else __package__",
+            )
+        ):
+            raise ValueError(f"Unsupported loader module metadata binding in {path}")
+
+        class_assignments = [
+            statement
+            for statement in ast.walk(tree)
+            if isinstance(statement, ast.Assign)
+            and len(statement.targets) == 1
+            and isinstance(statement.targets[0], ast.Attribute)
+            and isinstance(statement.targets[0].value, ast.Name)
+            and statement.targets[0].value.id == "_phase192_module"
+            and statement.targets[0].attr == "__class__"
+            and isinstance(statement.value, ast.Name)
+            and statement.value.id == "_Phase192FacadeModule"
+        ]
+        if len(class_assignments) != 1:
+            raise ValueError(f"Unsupported loader module class binding in {path}")
+
+        def exact_cli_guard(statement: ast.AST) -> bool:
+            """Recognize the exact validator command-line dispatch guard."""
+            return (
+                isinstance(statement, ast.If)
+                and not statement.orelse
+                and isinstance(statement.test, ast.Compare)
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.Eq)
+                and isinstance(statement.test.left, ast.Name)
+                and statement.test.left.id == "__name__"
+                and len(statement.test.comparators) == 1
+                and isinstance(statement.test.comparators[0], ast.Constant)
+                and statement.test.comparators[0].value == "__main__"
+                and len(statement.body) == 1
+                and isinstance(statement.body[0], ast.Raise)
+                and isinstance(statement.body[0].exc, ast.Call)
+                and isinstance(statement.body[0].exc.func, ast.Name)
+                and statement.body[0].exc.func.id == "SystemExit"
+                and len(statement.body[0].exc.args) == 1
+                and isinstance(statement.body[0].exc.args[0], ast.Call)
+                and isinstance(statement.body[0].exc.args[0].func, ast.Name)
+                and statement.body[0].exc.args[0].func.id == "main"
+                and not statement.body[0].exc.args[0].args
+                and not statement.body[0].exc.args[0].keywords
+                and not statement.body[0].exc.keywords
+            )
+
+        if sum(exact_cli_guard(statement) for statement in tree.body) != 1:
+            raise ValueError(f"Unsupported loader command-line dispatch in {path}")
+
     snapshot_filter = ast.parse(
         "(name == 'validate_source_generator_dll' or "
         "name.startswith('validate_source_generator_dll.'))",
@@ -636,6 +709,7 @@ def _phase192_validate_template_registry_mutations(
             "_phase192_previous_package",
         }
         transaction_binding_names = expected_top_level | {
+            "_phase192_module",
             "_phase192_self",
             "_phase192_package_module",
         }
@@ -678,6 +752,10 @@ def _phase192_validate_template_registry_mutations(
         ):
             return False
         expected_values = {
+            "_phase192_module": [
+                "_phase192_sys.modules.get(__name__)",
+                "_phase192_sys.modules.get(__name__)",
+            ],
             "_phase192_canonical_self": [
                 "_phase192_sys.modules.get(__name__) if __package__ and _phase192_sys.modules.get(__name__) is not None else None",
             ],
@@ -729,7 +807,11 @@ def _phase192_validate_template_registry_mutations(
                 isinstance(node, ast.Assign)
                 and len(node.targets) == 1
                 and isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id in {"_phase192_self", "_phase192_package_module"}
+                and node.targets[0].id in {
+                    "_phase192_module",
+                    "_phase192_self",
+                    "_phase192_package_module",
+                }
             ):
                 continue
             expected_nodes = [
@@ -5951,4 +6033,5 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
