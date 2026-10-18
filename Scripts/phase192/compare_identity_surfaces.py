@@ -788,6 +788,18 @@ def _phase192_validate_template_registry_mutations(
         ]
         if len(sys_imports) != 1 or sys_imports[0].name != "sys":
             return False
+        forbidden_import_bindings = expected_top_level | {"_phase192_name"}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    bound = alias.asname or alias.name.split(".", 1)[0]
+                    if bound in forbidden_import_bindings:
+                        return False
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    bound = alias.asname or alias.name
+                    if bound in forbidden_import_bindings:
+                        return False
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign):
                 targets = node.targets
