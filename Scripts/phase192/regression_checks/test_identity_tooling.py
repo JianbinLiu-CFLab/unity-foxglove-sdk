@@ -2865,6 +2865,21 @@ class IdentityToolingTests(unittest.TestCase):
                 "from __future__ import annotations\nimport sys as _phase192_main\n",
                 1,
             ),
+            "path_constructor_rebind": source + '\n_Phase192Path = evil\n',
+            "path_constructor_duplicate_import": source.replace(
+                "        from pathlib import Path as _Phase192Path\n",
+                "        from pathlib import Path as _Phase192Path\n"
+                "        from pathlib import Path as _Phase192Path\n",
+                1,
+            ),
+            "system_exit_rebind": source + '\nSystemExit = evil\n',
+            "spec_rebind": source + '\n__spec__ = evil\n',
+            "future_rebind": source + '\n__future__ = evil\n',
+            "loader_metadata_rebind": source + '\n__loader__ = evil\n',
+            "cached_metadata_rebind": source + '\n__cached__ = evil\n',
+            "file_metadata_rebind": source + '\n__file__ = evil\n',
+            "doc_metadata_rebind": source + '\n__doc__ = evil\n',
+            "all_metadata_rebind": source + '\n__all__ = evil\n',
             "final_name_binding": source.replace(
                 "__name__ = __spec__.name if __spec__ is not None else __name__",
                 '__name__ = "evil"',

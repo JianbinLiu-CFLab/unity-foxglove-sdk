@@ -489,6 +489,29 @@ def _phase192_validate_template_registry_mutations(
             for node in ast.walk(tree)
         ):
             raise ValueError(f"Unsupported loader facade class binding in {path}")
+        loader_path_imports = [
+            alias
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "pathlib"
+            for alias in node.names
+            if alias.asname == "_Phase192Path"
+        ]
+        if len(loader_path_imports) != 1 or loader_path_imports[0].name != "Path":
+            raise ValueError(f"Unsupported loader path binding in {path}")
+        if any(
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+            and any(
+                isinstance(target, ast.Name) and target.id == "_Phase192Path"
+                for target in (
+                    node.targets
+                    if isinstance(node, ast.Assign)
+                    else [node.target]
+                )
+            )
+            for node in ast.walk(tree)
+        ):
+            raise ValueError(f"Unsupported loader path binding in {path}")
         trusted_special_aliases = {
             "_phase192_entrypoint",
             "_phase192_main",
@@ -910,6 +933,17 @@ def _phase192_validate_template_registry_mutations(
             "_phase192_self",
             "_phase192_package_module",
             "main",
+            "SystemExit",
+            "__spec__",
+            "__future__",
+            "__loader__",
+            "__cached__",
+            "__file__",
+            "__path__",
+            "__doc__",
+            "__all__",
+            "__annotations__",
+            "__builtins__",
         }
         top_level_assignments = {
             target.id
