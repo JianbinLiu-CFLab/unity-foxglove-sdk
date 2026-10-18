@@ -2713,6 +2713,16 @@ class IdentityToolingTests(unittest.TestCase):
                 '    _phase192_name = "os"\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
                 1,
             ),
+            "self_binding_loop_rebind": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    for _phase192_self in (None,):\n        pass\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
+            "package_module_binding_loop_rebind": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    for _phase192_package_module in (None,):\n        pass\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
             "restore_loop_input_rebind": source.replace(
                 "    for _phase192_name in _phase192_previous_submodules:\n",
                 '    _phase192_name = "os"\n    for _phase192_name in _phase192_previous_submodules:\n',
