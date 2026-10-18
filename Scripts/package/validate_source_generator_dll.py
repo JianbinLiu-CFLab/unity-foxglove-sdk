@@ -64,15 +64,13 @@ else:
         )
     finally:
         if _phase192_self is not None:
-            _phase192_sys.modules["validate_source_generator_dll"] = (
-                _phase192_previous_self
-                if _phase192_previous_self is not None
-                else _phase192_self
-            )
+            _phase192_sys.modules["validate_source_generator_dll"] = _phase192_self
 
 if _phase192_canonical_self is not None:
     _phase192_canonical_self.__package__ = _phase192_original_package
     _phase192_canonical_self.__name__ = _phase192_original_name
+if _phase192_canonical_self is not None and _phase192_previous_self is not None:
+    _phase192_sys.modules["validate_source_generator_dll"] = _phase192_previous_self
 
 
 class _Phase192FacadeModule(_phase192_types.ModuleType):
