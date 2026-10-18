@@ -450,6 +450,101 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
             return contains_registry_reference(node.value)
         return False
 
+    loader_path = Path(path).as_posix().endswith(
+        "Scripts/package/validate_source_generator_dll.py"
+    )
+    snapshot_filter = ast.parse(
+        "(name == 'validate_source_generator_dll' or "
+        "name.startswith('validate_source_generator_dll.'))",
+        mode="eval",
+    ).body
+    cleanup_iter = ast.parse(
+        "tuple(_phase192_sys.modules)", mode="eval"
+    ).body
+    snapshot_valid = False
+    cleanup_pop_ids: set[int] = set()
+    restore_assign_ids: set[int] = set()
+    for statement in ast.walk(tree):
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+            target = statement.targets[0]
+            value = statement.value
+            if (
+                isinstance(target, ast.Name)
+                and target.id == "_phase192_previous_submodules"
+                and isinstance(value, ast.DictComp)
+                and len(value.generators) == 1
+                and isinstance(value.generators[0].target, ast.Name)
+                and value.generators[0].target.id == "name"
+                and isinstance(value.generators[0].iter, ast.Attribute)
+                and value.generators[0].iter.attr == "modules"
+                and isinstance(value.generators[0].iter.value, ast.Name)
+                and value.generators[0].iter.value.id == "_phase192_sys"
+                and isinstance(value.key, ast.Name)
+                and value.key.id == "name"
+                and isinstance(value.value, ast.Subscript)
+                and isinstance(value.value.value, ast.Attribute)
+                and value.value.value.attr == "modules"
+                and isinstance(value.value.value.value, ast.Name)
+                and value.value.value.value.id == "_phase192_sys"
+                and isinstance(value.value.slice, ast.Name)
+                and value.value.slice.id == "name"
+                and len(value.generators[0].ifs) == 1
+                and ast.dump(value.generators[0].ifs[0], include_attributes=False)
+                == ast.dump(snapshot_filter, include_attributes=False)
+            ):
+                snapshot_valid = True
+        if not isinstance(statement, ast.For) or not isinstance(statement.target, ast.Name):
+            continue
+        if (
+            statement.target.id == "_phase192_name"
+            and ast.dump(statement.iter, include_attributes=False)
+            == ast.dump(cleanup_iter, include_attributes=False)
+            and any(
+                isinstance(node, ast.If)
+                and ast.dump(node.test, include_attributes=False)
+                == ast.dump(
+                    ast.parse(
+                        "(_phase192_name == 'validate_source_generator_dll' or "
+                        "_phase192_name.startswith('validate_source_generator_dll.')) "
+                        "and _phase192_name not in _phase192_previous_submodules",
+                        mode="eval",
+                    ).body,
+                    include_attributes=False,
+                )
+                for node in ast.walk(statement)
+            )
+        ):
+            cleanup_pop_ids.update(
+                id(node)
+                for node in ast.walk(statement)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "pop"
+                and len(node.args) == 2
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "_phase192_name"
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value is None
+                and not node.keywords
+            )
+        if statement.target.id == "_phase192_name" and isinstance(statement.iter, ast.Name) and statement.iter.id == "_phase192_previous_submodules":
+            restore_assign_ids.update(
+                id(node)
+                for node in ast.walk(statement)
+                if isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Subscript)
+                and modules_value(node.targets[0].value)
+                and isinstance(node.targets[0].slice, ast.Name)
+                and node.targets[0].slice.id == "_phase192_name"
+                and isinstance(node.value, ast.Subscript)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "_phase192_previous_submodules"
+                and isinstance(node.value.slice, ast.Name)
+                and node.value.slice.id == "_phase192_name"
+            )
+    loader_transaction = loader_path and snapshot_valid and cleanup_pop_ids and restore_assign_ids
+
     for statement in ast.walk(tree):
         if isinstance(statement, ast.Assign):
             for target in statement.targets:
@@ -459,7 +554,7 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
                 ):
                     continue
                 if contains_registry_reference(target):
-                    dynamic_restore = (
+                    dynamic_restore = loader_transaction and id(statement) in restore_assign_ids and (
                         isinstance(target, ast.Subscript)
                         and modules_value(target.value)
                         and isinstance(target.slice, ast.Name)
@@ -517,6 +612,8 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
                 and isinstance(node.args[1], ast.Constant)
                 and node.args[1].value is None
                 and not node.keywords
+                and loader_transaction
+                and id(node) in cleanup_pop_ids
             ):
                 raise ValueError(f"Unsupported generated module registry pop in {path}")
 
@@ -5255,19 +5352,41 @@ def _compare_surfaces(
             "Call(func=Name(id='setattr', ctx=Load()), args=[Name(id='_phase192_canonical_self', ctx=Load()), Constant(value='__name__'), Name(id='_phase192_previous_name', ctx=Load())])",
             "Call(func=Name(id='setattr', ctx=Load()), args=[Name(id='_phase192_canonical_self', ctx=Load()), Constant(value='__package__'), Name(id='_phase192_previous_package', ctx=Load())])",
         })
+        loader_conditional_added = frozenset({
+            "facade::382c7a73e1da0fa1cf017b86262de53395b7f126132e5766dd7a37239f3229a0",
+            "facade::85621175c64c72f245d8dcf181788e5c5f2f76ea4d1b2e7bb94a67a06566e9c8",
+            "facade::a859e8ebd34813d75b175301eae91dff1639cb24968bf65909a8aa8883341e9d",
+            "facade:_Phase192Path,_phase192_name,_phase192_package_module,_phase192_parent,_phase192_self:7bf266b5a2ea5f7c36e6fe9850224591296a5728f6a9de5ea8629d9c1cb09b80",
+            "facade:_phase192_name:6a84f474641eb3da0c1832c0e6bb95b9f3da5ad42f39c1956f79c133fe39b76c",
+            "facade:_phase192_name:750ee183f2e906b25d9db52e34a8b14bbd0b7b56ca6d2624420afa78a614cee1",
+        })
+        loader_conditional_removed = frozenset({
+            "facade::da619044a118674abce96e9906b2cd7ba57bca8a29fbb1e13a62dd468d0cd438",
+            "facade::ed49028d8aa473d37015ded0c323caba52498e2146c8788557066faa5918c745",
+        })
         loader_internal_risk_change = (
             relative == "Scripts/package/validate_source_generator_dll.py"
             and base_sections == head_sections
             and base_section_map == head_section_map
             and base_relative_star_contract == head_relative_star_contract
             and base_public_symbols == head_public_symbols
-            and base_conditional_contract == head_conditional_contract
             and base_risks <= head_risks
             and frozenset(set(head_risks) - set(base_risks)) == loader_restore_risks
         )
+        loader_internal_conditional_change = (
+            loader_internal_risk_change
+            and frozenset(set(head_conditional_contract) - set(base_conditional_contract))
+            == loader_conditional_added
+            and frozenset(set(base_conditional_contract) - set(head_conditional_contract))
+            == loader_conditional_removed
+        )
         if strict and base_risks != head_risks and not loader_internal_risk_change:
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
-        if strict and tuple(base_conditional_contract or ()) != tuple(head_conditional_contract or ()):
+        if (
+            strict
+            and tuple(base_conditional_contract or ()) != tuple(head_conditional_contract or ())
+            and not loader_internal_conditional_change
+        ):
             errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
         if strict and tuple(base_section_map or ()) != tuple(head_section_map or ()):
             errors.append(f"SECTION_EXPORT_OWNER_CHANGED {relative}")
@@ -5309,8 +5428,8 @@ def _compare_surfaces(
                 )
             }
             if (
-                not preserves_order
-                or added_existing_bindings
+                not loader_internal_conditional_change
+                and (not preserves_order or added_existing_bindings)
             ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
         if base_entrypoint and head_entrypoint:

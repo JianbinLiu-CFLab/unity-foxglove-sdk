@@ -2659,6 +2659,21 @@ class IdentityToolingTests(unittest.TestCase):
             compare_identity_surfaces._compare_surfaces(base, unsafe, strict=True),
         )
 
+    def test_loader_registry_exception_rejects_unrelated_dynamic_keys(self) -> None:
+        """Dynamic registry mutations are accepted only in the validated loader transaction."""
+        source = ast.parse(
+            "import sys as _phase192_sys\n"
+            "_phase192_name = 'unrelated'\n"
+            "_phase192_previous_submodules = {}\n"
+            "_phase192_sys.modules[_phase192_name] = "
+            "_phase192_previous_submodules[_phase192_name]\n"
+            "_phase192_sys.modules.pop(_phase192_name, None)\n"
+        )
+        with self.assertRaisesRegex(ValueError, "Unsupported generated module registry mutation"):
+            compare_identity_surfaces._phase192_validate_template_registry_mutations(
+                source, "Scripts/package/validate_source_generator_dll.py"
+            )
+
     def test_split_identity_surface_allows_new_conditional_names_but_not_existing_bindings(self) -> None:
         """New inert conditional names are additive; existing bindings retain their contract."""
         base = {
