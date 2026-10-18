@@ -429,6 +429,9 @@ def _phase192_validate_template_registry_mutations(
             "__annotations__",
             "__builtins__",
             "__dict__",
+            "_phase192_main",
+            "_phase192_entrypoint",
+            "_phase192_previous_path",
         }
         protected_alias_sources = {
             "_phase192_sys",
@@ -439,6 +442,9 @@ def _phase192_validate_template_registry_mutations(
             "_phase192_canonical_self",
             "_Phase192FacadeModule",
             "main",
+            "_phase192_main",
+            "_phase192_entrypoint",
+            "_phase192_previous_path",
             "__spec__",
             "__builtins__",
             "__dict__",
@@ -610,6 +616,11 @@ def _phase192_validate_template_registry_mutations(
             )
 
         for node in ast.walk(tree):
+            if isinstance(
+                node,
+                (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp),
+            ) and any(contains_protected_source(generator.iter) for generator in node.generators):
+                raise ValueError(f"Unsupported protected alias in {path}")
             if isinstance(node, ast.ClassDef) and node.name == "_Phase192FacadeModule":
                 methods = {
                     statement.name: statement
@@ -734,8 +745,11 @@ def _phase192_validate_template_registry_mutations(
         "_phase192_module",
         "_phase192_canonical_self",
         "_phase192_previous_submodules",
+        "_phase192_previous_path",
         "_Phase192FacadeModule",
         "main",
+        "_phase192_main",
+        "_phase192_entrypoint",
         "__spec__",
         "__builtins__",
         "__dict__",
