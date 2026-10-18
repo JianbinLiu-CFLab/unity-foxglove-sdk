@@ -3493,6 +3493,10 @@ class IdentityToolingTests(unittest.TestCase):
                 "\nimport types as _evil_types\n"
                 "_evil_types.ModuleType = object\n"
             ),
+            "protected_types_propagated_alias": source + (
+                "\n_evil_types = _phase192_types\n"
+                "_evil_types.ModuleType = object\n"
+            ),
             "protected_metadata_alias": source + (
                 "\n_evil_spec = __spec__\n"
                 "_evil_spec.name = \"evil\"\n"
