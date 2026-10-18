@@ -2699,6 +2699,48 @@ class IdentityToolingTests(unittest.TestCase):
                 '    _phase192_name = "os"\n    for _phase192_name in _phase192_previous_submodules:\n',
                 1,
             ),
+            "snapshot_item_mutation": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_previous_submodules["os"] = None\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "snapshot_method_mutation": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_previous_submodules.pop("os", None)\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "canonical_rebind": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_canonical_self = "evil"\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "sys_alias_rebind": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_sys = "evil"\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "metadata_target_forgery": source.replace(
+                '        setattr(_phase192_canonical_self, "__name__", _phase192_previous_name)\n',
+                '        setattr(_phase192_canonical_self if False else "evil", "__name__", _phase192_previous_name)\n',
+                1,
+            ),
+            "registry_augassign": source + '\n_phase192_sys.modules["os"] |= {}\n',
+            "registry_annassign": source + '\n_phase192_sys.modules["os"]: object = None\n',
+            "except_binding": source.replace(
+                "try:\n    if _phase192_canonical_self is not None:\n",
+                "try:\n    try:\n        pass\n    except Exception as _phase192_previous_submodules:\n        pass\n    if _phase192_canonical_self is not None:\n",
+                1,
+            ),
+            "with_binding": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    with _phase192_previous_path as _phase192_previous_submodules:\n        pass\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
+            "for_binding": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    for _phase192_previous_submodules in ():\n        pass\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
             "snapshot_rebind": source + '\n_phase192_previous_submodules = {"os": None}\n',
         }
         for name, variant in variants.items():
