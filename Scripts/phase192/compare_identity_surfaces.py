@@ -429,6 +429,7 @@ def _phase192_validate_template_registry_mutations(
             "__annotations__",
             "__builtins__",
             "__dict__",
+            "main",
             "_phase192_main",
             "_phase192_entrypoint",
             "_phase192_previous_path",
@@ -615,11 +616,19 @@ def _phase192_validate_template_registry_mutations(
                 and not node.keywords
             )
 
+        snapshot_expression = ast.parse(
+            "{name: _phase192_sys.modules[name] for name in _phase192_sys.modules "
+            "if name == 'validate_source_generator_dll' or "
+            "name.startswith('validate_source_generator_dll.')}",
+            mode="eval",
+        ).body
         for node in ast.walk(tree):
-            if isinstance(
-                node,
-                (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp),
-            ) and any(contains_protected_source(generator.iter) for generator in node.generators):
+            if (
+                isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))
+                and any(contains_protected_source(generator.iter) for generator in node.generators)
+                and ast.dump(node, include_attributes=False)
+                != ast.dump(snapshot_expression, include_attributes=False)
+            ):
                 raise ValueError(f"Unsupported protected alias in {path}")
             if isinstance(node, ast.ClassDef) and node.name == "_Phase192FacadeModule":
                 methods = {
