@@ -744,6 +744,9 @@ def _phase192_validate_template_registry_mutations(
     def contains_protected_source(node: ast.AST) -> bool:
         return any(
             isinstance(item, ast.Name) and item.id in protected_alias_sources
+            or isinstance(item, ast.Call)
+            and isinstance(item.func, ast.Name)
+            and item.func.id == "globals"
             for item in ast.walk(node)
         )
 

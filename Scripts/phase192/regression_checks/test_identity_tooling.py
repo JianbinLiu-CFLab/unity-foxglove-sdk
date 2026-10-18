@@ -3539,6 +3539,17 @@ class IdentityToolingTests(unittest.TestCase):
                     "        async for _evil_package in (_phase192_package_module,):\n"
                     "            _evil_package.__name__ = \"evil\"\n"
                 ),
+                "for_globals_get_alias": source + (
+                    "\nif True:\n"
+                    "    for _evil_package in (globals().get(\"_phase192_package_module\"),):\n"
+                    "        _evil_package.__name__ = \"evil\"\n"
+                ),
+                "async_for_globals_get_alias": source + (
+                    "\nif True:\n"
+                    "    async def _phase192_probe():\n"
+                    "        async for _evil_package in (globals().get(\"_phase192_package_module\"),):\n"
+                    "            _evil_package.__name__ = \"evil\"\n"
+                ),
             }
             for name, variant in variants.items():
                 with self.subTest(facade=str(facade), name=name), self.assertRaises(ValueError):
