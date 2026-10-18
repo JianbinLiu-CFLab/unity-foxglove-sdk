@@ -2743,6 +2743,25 @@ class IdentityToolingTests(unittest.TestCase):
             ),
             "snapshot_rebind": source + '\n_phase192_previous_submodules = {"os": None}\n',
         }
+        reordered_tree = ast.parse(source)
+        reordered_indexes = {
+            target.id: index
+            for index, statement in enumerate(reordered_tree.body)
+            if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Name)
+            and target.id in {
+                "_phase192_canonical_self",
+                "_phase192_previous_path",
+            }
+        }
+        first_index = reordered_indexes["_phase192_canonical_self"]
+        second_index = reordered_indexes["_phase192_previous_path"]
+        reordered_tree.body[first_index], reordered_tree.body[second_index] = (
+            reordered_tree.body[second_index],
+            reordered_tree.body[first_index],
+        )
+        variants["state_initialization_reorder"] = ast.unparse(reordered_tree)
         for name, variant in variants.items():
             with self.subTest(name=name):
                 with self.assertRaises(ValueError):
