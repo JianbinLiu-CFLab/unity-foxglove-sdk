@@ -2854,6 +2854,17 @@ class IdentityToolingTests(unittest.TestCase):
                 '    for _phase192_name in tuple(_phase192_sys.modules):\n',
                 1,
             ),
+            "trusted_alias_assignment": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_main = getattr(_phase192_package_module, "__setattr__")\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "trusted_alias_import": source.replace(
+                "from __future__ import annotations\n",
+                "from __future__ import annotations\nimport sys as _phase192_main\n",
+                1,
+            ),
             "final_name_binding": source.replace(
                 "__name__ = __spec__.name if __spec__ is not None else __name__",
                 '__name__ = "evil"',

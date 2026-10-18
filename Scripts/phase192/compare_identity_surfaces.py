@@ -489,6 +489,24 @@ def _phase192_validate_template_registry_mutations(
             for node in ast.walk(tree)
         ):
             raise ValueError(f"Unsupported loader facade class binding in {path}")
+        trusted_special_aliases = {
+            "_phase192_entrypoint",
+            "_phase192_main",
+            "_phase192_repository_root",
+        }
+        if any(
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+            and any(
+                isinstance(target, ast.Name) and target.id in trusted_special_aliases
+                for target in (
+                    node.targets
+                    if isinstance(node, ast.Assign)
+                    else [node.target]
+                )
+            )
+            for node in ast.walk(tree)
+        ):
+            raise ValueError(f"Unsupported loader trusted alias binding in {path}")
 
         def exact_top_level_assignment(name: str, expression: str) -> bool:
             """Recognize one exact top-level loader binding."""
@@ -1321,8 +1339,10 @@ def _phase192_validate_template_registry_mutations(
         if len(sys_imports) != 1 or sys_imports[0].name != "sys":
             return False
         forbidden_import_bindings = (
-            transaction_binding_names - {"_phase192_types"}
-        ) | {"_phase192_name"}
+            (transaction_binding_names - {"_phase192_types"})
+            | {"_phase192_entrypoint", "_phase192_main", "_phase192_repository_root"}
+            | {"_phase192_name"}
+        )
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
