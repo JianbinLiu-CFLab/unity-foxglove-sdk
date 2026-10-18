@@ -450,6 +450,101 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
             return contains_registry_reference(node.value)
         return False
 
+    loader_path = Path(path).as_posix().endswith(
+        "Scripts/package/validate_source_generator_dll.py"
+    )
+    snapshot_filter = ast.parse(
+        "(name == 'validate_source_generator_dll' or "
+        "name.startswith('validate_source_generator_dll.'))",
+        mode="eval",
+    ).body
+    cleanup_iter = ast.parse(
+        "tuple(_phase192_sys.modules)", mode="eval"
+    ).body
+    snapshot_valid = False
+    cleanup_pop_ids: set[int] = set()
+    restore_assign_ids: set[int] = set()
+    for statement in ast.walk(tree):
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+            target = statement.targets[0]
+            value = statement.value
+            if (
+                isinstance(target, ast.Name)
+                and target.id == "_phase192_previous_submodules"
+                and isinstance(value, ast.DictComp)
+                and len(value.generators) == 1
+                and isinstance(value.generators[0].target, ast.Name)
+                and value.generators[0].target.id == "name"
+                and isinstance(value.generators[0].iter, ast.Attribute)
+                and value.generators[0].iter.attr == "modules"
+                and isinstance(value.generators[0].iter.value, ast.Name)
+                and value.generators[0].iter.value.id == "_phase192_sys"
+                and isinstance(value.key, ast.Name)
+                and value.key.id == "name"
+                and isinstance(value.value, ast.Subscript)
+                and isinstance(value.value.value, ast.Attribute)
+                and value.value.value.attr == "modules"
+                and isinstance(value.value.value.value, ast.Name)
+                and value.value.value.value.id == "_phase192_sys"
+                and isinstance(value.value.slice, ast.Name)
+                and value.value.slice.id == "name"
+                and len(value.generators[0].ifs) == 1
+                and ast.dump(value.generators[0].ifs[0], include_attributes=False)
+                == ast.dump(snapshot_filter, include_attributes=False)
+            ):
+                snapshot_valid = True
+        if not isinstance(statement, ast.For) or not isinstance(statement.target, ast.Name):
+            continue
+        if (
+            statement.target.id == "_phase192_name"
+            and ast.dump(statement.iter, include_attributes=False)
+            == ast.dump(cleanup_iter, include_attributes=False)
+            and any(
+                isinstance(node, ast.If)
+                and ast.dump(node.test, include_attributes=False)
+                == ast.dump(
+                    ast.parse(
+                        "(_phase192_name == 'validate_source_generator_dll' or "
+                        "_phase192_name.startswith('validate_source_generator_dll.')) "
+                        "and _phase192_name not in _phase192_previous_submodules",
+                        mode="eval",
+                    ).body,
+                    include_attributes=False,
+                )
+                for node in ast.walk(statement)
+            )
+        ):
+            cleanup_pop_ids.update(
+                id(node)
+                for node in ast.walk(statement)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "pop"
+                and len(node.args) == 2
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "_phase192_name"
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value is None
+                and not node.keywords
+            )
+        if statement.target.id == "_phase192_name" and isinstance(statement.iter, ast.Name) and statement.iter.id == "_phase192_previous_submodules":
+            restore_assign_ids.update(
+                id(node)
+                for node in ast.walk(statement)
+                if isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Subscript)
+                and modules_value(node.targets[0].value)
+                and isinstance(node.targets[0].slice, ast.Name)
+                and node.targets[0].slice.id == "_phase192_name"
+                and isinstance(node.value, ast.Subscript)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "_phase192_previous_submodules"
+                and isinstance(node.value.slice, ast.Name)
+                and node.value.slice.id == "_phase192_name"
+            )
+    loader_transaction = loader_path and snapshot_valid and cleanup_pop_ids and restore_assign_ids
+
     for statement in ast.walk(tree):
         if isinstance(statement, ast.Assign):
             for target in statement.targets:
@@ -459,7 +554,7 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
                 ):
                     continue
                 if contains_registry_reference(target):
-                    dynamic_restore = (
+                    dynamic_restore = loader_transaction and id(statement) in restore_assign_ids and (
                         isinstance(target, ast.Subscript)
                         and modules_value(target.value)
                         and isinstance(target.slice, ast.Name)
@@ -517,6 +612,8 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
                 and isinstance(node.args[1], ast.Constant)
                 and node.args[1].value is None
                 and not node.keywords
+                and loader_transaction
+                and id(node) in cleanup_pop_ids
             ):
                 raise ValueError(f"Unsupported generated module registry pop in {path}")
 
