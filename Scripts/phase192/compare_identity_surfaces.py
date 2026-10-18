@@ -429,6 +429,10 @@ def _phase192_validate_template_registry_mutations(
             "__annotations__",
             "__builtins__",
             "__dict__",
+            "main",
+            "_phase192_main",
+            "_phase192_entrypoint",
+            "_phase192_previous_path",
         }
         protected_alias_sources = {
             "_phase192_sys",
@@ -439,6 +443,9 @@ def _phase192_validate_template_registry_mutations(
             "_phase192_canonical_self",
             "_Phase192FacadeModule",
             "main",
+            "_phase192_main",
+            "_phase192_entrypoint",
+            "_phase192_previous_path",
             "__spec__",
             "__builtins__",
             "__dict__",
@@ -609,7 +616,20 @@ def _phase192_validate_template_registry_mutations(
                 and not node.keywords
             )
 
+        snapshot_expression = ast.parse(
+            "{name: _phase192_sys.modules[name] for name in _phase192_sys.modules "
+            "if name == 'validate_source_generator_dll' or "
+            "name.startswith('validate_source_generator_dll.')}",
+            mode="eval",
+        ).body
         for node in ast.walk(tree):
+            if (
+                isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))
+                and any(contains_protected_source(generator.iter) for generator in node.generators)
+                and ast.dump(node, include_attributes=False)
+                != ast.dump(snapshot_expression, include_attributes=False)
+            ):
+                raise ValueError(f"Unsupported protected alias in {path}")
             if isinstance(node, ast.ClassDef) and node.name == "_Phase192FacadeModule":
                 methods = {
                     statement.name: statement
@@ -725,6 +745,34 @@ def _phase192_validate_template_registry_mutations(
         if isinstance(node, ast.Attribute):
             return contains_registry_reference(node.value)
         return False
+
+    protected_alias_sources = {
+        "_phase192_sys",
+        "_phase192_types",
+        "_phase192_self",
+        "_phase192_package_module",
+        "_phase192_module",
+        "_phase192_canonical_self",
+        "_phase192_previous_submodules",
+        "_phase192_previous_path",
+        "_Phase192FacadeModule",
+        "main",
+        "_phase192_main",
+        "_phase192_entrypoint",
+        "__spec__",
+        "__builtins__",
+        "__dict__",
+    }
+
+    def contains_protected_source(node: ast.AST) -> bool:
+        """Recognize protected sources propagated through loop aliases."""
+        return any(
+            isinstance(item, ast.Name) and item.id in protected_alias_sources
+            or isinstance(item, ast.Call)
+            and isinstance(item.func, ast.Name)
+            and item.func.id == "globals"
+            for item in ast.walk(node)
+        )
 
     try:
         relative_path = Path(path).resolve().relative_to(Path(repository_root).resolve()).as_posix()
@@ -1041,6 +1089,15 @@ def _phase192_validate_template_registry_mutations(
             )
             else None
         )
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, (ast.For, ast.AsyncFor))
+            and contains_protected_source(node.iter)
+            and exact_cleanup_loop(node) is None
+            and exact_restore_loop(node) is None
+        ):
+            raise ValueError(f"Unsupported protected alias in {path}")
 
     def rooted_in(node: ast.AST, name: str) -> bool:
         """Return whether a registry expression is rooted in one binding."""

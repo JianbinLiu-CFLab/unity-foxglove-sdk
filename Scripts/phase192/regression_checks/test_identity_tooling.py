@@ -3528,6 +3528,44 @@ class IdentityToolingTests(unittest.TestCase):
                     "\nd = __dict__\n"
                     "d[\"__spec__\"].name = \"evil\"\n"
                 ),
+                "for_alias_target": source + (
+                    "\nif True:\n"
+                    "    for _evil_package in (_phase192_package_module,):\n"
+                    "        _evil_package.__name__ = \"evil\"\n"
+                ),
+                "async_for_alias_target": source + (
+                    "\nif True:\n"
+                    "    async def _phase192_probe():\n"
+                    "        async for _evil_package in (_phase192_package_module,):\n"
+                    "            _evil_package.__name__ = \"evil\"\n"
+                ),
+                "for_globals_get_alias": source + (
+                    "\nif True:\n"
+                    "    for _evil_package in (globals().get(\"_phase192_package_module\"),):\n"
+                    "        _evil_package.__name__ = \"evil\"\n"
+                ),
+                "async_for_globals_get_alias": source + (
+                    "\nif True:\n"
+                    "    async def _phase192_probe():\n"
+                    "        async for _evil_package in (globals().get(\"_phase192_package_module\"),):\n"
+                    "            _evil_package.__name__ = \"evil\"\n"
+                ),
+                "comprehension_alias_target": source + (
+                    "\n[_evil_package.__setattr__(\"__name__\", \"evil\") for _evil_package in (_phase192_package_module,)]\n"
+                ),
+                "cli_main_globals_store": source + (
+                    "\n_phase192_main.__globals__[\"_phase192_package_module\"].__name__ = \"evil\"\n"
+                ),
+                "main_globals_store": source + (
+                    "\nmain.__globals__[\"DEFAULT_IMU_TOPIC\"] = \"evil-topic\"\n"
+                ),
+                "cli_entrypoint_globals_store": source + (
+                    "\n_phase192_entrypoint.__globals__[\"_phase192_package_module\"].__name__ = \"evil\"\n"
+                ),
+                "previous_path_alias": source + (
+                    "\n_evil_path = _phase192_previous_path\n"
+                    "_evil_path[0] = \"evil\"\n"
+                ),
             }
             for name, variant in variants.items():
                 with self.subTest(facade=str(facade), name=name), self.assertRaises(ValueError):
