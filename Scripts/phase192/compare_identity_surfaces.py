@@ -576,6 +576,209 @@ def _phase192_validate_template_registry_mutations(
             else None
         )
 
+    def rooted_in(node: ast.AST, name: str) -> bool:
+        """Return whether a registry expression is rooted in one binding."""
+        if isinstance(node, ast.Name):
+            return node.id == name
+        if isinstance(node, (ast.Attribute, ast.Subscript)):
+            return rooted_in(node.value, name)
+        return False
+
+    def critical_bindings_are_immutable(transaction: ast.Try | None) -> bool:
+        """Reject rebinding of loader transaction state after initialization."""
+        if transaction is None:
+            return False
+
+        def metadata_restore_kind(node: ast.AST) -> str | None:
+            """Recognize one exact facade metadata restore call."""
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "setattr"
+                and len(node.args) == 3
+                and not node.keywords
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "_phase192_canonical_self"
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[2], ast.Name)
+            ):
+                return None
+            if node.args[1].value == "__name__" and node.args[2].id == "_phase192_previous_name":
+                return "name"
+            if node.args[1].value == "__package__" and node.args[2].id == "_phase192_previous_package":
+                return "package"
+            return None
+
+        metadata_calls = [
+            node
+            for statement in transaction.finalbody
+            for node in ast.walk(statement)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "setattr"
+        ]
+        finalbody_ids = {
+            id(node)
+            for statement in transaction.finalbody
+            for node in ast.walk(statement)
+        }
+        if (
+            len(metadata_calls) != 2
+            or {metadata_restore_kind(node) for node in metadata_calls} != {"name", "package"}
+            or any(id(node) not in finalbody_ids for node in metadata_calls)
+        ):
+            return False
+        expected_top_level = {
+            "_phase192_canonical_self",
+            "_phase192_previous_submodules",
+            "_phase192_previous_path",
+            "_phase192_previous_name",
+            "_phase192_previous_package",
+        }
+        top_level_assignments = {
+            target.id
+            for statement in tree.body
+            if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Name)
+        }
+        if not expected_top_level.issubset(top_level_assignments):
+            return False
+        for name in expected_top_level:
+            if sum(
+                1
+                for statement in tree.body
+                if isinstance(statement, ast.Assign)
+                for target in statement.targets
+                if isinstance(target, ast.Name) and target.id == name
+            ) != 1:
+                return False
+        expected_values = {
+            "_phase192_canonical_self": [
+                "_phase192_sys.modules.get(__name__) if __package__ and _phase192_sys.modules.get(__name__) is not None else None",
+            ],
+            "_phase192_previous_path": ["_phase192_sys.path[:]"],
+            "_phase192_previous_name": [
+                "__name__ if _phase192_canonical_self is not None else None",
+            ],
+            "_phase192_previous_package": [
+                "__package__ if _phase192_canonical_self is not None else None",
+            ],
+            "_phase192_self": [
+                "_phase192_sys.modules.get(__name__) if __name__ == 'validate_source_generator_dll' else None",
+            ],
+            "_phase192_package_module": [
+                "_phase192_sys.modules.get(__package__ + '.validate_source_generator_dll')",
+                "_phase192_sys.modules.get('validate_source_generator_dll')",
+            ],
+        }
+        for name, expressions in expected_values.items():
+            values = [
+                node.value
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == name
+            ]
+            expected_nodes = [ast.parse(expression, mode="eval").body for expression in expressions]
+            if len(values) != len(expected_nodes) or any(
+                ast.dump(value, include_attributes=False)
+                != ast.dump(expected, include_attributes=False)
+                for value, expected in zip(values, expected_nodes)
+            ):
+                return False
+        allowed_store_ids = {
+            id(target)
+            for statement in tree.body
+            if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Name)
+            and target.id in expected_top_level
+            and (
+                target.id != "_phase192_previous_submodules"
+                or exact_snapshot(statement)
+            )
+        }
+        for loop_id, _ in cleanup_loops + restore_loops:
+            loop = next(
+                node for node in ast.walk(transaction)
+                if isinstance(node, ast.For) and id(node) == loop_id
+            )
+            allowed_store_ids.add(id(loop.target))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                targets = [node.target]
+            else:
+                targets = []
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id in expected_top_level:
+                    if id(target) not in allowed_store_ids:
+                        return False
+                if (
+                    rooted_in(target, "_phase192_previous_submodules")
+                    and not (
+                        isinstance(target, ast.Name)
+                        and target.id == "_phase192_previous_submodules"
+                        and isinstance(node, ast.Assign)
+                        and exact_snapshot(node)
+                        and node in tree.body
+                    )
+                ):
+                    return False
+                if isinstance(target, ast.Name) and target.id == "_phase192_sys":
+                    return False
+            if isinstance(node, ast.Delete) and any(
+                rooted_in(target, "_phase192_previous_submodules")
+                or isinstance(target, ast.Name)
+                and target.id in expected_top_level | {"_phase192_sys"}
+                for target in node.targets
+            ):
+                return False
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and rooted_in(node.func.value, "_phase192_previous_submodules")
+            ):
+                return False
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                if node.id in expected_top_level | {"_phase192_sys", "_phase192_name"}:
+                    if id(node) not in allowed_store_ids:
+                        return False
+            if isinstance(node, ast.ExceptHandler) and node.name in (
+                expected_top_level | {"_phase192_sys", "_phase192_name"}
+            ):
+                return False
+            if isinstance(node, ast.MatchAs) and node.name in (
+                expected_top_level | {"_phase192_sys", "_phase192_name"}
+            ):
+                return False
+            if isinstance(node, ast.MatchStar) and node.name in (
+                expected_top_level | {"_phase192_sys", "_phase192_name"}
+            ):
+                return False
+        sys_imports = [
+            alias
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+            if alias.asname == "_phase192_sys"
+        ]
+        if len(sys_imports) != 1 or sys_imports[0].name != "sys":
+            return False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                targets = [node.target]
+            else:
+                targets = []
+            if any(isinstance(target, ast.Name) and target.id == "_phase192_name" for target in targets):
+                return False
+        return True
+
     snapshot_bindings = [
         node
         for node in ast.walk(tree)
@@ -591,6 +794,7 @@ def _phase192_validate_template_registry_mutations(
     outer_transactions = [node for node in tree.body if isinstance(node, ast.Try)]
     cleanup_loops: list[tuple[int, int]] = []
     restore_loops: list[tuple[int, int]] = []
+    transaction: ast.Try | None = None
     if (
         loader_path
         and len(snapshot_bindings) == len(snapshot_assignments) == len(top_level_snapshot) == 1
@@ -635,6 +839,7 @@ def _phase192_validate_template_registry_mutations(
         and len(restore_loops) == 1
         and len(final_name_loops) == 2
         and not final_name_rebindings
+        and critical_bindings_are_immutable(transaction)
     )
     cleanup_pop_ids = {cleanup_loops[0][1]} if loader_transaction else set()
     restore_assign_ids = {restore_loops[0][1]} if loader_transaction else set()
@@ -666,9 +871,13 @@ def _phase192_validate_template_registry_mutations(
                         and isinstance(target.slice.value, str)
                         and target.slice.value == expected_module_key
                         and isinstance(statement.value, ast.Name)
-                        and statement.value.id.endswith("_self")
+                        and statement.value.id in {"_phase192_self", "_phase192_canonical_self"}
                     ) and not dynamic_restore:
                         raise ValueError(f"Unsupported generated module registry mutation in {path}")
+        if isinstance(statement, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+            target = statement.target
+            if contains_registry_reference(target):
+                raise ValueError(f"Unsupported generated module registry mutation in {path}")
         if isinstance(statement, ast.Delete):
             if any(contains_registry_reference(target) for target in statement.targets):
                 raise ValueError(f"Unsupported generated module registry deletion in {path}")
