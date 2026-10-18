@@ -135,6 +135,42 @@ class Phase162LyricalZenohSmokeTests(unittest.TestCase):
         self.assertEqual("PHASE162_LYRICAL_ZENOH_RVIZ2_POINTCLOUD2_INCONCLUSIVE", payload["verdict"])
         self.assertIn("static capture", payload["error"])
 
+    def test_main_preserves_phase138u_inconclusive_exit_code(self) -> None:
+        """A Phase138U exit code of 2 remains an explicit inconclusive verdict."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            summary = root / "summary.json"
+            echo = root / "echo.log"
+            args = [
+                "--ros2-root",
+                str(root / "ros2"),
+                "--summary-output",
+                str(summary),
+                "--echo-output",
+                str(echo),
+                "--no-zenoh-router",
+            ]
+            with mock.patch.object(
+                self.smoke,
+                "build_phase162_env",
+                return_value=({}, Path("python.exe"), Path("ros2.py")),
+            ), mock.patch.object(
+                self.smoke,
+                "run_phase138u_with_rviz_capture",
+                return_value=2,
+            ), mock.patch.object(
+                self.smoke,
+                "wait_for_rviz_shutdown_before_router_cleanup",
+                return_value=None,
+            ):
+                code = self.smoke.main(args)
+            payload = __import__("json").loads(summary.read_text(encoding="utf-8"))
+
+        self.assertEqual(2, code)
+        self.assertEqual(2, payload["exitCodes"]["phase138uRviz2Acceptance"])
+        self.assertEqual("PHASE162_LYRICAL_ZENOH_RVIZ2_POINTCLOUD2_INCONCLUSIVE", payload["verdict"])
+        self.assertEqual("Phase138U reported an inconclusive RViz2 acceptance result.", payload["error"])
+
     def test_router_hold_stops_when_owned_player_exits(self) -> None:
         """A dead Unity player must break the RViz-only router hold promptly."""
 
