@@ -2689,6 +2689,16 @@ class IdentityToolingTests(unittest.TestCase):
                 '        _phase192_name = "os"\n        _phase192_sys.modules[_phase192_name] = _phase192_previous_submodules[_phase192_name]\n',
                 1,
             ),
+            "cleanup_loop_input_rebind": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_name = "os"\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "restore_loop_input_rebind": source.replace(
+                "    for _phase192_name in _phase192_previous_submodules:\n",
+                '    _phase192_name = "os"\n    for _phase192_name in _phase192_previous_submodules:\n',
+                1,
+            ),
             "snapshot_rebind": source + '\n_phase192_previous_submodules = {"os": None}\n',
         }
         for name, variant in variants.items():
