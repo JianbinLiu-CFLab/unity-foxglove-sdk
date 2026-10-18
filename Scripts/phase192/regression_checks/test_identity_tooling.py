@@ -2758,6 +2758,32 @@ class IdentityToolingTests(unittest.TestCase):
                 '        setattr(_phase192_canonical_self if False else "evil", "__name__", _phase192_previous_name)\n',
                 1,
             ),
+            "facade_class_rebind": source + '\n_Phase192FacadeModule = _phase192_types.ModuleType\n',
+            "module_types_alias": source.replace(
+                "import types as _phase192_types",
+                "import sys as _phase192_types",
+                1,
+            ),
+            "module_name_after_guard": source.replace(
+                "    _phase192_module.__class__ = _Phase192FacadeModule\n\n",
+                "    _phase192_module.__class__ = _Phase192FacadeModule\n\n_phase192_module.__name__ = \"evil\"\n",
+                1,
+            ),
+            "metadata_extra_setattr": source.replace(
+                '        setattr(_phase192_canonical_self, "__package__", _phase192_previous_package)\n',
+                '        setattr(_phase192_canonical_self, "__package__", _phase192_previous_package)\n    setattr(_phase192_canonical_self, "__name__", "evil")\n',
+                1,
+            ),
+            "metadata_extra_delattr": source.replace(
+                '        setattr(_phase192_canonical_self, "__package__", _phase192_previous_package)\n',
+                '        setattr(_phase192_canonical_self, "__package__", _phase192_previous_package)\n    delattr(_phase192_canonical_self, "__name__")\n',
+                1,
+            ),
+            "annotated_package_rebind": source.replace(
+                "try:\n    if _phase192_canonical_self is not None:\n",
+                'try:\n    __package__: str = "evil"\n    if _phase192_canonical_self is not None:\n',
+                1,
+            ),
             "final_name_binding": source.replace(
                 "__name__ = __spec__.name if __spec__ is not None else __name__",
                 '__name__ = "evil"',
