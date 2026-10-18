@@ -2633,6 +2633,32 @@ class IdentityToolingTests(unittest.TestCase):
         errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
         self.assertIn("CONDITIONAL_CONTRACT_CHANGED fixture.py", errors)
 
+    def test_split_identity_surface_allows_only_exact_loader_metadata_restore(self) -> None:
+        """Only the two facade metadata restores are exempt from the loader risk delta."""
+        base = {
+            "Scripts/package/validate_source_generator_dll.py": (
+                frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
+                frozenset(), True, (), frozenset(), (), None, (), (), (), frozenset({"PUBLIC"}),
+            )
+        }
+        name_restore = "Call(func=Name(id='setattr', ctx=Load()), args=[Name(id='_phase192_canonical_self', ctx=Load()), Constant(value='__name__'), Name(id='_phase192_previous_name', ctx=Load())])"
+        package_restore = "Call(func=Name(id='setattr', ctx=Load()), args=[Name(id='_phase192_canonical_self', ctx=Load()), Constant(value='__package__'), Name(id='_phase192_previous_package', ctx=Load())])"
+        head = dict(base)
+        head["Scripts/package/validate_source_generator_dll.py"] = (
+            frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
+            frozenset(), True, (), frozenset({name_restore, package_restore}), (), None, (), (), (), frozenset({"PUBLIC"}),
+        )
+        self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=True))
+        unsafe = dict(head)
+        unsafe["Scripts/package/validate_source_generator_dll.py"] = (
+            frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
+            frozenset(), True, (), frozenset({name_restore, package_restore, "unsafe"}), (), None, (), (), (), frozenset({"PUBLIC"}),
+        )
+        self.assertIn(
+            "NAMESPACE_CONTRACT_CHANGED Scripts/package/validate_source_generator_dll.py",
+            compare_identity_surfaces._compare_surfaces(base, unsafe, strict=True),
+        )
+
     def test_split_identity_surface_allows_new_conditional_names_but_not_existing_bindings(self) -> None:
         """New inert conditional names are additive; existing bindings retain their contract."""
         base = {

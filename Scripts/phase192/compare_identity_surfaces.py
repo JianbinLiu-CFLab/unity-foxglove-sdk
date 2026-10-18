@@ -459,6 +459,17 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
                 ):
                     continue
                 if contains_registry_reference(target):
+                    dynamic_restore = (
+                        isinstance(target, ast.Subscript)
+                        and modules_value(target.value)
+                        and isinstance(target.slice, ast.Name)
+                        and target.slice.id == "_phase192_name"
+                        and isinstance(statement.value, ast.Subscript)
+                        and isinstance(statement.value.value, ast.Name)
+                        and statement.value.value.id == "_phase192_previous_submodules"
+                        and isinstance(statement.value.slice, ast.Name)
+                        and statement.value.slice.id == "_phase192_name"
+                    )
                     if not (
                         isinstance(target, ast.Subscript)
                         and modules_value(target.value)
@@ -467,7 +478,7 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
                         and target.slice.value == expected_module_key
                         and isinstance(statement.value, ast.Name)
                         and statement.value.id.endswith("_self")
-                    ):
+                    ) and not dynamic_restore:
                         raise ValueError(f"Unsupported generated module registry mutation in {path}")
         if isinstance(statement, ast.Delete):
             if any(contains_registry_reference(target) for target in statement.targets):
@@ -496,6 +507,13 @@ def _phase192_validate_template_registry_mutations(tree: ast.Module, path: str) 
                 and isinstance(node.args[0], ast.Constant)
                 and isinstance(node.args[0].value, str)
                 and node.args[0].value == expected_module_key
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value is None
+                and not node.keywords
+            ) and not (
+                len(node.args) == 2
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "_phase192_name"
                 and isinstance(node.args[1], ast.Constant)
                 and node.args[1].value is None
                 and not node.keywords
@@ -5233,7 +5251,21 @@ def _compare_surfaces(
             waiver = set(waiver_map.get(relative, frozenset())) & set(base_public_symbols)
             missing_symbols = sorted(public_removals - waiver)
         extra_symbols = sorted(set(head_symbols) - set(base_symbols))
-        if strict and base_risks != head_risks:
+        loader_restore_risks = frozenset({
+            "Call(func=Name(id='setattr', ctx=Load()), args=[Name(id='_phase192_canonical_self', ctx=Load()), Constant(value='__name__'), Name(id='_phase192_previous_name', ctx=Load())])",
+            "Call(func=Name(id='setattr', ctx=Load()), args=[Name(id='_phase192_canonical_self', ctx=Load()), Constant(value='__package__'), Name(id='_phase192_previous_package', ctx=Load())])",
+        })
+        loader_internal_risk_change = (
+            relative == "Scripts/package/validate_source_generator_dll.py"
+            and base_sections == head_sections
+            and base_section_map == head_section_map
+            and base_relative_star_contract == head_relative_star_contract
+            and base_public_symbols == head_public_symbols
+            and base_conditional_contract == head_conditional_contract
+            and base_risks <= head_risks
+            and frozenset(set(head_risks) - set(base_risks)) == loader_restore_risks
+        )
+        if strict and base_risks != head_risks and not loader_internal_risk_change:
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
         if strict and tuple(base_conditional_contract or ()) != tuple(head_conditional_contract or ()):
             errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
@@ -5248,7 +5280,7 @@ def _compare_surfaces(
             or (not strict and not _contract_preserves_order(base_relative, head_relative))
         ):
             errors.append(f"RELATIVE_STAR_IMPORT_CHANGED {relative}")
-        if not strict and base_risks != head_risks:
+        if not strict and base_risks != head_risks and not loader_internal_risk_change:
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
         if not strict:
             base_contract = tuple(base_conditional_contract or ())
