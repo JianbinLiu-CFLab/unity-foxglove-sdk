@@ -5716,6 +5716,12 @@ def _compare_surfaces(
         if not strict:
             base_contract = tuple(base_conditional_contract or ())
             head_contract = tuple(head_conditional_contract or ())
+            if (
+                relative == "Scripts/package/validate_source_generator_dll.py"
+                and base_contract != head_contract
+            ):
+                errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
+                continue
             matched_head_indexes: set[int] = set()
             cursor = 0
             preserves_order = True
