@@ -5348,22 +5348,49 @@ def _compare_surfaces(
             waiver = set(waiver_map.get(relative, frozenset())) & set(base_public_symbols)
             missing_symbols = sorted(public_removals - waiver)
         extra_symbols = sorted(set(head_symbols) - set(base_symbols))
-        loader_restore_risks = frozenset({
-            "Call(func=Name(id='setattr', ctx=Load()), args=[Name(id='_phase192_canonical_self', ctx=Load()), Constant(value='__name__'), Name(id='_phase192_previous_name', ctx=Load())])",
-            "Call(func=Name(id='setattr', ctx=Load()), args=[Name(id='_phase192_canonical_self', ctx=Load()), Constant(value='__package__'), Name(id='_phase192_previous_package', ctx=Load())])",
-        })
-        loader_conditional_added = frozenset({
-            "facade::382c7a73e1da0fa1cf017b86262de53395b7f126132e5766dd7a37239f3229a0",
-            "facade::85621175c64c72f245d8dcf181788e5c5f2f76ea4d1b2e7bb94a67a06566e9c8",
-            "facade::a859e8ebd34813d75b175301eae91dff1639cb24968bf65909a8aa8883341e9d",
-            "facade:_Phase192Path,_phase192_name,_phase192_package_module,_phase192_parent,_phase192_self:7bf266b5a2ea5f7c36e6fe9850224591296a5728f6a9de5ea8629d9c1cb09b80",
-            "facade:_phase192_name:6a84f474641eb3da0c1832c0e6bb95b9f3da5ad42f39c1956f79c133fe39b76c",
-            "facade:_phase192_name:750ee183f2e906b25d9db52e34a8b14bbd0b7b56ca6d2624420afa78a614cee1",
-        })
-        loader_conditional_removed = frozenset({
-            "facade::da619044a118674abce96e9906b2cd7ba57bca8a29fbb1e13a62dd468d0cd438",
-            "facade::ed49028d8aa473d37015ded0c323caba52498e2146c8788557066faa5918c745",
-        })
+        def loader_restore_kind(signature: str) -> str | None:
+            """Recognize one exact facade metadata restore independent of AST dump formatting."""
+            if (
+                "Call(func=Name(id='setattr'" not in signature
+                or "Name(id='_phase192_canonical_self'" not in signature
+                or "keywords=[]" not in signature and "keywords=" in signature
+            ):
+                return None
+            if (
+                "Constant(value='__name__')" in signature
+                and "Name(id='_phase192_previous_name'" in signature
+                and "Constant(value='__package__')" not in signature
+                and "Name(id='_phase192_previous_package'" not in signature
+            ):
+                return "name"
+            if (
+                "Constant(value='__package__')" in signature
+                and "Name(id='_phase192_previous_package'" in signature
+                and "Constant(value='__name__')" not in signature
+                and "Name(id='_phase192_previous_name'" not in signature
+            ):
+                return "package"
+            return None
+
+        loader_restore_delta = set(head_risks) - set(base_risks)
+        loader_added_condition_names = sorted(
+            sorted(_conditional_signature_names(signature))
+            for signature in set(head_conditional_contract) - set(base_conditional_contract)
+        )
+        loader_removed_condition_names = sorted(
+            sorted(_conditional_signature_names(signature))
+            for signature in set(base_conditional_contract) - set(head_conditional_contract)
+        )
+        loader_conditional_shape = (
+            len(loader_added_condition_names) == 6
+            and len(loader_removed_condition_names) == 2
+            and loader_added_condition_names == [
+                [], [], [],
+                ["_Phase192Path", "_phase192_name", "_phase192_package_module", "_phase192_parent", "_phase192_self"],
+                ["_phase192_name"], ["_phase192_name"],
+            ]
+            and loader_removed_condition_names == [[], []]
+        )
         loader_internal_risk_change = (
             relative == "Scripts/package/validate_source_generator_dll.py"
             and base_sections == head_sections
@@ -5371,14 +5398,13 @@ def _compare_surfaces(
             and base_relative_star_contract == head_relative_star_contract
             and base_public_symbols == head_public_symbols
             and base_risks <= head_risks
-            and frozenset(set(head_risks) - set(base_risks)) == loader_restore_risks
+            and len(loader_restore_delta) == 2
+            and {loader_restore_kind(signature) for signature in loader_restore_delta}
+            == {"name", "package"}
         )
         loader_internal_conditional_change = (
             loader_internal_risk_change
-            and frozenset(set(head_conditional_contract) - set(base_conditional_contract))
-            == loader_conditional_added
-            and frozenset(set(base_conditional_contract) - set(head_conditional_contract))
-            == loader_conditional_removed
+            and loader_conditional_shape
         )
         if strict and base_risks != head_risks and not loader_internal_risk_change:
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
