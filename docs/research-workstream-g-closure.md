@@ -31,7 +31,7 @@ can distinguish closure evidence from a new regression.
 | Phase140-27/P2-6 | P2 | Closed | 140-27E-1, 140-27E-3 | Input System references are guarded, the legacy input path compiles without the optional package, and the fallback fixture is tested. |
 | Phase140-27/P3-1 | P3 | Closed | 140-27D-2 | FoxRun trigger fixed-rate telemetry uses a 64-bit counter. |
 | Phase140-27/P3-2 | P3 | Closed | 140-27A-2 | Full Demo resolves an explicitly assigned cube or a scene cube publisher, not a fragile Player-tagged object lookup. |
-| Phase140-27/P3-3 | P3 | Closed | 140-27E-5 | The live and package sample scenes provide the cube binding where available; manager and cube consumers retain fallback discovery for unbound optional fields. |
+| Phase140-27/P3-3 | P3 | Closed | 140-27E-5 | The live scene explicit cube binding is covered; package/sample consumers retain fallback discovery when optional fields are unbound. |
 | Phase140-27/P3-4 | P3 | Closed | 140-27F-1, 140-27F-2 | Phase109 separates the side-effect-free availability query from initialization. |
 | Phase140-27/P3-5 | P3 | Closed | 140-27E-2 | Mouse drag caches the main camera and only retries lookup after the cached camera is unavailable. |
 | Phase140-27/P3-6 | P3 | Closed | 140-27D-1 | The long-running FoxRun probe keeps its frame counter wide and bounds the float sample to its exact integer range. |
@@ -44,15 +44,18 @@ behavior or harness checks rather than independent reconstructed findings:
 - `140-27A-3`: reset_pose reports a missing cube as an error.
 - `140-27A-4`: client-message preview uses strict UTF-8 before the hex fallback.
 - `140-27E-4`: FoxRun telemetry fields remain private.
-- `140-27F-3`: the test project compiles the migrated Phase 140-27 validation.
-- `140-27F-4`: the validation registry exposes the Phase 140-27 command.
+- `140-27F-3`: Historical pre-migration check: the legacy console validation compiled; after migration the console phase was removed and coverage moved to `UnityDemoRuntimeScriptTests`.
+- `140-27F-4`: Historical pre-migration check: the validation registry exposed the Phase 140-27 command; after migration that legacy command was removed.
 
 ## Automated closure checks
 
-UnityDemoRuntimeScriptTests verifies the ledger IDs, the shared lease
-integration, and the name-independent cube resolver. WorkstreamFClosureTests
-also exercises overlapping lease owners and restoration of the original global
-value. The source-level checks are intentionally paired with the repository's
+UnityDemoRuntimeScriptTests parses the complete original-check column and
+supporting-check list, rejects unknown IDs, and verifies that every historical
+ID is mapped exactly once. It also verifies the ledger's historical migration
+wording, shared lease integration, and name-independent cube resolver.
+WorkstreamFClosureTests also exercises overlapping lease owners and restoration
+of the original global value. The source-level checks are intentionally paired
+with the repository's
 real Unity batch gate because Unity lifecycle behavior cannot be executed by the
 dotnet-only test assembly.
 

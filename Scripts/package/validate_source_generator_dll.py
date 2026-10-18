@@ -18,6 +18,17 @@ from __future__ import annotations
 import sys as _phase192_sys
 import types as _phase192_types
 
+_phase192_module = _phase192_sys.modules.get(__name__)
+_phase192_canonical_self = (
+    _phase192_sys.modules.get(__name__)
+    if __package__ and _phase192_sys.modules.get(__name__) is not None
+    else None
+)
+if _phase192_canonical_self is not None:
+    _phase192_canonical_self.__package__ = ""
+    _phase192_canonical_self.__name__ = "validate_source_generator_dll"
+    _phase192_sys.modules["validate_source_generator_dll"] = _phase192_canonical_self
+
 if __package__:
     from .validate_source_generator_dll import *
     _phase192_package_module = _phase192_sys.modules.get(
