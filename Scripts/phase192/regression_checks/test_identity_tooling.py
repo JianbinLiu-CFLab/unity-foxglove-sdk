@@ -2784,6 +2784,76 @@ class IdentityToolingTests(unittest.TestCase):
                 'try:\n    __package__: str = "evil"\n    if _phase192_canonical_self is not None:\n',
                 1,
             ),
+            "canonical_name_duplicate": source.replace(
+                '        _phase192_canonical_self.__name__ = "validate_source_generator_dll"\n',
+                '        _phase192_canonical_self.__name__ = "validate_source_generator_dll"\n'
+                '        _phase192_canonical_self.__name__ = "validate_source_generator_dll"\n',
+                1,
+            ),
+            "canonical_package_duplicate": source.replace(
+                '        _phase192_canonical_self.__package__ = ""\n',
+                '        _phase192_canonical_self.__package__ = ""\n'
+                '        _phase192_canonical_self.__package__ = ""\n',
+                1,
+            ),
+            "canonical_name_nested": source.replace(
+                '        _phase192_canonical_self.__name__ = "validate_source_generator_dll"\n',
+                '        if True:\n'
+                '            _phase192_canonical_self.__name__ = "validate_source_generator_dll"\n',
+                1,
+            ),
+            "helper_attribute_store": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_package_module.evil = "evil"\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "helper_dunder_call": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_package_module.__setattr__("evil", "evil")\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "types_attribute_store": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_types.ModuleType = object\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "sys_path_store": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_sys.path = []\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "previous_path_store": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_previous_path[0] = "evil"\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "facade_class_attribute_store": source + '\n_Phase192FacadeModule.__bases__ = (object,)\n',
+            "main_attribute_store": source + '\nmain.__name__ = "evil"\n',
+            "canonical_metadata_outside_transaction": source
+            + '\nsetattr(_phase192_canonical_self, "__name__", "evil")\n',
+            "nested_helper_call": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    setattr(getattr(_phase192_package_module, "x"), "y", "evil")\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "conditional_helper_call": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    setattr(_phase192_types if True else evil, "x", "evil")\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "wrapped_previous_path_store": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    [_phase192_previous_path][0][0] = "evil"\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
             "final_name_binding": source.replace(
                 "__name__ = __spec__.name if __spec__ is not None else __name__",
                 '__name__ = "evil"',
