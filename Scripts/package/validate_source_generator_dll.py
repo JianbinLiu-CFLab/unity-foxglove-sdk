@@ -19,21 +19,20 @@ import sys as _phase192_sys
 import types as _phase192_types
 
 _phase192_module = _phase192_sys.modules.get(__name__)
-_phase192_canonical_name = (
-    __package__ + ".validate_source_generator_dll"
-    if __package__
+_phase192_canonical_self = (
+    _phase192_sys.modules.get(__name__)
+    if __package__ and _phase192_sys.modules.get(__name__) is not None
     else None
 )
-_phase192_self_registered = (
-    _phase192_canonical_name == __name__
-    and _phase192_module is not None
-    and _phase192_sys.modules.get(_phase192_canonical_name) is _phase192_module
-)
+if _phase192_canonical_self is not None:
+    _phase192_canonical_self.__package__ = ""
+    _phase192_canonical_self.__name__ = "validate_source_generator_dll"
+    _phase192_sys.modules["validate_source_generator_dll"] = _phase192_canonical_self
 
-if __package__ and not _phase192_self_registered:
+if __package__:
     from .validate_source_generator_dll import *
     _phase192_package_module = _phase192_sys.modules.get(
-        _phase192_canonical_name
+        __package__ + ".validate_source_generator_dll"
     )
 else:
     from pathlib import Path as _Phase192Path
@@ -43,10 +42,8 @@ else:
     _phase192_self = (
         _phase192_sys.modules.get(__name__)
         if __name__ == "validate_source_generator_dll"
-        else _phase192_module if _phase192_self_registered else None
+        else None
     )
-    if _phase192_self_registered:
-        _phase192_sys.modules["validate_source_generator_dll"] = _phase192_self
     if _phase192_self is not None:
         _phase192_sys.modules.pop("validate_source_generator_dll", None)
     try:
@@ -55,7 +52,7 @@ else:
             "validate_source_generator_dll"
         )
     finally:
-        if _phase192_self is not None and __name__ == "validate_source_generator_dll":
+        if _phase192_self is not None:
             _phase192_sys.modules["validate_source_generator_dll"] = _phase192_self
 
 
@@ -78,6 +75,7 @@ class _Phase192FacadeModule(_phase192_types.ModuleType):
                 pass
 
 
+_phase192_module = _phase192_sys.modules.get(__name__)
 if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192FacadeModule
 
