@@ -2741,6 +2741,16 @@ class IdentityToolingTests(unittest.TestCase):
                 "    for _phase192_previous_submodules in ():\n        pass\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
                 1,
             ),
+            "import_alias_binding": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    import sys as _phase192_previous_submodules\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
+            "import_from_alias_binding": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    from sys import modules as _phase192_name\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
             "snapshot_rebind": source + '\n_phase192_previous_submodules = {"os": None}\n',
         }
         reordered_tree = ast.parse(source)
