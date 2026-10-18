@@ -25,16 +25,6 @@ _phase192_canonical_self = (
     else None
 )
 _phase192_previous_self = _phase192_sys.modules.get("validate_source_generator_dll")
-_phase192_original_name = (
-    _phase192_canonical_self.__name__
-    if _phase192_canonical_self is not None
-    else None
-)
-_phase192_original_package = (
-    _phase192_canonical_self.__package__
-    if _phase192_canonical_self is not None
-    else None
-)
 if _phase192_canonical_self is not None:
     _phase192_canonical_self.__package__ = ""
     _phase192_canonical_self.__name__ = "validate_source_generator_dll"
@@ -69,16 +59,8 @@ else:
 if _phase192_canonical_self is not None and _phase192_previous_self is not None:
     _phase192_sys.modules["validate_source_generator_dll"] = _phase192_previous_self
 
-__package__ = (
-    _phase192_original_package
-    if _phase192_canonical_self is not None
-    else __package__
-)
-__name__ = (
-    _phase192_original_name
-    if _phase192_canonical_self is not None
-    else __name__
-)
+__package__ = getattr(__spec__, "parent", __package__)
+__name__ = getattr(__spec__, "name", __name__)
 
 
 class _Phase192FacadeModule(_phase192_types.ModuleType):
