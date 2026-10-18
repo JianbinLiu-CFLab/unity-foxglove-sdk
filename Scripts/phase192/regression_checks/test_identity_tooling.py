@@ -2758,6 +2758,128 @@ class IdentityToolingTests(unittest.TestCase):
                 '        setattr(_phase192_canonical_self if False else "evil", "__name__", _phase192_previous_name)\n',
                 1,
             ),
+            "facade_class_rebind": source + '\n_Phase192FacadeModule = _phase192_types.ModuleType\n',
+            "module_types_alias": source.replace(
+                "import types as _phase192_types",
+                "import sys as _phase192_types",
+                1,
+            ),
+            "module_name_after_guard": source.replace(
+                "    _phase192_module.__class__ = _Phase192FacadeModule\n\n",
+                "    _phase192_module.__class__ = _Phase192FacadeModule\n\n_phase192_module.__name__ = \"evil\"\n",
+                1,
+            ),
+            "metadata_extra_setattr": source.replace(
+                '        setattr(_phase192_canonical_self, "__package__", _phase192_previous_package)\n',
+                '        setattr(_phase192_canonical_self, "__package__", _phase192_previous_package)\n    setattr(_phase192_canonical_self, "__name__", "evil")\n',
+                1,
+            ),
+            "metadata_extra_delattr": source.replace(
+                '        setattr(_phase192_canonical_self, "__package__", _phase192_previous_package)\n',
+                '        setattr(_phase192_canonical_self, "__package__", _phase192_previous_package)\n    delattr(_phase192_canonical_self, "__name__")\n',
+                1,
+            ),
+            "annotated_package_rebind": source.replace(
+                "try:\n    if _phase192_canonical_self is not None:\n",
+                'try:\n    __package__: str = "evil"\n    if _phase192_canonical_self is not None:\n',
+                1,
+            ),
+            "canonical_name_duplicate": source.replace(
+                '        _phase192_canonical_self.__name__ = "validate_source_generator_dll"\n',
+                '        _phase192_canonical_self.__name__ = "validate_source_generator_dll"\n'
+                '        _phase192_canonical_self.__name__ = "validate_source_generator_dll"\n',
+                1,
+            ),
+            "canonical_package_duplicate": source.replace(
+                '        _phase192_canonical_self.__package__ = ""\n',
+                '        _phase192_canonical_self.__package__ = ""\n'
+                '        _phase192_canonical_self.__package__ = ""\n',
+                1,
+            ),
+            "canonical_name_nested": source.replace(
+                '        _phase192_canonical_self.__name__ = "validate_source_generator_dll"\n',
+                '        if True:\n'
+                '            _phase192_canonical_self.__name__ = "validate_source_generator_dll"\n',
+                1,
+            ),
+            "helper_attribute_store": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_package_module.evil = "evil"\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "helper_dunder_call": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_package_module.__setattr__("evil", "evil")\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "types_attribute_store": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_types.ModuleType = object\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "sys_path_store": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_sys.path = []\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "previous_path_store": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_previous_path[0] = "evil"\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "facade_class_attribute_store": source + '\n_Phase192FacadeModule.__bases__ = (object,)\n',
+            "main_attribute_store": source + '\nmain.__name__ = "evil"\n',
+            "canonical_metadata_outside_transaction": source
+            + '\nsetattr(_phase192_canonical_self, "__name__", "evil")\n',
+            "nested_helper_call": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    setattr(getattr(_phase192_package_module, "x"), "y", "evil")\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "conditional_helper_call": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    setattr(_phase192_types if True else evil, "x", "evil")\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "wrapped_previous_path_store": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    [_phase192_previous_path][0][0] = "evil"\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "trusted_alias_assignment": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_main = getattr(_phase192_package_module, "__setattr__")\n'
+                '    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "trusted_alias_import": source.replace(
+                "from __future__ import annotations\n",
+                "from __future__ import annotations\nimport sys as _phase192_main\n",
+                1,
+            ),
+            "path_constructor_rebind": source + '\n_Phase192Path = evil\n',
+            "path_constructor_duplicate_import": source.replace(
+                "        from pathlib import Path as _Phase192Path\n",
+                "        from pathlib import Path as _Phase192Path\n"
+                "        from pathlib import Path as _Phase192Path\n",
+                1,
+            ),
+            "system_exit_rebind": source + '\nSystemExit = evil\n',
+            "spec_rebind": source + '\n__spec__ = evil\n',
+            "future_rebind": source + '\n__future__ = evil\n',
+            "loader_metadata_rebind": source + '\n__loader__ = evil\n',
+            "cached_metadata_rebind": source + '\n__cached__ = evil\n',
+            "file_metadata_rebind": source + '\n__file__ = evil\n',
+            "doc_metadata_rebind": source + '\n__doc__ = evil\n',
+            "all_metadata_rebind": source + '\n__all__ = evil\n',
             "final_name_binding": source.replace(
                 "__name__ = __spec__.name if __spec__ is not None else __name__",
                 '__name__ = "evil"',
