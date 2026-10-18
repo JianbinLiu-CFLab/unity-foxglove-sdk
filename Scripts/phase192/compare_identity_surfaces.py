@@ -467,17 +467,22 @@ def _phase192_validate_template_registry_mutations(
         def exact_top_level_assignment(name: str, expression: str) -> bool:
             """Recognize one exact top-level loader binding."""
             expected = ast.parse(expression, mode="eval").body
-            matches = [
+            assignments = [
                 statement
-                for statement in tree.body
+                for statement in ast.walk(tree)
                 if isinstance(statement, ast.Assign)
                 and len(statement.targets) == 1
                 and isinstance(statement.targets[0], ast.Name)
                 and statement.targets[0].id == name
+            ]
+            matches = [
+                statement
+                for statement in assignments
+                if statement in tree.body
                 and ast.dump(statement.value, include_attributes=False)
                 == ast.dump(expected, include_attributes=False)
             ]
-            return len(matches) == 1
+            return len(assignments) == len(matches) == 1
 
         if not (
             exact_top_level_assignment(
@@ -491,7 +496,35 @@ def _phase192_validate_template_registry_mutations(
         ):
             raise ValueError(f"Unsupported loader module metadata binding in {path}")
 
-        class_assignments = [
+        def exact_module_class_guard(statement: ast.AST) -> bool:
+            """Recognize the exact guarded facade class assignment."""
+            if not (
+                isinstance(statement, ast.If)
+                and not statement.orelse
+                and len(statement.body) == 1
+                and isinstance(statement.test, ast.Compare)
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.IsNot)
+                and isinstance(statement.test.left, ast.Name)
+                and statement.test.left.id == "_phase192_module"
+                and len(statement.test.comparators) == 1
+                and isinstance(statement.test.comparators[0], ast.Constant)
+                and statement.test.comparators[0].value is None
+            ):
+                return False
+            assignment = statement.body[0]
+            return (
+                isinstance(assignment, ast.Assign)
+                and len(assignment.targets) == 1
+                and isinstance(assignment.targets[0], ast.Attribute)
+                and isinstance(assignment.targets[0].value, ast.Name)
+                and assignment.targets[0].value.id == "_phase192_module"
+                and assignment.targets[0].attr == "__class__"
+                and isinstance(assignment.value, ast.Name)
+                and assignment.value.id == "_Phase192FacadeModule"
+            )
+
+        all_module_class_assignments = [
             statement
             for statement in ast.walk(tree)
             if isinstance(statement, ast.Assign)
@@ -500,10 +533,11 @@ def _phase192_validate_template_registry_mutations(
             and isinstance(statement.targets[0].value, ast.Name)
             and statement.targets[0].value.id == "_phase192_module"
             and statement.targets[0].attr == "__class__"
-            and isinstance(statement.value, ast.Name)
-            and statement.value.id == "_Phase192FacadeModule"
         ]
-        if len(class_assignments) != 1:
+        if (
+            len(all_module_class_assignments) != 1
+            or sum(exact_module_class_guard(statement) for statement in tree.body) != 1
+        ):
             raise ValueError(f"Unsupported loader module class binding in {path}")
 
         def exact_cli_guard(statement: ast.AST) -> bool:
@@ -533,7 +567,31 @@ def _phase192_validate_template_registry_mutations(
                 and not statement.body[0].exc.keywords
             )
 
-        if sum(exact_cli_guard(statement) for statement in tree.body) != 1:
+        def is_main_name_guard(statement: ast.AST) -> bool:
+            """Recognize any module-level __name__ main guard."""
+            if not (
+                isinstance(statement, ast.If)
+                and isinstance(statement.test, ast.Compare)
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.Eq)
+                and len(statement.test.comparators) == 1
+            ):
+                return False
+            left, right = statement.test.left, statement.test.comparators[0]
+            return (
+                isinstance(left, ast.Name)
+                and left.id == "__name__"
+                and isinstance(right, ast.Constant)
+                and right.value == "__main__"
+            ) or (
+                isinstance(right, ast.Name)
+                and right.id == "__name__"
+                and isinstance(left, ast.Constant)
+                and left.value == "__main__"
+            )
+
+        main_guards = [statement for statement in tree.body if is_main_name_guard(statement)]
+        if len(main_guards) != 1 or not exact_cli_guard(main_guards[0]):
             raise ValueError(f"Unsupported loader command-line dispatch in {path}")
 
     snapshot_filter = ast.parse(
@@ -682,24 +740,37 @@ def _phase192_validate_template_registry_mutations(
                 return "package"
             return None
 
-        metadata_calls = [
-            node
+        def exact_metadata_restore_guard(statement: ast.AST) -> tuple[ast.Call, ast.Call] | None:
+            """Recognize the exact guarded metadata restoration block."""
+            if not (
+                isinstance(statement, ast.If)
+                and not statement.orelse
+                and isinstance(statement.test, ast.Compare)
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.IsNot)
+                and isinstance(statement.test.left, ast.Name)
+                and statement.test.left.id == "_phase192_canonical_self"
+                and len(statement.test.comparators) == 1
+                and isinstance(statement.test.comparators[0], ast.Constant)
+                and statement.test.comparators[0].value is None
+                and len(statement.body) == 2
+                and all(isinstance(item, ast.Expr) for item in statement.body)
+            ):
+                return None
+            calls = tuple(item.value for item in statement.body)
+            if not all(isinstance(call, ast.Call) for call in calls):
+                return None
+            return calls  # type: ignore[return-value]
+
+        metadata_guards = [
+            exact_metadata_restore_guard(statement)
             for statement in transaction.finalbody
-            for node in ast.walk(statement)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "setattr"
         ]
-        finalbody_ids = {
-            id(node)
-            for statement in transaction.finalbody
-            for node in ast.walk(statement)
-        }
-        if (
-            len(metadata_calls) != 2
-            or {metadata_restore_kind(node) for node in metadata_calls} != {"name", "package"}
-            or any(id(node) not in finalbody_ids for node in metadata_calls)
-        ):
+        metadata_guards = [guard for guard in metadata_guards if guard is not None]
+        if len(metadata_guards) != 1:
+            return False
+        metadata_calls = metadata_guards[0]
+        if tuple(metadata_restore_kind(node) for node in metadata_calls) != ("name", "package"):
             return False
         expected_top_level = {
             "_phase192_canonical_self",
