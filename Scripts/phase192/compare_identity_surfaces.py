@@ -5352,19 +5352,41 @@ def _compare_surfaces(
             "Call(func=Name(id='setattr', ctx=Load()), args=[Name(id='_phase192_canonical_self', ctx=Load()), Constant(value='__name__'), Name(id='_phase192_previous_name', ctx=Load())])",
             "Call(func=Name(id='setattr', ctx=Load()), args=[Name(id='_phase192_canonical_self', ctx=Load()), Constant(value='__package__'), Name(id='_phase192_previous_package', ctx=Load())])",
         })
+        loader_conditional_added = frozenset({
+            "facade::382c7a73e1da0fa1cf017b86262de53395b7f126132e5766dd7a37239f3229a0",
+            "facade::85621175c64c72f245d8dcf181788e5c5f2f76ea4d1b2e7bb94a67a06566e9c8",
+            "facade::a859e8ebd34813d75b175301eae91dff1639cb24968bf65909a8aa8883341e9d",
+            "facade:_Phase192Path,_phase192_name,_phase192_package_module,_phase192_parent,_phase192_self:7bf266b5a2ea5f7c36e6fe9850224591296a5728f6a9de5ea8629d9c1cb09b80",
+            "facade:_phase192_name:6a84f474641eb3da0c1832c0e6bb95b9f3da5ad42f39c1956f79c133fe39b76c",
+            "facade:_phase192_name:750ee183f2e906b25d9db52e34a8b14bbd0b7b56ca6d2624420afa78a614cee1",
+        })
+        loader_conditional_removed = frozenset({
+            "facade::da619044a118674abce96e9906b2cd7ba57bca8a29fbb1e13a62dd468d0cd438",
+            "facade::ed49028d8aa473d37015ded0c323caba52498e2146c8788557066faa5918c745",
+        })
         loader_internal_risk_change = (
             relative == "Scripts/package/validate_source_generator_dll.py"
             and base_sections == head_sections
             and base_section_map == head_section_map
             and base_relative_star_contract == head_relative_star_contract
             and base_public_symbols == head_public_symbols
-            and base_conditional_contract == head_conditional_contract
             and base_risks <= head_risks
             and frozenset(set(head_risks) - set(base_risks)) == loader_restore_risks
         )
+        loader_internal_conditional_change = (
+            loader_internal_risk_change
+            and frozenset(set(head_conditional_contract) - set(base_conditional_contract))
+            == loader_conditional_added
+            and frozenset(set(base_conditional_contract) - set(head_conditional_contract))
+            == loader_conditional_removed
+        )
         if strict and base_risks != head_risks and not loader_internal_risk_change:
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
-        if strict and tuple(base_conditional_contract or ()) != tuple(head_conditional_contract or ()):
+        if (
+            strict
+            and tuple(base_conditional_contract or ()) != tuple(head_conditional_contract or ())
+            and not loader_internal_conditional_change
+        ):
             errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
         if strict and tuple(base_section_map or ()) != tuple(head_section_map or ()):
             errors.append(f"SECTION_EXPORT_OWNER_CHANGED {relative}")
@@ -5406,8 +5428,8 @@ def _compare_surfaces(
                 )
             }
             if (
-                not preserves_order
-                or added_existing_bindings
+                not loader_internal_conditional_change
+                and (not preserves_order or added_existing_bindings)
             ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
         if base_entrypoint and head_entrypoint:
