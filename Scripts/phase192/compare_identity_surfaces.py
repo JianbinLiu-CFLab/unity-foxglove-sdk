@@ -1153,6 +1153,7 @@ def _phase192_validate_template_registry_mutations(
                 allowed_mutating_call_ids.add(id(node))
 
         def mutation_root(node: ast.AST) -> str | None:
+            """Resolve a direct critical binding mutation root."""
             roots = {
                 "_phase192_sys",
                 "_phase192_types",
@@ -1182,12 +1183,14 @@ def _phase192_validate_template_registry_mutations(
         }
 
         def contains_critical_mutation_name(node: ast.AST) -> bool:
+            """Detect critical binding names anywhere in a mutation expression."""
             return any(
                 isinstance(item, ast.Name) and item.id in critical_mutation_names
                 for item in ast.walk(node)
             )
 
         def is_mutating_call(node: ast.Call) -> bool:
+            """Identify calls that can mutate a critical binding target."""
             if isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"}:
                 return True
             return (
@@ -1197,6 +1200,7 @@ def _phase192_validate_template_registry_mutations(
             )
 
         def iter_module_nodes() -> Iterator[ast.AST]:
+            """Iterate module nodes while excluding the approved facade class body."""
             for statement in tree.body:
                 if isinstance(statement, ast.ClassDef) and statement.name == "_Phase192FacadeModule":
                     continue
