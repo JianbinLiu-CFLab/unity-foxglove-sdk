@@ -742,6 +742,7 @@ def _phase192_validate_template_registry_mutations(
     }
 
     def contains_protected_source(node: ast.AST) -> bool:
+        """Recognize protected sources propagated through loop aliases."""
         return any(
             isinstance(item, ast.Name) and item.id in protected_alias_sources
             or isinstance(item, ast.Call)
