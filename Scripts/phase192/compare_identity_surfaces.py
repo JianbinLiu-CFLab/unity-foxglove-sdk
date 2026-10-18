@@ -2567,7 +2567,10 @@ def _namespace_risk_signatures(
             visitor.visit(statement)
         return visitor.found
 
-    def definitely_nonempty_iterable(node: ast.AST) -> bool:
+    def definitely_nonempty_iterable(
+        node: ast.AST,
+        env: dict[str, AliasValue],
+    ) -> bool:
         """Return whether a loop iterable is statically known to execute once."""
         try:
             value = ast.literal_eval(node)
@@ -2576,6 +2579,25 @@ def _namespace_risk_signatures(
         if isinstance(value, (str, bytes, tuple, list, set, frozenset, dict)):
             return bool(value)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "range":
+            resolved_range = resolve_target(node.func, env)
+            builtin_range = False
+            for candidate in candidate_values(resolved_range):
+                candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+                if (
+                    isinstance(candidate_node, ast.Name)
+                    and candidate_node.id == "range"
+                    and node.func.id not in env
+                ):
+                    builtin_range = True
+                elif (
+                    isinstance(candidate_node, ast.Attribute)
+                    and candidate_node.attr == "range"
+                    and isinstance(candidate_node.value, ast.Name)
+                    and candidate_node.value.id in {"builtins", "__builtins__"}
+                ):
+                    builtin_range = True
+            if not builtin_range:
+                return False
             try:
                 arguments = tuple(ast.literal_eval(argument) for argument in node.args)
                 return bool(range(*arguments))
@@ -2677,7 +2699,7 @@ def _namespace_risk_signatures(
             if (
                 body_stopped
                 and not loop_breaks_before_yield(statement.body)
-                and definitely_nonempty_iterable(statement.iter)
+                and definitely_nonempty_iterable(statement.iter, env)
             ):
                 return True
             if not statement.orelse:
@@ -2991,6 +3013,10 @@ def _namespace_risk_signatures(
                 )
             return
         if isinstance(node, ast.Subscript):
+            literal_container = isinstance(node.value, (ast.List, ast.Tuple, ast.Set))
+            if literal_container:
+                for element in node.value.elts:
+                    scan_node(element, env)
             resolved = resolve_target(node, env)
             if resolved is not node:
                 for candidate in candidate_values(resolved):
@@ -2998,24 +3024,21 @@ def _namespace_risk_signatures(
                     if isinstance(resolved_node, ast.AST):
                         scan_node(resolved_node, env, deferred_mode=deferred_mode)
             else:
-                if isinstance(node.value, (ast.List, ast.Tuple, ast.Set)):
-                    for element in node.value.elts:
-                        scan_node(element, env, deferred_mode=deferred_mode)
+                base = resolve_target(node.value, env)
+                sequence_candidates = [
+                    item
+                    for candidate in candidate_values(base)
+                    if isinstance(candidate, AliasSequence)
+                    for item in candidate.items
+                ]
+                if sequence_candidates:
+                    for item in sequence_candidates:
+                        scan_node(item, env, deferred_mode=deferred_mode)
                 else:
-                    base = resolve_target(node.value, env)
-                    sequence_candidates = [
-                        item
-                        for candidate in candidate_values(base)
-                        if isinstance(candidate, AliasSequence)
-                        for item in candidate.items
-                    ]
-                    if sequence_candidates:
-                        for item in sequence_candidates:
-                            scan_node(item, env, deferred_mode=deferred_mode)
-                    else:
-                        scan_node(node.value, env, deferred_mode=deferred_mode)
-                        if isinstance(node.value, ast.Call) and deferred_mode != _DEFERRED_NONE:
-                            scan_returned_sequence(node.value, env, deferred_mode)
+                    if not literal_container:
+                        scan_node(node.value, env)
+                    if isinstance(node.value, ast.Call) and deferred_mode != _DEFERRED_NONE:
+                        scan_returned_sequence(node.value, env, deferred_mode)
             scan_node(node.slice, env)
             return
         if isinstance(node, ast.Expr):

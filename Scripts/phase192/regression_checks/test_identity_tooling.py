@@ -3951,6 +3951,21 @@ class IdentityToolingTests(unittest.TestCase):
                 risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
                 self.assertTrue(any("after" in item for item in risks))
 
+    def test_namespace_gate_does_not_assume_shadowed_range_is_nonempty(self) -> None:
+        """A shadowed range must preserve the loop exit path."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def range(*args):\n"
+            "    return []\n"
+            "def generator():\n"
+            "    for _ in range(1):\n"
+            "        yield 1\n"
+            "    subprocess.run([\"range-shadow-after-loop\"])\n"
+            "next(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("range-shadow-after-loop" in item for item in risks))
+
     def test_namespace_gate_scans_all_pathlib_mutators(self) -> None:
         """Path link and permission mutators remain import-time filesystem risks."""
         for method in ("symlink_to", "hardlink_to", "chmod", "lchmod"):
@@ -4279,6 +4294,34 @@ class IdentityToolingTests(unittest.TestCase):
         )
         risks = compare_identity_surfaces._namespace_risk_signatures(tree)
         self.assertTrue(any("dynamic-subscript" in item for item in risks))
+
+    def test_namespace_gate_scans_constant_subscript_container_side_effects(self) -> None:
+        """Constant subscripts still evaluate every container element first."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def dangerous():\n"
+            "    subprocess.run([\"constant-subscript-dangerous\"])\n"
+            "    return 1\n"
+            "def safe():\n"
+            "    yield 1\n"
+            "next([dangerous(), safe()][1])\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("constant-subscript-dangerous" in item for item in risks))
+
+    def test_namespace_gate_does_not_drive_unselected_constant_subscript_generators(self) -> None:
+        """An unselected generator element is only constructed, not consumed."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"constant-subscript-unselected\"])\n"
+            "    yield 1\n"
+            "def safe():\n"
+            "    yield 2\n"
+            "next([inner(), safe()][1])\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertFalse(any("constant-subscript-unselected" in item for item in risks))
 
     def test_namespace_gate_does_not_drive_nonfinal_and_operands(self) -> None:
         """Operands evaluated only for an and-condition are not consumed generators."""
