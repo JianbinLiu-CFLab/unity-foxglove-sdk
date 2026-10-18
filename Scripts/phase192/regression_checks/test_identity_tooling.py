@@ -4061,6 +4061,94 @@ class IdentityToolingTests(unittest.TestCase):
                 risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
                 self.assertTrue(any("-drive" in item for item in risks))
 
+    def test_namespace_gate_scans_unbound_yield_exception_handlers(self) -> None:
+        """An unbound yield expression can raise before the first value is produced."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def generator():\n"
+            "    try:\n"
+            "        yield missing\n"
+            "    except NameError:\n"
+            "        subprocess.run([\"unbound-yield-except\"])\n"
+            "next(generator())\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("unbound-yield-except" in item for item in risks))
+
+    def test_namespace_gate_drives_or_and_iterator_wrappers(self) -> None:
+        """Driving consumers preserve deferred mode through or, iter, and combinators."""
+        sources = (
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"or-generator-expression\"])\n"
+            "    yield 1\n"
+            "def safe():\n"
+            "    yield 2\n"
+            "next((value for value in inner()) or safe())\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"iter-wrapper\"])\n"
+            "    yield 1\n"
+            "next(iter(inner()))\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"map-wrapper\"])\n"
+            "    yield 1\n"
+            "list(map(lambda value: value, inner()))\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"filter-wrapper\"])\n"
+            "    yield 1\n"
+            "list(filter(None, inner()))\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"zip-wrapper\"])\n"
+            "    yield 1\n"
+            "list(zip([1], inner()))\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertTrue(any("wrapper" in item or "or-generator-expression" in item for item in risks))
+
+    def test_namespace_gate_scans_comprehensions_inside_yield_values(self) -> None:
+        """A comprehension in a yield value fully drives its input iterator first."""
+        sources = (
+            "import subprocess\n"
+            "def inner():\n"
+            "    yield 1\n"
+            "    subprocess.run([\"yield-listcomp-after\"])\n"
+            "def outer():\n"
+            "    yield [value for value in inner()]\n"
+            "next(outer())\n",
+            "import subprocess\n"
+            "def inner():\n"
+            "    yield 1\n"
+            "    subprocess.run([\"yield-setcomp-after\"])\n"
+            "def outer():\n"
+            "    yield {value for value in inner()}\n"
+            "next(outer())\n",
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                risks = compare_identity_surfaces._namespace_risk_signatures(ast.parse(source))
+                self.assertTrue(any("yield-" in item for item in risks))
+
+    def test_namespace_gate_scans_dynamic_subscript_of_returned_sequence(self) -> None:
+        """A dynamic subscript still drives a generator returned in a sequence."""
+        tree = ast.parse(
+            "import subprocess\n"
+            "def inner():\n"
+            "    subprocess.run([\"dynamic-return-subscript\"])\n"
+            "    yield 1\n"
+            "def make():\n"
+            "    return [inner()]\n"
+            "index = 0\n"
+            "next(make()[index])\n"
+        )
+        risks = compare_identity_surfaces._namespace_risk_signatures(tree)
+        self.assertTrue(any("dynamic-return-subscript" in item for item in risks))
+
     def test_namespace_gate_preserves_loop_break_paths(self) -> None:
         """A break before the first yield keeps the loop exit path reachable."""
         sources = (
