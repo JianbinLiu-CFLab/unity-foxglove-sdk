@@ -726,6 +726,27 @@ def _phase192_validate_template_registry_mutations(
             return contains_registry_reference(node.value)
         return False
 
+    protected_alias_sources = {
+        "_phase192_sys",
+        "_phase192_types",
+        "_phase192_self",
+        "_phase192_package_module",
+        "_phase192_module",
+        "_phase192_canonical_self",
+        "_phase192_previous_submodules",
+        "_Phase192FacadeModule",
+        "main",
+        "__spec__",
+        "__builtins__",
+        "__dict__",
+    }
+
+    def contains_protected_source(node: ast.AST) -> bool:
+        return any(
+            isinstance(item, ast.Name) and item.id in protected_alias_sources
+            for item in ast.walk(node)
+        )
+
     try:
         relative_path = Path(path).resolve().relative_to(Path(repository_root).resolve()).as_posix()
     except (TypeError, ValueError):
@@ -1041,6 +1062,15 @@ def _phase192_validate_template_registry_mutations(
             )
             else None
         )
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, (ast.For, ast.AsyncFor))
+            and contains_protected_source(node.iter)
+            and exact_cleanup_loop(node) is None
+            and exact_restore_loop(node) is None
+        ):
+            raise ValueError(f"Unsupported protected alias in {path}")
 
     def rooted_in(node: ast.AST, name: str) -> bool:
         """Return whether a registry expression is rooted in one binding."""
