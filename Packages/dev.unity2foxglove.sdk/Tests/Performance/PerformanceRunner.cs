@@ -378,111 +378,62 @@ namespace Unity.FoxgloveSDK.Performance
                 notes);
         }
 
-        private static long ResolveElapsedMilliseconds(long actualElapsedMilliseconds)
+        private static byte[] MakeJsonPayload(int topicIdx, int msgIdx)
         {
-            var overrideElapsed = ElapsedMillisecondsOverrideForTests;
-            return overrideElapsed == null
-                ? actualElapsedMilliseconds
-                : overrideElapsed(actualElapsedMilliseconds);
+            var obj = new { seq = msgIdx, topic = topicIdx, message = "perf baseline payload data" };
+            return Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(obj));
         }
 
-        private static PerformanceScenarioResult TimedScenario(string name, int warmupCount, int msgCount,
-            Action warmup, Action<int> measured, PerformanceThresholdConfig thresholds)
+        private static PerformanceScenarioResult RunPublishJsonFanout(
+            int warmup,
+            int topics,
+            int clients,
+            int messages,
+            PerformanceThresholdConfig thresholds)
         {
-            // Warmup
-            warmup();
+            var registry = new DefaultSchemaRegistry();
+            FoxgloveSchemaDefinitions.RegisterCoreSchemas(registry);
+            registry.Register(new SchemaEntry { Name = "test.PerfJson", Encoding = "jsonschema", Content = "{\"type\":\"object\"}" });
+            var transport = new FakePerformanceTransport();
+            var session = new FoxgloveSession("perf-json", transport, schemaRegistry: registry);
+            var channelIds = new List<uint>();
 
-            // GC + measure
-            PrepareAllocMeasurement(out var gcBeforeTotal, out var gcBeforeThread,
-                out var gen0Before, out var gen1Before, out var gen2Before);
-            var sw = Stopwatch.StartNew();
-            measured(msgCount);
-            sw.Stop();
-            CollectAllocMetrics(gcBeforeTotal, gcBeforeThread, gen0Before, gen1Before, gen2Before,
-                msgCount, out var allocTotal, out var allocThread, out var allocPerMsg,
-                out var gen0, out var gen1, out var gen2, out var allocNotes);
-
-            var result = new PerformanceScenarioResult
+            for (int t = 0; t < topics; t++)
             {
-                name = name,
-                warmupMessageCount = warmupCount,
-                messageCount = msgCount,
-                elapsedMs = sw.ElapsedMilliseconds,
-                messagesPerSecond = sw.Elapsed.TotalSeconds > 0 ? msgCount / sw.Elapsed.TotalSeconds : 0,
-                allocatedBytesTotal = allocTotal,
-                allocatedBytesCurrentThread = allocThread,
-                allocatedBytesPerMessage = allocPerMsg,
-                gen0Collections = gen0,
-                gen1Collections = gen1,
-                gen2Collections = gen2,
-                allocationNotes = allocNotes,
-                passed = true
-            };
-            ApplyThresholds(result, thresholds);
-            return result;
-        }
-
-        private static PerformanceScenarioThreshold ResolveThreshold(string scenarioName, PerformanceThresholdConfig config)
-        {
-            if (config == null || !config.enabled)
-                return null;
-
-            PerformanceScenarioThreshold scenario = null;
-            config.scenarios?.TryGetValue(scenarioName, out scenario);
-            if (config.defaults == null && scenario == null)
-                return null;
-
-            return new PerformanceScenarioThreshold
-            {
-                maxElapsedMs = scenario?.maxElapsedMs ?? config.defaults?.maxElapsedMs,
-                minMessagesPerSecond = scenario?.minMessagesPerSecond ?? config.defaults?.minMessagesPerSecond,
-                maxAllocatedBytesPerMessage = scenario?.maxAllocatedBytesPerMessage ?? config.defaults?.maxAllocatedBytesPerMessage,
-                maxAllocatedBytesTotal = scenario?.maxAllocatedBytesTotal ?? config.defaults?.maxAllocatedBytesTotal,
-                maxGen0Collections = scenario?.maxGen0Collections ?? config.defaults?.maxGen0Collections,
-                maxGen1Collections = scenario?.maxGen1Collections ?? config.defaults?.maxGen1Collections,
-                maxGen2Collections = scenario?.maxGen2Collections ?? config.defaults?.maxGen2Collections
-            };
-        }
-
-        private static void ApplyThresholds(PerformanceScenarioResult result, PerformanceThresholdConfig thresholds)
-        {
-            var threshold = ResolveThreshold(result.name, thresholds);
-            if (threshold == null)
-                return;
-
-            var failures = new List<string>();
-            if (threshold.maxElapsedMs.HasValue && result.elapsedMs > threshold.maxElapsedMs.Value)
-                failures.Add($"elapsedMs {result.elapsedMs} > max {threshold.maxElapsedMs.Value}");
-            if (threshold.minMessagesPerSecond.HasValue
-                && result.messageCount > 0
-                && result.messagesPerSecond < threshold.minMessagesPerSecond.Value)
-                failures.Add($"messagesPerSecond {result.messagesPerSecond:F3} < min {threshold.minMessagesPerSecond.Value:F3}");
-            if (threshold.maxAllocatedBytesPerMessage.HasValue
-                && result.allocatedBytesPerMessage > threshold.maxAllocatedBytesPerMessage.Value)
-                failures.Add($"allocatedBytesPerMessage {result.allocatedBytesPerMessage:F3} > max {threshold.maxAllocatedBytesPerMessage.Value:F3}");
-            if (threshold.maxAllocatedBytesTotal.HasValue && result.allocatedBytesTotal > threshold.maxAllocatedBytesTotal.Value)
-                failures.Add($"allocatedBytesTotal {result.allocatedBytesTotal} > max {threshold.maxAllocatedBytesTotal.Value}");
-            if (threshold.maxGen0Collections.HasValue && result.gen0Collections > threshold.maxGen0Collections.Value)
-                failures.Add($"gen0Collections {result.gen0Collections} > max {threshold.maxGen0Collections.Value}");
-            if (threshold.maxGen1Collections.HasValue && result.gen1Collections > threshold.maxGen1Collections.Value)
-                failures.Add($"gen1Collections {result.gen1Collections} > max {threshold.maxGen1Collections.Value}");
-            if (threshold.maxGen2Collections.HasValue && result.gen2Collections > threshold.maxGen2Collections.Value)
-                failures.Add($"gen2Collections {result.gen2Collections} > max {threshold.maxGen2Collections.Value}");
-
-            result.thresholdsEvaluated = true;
-            if (failures.Count == 0)
-            {
-                result.thresholdNotes = result.passed
-                    ? "thresholds passed"
-                    : "thresholds passed; scenario result already failed";
-                return;
+                uint chId = (uint)(t + 1);
+                session.RegisterSchemaChannel(chId, $"/perf/json/{t}", "test.PerfJson", "json");
+                channelIds.Add(chId);
             }
 
-            result.passed = false;
-            result.thresholdNotes = string.Join("; ", failures);
+            for (int c = 0; c < clients; c++)
+            {
+                uint clientId = (uint)(c + 1);
+                transport.SimulateConnect(clientId);
+                for (int t = 0; t < topics; t++)
+                    transport.SimulateSubscribe(clientId, (uint)(c * topics + t + 1), channelIds[t]);
+            }
+
+            transport.ResetCounters();
+
+            Action warmupFn = () =>
+            {
+                for (int i = 0; i < warmup; i++)
+                {
+                    for (int t = 0; t < channelIds.Count; t++)
+                        session.Publish(channelIds[t], MakeJsonPayload(t, i));
+                }
+            };
+
+            var totalMessages = messages * topics;
+            return TimedScenario("PublishJsonFanout", warmup * topics, totalMessages, warmupFn, count =>
+            {
+                int outer = count / topics;
+                for (int i = 0; i < outer; i++)
+                {
+                    for (int t = 0; t < channelIds.Count; t++)
+                        session.Publish(channelIds[t], MakeJsonPayload(t, i));
+                }
+            }, thresholds);
         }
-
-
-        /// <remarks>Phase192 source sections: DataLoader.cs, PublishingAndMcap.cs, MicroScenarios.cs</remarks>
-    }
+}
 }

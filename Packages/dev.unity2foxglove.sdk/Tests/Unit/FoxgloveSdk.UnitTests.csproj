@@ -61,27 +61,38 @@
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.Server.RemoteMcap.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.Server.ReplayCursor.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Logging/FoxgloveLogger.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
-    <Compile Remove="Ros2ForUnity/**/*.cs;Decomposed/Ros2ForUnity/**/*.cs;Architecture/FoxRunRos2NativeBoundaryTests.cs;Manager/FoxRunRos2CustomTypesupportInspectorPresentationTests.cs;FoxRun/FoxRunRos2*.cs;FoxRun/FoxRunCustomNativeContractDemandPolicyTests.cs;FoxRun/Fixtures/Phase181CustomInterfaceFixture.cs;Harness/R2fuGuardHelperOptimizationTests.cs;Harness/SensorRos2OptimizationTests.cs"
+    <Compile Remove="Ros2ForUnity/**/*.cs;Decomposed/Ros2ForUnity/**/*.cs;Architecture/FoxRunRos2NativeBoundaryTests.cs;Manager/FoxRunRos2CustomTypesupportInspectorPresentationTests.cs;FoxRun/FoxRunRos2*.cs;Decomposed/FoxRun/FoxRunRos2*.cs;FoxRun/FoxRunCustomNativeContractDemandPolicyTests.cs;Decomposed/FoxRun/FoxRunCustomNativeContractDemandPolicyTests/**/*.cs;FoxRun/Fixtures/Phase181CustomInterfaceFixture.cs;Harness/R2fuGuardHelperOptimizationTests.cs;Harness/SensorRos2OptimizationTests.cs"
              Condition="'$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true'" />
-    <Compile Remove="Ros2ForUnity/FoxRunAnalyzerCompositionContractTests.cs"
+    <Compile Remove="Ros2ForUnity/FoxRunAnalyzerCompositionContractTests.cs;Decomposed/Ros2ForUnity/FoxRunAnalyzerCompositionContractTests.cs"
              Condition="'$(IncludeRos2Bridge)' != 'true'" />
     <Compile Include="../AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Link="AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Link="NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Link="NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
-    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/*.cs" LinkBase="Ros2ForUnityEditor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityInteractiveSelectionState.cs" Link="Ros2ForUnityEditor/Ros2ForUnityInteractiveSelectionState.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityEditorDiagnostics.cs" Link="Ros2ForUnityEditor/Ros2ForUnityEditorDiagnostics.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportDiscovery.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportDiscovery.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportPreflight.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportPreflight.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityEditorRestartRelay.cs" Link="Ros2ForUnityEditor/Ros2ForUnityEditorRestartRelay.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Ros2CustomCdrEmitter.cs" Link="Ros2BridgeEditor/Ros2CustomCdrEmitter.cs" Condition="'$(IncludeRos2Bridge)' == 'true'" />
-    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/Ros2CustomCdrEmitter/Generation.cs" Link="Ros2BridgeEditor/Decomposed/Generation.cs" Condition="'$(IncludeRos2Bridge)' == 'true'" />
-    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/Ros2CustomCdrEmitter/Readers.cs" Link="Ros2BridgeEditor/Decomposed/Readers.cs" Condition="'$(IncludeRos2Bridge)' == 'true'" />
-    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/Ros2CustomCdrEmitter/Writers.cs" Link="Ros2BridgeEditor/Decomposed/Writers.cs" Condition="'$(IncludeRos2Bridge)' == 'true'" />
-    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/Ros2CustomCdrEmitter/ValidationAndProjection.cs" Link="Ros2BridgeEditor/Decomposed/ValidationAndProjection.cs" Condition="'$(IncludeRos2Bridge)' == 'true'" />
-    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/Ros2CustomCdrEmitter/NamingAndUtilities.cs" Link="Ros2BridgeEditor/Decomposed/NamingAndUtilities.cs" Condition="'$(IncludeRos2Bridge)' == 'true'" />
-    <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/Ros2CustomCdrEmitter/Shapes.cs" Link="Ros2BridgeEditor/Decomposed/Shapes.cs" Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/DispatchEmission.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/DispatchEmission.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/CdrReaders.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/CdrReaders.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/CdrWriters.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/CdrWriters.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/ShapeProjection.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/ShapeProjection.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/NamingAndValidation.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/NamingAndValidation.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
+      <Compile Include="../../../dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/FoxRunBridgeSourceEmitter/DataModels.cs"
+               Link="Ros2BridgeEditor/Decomposed/FoxRunBridgeSourceEmitter/DataModels.cs"
+               Condition="'$(IncludeRos2Bridge)' == 'true'" />
     <!-- Certificate transaction and its production generator are linked so the
          test assembly exercises the same staging call sites as the Editor. -->
     <Compile Include="../../Editor/Certificates/FoxgloveCertificatePairTransaction.cs" Link="Editor/Certificates/FoxgloveCertificatePairTransaction.cs" />
@@ -97,6 +108,7 @@
     <Compile Include="../Runtime/PhaseValidationSourceHelpers.cs" Link="TestHelpers/PhaseValidationSourceHelpers.cs" />
     <Compile Include="../Runtime/Decomposed/PhaseValidationSourceHelpers/*.cs" LinkBase="TestHelpers/Decomposed/PhaseValidationSourceHelpers" />
     <Compile Include="../Runtime/FoxRunGenerationDescriptorJsonReader.cs" Link="TestHelpers/FoxRunGenerationDescriptorJsonReader.cs" />
+    <Compile Include="../Runtime/Decomposed/FoxRunGenerationDescriptorJsonReader/*.cs" Link="TestHelpers/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <Target Name="ValidatePhase179NativeCompileSurface" BeforeTargets="CoreCompile" Condition="'$(IncludeRos2ForUnityNative)' == 'true'">

@@ -441,7 +441,7 @@ namespace Demo
             => new string((value ?? string.Empty).Where(character => !char.IsWhiteSpace(character)).ToArray());
 
         private static string Text(string relativePath)
-            => Unity.FoxgloveSDK.Tests.PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            => File.ReadAllText(Path.Combine(FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
         private static string FindRepoRoot()
         {

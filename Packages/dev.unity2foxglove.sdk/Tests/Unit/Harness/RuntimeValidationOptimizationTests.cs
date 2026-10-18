@@ -216,7 +216,7 @@ internal static class TestSources
         {
             var directory = Path.Combine(RepoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime");
             var sectionDirectory = Path.Combine(directory, "Decomposed", "Program");
-            var names = new[] { "ValidationExecution.cs", "LegacyTools.cs", "CiAndServer.cs" };
+            var names = new[] { "ValidationExecution.cs", "LegacyTools.cs", "CiAndServer.cs", "MainCore.cs", "CollectOptionValues.cs" };
             var actualNames = Directory.GetFiles(
                     sectionDirectory,
                     "*.cs",
