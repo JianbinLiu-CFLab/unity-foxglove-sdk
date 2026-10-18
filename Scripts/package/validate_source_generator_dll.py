@@ -30,17 +30,11 @@ _phase192_self_registered = (
     and _phase192_sys.modules.get(_phase192_canonical_name) is _phase192_module
 )
 
-if __package__:
-    if _phase192_self_registered:
-        _phase192_sys.modules.pop(_phase192_canonical_name, None)
-    try:
-        from .validate_source_generator_dll import *
-        _phase192_package_module = _phase192_sys.modules.get(
-            _phase192_canonical_name
-        )
-    finally:
-        if _phase192_self_registered:
-            _phase192_sys.modules[_phase192_canonical_name] = _phase192_module
+if __package__ and not _phase192_self_registered:
+    from .validate_source_generator_dll import *
+    _phase192_package_module = _phase192_sys.modules.get(
+        _phase192_canonical_name
+    )
 else:
     from pathlib import Path as _Phase192Path
     _phase192_parent = _Phase192Path(__file__).resolve().parent
@@ -49,8 +43,10 @@ else:
     _phase192_self = (
         _phase192_sys.modules.get(__name__)
         if __name__ == "validate_source_generator_dll"
-        else None
+        else _phase192_module if _phase192_self_registered else None
     )
+    if _phase192_self_registered:
+        _phase192_sys.modules["validate_source_generator_dll"] = _phase192_self
     if _phase192_self is not None:
         _phase192_sys.modules.pop("validate_source_generator_dll", None)
     try:
@@ -59,7 +55,7 @@ else:
             "validate_source_generator_dll"
         )
     finally:
-        if _phase192_self is not None:
+        if _phase192_self is not None and __name__ == "validate_source_generator_dll":
             _phase192_sys.modules["validate_source_generator_dll"] = _phase192_self
 
 
