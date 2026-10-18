@@ -3480,39 +3480,62 @@ class IdentityToolingTests(unittest.TestCase):
 
     def test_generated_facade_rejects_closure_mutations(self) -> None:
         """Generated facades cannot mutate protected state through wrappers or aliases."""
-        facade = Path("Scripts/package/validate_source_generator_dll.py")
-        source = facade.read_text(encoding="utf-8")
-        variants = {
-            "facade_method_body": source.replace(
-                "        super().__setattr__(name, value)\n",
-                "        super().__setattr__(name, value)\n"
-                "        setattr(_phase192_package_module, \"__name__\", \"evil\")\n",
-                1,
-            ),
-            "protected_types_alias": source + (
-                "\nimport types as _evil_types\n"
-                "_evil_types.ModuleType = object\n"
-            ),
-            "protected_types_propagated_alias": source + (
-                "\n_evil_types = _phase192_types\n"
-                "_evil_types.ModuleType = object\n"
-            ),
-            "protected_metadata_alias": source + (
-                "\n_evil_spec = __spec__\n"
-                "_evil_spec.name = \"evil\"\n"
-            ),
-            "protected_metadata_store": source + '\n__spec__.name = "evil"\n',
-            "globals_protected_store": source + (
-                "\nglobals()[\"_phase192_package_module\"].__name__ = \"evil\"\n"
-            ),
-        }
-        for name, variant in variants.items():
-            with self.subTest(name=name), self.assertRaises(ValueError):
-                compare_identity_surfaces._symbols(
-                    variant,
-                    str(facade),
-                    repository_root=Path.cwd(),
-                )
+        for facade in (
+            Path("Scripts/package/validate_source_generator_dll.py"),
+            Path("Scripts/mcap/mcap_time_sync.py"),
+        ):
+            source = facade.read_text(encoding="utf-8")
+            variants = {
+                "facade_method_body": source.replace(
+                    "        super().__setattr__(name, value)\n",
+                    "        super().__setattr__(name, value)\n"
+                    "        setattr(_phase192_package_module, \"__name__\", \"evil\")\n",
+                    1,
+                ),
+                "protected_types_alias": source + (
+                    "\nimport types as _evil_types\n"
+                    "_evil_types.ModuleType = object\n"
+                ),
+                "protected_types_propagated_alias": source + (
+                    "\n_evil_types = _phase192_types\n"
+                    "_evil_types.ModuleType = object\n"
+                ),
+                "protected_package_propagated_alias": source + (
+                    "\n_evil_package = _phase192_package_module\n"
+                    "_evil_package.__name__ = \"evil\"\n"
+                ),
+                "protected_metadata_alias": source + (
+                    "\n_evil_spec = __spec__\n"
+                    "_evil_spec.name = \"evil\"\n"
+                ),
+                "protected_metadata_store": source + '\n__spec__.name = "evil"\n',
+                "globals_protected_store": source + (
+                    "\nglobals()[\"_phase192_package_module\"].__name__ = \"evil\"\n"
+                ),
+                "globals_get_protected_store": source + (
+                    "\nglobals().get(\"_phase192_package_module\").__name__ = \"evil\"\n"
+                ),
+                "globals_get_protected_subscript": source + (
+                    "\nglobals().get(\"_phase192_package_module\")[\"__name__\"] = \"evil\"\n"
+                ),
+                "dict_protected_store": source + (
+                    "\n__dict__[\"__spec__\"].name = \"evil\"\n"
+                ),
+                "dict_get_protected_store": source + (
+                    "\n__dict__.get(\"__spec__\").name = \"evil\"\n"
+                ),
+                "dict_alias_protected_store": source + (
+                    "\nd = __dict__\n"
+                    "d[\"__spec__\"].name = \"evil\"\n"
+                ),
+            }
+            for name, variant in variants.items():
+                with self.subTest(facade=str(facade), name=name), self.assertRaises(ValueError):
+                    compare_identity_surfaces._symbols(
+                        variant,
+                        str(facade),
+                        repository_root=Path.cwd(),
+                    )
 
     def test_generated_initializer_rejects_import_time_main_call(self) -> None:
         """Package initializers cannot invoke an exported CLI during import."""
