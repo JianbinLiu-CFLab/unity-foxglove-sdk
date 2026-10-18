@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
+import types
 import unittest
 from pathlib import Path
 
@@ -37,6 +38,7 @@ class ValidateSourceGeneratorFacadeTests(unittest.TestCase):
         self.assertIsNotNone(spec.loader)
         module = importlib.util.module_from_spec(spec)
         previous = sys.modules.get(module_name)
+        previous_top_level = sys.modules.get("validate_source_generator_dll")
         sys.modules[module_name] = module
         try:
             spec.loader.exec_module(module)
@@ -48,6 +50,38 @@ class ValidateSourceGeneratorFacadeTests(unittest.TestCase):
                 sys.modules.pop(module_name, None)
             else:
                 sys.modules[module_name] = previous
+            if previous_top_level is None:
+                sys.modules.pop("validate_source_generator_dll", None)
+            else:
+                sys.modules["validate_source_generator_dll"] = previous_top_level
+
+    def test_canonical_spec_loader_preserves_existing_top_level_module(self) -> None:
+        """A canonical file-spec load preserves an existing top-level alias and metadata."""
+        module_name = "Scripts.package.validate_source_generator_dll"
+        path = ROOT / "Scripts" / "package" / "validate_source_generator_dll.py"
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        previous = sys.modules.get(module_name)
+        previous_top_level = sys.modules.get("validate_source_generator_dll")
+        old_module = types.ModuleType("validate_source_generator_dll")
+        sys.modules[module_name] = module
+        sys.modules["validate_source_generator_dll"] = old_module
+        try:
+            spec.loader.exec_module(module)
+            self.assertIs(sys.modules.get("validate_source_generator_dll"), old_module)
+            self.assertEqual(module.__name__, module_name)
+            self.assertEqual(module.__package__, "Scripts.package")
+        finally:
+            if previous is None:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous
+            if previous_top_level is None:
+                sys.modules.pop("validate_source_generator_dll", None)
+            else:
+                sys.modules["validate_source_generator_dll"] = previous_top_level
 
     def test_package_facade_exports_validator_entrypoints(self) -> None:
         """The package facade exposes the public validator callables."""
