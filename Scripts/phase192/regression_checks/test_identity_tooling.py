@@ -2763,9 +2763,16 @@ class IdentityToolingTests(unittest.TestCase):
                 '__name__ = "evil"',
                 1,
             ),
+            "final_name_duplicate": source + '\n__name__ = "evil"\n',
             "final_package_binding": source.replace(
                 "__package__ = __spec__.parent if __spec__ is not None else __package__",
                 '__package__ = "evil"',
+                1,
+            ),
+            "final_package_duplicate": source + '\n__package__ = "evil"\n',
+            "metadata_restore_guard_false": source.replace(
+                "    if _phase192_canonical_self is not None:\n        setattr(_phase192_canonical_self, \"__name__\", _phase192_previous_name)\n",
+                "    if False:\n        setattr(_phase192_canonical_self, \"__name__\", _phase192_previous_name)\n",
                 1,
             ),
             "module_class_binding": source.replace(
@@ -2773,11 +2780,37 @@ class IdentityToolingTests(unittest.TestCase):
                 "    _phase192_module.__class__ = object\n",
                 1,
             ),
+            "module_class_duplicate": source.replace(
+                "    _phase192_module.__class__ = _Phase192FacadeModule\n",
+                "    _phase192_module.__class__ = _Phase192FacadeModule\n    _phase192_module.__class__ = _Phase192FacadeModule\n",
+                1,
+            ),
+            "module_class_guard_false": source.replace(
+                "if _phase192_module is not None:\n    _phase192_module.__class__ = _Phase192FacadeModule\n",
+                "if False:\n    _phase192_module.__class__ = _Phase192FacadeModule\n",
+                1,
+            ),
+            "module_class_guard_true": source.replace(
+                "if _phase192_module is not None:\n    _phase192_module.__class__ = _Phase192FacadeModule\n",
+                "if True:\n    _phase192_module.__class__ = _Phase192FacadeModule\n",
+                1,
+            ),
             "cli_dispatch_guard": source.replace(
                 '    raise SystemExit(main())\n',
                 "    pass\n",
                 1,
             ),
+            "cli_guard_pre_exit": source.replace(
+                "from __future__ import annotations\n",
+                "from __future__ import annotations\nif __name__ == '__main__':\n    raise SystemExit(0)\n",
+                1,
+            ),
+            "cli_guard_pre_main": source.replace(
+                "from __future__ import annotations\n",
+                "from __future__ import annotations\nif __name__ == '__main__':\n    main()\n",
+                1,
+            ),
+            "cli_guard_post_exit": source + "\nif __name__ == '__main__':\n    raise SystemExit(0)\n",
             "registry_augassign": source + '\n_phase192_sys.modules["os"] |= {}\n',
             "registry_annassign": source + '\n_phase192_sys.modules["os"]: object = None\n',
             "except_binding": source.replace(
