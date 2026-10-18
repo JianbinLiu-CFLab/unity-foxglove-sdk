@@ -605,7 +605,37 @@ def _phase192_validate_template_registry_mutations(
             match for node in transaction.finalbody
             if (match := exact_restore_loop(node)) is not None
         ]
-    loader_transaction = len(cleanup_loops) == 1 and len(restore_loops) == 1
+        final_name_loops = [
+            node
+            for node in transaction.finalbody
+            if isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_phase192_name"
+        ]
+        final_name_rebindings = any(
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+            and any(
+                isinstance(target, ast.Name) and target.id == "_phase192_name"
+                for target in (
+                    node.targets
+                    if isinstance(node, ast.Assign)
+                    else [node.target]
+                    if isinstance(node, ast.AnnAssign)
+                    else [node.target]
+                )
+            )
+            for statement in transaction.finalbody
+            for node in ast.walk(statement)
+        )
+    else:
+        final_name_loops = []
+        final_name_rebindings = False
+    loader_transaction = (
+        len(cleanup_loops) == 1
+        and len(restore_loops) == 1
+        and len(final_name_loops) == 2
+        and not final_name_rebindings
+    )
     cleanup_pop_ids = {cleanup_loops[0][1]} if loader_transaction else set()
     restore_assign_ids = {restore_loops[0][1]} if loader_transaction else set()
 
