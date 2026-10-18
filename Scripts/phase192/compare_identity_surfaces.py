@@ -464,6 +464,32 @@ def _phase192_validate_template_registry_mutations(
         relative_path = None
     loader_path = relative_path == "Scripts/package/validate_source_generator_dll.py"
     if loader_path:
+        loader_type_imports = [
+            alias
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+            if alias.asname == "_phase192_types"
+        ]
+        if len(loader_type_imports) != 1 or loader_type_imports[0].name != "types":
+            raise ValueError(f"Unsupported loader types binding in {path}")
+        if any(
+            isinstance(node, ast.ImportFrom)
+            and any((alias.asname or alias.name) == "_phase192_types" for alias in node.names)
+            for node in ast.walk(tree)
+        ):
+            raise ValueError(f"Unsupported loader types binding in {path}")
+        if any(
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name)
+                and target.id == "_Phase192FacadeModule"
+                for target in node.targets
+            )
+            for node in ast.walk(tree)
+        ):
+            raise ValueError(f"Unsupported loader facade class binding in {path}")
+
         def exact_top_level_assignment(name: str, expression: str) -> bool:
             """Recognize one exact top-level loader binding."""
             expected = ast.parse(expression, mode="eval").body
@@ -772,6 +798,16 @@ def _phase192_validate_template_registry_mutations(
         metadata_calls = metadata_guards[0]
         if tuple(metadata_restore_kind(node) for node in metadata_calls) != ("name", "package"):
             return False
+        allowed_metadata_call_ids = {id(node) for node in metadata_calls}
+        for statement in transaction.finalbody:
+            for node in ast.walk(statement):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id in {"setattr", "delattr"}
+                    and id(node) not in allowed_metadata_call_ids
+                ):
+                    return False
         expected_top_level = {
             "_phase192_canonical_self",
             "_phase192_previous_submodules",
@@ -780,9 +816,12 @@ def _phase192_validate_template_registry_mutations(
             "_phase192_previous_package",
         }
         transaction_binding_names = expected_top_level | {
+            "_Phase192FacadeModule",
+            "_phase192_types",
             "_phase192_module",
             "_phase192_self",
             "_phase192_package_module",
+            "main",
         }
         top_level_assignments = {
             target.id
@@ -861,6 +900,66 @@ def _phase192_validate_template_registry_mutations(
                 for value, expected in zip(values, expected_nodes)
             ):
                 return False
+        allowed_metadata_store_ids: set[int] = set()
+        metadata_expressions = {
+            "__name__": "__spec__.name if __spec__ is not None else __name__",
+            "__package__": "__spec__.parent if __spec__ is not None else __package__",
+        }
+        for statement in tree.body:
+            if not (
+                isinstance(statement, ast.Assign)
+                and len(statement.targets) == 1
+                and isinstance(statement.targets[0], ast.Name)
+                and statement.targets[0].id in metadata_expressions
+            ):
+                continue
+            expected = ast.parse(
+                metadata_expressions[statement.targets[0].id],
+                mode="eval",
+            ).body
+            if ast.dump(statement.value, include_attributes=False) == ast.dump(
+                expected,
+                include_attributes=False,
+            ):
+                allowed_metadata_store_ids.add(id(statement.targets[0]))
+        allowed_module_class_store_ids = {
+            id(node.targets[0])
+            for node in ast.walk(tree)
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Attribute)
+                and isinstance(node.targets[0].value, ast.Name)
+                and node.targets[0].value.id == "_phase192_module"
+                and node.targets[0].attr == "__class__"
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "_Phase192FacadeModule"
+            )
+        }
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                targets = [node.target]
+            else:
+                targets = []
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id in {"__name__", "__package__"}:
+                    if id(target) not in allowed_metadata_store_ids:
+                        return False
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "_phase192_module"
+                    and id(target) not in allowed_module_class_store_ids
+                ):
+                    return False
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "_phase192_canonical_self"
+                ):
+                    return False
         allowed_store_ids = {
             id(target)
             for statement in tree.body
@@ -951,7 +1050,7 @@ def _phase192_validate_template_registry_mutations(
             ):
                 return False
             if isinstance(node, ast.MatchStar) and node.name in (
-                expected_top_level | {"_phase192_sys", "_phase192_name"}
+                transaction_binding_names | {"_phase192_sys", "_phase192_name"}
             ):
                 return False
         sys_imports = [
