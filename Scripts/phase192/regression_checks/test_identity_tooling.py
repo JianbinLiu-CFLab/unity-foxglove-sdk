@@ -2723,6 +2723,11 @@ class IdentityToolingTests(unittest.TestCase):
                 "    for _phase192_package_module in (None,):\n        pass\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
                 1,
             ),
+            "module_binding_loop_rebind": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    for _phase192_module in (None,):\n        pass\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
             "restore_loop_input_rebind": source.replace(
                 "    for _phase192_name in _phase192_previous_submodules:\n",
                 '    _phase192_name = "os"\n    for _phase192_name in _phase192_previous_submodules:\n',
@@ -2751,6 +2756,26 @@ class IdentityToolingTests(unittest.TestCase):
             "metadata_target_forgery": source.replace(
                 '        setattr(_phase192_canonical_self, "__name__", _phase192_previous_name)\n',
                 '        setattr(_phase192_canonical_self if False else "evil", "__name__", _phase192_previous_name)\n',
+                1,
+            ),
+            "final_name_binding": source.replace(
+                "__name__ = __spec__.name if __spec__ is not None else __name__",
+                '__name__ = "evil"',
+                1,
+            ),
+            "final_package_binding": source.replace(
+                "__package__ = __spec__.parent if __spec__ is not None else __package__",
+                '__package__ = "evil"',
+                1,
+            ),
+            "module_class_binding": source.replace(
+                "    _phase192_module.__class__ = _Phase192FacadeModule\n",
+                "    _phase192_module.__class__ = object\n",
+                1,
+            ),
+            "cli_dispatch_guard": source.replace(
+                '    raise SystemExit(main())\n',
+                "    pass\n",
                 1,
             ),
             "registry_augassign": source + '\n_phase192_sys.modules["os"] |= {}\n',
