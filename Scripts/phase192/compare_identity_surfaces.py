@@ -3131,7 +3131,15 @@ def _namespace_risk_signatures(
             literal_container = isinstance(node.value, (ast.List, ast.Tuple, ast.Set))
             if literal_container:
                 for element in node.value.elts:
-                    scan_node(element, env)
+                    scan_node(
+                        element.value if isinstance(element, ast.Starred) else element,
+                        env,
+                        deferred_mode=(
+                            _DEFERRED_FULL_ITERATION
+                            if isinstance(element, ast.Starred)
+                            else _DEFERRED_NONE
+                        ),
+                    )
             resolved = resolve_target(node, env)
             if resolved is not node:
                 for candidate in candidate_values(resolved):
