@@ -2633,8 +2633,8 @@ class IdentityToolingTests(unittest.TestCase):
         errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
         self.assertIn("CONDITIONAL_CONTRACT_CHANGED fixture.py", errors)
 
-    def test_split_identity_surface_allows_only_exact_loader_metadata_restore(self) -> None:
-        """Only the two facade metadata restores are exempt from the loader risk delta."""
+    def test_split_identity_surface_rejects_loader_metadata_risk_delta(self) -> None:
+        """Loader metadata restore changes remain subject to the namespace contract."""
         base = {
             "Scripts/package/validate_source_generator_dll.py": (
                 frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
@@ -2648,15 +2648,28 @@ class IdentityToolingTests(unittest.TestCase):
             frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
             frozenset(), True, (), frozenset({name_restore, package_restore}), (), None, (), (), (), frozenset({"PUBLIC"}),
         )
-        self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=True))
-        unsafe = dict(head)
-        unsafe["Scripts/package/validate_source_generator_dll.py"] = (
-            frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
-            frozenset(), True, (), frozenset({name_restore, package_restore, "unsafe"}), (), None, (), (), (), frozenset({"PUBLIC"}),
-        )
         self.assertIn(
             "NAMESPACE_CONTRACT_CHANGED Scripts/package/validate_source_generator_dll.py",
-            compare_identity_surfaces._compare_surfaces(base, unsafe, strict=True),
+            compare_identity_surfaces._compare_surfaces(base, head, strict=True),
+        )
+
+    def test_loader_compatibility_rejects_added_conditional_contract(self) -> None:
+        """Loader conditional contracts remain exact in compatibility mode."""
+        base = {
+            "Scripts/package/validate_source_generator_dll.py": (
+                frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
+                frozenset(), True, (), frozenset(), ("facade:base",), None, (), (), (), frozenset({"PUBLIC"}),
+            )
+        }
+        head = {
+            "Scripts/package/validate_source_generator_dll.py": (
+                frozenset({"PUBLIC"}), (), (), frozenset({"PUBLIC"}), None,
+                frozenset(), True, (), frozenset(), ("facade:base", "facade:added"), None, (), (), (), frozenset({"PUBLIC"}),
+            )
+        }
+        self.assertIn(
+            "CONDITIONAL_CONTRACT_CHANGED Scripts/package/validate_source_generator_dll.py",
+            compare_identity_surfaces._compare_surfaces(base, head, strict=False),
         )
 
     def test_loader_registry_exception_rejects_unrelated_dynamic_keys(self) -> None:
@@ -2672,6 +2685,125 @@ class IdentityToolingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsupported generated module registry mutation"):
             compare_identity_surfaces._phase192_validate_template_registry_mutations(
                 source, "Scripts/package/validate_source_generator_dll.py"
+            )
+
+    def test_loader_registry_transaction_rejects_control_flow_and_rebinding_variants(self) -> None:
+        """The loader exception rejects guard escapes, rebinding, and path spoofing."""
+        root = compare_identity_surfaces.REPOSITORY_ROOT
+        facade = root / "Scripts/package/validate_source_generator_dll.py"
+        source = facade.read_text(encoding="utf-8")
+        variants = {
+            "pop_outside_guard": source.replace(
+                "            _phase192_sys.modules.pop(_phase192_name, None)\n",
+                "            pass\n        _phase192_sys.modules.pop(_phase192_name, None)\n",
+                1,
+            ),
+            "cleanup_key_rebind": source.replace(
+                "            _phase192_sys.modules.pop(_phase192_name, None)\n",
+                '            _phase192_name = "os"\n            _phase192_sys.modules.pop(_phase192_name, None)\n',
+                1,
+            ),
+            "restore_key_rebind": source.replace(
+                "        _phase192_sys.modules[_phase192_name] = _phase192_previous_submodules[_phase192_name]\n",
+                '        _phase192_name = "os"\n        _phase192_sys.modules[_phase192_name] = _phase192_previous_submodules[_phase192_name]\n',
+                1,
+            ),
+            "cleanup_loop_input_rebind": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_name = "os"\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "restore_loop_input_rebind": source.replace(
+                "    for _phase192_name in _phase192_previous_submodules:\n",
+                '    _phase192_name = "os"\n    for _phase192_name in _phase192_previous_submodules:\n',
+                1,
+            ),
+            "snapshot_item_mutation": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_previous_submodules["os"] = None\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "snapshot_method_mutation": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_previous_submodules.pop("os", None)\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "canonical_rebind": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_canonical_self = "evil"\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "sys_alias_rebind": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                '    _phase192_sys = "evil"\n    for _phase192_name in tuple(_phase192_sys.modules):\n',
+                1,
+            ),
+            "metadata_target_forgery": source.replace(
+                '        setattr(_phase192_canonical_self, "__name__", _phase192_previous_name)\n',
+                '        setattr(_phase192_canonical_self if False else "evil", "__name__", _phase192_previous_name)\n',
+                1,
+            ),
+            "registry_augassign": source + '\n_phase192_sys.modules["os"] |= {}\n',
+            "registry_annassign": source + '\n_phase192_sys.modules["os"]: object = None\n',
+            "except_binding": source.replace(
+                "try:\n    if _phase192_canonical_self is not None:\n",
+                "try:\n    try:\n        pass\n    except Exception as _phase192_previous_submodules:\n        pass\n    if _phase192_canonical_self is not None:\n",
+                1,
+            ),
+            "with_binding": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    with _phase192_previous_path as _phase192_previous_submodules:\n        pass\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
+            "for_binding": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    for _phase192_previous_submodules in ():\n        pass\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
+            "import_alias_binding": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    import sys as _phase192_previous_submodules\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
+            "import_from_alias_binding": source.replace(
+                "    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                "    from sys import modules as _phase192_name\n    for _phase192_name in tuple(_phase192_sys.modules):\n",
+                1,
+            ),
+            "snapshot_rebind": source + '\n_phase192_previous_submodules = {"os": None}\n',
+        }
+        reordered_tree = ast.parse(source)
+        reordered_indexes = {
+            target.id: index
+            for index, statement in enumerate(reordered_tree.body)
+            if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Name)
+            and target.id in {
+                "_phase192_canonical_self",
+                "_phase192_previous_path",
+            }
+        }
+        first_index = reordered_indexes["_phase192_canonical_self"]
+        second_index = reordered_indexes["_phase192_previous_path"]
+        reordered_tree.body[first_index], reordered_tree.body[second_index] = (
+            reordered_tree.body[second_index],
+            reordered_tree.body[first_index],
+        )
+        variants["state_initialization_reorder"] = ast.unparse(reordered_tree)
+        for name, variant in variants.items():
+            with self.subTest(name=name):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._symbols(
+                        variant,
+                        str(facade),
+                        repository_root=root,
+                    )
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._phase192_validate_template_registry_mutations(
+                ast.parse(source),
+                str(root / "evil/Scripts/package/validate_source_generator_dll.py"),
+                root,
             )
 
     def test_split_identity_surface_allows_new_conditional_names_but_not_existing_bindings(self) -> None:
