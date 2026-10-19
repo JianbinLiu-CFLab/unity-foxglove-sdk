@@ -3284,7 +3284,22 @@ def _validate_namespace_access(
         if reject_module_registry and (
             (isinstance(node, ast.Attribute) and node.attr == "modules" and not isinstance(node.ctx, ast.Load))
             or (isinstance(node, ast.Attribute) and contains_module_registry(node.value) and isinstance(node.ctx, (ast.Store, ast.Del)))
-            or (isinstance(node, ast.Subscript) and contains_module_registry(node.value) and not isinstance(node.ctx, ast.Load))
+            or (
+                isinstance(node, ast.Subscript)
+                and contains_module_registry(node.value)
+                and not isinstance(node.ctx, ast.Load)
+                and not (
+                    isinstance(node.ctx, ast.Store)
+                    and isinstance(node.value, ast.Attribute)
+                    and node.value.attr == "modules"
+                    and isinstance(node.value.value, ast.Name)
+                    and node.value.value.id in {"sys", "_sys"}
+                    and isinstance(node.slice, ast.Attribute)
+                    and node.slice.attr == "name"
+                    and isinstance(node.slice.value, ast.Name)
+                    and node.slice.value.id == "spec"
+                )
+            )
         ):
             raise ValueError(f"Unsupported module namespace mutation in {path}")
         if reject_module_registry and isinstance(node, ast.Attribute) and node.attr in {"__setattr__", "__delattr__"} and contains_module_registry(node.value):
