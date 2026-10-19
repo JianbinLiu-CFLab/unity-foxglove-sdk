@@ -6341,6 +6341,19 @@ def _validate_generated_section(
         """Return whether node executes only when a function is called."""
         return id(node) in function_body_nodes
 
+    def is_export_globals_call(node: ast.Call) -> bool:
+        """Allow the generated __all__ comprehension to enumerate globals."""
+        current: ast.AST = node
+        while id(current) in parents and not isinstance(current, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            current = parents[id(current)]
+        if not isinstance(current, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            return False
+        owner = parents.get(id(current))
+        return isinstance(owner, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in owner.targets
+        )
+
     def qualified_call(node: ast.Call) -> tuple[str, str] | None:
         """Resolve a call target through import aliases without executing it."""
         if isinstance(node.func, ast.Name):
@@ -6370,6 +6383,8 @@ def _validate_generated_section(
                     "setattr", "delattr", "globals", "locals", "vars",
                 }
             ):
+                if node.func.id == "globals" and is_export_globals_call(node):
+                    continue
                 if not (
                     node.func.id == "__import__"
                     and node.args
