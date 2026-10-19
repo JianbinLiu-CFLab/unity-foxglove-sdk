@@ -40,7 +40,7 @@ TOPICS = [
     ("/pose", "geometry_msgs/msg/PoseStamped"),
     ("/fix", "sensor_msgs/msg/NavSatFix"),
 ]
-PHASE132_RCLPY_PROBE_PATH = pathlib.Path(__file__).with_name("_phase132_rclpy_probe.py")
+PHASE132_RCLPY_PROBE_PATH = pathlib.Path(__file__).resolve().parents[1] / "_phase132_rclpy_probe.py"
 YAML_NUMBER_RE = r"-?(?:(?:[0-9]+(?:\.[0-9]*)?)|(?:\.[0-9]+))(?:[eE][+-]?[0-9]+)?"
 
 

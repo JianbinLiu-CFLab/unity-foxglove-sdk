@@ -120,7 +120,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPhase132YamlNumberParsing()
         {
-            var source = ReadRepoText("Scripts/smoke/ros2/phase132_standard_messages_acceptance.py");
+            var source = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/smoke/ros2/phase132_standard_messages_acceptance.py");
             Check(source.Contains("YAML_NUMBER_RE", StringComparison.Ordinal)
                   && source.Contains("(?:[eE][+-]?[0-9]+)?", StringComparison.Ordinal),
                 "134-30K: Phase132 YAML array parser supports scientific notation");
