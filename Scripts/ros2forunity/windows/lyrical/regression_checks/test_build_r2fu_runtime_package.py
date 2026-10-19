@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Compatibility facade for decomposed Lyrical runtime-package tests."""
-
 from __future__ import annotations
 
 import sys as _phase192_sys
