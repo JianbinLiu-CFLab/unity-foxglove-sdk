@@ -17,7 +17,7 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Tests;
 
 /// <summary>Console entry point for runtime validation and manual smoke servers.</summary>
-/// <remarks>Phase192 source sections: MainCore.cs, CollectOptionValues.cs</remarks>
+/// <remarks>Phase192 source sections: ValidationExecution.cs, LegacyTools.cs, CiAndServer.cs, MainCore.cs, CollectOptionValues.cs</remarks>
 partial class Program
 {
 
@@ -428,3 +428,4 @@ partial class Program
 
     /// <summary>Returns the command-line value immediately following a flag, or null when absent.</summary>
 }
+
