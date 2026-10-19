@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validates Phase 51 maintainability and optimization closure.
     /// </summary>
-    public static class Phase51Validation
+    public static partial class Phase51Validation
     {
         private static int _passed;
 

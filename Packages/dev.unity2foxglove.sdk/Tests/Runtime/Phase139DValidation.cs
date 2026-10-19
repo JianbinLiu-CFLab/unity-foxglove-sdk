@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// validate the internal signal contract and deliberately avoid exposing it
     /// as a product workflow until a Foxglove-side control path exists.
     /// </summary>
-    public static class Phase139DValidation
+    public static partial class Phase139DValidation
     {
         private static readonly string[] ManagerServerSourcePaths =
         {

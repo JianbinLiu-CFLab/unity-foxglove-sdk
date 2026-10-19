@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validation type for Phase98Validation.
     /// </summary>
-    public static class Phase98Validation
+    public static partial class Phase98Validation
     {
         private const ulong SampleTimeNs = 1_700_098_000_000_000_000UL;
         private const string NamespacePrefix = "/unity2foxglove";
@@ -671,99 +671,4 @@ namespace Unity.FoxgloveSDK.Tests
             public string Topic { get; }
             public string SchemaName { get; }
         }
-    }
-
-    /// <summary>
-    /// Validation type for Phase98SendSummary.
-    /// </summary>
-    public sealed class Phase98SendSummary
-    {
-        public int SentFrames { get; set; }
-        public long TotalWireBytes { get; set; }
-        public string FirstSchema { get; set; }
-        public string LastSchema { get; set; }
-    }
-
-    /// <summary>
-    /// Validation type for Phase98LiveEvidence.
-    /// </summary>
-    public sealed class Phase98LiveEvidence
-    {
-        [JsonProperty("schemaVersion")]
-        public int SchemaVersion { get; set; }
-
-        [JsonProperty("generatedAtUtc")]
-        public string GeneratedAtUtc { get; set; }
-
-        [JsonProperty("host")]
-        public string Host { get; set; }
-
-        [JsonProperty("port")]
-        public int Port { get; set; }
-
-        [JsonProperty("healthReportPath")]
-        public string HealthReportPath { get; set; }
-
-        [JsonProperty("healthSummary")]
-        public string HealthSummary { get; set; }
-
-        [JsonProperty("productTopics")]
-        public Phase98TopicEvidence[] ProductTopics { get; set; }
-
-        [JsonProperty("optionalDracoTopic")]
-        public Phase98TopicEvidence OptionalDracoTopic { get; set; }
-
-        [JsonProperty("allSchema")]
-        public Phase98AllSchemaEvidence AllSchema { get; set; }
-
-        [JsonProperty("ros2GraphObservation")]
-        public string Ros2GraphObservation { get; set; }
-
-        [JsonProperty("ros2Commands")]
-        public string[] Ros2Commands { get; set; }
-    }
-
-    /// <summary>
-    /// Validation type for Phase98TopicEvidence.
-    /// </summary>
-    public sealed class Phase98TopicEvidence
-    {
-        public Phase98TopicEvidence(string topic, string schemaName, string status, int payloadBytes)
-        {
-            Topic = topic;
-            SchemaName = schemaName;
-            Status = status;
-            PayloadBytes = payloadBytes;
-        }
-
-        [JsonProperty("topic")]
-        public string Topic { get; }
-
-        [JsonProperty("schemaName")]
-        public string SchemaName { get; }
-
-        [JsonProperty("status")]
-        public string Status { get; }
-
-        [JsonProperty("payloadBytes")]
-        public int PayloadBytes { get; }
-    }
-
-    /// <summary>
-    /// Validation type for Phase98AllSchemaEvidence.
-    /// </summary>
-    public sealed class Phase98AllSchemaEvidence
-    {
-        [JsonProperty("sentFrames")]
-        public int SentFrames { get; set; }
-
-        [JsonProperty("totalWireBytes")]
-        public long TotalWireBytes { get; set; }
-
-        [JsonProperty("firstSchema")]
-        public string FirstSchema { get; set; }
-
-        [JsonProperty("lastSchema")]
-        public string LastSchema { get; set; }
-    }
 }
