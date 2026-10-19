@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySmokeProbe()
         {
-            var source = ReadRepoText("Scripts/smoke/websocket/pointcloud_qos_probe.py");
+            var source = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/smoke/websocket/pointcloud_qos_probe.py");
             Check(!string.IsNullOrEmpty(source),
                 "85B-1: point-cloud QoS smoke probe exists");
             Check(source.Contains("FOXGLOVE_SUBPROTOCOL") && source.Contains("foxglove.sdk.v1"),
