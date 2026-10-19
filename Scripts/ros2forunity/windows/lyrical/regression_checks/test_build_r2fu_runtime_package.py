@@ -29,7 +29,6 @@ else:
 
 
 class _Phase192FacadeModule(_phase192_types.ModuleType):
-    """Mirror facade attribute updates into the test package."""
 
     def __setattr__(self, name, value):
         super().__setattr__(name, value)
