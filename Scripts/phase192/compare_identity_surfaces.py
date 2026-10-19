@@ -568,7 +568,7 @@ def _phase192_validate_template_registry_mutations(
         }
 
         def mutation_root(node: ast.AST) -> str | None:
-            """Resolve a protected mutation root through attributes or subscripts."""
+            """Resolve a protected mutation root through attributes, lookups, or subscripts."""
             current = node
             while True:
                 if isinstance(current, (ast.Attribute, ast.Subscript)):
@@ -579,6 +579,16 @@ def _phase192_validate_template_registry_mutations(
                     and current.func.attr in {"get", "__getitem__"}
                 ):
                     current = current.func.value
+                elif (
+                    isinstance(current, ast.Call)
+                    and isinstance(current.func, ast.Name)
+                    and current.func.id == "getattr"
+                    and len(current.args) == 2
+                    and isinstance(current.args[1], ast.Constant)
+                    and current.args[1].value == "__globals__"
+                    and not current.keywords
+                ):
+                    current = current.args[0]
                 else:
                     break
             return current.id if isinstance(current, ast.Name) and current.id in protected_roots else None
@@ -586,7 +596,10 @@ def _phase192_validate_template_registry_mutations(
         def contains_protected_source(node: ast.AST) -> bool:
             """Detect a value that would propagate a protected object through an alias."""
             return contains_globals_lookup(node) or any(
-                isinstance(item, ast.Name) and item.id in protected_alias_sources
+                (
+                    isinstance(item, ast.Name) and item.id in protected_alias_sources
+                )
+                or protected_globals_handle(item)
                 for item in ast.walk(node)
             )
 
@@ -614,6 +627,39 @@ def _phase192_validate_template_registry_mutations(
                 and isinstance(node.args[1], ast.Name)
                 and node.args[1].id == "name"
                 and not node.keywords
+            )
+
+        protected_mutating_methods = frozenset(
+            {
+                "append",
+                "clear",
+                "extend",
+                "insert",
+                "pop",
+                "popitem",
+                "remove",
+                "reverse",
+                "setdefault",
+                "sort",
+                "update",
+                "__delitem__",
+                "__setitem__",
+            }
+        )
+
+        def protected_globals_handle(node: ast.AST) -> bool:
+            """Detect a protected function globals mapping without broad attribute matching."""
+            if isinstance(node, ast.Attribute) and node.attr == "__globals__":
+                return mutation_root(node.value) is not None
+            return (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and len(node.args) == 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value == "__globals__"
+                and not node.keywords
+                and mutation_root(node) is not None
             )
 
         snapshot_expression = ast.parse(
@@ -691,6 +737,13 @@ def _phase192_validate_template_registry_mutations(
                     isinstance(function, ast.Attribute)
                     and function.attr in {"__setattr__", "__delattr__"}
                 )
+                protected_method_mutation = (
+                    isinstance(function, ast.Attribute)
+                    and function.attr in protected_mutating_methods
+                    and mutation_root(function.value) is not None
+                )
+                if protected_method_mutation:
+                    raise ValueError(f"Unsupported protected mutation in {path}")
                 if mutating and not allowed_forward_call(node):
                     root = mutation_root(function.value) if isinstance(function, ast.Attribute) else (
                         mutation_root(node.args[0]) if node.args else None

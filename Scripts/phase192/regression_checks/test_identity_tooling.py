@@ -3559,6 +3559,31 @@ class IdentityToolingTests(unittest.TestCase):
                 "main_globals_store": source + (
                     "\nmain.__globals__[\"DEFAULT_IMU_TOPIC\"] = \"evil-topic\"\n"
                 ),
+                "main_globals_getattr_pop": source + (
+                    "\nif callable(main):\n"
+                    "    getattr(main, \"__globals__\").pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                ),
+                "cli_main_globals_getattr_store": source + (
+                    "\ngetattr(_phase192_main, \"__globals__\")[\"_phase192_package_module\"] = None\n"
+                ),
+                "cli_entrypoint_globals_getattr_attr": source + (
+                    "\ngetattr(_phase192_entrypoint, \"__globals__\").__setitem__(\n"
+                    "    \"_phase192_package_module\", None\n"
+                    ")\n"
+                ),
+                "getattr_globals_alias": source + (
+                    "\n_evil_globals = getattr(_phase192_main, \"__globals__\")\n"
+                    "_evil_globals[\"DEFAULT_IMU_TOPIC\"] = \"evil-topic\"\n"
+                ),
+                "getattr_globals_for_alias": source + (
+                    "\nif True:\n"
+                    "    for _evil_globals in (getattr(_phase192_entrypoint, \"__globals__\"),):\n"
+                    "        _evil_globals.pop(\"_phase192_package_module\", None)\n"
+                ),
+                "getattr_globals_comprehension": source + (
+                    "\n[getattr(_phase192_main, \"__globals__\").pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                    " for _x in (0,)]\n"
+                ),
                 "cli_entrypoint_globals_store": source + (
                     "\n_phase192_entrypoint.__globals__[\"_phase192_package_module\"].__name__ = \"evil\"\n"
                 ),
