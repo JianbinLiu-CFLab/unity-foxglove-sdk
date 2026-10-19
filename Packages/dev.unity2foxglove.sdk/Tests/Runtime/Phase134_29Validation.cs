@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPointCloudProbesFailMalformedPayloads()
         {
-            var draco = PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py");
+            var draco = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py");
             Check(draco.Contains("EXIT_DECODE_FAILURE = 6", StringComparison.Ordinal)
                   && draco.Contains("--allow-malformed-payloads", StringComparison.Ordinal),
                 "134-29B-1: Draco probe exposes an explicit decode-failure exit path");
@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && draco.Contains("exit_code = EXIT_DECODE_FAILURE", StringComparison.Ordinal),
                 "134-29B-2: Draco probe fails when received payloads cannot be decoded");
 
-            var qos = PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/smoke/websocket/pointcloud_qos_probe.py");
+            var qos = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/smoke/websocket/pointcloud_qos_probe.py");
             Check(qos.Contains("EXIT_DECODE_FAILURE = 6", StringComparison.Ordinal)
                   && qos.Contains("result = \"DECODE_FAILURE\"", StringComparison.Ordinal)
                   && qos.Contains("exit_code = EXIT_DECODE_FAILURE", StringComparison.Ordinal),
