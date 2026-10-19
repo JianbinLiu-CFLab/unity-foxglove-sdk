@@ -35,12 +35,14 @@ class _Phase192PackageModule(_phase192_types.ModuleType):
     """Mirror facade state into the decomposed test modules."""
 
     def __setattr__(self, name, value):
+        """Mirror facade assignments into decomposed test modules."""
         super().__setattr__(name, value)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
             for _phase192_section in _PHASE192_SECTION_MODULES:
                 _phase192_section.__dict__[name] = value
 
     def __delattr__(self, name):
+        """Mirror facade deletions into decomposed test modules."""
         super().__delattr__(name)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
             for _phase192_section in _PHASE192_SECTION_MODULES:
