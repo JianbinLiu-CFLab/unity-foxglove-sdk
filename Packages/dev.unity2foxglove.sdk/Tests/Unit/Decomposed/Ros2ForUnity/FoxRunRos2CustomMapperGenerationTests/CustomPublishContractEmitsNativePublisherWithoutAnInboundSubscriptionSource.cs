@@ -466,15 +466,16 @@ public sealed partial class FoxRunRos2CustomMapperGenerationTests
             // before capturing its managed reference set.
             _ = typeof(ROS2.Message);
             _ = typeof(Unity2Foxglove.Ros2ForUnity.Native.IFoxRunRos2CustomPublisherSource);
+            var currentAssembly = typeof(FoxRunRos2CustomMapperGenerationTests).Assembly;
             var trusted = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))
                 .Split(Path.PathSeparator);
             return trusted
                 .Concat(
                     AppDomain.CurrentDomain.GetAssemblies()
                         .Where(assembly => !assembly.IsDynamic
-                            && !string.Equals(
-                                assembly.GetName().Name,
-                                "FoxgloveSdk.Tests",
+                            && !ReferenceEquals(assembly, currentAssembly)
+                            && !assembly.GetName().Name.EndsWith(
+                                ".Tests",
                                 StringComparison.Ordinal)
                             && !string.IsNullOrEmpty(assembly.Location))
                         .Select(assembly => assembly.Location))
