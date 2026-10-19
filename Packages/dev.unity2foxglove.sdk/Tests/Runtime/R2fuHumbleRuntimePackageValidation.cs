@@ -13,6 +13,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <remarks>Phase192 source sections: ValidationRegistryWiresPhase160.cs</remarks>
     public static partial class R2fuHumbleRuntimePackageValidation
     {
         private const string RuntimePackage =

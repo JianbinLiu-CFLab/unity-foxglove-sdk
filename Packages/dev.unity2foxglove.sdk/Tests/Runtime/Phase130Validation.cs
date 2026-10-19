@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validation type for Phase130Validation.
     /// </summary>
+    /// <remarks>Phase192 source sections: VerifyReleaseValidatorAcceptsV1SampleSet.cs</remarks>
     public static partial class Phase130Validation
     {
         private const string OptionalPackage = "Packages/dev.unity2foxglove.ros2forunity";

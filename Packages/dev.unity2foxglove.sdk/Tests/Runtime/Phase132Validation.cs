@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Validation type for Phase132Validation.
     /// </summary>
+    /// <remarks>Phase192 source sections: AllR2fuReferencesAreGuarded.cs</remarks>
     public static partial class Phase132Validation
     {
         private const string OptionalPackage = "Packages/dev.unity2foxglove.ros2forunity";

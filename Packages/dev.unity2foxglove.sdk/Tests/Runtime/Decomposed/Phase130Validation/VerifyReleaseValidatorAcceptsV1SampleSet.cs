@@ -109,12 +109,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-        {
-            var path = RepoPath(relativePath);
-            if (!File.Exists(path))
-                throw new FileNotFoundException("Missing required Phase130 file: " + relativePath, path);
-            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
-        }
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
 
         private static string RepoPath(string relativePath)
         {

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
-using System.Linq;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -42,6 +41,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("FindHistoryInsertIndex", source, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void ReplaySourceCompositionPreservesOriginalMemberOrder()
+        {
+            var source = McapReplaySources();
+            var markers = new[]
+            {
+                "public void Load(string filePath)",
+                "public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result)",
+                "private bool TryReadIndexedBoundedHistory(",
+                "private sealed class HistoryCandidate",
+                "private void SortPending()",
+                "private List<McapMessage> FinishTickResult(List<McapMessage> result)",
+            };
+
+            var prior = -1;
+            foreach (var marker in markers)
+            {
+                var current = source.IndexOf(marker, StringComparison.Ordinal);
+                Assert.True(current > prior, "Replay source order changed before: " + marker);
+                prior = current;
+            }
+        }
+
         private static string SourceMethod(string source, string signature)
         {
             var start = source.IndexOf(signature, StringComparison.Ordinal);
@@ -67,21 +89,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         private static string McapReplaySources()
-        {
-            var root = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
-            var paths = new[]
-            {
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/Load.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/History.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/TryReadIndexedBoundedHistory.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/HistoryCandidate.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/SortPending.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/FinishTickResult.cs"
-            };
-
-            return root + Environment.NewLine + string.Join(
-                Environment.NewLine,
-                paths.Select(TestSources.Text));
-        }
+            => TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
     }
 }
