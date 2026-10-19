@@ -16,9 +16,6 @@
     <Compile Include="Program.cs" />
     <Compile Include="PerformanceResult.cs" />
     <Compile Include="PerformanceRunner.cs" />
-    <Compile Include="Decomposed/PerformanceRunner/DataLoader.cs" />
-    <Compile Include="Decomposed/PerformanceRunner/PublishingAndMcap.cs" />
-    <Compile Include="Decomposed/PerformanceRunner/MicroScenarios.cs" />
     <Compile Include="Phase188ReplayPerformanceMetrics.cs" />
     <Compile Include="Phase188ReplayPerformanceProtocol.cs" />
     <Compile Include="Phase188ReplayPerformanceResult.cs" />
@@ -26,5 +23,6 @@
     <Compile Include="ReplayPerformanceScenarios.cs" />
     <Compile Include="FakePerformanceTransport.cs" />
     <Compile Include="../Unit/Fixtures/UnityEngineMathTypes.cs" Link="Fixtures/UnityEngineMathTypes.cs" />
+    <Compile Include="Decomposed/**/*.cs" />
   </ItemGroup>
 </Project>

@@ -226,9 +226,8 @@ namespace Unity.FoxgloveSDK.Tests
             if (FileTextCache.TryGetValue(path, out var cached))
                 return cached;
 
-            var normalized = relativePath.Replace('\\', '/');
-            var text = normalized.StartsWith("Scripts/", StringComparison.Ordinal)
-                ? PhaseValidationSourceHelpers.ReadSplitPythonSource(normalized)
+            var text = path.EndsWith(".py", StringComparison.OrdinalIgnoreCase)
+                ? PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(path)
                 : File.ReadAllText(path);
             FileTextCache[path] = text;
             return text;

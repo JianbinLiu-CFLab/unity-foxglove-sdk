@@ -19,7 +19,6 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     internal static partial class FoxRunCustomRos2InterfaceValidation
     {
-        /// <remarks>Phase192 source sections: DtoAndPackageContracts.cs, TypesupportAndTransport.cs, AcceptanceAndRelease.cs, AutomationAndDocumentation.cs</remarks>
         private const string CustomShapePath =
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/FoxRunRos2CustomDtoShape.cs";
         private const string CustomIdentityPath =
@@ -294,6 +293,99 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyRegistryEntry();
 
             Console.WriteLine("FoxRun custom ROS2 interface boundary: " + _passed + " checks passed.\n");
+        }
+
+        private static void VerifyDistinctRosFreeDtoModel(
+            string customShape,
+            string reflectionBuilder,
+            string roslynBuilder)
+        {
+            Check(customShape.Contains("PackagedRos2Message = 1", StringComparison.Ordinal)
+                  && customShape.Contains("CustomDto = 2", StringComparison.Ordinal)
+                  && customShape.Contains("CanonicalIdentity", StringComparison.Ordinal)
+                  && customShape.Contains("PayloadIdentity", StringComparison.Ordinal)
+                  && customShape.Contains("PresenceFieldName", StringComparison.Ordinal)
+                  && !customShape.Contains("public readonly bool ImplementsRos2Message", StringComparison.Ordinal),
+                "181A-1: custom DTO and packaged ROS2 message are explicit, separate contract kinds");
+
+            var customSources = string.Concat(customShape, reflectionBuilder, roslynBuilder);
+            Check(!customSources.Contains("using ROS2", StringComparison.Ordinal)
+                  && !customSources.Contains("ROS2.", StringComparison.Ordinal)
+                  && customShape.Contains("FOXR2F009", StringComparison.Ordinal)
+                  && customShape.Contains("FOXR2F010", StringComparison.Ordinal)
+                  && customShape.Contains("FOXR2F011", StringComparison.Ordinal),
+                "181A-2: R2FU owns custom DTO schema builders without a ROS runtime type dependency");
+
+            Check(reflectionBuilder.Contains("OrderBy(member => member.Name", StringComparison.Ordinal)
+                  && roslynBuilder.Contains("OrderBy(member => member.Name", StringComparison.Ordinal)
+                  && reflectionBuilder.Contains("FoxRunRos2CustomDtoShape", StringComparison.Ordinal)
+                  && roslynBuilder.Contains("FoxRunRos2CustomDtoShape", StringComparison.Ordinal),
+                "181A-3: reflection and Roslyn builders share deterministic custom DTO ordering and shape output");
+        }
+
+        private static void VerifyStableIdentityAndNaming(string customIdentity, string customNaming)
+        {
+            Check(customIdentity.Contains("AppendLengthFramed", StringComparison.Ordinal)
+                  && customIdentity.Contains("ToUpperInvariant", StringComparison.Ordinal)
+                  && customIdentity.Contains("Fnv1a64Hex", StringComparison.Ordinal)
+                  && customIdentity.Contains("Substring(0, 12)", StringComparison.Ordinal),
+                "181A-4: custom DTO canonical and payload identities are deterministic and case-insensitive");
+
+            Check(customNaming.Contains("FrameworkPrefix = \"foxrun_\"", StringComparison.Ordinal)
+                  && customNaming.Contains("PresenceFieldName", StringComparison.Ordinal)
+                  && customNaming.Contains("FrameworkPrefix + \"has_\"", StringComparison.Ordinal)
+                  && customNaming.Contains("IsReservedUserField", StringComparison.Ordinal),
+                "181A-5: generated presence fields use the reserved foxrun_has_ namespace");
+        }
+
+        private static void VerifyDirectionalProviderPolicy()
+        {
+            var customBidirectional = FoxRunRos2RouteResolver.Resolve(
+                FoxRunFlow.PublishAndSubscribe,
+                FoxRunRos2RouteEndpoint.R2fu,
+                hasExplicitSource: true,
+                declaredTargets: FoxRunRos2RouteEndpoint.WebSocket,
+                hasExplicitTargets: true,
+                defaultSource: FoxRunRos2RouteEndpoint.WebSocket,
+                defaultTargets: FoxRunRos2RouteEndpoint.WebSocket,
+                hasExplicitWebSocketEncoding: true);
+            var inheritedCustomBidirectional = FoxRunRos2RouteResolver.Resolve(
+                FoxRunFlow.PublishAndSubscribe,
+                declaredSource: 0,
+                hasExplicitSource: false,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                defaultSource: FoxRunRos2RouteEndpoint.R2fu,
+                defaultTargets: FoxRunRos2RouteEndpoint.R2fu);
+            var nativeSubscribeJson = FoxRunRos2RouteResolver.Resolve(
+                FoxRunFlow.Subscribe,
+                FoxRunRos2RouteEndpoint.R2fu,
+                hasExplicitSource: true,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                defaultSource: FoxRunRos2RouteEndpoint.WebSocket,
+                defaultTargets: FoxRunRos2RouteEndpoint.WebSocket,
+                hasExplicitWebSocketEncoding: true);
+            var publishWithSource = FoxRunRos2RouteResolver.Resolve(
+                FoxRunFlow.Publish,
+                FoxRunRos2RouteEndpoint.R2fu,
+                hasExplicitSource: true,
+                declaredTargets: FoxRunRos2RouteEndpoint.R2fu,
+                hasExplicitTargets: true,
+                defaultSource: FoxRunRos2RouteEndpoint.WebSocket,
+                defaultTargets: FoxRunRos2RouteEndpoint.WebSocket);
+
+            Check(customBidirectional.Success
+                  && customBidirectional.Route.Source == FoxRunRos2RouteEndpoint.R2fu
+                  && customBidirectional.Route.Targets == FoxRunRos2RouteEndpoint.WebSocket
+                  && inheritedCustomBidirectional.Success
+                  && inheritedCustomBidirectional.Route.Source == FoxRunRos2RouteEndpoint.R2fu
+                  && inheritedCustomBidirectional.Route.Targets == FoxRunRos2RouteEndpoint.R2fu
+                  && nativeSubscribeJson.DiagnosticCode
+                     == FoxRunRos2RouteDiagnosticCode.EncodingRequiresWebSocket
+                  && publishWithSource.DiagnosticCode
+                     == FoxRunRos2RouteDiagnosticCode.SourceNotAllowed,
+                "181A-6: R2FU projects neutral Provider IDs into directional routes and rejects contradictory WebSocket encoding or source declarations");
         }
     }
 }
