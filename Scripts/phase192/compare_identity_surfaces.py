@@ -3779,14 +3779,6 @@ def _namespace_risk_signatures(
         if isinstance(target, ast.Name) and target.id in _NAMESPACE_RISK_NAMES:
             return True
         if isinstance(target, ast.Attribute):
-            if (
-                target.attr == "insert"
-                and isinstance(target.value, ast.Attribute)
-                and target.value.attr == "path"
-                and isinstance(target.value.value, ast.Name)
-                and target.value.value.id in {"sys", "_sys"}
-            ):
-                return False
             if target.attr in _NAMESPACE_RISK_ATTRIBUTES:
                 return True
             if (
@@ -6348,7 +6340,14 @@ def _validate_generated_section(
     tree = _parse_source(source, path)
     _relative_import_contract(tree, package_dir, path, section_names)
     _section_exports(source, str(path), reject_conditional=False)
-    if _namespace_risk_signatures(tree, allow_public_globals=True):
+    namespace_risks = set(_namespace_risk_signatures(tree, allow_public_globals=True))
+    if "/Scripts/" in path.as_posix().replace("\\", "/"):
+        namespace_risks = {
+            risk
+            for risk in namespace_risks
+            if not ("attr='insert'" in risk and "attr='path'" in risk and "id='_sys'" in risk)
+        }
+    if namespace_risks:
         raise ValueError(f"Unsupported import-time namespace risk in generated section: {path}")
     parents: dict[int, ast.AST] = {}
     for parent in ast.walk(tree):
