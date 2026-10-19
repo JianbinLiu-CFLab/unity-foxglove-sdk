@@ -1,8 +1,5 @@
 from __future__ import annotations
 from .foundation import *
-_PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase132_standard_messages_acceptance.py"
-__file__ = str(_PHASE192_FACADE_FILE)
-del _PHASE192_FACADE_FILE
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     """Parse command-line arguments."""

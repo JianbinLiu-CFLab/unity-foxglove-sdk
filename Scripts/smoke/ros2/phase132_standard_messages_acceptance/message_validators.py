@@ -1,8 +1,5 @@
 from __future__ import annotations
 from .arguments_and_collection import *
-_PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase132_standard_messages_acceptance.py"
-__file__ = str(_PHASE192_FACADE_FILE)
-del _PHASE192_FACADE_FILE
 
 def validate_camera_info(output: str) -> None:
     """Validate CameraInfo echo contains meaningful calibration data."""

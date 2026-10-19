@@ -1,8 +1,5 @@
 from __future__ import annotations
 from .message_validators import *
-_PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase132_standard_messages_acceptance.py"
-__file__ = str(_PHASE192_FACADE_FILE)
-del _PHASE192_FACADE_FILE
 
 def main(argv: list[str]) -> int:
     """Script entry point."""
