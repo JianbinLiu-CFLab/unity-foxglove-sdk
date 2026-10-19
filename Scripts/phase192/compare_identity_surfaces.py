@@ -568,10 +568,11 @@ def _phase192_validate_template_registry_mutations(
         }
 
         def mutation_root(node: ast.AST) -> str | None:
-            """Resolve protected roots through conservative runtime lookup semantics."""
+            """Resolve a protected mutation root through runtime lookup forms."""
             protected_lookup_names = protected_alias_sources | protected_roots
 
             def constant_string(value: ast.AST) -> str | None:
+                """Resolve a statically concatenated string expression."""
                 if isinstance(value, ast.Constant) and isinstance(value.value, str):
                     return value.value
                 if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
@@ -582,6 +583,7 @@ def _phase192_validate_template_registry_mutations(
                 return None
 
             def globals_lookup_key(value: ast.AST) -> ast.AST | None:
+                """Return the key expression used by a globals mapping lookup."""
                 if isinstance(value, ast.Subscript):
                     return value.slice
                 if (
@@ -597,6 +599,7 @@ def _phase192_validate_template_registry_mutations(
                 return None
 
             def is_globals_call(value: ast.AST) -> bool:
+                """Return whether an expression is a zero-argument globals call."""
                 return (
                     isinstance(value, ast.Call)
                     and isinstance(value.func, ast.Name)
@@ -606,6 +609,7 @@ def _phase192_validate_template_registry_mutations(
                 )
 
             def getattr_object(value: ast.Call) -> ast.AST | None:
+                """Return the object expression passed to getattr."""
                 if value.args:
                     return value.args[0]
                 for keyword in value.keywords:
