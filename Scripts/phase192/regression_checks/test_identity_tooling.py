@@ -3563,6 +3563,15 @@ class IdentityToolingTests(unittest.TestCase):
                     "\nif callable(main):\n"
                     "    getattr(main, \"__globals__\").pop(\"DEFAULT_IMU_TOPIC\", None)\n"
                 ),
+                "main_globals_getattr_default_pop": source + (
+                    "\ngetattr(main, \"__globals__\", None).pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                ),
+                "main_globals_getattr_dynamic_pop": source + (
+                    "\ngetattr(main, \"__\" + \"globals__\").pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                ),
+                "main_globals_getattr_keyword_pop": source + (
+                    "\ngetattr(object=main, name=\"__globals__\", default=None).pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                ),
                 "cli_main_globals_getattr_store": source + (
                     "\ngetattr(_phase192_main, \"__globals__\")[\"_phase192_package_module\"] = None\n"
                 ),
@@ -3584,6 +3593,17 @@ class IdentityToolingTests(unittest.TestCase):
                     "\n[getattr(_phase192_main, \"__globals__\").pop(\"DEFAULT_IMU_TOPIC\", None)\n"
                     " for _x in (0,)]\n"
                 ),
+                "globals_get_main_globals_pop": source + (
+                    "\nglobals().get(\"main\").__globals__.pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                ),
+                "globals_subscript_main_globals_pop": source + (
+                    "\nglobals()[\"main\"].__globals__.pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                ),
+                "globals_get_alias_loop": source + (
+                    "\nif True:\n"
+                    "    for _evil_globals in (globals().get(\"main\").__globals__,):\n"
+                    "        _evil_globals.pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                ),
                 "cli_entrypoint_globals_store": source + (
                     "\n_phase192_entrypoint.__globals__[\"_phase192_package_module\"].__name__ = \"evil\"\n"
                 ),
@@ -3599,6 +3619,24 @@ class IdentityToolingTests(unittest.TestCase):
                         str(facade),
                         repository_root=Path.cwd(),
                     )
+
+    def test_split_section_rejects_getattr_globals_mutation(self) -> None:
+        """Split sections use the same protected-mutation validator as facades."""
+        with tempfile.TemporaryDirectory() as temp:
+            section = Path(temp) / "section.py"
+            source = (
+                "__all__ = []\n"
+                "getattr(_phase192_main, \"__globals__\", None).pop(\n"
+                "    \"DEFAULT_IMU_TOPIC\", None\n"
+                ")\n"
+            )
+            section.write_text(source, encoding="utf-8")
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._section_exports(
+                    source,
+                    str(section),
+                    repository_root=Path(temp),
+                )
 
     def test_generated_initializer_rejects_import_time_main_call(self) -> None:
         """Package initializers cannot invoke an exported CLI during import."""

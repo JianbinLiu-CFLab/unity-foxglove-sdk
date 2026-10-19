@@ -568,27 +568,79 @@ def _phase192_validate_template_registry_mutations(
         }
 
         def mutation_root(node: ast.AST) -> str | None:
-            """Resolve a protected mutation root through attributes, lookups, or subscripts."""
+            """Resolve protected roots through conservative runtime lookup semantics."""
+            protected_lookup_names = protected_alias_sources | protected_roots
+
+            def constant_string(value: ast.AST) -> str | None:
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    return value.value
+                if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+                    left = constant_string(value.left)
+                    right = constant_string(value.right)
+                    if left is not None and right is not None:
+                        return left + right
+                return None
+
+            def globals_lookup_key(value: ast.AST) -> ast.AST | None:
+                if isinstance(value, ast.Subscript):
+                    return value.slice
+                if (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)
+                    and value.func.attr in {"get", "__getitem__"}
+                ):
+                    if value.args:
+                        return value.args[0]
+                    for keyword in value.keywords:
+                        if keyword.arg in {"key", "name"}:
+                            return keyword.value
+                return None
+
+            def is_globals_call(value: ast.AST) -> bool:
+                return (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Name)
+                    and value.func.id == "globals"
+                    and not value.args
+                    and not value.keywords
+                )
+
+            def getattr_object(value: ast.Call) -> ast.AST | None:
+                if value.args:
+                    return value.args[0]
+                for keyword in value.keywords:
+                    if keyword.arg == "object":
+                        return keyword.value
+                return None
+
             current = node
             while True:
-                if isinstance(current, (ast.Attribute, ast.Subscript)):
+                if isinstance(current, ast.Attribute):
+                    current = current.value
+                elif isinstance(current, ast.Subscript):
+                    if is_globals_call(current.value):
+                        key = constant_string(current.slice)
+                        return key if key in protected_lookup_names else "__phase192_globals_lookup__"
                     current = current.value
                 elif (
                     isinstance(current, ast.Call)
                     and isinstance(current.func, ast.Attribute)
                     and current.func.attr in {"get", "__getitem__"}
                 ):
+                    if is_globals_call(current.func.value):
+                        key_node = globals_lookup_key(current)
+                        key = constant_string(key_node) if key_node is not None else None
+                        return key if key in protected_lookup_names else "__phase192_globals_lookup__"
                     current = current.func.value
                 elif (
                     isinstance(current, ast.Call)
                     and isinstance(current.func, ast.Name)
                     and current.func.id == "getattr"
-                    and len(current.args) == 2
-                    and isinstance(current.args[1], ast.Constant)
-                    and current.args[1].value == "__globals__"
-                    and not current.keywords
                 ):
-                    current = current.args[0]
+                    object_node = getattr_object(current)
+                    if object_node is None:
+                        break
+                    current = object_node
                 else:
                     break
             return current.id if isinstance(current, ast.Name) and current.id in protected_roots else None
@@ -648,17 +700,13 @@ def _phase192_validate_template_registry_mutations(
         )
 
         def protected_globals_handle(node: ast.AST) -> bool:
-            """Detect a protected function globals mapping without broad attribute matching."""
+            """Detect a protected function globals mapping through runtime lookup forms."""
             if isinstance(node, ast.Attribute) and node.attr == "__globals__":
                 return mutation_root(node.value) is not None
             return (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
                 and node.func.id == "getattr"
-                and len(node.args) == 2
-                and isinstance(node.args[1], ast.Constant)
-                and node.args[1].value == "__globals__"
-                and not node.keywords
                 and mutation_root(node) is not None
             )
 
@@ -740,7 +788,10 @@ def _phase192_validate_template_registry_mutations(
                 protected_method_mutation = (
                     isinstance(function, ast.Attribute)
                     and function.attr in protected_mutating_methods
-                    and mutation_root(function.value) is not None
+                    and (
+                        mutation_root(function.value) is not None
+                        or contains_globals_lookup(function.value)
+                    )
                 )
                 if protected_method_mutation:
                     raise ValueError(f"Unsupported protected mutation in {path}")
@@ -3356,6 +3407,31 @@ def _section_exports(
             raise ValueError(f"Relative import validation requires a concrete source path: {path}")
         _relative_import_contract(tree, source_file.parent, path)
     _reject_unsupported_module_bindings(tree, path)
+    protected_lookup_names = {
+        "main",
+        "_phase192_main",
+        "_phase192_entrypoint",
+        "_phase192_previous_path",
+        "_phase192_previous_name",
+        "_phase192_previous_package",
+        "_phase192_parent",
+        "_phase192_name",
+    }
+    has_protected_lookup_candidate = any(
+        isinstance(node, ast.Attribute) and node.attr == "__globals__"
+        for node in ast.walk(tree)
+    ) or any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and any(
+            isinstance(argument, ast.Name) and argument.id in protected_lookup_names
+            for argument in (*node.args, *(keyword.value for keyword in node.keywords))
+        )
+        for node in ast.walk(tree)
+    )
+    if has_protected_lookup_candidate:
+        _phase192_validate_template_registry_mutations(tree, path, repository_root)
     declared = _declared_public_names(tree)
     bound = _top_level_names(tree, include_imports=True)
     direct_values: list[ast.AST] = []
