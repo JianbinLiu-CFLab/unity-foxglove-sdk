@@ -815,6 +815,14 @@ def _phase192_validate_template_registry_mutations(
                         and target.value.id == "_phase192_module"
                         and target.attr == "__class__"
                     )
+                    and not (
+                        isinstance(target, ast.Subscript)
+                        and isinstance(target.value, ast.Call)
+                        and isinstance(target.value.func, ast.Name)
+                        and target.value.func.id == "globals"
+                        and isinstance(target.slice, ast.Name)
+                        and target.slice.id == "_phase192_name"
+                    )
                 ):
                     raise ValueError(f"Unsupported protected mutation in {path}")
             if isinstance(node, ast.Call):
