@@ -118,7 +118,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTopicNotFoundBeforeWait(string relativePath)
         {
-            var source = ReadRepoText(relativePath);
+            var source = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             var classIndex = source.IndexOf("class TopicNotFoundError", StringComparison.Ordinal);
             var waitIndex = source.IndexOf("async def wait_for_channel", StringComparison.Ordinal);
             Check(classIndex >= 0 && waitIndex >= 0 && classIndex < waitIndex,
@@ -134,7 +134,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCapturedDotnetFailure(string relativePath, string label)
         {
-            var source = ReadRepoText(relativePath);
+            var source = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             Check(source.Contains("run_bounded(", StringComparison.Ordinal)
                   && source.Contains("result.stdout", StringComparison.Ordinal)
                   && source.Contains("result.stderr", StringComparison.Ordinal),
