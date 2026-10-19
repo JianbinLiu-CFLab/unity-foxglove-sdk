@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var validator = ReadRepoText("Scripts/schema/validate_schema_generated_outputs.py");
             var runCi = ReadRepoText("Scripts/release/run_ci.py");
-            var tests = ReadRepoText("Scripts/schema/regression_checks/test_schema_tooling.py");
+            var tests = ReadRepoText("Scripts/schema/regression_checks/test_schema_tooling/schema_tests.py");
 
             Check(validator.Contains("generate_ros2_msg_schema_catalog.py", StringComparison.Ordinal)
                   && validator.Contains("generate_ros2_cdr_serializers.py", StringComparison.Ordinal)
