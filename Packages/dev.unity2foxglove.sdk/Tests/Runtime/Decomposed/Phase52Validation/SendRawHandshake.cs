@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase192 source section for Phase 52 validation.
+// Purpose: Validate Phase 52 Unity-native WSS/TLS transport extension,
+// shared stream-based WebSocket core, token gating, certificate
+// distribution, and secure/plain transport regressions.
 
 using System;
 using System.IO;
@@ -20,6 +22,9 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
+    /// <summary>
+    /// Validation type for Phase52Validation.
+    /// </summary>
     public static partial class Phase52Validation
     {
         private static string SendRawHandshake(
@@ -342,5 +347,63 @@ namespace Unity.FoxgloveSDK.Tests
             return null;
         }
 
+        private sealed class Phase52OriginTransport : IFoxgloveTransport, IOriginGuardedFoxgloveTransport
+        {
+            public string AddedOrigin { get; private set; }
+            public bool ClearCalled { get; private set; }
+            public bool IsRunning => false;
+            public System.Collections.Generic.IReadOnlyCollection<string> AllowedOrigins =>
+                Array.Empty<string>();
+            public event Action<uint> OnClientConnected;
+            public event Action<uint> OnClientDisconnected;
+            public event Action<uint, string> OnTextReceived;
+            public event Action<uint, byte[]> OnBinaryReceived;
+
+            /// <summary>
+            /// Validation method for Start.
+            /// </summary>
+            /// <param name="host">Host address used by the validation client or listener.</param>
+            /// <param name="port">TCP port used by the validation client or listener.</param>
+            public void Start(string host, int port) { }
+            /// <summary>
+            /// Validation method for Stop.
+            /// </summary>
+            public void Stop() { }
+            /// <summary>
+            /// Validation method for BroadcastText.
+            /// </summary>
+            /// <param name="json">JSON payload used by the transport stub.</param>
+            public void BroadcastText(string json) { }
+            /// <summary>
+            /// Validation method for BroadcastBinary.
+            /// </summary>
+            /// <param name="data">Binary payload used by the transport stub.</param>
+            public void BroadcastBinary(byte[] data) { }
+            /// <summary>
+            /// Validation method for SendText.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="json">JSON payload used by the transport stub.</param>
+            public void SendText(uint clientId, string json) { }
+            /// <summary>
+            /// Validation method for SendBinary.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            /// <param name="data">Binary payload used by the transport stub.</param>
+            public void SendBinary(uint clientId, byte[] data) { }
+            /// <summary>
+            /// Validation method for AddAllowedOrigin.
+            /// </summary>
+            /// <param name="origin">Reference point for the seek operation.</param>
+            public void AddAllowedOrigin(string origin) => AddedOrigin = origin;
+            /// <summary>
+            /// Validation method for ClearAllowedOrigins.
+            /// </summary>
+            public void ClearAllowedOrigins() => ClearCalled = true;
+            /// <summary>
+            /// Validation method for Dispose.
+            /// </summary>
+            public void Dispose() { }
+        }
     }
 }

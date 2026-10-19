@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase192 source section for Phase 13 validation.
+// Purpose: Validates IRuntimeContext indirection, recording/replay controllers, McapBinaryReader bounds checks, client publish auto-increment, seek boundary behavior, coordinate roundtrip, and handler non-accumulation.
 
 using System;
 using System.Collections.Generic;
@@ -20,12 +20,11 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
 {
-    public static partial class Phase13Validation
-    {
+
     /// <summary>
     /// Fake transport for Phase 13 that tracks <c>IsRunning</c> state.
     /// </summary>
-    class Phase13FakeTransport : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
+    internal sealed partial class Phase13FakeTransport : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
     {
         private readonly object _gate = new object();
         public readonly List<string> SentText = new List<string>();
@@ -97,11 +96,6 @@ namespace Unity.FoxgloveSDK.Tests
             lock (_gate)
                 return _sentBinary.TryGetValue(clientId, out var frames) ? frames.ToArray() : Array.Empty<byte[]>();
         }
-        public int SentBinaryFrameCount(uint clientId)
-        {
-            lock (_gate)
-                return _sentBinary.TryGetValue(clientId, out var frames) ? frames.Count : 0;
-        }
         public void ClearBinary(uint clientId)
         {
             lock (_gate)
@@ -164,64 +158,5 @@ namespace Unity.FoxgloveSDK.Tests
         public event Action<uint> OnClientDisconnected;
         public event Action<uint, string> OnTextReceived;
         public event Action<uint, byte[]> OnBinaryReceived;
-    }
-
-    /// <summary>
-    /// Minimal runtime context used to verify replay subscribe backfill requests.
-    /// </summary>
-    class Phase13ReplayRuntimeContext : IRuntimeContext
-    {
-        /// <summary>Number of replay subscriber backfill requests observed by the fake context.</summary>
-        public int BackfillRequests { get; private set; }
-
-        /// <summary>Gets whether playback is enabled for the replay subscribe tests.</summary>
-        public bool PlaybackEnabled => true;
-
-        /// <summary>Gets the asset registry required by the runtime context contract.</summary>
-        public FoxgloveAssetRegistry Assets { get; } = new FoxgloveAssetRegistry();
-
-        /// <summary>Gets the fake playback range start.</summary>
-        public ulong GetPlaybackStartNs() => 0;
-
-        /// <summary>Gets the fake playback range end.</summary>
-        public ulong GetPlaybackEndNs() => 0;
-
-        /// <summary>Accepts playback commands for the fake runtime context.</summary>
-        public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs) { }
-
-        /// <summary>Returns the default playback state for the fake runtime context.</summary>
-        public PlaybackClock.PlaybackStateSnapshot GetPlaybackState(bool didSeek, string requestId)
-            => default;
-
-        /// <summary>Applies playback control for the fake runtime context.</summary>
-        public PlaybackClock.PlaybackStateSnapshot ApplyPlaybackControl(
-            byte cmd, float speed, bool hasSeek, ulong seekNs, string requestId)
-            => default;
-
-        /// <summary>Accepts replay seek requests for the fake runtime context.</summary>
-        public void ReplaySeek(ulong timeNs) { }
-
-        /// <summary>Accepts replay play requests for the fake runtime context.</summary>
-        public void ReplayPlay() { }
-
-        /// <summary>Accepts replay pause requests for the fake runtime context.</summary>
-        public void ReplayPause() { }
-
-        /// <summary>Records that a new replay subscriber requested panel-history backfill.</summary>
-        public void RequestReplaySubscriberBackfill()
-        {
-            BackfillRequests++;
-        }
-    }
-
-    class Phase13FakeClock : IFoxgloveClock
-    {
-        public ulong NowNs { get; private set; }
-
-        public void AdvanceNs(ulong deltaNs)
-        {
-            NowNs += deltaNs;
-        }
-    }
     }
 }

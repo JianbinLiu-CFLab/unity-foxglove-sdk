@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Phase192 source section for Phase 13 validation.
+// Purpose: Validates IRuntimeContext indirection, recording/replay controllers, McapBinaryReader bounds checks, client publish auto-increment, seek boundary behavior, coordinate roundtrip, and handler non-accumulation.
 
 using System;
 using System.Collections.Generic;
@@ -22,100 +22,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static partial class Phase13Validation
     {
-        static void TestReplayUsesDataPriorityForSeekReset()
-        {
-            var tmp = CreateTempMcap(1, 1_000_000UL);
-            var transport = new Phase13FakeTransport();
-            var rt = new FoxgloveRuntime(transport, new SystemClock(), new DefaultSchemaRegistry());
-            try
-            {
-                rt.EnableReplay(tmp);
-                rt.Start("replay-priority", "127.0.0.1", GetFreeLoopbackPort());
-
-                var replayChannelId = (uint)(McapReplayEngine.ReplayChannelIdBase | 1);
-                transport.SimulateConnect(7);
-                transport.SimulateText(7,
-                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":" + replayChannelId + "}]}");
-
-                transport.ClearBinary(7);
-                transport.ResetPriorityCounters();
-                rt.Tick();
-
-                Assert(transport.DataBinaryCount > 0,
-                    "Replay MessageData uses data-priority binary sends so seek can clear stale queued frames");
-                Assert(transport.ControlBinaryCount == 0,
-                    "Replay MessageData does not use uncleared control-priority sends");
-                Assert(transport.DataBroadcastBinaryCount > 0,
-                    "Replay time frames use data-priority broadcasts so seek can clear stale queued time frames");
-                Assert(transport.ControlBroadcastBinaryCount == 0,
-                    "Replay time frames do not use uncleared control-priority broadcasts");
-            }
-            finally
-            {
-                rt.Dispose();
-                File.Delete(tmp);
-            }
-        }
-
-        static string FirstServerInfoSessionId(List<string> texts)
-        {
-            return LastServerInfoSessionId(texts, 0, stopAfterFirst: true);
-        }
-
-        static string LastServerInfoSessionId(List<string> texts, int startIndex, bool stopAfterFirst = false)
-        {
-            string result = null;
-            for (var i = startIndex; i < texts.Count; i++)
-            {
-                if (!texts[i].Contains("\"serverInfo\"", StringComparison.Ordinal))
-                    continue;
-                var obj = JObject.Parse(texts[i]);
-                if ((string)obj["op"] != "serverInfo")
-                    continue;
-
-                result = (string)obj["sessionId"];
-                if (stopAfterFirst)
-                    break;
-            }
-
-            return result;
-        }
-
-        static bool ContainsAdvertiseForTopic(List<string> texts, int startIndex, string topic)
-        {
-            for (var i = startIndex; i < texts.Count; i++)
-            {
-                if (!texts[i].Contains("\"advertise\"", StringComparison.Ordinal))
-                    continue;
-                var obj = JObject.Parse(texts[i]);
-                if ((string)obj["op"] != "advertise")
-                    continue;
-
-                foreach (var ch in (JArray)obj["channels"])
-                {
-                    if ((string)ch["topic"] == topic)
-                        return true;
-                }
-            }
-
-            return false;
-        }
-
-        static byte[] BuildPlaybackControlRequest(byte command, bool hasSeek, ulong seekNs)
-        {
-            var requestIdBytes = PlaybackControlRequestIdBytes;
-            var frame = new byte[19 + requestIdBytes.Length];
-            frame[0] = ClientOpcode.PlaybackControlRequest;
-            frame[1] = command;
-            BinaryEncoding.WriteF32LE(frame, 2, 1f);
-            frame[6] = hasSeek ? (byte)1 : (byte)0;
-            BinaryEncoding.WriteU64LE(frame, 7, seekNs);
-            BinaryEncoding.WriteU32LE(frame, 15, (uint)requestIdBytes.Length);
-            Buffer.BlockCopy(requestIdBytes, 0, frame, 19, requestIdBytes.Length);
-            return frame;
-        }
-
-        static int CountPlaybackStateFrames(IReadOnlyList<byte[]> frames)
+static int CountPlaybackStateFrames(IReadOnlyList<byte[]> frames)
         {
             var count = 0;
             foreach (var frame in frames)
@@ -290,4 +197,7 @@ namespace Unity.FoxgloveSDK.Tests
             return null;
         }
     }
+
+
+
 }

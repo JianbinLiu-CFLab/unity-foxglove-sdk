@@ -133,6 +133,7 @@
     <Compile Include="OpenH264ValidationHelpers.cs" />
     <Compile Include="PhaseValidationReflectionHelpers.cs" />
     <Compile Include="PhaseValidationSourceHelpers.cs" />
+    <Compile Include="Ros2ForUnitySubscriptionHubSourceComposer.cs" />
     <Compile Include="Phase80Validation.cs" />
     <Compile Include="Phase81Validation.cs" />
     <Compile Include="Phase82Validation.cs" />
