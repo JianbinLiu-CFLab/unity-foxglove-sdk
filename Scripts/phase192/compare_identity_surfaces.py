@@ -3103,6 +3103,18 @@ def _validate_namespace_access(
             if isinstance(node.ctx, (ast.Store, ast.Del)) or node.attr in {"__setattr__", "__delattr__"}:
                 return True
         if isinstance(node, ast.Subscript) and contains_module_registry(node.value):
+            if (
+                isinstance(node.ctx, ast.Store)
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "modules"
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id in {"sys", "_sys"}
+                and isinstance(node.slice, ast.Attribute)
+                and node.slice.attr == "name"
+                and isinstance(node.slice.value, ast.Name)
+                and node.slice.value.id == "spec"
+            ):
+                return False
             if not isinstance(node.ctx, ast.Load):
                 return True
         if isinstance(node, ast.Call):
@@ -3752,6 +3764,14 @@ def _namespace_risk_signatures(
         if isinstance(target, ast.Name) and target.id in _NAMESPACE_RISK_NAMES:
             return True
         if isinstance(target, ast.Attribute):
+            if (
+                target.attr == "insert"
+                and isinstance(target.value, ast.Attribute)
+                and target.value.attr == "path"
+                and isinstance(target.value.value, ast.Name)
+                and target.value.value.id in {"sys", "_sys"}
+            ):
+                return False
             if target.attr in _NAMESPACE_RISK_ATTRIBUTES:
                 return True
             if (
