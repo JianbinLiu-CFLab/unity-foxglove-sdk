@@ -3559,6 +3559,12 @@ class IdentityToolingTests(unittest.TestCase):
                 "main_globals_store": source + (
                     "\nmain.__globals__[\"DEFAULT_IMU_TOPIC\"] = \"evil-topic\"\n"
                 ),
+                "main_globals_pop": source + (
+                    "\nmain.__globals__.pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                ),
+                "main_globals_pop_comprehension": source + (
+                    "\n[main.__globals__.pop(\"DEFAULT_IMU_TOPIC\", None) for _x in (0,)]\n"
+                ),
                 "cli_entrypoint_globals_store": source + (
                     "\n_phase192_entrypoint.__globals__[\"_phase192_package_module\"].__name__ = \"evil\"\n"
                 ),

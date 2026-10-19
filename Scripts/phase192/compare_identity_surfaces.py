@@ -468,6 +468,23 @@ def _phase192_validate_template_registry_mutations(
             "__name__",
             "__package__",
         }
+        protected_mutating_methods = frozenset(
+            {
+                "append",
+                "clear",
+                "extend",
+                "insert",
+                "pop",
+                "popitem",
+                "remove",
+                "reverse",
+                "setdefault",
+                "sort",
+                "update",
+                "__delitem__",
+                "__setitem__",
+            }
+        )
 
         def target_names(target: ast.AST) -> tuple[str, ...]:
             """Return names bound by a simple assignment target."""
@@ -691,6 +708,16 @@ def _phase192_validate_template_registry_mutations(
                     isinstance(function, ast.Attribute)
                     and function.attr in {"__setattr__", "__delattr__"}
                 )
+                protected_method_mutation = (
+                    isinstance(function, ast.Attribute)
+                    and function.attr in protected_mutating_methods
+                    and (
+                        mutation_root(function.value) is not None
+                        or contains_globals_lookup(function.value)
+                    )
+                )
+                if protected_method_mutation:
+                    raise ValueError(f"Unsupported protected mutation in {path}")
                 if mutating and not allowed_forward_call(node):
                     root = mutation_root(function.value) if isinstance(function, ast.Attribute) else (
                         mutation_root(node.args[0]) if node.args else None
