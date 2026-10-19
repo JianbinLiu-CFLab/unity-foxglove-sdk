@@ -6451,6 +6451,14 @@ def _validate_generated_section(
                     or qualified[0] is None
                     or qualified[0].startswith("pathlib")
                 )
+                and not (
+                    qualified[1] == "insert"
+                    and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Attribute)
+                    and node.func.value.attr == "path"
+                    and isinstance(node.func.value.value, ast.Name)
+                    and node.func.value.value.id in {"sys", "_sys"}
+                )
             ):
                 raise ValueError(f"Unsupported process execution in generated section: {path}")
         if isinstance(node, ast.Attribute) and node.attr in {
