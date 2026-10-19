@@ -471,7 +471,12 @@ public sealed partial class FoxRunRos2CustomMapperGenerationTests
             return trusted
                 .Concat(
                     AppDomain.CurrentDomain.GetAssemblies()
-                        .Where(assembly => !assembly.IsDynamic && !string.IsNullOrEmpty(assembly.Location))
+                        .Where(assembly => !assembly.IsDynamic
+                            && !string.Equals(
+                                assembly.GetName().Name,
+                                "FoxgloveSdk.Tests",
+                                StringComparison.Ordinal)
+                            && !string.IsNullOrEmpty(assembly.Location))
                         .Select(assembly => assembly.Location))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Select(path => MetadataReference.CreateFromFile(path))
