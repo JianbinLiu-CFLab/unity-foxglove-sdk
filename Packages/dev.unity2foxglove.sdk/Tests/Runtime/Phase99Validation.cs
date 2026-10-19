@@ -563,4 +563,5 @@ namespace Unity.FoxgloveSDK.Tests
 
             return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
+    }
 }

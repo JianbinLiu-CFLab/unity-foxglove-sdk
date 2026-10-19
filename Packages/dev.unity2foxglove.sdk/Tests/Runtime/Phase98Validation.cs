@@ -671,4 +671,5 @@ namespace Unity.FoxgloveSDK.Tests
             public string Topic { get; }
             public string SchemaName { get; }
         }
+    }
 }
