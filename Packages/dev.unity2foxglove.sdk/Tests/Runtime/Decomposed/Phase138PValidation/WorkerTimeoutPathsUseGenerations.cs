@@ -399,7 +399,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Read(string path)
-            => File.ReadAllText(path);
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(path);
 
         private static void Check(bool condition, string label)
         {

@@ -13,6 +13,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// Build-time registry of all phase-level validation entry points used by the
     /// local validation harness and CI pipeline.
     /// </summary>
+    /// <remarks>Phase192 source sections: DefaultValidations.cs</remarks>
     internal static partial class PhaseValidationRegistry
     {
         /// <summary>

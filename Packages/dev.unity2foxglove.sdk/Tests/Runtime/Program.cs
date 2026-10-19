@@ -428,4 +428,3 @@ partial class Program
 
     /// <summary>Returns the command-line value immediately following a flag, or null when absent.</summary>
 }
-

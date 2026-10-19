@@ -8,6 +8,7 @@ using System;
 using System.Reflection;
 using System.Collections;
 using System.IO;
+using System.Linq;
 using Unity.FoxgloveSDK.Components;
 using System.Diagnostics;
 using System.Threading;
@@ -247,7 +248,26 @@ public sealed partial class OpenH264EncoderSidecarTests
         }
 
         private static string Read(string relativePath)
-            => File.ReadAllText(Path.Combine(FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        {
+            var root = FindRepoRoot();
+            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var source = File.ReadAllText(path);
+            if (!relativePath.EndsWith("OpenH264EncoderSidecar.cs", StringComparison.Ordinal))
+                return source;
+
+            var sections = Path.Combine(
+                Path.GetDirectoryName(path),
+                "Decomposed",
+                "OpenH264EncoderSidecar");
+            if (!Directory.Exists(sections))
+                return source;
+
+            return source + Environment.NewLine + string.Join(
+                Environment.NewLine,
+                Directory.GetFiles(sections, "*.cs")
+                    .OrderBy(file => file, StringComparer.Ordinal)
+                    .Select(File.ReadAllText));
+        }
 
         private static string FindRepoRoot()
         {

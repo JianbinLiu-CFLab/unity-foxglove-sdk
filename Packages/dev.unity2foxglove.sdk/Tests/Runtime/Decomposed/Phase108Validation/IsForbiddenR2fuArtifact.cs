@@ -92,11 +92,23 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
+            if (string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs",
+                    StringComparison.Ordinal)
+                || string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs",
+                    StringComparison.Ordinal))
+            {
+                return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            }
+
             var root = RepoRoot();
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing required Phase108 file: " + relativePath, path);
-            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            return File.ReadAllText(path);
         }
 
         private static Type FindType(string fullName)
