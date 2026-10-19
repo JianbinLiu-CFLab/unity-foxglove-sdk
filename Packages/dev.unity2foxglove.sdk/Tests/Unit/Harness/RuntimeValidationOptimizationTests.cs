@@ -216,7 +216,7 @@ internal static class TestSources
         {
             var directory = Path.Combine(RepoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime");
             var sectionDirectory = Path.Combine(directory, "Decomposed", "Program");
-            var names = new[] { "ValidationExecution.cs", "LegacyTools.cs", "CiAndServer.cs" };
+            var names = new[] { "ValidationExecution.cs", "LegacyTools.cs", "CiAndServer.cs", "MainCore.cs", "CollectOptionValues.cs" };
             var actualNames = Directory.GetFiles(
                     sectionDirectory,
                     "*.cs",
@@ -392,7 +392,7 @@ internal static class TestSources
                         .Select(name => name.Trim())
                         .Where(name => name.Length > 0)
                         .ToArray();
-                    foreach (var child in Directory.GetDirectories(localDecomposed))
+                    foreach (var child in Directory.GetDirectories(localDecomposed, stem, SearchOption.TopDirectoryOnly))
                     {
                         var files = Directory.GetFiles(child, "*.cs", SearchOption.TopDirectoryOnly);
                         var fileNames = new HashSet<string>(
@@ -461,16 +461,38 @@ internal static class TestSources
                 "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/Decomposed/McapReplayEngine/FinishTickResult.cs"
             };
 
+            var facade = TextWithoutComposition(paths[0]);
+            var fragments = paths.Skip(1).Select(path => TextWithoutComposition(path));
             return string.Join(
-                Environment.NewLine,
-                paths.Select(path => TextWithoutComposition(path)));
+                Environment.NewLine + Environment.NewLine,
+                new[] { facade }.Concat(fragments))
+                + Environment.NewLine
+                + "    }"
+                + Environment.NewLine
+                + "}";
         }
 
         private static string TextWithoutComposition(string relativePath)
         {
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
-            return File.ReadAllText(path);
+            var lines = File.ReadAllLines(path);
+            if (relativePath.EndsWith("McapReplayEngine.cs", StringComparison.Ordinal))
+            {
+                Assert.True(lines.Length >= 3, "MCAP replay facade is too short: " + relativePath);
+                return string.Join(Environment.NewLine, lines.Take(lines.Length - 2));
+            }
+
+            var classLine = Array.FindIndex(
+                lines,
+                line => line.Contains("partial class McapReplayEngine", StringComparison.Ordinal));
+            Assert.True(classLine >= 0, "MCAP replay fragment class is missing: " + relativePath);
+            var openBrace = Array.FindIndex(
+                lines,
+                classLine,
+                line => line.Trim() == "{");
+            Assert.True(openBrace >= 0 && lines.Length - openBrace >= 4, "MCAP replay fragment is too short: " + relativePath);
+            return string.Join(Environment.NewLine, lines.Skip(openBrace + 1).Take(lines.Length - openBrace - 3));
         }
 
         public static string SourceGeneratorSources()
