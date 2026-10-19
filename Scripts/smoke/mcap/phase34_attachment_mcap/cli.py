@@ -2,13 +2,7 @@
 
 from __future__ import annotations
 
-try:
-    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
-except ModuleNotFoundError:
-    import sys as _sys
-    from pathlib import Path as _Path
-    _sys.path.insert(0, str(_Path(__file__).resolve().parents[4]))
-    from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
+from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
 
 import argparse
 from pathlib import Path
@@ -49,7 +43,5 @@ def main() -> int:
     return EXIT_SUCCESS
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
 
 __all__ = [name for name in globals() if not name.startswith("__")]
