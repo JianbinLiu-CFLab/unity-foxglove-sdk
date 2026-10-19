@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPointCloudProbesFailMalformedPayloads()
         {
-            var draco = ReadRepoText("Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py");
+            var draco = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py");
             Check(draco.Contains("EXIT_DECODE_FAILURE = 6", StringComparison.Ordinal)
                   && draco.Contains("--allow-malformed-payloads", StringComparison.Ordinal),
                 "134-29B-1: Draco probe exposes an explicit decode-failure exit path");
@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && draco.Contains("exit_code = EXIT_DECODE_FAILURE", StringComparison.Ordinal),
                 "134-29B-2: Draco probe fails when received payloads cannot be decoded");
 
-            var qos = ReadRepoText("Scripts/smoke/websocket/pointcloud_qos_probe.py");
+            var qos = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/smoke/websocket/pointcloud_qos_probe.py");
             Check(qos.Contains("EXIT_DECODE_FAILURE = 6", StringComparison.Ordinal)
                   && qos.Contains("result = \"DECODE_FAILURE\"", StringComparison.Ordinal)
                   && qos.Contains("exit_code = EXIT_DECODE_FAILURE", StringComparison.Ordinal),
@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyAttachmentMcapFixtureConstants()
         {
-            var source = ReadRepoText("Scripts/smoke/mcap/phase34_attachment_mcap.py");
+            var source = PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/smoke/mcap/phase34_attachment_mcap.py");
             Check(source.Contains("MESSAGE_INDEX_RECORDS_BYTE_LENGTH", StringComparison.Ordinal)
                   && source.Contains("ZERO_CRC_SENTINEL", StringComparison.Ordinal)
                   && !source.Contains("MESSAGE_RECORD_OFFSET_IN_CHUNK", StringComparison.Ordinal)
@@ -118,7 +118,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTopicNotFoundBeforeWait(string relativePath)
         {
-            var source = ReadRepoText(relativePath);
+            var source = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             var classIndex = source.IndexOf("class TopicNotFoundError", StringComparison.Ordinal);
             var waitIndex = source.IndexOf("async def wait_for_channel", StringComparison.Ordinal);
             Check(classIndex >= 0 && waitIndex >= 0 && classIndex < waitIndex,
@@ -134,7 +134,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCapturedDotnetFailure(string relativePath, string label)
         {
-            var source = ReadRepoText(relativePath);
+            var source = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             Check(source.Contains("run_bounded(", StringComparison.Ordinal)
                   && source.Contains("result.stdout", StringComparison.Ordinal)
                   && source.Contains("result.stderr", StringComparison.Ordinal),
