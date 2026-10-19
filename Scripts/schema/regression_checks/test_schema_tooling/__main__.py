@@ -11,5 +11,10 @@ if str(_PHASE192_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_PHASE192_REPO_ROOT))
 
 
+try:
+    from .test_schema_tooling import *
+except ImportError:
+    from test_schema_tooling import *
+
 if __name__ == "__main__":
-    raise SystemExit(unittest.main(module="Scripts.schema.regression_checks.test_schema_tooling"))
+    raise SystemExit(unittest.main(module=__name__))
