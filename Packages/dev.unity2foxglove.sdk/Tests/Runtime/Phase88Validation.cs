@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCompressedDracoProbe()
         {
-            var source = ReadRepoText("Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py");
+            var source = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/smoke/websocket/compressed_pointcloud_draco_probe.py");
             Check(!string.IsNullOrEmpty(source),
                 "88A-1: compressed Draco smoke probe exists");
             Check(source.Contains("DEFAULT_TOPIC = \"/unity/point_cloud_draco\"")
