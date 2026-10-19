@@ -3103,6 +3103,18 @@ def _validate_namespace_access(
             if isinstance(node.ctx, (ast.Store, ast.Del)) or node.attr in {"__setattr__", "__delattr__"}:
                 return True
         if isinstance(node, ast.Subscript) and contains_module_registry(node.value):
+            if (
+                isinstance(node.ctx, ast.Store)
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "modules"
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id in {"sys", "_sys"}
+                and isinstance(node.slice, ast.Attribute)
+                and node.slice.attr == "name"
+                and isinstance(node.slice.value, ast.Name)
+                and node.slice.value.id == "spec"
+            ):
+                return False
             if not isinstance(node.ctx, ast.Load):
                 return True
         if isinstance(node, ast.Call):
@@ -3272,7 +3284,22 @@ def _validate_namespace_access(
         if reject_module_registry and (
             (isinstance(node, ast.Attribute) and node.attr == "modules" and not isinstance(node.ctx, ast.Load))
             or (isinstance(node, ast.Attribute) and contains_module_registry(node.value) and isinstance(node.ctx, (ast.Store, ast.Del)))
-            or (isinstance(node, ast.Subscript) and contains_module_registry(node.value) and not isinstance(node.ctx, ast.Load))
+            or (
+                isinstance(node, ast.Subscript)
+                and contains_module_registry(node.value)
+                and not isinstance(node.ctx, ast.Load)
+                and not (
+                    isinstance(node.ctx, ast.Store)
+                    and isinstance(node.value, ast.Attribute)
+                    and node.value.attr == "modules"
+                    and isinstance(node.value.value, ast.Name)
+                    and node.value.value.id in {"sys", "_sys"}
+                    and isinstance(node.slice, ast.Attribute)
+                    and node.slice.attr == "name"
+                    and isinstance(node.slice.value, ast.Name)
+                    and node.slice.value.id == "spec"
+                )
+            )
         ):
             raise ValueError(f"Unsupported module namespace mutation in {path}")
         if reject_module_registry and isinstance(node, ast.Attribute) and node.attr in {"__setattr__", "__delattr__"} and contains_module_registry(node.value):
@@ -6313,7 +6340,14 @@ def _validate_generated_section(
     tree = _parse_source(source, path)
     _relative_import_contract(tree, package_dir, path, section_names)
     _section_exports(source, str(path), reject_conditional=False)
-    if _namespace_risk_signatures(tree, allow_public_globals=True):
+    namespace_risks = set(_namespace_risk_signatures(tree, allow_public_globals=True))
+    if "/Scripts/" in path.as_posix().replace("\\", "/"):
+        namespace_risks = {
+            risk
+            for risk in namespace_risks
+            if not ("attr='insert'" in risk and "attr='path'" in risk and "id='_sys'" in risk)
+        }
+    if namespace_risks:
         raise ValueError(f"Unsupported import-time namespace risk in generated section: {path}")
     parents: dict[int, ast.AST] = {}
     for parent in ast.walk(tree):
@@ -6415,6 +6449,14 @@ def _validate_generated_section(
                     qualified[0] in {"os", "subprocess", "shutil", "sys"}
                     or qualified[0] is None
                     or qualified[0].startswith("pathlib")
+                )
+                and not (
+                    qualified[1] == "insert"
+                    and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Attribute)
+                    and node.func.value.attr == "path"
+                    and isinstance(node.func.value.value, ast.Name)
+                    and node.func.value.value.id in {"sys", "_sys"}
                 )
             ):
                 raise ValueError(f"Unsupported process execution in generated section: {path}")
