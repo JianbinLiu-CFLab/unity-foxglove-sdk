@@ -43,4 +43,12 @@ TOPICS = [
 PHASE132_RCLPY_PROBE_PATH = pathlib.Path(__file__).resolve().parents[1] / "_phase132_rclpy_probe.py"
 YAML_NUMBER_RE = r"-?(?:(?:[0-9]+(?:\.[0-9]*)?)|(?:\.[0-9]+))(?:[eE][+-]?[0-9]+)?"
 
+
+
+from pathlib import Path as _Phase192Path
+_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "phase132_standard_messages_acceptance.py"
+__file__ = str(_PHASE192_FACADE_FILE)
+del _Phase192Path, _PHASE192_FACADE_FILE
+
+
 __all__ = [name for name in globals() if not name.startswith("__")]
