@@ -3623,20 +3623,37 @@ class IdentityToolingTests(unittest.TestCase):
     def test_split_section_rejects_getattr_globals_mutation(self) -> None:
         """Split sections use the same protected-mutation validator as facades."""
         with tempfile.TemporaryDirectory() as temp:
-            section = Path(temp) / "section.py"
-            source = (
-                "__all__ = []\n"
-                "getattr(_phase192_main, \"__globals__\", None).pop(\n"
-                "    \"DEFAULT_IMU_TOPIC\", None\n"
-                ")\n"
-            )
-            section.write_text(source, encoding="utf-8")
-            with self.assertRaises(ValueError):
-                compare_identity_surfaces._section_exports(
-                    source,
-                    str(section),
-                    repository_root=Path(temp),
-                )
+            variants = {
+                "direct": (
+                    "getattr(_phase192_main, \"__globals__\", None).pop(\n"
+                    "    \"DEFAULT_IMU_TOPIC\", None\n"
+                    ")\n"
+                ),
+                "alias": (
+                    "_f = _phase192_main\n"
+                    "getattr(_f, \"__globals__\", None).pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                ),
+                "loop": (
+                    "for _f in (_phase192_main,):\n"
+                    "    getattr(_f, \"__globals__\", None).pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                ),
+                "parameter": (
+                    "def mutate(fn):\n"
+                    "    getattr(fn, \"__globals__\", None).pop(\"DEFAULT_IMU_TOPIC\", None)\n"
+                    "mutate(_phase192_main)\n"
+                ),
+            }
+            for name, mutation in variants.items():
+                with self.subTest(name=name):
+                    section = Path(temp) / f"section_{name}.py"
+                    source = "__all__ = []\n" + mutation
+                    section.write_text(source, encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        compare_identity_surfaces._section_exports(
+                            source,
+                            str(section),
+                            repository_root=Path(temp),
+                        )
 
     def test_generated_initializer_rejects_import_time_main_call(self) -> None:
         """Package initializers cannot invoke an exported CLI during import."""

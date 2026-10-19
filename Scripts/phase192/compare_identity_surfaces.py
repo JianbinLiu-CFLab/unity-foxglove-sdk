@@ -489,6 +489,33 @@ def _phase192_validate_template_registry_mutations(
                 for item in ast.walk(node)
             )
 
+        def protected_globals_lookup(node: ast.AST) -> bool:
+            """Detect direct or getattr-based function globals lookups."""
+            def literal_string(value: ast.AST) -> str | None:
+                """Resolve a statically concatenated lookup key."""
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    return value.value
+                if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+                    left = literal_string(value.left)
+                    right = literal_string(value.right)
+                    if left is not None and right is not None:
+                        return left + right
+                return None
+
+            if isinstance(node, ast.Attribute) and node.attr == "__globals__":
+                return True
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+            ):
+                return False
+            key_node = node.args[1] if len(node.args) >= 2 else next(
+                (keyword.value for keyword in node.keywords if keyword.arg == "name"),
+                None,
+            )
+            return key_node is None or literal_string(key_node) == "__globals__"
+
         def contains_protected_globals_store(node: ast.AST) -> bool:
             """Detect writes through globals() to protected binding names."""
             protected_names = protected_alias_sources | protected_roots | {"main", "_phase192_name"}
@@ -711,7 +738,10 @@ def _phase192_validate_template_registry_mutations(
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
                 and node.func.id == "getattr"
-                and mutation_root(node) is not None
+                and (
+                    mutation_root(node) is not None
+                    or protected_globals_lookup(node)
+                )
             )
 
         snapshot_expression = ast.parse(
@@ -771,7 +801,14 @@ def _phase192_validate_template_registry_mutations(
                 if not isinstance(target, (ast.Attribute, ast.Subscript)):
                     continue
                 if (
-                    (mutation_root(target) is not None or contains_protected_globals_store(target))
+                    (
+                        mutation_root(target) is not None
+                        or contains_protected_globals_store(target)
+                        or any(
+                            protected_globals_lookup(item)
+                            for item in ast.walk(target)
+                        )
+                    )
                     and not (
                         isinstance(target, ast.Attribute)
                         and isinstance(target.value, ast.Name)
@@ -795,6 +832,10 @@ def _phase192_validate_template_registry_mutations(
                     and (
                         mutation_root(function.value) is not None
                         or contains_globals_lookup(function.value)
+                        or any(
+                            protected_globals_lookup(item)
+                            for item in ast.walk(function.value)
+                        )
                     )
                 )
                 if protected_method_mutation:
@@ -3411,26 +3452,29 @@ def _section_exports(
             raise ValueError(f"Relative import validation requires a concrete source path: {path}")
         _relative_import_contract(tree, source_file.parent, path)
     _reject_unsupported_module_bindings(tree, path)
-    protected_lookup_names = {
-        "main",
-        "_phase192_main",
-        "_phase192_entrypoint",
-        "_phase192_previous_path",
-        "_phase192_previous_name",
-        "_phase192_previous_package",
-        "_phase192_parent",
-        "_phase192_name",
-    }
+    def getattr_globals_candidate(node: ast.Call) -> bool:
+        """Detect getattr calls that may resolve a function globals mapping."""
+        key_node = node.args[1] if len(node.args) >= 2 else next(
+            (keyword.value for keyword in node.keywords if keyword.arg == "name"),
+            None,
+        )
+        if key_node is None:
+            return True
+        if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
+            return key_node.value == "__globals__"
+        if isinstance(key_node, ast.BinOp) and isinstance(key_node.op, ast.Add):
+            return True
+        return False
+
     has_protected_lookup_candidate = any(
-        isinstance(node, ast.Attribute) and node.attr == "__globals__"
-        for node in ast.walk(tree)
-    ) or any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "getattr"
-        and any(
-            isinstance(argument, ast.Name) and argument.id in protected_lookup_names
-            for argument in (*node.args, *(keyword.value for keyword in node.keywords))
+        (
+            isinstance(node, ast.Attribute) and node.attr == "__globals__"
+        )
+        or (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and getattr_globals_candidate(node)
         )
         for node in ast.walk(tree)
     )
