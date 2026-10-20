@@ -5415,7 +5415,15 @@ def _entrypoint_contract(
                 and value.func.value.func.value.id == "unittest"
                 and value.func.value.func.attr == "TextTestRunner"
                 and not value.func.value.args
-                and not value.func.value.keywords
+                and (
+                    not value.func.value.keywords
+                    or (
+                        len(value.func.value.keywords) == 1
+                        and value.func.value.keywords[0].arg == "verbosity"
+                        and isinstance(value.func.value.keywords[0].value, ast.Constant)
+                        and value.func.value.keywords[0].value.value == 2
+                    )
+                )
                 and len(value.args) == 1
                 and not value.keywords
                 and isinstance(value.args[0], ast.Name)
