@@ -226,13 +226,6 @@ namespace Unity.FoxgloveSDK.Tests
                 OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/Models.cs",
                 OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/NativeClosure.cs",
                 OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/ValidationAndIdentity.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/Discovery.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/EnvironmentLease.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/Manifest.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RestartAndEnvironment.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RuntimeDescriptor.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/SelectionStatus.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/SessionAndCommunication.cs"
             };
             var expectedDecomposedEditorPaths = new[]
             {
@@ -246,21 +239,6 @@ namespace Unity.FoxgloveSDK.Tests
                 OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/NativeClosure.cs.meta",
                 OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/ValidationAndIdentity.cs",
                 OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/ValidationAndIdentity.cs.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/Discovery.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/Discovery.cs.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/EnvironmentLease.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/EnvironmentLease.cs.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/Manifest.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/Manifest.cs.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RestartAndEnvironment.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RestartAndEnvironment.cs.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RuntimeDescriptor.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RuntimeDescriptor.cs.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/SelectionStatus.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/SelectionStatus.cs.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/SessionAndCommunication.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/SessionAndCommunication.cs.meta"
             };
             var topLevelEditorFiles = editorFiles
                 .Where(path =>
