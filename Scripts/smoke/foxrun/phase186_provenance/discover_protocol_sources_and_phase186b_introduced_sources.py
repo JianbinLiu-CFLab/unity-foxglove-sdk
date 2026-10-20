@@ -181,9 +181,7 @@ def _phase186b_introduced_sources(
             errors.append(
                 f"could not inspect Phase186B source revision {revision}: {exc}"
             )
-    expected_source_count = sum(
-        count for _, _, count in _PHASE186B_SOURCE_COMMITS
-    )
+    expected_source_count = sum(count for _, _, count in _PHASE186B_SOURCE_COMMITS)
     if len(introduced) != expected_source_count:
         errors.append(
             f"Phase186B fixed introduced source set has {len(introduced)} paths, "
@@ -270,11 +268,10 @@ def _validate_canonical_ledger_schema(
         "v1Compatibility",
         "implementations",
     }
-    observed_top_level_keys = set(payload)
-    if observed_top_level_keys - {"decomposedSources"} != top_level_keys:
+    if set(payload) != top_level_keys:
         errors.append(
             "canonical ledger top-level schema must contain exactly "
-            + ", ".join(sorted(top_level_keys | {"decomposedSources"}))
+            + ", ".join(sorted(top_level_keys))
         )
 
     reference = payload.get("reference")
@@ -366,154 +363,6 @@ def _validate_canonical_ledger_schema(
     if implementation_paths != sorted(implementation_paths):
         errors.append(
             "canonical ledger implementations must be sorted by ordinal path"
-        )
-
-    decomposed_sources = payload.get("decomposedSources", [])
-    if not isinstance(decomposed_sources, list):
-        errors.append("canonical ledger decomposedSources schema must be an array")
-        return errors
-
-    original_paths: list[str] = []
-    part_paths: list[str] = []
-    original_identities: dict[str, str] = {}
-    part_identities: dict[str, str] = {}
-    source_map_keys = {
-        "originalPath",
-        "sourceRevision",
-        "decompositionRevision",
-        "originalSha256",
-        "parts",
-    }
-    part_keys = {"path", "sha256", "movedRange"}
-    range_keys = {"startLine", "endLine"}
-    for index, record in enumerate(decomposed_sources):
-        if not isinstance(record, Mapping) or set(record) != source_map_keys:
-            errors.append(
-                "canonical ledger decomposedSources schema mismatch at "
-                f"index {index}: expected exactly "
-                + ", ".join(sorted(source_map_keys))
-            )
-            continue
-        original_path = record.get("originalPath")
-        source_revision = record.get("sourceRevision")
-        decomposition_revision = record.get("decompositionRevision")
-        original_sha256 = record.get("originalSha256")
-        parts = record.get("parts")
-        if not isinstance(original_path, str) or not original_path:
-            errors.append(
-                f"decomposedSources[{index}].originalPath must be a non-empty string"
-            )
-        else:
-            original_paths.append(original_path)
-            identity = unicodedata.normalize("NFC", original_path).casefold()
-            previous = original_identities.get(identity)
-            if previous is not None:
-                errors.append(
-                    "canonical ledger decomposedSources originalPath values "
-                    f"have a case-insensitive duplicate: {previous!r} and "
-                    f"{original_path!r}"
-                )
-            else:
-                original_identities[identity] = original_path
-        if (
-            not isinstance(source_revision, str)
-            or re.fullmatch(r"[0-9a-f]{40}", source_revision) is None
-        ):
-            errors.append(
-                f"decomposedSources[{index}].sourceRevision must be a full lowercase Git SHA"
-            )
-        if (
-            not isinstance(decomposition_revision, str)
-            or re.fullmatch(r"[0-9a-f]{40}", decomposition_revision) is None
-        ):
-            errors.append(
-                f"decomposedSources[{index}].decompositionRevision must be a full lowercase Git SHA"
-            )
-        if (
-            not isinstance(original_sha256, str)
-            or _SHA256_PATTERN.fullmatch(original_sha256) is None
-        ):
-            errors.append(
-                f"decomposedSources[{index}].originalSha256 must be lowercase hex"
-            )
-        if not isinstance(parts, list) or not parts:
-            errors.append(
-                f"decomposedSources[{index}].parts must be a non-empty array"
-            )
-            continue
-        ranges: list[tuple[int, int, int]] = []
-        for part_index, part in enumerate(parts):
-            if not isinstance(part, Mapping) or set(part) != part_keys:
-                errors.append(
-                    "canonical ledger decomposedSources part schema mismatch at "
-                    f"{index}/{part_index}: expected exactly "
-                    + ", ".join(sorted(part_keys))
-                )
-                continue
-            path = part.get("path")
-            digest = part.get("sha256")
-            moved_range = part.get("movedRange")
-            if not isinstance(path, str) or not path:
-                errors.append(
-                    f"decomposedSources[{index}].parts[{part_index}].path must be a non-empty string"
-                )
-            else:
-                part_paths.append(path)
-                identity = unicodedata.normalize("NFC", path).casefold()
-                previous = part_identities.get(identity)
-                if previous is not None:
-                    errors.append(
-                        "canonical ledger decomposedSources part paths have a "
-                        f"case-insensitive duplicate: {previous!r} and {path!r}"
-                    )
-                else:
-                    part_identities[identity] = path
-            if not isinstance(digest, str) or _SHA256_PATTERN.fullmatch(digest) is None:
-                errors.append(
-                    f"decomposedSources[{index}].parts[{part_index}].sha256 must be lowercase hex"
-                )
-            if not isinstance(moved_range, Mapping) or set(moved_range) != range_keys:
-                errors.append(
-                    f"decomposedSources[{index}].parts[{part_index}].movedRange schema mismatch"
-                )
-            elif (
-                type(moved_range.get("startLine")) is not int
-                or type(moved_range.get("endLine")) is not int
-                or moved_range["startLine"] < 1
-                or moved_range["endLine"] < moved_range["startLine"]
-            ):
-                errors.append(
-                    f"decomposedSources[{index}].parts[{part_index}].movedRange must be a positive inclusive range"
-                )
-            else:
-                ranges.append(
-                    (
-                        moved_range["startLine"],
-                        moved_range["endLine"],
-                        part_index,
-                    )
-                )
-        ranges.sort()
-        for previous, current in zip(ranges, ranges[1:]):
-            if current[0] <= previous[1]:
-                errors.append(
-                    "canonical ledger decomposedSources movedRange values may "
-                    f"not overlap: parts {previous[2]} and {current[2]}"
-                )
-    if original_paths != sorted(original_paths):
-        errors.append("canonical ledger decomposedSources must be sorted by originalPath")
-    if part_paths != sorted(part_paths):
-        errors.append("canonical ledger decomposedSources parts must be sorted by path")
-    if len(set(original_paths)) != len(original_paths):
-        errors.append("canonical ledger decomposedSources originalPath values must be unique")
-    if len(set(part_paths)) != len(part_paths):
-        errors.append("canonical ledger decomposedSources part paths must be unique")
-    if set(original_paths) & set(part_paths):
-        errors.append("canonical ledger decomposedSources cannot map an original onto itself")
-    if set(original_identities) & set(part_identities):
-        errors.append(
-            "canonical ledger decomposedSources cannot map case-insensitive "
-            "aliases of an original onto a part"
         )
     return errors
 
