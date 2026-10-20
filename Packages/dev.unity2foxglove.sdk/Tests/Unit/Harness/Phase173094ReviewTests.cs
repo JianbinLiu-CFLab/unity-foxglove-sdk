@@ -68,6 +68,9 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void LyricalValidatorRegressionIsSelfContainedAndAssertFree()
         {
             var tests = TestSources.Text("Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package.py");
+            tests += TestSources.Text("Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/foundation.py");
+            tests += TestSources.Text("Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/layout_metadata_tests.py");
+            tests += TestSources.Text("Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/public_boundary_tests.py");
 
             Assert.Contains("if spec.loader is None:", tests, StringComparison.Ordinal);
             Assert.Contains("self.validator.MANIFEST = manifest", tests, StringComparison.Ordinal);

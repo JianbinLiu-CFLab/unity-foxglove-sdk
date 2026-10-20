@@ -36,9 +36,10 @@ def load_tests(loader, tests, pattern):
     if pattern is None:
         return tests
     if _phase192_load_tests_used:
-        return ()
+        return loader.suiteClass()
     _phase192_load_tests_used = True
     return tests
+
 
 __all__ = [
     "Path",
