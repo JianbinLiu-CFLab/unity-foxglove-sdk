@@ -177,39 +177,9 @@ internal static class TestSources
                 "dev.unity2foxglove.sdk",
                 "Editor",
                 "Publishers");
-            var sectionDirectory = Path.Combine(
-                directory,
-                "Decomposed",
-                "FoxgloveCameraPublisherEditor");
-            var sectionNames = new[]
-            {
-                "InspectorLifecycle.cs",
-                "DrawSections.cs",
-                "BrowsePaths.cs",
-                "StatusChecks.cs",
-                "InstallWindows.cs",
-            };
-            var actualSectionNames = Directory.GetFiles(
-                    sectionDirectory,
-                    "*.cs",
-                    SearchOption.TopDirectoryOnly)
-                .Select(Path.GetFileName)
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToArray();
-            var expectedSectionNames = sectionNames
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToArray();
-            Assert.Equal(expectedSectionNames, actualSectionNames);
-            var paths = new[]
-                {
-                    Path.Combine(directory, "FoxgloveCameraPublisherEditor.cs"),
-                }
-                .Concat(sectionNames.Select(name => Path.Combine(sectionDirectory, name)))
-                .ToArray();
-            foreach (var path in paths)
-                Assert.True(File.Exists(path), "Camera publisher editor source not found: " + path);
-
-            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+            var path = Path.Combine(directory, "FoxgloveCameraPublisherEditor.cs");
+            Assert.True(File.Exists(path), "Camera publisher editor source not found: " + path);
+            return File.ReadAllText(path);
         }
 
         private static string ProgramSources()
