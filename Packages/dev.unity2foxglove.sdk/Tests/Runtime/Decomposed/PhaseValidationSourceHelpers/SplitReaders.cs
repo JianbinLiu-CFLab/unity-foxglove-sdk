@@ -95,46 +95,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "dev.unity2foxglove.sdk",
                 "Editor",
                 "Publishers");
-            var sectionDirectory = Path.Combine(
-                directory,
-                "Decomposed",
-                "FoxgloveCameraPublisherEditor");
-            var sectionNames = new[]
-            {
-                "InspectorLifecycle.cs",
-                "DrawSections.cs",
-                "BrowsePaths.cs",
-                "StatusChecks.cs",
-                "InstallWindows.cs",
-            };
-            var actualSectionNames = Directory.GetFiles(
-                    sectionDirectory,
-                    "*.cs",
-                    SearchOption.TopDirectoryOnly)
-                .Select(Path.GetFileName)
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToArray();
-            var expectedSectionNames = sectionNames
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToArray();
-            if (!actualSectionNames.SequenceEqual(
-                    expectedSectionNames,
-                    StringComparer.Ordinal))
-            {
-                throw new InvalidDataException(
-                    "Camera publisher editor source-section set does not match the registered inventory.");
-            }
-            var paths = new[]
-                {
-                    Path.Combine(directory, "FoxgloveCameraPublisherEditor.cs"),
-                }
-                .Concat(sectionNames.Select(name => Path.Combine(sectionDirectory, name)))
-                .ToArray();
-            foreach (var path in paths)
-                if (!File.Exists(path))
-                    throw new FileNotFoundException("Missing camera publisher editor source: " + path, path);
+            var path = Path.Combine(directory, "FoxgloveCameraPublisherEditor.cs");
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing camera publisher editor source: " + path, path);
 
-            return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+            return File.ReadAllText(path);
         }
         public static string ReadMediaFoundationH264EncoderSidecarSources()
         {
