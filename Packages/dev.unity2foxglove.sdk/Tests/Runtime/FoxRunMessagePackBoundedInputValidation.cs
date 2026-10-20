@@ -29,7 +29,10 @@ namespace Unity.FoxgloveSDK.Tests
                     "CommitOwnedInput"),
                 "185C-1: generated input uses the one bounded reader and transactional reservation seam");
 
-            var router = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
+            var router = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Dispatch.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Lifetime.cs");
             Check(
                 ContainsAll(
                     router,

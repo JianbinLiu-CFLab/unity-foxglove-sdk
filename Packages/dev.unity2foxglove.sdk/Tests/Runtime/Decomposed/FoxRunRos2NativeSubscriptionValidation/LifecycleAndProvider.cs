@@ -149,8 +149,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var emitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRun/Ros2InputDispatchEmitter.cs");
-            var router = PhaseValidationSourceHelpers.ReadRequiredRepoText(
-                CorePackageRoot + "/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
+            var router = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
+                CorePackageRoot + "/Runtime/Components/FoxRun/FoxRunInputRouter.cs",
+                CorePackageRoot + "/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Dispatch.cs",
+                CorePackageRoot + "/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Lifetime.cs");
             var catalog = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Runtime/Components/FoxRun/FoxRunSubscriptionCatalog.cs");
 
