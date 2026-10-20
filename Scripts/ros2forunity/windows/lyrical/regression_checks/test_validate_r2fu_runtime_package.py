@@ -30,17 +30,6 @@ else:
 
 
 
-_PHASE192_DISCOVERY_SUPPRESS = "discover" in _phase192_sys.argv[1:]
-if _PHASE192_DISCOVERY_SUPPRESS:
-    import unittest as _phase192_unittest
-    for _phase192_name in tuple(globals()):
-        _phase192_value = globals().get(_phase192_name)
-        if (
-            isinstance(_phase192_value, type)
-            and issubclass(_phase192_value, _phase192_unittest.TestCase)
-            and _phase192_value is not _phase192_unittest.TestCase
-        ):
-            globals().pop(_phase192_name, None)
 
 class _Phase192FacadeModule(_phase192_types.ModuleType):
     """Mirror facade attribute updates into the test package."""
