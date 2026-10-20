@@ -28,7 +28,13 @@ _TYPE_ALIAS_TYPE = getattr(ast, "TypeAlias", None)
 _SECTION_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
-SPLIT_ROOTS = (Path("Scripts"),)
+SPLIT_ROOTS = (
+    Path("Scripts/smoke/mcap"),
+    Path("Scripts/smoke/replay"),
+    Path("Scripts/smoke/foxrun"),
+    Path("Scripts/smoke/ros2"),
+    Path("Scripts/smoke/websocket"),
+)
 IDENTITY_WAIVER_PATH = Path("Scripts/phase192/identity_waivers.json")
 
 def _load_identity_waivers(root: Path) -> dict[str, frozenset[str]]:
