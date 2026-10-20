@@ -150,11 +150,6 @@ internal static class TestSources
                 return MediaFoundationH264EncoderSidecarSources();
             if (string.Equals(
                     normalized,
-                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs",
-                    StringComparison.Ordinal))
-                return Ros2ForUnitySubscriptionHubSources();
-            if (string.Equals(
-                    normalized,
                     "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
                     StringComparison.Ordinal))
                 return CameraPublisherEditorSources();
@@ -234,50 +229,6 @@ internal static class TestSources
             foreach (var fileName in fileNames.Skip(1))
                 source += Environment.NewLine + File.ReadAllText(Path.Combine(root, fileName));
             return source + Environment.NewLine + facade.Substring(gateStart).TrimStart();
-        }
-
-        private static string Ros2ForUnitySubscriptionHubSources()
-        {
-            var root = Path.Combine(
-                RepoRoot,
-                "Packages",
-                "dev.unity2foxglove.ros2forunity",
-                "Runtime",
-                "Native",
-                "FoxRun");
-            var names = new[]
-            {
-                "FoxRunRos2SubscriptionHub.cs",
-                "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Scanning.cs",
-                "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Lifecycle.cs",
-                "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Bindings.cs",
-            };
-            var facadeLines = File.ReadAllLines(Path.Combine(root, names[0]));
-            var source = string.Join(Environment.NewLine, TrimWrapper(facadeLines, 0));
-            foreach (var name in names.Skip(1))
-            {
-                var lines = File.ReadAllLines(Path.Combine(root, name.Replace('/', Path.DirectorySeparatorChar)));
-                var classLine = Array.FindIndex(lines, line => line.Contains("partial class FoxRunRos2SubscriptionHub", StringComparison.Ordinal));
-                var open = Array.FindIndex(lines, classLine, line => line.Trim() == "{");
-                source += Environment.NewLine + string.Join(Environment.NewLine, TrimWrapper(lines, open + 1).Skip(open + 1));
-            }
-            return source + Environment.NewLine + "    }" + Environment.NewLine + "}" + Environment.NewLine + "#endif";
-        }
-
-        private static string[] TrimWrapper(string[] lines, int minimum)
-        {
-            var end = lines.Length;
-            while (end > 0 && string.IsNullOrWhiteSpace(lines[end - 1])) end--;
-            if (end > 0 && lines[end - 1].Trim() == "#endif") end--;
-            while (end > minimum && string.IsNullOrWhiteSpace(lines[end - 1])) end--;
-            for (var brace = 0; brace < 2; brace++)
-            {
-                while (end > minimum && string.IsNullOrWhiteSpace(lines[end - 1])) end--;
-                if (end <= minimum || lines[end - 1].Trim() != "}")
-                    throw new InvalidOperationException("Malformed ROS2 subscription hub wrapper.");
-                end--;
-            }
-            return lines.Take(end).ToArray();
         }
 
         private static string MediaFoundationH264EncoderSidecarSources()
