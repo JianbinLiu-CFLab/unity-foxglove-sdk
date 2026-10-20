@@ -30,21 +30,18 @@ namespace Unity.FoxgloveSDK.Tests
                 "Runtime",
                 "Native",
                 "FoxRun");
-            var paths = SourceFileNames
-                .Select(relativePath => Path.Combine(
-                    nativeRoot,
-                    relativePath.Replace('/', Path.DirectorySeparatorChar)))
-                .ToArray();
-            foreach (var path in paths)
-                if (!File.Exists(path))
-                    throw new FileNotFoundException("Missing ROS2 for Unity subscription hub source: " + path, path);
+            var facadePath = Path.Combine(
+                nativeRoot,
+                SourceFileNames[0].Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(facadePath))
+                throw new FileNotFoundException("Missing ROS2 for Unity subscription hub source: " + facadePath, facadePath);
 
             var fragmentDirectory = Path.Combine(
                 nativeRoot,
                 "Decomposed",
                 "FoxRunRos2SubscriptionHub");
             if (!Directory.Exists(fragmentDirectory))
-                throw new DirectoryNotFoundException("ROS2 for Unity subscription hub decomposed directory was not found.");
+                return File.ReadAllText(facadePath);
 
             var expectedFragments = SourceFileNames
                 .Skip(1)
@@ -53,12 +50,23 @@ namespace Unity.FoxgloveSDK.Tests
             var actualFragments = Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
                 .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
                 .ToHashSet(StringComparer.Ordinal);
+            if (actualFragments.Count == 0)
+                return File.ReadAllText(facadePath);
             if (!expectedFragments.SetEquals(actualFragments))
                 throw new InvalidDataException(
                     "ROS2 for Unity subscription hub source set mismatch. Expected: "
                     + string.Join(", ", expectedFragments.OrderBy(name => name, StringComparer.Ordinal))
                     + "; actual: "
                     + string.Join(", ", actualFragments.OrderBy(name => name, StringComparer.Ordinal)));
+
+            var paths = SourceFileNames
+                .Select(relativePath => Path.Combine(
+                    nativeRoot,
+                    relativePath.Replace('/', Path.DirectorySeparatorChar)))
+                .ToArray();
+            foreach (var path in paths.Skip(1))
+                if (!File.Exists(path))
+                    throw new FileNotFoundException("Missing ROS2 for Unity subscription hub source: " + path, path);
 
             var sources = new List<string> { TrimFacade(paths[0]) };
             sources.AddRange(paths.Skip(1).Select(TrimFragment));
