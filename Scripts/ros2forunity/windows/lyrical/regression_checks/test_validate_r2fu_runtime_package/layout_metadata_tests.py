@@ -1,0 +1,153 @@
+from __future__ import annotations
+
+from .foundation import *
+
+
+class RuntimeLayoutMetadataTests:
+    """Exercise plugin layout, docs, and package metadata contracts"""
+
+    def test_runtime_dll_metas_use_plugin_importer_in_both_plugin_roots(self) -> None:
+        """Managed and native DLL metadata must be Unity plugin metadata."""
+        metas = list((self.validator.RUNTIME_ROOT / "Plugins").glob("*.dll.meta"))
+        metas.extend(self.validator.PLUGIN_ROOT.glob("*.dll.meta"))
+        self.assertGreater(len(metas), 0)
+        failures = [path for path in metas if "PluginImporter:" not in path.read_text(encoding="utf-8")]
+        self.assertEqual([], failures)
+
+    def test_player_runtime_paths_use_streaming_assets_and_plugin_root(self) -> None:
+        """Player metadata and native plugins must resolve from their build outputs."""
+        source = (self.validator.RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs").read_text(encoding="utf-8")
+        self.assertIn("Application.streamingAssetsPath", source)
+        self.assertIn("Application.dataPath", source)
+        self.assertIn("StreamingAssets", source)
+
+    def test_all_lyrical_dll_metas_use_plugin_importer(self) -> None:
+        """Native DLL metadata must be imported as Windows plugins, not text files."""
+        metas = list(self.validator.PLUGIN_ROOT.glob("*.dll.meta"))
+        self.assertGreater(len(metas), 0)
+        self.assertTrue(all("PluginImporter:" in path.read_text(encoding="utf-8") for path in metas))
+
+    def test_release_gate_rejects_prototype_distribution(self) -> None:
+        """Release gate rejects Prototype and records missing-field behavior."""
+        self.assertFalse(self.validator.published_runtime_is_not_prototype({"distributionLevel": "Prototype"}))
+        self.assertTrue(self.validator.published_runtime_is_not_prototype({"distributionLevel": "Release"}))
+        self.assertTrue(self.validator.published_runtime_is_not_prototype({}))
+
+    def test_public_docs_must_include_artifact_hash(self) -> None:
+        """Public docs validation rejects README/notices that omit the artifact hash."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            readme = package / "README.md"
+            notices = package / "THIRD_PARTY_NOTICES.md"
+            package_json = package / "package.json"
+            manifest = package / "runtime-manifest.json"
+            artifact_sha = "a" * 64
+
+            readme.write_text(
+                "runtime.lyrical.win64 adapter combined Unity2Foxglove workflow\n"
+                "Install only one dev.unity2foxglove.ros2forunity.runtime.* package\n",
+                encoding="utf-8",
+            )
+            notices.write_text(artifact_sha, encoding="utf-8")
+            package_json.write_text("{}", encoding="utf-8")
+            manifest.write_text(f'{{"artifactSha256":"{artifact_sha}"}}', encoding="utf-8")
+
+            self.validator.PACKAGE = package
+            self.validator.MANIFEST = manifest
+            self.validator.PUBLIC_DOCS = (readme, notices, package_json, manifest)
+            results = []
+
+            self.validator.check_public_docs(results)
+
+        failed = [result.name for result in results if not result.ok]
+        self.assertIn("README documents artifact SHA-256", failed)
+
+    def test_managed_deps_reject_spurious_service_msgs_for_visualization_packets(self) -> None:
+        """Known no-service message packages should not carry service_msgs dependencies."""
+        with tempfile.TemporaryDirectory() as temp:
+            runtime_root = Path(temp) / "Runtime" / "Ros2ForUnity"
+            plugin_root = runtime_root / "Plugins"
+            plugin_root.mkdir(parents=True)
+            for name in ("stereo_msgs_assembly", "visualization_msgs_assembly"):
+                (plugin_root / f"{name}.deps.json").write_text(
+                    json.dumps(
+                        {
+                            "targets": {
+                                ".NETStandard,Version=v2.0/": {
+                                    f"{name}/1.0.0": {
+                                        "dependencies": {
+                                            "service_msgs_assembly": "0.0.0.0",
+                                        },
+                                    },
+                                    "service_msgs_assembly/0.0.0.0": {},
+                                },
+                            },
+                            "libraries": {
+                                "service_msgs_assembly/0.0.0.0": {},
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            self.validator.RUNTIME_ROOT = runtime_root
+            results = []
+
+            self.validator.check_managed_deps_consistency(results)
+
+        failed = [result.name for result in results if not result.ok]
+        self.assertEqual(2, len([name for name in failed if "spurious service_msgs" in name]))
+
+    def test_runtime_source_declares_rmw_guard(self) -> None:
+        """ROS2ForUnity startup path declares and enforces supported RMWs."""
+        source = (
+            self.validator.RUNTIME_ROOT
+            / "Scripts"
+            / "ROS2ForUnity.cs"
+        ).read_text(encoding="utf-8", errors="replace")
+
+        self.assertIn("defaultRmwImplementation", source)
+        self.assertIn("zenohRmwImplementation", source)
+        self.assertIn("IsSupportedRmwImplementation", source)
+        self.assertIn("ValidateRmwImplementation", source)
+        self.assertIn("rmw_fastrtps_cpp", source)
+        self.assertIn("rmw_zenoh_cpp", source)
+
+    def test_runtime_asmdef_is_windows_constrained(self) -> None:
+        """The packaged runtime assembly must not compile in unsupported editors."""
+        data = self.validator.load_json(
+            self.validator.RUNTIME_ROOT
+            / "Scripts"
+            / "Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef",
+            [],
+            "runtime asmdef",
+        )
+        self.assertEqual(
+            ["UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN"],
+            data.get("defineConstraints"),
+        )
+
+    def test_package_metadata_requires_explicit_empty_dependencies(self) -> None:
+        """Runtime package metadata should declare that it has no external package dependencies."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "package.json").write_text(
+                '{"name":"dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",'
+                '"version":"0.1.0-preview.1",'
+                '"displayName":"Unity2Foxglove ROS2 For Unity Runtime - Lyrical Win64",'
+                '"license":"Apache-2.0",'
+                '"unity":"6000.0",'
+                '"description":"Optional Lyrical Windows x64 runtime package for Unity2Foxglove ROS2 For Unity integration.",'
+                '"keywords":["ros2","ros2-for-unity","lyrical","win64"]}',
+                encoding="utf-8",
+            )
+            self.validator.PACKAGE = package
+            results = []
+
+            self.validator.check_package_metadata(results)
+
+        by_name = {result.name: result for result in results}
+        self.assertFalse(by_name["package declares no external dependencies"].ok)
+
+
+__all__ = ["RuntimeLayoutMetadataTests"]

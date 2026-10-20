@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(catalogGenerate.Contains("write_text_if_changed(output, text)", StringComparison.Ordinal)
                   && !catalogGenerate.Contains("output.write_text(text", StringComparison.Ordinal),
                 "164-43A-3: ROS2 msg catalog generation routes output through the write-if-changed helper");
-            Check(Read("Scripts/schema/regression_checks/test_schema_tooling.py").Contains("test_generators_skip_identical_text_writes", StringComparison.Ordinal),
+            Check(Read("Scripts/schema/regression_checks/test_schema_tooling/schema_tests.py").Contains("test_generators_skip_identical_text_writes", StringComparison.Ordinal),
                 "164-43A-4: schema tooling regression covers unchanged generated-file mtimes");
         }
 
