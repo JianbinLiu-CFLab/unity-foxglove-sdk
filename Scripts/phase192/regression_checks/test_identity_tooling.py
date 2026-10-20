@@ -617,7 +617,7 @@ class IdentityToolingTests(unittest.TestCase):
             "Scripts/package/regression_checks/test_validate_unity_package.py",
             relative,
         )
-        self.assertEqual(58, len(relative))
+        self.assertEqual(61, len(relative))
 
     def test_split_identity_surface_rejects_relative_star_chain_change(self) -> None:
         """Changing a section's relative star-import source changes runtime overwrite order."""
