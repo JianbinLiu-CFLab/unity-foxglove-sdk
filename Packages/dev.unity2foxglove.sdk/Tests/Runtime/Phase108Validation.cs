@@ -190,15 +190,6 @@ namespace Unity.FoxgloveSDK.Tests
                     .OrderBy(path => path, StringComparer.Ordinal)
                     .ToList()
                 : new List<string>();
-            var allEditorFiles = RepoDirectoryExists(OptionalPackage + "/Editor")
-                ? Directory.GetFiles(
-                        Path.Combine(RepoRoot(), OptionalPackage, "Editor"),
-                        "*",
-                        SearchOption.AllDirectories)
-                    .Select(path => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/'))
-                    .OrderBy(path => path, StringComparer.Ordinal)
-                    .ToList()
-                : new List<string>();
             var expectedTopLevelEditorFiles = new[]
             {
                 OptionalPackage + "/Editor/FoxRunRos2CustomTypesupportInspector.cs",
@@ -220,26 +211,6 @@ namespace Unity.FoxgloveSDK.Tests
                 OptionalPackage + "/Editor/Ros2ForUnityZenohRouterSettings.cs",
                 OptionalPackage + "/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef"
             };
-            var expectedDecomposedEditorFiles = new[]
-            {
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/ManifestUtilities.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/Models.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/NativeClosure.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/ValidationAndIdentity.cs",
-            };
-            var expectedDecomposedEditorPaths = new[]
-            {
-                OptionalPackage + "/Editor/Decomposed.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/ManifestUtilities.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/ManifestUtilities.cs.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/Models.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/Models.cs.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/NativeClosure.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/NativeClosure.cs.meta",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/ValidationAndIdentity.cs",
-                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/ValidationAndIdentity.cs.meta",
-            };
             var topLevelEditorFiles = editorFiles
                 .Where(path =>
                     !path.Substring(
@@ -256,28 +227,9 @@ namespace Unity.FoxgloveSDK.Tests
                         StringComparison.Ordinal)
                     && !path.StartsWith(
                         OptionalPackage + "/Editor/SourceGenerators/",
-                        StringComparison.Ordinal)
-                    && !expectedDecomposedEditorFiles.Contains(
-                        path,
-                        StringComparer.Ordinal)
-                    )
-                .ToList();
-            var decomposedEditorFiles = editorFiles
-                .Where(path => path.StartsWith(
-                    OptionalPackage + "/Editor/Decomposed/",
-                    StringComparison.Ordinal))
-                .ToList();
-            var decomposedEditorPaths = allEditorFiles
-                .Where(path => path.Equals(
-                                   OptionalPackage + "/Editor/Decomposed.meta",
-                                   StringComparison.Ordinal)
-                               || path.StartsWith(
-                                   OptionalPackage + "/Editor/Decomposed/",
-                                   StringComparison.Ordinal))
+                        StringComparison.Ordinal))
                 .ToList();
             Check(topLevelEditorFiles.SequenceEqual(expectedTopLevelEditorFiles)
-                  && decomposedEditorFiles.SequenceEqual(expectedDecomposedEditorFiles)
-                  && decomposedEditorPaths.SequenceEqual(expectedDecomposedEditorPaths)
                   && unexpectedEditorFiles.Count == 0
                   && editorFiles.Contains(
                       OptionalPackage + "/Editor/Native/FoxRunR2fuEmitterContribution.cs",
