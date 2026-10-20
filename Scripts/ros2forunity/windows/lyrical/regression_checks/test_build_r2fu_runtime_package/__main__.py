@@ -8,4 +8,4 @@ import unittest
 from . import *
  
 if __name__ == "__main__":
-    raise SystemExit(unittest.main(module=__name__))
+    raise SystemExit(unittest.main(module=None))
