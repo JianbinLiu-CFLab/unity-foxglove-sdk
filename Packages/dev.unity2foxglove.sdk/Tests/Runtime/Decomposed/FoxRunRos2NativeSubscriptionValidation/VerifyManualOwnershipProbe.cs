@@ -25,8 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
             var probeMeta = PhaseValidationSourceHelpers.ReadRequiredRepoText(probePath + ".meta");
             var diagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionDiagnostics.cs");
-            var binding = PhaseValidationSourceHelpers.ReadRequiredRepoText(
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionBinding.cs");
+            var binding = PhaseValidationSourceHelpers.ReadFoxRunRos2SubscriptionBindingSources();
             var slot = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2OwnedLatestSlot.cs");
             var armBurst = RequiredRos2ForUnityMethod(

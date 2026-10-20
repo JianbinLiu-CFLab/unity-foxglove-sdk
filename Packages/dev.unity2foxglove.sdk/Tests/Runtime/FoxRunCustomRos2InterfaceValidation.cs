@@ -189,7 +189,7 @@ namespace Unity.FoxgloveSDK.Tests
             var customTransportHost = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomTransportHostPath);
             var customPublisherHub = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublisherHubPath);
             var customPublisherBinding = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublisherBindingPath);
-            var subscriptionBinding = PhaseValidationSourceHelpers.ReadRequiredRepoText(SubscriptionBindingPath);
+            var subscriptionBinding = PhaseValidationSourceHelpers.ReadFoxRunRos2SubscriptionBindingSources();
             var customOutboundPolicy = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomOutboundPolicyPath);
             var customOutboundBudgetPolicy =
                 PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomOutboundBudgetPolicyPath);
