@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 if __package__:
+    from . import *
     _phase192_package = importlib.import_module(__package__)
 else:
     _phase192_repo_root = Path(__file__).resolve().parents[4]
