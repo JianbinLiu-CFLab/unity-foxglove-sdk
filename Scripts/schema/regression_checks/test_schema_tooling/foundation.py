@@ -57,9 +57,15 @@ def load_tests(loader, tests, pattern):
     _phase192_load_tests_used = True
     return tests
 
+def _phase192_package_getattr(name):
+    """Expose the single-pass discovery hook without changing package exports."""
+    if name == "load_tests":
+        return load_tests
+    raise AttributeError(name)
+
 _phase192_package_module = sys.modules.get(__package__)
 if _phase192_package_module is not None:
-    _phase192_package_module.load_tests = load_tests
+    _phase192_package_module.__getattr__ = _phase192_package_getattr
 del _phase192_package_module
 
 __all__ = [name for name in globals() if not name.startswith("__")]
