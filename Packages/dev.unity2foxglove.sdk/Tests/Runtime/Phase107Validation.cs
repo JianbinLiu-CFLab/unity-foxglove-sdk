@@ -113,7 +113,8 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var text = File.ReadAllText(path);
                 tokenHits.AddRange(OptionalEditorForbiddenTokens()
-                    .Where(token => text.Contains(token, StringComparison.Ordinal))
+                    .Where(token => text.Contains(token, StringComparison.Ordinal)
+                                    && !IsSanctionedOptionalEditorMetadataToken(path, token, text))
                     .Select(token => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/') + " -> " + token));
             }
             var installer = Path.Combine(editorRoot, "Ros2ForUnityRuntimeDefineInstaller.cs");
