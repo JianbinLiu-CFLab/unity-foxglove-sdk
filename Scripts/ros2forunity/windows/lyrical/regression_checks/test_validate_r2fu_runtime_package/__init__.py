@@ -64,6 +64,6 @@ def load_tests(loader, tests, pattern):
     if pattern is None:
         return tests
     if _phase192_load_tests_used:
-        return loader.suiteClass()
+        return ()
     _phase192_load_tests_used = True
     return tests
