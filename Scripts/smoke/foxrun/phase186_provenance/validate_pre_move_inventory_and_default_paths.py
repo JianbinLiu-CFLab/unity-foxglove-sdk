@@ -1,3 +1,4 @@
+'Compatibility facade for the Phase192 decomposed source package.'
 from __future__ import annotations
 from .validate_repository_provenance_and_git_tree_paths import *
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase186_provenance.py"

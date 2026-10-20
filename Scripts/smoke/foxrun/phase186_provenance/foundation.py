@@ -118,10 +118,6 @@ _PROTOCOL_SOURCE_ROOTS = (
         "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test",
         "test_u2r2_protocol*.cpp",
     ),
-    (
-        "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test",
-        "u2r2_protocol*.hpp",
-    ),
 )
 _PHASE186B_SOURCE_COMMITS = (
     (
@@ -133,11 +129,6 @@ _PHASE186B_SOURCE_COMMITS = (
         "3f1b47e973713bf77fe149d04472f4a8ecbe8b71",
         "fix(186b): enforce U2R2 replay and ordering bounds",
         8,
-    ),
-    (
-        "896ca39467550cd1c9972601b04c5cd130c0d9fb",
-        "refactor(phase192): split U2R2 protocol gtests",
-        2,
     ),
 )
 _INVENTORY_CAPTURE_COMMIT = "b5388cb4051750939776d217208f467f37aa86c6"
