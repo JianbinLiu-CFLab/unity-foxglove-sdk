@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys as _phase192_sys
 import types as _phase192_types
+import unittest as _phase192_unittest
 from pathlib import Path as _Phase192Path
 
 _PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "test_schema_tooling.py"
@@ -45,8 +46,21 @@ class _Phase192PackageModule(_phase192_types.ModuleType):
                 _phase192_section.__dict__.pop(name, None)
 
 __all__ = sorted(_PHASE192_EXPORT_NAMES)
+
+_phase192_load_tests_used = False
+
+def load_tests(loader, tests, pattern):
+    """Collect split facade tests once during unittest discovery."""
+    global _phase192_load_tests_used
+    if pattern is None:
+        return tests
+    if _phase192_load_tests_used:
+        return loader.suiteClass()
+    _phase192_load_tests_used = True
+    return tests
+
 _phase192_module = _phase192_sys.modules.get(__name__)
 if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192PackageModule
-del _phase192_sys, _phase192_types, _Phase192Path, _PHASE192_FACADE_FILE, _PHASE192_PARENT
+del _phase192_sys, _phase192_types, _phase192_unittest, _Phase192Path, _PHASE192_FACADE_FILE, _PHASE192_PARENT
 del _phase192_module, _phase192_section, _phase192_name
