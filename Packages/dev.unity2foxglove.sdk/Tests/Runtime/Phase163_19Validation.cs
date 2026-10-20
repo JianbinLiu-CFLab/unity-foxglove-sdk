@@ -69,7 +69,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void GeneratorSupportsFuturePrimitivesAndGeometrySequences()
         {
             var generator = ReadRepoText("Scripts/schema/generate_ros2_cdr_serializers.py");
-            var regression = ReadRepoText("Scripts/schema/regression_checks/test_schema_tooling.py");
+            var regression = ReadRepoText("Scripts/schema/regression_checks/test_schema_tooling/schema_tests.py");
 
             Check(generator.Contains("\"int16\"", StringComparison.Ordinal)
                   && generator.Contains("writer.WriteInt16((short)", StringComparison.Ordinal)
