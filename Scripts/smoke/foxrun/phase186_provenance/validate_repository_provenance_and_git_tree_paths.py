@@ -1,9 +1,313 @@
 from __future__ import annotations
+import re as _phase192_re
 from .discover_protocol_sources_and_phase186b_introduced_sources import *
 from .foundation import __decomposed_authority_paths
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase186_provenance.py"
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
+
+
+def _source_lines(raw: bytes) -> list[str]:
+    """Decode a source blob into its original physical lines."""
+    return raw.decode("utf-8", errors="strict").splitlines()
+
+
+def _is_source_wrapper_line(line: str) -> bool:
+    """Identify syntax-only lines that should not count as implementation body."""
+    stripped = line.strip()
+    if not stripped:
+        return True
+    if stripped.startswith(("//", "/*", "*", "*/")):
+        return True
+    if stripped.startswith("using ") and stripped.endswith(";"):
+        return True
+    if stripped.startswith("namespace ") and "(" not in stripped:
+        return True
+    if stripped in {"{", "}", "};"}:
+        return True
+    declaration_words = {
+        "public",
+        "private",
+        "protected",
+        "internal",
+        "file",
+        "static",
+        "abstract",
+        "sealed",
+        "unsafe",
+        "partial",
+    }
+    words = stripped.split()
+    if declaration_words.intersection(words[: len(words) - 1]) and any(
+        token in words for token in ("class", "struct", "interface", "record", "enum")
+    ):
+        return True
+    return False
+
+
+def _is_facade_wrapper_line(line: str) -> bool:
+    """Identify syntax-only facade lines and explicitly inert conditionals."""
+    stripped = line.strip()
+    return (
+        _is_source_wrapper_line(line)
+        or stripped == "#endif"
+        or _phase192_re.fullmatch(r"#if\s+(?:false|0)", stripped) is not None
+    )
+
+
+def _validate_moved_fragment(
+    original_lines: list[str],
+    part_lines: list[str],
+    start: int,
+    end: int,
+    path: str,
+) -> list[str]:
+    """Verify that a moved range maps exactly to the implementation in its part."""
+    fragment = original_lines[start - 1 : end]
+    hits = [
+        offset
+        for offset in range(len(part_lines) - len(fragment) + 1)
+        if part_lines[offset : offset + len(fragment)] == fragment
+    ]
+    if len(hits) != 1:
+        return [
+            f"{path}: decomposed source movedRange does not identify one exact "
+            f"source fragment (matches={len(hits)})"
+        ]
+    meaningful_fragment = [
+        line for line in fragment if not _is_source_wrapper_line(line)
+    ]
+    meaningful_part = [line for line in part_lines if not _is_source_wrapper_line(line)]
+    if not meaningful_fragment or meaningful_part != meaningful_fragment:
+        return [
+            f"{path}: decomposed source movedRange does not account for the "
+            "part implementation body"
+        ]
+    return []
+
+
+def _validate_decomposed_source_files(
+    repository: pathlib.Path,
+    payload: Mapping[str, object],
+    discovered_sources: set[str],
+    introduced_sources: Mapping[str, str],
+) -> tuple[set[str], set[str], list[str]]:
+    """Validate source-map parts and return their paths and canonical originals."""
+
+    errors: list[str] = []
+    part_paths: set[str] = set()
+    original_paths: set[str] = set()
+    records = payload.get("decomposedSources", [])
+    if not isinstance(records, list):
+        return part_paths, original_paths, errors
+
+    for index, record in enumerate(records):
+        if not isinstance(record, Mapping):
+            continue
+        original = record.get("originalPath")
+        revision = record.get("sourceRevision")
+        original_digest = record.get("originalSha256")
+        parts = record.get("parts")
+        if not isinstance(original, str) or not isinstance(revision, str):
+            continue
+        original_lines: list[str] = []
+        decomposition_revision = record.get("decompositionRevision")
+        try:
+            original = _canonical_relative_path(
+                original,
+                label=f"decomposedSources[{index}].originalPath",
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        original_paths.add(original)
+        if original not in discovered_sources:
+            errors.append(
+                f"decomposed source original is not present in the working tree: {original}"
+            )
+        if original not in introduced_sources:
+            errors.append(
+                f"decomposed source original is outside the fixed Phase186B source set: {original}"
+            )
+        try:
+            if _subprocess_lines(["git", "cat-file", "-t", revision], repository)[0] != "commit":
+                errors.append(f"decomposed source revision is not a commit: {revision}")
+            ancestor = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", revision, "HEAD"],
+                cwd=repository,
+                check=False,
+                capture_output=True,
+            )
+            if ancestor.returncode != 0:
+                errors.append(f"decomposed source revision is not an ancestor of HEAD: {revision}")
+            original_bytes = _git_blob(repository, revision, original)
+            if _sha256_bytes(_canonical_source_bytes(original_bytes)) != original_digest:
+                errors.append(
+                    f"{original}: decomposed source originalSha256 does not match "
+                    f"{revision}:{original}"
+                )
+            original_lines = _source_lines(original_bytes)
+            line_count = len(original_lines)
+        except (IndexError, OSError, RuntimeError, UnicodeDecodeError, ValueError) as exc:
+            errors.append(f"could not validate decomposed source baseline {original}: {exc}")
+            line_count = 0
+        if not isinstance(parts, list):
+            continue
+        historical_revision_is_valid = False
+        if not isinstance(decomposition_revision, str):
+            errors.append(
+                "decomposed source decompositionRevision is required: "
+                f"{original}"
+            )
+        else:
+            try:
+                if _subprocess_lines(
+                    ["git", "cat-file", "-t", decomposition_revision],
+                    repository,
+                )[0] != "commit":
+                    errors.append(
+                        "decomposed source decompositionRevision is not a commit: "
+                        f"{decomposition_revision}"
+                    )
+                else:
+                    ancestor = subprocess.run(
+                        ["git", "merge-base", "--is-ancestor", decomposition_revision, "HEAD"],
+                        cwd=repository,
+                        check=False,
+                        capture_output=True,
+                    )
+                    if ancestor.returncode != 0:
+                        errors.append(
+                            "decomposed source decompositionRevision is not an ancestor of HEAD: "
+                            f"{decomposition_revision}"
+                        )
+                    else:
+                        historical_revision_is_valid = True
+            except (IndexError, OSError, RuntimeError, ValueError) as exc:
+                errors.append(
+                    "could not validate decomposed source decomposition baseline "
+                    f"{decomposition_revision}: {exc}"
+                )
+        for part_index, part in enumerate(parts):
+            if not isinstance(part, Mapping):
+                continue
+            path = part.get("path")
+            digest = part.get("sha256")
+            moved_range = part.get("movedRange")
+            if not isinstance(path, str):
+                continue
+            try:
+                path = _canonical_relative_path(
+                    path,
+                    label=f"decomposedSources[{index}].parts[{part_index}].path",
+                )
+            except ValueError as exc:
+                errors.append(str(exc))
+                continue
+            part_paths.add(path)
+            if path not in discovered_sources:
+                errors.append(f"decomposed source part is not discovered: {path}")
+            raw: bytes | None = None
+            try:
+                raw = _resolve_regular_file_contained(
+                    repository,
+                    path,
+                    label="decomposed source part",
+                ).read_bytes()
+                if _sha256_bytes(_canonical_source_bytes(raw)) != digest:
+                    errors.append(f"{path}: decomposed source sha256 mismatch")
+            except (OSError, ValueError) as exc:
+                errors.append(str(exc))
+            if isinstance(moved_range, Mapping):
+                start = moved_range.get("startLine")
+                end = moved_range.get("endLine")
+                if (
+                    type(start) is not int
+                    or type(end) is not int
+                    or start < 1
+                    or end < start
+                    or end > line_count
+                ):
+                    errors.append(f"{path}: decomposed source movedRange is outside the baseline")
+                elif (
+                    raw is not None
+                    and original_lines
+                    and type(start) is int
+                    and type(end) is int
+                    and historical_revision_is_valid
+                ):
+                    try:
+                        historical_part = _git_blob(
+                            repository,
+                            decomposition_revision,
+                            path,
+                        )
+                    except (OSError, RuntimeError, ValueError) as exc:
+                        errors.append(
+                            f"{path}: could not read decomposition baseline: {exc}"
+                        )
+                    else:
+                        errors.extend(
+                            _validate_moved_fragment(
+                                original_lines,
+                                _source_lines(historical_part),
+                                start,
+                                end,
+                                path,
+                            )
+                        )
+
+        if original_lines:
+            covered_lines: set[int] = set()
+            for part in parts:
+                if not isinstance(part, Mapping):
+                    continue
+                moved_range = part.get("movedRange")
+                if not isinstance(moved_range, Mapping):
+                    continue
+                start = moved_range.get("startLine")
+                end = moved_range.get("endLine")
+                if (
+                    type(start) is int
+                    and type(end) is int
+                    and 1 <= start <= end <= len(original_lines)
+                ):
+                    covered_lines.update(range(start, end + 1))
+            try:
+                facade_path = _resolve_regular_file_contained(
+                    repository,
+                    original,
+                    label="decomposed source facade",
+                )
+                facade_lines = _source_lines(facade_path.read_bytes())
+            except (OSError, ValueError, UnicodeDecodeError) as exc:
+                errors.append(f"{original}: could not read decomposed source facade: {exc}")
+            else:
+                expected_facade = [
+                    line
+                    for line_number, line in enumerate(original_lines, 1)
+                    if line_number not in covered_lines
+                    and not _is_facade_wrapper_line(line)
+                ]
+                actual_facade = [
+                    line for line in facade_lines if not _is_facade_wrapper_line(line)
+                ]
+                if expected_facade != actual_facade:
+                    errors.append(
+                        f"{original}: decomposed source facade body does not cover "
+                        "the unmoved baseline lines"
+                    )
+
+    unmapped = discovered_sources - part_paths - original_paths
+    unexpected = sorted(unmapped - set(introduced_sources))
+    if unexpected:
+        errors.append(
+            "protocol source files are outside the fixed Phase186B introduced set: "
+            + ", ".join(unexpected)
+        )
+    return part_paths, original_paths, errors
+
+
 def validate_repository_provenance(
     repository: pathlib.Path,
     reference_root: pathlib.Path,
@@ -143,9 +447,19 @@ def validate_repository_provenance(
     errors.extend(
         _validate_canonical_ledger_schema(payload, introduced_sources)
     )
-    if discovered_sources != set(introduced_sources):
-        missing = sorted(set(introduced_sources) - discovered_sources)
-        extra = sorted(discovered_sources - set(introduced_sources))
+    part_paths, mapped_originals, source_map_errors = _validate_decomposed_source_files(
+        repository,
+        payload,
+        discovered_sources,
+        introduced_sources,
+    )
+    errors.extend(source_map_errors)
+    canonical_discovered_sources = (
+        discovered_sources - part_paths
+    ) | mapped_originals
+    if canonical_discovered_sources != set(introduced_sources):
+        missing = sorted(set(introduced_sources) - canonical_discovered_sources)
+        extra = sorted(canonical_discovered_sources - set(introduced_sources))
         if missing:
             errors.append(
                 "fixed Phase186B protocol source files are missing: "
@@ -159,7 +473,7 @@ def validate_repository_provenance(
 
     decomposed_authorities = __decomposed_authority_paths(repository)
     expected_implementation_paths = (
-        discovered_sources
+        canonical_discovered_sources
         | set(_REQUIRED_RECORDED_AUTHORITIES)
         | set(decomposed_authorities)
     )

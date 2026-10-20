@@ -379,5 +379,272 @@ class _Phase186ProvenanceTests_fixtures:
             errors,
         )
 
+    def test_decomposed_source_map_validates_baseline_and_part_hashes(self) -> None:
+        """A source map binds split files to one reachable baseline blob."""
+
+        module = load_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = pathlib.Path(temporary)
+            initialize_git_repository(repository)
+            original = repository / "Protocol/Authority.cs"
+            original.parent.mkdir(parents=True)
+            original.write_text("// header\nline one\nline two\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+            run_git(repository, "commit", "--quiet", "-m", "baseline")
+            revision = run_git(repository, "rev-parse", "HEAD")
+            part = repository / "Protocol/Decomposed/AuthorityPart.cs"
+            part.parent.mkdir(parents=True)
+            part.write_text("// header\nline two\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+            run_git(repository, "commit", "--quiet", "-m", "decompose")
+            decomposition_revision = run_git(repository, "rev-parse", "HEAD")
+            part.write_text(
+                "// header\nline two\nprivate static void AddedLater() {}\n",
+                encoding="utf-8",
+            )
+            original_path = "Protocol/Authority.cs"
+            part_path = "Protocol/Decomposed/AuthorityPart.cs"
+            payload = {
+                "decomposedSources": [
+                    {
+                        "originalPath": original_path,
+                        "sourceRevision": revision,
+                        "decompositionRevision": decomposition_revision,
+                        "originalSha256": module._sha256_bytes(
+                            module._canonical_source_bytes(
+                                original.read_bytes()
+                            )
+                        ),
+                        "parts": [
+                            {
+                                "path": part_path,
+                                "sha256": module._sha256_bytes(
+                                    module._canonical_source_bytes(
+                                        part.read_bytes()
+                                    )
+                                ),
+                                "movedRange": {"startLine": 3, "endLine": 3},
+                            }
+                        ],
+                    }
+                ]
+            }
+            original.write_text("// header\nline one\n", encoding="utf-8")
+            part_paths, originals, errors = module._validate_decomposed_source_files(
+                repository,
+                payload,
+                {original_path, part_path},
+                {original_path: "baseline"},
+            )
+            self.assertEqual({part_path}, part_paths)
+            self.assertEqual({original_path}, originals)
+            self.assertEqual([], errors)
+
+            original.write_text("// header\n", encoding="utf-8")
+            _, _, errors = module._validate_decomposed_source_files(
+                repository,
+                payload,
+                {original_path, part_path},
+                {original_path: "baseline"},
+            )
+            self.assertTrue(
+                any("facade body does not cover" in error for error in errors),
+                errors,
+            )
+
+            _, _, errors = module._validate_decomposed_source_files(
+                repository,
+                payload,
+                {original_path},
+                {original_path: "baseline"},
+            )
+            self.assertTrue(
+                any("decomposed source part is not discovered" in error
+                    for error in errors),
+                errors,
+            )
+
+            payload["decomposedSources"][0]["parts"][0]["movedRange"] = {
+                "startLine": 1,
+                "endLine": 1,
+            }
+            _, _, errors = module._validate_decomposed_source_files(
+                repository,
+                payload,
+                {original_path, part_path},
+                {original_path: "baseline"},
+            )
+            self.assertTrue(
+                any("does not account for the part implementation body" in error
+                    for error in errors),
+                errors,
+            )
+
+    def test_decomposed_source_map_rejects_semantic_attributes_and_directives(self) -> None:
+        """Source-map body checks must retain attributes and preprocessor directives."""
+
+        module = load_module()
+        for prefix in (
+            '[System.Diagnostics.Conditional("NEVER_DEFINED")]\n',
+            "#if NEVER_DEFINED\n",
+        ):
+            with self.subTest(prefix=prefix):
+                errors = module._validate_moved_fragment(
+                    ["line one"],
+                    (prefix + "line one\n").splitlines(),
+                    1,
+                    1,
+                    "Protocol/Decomposed/AuthorityPart.cs",
+                )
+                self.assertTrue(
+                    any("does not account for the part implementation body" in error
+                        for error in errors),
+                    errors,
+                )
+
+    def test_decomposed_source_rejects_unbounded_moved_range(self) -> None:
+        """An oversized movedRange must fail before constructing a huge range."""
+        module = load_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = pathlib.Path(temporary)
+            initialize_git_repository(repository)
+            original = repository / "Protocol/Authority.cs"
+            original.parent.mkdir(parents=True)
+            original.write_text("line one\nline two\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+            run_git(repository, "commit", "--quiet", "-m", "baseline")
+            revision = run_git(repository, "rev-parse", "HEAD")
+            part = repository / "Protocol/Decomposed/AuthorityPart.cs"
+            part.parent.mkdir(parents=True)
+            part.write_text("line two\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+            run_git(repository, "commit", "--quiet", "-m", "decompose")
+            decomposition_revision = run_git(repository, "rev-parse", "HEAD")
+            payload = {
+                "decomposedSources": [
+                    {
+                        "originalPath": "Protocol/Authority.cs",
+                        "sourceRevision": revision,
+                        "decompositionRevision": decomposition_revision,
+                        "originalSha256": module._sha256_bytes(
+                            module._canonical_source_bytes(
+                                module._git_blob(repository, revision, "Protocol/Authority.cs")
+                            )
+                        ),
+                        "parts": [
+                            {
+                                "path": "Protocol/Decomposed/AuthorityPart.cs",
+                                "sha256": module._sha256_bytes(
+                                    module._canonical_source_bytes(part.read_bytes())
+                                ),
+                                "movedRange": {"startLine": 1, "endLine": 10**9},
+                            }
+                        ],
+                    }
+                ]
+            }
+            real_range = range
+
+            def bounded_range(*args):
+                """Reject unbounded range construction in the validation probe."""
+                if args and args[-1] > 1000:
+                    raise AssertionError("unbounded range construction")
+                return real_range(*args)
+
+            with mock.patch("builtins.range", side_effect=bounded_range):
+                _, _, errors = module._validate_decomposed_source_files(
+                    repository,
+                    payload,
+                    {"Protocol/Authority.cs", "Protocol/Decomposed/AuthorityPart.cs"},
+                    {"Protocol/Authority.cs": "baseline"},
+                )
+        self.assertTrue(any("outside the baseline" in error for error in errors), errors)
+
+    def test_facade_wrapper_only_ignores_comment_conditionals(self) -> None:
+        """Facade comparison must retain semantic preprocessor directives."""
+        module = load_module()
+        self.assertTrue(module._is_facade_wrapper_line("#if false"))
+        self.assertTrue(module._is_facade_wrapper_line("#endif"))
+        self.assertFalse(module._is_facade_wrapper_line("#if NEVER_DEFINED"))
+
+    def test_decomposed_source_schema_rejects_invalid_ranges_and_paths(self) -> None:
+        """Source-map records reject malformed path and range values."""
+
+        module = load_module()
+        payload = json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
+        payload["decomposedSources"] = [
+            {
+                "originalPath": "",
+                "sourceRevision": "a" * 40,
+                "decompositionRevision": "a" * 40,
+                "originalSha256": "b" * 64,
+                "parts": [
+                    {
+                        "path": "",
+                        "sha256": "c" * 64,
+                        "movedRange": {"startLine": 0, "endLine": 1},
+                    }
+                ],
+            }
+        ]
+        introduced, discovery_errors = module._phase186b_introduced_sources(ROOT)
+        self.assertEqual([], discovery_errors)
+        errors = module._validate_canonical_ledger_schema(payload, introduced)
+        for expected in (
+            "originalPath must be a non-empty string",
+            "parts[0].path must be a non-empty string",
+            "movedRange must be a positive inclusive range",
+        ):
+            self.assertTrue(any(expected in error for error in errors), errors)
+
+        payload = {
+            "schemaVersion": 1,
+            "ledgerPath": "ledger.json",
+            "reference": {},
+            "introducedSourceCommits": [],
+            "v1Compatibility": {},
+            "implementations": [],
+            "decomposedSources": [
+                {
+                    "originalPath": "Protocol/Authority.cs",
+                    "sourceRevision": "a" * 40,
+                    "decompositionRevision": "a" * 40,
+                    "originalSha256": "b" * 64,
+                    "parts": [
+                        {
+                            "path": "Protocol/Part.cs",
+                            "sha256": "c" * 64,
+                            "movedRange": {"startLine": 1, "endLine": 3},
+                        },
+                        {
+                            "path": "Protocol/part.cs",
+                            "sha256": "d" * 64,
+                            "movedRange": {"startLine": 3, "endLine": 4},
+                        },
+                    ],
+                }
+            ],
+        }
+        errors = module._validate_canonical_ledger_schema(payload, {})
+        self.assertTrue(
+            any("case-insensitive duplicate" in error for error in errors),
+            errors,
+        )
+        self.assertTrue(any("may not overlap" in error for error in errors), errors)
+
+        missing_key_payload = dict(payload)
+        missing_key_payload.pop("ledgerPath")
+        errors = module._validate_canonical_ledger_schema(missing_key_payload, {})
+        self.assertTrue(any("top-level schema" in error for error in errors), errors)
+
+        source_map = payload["decomposedSources"][0]
+        source_map.pop("decompositionRevision", None)
+        errors = module._validate_canonical_ledger_schema(payload, {})
+        self.assertTrue(
+            any("decomposedSources schema mismatch" in error
+                for error in errors),
+            errors,
+        )
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]

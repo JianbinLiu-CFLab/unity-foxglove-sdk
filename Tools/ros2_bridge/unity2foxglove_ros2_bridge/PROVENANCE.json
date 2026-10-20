@@ -37,6 +37,11 @@
       "revision": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71",
       "subject": "fix(186b): enforce U2R2 replay and ordering bounds",
       "sourceCount": 8
+    },
+    {
+      "revision": "896ca39467550cd1c9972601b04c5cd130c0d9fb",
+      "subject": "refactor(phase192): split U2R2 protocol gtests",
+      "sourceCount": 2
     }
   ],
   "v1Compatibility": {
@@ -53,6 +58,232 @@
     ],
     "canonicalSha256": "de79b8f992261a80b838589ce8660ce6a6a49b824c5e98015d1e63e958b55586"
   },
+  "decomposedSources": [
+    {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ContractAuthority.cs",
+      "sourceRevision": "89a28f5d4aa5672759272b109af4fe325b719269",
+      "decompositionRevision": "3c3c402ddd7f80d685bb9027130239e257fd4f7f",
+      "originalSha256": "0cd052474afec9c204059fc20c9e365c34cdc74848a22a2a1bbde087f7b43c5f",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Lifecycle.cs",
+          "sha256": "33038ebc718993901ccc87313914f1e9d54002ff0f71429498f5eee8675a96a2",
+          "movedRange": {
+            "startLine": 1203,
+            "endLine": 1359
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Registration.cs",
+          "sha256": "4a8746f13cb7d7616583b297a1bbe8968906b7a2d71b99cc206f3cc5f0439129",
+          "movedRange": {
+            "startLine": 603,
+            "endLine": 903
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Removal.cs",
+          "sha256": "b7c034049bfa9b598c5c7c0109066781c53243a63670a65ea209f5045097605c",
+          "movedRange": {
+            "startLine": 904,
+            "endLine": 1202
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.State.cs",
+          "sha256": "c8f9271ac510e89de082c9df1711ae5cbf44ad839b3452b0564ee1be4ac9da99",
+          "movedRange": {
+            "startLine": 534,
+            "endLine": 601
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/SequenceAndAdmissions.cs",
+          "sha256": "b0db557b946dd02497138a5889ae6a6818f079b1b68dcefea5268756f706c23e",
+          "movedRange": {
+            "startLine": 428,
+            "endLine": 529
+          }
+        }
+      ]
+    },
+    {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolCodec.cs",
+      "sourceRevision": "89a28f5d4aa5672759272b109af4fe325b719269",
+      "decompositionRevision": "3c3c402ddd7f80d685bb9027130239e257fd4f7f",
+      "originalSha256": "41c5b14efc0587dca32836b665f1dda6a00213abf5ffc0daaed92758cbe87f52",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/EncodingAndFrames.cs",
+          "sha256": "3da7daa23aeef6a1c589b703d5b39b9cdd4d45be84a586a523a767ef52484465",
+          "movedRange": {
+            "startLine": 20,
+            "endLine": 479
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/HeaderValidation.cs",
+          "sha256": "30ddfcf10087812f01c0e47486ca4a2d291848fb0901352693edbbcd754363af",
+          "movedRange": {
+            "startLine": 686,
+            "endLine": 989
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/JsonParser.cs",
+          "sha256": "ee1e7a7209932bae07ec01f1bdfe438d81ecf6882d1be2fe15e73a3b407aa99c",
+          "movedRange": {
+            "startLine": 990,
+            "endLine": 1290
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/LegacyCodec.cs",
+          "sha256": "c92efdd3965b6ac497f78599cad9aef5e841512e4872e8ef9261a4ec4ba9578f",
+          "movedRange": {
+            "startLine": 1293,
+            "endLine": 1353
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/MessageParsing.cs",
+          "sha256": "d037cd71db6806323c5a9865738f49f552d5dac2b37cd8a91192854eddf222a3",
+          "movedRange": {
+            "startLine": 480,
+            "endLine": 685
+          }
+        }
+      ]
+    },
+    {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
+      "sourceRevision": "4a7bd01fd92df0f99c8639535a5c6116abe07898",
+      "decompositionRevision": "9b29240536bf7c31c42e1c111c467e8562a550e7",
+      "originalSha256": "9cf22c0d0903000816095fa7bd54e35edc6d933156e8be315b4db10601853133",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.AdmissionAndBudget.cs",
+          "sha256": "c142d5fea1849d3fb3337cb9c0fbb7b83cbb8000e0cc44442649fdc161ed27c2",
+          "movedRange": {
+            "startLine": 833,
+            "endLine": 1221
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Cleanup.cs",
+          "sha256": "04daa5997ef9bbef7b77c358061d9fcb00f323c417eb5a317c48f7c4efbd8a08",
+          "movedRange": {
+            "startLine": 2885,
+            "endLine": 3061
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Concurrency.cs",
+          "sha256": "97f0cfb178993cf155cd16fdc0a39d31d1fd82310ecfef81407c103f9718ab51",
+          "movedRange": {
+            "startLine": 1222,
+            "endLine": 1552
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.CountersAndReplay.cs",
+          "sha256": "5ef060fe73fc19a1acdf18d1b206f7c89a59e8657eb1b95b21e90b77eee4a690",
+          "movedRange": {
+            "startLine": 1553,
+            "endLine": 1869
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Identity.cs",
+          "sha256": "749330b99c51ecbf6152cdb55d3acd2b1b54de2bb14084d9b4826c8e061e5e10",
+          "movedRange": {
+            "startLine": 2160,
+            "endLine": 2446
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Lifecycle.cs",
+          "sha256": "51502dd1c951c4980bd3d4df068d5e033cb6e9051829d11b61d63c4b2786b9be",
+          "movedRange": {
+            "startLine": 2447,
+            "endLine": 2884
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Limits.cs",
+          "sha256": "9798b437ae9cd466a9721754409239e0998cbc00d4e71813b141c21687b8f1ea",
+          "movedRange": {
+            "startLine": 1870,
+            "endLine": 2159
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Scenarios.cs",
+          "sha256": "790b5638d7432195b8f94148cedf32c668adb6685e0baa4d9fb2feec4577baec",
+          "movedRange": {
+            "startLine": 381,
+            "endLine": 832
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.TestHelpers.cs",
+          "sha256": "4be69fbf7271ed2fba7aa01dc3c9407002f356d32d5f5ebf7a478f0fa4ea942e",
+          "movedRange": {
+            "startLine": 3062,
+            "endLine": 3530
+          }
+        }
+      ]
+    },
+    {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
+      "sourceRevision": "004e23794c9e0c9ee167d8f0f80dd7d5038320b0",
+      "decompositionRevision": "34ffcce126ec1e91d63d5b21e805ec06596a8d81",
+      "originalSha256": "ad8d6f1349bce7a01ace37f435781eda90e9e62491f296da9b64af24609424ee",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/DecoderAndDialect.cs",
+          "sha256": "4e2d9b9f299ebbd32a364983bc63e86c9afbc00d73e8a6fff6d5178d15c715c9",
+          "movedRange": {
+            "startLine": 369,
+            "endLine": 647
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/EnvelopeAndCorrelation.cs",
+          "sha256": "0e279a0cc064256d3bd2efb013998f00969a6ffbe5376d515ab7a6f0181c9a56",
+          "movedRange": {
+            "startLine": 23,
+            "endLine": 368
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/FixtureHelpers.cs",
+          "sha256": "e0545952b110b149e66aa93efd6ce18453fd6723484c8dc15c6ffd6339f6c26d",
+          "movedRange": {
+            "startLine": 1154,
+            "endLine": 1261
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/NegativeVectors.cs",
+          "sha256": "ac6faf6382b6bd90059149aa543952114e0149699014bfa20029583b9c9bbd73",
+          "movedRange": {
+            "startLine": 648,
+            "endLine": 931
+          }
+        },
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/ResponseContracts.cs",
+          "sha256": "f5c0bf7e5614d331f02ea2225d665039acd28144b49b9d8782a4b46087369096",
+          "movedRange": {
+            "startLine": 932,
+            "endLine": 1153
+          }
+        }
+      ]
+    }
+  ],
   "implementations": [
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Documentation~/en/U2R2_PROTOCOL.md",
@@ -97,21 +328,21 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ReplayAuthority.cs",
-      "sha256": "d46bc54e7f092f75f459d3e7d699d1c76a0fa046574cfce38817071c251f227f",
+      "sha256": "9c756418089e616ef9ff5171b190261261380d1f42a6a603ac9d023f4d732fbf",
       "classification": "original",
       "influence": "Original C# request replay and correlation authority.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
-      "sha256": "9cf22c0d0903000816095fa7bd54e35edc6d933156e8be315b4db10601853133",
+      "sha256": "08908a86c4f62609a08fa51b4cfb06cdf8958002215500d5a098726403cd193c",
       "classification": "original",
       "influence": "Original C# behavioral coverage for replay, ordering, queues, limits, and contracts.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
-      "sha256": "ad8d6f1349bce7a01ace37f435781eda90e9e62491f296da9b64af24609424ee",
+      "sha256": "44507b4049f9c89b1e56468e76ec35b7212b8f65d8f5a0a42d5096a9ea1c06a2",
       "classification": "original",
       "influence": "Original C# byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -142,13 +373,13 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/discover_protocol_sources_and_phase186b_introduced_sources.py",
-      "sha256": "c1bbfc0957b02ab5fd7dcc74eb4b594d802f29b41842afda002bbbd0c86a36f0",
+      "sha256": "d9360f2a8abc5e10331ae0f272db60b70bcfd987d4a4e01bee5b324f7dd88f06",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/foundation.py",
-      "sha256": "098d20b84d4f20ab22b02bf22e174a212cc640a7ebe238d89292dae61dcd3539",
+      "sha256": "2bad8fa9fddc26f12a7b4fc2fc73d295e56a0a9a389908d73324c0c1ea54f233",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
@@ -166,13 +397,13 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/validate_pre_move_inventory_and_default_paths.py",
-      "sha256": "4c064528274701c8c005afebf9ea6f6ed5bae618e1d4237f5b7c18230c19e92d",
+      "sha256": "016c00a9cf2ab476c4f4e65834af2b0e9b640c3e4dd4e1e29508e392a2799fca",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/validate_repository_provenance_and_git_tree_paths.py",
-      "sha256": "d7a42d283e575c3a6ea090f451aa36d58b4fd8af61eae96d985add8d8deed3aa",
+      "sha256": "054327d82c77cad5fda3dd7fa4357198c59099a6e91a12f0fc9c421ef3ddcaf1",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
@@ -196,7 +427,7 @@
     },
     {
       "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/class_phase186_provenance_tests_fixtures.py",
-      "sha256": "cb5f4ab4cb5e8801598b3169bd72f4dc0879824dc1f5a2f8757050e9ca64e438",
+      "sha256": "5f2f29aa20e47a3d3db8e3bc536aafc2e858c0969de9000e164b46c829b66378",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator regression coverage."
     },
@@ -266,7 +497,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol.cpp",
-      "sha256": "e8dbef356c98d471713f036d1b8881d99c5037bf328879a5881e0eb9a1a47bb1",
+      "sha256": "5c2494470370bec73e430c03e7d6e572dbec90a8467bdaf1c4bb00df31067344",
       "classification": "original",
       "influence": "Original C++ byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
@@ -277,6 +508,20 @@
       "classification": "original",
       "influence": "Original C++ behavioral coverage for replay, ordering, queues, limits, and contracts.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_rejections.cpp",
+      "sha256": "b975ce0affac5dd9b9d8d07b618b6dce42443995749c5383c036f4f25fd59f9a",
+      "classification": "original",
+      "influence": "Original U2R2 v2 rejection, error-transition, and replay coverage moved from the canonical test translation unit.",
+      "introducedIn": "896ca39467550cd1c9972601b04c5cd130c0d9fb"
+    },
+    {
+      "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/u2r2_protocol_test_support.hpp",
+      "sha256": "7c1b659bfe968b103f924410597166eb03ed0475cf7def23316f5e0263237a39",
+      "classification": "original",
+      "influence": "Original shared U2R2 v2 fixture and protocol test helpers moved into a shared test support header.",
+      "introducedIn": "896ca39467550cd1c9972601b04c5cd130c0d9fb"
     }
   ]
 }
