@@ -1019,7 +1019,17 @@ def check_sample_source_boundary(results: list[CheckResult]) -> None:
         if path.exists()
     )
     standard_helper = (ROOT / "Scripts" / "smoke" / "ros2" / "phase132_standard_messages_acceptance.py")
-    standard_helper_text = standard_helper.read_text(encoding="utf-8", errors="replace") if standard_helper.exists() else ""
+    standard_helper_text = (
+        "\n".join(
+            [standard_helper.read_text(encoding="utf-8", errors="replace")]
+            + [
+                path.read_text(encoding="utf-8", errors="replace")
+                for path in sorted(standard_helper.with_suffix("").glob("*.py"))
+            ]
+        )
+        if standard_helper.exists()
+        else ""
+    )
     standard_launcher = (ROOT / "Scripts" / "smoke" / "ros2" / "launch_phase132_rviz2.py")
     standard_launcher_text = standard_launcher.read_text(encoding="utf-8", errors="replace") if standard_launcher.exists() else ""
     standard_rviz_config = (

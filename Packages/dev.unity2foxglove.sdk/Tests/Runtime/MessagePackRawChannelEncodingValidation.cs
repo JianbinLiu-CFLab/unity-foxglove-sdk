@@ -245,7 +245,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyLiveProbeScript()
         {
-            var probe = ReadRepoText("Scripts/smoke/websocket/phase168_msgpack_live_probe.py");
+            var probe = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/smoke/websocket/phase168_msgpack_live_probe.py");
 
             Check(probe.Contains("DEFAULT_TOPIC = \"/phase168/msgpack_smoke\"", StringComparison.Ordinal)
                   && probe.Contains("EXPECTED_ENCODING = \"msgpack\"", StringComparison.Ordinal)

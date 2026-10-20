@@ -209,7 +209,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyAcceptanceHelper()
         {
-            var helper = ReadRepoText(AcceptanceScriptPath);
+            var helper = PhaseValidationSourceHelpers.ReadSplitPythonSource(AcceptanceScriptPath);
             var launcher = ReadRepoText(RvizLauncherPath);
             var rvizConfig = ReadRepoText(RvizConfigPath);
             var shared = ReadRepoText(SharedHelperPath);
