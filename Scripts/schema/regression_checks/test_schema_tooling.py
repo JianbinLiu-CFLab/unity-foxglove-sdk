@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-# Source-inspection compatibility markers remain in this facade; implementations live in the split package.
-# test_generators_skip_identical_text_writes
-# CDR writer assertions
-
 import sys as _phase192_sys
 import types as _phase192_types
 

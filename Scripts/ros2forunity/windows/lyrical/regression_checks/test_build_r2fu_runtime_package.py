@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-# Source-inspection compatibility markers remain in this facade; implementations live in the split package.
-# Repo root resolution failed
-# test_patch_deps_json_sha512_updates_inventory_hash
-
 import sys as _phase192_sys
 import types as _phase192_types
 

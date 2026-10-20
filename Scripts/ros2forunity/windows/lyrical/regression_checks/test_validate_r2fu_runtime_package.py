@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-# Source-inspection compatibility markers remain in this facade; implementations live in the split package.
-# if spec.loader is None:
-# self.validator.MANIFEST = manifest
-# test_managed_deps_reject_spurious_service_msgs_for_visualization_packets
-
 import sys as _phase192_sys
 import types as _phase192_types
 

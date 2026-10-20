@@ -63,6 +63,11 @@ namespace Unity.FoxgloveSDK.UnitTests
             foreach (var distro in new[] { "humble", "jazzy", "lyrical" })
             {
                 var test = TestSources.Text("Scripts/ros2forunity/windows/" + distro + "/regression_checks/test_build_r2fu_runtime_package.py");
+                if (distro == "lyrical")
+                {
+                    test += TestSources.Text("Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package/foundation.py");
+                    test += TestSources.Text("Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package/dependency_description_tests.py");
+                }
                 var builder = TestSources.Text("Scripts/ros2forunity/windows/" + distro + "/build_r2fu_runtime_package.py");
 
                 Assert.Contains("Repo root resolution failed", test, StringComparison.Ordinal);
