@@ -49,6 +49,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             return string.Join(Environment.NewLine, allPaths.Select(File.ReadAllText));
         }
+        public static string ReadFoxRunRos2SubscriptionBindingSources()
+            => ReadRegisteredCSharpSource(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionBinding.cs",
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/Decomposed/FoxRunRos2SubscriptionBinding/Apply.cs",
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/Decomposed/FoxRunRos2SubscriptionBinding/Acceptance.cs",
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/Decomposed/FoxRunRos2SubscriptionBinding/Diagnostics.cs",
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/Decomposed/FoxRunRos2SubscriptionBinding/Lifecycle.cs");
+
         public static string ReadCameraPublisherSources()
         {
             var root = FindRequiredRepoRoot();

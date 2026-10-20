@@ -240,8 +240,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/";
             var hub = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 nativeRoot + "FoxRun/FoxRunRos2SubscriptionHub.cs");
-            var binding = PhaseValidationSourceHelpers.ReadRequiredRepoText(
-                nativeRoot + "FoxRun/FoxRunRos2SubscriptionBinding.cs");
+            var binding = PhaseValidationSourceHelpers.ReadFoxRunRos2SubscriptionBindingSources();
             var backend = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 nativeRoot + "FoxRun/Ros2ForUnityFoxRunInboundBackend.cs");
             var lifecycleGate = PhaseValidationSourceHelpers.ReadRequiredRepoText(
