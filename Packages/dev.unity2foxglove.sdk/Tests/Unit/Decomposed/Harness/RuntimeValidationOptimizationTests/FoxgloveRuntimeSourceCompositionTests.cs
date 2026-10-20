@@ -130,6 +130,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
 
             [Fact]
+            public void Ros2ForUnitySubscriptionHubCompositionFallsBackToMonolithicFacade()
+            {
+                var root = CreateSourceFixture(
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun",
+                    "FoxRunRos2SubscriptionHub.cs");
+                try
+                {
+                    var expected = File.ReadAllText(Path.Combine(
+                        root,
+                        "Packages",
+                        "dev.unity2foxglove.ros2forunity",
+                        "Runtime",
+                        "Native",
+                        "FoxRun",
+                        "FoxRunRos2SubscriptionHub.cs"));
+                    Assert.Equal(
+                        expected,
+                        Ros2ForUnitySubscriptionHubSourceComposer.Compose(root));
+                }
+                finally
+                {
+                    DeleteSourceFixture(root);
+                }
+            }
+
+            [Fact]
             public void SharedRos2ForUnitySubscriptionHubHelperRequiresWrapperTrimmingAndActiveSymbols()
             {
                 var helper = TestSources.Runtime("Ros2ForUnitySubscriptionHubSourceComposer.cs");
@@ -492,6 +518,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     "RuntimePythonReadersUseTheSplitAwareSourceEntryPoint",
                     "FoxgloveRuntimeCompositionFailsClosedAndPreservesTrailingGateOrder",
                     "Ros2ForUnitySubscriptionHubCompositionPreservesSplitMethods",
+                    "Ros2ForUnitySubscriptionHubCompositionFallsBackToMonolithicFacade",
                     "SharedRos2ForUnitySubscriptionHubHelperRequiresWrapperTrimmingAndActiveSymbols",
                     "Ros2CustomCdrEmitterCompositionIgnoresTrailingBlankLines",
                     "Ros2BridgeRuntimeCompositionRejectsUnregisteredRootSiblingPartial",
