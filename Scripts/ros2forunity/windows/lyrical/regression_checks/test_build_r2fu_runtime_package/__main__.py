@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Executable entrypoint for the decomposed Lyrical runtime-package tests."""
+"""Executable entrypoint for decomposed regression tests."""
 
 from __future__ import annotations
 
 import unittest
 
+from . import *
+ 
 if __name__ == "__main__":
-    raise SystemExit(unittest.main(module="Scripts.ros2forunity.windows.lyrical.regression_checks.test_build_r2fu_runtime_package"))
+    raise SystemExit(unittest.main(module=None))

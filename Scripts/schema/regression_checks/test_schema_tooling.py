@@ -21,9 +21,6 @@ else:
     finally:
         if _phase192_self is not None: _phase192_sys.modules["test_schema_tooling"] = _phase192_self
 
-
-
-
 class _Phase192FacadeModule(_phase192_types.ModuleType):
     """Mirror facade attribute updates into the decomposed implementation module."""
     def __setattr__(self, name, value):

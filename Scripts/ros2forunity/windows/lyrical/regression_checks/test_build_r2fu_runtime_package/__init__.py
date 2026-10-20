@@ -36,14 +36,14 @@ class _Phase192PackageModule(_phase192_types.ModuleType):
     """Mirror facade state into the decomposed test modules."""
 
     def __setattr__(self, name, value):
-        """Mirror assignments into the decomposed implementation."""
+        """Mirror facade assignments into decomposed test modules."""
         super().__setattr__(name, value)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
             for _phase192_section in _PHASE192_SECTION_MODULES:
                 _phase192_section.__dict__[name] = value
 
     def __delattr__(self, name):
-        """Mirror deletions into the decomposed implementation."""
+        """Mirror facade deletions into decomposed test modules."""
         super().__delattr__(name)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
             for _phase192_section in _PHASE192_SECTION_MODULES:
@@ -56,8 +56,3 @@ if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192PackageModule
 del _phase192_sys, _phase192_types, _Phase192Path, _PHASE192_FACADE_FILE, _PHASE192_PARENT
 del _phase192_module, _phase192_section, _phase192_name
-
-
-def load_tests(loader, tests, pattern):
-    """Expose package tests once when unittest discovery sees the facade pair."""
-    return tests

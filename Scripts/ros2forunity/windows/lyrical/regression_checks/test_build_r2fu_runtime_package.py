@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Compatibility facade for decomposed Lyrical runtime-package tests."""
-
 from __future__ import annotations
 
 import sys as _phase192_sys
@@ -28,20 +26,17 @@ else:
             _phase192_sys.modules["test_build_r2fu_runtime_package"] = _phase192_self
 
 
-
-
-
 class _Phase192FacadeModule(_phase192_types.ModuleType):
     """Mirror facade attribute updates into the test package."""
 
     def __setattr__(self, name, value):
-        """Mirror assignments into the decomposed implementation."""
+        """Update the package and its facade implementation."""
         super().__setattr__(name, value)
         if _phase192_package_module is not None and _phase192_package_module is not self:
             setattr(_phase192_package_module, name, value)
 
     def __delattr__(self, name):
-        """Mirror deletions into the decomposed implementation."""
+        """Remove a value from the package and its facade implementation."""
         super().__delattr__(name)
         if _phase192_package_module is not None and _phase192_package_module is not self:
             try:
