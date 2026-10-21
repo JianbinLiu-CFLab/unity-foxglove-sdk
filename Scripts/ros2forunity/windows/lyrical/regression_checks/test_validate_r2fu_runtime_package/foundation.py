@@ -48,6 +48,7 @@ __all__ = [
     "hashlib",
     "importlib",
     "json",
+    "load_tests",
     "load_validator_module",
     "mock",
     "shutil",
