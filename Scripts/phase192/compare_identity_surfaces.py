@@ -5337,6 +5337,8 @@ def _reviewed_direct_entrypoint_absolute_import(
         relative = path.resolve().relative_to(repository_root.resolve()).as_posix()
     except ValueError:
         return False
+    if relative.endswith("/__main__.py"):
+        relative = relative[: -len("/__main__.py")] + ".py"
     if relative not in _REVIEWED_DIRECT_ENTRYPOINTS:
         return False
     package_module = Path(relative).stem
