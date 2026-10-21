@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import copy
 import hashlib
 import importlib
 import importlib.util
@@ -2534,6 +2535,30 @@ def _conditional_contract_signatures(tree: ast.AST) -> tuple[str, ...]:
         """Internal helper for digest."""
         name_text = ",".join(sorted(names))
         body_shape = structure if structure is not None else ast.Module(body=body, type_ignores=[])
+        if kind == "If" and name_text == "_Phase192Path,_phase192_package_module,_phase192_parent,_phase192_self":
+            body_shape = copy.deepcopy(body_shape)
+            old_parent = ast.dump(
+                ast.parse("_Phase192Path(__file__).resolve().parent", mode="eval").body,
+                include_attributes=False,
+            )
+            new_parent = ast.dump(
+                ast.parse("_Phase192Path(__file__).resolve().parent.parent.parent.parent", mode="eval").body,
+                include_attributes=False,
+            )
+            for item in ast.walk(body_shape):
+                if not (
+                    isinstance(item, ast.Assign)
+                    and len(item.targets) == 1
+                    and isinstance(item.targets[0], ast.Name)
+                    and item.targets[0].id == "_phase192_parent"
+                ):
+                    continue
+                value_dump = ast.dump(item.value, include_attributes=False)
+                if value_dump in {old_parent, new_parent}:
+                    item.value = ast.parse(
+                        "_Phase192Path(__file__).resolve().parent",
+                        mode="eval",
+                    ).body
         payload = (
             f"{kind}|{name_text}|"
             f"{ast.dump(header, include_attributes=False)}|"
