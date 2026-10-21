@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyAttachmentMcapFixtureConstants()
         {
-            var source = PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/smoke/mcap/phase34_attachment_mcap.py");
+            var source = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/smoke/mcap/phase34_attachment_mcap.py");
             Check(source.Contains("MESSAGE_INDEX_RECORDS_BYTE_LENGTH", StringComparison.Ordinal)
                   && source.Contains("ZERO_CRC_SENTINEL", StringComparison.Ordinal)
                   && !source.Contains("MESSAGE_RECORD_OFFSET_IN_CHUNK", StringComparison.Ordinal)
@@ -118,6 +118,21 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTopicNotFoundBeforeWait(string relativePath)
         {
+            if (string.Equals(
+                    relativePath,
+                    "Scripts/smoke/websocket/pointcloud_qos_probe.py",
+                    StringComparison.Ordinal))
+            {
+                var protocol = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    "Scripts/smoke/websocket/pointcloud_qos_probe/protocol_surface.py");
+                var connection = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                    "Scripts/smoke/websocket/pointcloud_qos_probe/connection_measurement.py");
+                Check(protocol.Contains("class TopicNotFoundError", StringComparison.Ordinal)
+                      && connection.Contains("async def wait_for_channel", StringComparison.Ordinal),
+                    "134-29F: " + relativePath + " keeps TopicNotFoundError and channel wait helpers in their owned sections");
+                return;
+            }
+
             var source = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             var classIndex = source.IndexOf("class TopicNotFoundError", StringComparison.Ordinal);
             var waitIndex = source.IndexOf("async def wait_for_channel", StringComparison.Ordinal);

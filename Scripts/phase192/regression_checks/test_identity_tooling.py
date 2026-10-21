@@ -3655,6 +3655,38 @@ class IdentityToolingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare_identity_surfaces._phase192_template_validate_initializer(tree, str(initializer))
 
+    def test_generated_initializer_rejects_untrusted_section_export_value(self) -> None:
+        """Section export loops must copy the named section attribute exactly."""
+        initializer = Path("Scripts/smoke/websocket/pointcloud_qos_probe/__init__.py")
+        source = initializer.read_text(encoding="utf-8")
+        for replacement in (
+            "globals()[_phase192_name] = __builtins__",
+            "globals()[_phase192_name] = _phase192_section",
+        ):
+            with self.subTest(replacement=replacement), self.assertRaises(ValueError):
+                compare_identity_surfaces._phase192_template_validate_initializer(
+                    ast.parse(
+                        source.replace(
+                            "globals()[_phase192_name] = getattr(_phase192_section, _phase192_name)",
+                            replacement,
+                            1,
+                        ),
+                        str(initializer),
+                    ),
+                    str(initializer),
+                )
+
+    def test_split_section_rejects_shadowed_globals_builtin(self) -> None:
+        """Dynamic __all__ cannot invoke a module-defined globals replacement."""
+        source = (
+            "def globals():\n"
+            "    return {'PUBLIC': 1}\n"
+            "PUBLIC = 1\n"
+            "__all__ = [name for name in globals() if not name.startswith('__')]\n"
+        )
+        with self.assertRaises(ValueError):
+            compare_identity_surfaces._section_exports(source, "fixture.py")
+
     def test_entrypoint_rejects_untrusted_test_suite_generator(self) -> None:
         """Generated test entrypoints cannot execute a side-effecting iterator."""
         with tempfile.TemporaryDirectory() as temp:

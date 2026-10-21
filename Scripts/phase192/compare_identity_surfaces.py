@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import copy
 import hashlib
 import importlib
 import importlib.util
@@ -2167,6 +2168,109 @@ def _phase192_validate_template_registry_mutations(
 
 def _phase192_template_validate_initializer(tree: ast.Module, path: str) -> None:
     """Validate the generated package initializer shape."""
+    parents: dict[int, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[id(child)] = parent
+
+    def ancestors(node: ast.AST) -> Iterator[ast.AST]:
+        """Yield enclosing syntax nodes from the immediate parent outward."""
+        current = parents.get(id(node))
+        while current is not None:
+            yield current
+            current = parents.get(id(current))
+
+    def exact_section_loop(node: ast.AST) -> bool:
+        """Recognize the generated section-module loop."""
+        return (
+            isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_phase192_section"
+            and isinstance(node.iter, ast.Name)
+            and node.iter.id == "_PHASE192_SECTION_MODULES"
+            and not node.orelse
+        )
+
+    def exact_section_export_loop(node: ast.AST) -> bool:
+        """Recognize the generated loop deriving names from section __all__."""
+        return (
+            isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_phase192_name"
+            and isinstance(node.iter, ast.Attribute)
+            and isinstance(node.iter.value, ast.Name)
+            and node.iter.value.id == "_phase192_section"
+            and node.iter.attr == "__all__"
+            and not node.orelse
+        )
+
+    def exact_export_names_loop(node: ast.AST) -> bool:
+        """Recognize the generated compatibility export-name loop."""
+        return (
+            isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_phase192_name"
+            and isinstance(node.iter, ast.Name)
+            and node.iter.id == "_PHASE192_EXPORT_NAMES"
+            and not node.orelse
+        )
+
+    def exact_hasattr_guard(node: ast.AST) -> bool:
+        """Recognize the guarded section lookup used by collision-safe packages."""
+        return (
+            isinstance(node, ast.If)
+            and not node.orelse
+            and isinstance(node.test, ast.Call)
+            and isinstance(node.test.func, ast.Name)
+            and node.test.func.id == "hasattr"
+            and len(node.test.args) == 2
+            and isinstance(node.test.args[0], ast.Name)
+            and node.test.args[0].id == "_phase192_section"
+            and isinstance(node.test.args[1], ast.Name)
+            and node.test.args[1].id == "_phase192_name"
+        )
+
+    section_exports_loop_present = any(
+        exact_section_export_loop(node)
+        for node in ast.walk(tree)
+    )
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Subscript)
+            and isinstance(node.targets[0].value, ast.Call)
+            and isinstance(node.targets[0].value.func, ast.Name)
+            and node.targets[0].value.func.id == "globals"
+            and isinstance(node.targets[0].slice, ast.Name)
+            and node.targets[0].slice.id == "_phase192_name"
+        ):
+            continue
+        expected_value = ast.Call(
+            func=ast.Name(id="getattr", ctx=ast.Load()),
+            args=[
+                ast.Name(id="_phase192_section", ctx=ast.Load()),
+                ast.Name(id="_phase192_name", ctx=ast.Load()),
+            ],
+            keywords=[],
+        )
+        if ast.dump(node.value, include_attributes=False) != ast.dump(
+            expected_value,
+            include_attributes=False,
+        ):
+            raise ValueError(f"Unsupported generated section export assignment in {path}")
+        enclosing = tuple(ancestors(node))
+        if not any(exact_section_loop(item) for item in enclosing):
+            raise ValueError(f"Unsupported generated section export assignment in {path}")
+        if any(exact_section_export_loop(item) for item in enclosing):
+            continue
+        if not (
+            section_exports_loop_present
+            and any(exact_export_names_loop(item) for item in enclosing)
+            and any(exact_hasattr_guard(item) for item in enclosing)
+        ):
+            raise ValueError(f"Unsupported generated section export assignment in {path}")
+
     classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
     if len(classes) != 1:
         raise ValueError(f"Generated package must contain one forwarding class: {path}")
@@ -2431,6 +2535,30 @@ def _conditional_contract_signatures(tree: ast.AST) -> tuple[str, ...]:
         """Internal helper for digest."""
         name_text = ",".join(sorted(names))
         body_shape = structure if structure is not None else ast.Module(body=body, type_ignores=[])
+        if kind == "If" and name_text == "_Phase192Path,_phase192_package_module,_phase192_parent,_phase192_self":
+            body_shape = copy.deepcopy(body_shape)
+            old_parent = ast.dump(
+                ast.parse("_Phase192Path(__file__).resolve().parent", mode="eval").body,
+                include_attributes=False,
+            )
+            new_parent = ast.dump(
+                ast.parse("_Phase192Path(__file__).resolve().parent.parent.parent.parent", mode="eval").body,
+                include_attributes=False,
+            )
+            for item in ast.walk(body_shape):
+                if not (
+                    isinstance(item, ast.Assign)
+                    and len(item.targets) == 1
+                    and isinstance(item.targets[0], ast.Name)
+                    and item.targets[0].id == "_phase192_parent"
+                ):
+                    continue
+                value_dump = ast.dump(item.value, include_attributes=False)
+                if value_dump in {old_parent, new_parent}:
+                    item.value = ast.parse(
+                        "_Phase192Path(__file__).resolve().parent",
+                        mode="eval",
+                    ).body
         payload = (
             f"{kind}|{name_text}|"
             f"{ast.dump(header, include_attributes=False)}|"
@@ -3517,6 +3645,7 @@ def _section_exports(
         _phase192_validate_template_registry_mutations(tree, path, repository_root)
     declared = _declared_public_names(tree)
     bound = _top_level_names(tree, include_imports=True)
+    globals_is_builtin = "globals" not in bound
     direct_values: list[ast.AST] = []
     direct_ids: set[int] = set()
     for node in tree.body:
@@ -3556,7 +3685,7 @@ def _section_exports(
     if any(ast.dump(value, include_attributes=False) != ast.dump(first, include_attributes=False) for value in direct_values[1:]):
         raise ValueError(f"Conflicting __all__ assignments in {path}")
     if isinstance(first, (ast.ListComp, ast.SetComp)):
-        if _is_public_globals_comprehension(first):
+        if globals_is_builtin and _is_public_globals_comprehension(first):
             return frozenset(
                 name
                 for name in _top_level_names(tree, include_imports=True)
@@ -6426,7 +6555,8 @@ def _validate_generated_section(
                 }
             ):
                 if node.func.id == "globals" and is_export_globals_call(node):
-                    continue
+                    if "globals" not in _top_level_names(tree, include_imports=True):
+                        continue
                 if not (
                     node.func.id == "__import__"
                     and node.args
