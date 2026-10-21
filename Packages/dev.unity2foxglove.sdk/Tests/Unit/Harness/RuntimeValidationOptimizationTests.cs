@@ -11,6 +11,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Unity.FoxgloveSDK.Tests;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -158,6 +159,11 @@ internal static class TestSources
                     "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs",
                     StringComparison.Ordinal))
                 return ProgramSources();
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs",
+                    StringComparison.Ordinal))
+                return Ros2ForUnitySubscriptionHubSourceComposer.Compose(RepoRoot);
 
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");

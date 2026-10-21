@@ -160,11 +160,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 var helper = TestSources.Runtime("Ros2ForUnitySubscriptionHubSourceComposer.cs");
                 Assert.Contains(
-                    "SourceFileName = \"FoxRunRos2SubscriptionHub.cs\"",
+                    "SourceFileNames",
                     helper,
                     StringComparison.Ordinal);
-                Assert.DoesNotContain(
-                    "Decomposed/FoxRunRos2SubscriptionHub",
+                Assert.Contains(
+                    "TrimWrapperEnd",
+                    helper,
+                    StringComparison.Ordinal);
+                Assert.Contains(
+                    "TrimFragment",
+                    helper,
+                    StringComparison.Ordinal);
+                Assert.Contains(
+                    "Decomposed",
                     helper,
                     StringComparison.Ordinal);
                 var validation = TestSources.Runtime("R2fuNativeBridgeHotPathLifecycleValidation.cs");
