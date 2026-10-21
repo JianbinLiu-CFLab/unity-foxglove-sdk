@@ -116,7 +116,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolV2Tests.cs",
-      "sha256": "3e4dd5393aaf81863d76c53b9ad940c595ea287158347a91445086b0e2df443e",
+      "sha256": "3307dc401d1a975d3ae0aee2fc749597f23803dda1fffa9c49688a85bcc65e8b",
       "classification": "original",
       "influence": "Original C# byte and state tests for the shared U2R2 v2 fixture.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
