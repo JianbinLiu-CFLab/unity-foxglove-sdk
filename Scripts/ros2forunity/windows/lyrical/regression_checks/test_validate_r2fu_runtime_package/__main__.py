@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[6]))
 from Scripts.ros2forunity.windows.lyrical.regression_checks.test_validate_r2fu_runtime_package import *
