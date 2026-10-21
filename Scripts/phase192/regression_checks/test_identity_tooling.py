@@ -4102,7 +4102,7 @@ class IdentityToolingTests(unittest.TestCase):
             package = repository / relative.parent / relative.stem
             package.mkdir(parents=True)
             (package / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
-            path = repository / relative
+            path = package / "__main__.py"
             path.write_text(
                 "from __future__ import annotations\n"
                 "import unittest\n"
