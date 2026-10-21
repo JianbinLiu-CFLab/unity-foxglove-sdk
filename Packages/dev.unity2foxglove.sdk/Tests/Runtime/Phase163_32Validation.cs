@@ -73,7 +73,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void RuntimeSelectorSurfacesMissingZenohPayload()
         {
             var selector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
-            var descriptor = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RuntimeDescriptor.cs");
+            var descriptor = selector;
             var inspector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelectorInspector.cs");
             var capabilities = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeCapabilityModel.cs");
             var descriptorCtor = ExtractCSharpMethod(descriptor, "Ros2ForUnityRuntimeDescriptor");
