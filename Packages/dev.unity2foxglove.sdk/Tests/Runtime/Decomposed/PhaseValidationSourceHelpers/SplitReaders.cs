@@ -53,23 +53,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             const string facade =
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionBinding.cs";
-            var fragments = new[]
-            {
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/Decomposed/FoxRunRos2SubscriptionBinding/Apply.cs",
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/Decomposed/FoxRunRos2SubscriptionBinding/Acceptance.cs",
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/Decomposed/FoxRunRos2SubscriptionBinding/Diagnostics.cs",
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/Decomposed/FoxRunRos2SubscriptionBinding/Lifecycle.cs",
-            };
-            var facadePath = RepoPath(facade);
-            var fragmentDirectory = Path.Combine(
-                FindRequiredRepoRoot(),
-                Path.GetDirectoryName(fragments[0]).Replace('/', Path.DirectorySeparatorChar));
-            var actualFragments = Directory.Exists(fragmentDirectory)
-                ? Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
-                : Array.Empty<string>();
-            if (actualFragments.Length == 0)
-                return File.ReadAllText(facadePath);
-            return ReadRegisteredCSharpSource(facade, fragments);
+            return File.ReadAllText(RepoPath(facade));
         }
 
         public static string ReadCameraPublisherSources()

@@ -156,15 +156,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
 
             [Fact]
-            public void SharedRos2ForUnitySubscriptionHubHelperRequiresWrapperTrimmingAndActiveSymbols()
+            public void SharedRos2ForUnitySubscriptionHubHelperReadsMonolithicFacade()
             {
                 var helper = TestSources.Runtime("Ros2ForUnitySubscriptionHubSourceComposer.cs");
                 Assert.Contains(
-                    "TrimWrapperEnd",
+                    "SourceFileName = \"FoxRunRos2SubscriptionHub.cs\"",
                     helper,
                     StringComparison.Ordinal);
-                Assert.Contains(
-                    "for (var brace = 0; brace < 2; brace++)",
+                Assert.DoesNotContain(
+                    "Decomposed/FoxRunRos2SubscriptionHub",
                     helper,
                     StringComparison.Ordinal);
                 var validation = TestSources.Runtime("R2fuNativeBridgeHotPathLifecycleValidation.cs");
@@ -519,7 +519,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     "FoxgloveRuntimeCompositionFailsClosedAndPreservesTrailingGateOrder",
                     "Ros2ForUnitySubscriptionHubCompositionPreservesSplitMethods",
                     "Ros2ForUnitySubscriptionHubCompositionFallsBackToMonolithicFacade",
-                    "SharedRos2ForUnitySubscriptionHubHelperRequiresWrapperTrimmingAndActiveSymbols",
+                    "SharedRos2ForUnitySubscriptionHubHelperReadsMonolithicFacade",
                     "Ros2CustomCdrEmitterCompositionIgnoresTrailingBlankLines",
                     "Ros2BridgeRuntimeCompositionRejectsUnregisteredRootSiblingPartial",
                     "Ros2BridgeRuntimeCompositionRejectsUnregisteredRootPartialWithDifferentFileName",

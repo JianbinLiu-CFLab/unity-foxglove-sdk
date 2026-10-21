@@ -54,7 +54,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRuntimeSelectionUsesCachedManifestCommunicationModes()
         {
             var source = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
-            var descriptor = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RuntimeDescriptor.cs");
+            var descriptor = source;
             var modes = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static IReadOnlyList<string> GetCommunicationModeIds", "UNITY_EDITOR");
             var labels = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(source, "public static string[] GetCommunicationModeLabels", "UNITY_EDITOR");
 
