@@ -4091,6 +4091,69 @@ class IdentityToolingTests(unittest.TestCase):
             )
         )
 
+    def test_archive_entrypoint_accepts_reviewed_absolute_import_without_runtime_path(self) -> None:
+        """The trusted archive checker resolves the reviewed import from the checkout tree."""
+        relative = Path(
+            "Scripts/ros2forunity/windows/lyrical/regression_checks/"
+            "test_build_r2fu_runtime_package.py"
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp)
+            package = repository / relative.parent / relative.stem
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
+            path = package / "__main__.py"
+            path.write_text(
+                "from __future__ import annotations\n"
+                "import unittest\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                "sys.path.insert(0, str(Path(__file__).resolve().parents[6]))\n"
+                "from Scripts.ros2forunity.windows.lyrical.regression_checks."
+                "test_build_r2fu_runtime_package import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(unittest.main(module=__name__))\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(
+                compare_identity_surfaces,
+                "_module_spec_exists",
+                side_effect=lambda name: not name.startswith("Scripts."),
+            ):
+                present, *_ = compare_identity_surfaces._entrypoint_contract(
+                    path,
+                    frozenset(),
+                    repository_root=repository,
+                )
+            self.assertTrue(present)
+
+    def test_archive_entrypoint_rejects_unreviewed_absolute_import_without_runtime_path(self) -> None:
+        """Archive fallback does not authorize an unrelated absolute import."""
+        with tempfile.TemporaryDirectory() as temp:
+            repository = Path(temp)
+            package = repository / "Scripts/other/regression_checks/example"
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
+            path = package.parent / "__main__.py"
+            path.write_text(
+                "import unittest\n"
+                "from Scripts.other.regression_checks.example import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(unittest.main(module=__name__))\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(
+                compare_identity_surfaces,
+                "_module_spec_exists",
+                side_effect=lambda name: not name.startswith("Scripts."),
+            ):
+                with self.assertRaises(ValueError):
+                    compare_identity_surfaces._entrypoint_contract(
+                        path,
+                        frozenset(),
+                        repository_root=repository,
+                    )
+
     def test_generated_initializer_kind_uses_ast_classification(self) -> None:
         """Initializer routing follows AST nodes rather than source substrings."""
         self.assertEqual(
