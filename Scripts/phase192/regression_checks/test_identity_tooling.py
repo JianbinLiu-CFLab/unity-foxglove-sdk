@@ -4022,6 +4022,75 @@ class IdentityToolingTests(unittest.TestCase):
         errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
         self.assertIn('MODULE_ENTRYPOINT_CHANGED ' + relative, errors)
 
+    def test_compatibility_allows_reviewed_lyrical_direct_entrypoint(self) -> None:
+        """The reviewed Lyrical path bootstrap is compatible with the old wrapper."""
+        relative = 'Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package.py'
+        base_source = (
+            "from __future__ import annotations\n"
+            "import unittest\n"
+            "from . import *\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(unittest.main(module=None))\n"
+        )
+        head_source = (
+            "from __future__ import annotations\n"
+            "import unittest\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, str(Path(__file__).resolve().parents[6]))\n"
+            "from Scripts.ros2forunity.windows.lyrical.regression_checks.test_build_r2fu_runtime_package import *\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(unittest.main(module=__name__))\n"
+        )
+        base_contract = compare_identity_surfaces._entrypoint_contract_signatures(
+            ast.parse(base_source)
+        )
+        head_contract = compare_identity_surfaces._entrypoint_contract_signatures(
+            ast.parse(head_source)
+        )
+        self.assertTrue(
+            compare_identity_surfaces._reviewed_direct_entrypoint_transition(
+                relative,
+                base_contract,
+                head_contract,
+            )
+        )
+
+    def test_compatibility_rejects_unreviewed_lyrical_entrypoint_call(self) -> None:
+        """The reviewed path does not authorize extra executable calls."""
+        relative = 'Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package.py'
+        base_source = (
+            "from __future__ import annotations\n"
+            "import unittest\n"
+            "from . import *\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(unittest.main(module=None))\n"
+        )
+        head_source = (
+            "from __future__ import annotations\n"
+            "import unittest\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, str(Path(__file__).resolve().parents[6]))\n"
+            "from Scripts.ros2forunity.windows.lyrical.regression_checks.test_build_r2fu_runtime_package import *\n"
+            "print('unexpected')\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(unittest.main(module=__name__))\n"
+        )
+        base_contract = compare_identity_surfaces._entrypoint_contract_signatures(
+            ast.parse(base_source)
+        )
+        head_contract = compare_identity_surfaces._entrypoint_contract_signatures(
+            ast.parse(head_source)
+        )
+        self.assertFalse(
+            compare_identity_surfaces._reviewed_direct_entrypoint_transition(
+                relative,
+                base_contract,
+                head_contract,
+            )
+        )
+
     def test_generated_initializer_kind_uses_ast_classification(self) -> None:
         """Initializer routing follows AST nodes rather than source substrings."""
         self.assertEqual(
