@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(File.Exists(RepoPath(ScriptPath)), "139-1A: Phase139 Python smoke script exists");
             Check(!File.Exists(RepoPath(ForbiddenPowerShellWrapper)), "139-1B: Phase139 does not add a project PowerShell wrapper");
 
-            var script = Read(ScriptPath);
+            var script = PhaseValidationSourceHelpers.ReadSplitPythonSource(ScriptPath);
             Check(script.Contains("foxglove.sdk.v1", StringComparison.Ordinal),
                 "139-1C: smoke script uses Foxglove WebSocket subprotocol");
             Check(script.Contains("--mode", StringComparison.Ordinal)
