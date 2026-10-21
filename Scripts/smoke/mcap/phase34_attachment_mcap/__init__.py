@@ -13,7 +13,6 @@ from pathlib import Path as _Phase192Path
 _PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "phase34_attachment_mcap.py"
 __file__ = str(_PHASE192_FACADE_FILE)
 _PHASE192_PARENT = _PHASE192_FACADE_FILE.parent
-_PHASE192_PARENT = _PHASE192_PARENT.parent.parent.parent
 if str(_PHASE192_PARENT) not in _phase192_sys.path:
     _phase192_sys.path.insert(0, str(_PHASE192_PARENT))
 
