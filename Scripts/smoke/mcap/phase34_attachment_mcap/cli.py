@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import sys as __phase192_sys
-from pathlib import Path as __phase192_Path
-
-__phase192_sys.path.insert(0, str(__phase192_Path(__file__).resolve().parents[4]))
-Path = __phase192_Path
 from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
 
 import argparse
+from pathlib import Path
 
 from .fixture_builder import *
 from .fixture_constants import *
@@ -18,8 +14,8 @@ from .fixture_validator import *
 
 def resolve_output(output: str | None) -> Path:
     """Resolve an optional output path relative to the repository root."""
-    repo_root = __phase192_Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
-    candidate = __phase192_Path(output) if output else DEFAULT_OUTPUT
+    repo_root = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
+    candidate = Path(output) if output else DEFAULT_OUTPUT
     if not candidate.is_absolute():
         candidate = repo_root / candidate
     return candidate.resolve()
