@@ -5320,6 +5320,36 @@ def _reviewed_direct_entrypoint_transition(
     )
 
 
+def _reviewed_direct_entrypoint_absolute_import(
+    path: Path,
+    node: ast.Import | ast.ImportFrom,
+    repository_root: Path | None,
+) -> bool:
+    """Recognize the reviewed direct entrypoint import in an archive checkout."""
+    if (
+        repository_root is None
+        or not isinstance(node, ast.ImportFrom)
+        or node.level
+        or node.module is None
+    ):
+        return False
+    try:
+        relative = path.resolve().relative_to(repository_root.resolve()).as_posix()
+    except ValueError:
+        return False
+    if relative not in _REVIEWED_DIRECT_ENTRYPOINTS:
+        return False
+    package_module = Path(relative).stem
+    expected_module = (
+        "Scripts.ros2forunity.windows.lyrical.regression_checks."
+        f"{package_module}"
+    )
+    if node.module != expected_module or len(node.names) != 1 or node.names[0].name != "*":
+        return False
+    target = repository_root.joinpath(*expected_module.split("."))
+    return (target / "__init__.py").is_file() or target.with_suffix(".py").is_file()
+
+
 def _entrypoint_contract(
     path: Path,
     allowed_relative_modules: frozenset[str] | None = None,
@@ -5455,7 +5485,11 @@ def _entrypoint_contract(
             )
             if not roots <= allowed_roots and not pathlib_path_import:
                 raise ValueError(f"unsupported absolute module entrypoint import: {path}")
-            if not _absolute_import_resolves(node):
+            if not _absolute_import_resolves(node) and not _reviewed_direct_entrypoint_absolute_import(
+                path,
+                node,
+                repository_root,
+            ):
                 raise ValueError(f"unresolvable absolute module entrypoint import: {path}")
 
 
