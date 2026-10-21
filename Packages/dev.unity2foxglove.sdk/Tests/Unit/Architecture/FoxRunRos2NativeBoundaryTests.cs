@@ -67,6 +67,39 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
+        public void SubscriptionBindingGenericConstraintIsRepeatedForEveryDeclaration()
+        {
+            var root = FindRepoRoot();
+            var nativeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime",
+                "Native",
+                "FoxRun");
+            var facade = Path.Combine(nativeRoot, "FoxRunRos2SubscriptionBinding.cs");
+            var fragmentDirectory = Path.Combine(nativeRoot, "Decomposed", "FoxRunRos2SubscriptionBinding");
+            var sources = new[] { facade }
+                .Concat(Directory.Exists(fragmentDirectory)
+                    ? Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories).OrderBy(path => path, StringComparer.Ordinal)
+                    : Array.Empty<string>());
+
+            foreach (var path in sources)
+            {
+                var source = File.ReadAllText(path);
+                const string marker = "FoxRunRos2SubscriptionBinding<T>";
+                var declaration = source.IndexOf(marker, StringComparison.Ordinal);
+                Assert.True(declaration >= 0, "Missing subscription binding declaration: " + path);
+                var openBrace = source.IndexOf('{', declaration);
+                Assert.True(openBrace > declaration, "Malformed subscription binding declaration: " + path);
+                Assert.Contains(
+                    "where T : ROS2.Message, new()",
+                    source.Substring(declaration, openBrace - declaration),
+                    StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
         public void NativeInboundHostDoesNotRequireWebSocketInputMetadata()
         {
             var root = FindRepoRoot();
