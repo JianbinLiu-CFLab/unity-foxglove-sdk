@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import sys as __phase192_sys
+from pathlib import Path
+
+__phase192_sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
 
 import argparse
-from pathlib import Path
 
 from .fixture_builder import *
 from .fixture_constants import *
