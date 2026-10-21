@@ -6,6 +6,7 @@ import sys as __phase192_sys
 from pathlib import Path as __phase192_Path
 
 __phase192_sys.path.insert(0, str(__phase192_Path(__file__).resolve().parents[4]))
+Path = __phase192_Path
 from Scripts.smoke.atomic_output import atomic_write_bytes, atomic_write_text
 
 import argparse
