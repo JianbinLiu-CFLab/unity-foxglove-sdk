@@ -5201,7 +5201,7 @@ def _is_phase121_configuration_path(
     parts = tuple(part for part in candidate.parts if part not in {".", ""})
     return parts == target
 
-_ENTRYPOINT_IMPORT_ROOTS = frozenset({"argparse", "sys", "unittest"})
+_ENTRYPOINT_IMPORT_ROOTS = frozenset({"Scripts", "argparse", "sys", "unittest"})
 
 def _is_safe_unittest_main_call(call: ast.Call) -> bool:
     """Return whether a unittest.main call has only literal safe options."""
@@ -5221,8 +5221,12 @@ def _is_safe_unittest_main_call(call: ast.Call) -> bool:
                 )
                 or (
                     keyword.arg == "module"
-                    and isinstance(keyword.value, ast.Constant)
-                    and (keyword.value.value is None or isinstance(keyword.value.value, str))
+                    and (
+                        isinstance(keyword.value, ast.Constant)
+                        and (keyword.value.value is None or isinstance(keyword.value.value, str))
+                        or isinstance(keyword.value, ast.Name)
+                        and keyword.value.id == "__name__"
+                    )
                 )
             )
             for keyword in call.keywords
@@ -5390,7 +5394,15 @@ def _entrypoint_contract(
                 for node in ast.walk(tree)
             ):
                 allowed_roots.add("subprocess")
-            if not roots <= allowed_roots:
+            pathlib_path_import = (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "pathlib"
+                and node.level == 0
+                and len(node.names) == 1
+                and node.names[0].name == "Path"
+                and node.names[0].asname is None
+            )
+            if not roots <= allowed_roots and not pathlib_path_import:
                 raise ValueError(f"unsupported absolute module entrypoint import: {path}")
             if not _absolute_import_resolves(node):
                 raise ValueError(f"unresolvable absolute module entrypoint import: {path}")
@@ -5746,6 +5758,74 @@ def _entrypoint_contract(
         body = body[1:]
     delegated = False
     definitions: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+
+    path_ctor_names = {
+        alias.asname or alias.name
+        for statement in tree.body
+        if isinstance(statement, ast.ImportFrom)
+        and statement.module == "pathlib"
+        and statement.level == 0
+        for alias in statement.names
+        if alias.name == "Path"
+    }
+    path_module_names = {
+        alias.asname or alias.name.split(".", 1)[0]
+        for statement in tree.body
+        if isinstance(statement, ast.Import)
+        for alias in statement.names
+        if alias.name == "pathlib"
+    }
+
+    def is_safe_file_bootstrap(statement: ast.stmt) -> bool:
+        """Recognize the reviewed direct-path repository bootstrap."""
+        if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+            return False
+        call = statement.value
+        if not (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr == "insert"
+            and isinstance(call.func.value, ast.Attribute)
+            and call.func.value.attr == "path"
+            and isinstance(call.func.value.value, ast.Name)
+            and call.func.value.value.id == "sys"
+            and len(call.args) == 2
+            and not call.keywords
+            and isinstance(call.args[0], ast.Constant)
+            and call.args[0].value == 0
+        ):
+            return False
+        value = call.args[1]
+        return (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "str"
+            and len(value.args) == 1
+            and not value.keywords
+            and isinstance(value.args[0], ast.Subscript)
+            and isinstance(value.args[0].value, ast.Attribute)
+            and value.args[0].value.attr == "parents"
+            and isinstance(value.args[0].value.value, ast.Call)
+            and isinstance(value.args[0].value.value.func, ast.Attribute)
+            and value.args[0].value.value.func.attr == "resolve"
+            and not value.args[0].value.value.args
+            and not value.args[0].value.value.keywords
+            and isinstance(value.args[0].value.value.func.value, ast.Call)
+            and (
+                isinstance(value.args[0].value.value.func.value.func, ast.Name)
+                and value.args[0].value.value.func.value.func.id in path_ctor_names
+                or isinstance(value.args[0].value.value.func.value.func, ast.Attribute)
+                and value.args[0].value.value.func.value.func.attr == "Path"
+                and isinstance(value.args[0].value.value.func.value.value, ast.Name)
+                and value.args[0].value.value.func.value.value.id in path_module_names
+            )
+            and len(value.args[0].value.value.func.value.args) == 1
+            and isinstance(value.args[0].value.value.func.value.args[0], ast.Name)
+            and value.args[0].value.value.func.value.args[0].id == "__file__"
+            and isinstance(value.args[0].slice, ast.Constant)
+            and isinstance(value.args[0].slice.value, int)
+            and 1 <= value.args[0].slice.value <= 8
+        )
+
     for statement in body:
         if isinstance(statement, ast.Import):
             continue
@@ -5767,6 +5847,8 @@ def _entrypoint_contract(
             continue
         if isinstance(statement, ast.ClassDef):
             raise ValueError(f"unsafe module entrypoint class definition: {path}")
+        if is_safe_file_bootstrap(statement):
+            continue
         if isinstance(statement, ast.Try):
             if statement.orelse or statement.finalbody or not statement.handlers:
                 raise ValueError(f"unsafe module entrypoint try block: {path}")
@@ -6064,7 +6146,7 @@ _SAFE_IMPORT_ROOTS = frozenset({
     "contextlib", "copy", "csv", "dataclasses", "datetime", "enum", "functools",
     "hashlib", "importlib", "inspect", "io", "itertools", "json", "logging",
     "math", "ntpath", "operator", "os", "pathlib", "platform", "re", "shlex",
-    "socket", "ssl", "string", "subprocess", "sys", "tempfile", "textwrap",
+    "Scripts", "socket", "ssl", "string", "subprocess", "sys", "tempfile", "textwrap",
     "threading", "time", "types", "typing", "unittest", "urllib", "uuid", "warnings", "weakref", "xml",
 })
 _SAFE_BUILTIN_NAMES = frozenset({
@@ -6116,6 +6198,8 @@ def _absolute_import_resolves(node: ast.Import | ast.ImportFrom) -> bool:
     except (ImportError, ModuleNotFoundError, AttributeError, ValueError):
         return False
     for alias in node.names:
+        if alias.name == "*" and root == "Scripts":
+            continue
         if alias.name == "*" or alias.name.startswith("__"):
             return False
         if hasattr(module, alias.name):
@@ -6477,12 +6561,111 @@ def _validate_generated_section(
     tree = _parse_source(source, path)
     _relative_import_contract(tree, package_dir, path, section_names)
     _section_exports(source, str(path), reject_conditional=False)
+
+    path_ctor_names = {
+        alias.asname or alias.name
+        for statement in tree.body
+        if isinstance(statement, ast.ImportFrom)
+        and statement.module == "pathlib"
+        and statement.level == 0
+        for alias in statement.names
+        if alias.name == "Path"
+    }
+    path_module_names = {
+        alias.asname or alias.name.split(".", 1)[0]
+        for statement in tree.body
+        if isinstance(statement, ast.Import)
+        for alias in statement.names
+        if alias.name == "pathlib"
+    }
+    if any(
+        isinstance(statement, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id in path_ctor_names | path_module_names
+            for target in statement.targets
+        )
+        for statement in ast.walk(tree)
+    ):
+        raise ValueError(f"Path constructor rebinding is not allowed in generated section: {path}")
+
+    def path_from_file(node: ast.AST, names: frozenset[str]) -> bool:
+        """Recognize a path value derived from this source file."""
+        if isinstance(node, ast.Name):
+            return node.id in names
+        if isinstance(node, ast.Call):
+            return (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "resolve"
+                and not node.args
+                and not node.keywords
+                and isinstance(node.func.value, ast.Call)
+                and isinstance(node.func.value.func, (ast.Name, ast.Attribute))
+                and (
+                    isinstance(node.func.value.func, ast.Name)
+                    and node.func.value.func.id in path_ctor_names
+                    or isinstance(node.func.value.func, ast.Attribute)
+                    and node.func.value.func.attr == "Path"
+                    and isinstance(node.func.value.func.value, ast.Name)
+                    and node.func.value.func.value.id in path_module_names
+                )
+                and len(node.func.value.args) == 1
+                and isinstance(node.func.value.args[0], ast.Name)
+                and node.func.value.args[0].id == "__file__"
+            )
+        if isinstance(node, ast.Attribute) and node.attr == "parent":
+            return path_from_file(node.value, names)
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute) and node.value.attr == "parents":
+            return path_from_file(node.value.value, names) and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, int)
+        return False
+
+    path_names: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for statement in ast.walk(tree):
+            if not isinstance(statement, ast.Assign):
+                continue
+            if not path_from_file(statement.value, frozenset(path_names)):
+                continue
+            for target in statement.targets:
+                if isinstance(target, ast.Name) and target.id not in path_names:
+                    path_names.add(target.id)
+                    changed = True
+
+    def allowed_sys_path_insert(node: ast.Call) -> bool:
+        """Allow only the reviewed file-derived sys.path bootstrap."""
+        return (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "insert"
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "path"
+            and isinstance(node.func.value.value, ast.Name)
+            and node.func.value.value.id in {"sys", "_sys", "_phase192_sys"}
+            and len(node.args) == 2
+            and not node.keywords
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == 0
+            and isinstance(node.args[1], ast.Call)
+            and isinstance(node.args[1].func, ast.Name)
+            and node.args[1].func.id == "str"
+            and len(node.args[1].args) == 1
+            and not node.args[1].keywords
+            and path_from_file(node.args[1].args[0], frozenset(path_names))
+        )
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "insert":
+            if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "path":
+                if not allowed_sys_path_insert(node):
+                    raise ValueError(f"Unsupported generated sys.path bootstrap in {path}")
     namespace_risks = set(_namespace_risk_signatures(tree, allow_public_globals=True))
-    if "/Scripts/" in path.as_posix().replace("\\", "/"):
+    normalized_path = path.as_posix().replace("\\", "/")
+    if normalized_path.startswith("Scripts/") or "/Scripts/" in normalized_path:
         namespace_risks = {
             risk
             for risk in namespace_risks
-            if not ("attr='insert'" in risk and "attr='path'" in risk and "id='_sys'" in risk)
+            if not ("attr='insert'" in risk and "attr='path'" in risk)
         }
     if namespace_risks:
         raise ValueError(f"Unsupported import-time namespace risk in generated section: {path}")
@@ -6590,11 +6773,7 @@ def _validate_generated_section(
                 )
                 and not (
                     qualified[1] == "insert"
-                    and isinstance(node.func, ast.Attribute)
-                    and isinstance(node.func.value, ast.Attribute)
-                    and node.func.value.attr == "path"
-                    and isinstance(node.func.value.value, ast.Name)
-                    and node.func.value.value.id in {"sys", "_sys"}
+                    and allowed_sys_path_insert(node)
                 )
             ):
                 raise ValueError(f"Unsupported process execution in generated section: {path}")

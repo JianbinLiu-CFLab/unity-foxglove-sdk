@@ -3900,6 +3900,53 @@ class IdentityToolingTests(unittest.TestCase):
                     frozenset({"fixture"}),
                 )
 
+    def test_generated_section_allows_only_file_derived_sys_path_bootstrap(self) -> None:
+        """Generated sections cannot redirect imports to an arbitrary path."""
+        accepted = (
+            "from pathlib import Path\n"
+            "import sys as _phase192_sys\n"
+            "_phase192_parent = Path(__file__).resolve().parent\n"
+            "_phase192_sys.path.insert(0, str(_phase192_parent))\n"
+            "PUBLIC = 1\n__all__ = ['PUBLIC']\n"
+        )
+        compare_identity_surfaces._validate_generated_section(
+            accepted,
+            Path("Scripts/smoke/fixture.py"),
+            Path("Scripts/smoke"),
+            frozenset({"fixture"}),
+        )
+        rejected = (
+            "import sys\n"
+            "sys.path.insert(1, '/tmp/evil')\n"
+            "PUBLIC = 1\n__all__ = ['PUBLIC']\n",
+            "import sys\n"
+            "sys.path.insert(0, '/tmp/evil')\n"
+            "PUBLIC = 1\n__all__ = ['PUBLIC']\n",
+        )
+        for source in rejected:
+            with self.subTest(source=source), self.assertRaisesRegex(ValueError, "sys.path bootstrap"):
+                compare_identity_surfaces._validate_generated_section(
+                    source,
+                    Path("Scripts/smoke/fixture.py"),
+                    Path("Scripts/smoke"),
+                    frozenset({"fixture"}),
+                )
+
+    def test_loader_registry_rejects_untrusted_spec_name_assignment(self) -> None:
+        """Loader registry writes must restore only the current module object."""
+        source = ast.parse(
+            "import sys as _phase192_sys\n"
+            "class Spec:\n"
+            "    name = 'subprocess'\n"
+            "spec = Spec()\n"
+            "_phase192_sys.modules[spec.name] = object()\n"
+        )
+        with self.assertRaisesRegex(ValueError, "module registry mutation"):
+            compare_identity_surfaces._phase192_validate_template_registry_mutations(
+                source,
+                "Scripts/package/validate_source_generator_dll.py",
+            )
+
     def test_configuration_exemption_is_phase121_specific(self) -> None:
         """Only the reviewed Phase121 configuration gets the narrow exemption."""
         self.assertTrue(
