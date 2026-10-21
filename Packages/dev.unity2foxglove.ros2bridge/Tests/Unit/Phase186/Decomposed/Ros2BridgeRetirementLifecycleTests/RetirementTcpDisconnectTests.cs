@@ -260,7 +260,8 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     "loopback peer did not accept replacement connection");
                 Wait(
                     publishReceived,
-                    "queued frame did not survive peer-close reconnect");
+                    "queued frame did not survive peer-close reconnect",
+                    RealTcpWaitTimeout);
                 Assert.True(SpinWait.SpinUntil(
                     () => runtime.GetStatsSnapshot().SentFrames == 1,
                     TimeSpan.FromSeconds(2)));
