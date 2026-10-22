@@ -6,7 +6,7 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 
 
-def _validate_decomposed_source_files(
+def __validate_decomposed_source_files(
     repository: pathlib.Path,
     payload: Mapping[str, object],
     discovered_sources: set[str],
@@ -256,7 +256,7 @@ def validate_repository_provenance(
     errors.extend(
         _validate_canonical_ledger_schema(payload, introduced_sources)
     )
-    part_paths, mapped_originals, source_map_errors = _validate_decomposed_source_files(
+    part_paths, mapped_originals, source_map_errors = __validate_decomposed_source_files(
         repository,
         payload,
         discovered_sources,

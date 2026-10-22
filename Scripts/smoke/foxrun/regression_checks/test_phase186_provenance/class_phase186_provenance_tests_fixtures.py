@@ -383,6 +383,9 @@ class _Phase186ProvenanceTests_fixtures:
         """A source map binds split files to one reachable baseline blob."""
 
         module = load_module()
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            validate_repository_provenance_and_git_tree_paths as source_module,
+        )
         with tempfile.TemporaryDirectory() as temporary:
             repository = pathlib.Path(temporary)
             initialize_git_repository(repository)
@@ -421,7 +424,10 @@ class _Phase186ProvenanceTests_fixtures:
                     }
                 ]
             }
-            part_paths, originals, errors = module._validate_decomposed_source_files(
+            part_paths, originals, errors = getattr(
+                source_module,
+                "__validate_decomposed_source_files",
+            )(
                 repository,
                 payload,
                 {original_path, part_path},
