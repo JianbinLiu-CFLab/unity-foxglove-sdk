@@ -5276,12 +5276,11 @@ def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
 
 
 def _entrypoint_contract_signatures(tree: ast.Module) -> tuple[str, ...]:
-    """Return the normalized AST signatures used for entrypoint compatibility."""
-    return tuple(sorted({
-        ast.dump(node, include_attributes=False)
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.Call, ast.If, ast.Import, ast.ImportFrom))
-    }))
+    """Return ordered normalized top-level AST signatures for entrypoint compatibility."""
+    return tuple(
+        ast.dump(statement, include_attributes=False)
+        for statement in tree.body
+    )
 
 
 def _reviewed_direct_entrypoint_transition(
@@ -7410,7 +7409,7 @@ def _compare_surfaces(
             or (not strict and not _contract_preserves_order(base_relative, head_relative))
         ):
             errors.append(f"RELATIVE_STAR_IMPORT_CHANGED {relative}")
-        if not strict and base_risks != head_risks and not reviewed_entrypoint_transition:
+        if not strict and base_risks != head_risks:
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
         if not strict:
             base_contract = tuple(base_conditional_contract or ())
