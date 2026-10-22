@@ -51,9 +51,37 @@ namespace Unity.FoxgloveSDK.Tests
         }
         public static string ReadFoxRunRos2SubscriptionBindingSources()
         {
+            return ReadFoxRunRos2SubscriptionBindingSources(FindRequiredRepoRoot());
+        }
+        public static string ReadFoxRunRos2SubscriptionBindingSources(string root)
+        {
             const string facade =
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionBinding.cs";
-            return File.ReadAllText(RepoPath(facade));
+            var facadePath = Path.Combine(root, facade.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(facadePath))
+                throw new FileNotFoundException("Missing ROS2 for Unity subscription binding source: " + facadePath, facadePath);
+
+            var fragmentDirectory = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime",
+                "Native",
+                "FoxRun",
+                "Decomposed",
+                "FoxRunRos2SubscriptionBinding");
+            var fragments = Directory.Exists(fragmentDirectory)
+                ? Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
+                    .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
+                    .OrderBy(path => path, StringComparer.Ordinal)
+                    .ToArray()
+                : Array.Empty<string>();
+            if (fragments.Length != 0)
+                throw new InvalidDataException(
+                    "Monolithic ROS2 for Unity subscription binding has unexpected C# fragments: "
+                    + string.Join(", ", fragments));
+
+            return File.ReadAllText(facadePath);
         }
 
         public static string ReadCameraPublisherSources()
