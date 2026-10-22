@@ -11,6 +11,7 @@ SELECTOR_SECTIONS = (
 )
 
 def selector_text():
+    """Read the facade and its registered runtime-selection sections."""
     section_dir = SELECTOR.parent / 'Decomposed' / 'Ros2ForUnityRuntimeSelection'
     actual = tuple(sorted(path.name for path in section_dir.glob('*.cs')))
     expected = tuple(sorted(SELECTOR_SECTIONS))
