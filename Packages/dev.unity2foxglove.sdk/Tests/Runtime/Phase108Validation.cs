@@ -217,9 +217,20 @@ namespace Unity.FoxgloveSDK.Tests
                             (OptionalPackage + "/Editor/").Length)
                         .Contains("/", StringComparison.Ordinal))
                 .ToList();
+            var expectedRuntimeSelectionSections = new[]
+            {
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/Discovery.cs",
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/EnvironmentLease.cs",
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/Manifest.cs",
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RestartAndEnvironment.cs",
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/SessionAndCommunication.cs",
+            };
             var unexpectedEditorFiles = editorFiles
                 .Where(path =>
                     !expectedTopLevelEditorFiles.Contains(
+                        path,
+                        StringComparer.Ordinal)
+                    && !expectedRuntimeSelectionSections.Contains(
                         path,
                         StringComparer.Ordinal)
                     && !path.StartsWith(
