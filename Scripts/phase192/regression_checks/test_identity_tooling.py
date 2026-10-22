@@ -4127,6 +4127,10 @@ class IdentityToolingTests(unittest.TestCase):
         base_contract = compare_identity_surfaces._entrypoint_contract_signatures(
             ast.parse(base_source)
         )
+        base_surface = (
+            frozenset({'main'}), (), (), frozenset(), 'digest', frozenset(), True, (),
+            frozenset(), (), 'entry-base', base_contract, (), (), frozenset({'main'}),
+        )
         for source in variants:
             with self.subTest(source=source):
                 head_contract = compare_identity_surfaces._entrypoint_contract_signatures(
@@ -4139,6 +4143,16 @@ class IdentityToolingTests(unittest.TestCase):
                         head_contract,
                     )
                 )
+                head_surface = (
+                    frozenset({'main'}), (), (), frozenset(), 'digest', frozenset(), True, (),
+                    frozenset(), (), 'entry-head', head_contract, (), (), frozenset({'main'}),
+                )
+                errors = compare_identity_surfaces._compare_surfaces(
+                    {relative: base_surface},
+                    {relative: head_surface},
+                    strict=False,
+                )
+                self.assertIn('MODULE_ENTRYPOINT_CHANGED ' + relative, errors)
 
     def test_compatibility_does_not_waive_namespace_contract_for_entrypoint_transition(self) -> None:
         """Entrypoint migration cannot mask a simultaneous namespace-risk change."""
