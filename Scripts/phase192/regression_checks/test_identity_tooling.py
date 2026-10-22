@@ -4091,6 +4091,96 @@ class IdentityToolingTests(unittest.TestCase):
             )
         )
 
+    def test_compatibility_rejects_unreviewed_lyrical_entrypoint_definitions_and_order(self) -> None:
+        """The reviewed path preserves top-level definitions and bootstrap order."""
+        relative = 'Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package.py'
+        base_source = (
+            "from __future__ import annotations\n"
+            "import unittest\n"
+            "from . import *\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(unittest.main(module=None))\n"
+        )
+        canonical_head = (
+            "from __future__ import annotations\n"
+            "import unittest\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, str(Path(__file__).resolve().parents[6]))\n"
+            "from Scripts.ros2forunity.windows.lyrical.regression_checks.test_build_r2fu_runtime_package import *\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(unittest.main(module=__name__))\n"
+        )
+        variants = (
+            "def unittest():\n    pass\n" + canonical_head,
+            canonical_head + "\ndef load_tests(loader, tests, pattern):\n    raise SystemExit(99)\n",
+            canonical_head + "\ndef __getattr__(name):\n    return None\n",
+            canonical_head.replace(
+                "sys.path.insert(0, str(Path(__file__).resolve().parents[6]))\n",
+                "",
+            ).replace(
+                "from Scripts.ros2forunity.windows.lyrical.regression_checks.test_build_r2fu_runtime_package import *\n",
+                "from Scripts.ros2forunity.windows.lyrical.regression_checks.test_build_r2fu_runtime_package import *\n"
+                "sys.path.insert(0, str(Path(__file__).resolve().parents[6]))\n",
+            ),
+        )
+        base_contract = compare_identity_surfaces._entrypoint_contract_signatures(
+            ast.parse(base_source)
+        )
+        for source in variants:
+            with self.subTest(source=source):
+                head_contract = compare_identity_surfaces._entrypoint_contract_signatures(
+                    ast.parse(source)
+                )
+                self.assertFalse(
+                    compare_identity_surfaces._reviewed_direct_entrypoint_transition(
+                        relative,
+                        base_contract,
+                        head_contract,
+                    )
+                )
+
+    def test_compatibility_does_not_waive_namespace_contract_for_entrypoint_transition(self) -> None:
+        """Entrypoint migration cannot mask a simultaneous namespace-risk change."""
+        relative = 'Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package.py'
+        base_source = (
+            "from __future__ import annotations\n"
+            "import unittest\n"
+            "from . import *\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(unittest.main(module=None))\n"
+        )
+        head_source = (
+            "from __future__ import annotations\n"
+            "import unittest\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "sys.path.insert(0, str(Path(__file__).resolve().parents[6]))\n"
+            "from Scripts.ros2forunity.windows.lyrical.regression_checks.test_build_r2fu_runtime_package import *\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(unittest.main(module=__name__))\n"
+        )
+        base_contract = compare_identity_surfaces._entrypoint_contract_signatures(
+            ast.parse(base_source)
+        )
+        head_contract = compare_identity_surfaces._entrypoint_contract_signatures(
+            ast.parse(head_source)
+        )
+        base = {
+            relative: (
+                frozenset({'main'}), (), (), frozenset(), 'digest', frozenset(), True, (),
+                frozenset(), (), 'entry-base', base_contract, (), (), frozenset({'main'}),
+            )
+        }
+        head = {
+            relative: (
+                frozenset({'main'}), (), (), frozenset(), 'digest', frozenset(), True, (),
+                frozenset({'namespace-risk'}), (), 'entry-head', head_contract, (), (), frozenset({'main'}),
+            )
+        }
+        errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+        self.assertIn('NAMESPACE_CONTRACT_CHANGED ' + relative, errors)
+
     def test_archive_entrypoint_accepts_reviewed_absolute_import_without_runtime_path(self) -> None:
         """The trusted archive checker resolves the reviewed import from the checkout tree."""
         relative = Path(
