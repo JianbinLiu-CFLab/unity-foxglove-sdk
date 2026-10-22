@@ -156,6 +156,118 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
 
             [Fact]
+            public void Ros2ForUnitySubscriptionHubCompositionRejectsMissingFragment()
+            {
+                var root = CreateSourceFixture(
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun",
+                    "FoxRunRos2SubscriptionHub.cs",
+                    "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Scanning.cs",
+                    "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Lifecycle.cs");
+                try
+                {
+                    Assert.Throws<InvalidDataException>(
+                        () => Ros2ForUnitySubscriptionHubSourceComposer.Compose(root));
+                }
+                finally
+                {
+                    DeleteSourceFixture(root);
+                }
+            }
+
+            [Fact]
+            public void Ros2ForUnitySubscriptionHubCompositionRejectsUnexpectedFragment()
+            {
+                var root = CreateSourceFixture(
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun",
+                    "FoxRunRos2SubscriptionHub.cs",
+                    "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Scanning.cs",
+                    "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Lifecycle.cs",
+                    "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Bindings.cs");
+                var fragmentDirectory = Path.Combine(
+                    root,
+                    "Packages",
+                    "dev.unity2foxglove.ros2forunity",
+                    "Runtime",
+                    "Native",
+                    "FoxRun",
+                    "Decomposed",
+                    "FoxRunRos2SubscriptionHub");
+                try
+                {
+                    File.WriteAllText(
+                        Path.Combine(fragmentDirectory, "FoxRunRos2SubscriptionHub.Legacy.cs"),
+                        "internal sealed partial class FoxRunRos2SubscriptionHub { }");
+                    Assert.Throws<InvalidDataException>(
+                        () => Ros2ForUnitySubscriptionHubSourceComposer.Compose(root));
+                }
+                finally
+                {
+                    DeleteSourceFixture(root);
+                }
+            }
+
+            [Fact]
+            public void Ros2ForUnitySubscriptionHubCompositionRejectsMalformedFragmentWrapper()
+            {
+                var root = CreateSourceFixture(
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun",
+                    "FoxRunRos2SubscriptionHub.cs",
+                    "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Scanning.cs",
+                    "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Lifecycle.cs",
+                    "Decomposed/FoxRunRos2SubscriptionHub/FoxRunRos2SubscriptionHub.Bindings.cs");
+                var fragment = Path.Combine(
+                    root,
+                    "Packages",
+                    "dev.unity2foxglove.ros2forunity",
+                    "Runtime",
+                    "Native",
+                    "FoxRun",
+                    "Decomposed",
+                    "FoxRunRos2SubscriptionHub",
+                    "FoxRunRos2SubscriptionHub.Bindings.cs");
+                try
+                {
+                    File.WriteAllText(fragment, "internal sealed partial class NotTheSubscriptionHub { }");
+                    Assert.Throws<InvalidDataException>(
+                        () => Ros2ForUnitySubscriptionHubSourceComposer.Compose(root));
+                }
+                finally
+                {
+                    DeleteSourceFixture(root);
+                }
+            }
+
+            [Fact]
+            public void Ros2ForUnitySubscriptionBindingReaderRejectsUnexpectedFragment()
+            {
+                var root = CreateSourceFixture(
+                    "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun",
+                    "FoxRunRos2SubscriptionBinding.cs");
+                var fragmentDirectory = Path.Combine(
+                    root,
+                    "Packages",
+                    "dev.unity2foxglove.ros2forunity",
+                    "Runtime",
+                    "Native",
+                    "FoxRun",
+                    "Decomposed",
+                    "FoxRunRos2SubscriptionBinding");
+                try
+                {
+                    Directory.CreateDirectory(fragmentDirectory);
+                    File.WriteAllText(
+                        Path.Combine(fragmentDirectory, "Unregistered.cs"),
+                        "internal sealed partial class FoxRunRos2SubscriptionBinding<T> { }");
+                    Assert.Throws<InvalidDataException>(
+                        () => PhaseValidationSourceHelpers.ReadFoxRunRos2SubscriptionBindingSources(root));
+                }
+                finally
+                {
+                    DeleteSourceFixture(root);
+                }
+            }
+
+            [Fact]
             public void SharedRos2ForUnitySubscriptionHubHelperReadsMonolithicFacade()
             {
                 var helper = TestSources.Runtime("Ros2ForUnitySubscriptionHubSourceComposer.cs");
@@ -527,6 +639,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     "FoxgloveRuntimeCompositionFailsClosedAndPreservesTrailingGateOrder",
                     "Ros2ForUnitySubscriptionHubCompositionPreservesSplitMethods",
                     "Ros2ForUnitySubscriptionHubCompositionFallsBackToMonolithicFacade",
+                    "Ros2ForUnitySubscriptionHubCompositionRejectsMissingFragment",
+                    "Ros2ForUnitySubscriptionHubCompositionRejectsUnexpectedFragment",
+                    "Ros2ForUnitySubscriptionHubCompositionRejectsMalformedFragmentWrapper",
+                    "Ros2ForUnitySubscriptionBindingReaderRejectsUnexpectedFragment",
                     "SharedRos2ForUnitySubscriptionHubHelperReadsMonolithicFacade",
                     "Ros2CustomCdrEmitterCompositionIgnoresTrailingBlankLines",
                     "Ros2BridgeRuntimeCompositionRejectsUnregisteredRootSiblingPartial",
