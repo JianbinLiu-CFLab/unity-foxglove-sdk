@@ -82,7 +82,7 @@ __DECOMPOSED_AUTHORITY_ROOTS = (
     "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance",
 )
 
-_ALLOWED_DECOMPOSED_SOURCE_PART_PATHS = frozenset(
+__ALLOWED_DECOMPOSED_SOURCE_PART_PATHS = frozenset(
     {
         "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Lifecycle.cs",
         "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Registration.cs",
@@ -103,11 +103,6 @@ _ALLOWED_DECOMPOSED_SOURCE_PART_PATHS = frozenset(
         "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Limits.cs",
         "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Scenarios.cs",
         "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.TestHelpers.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/DecoderAndDialect.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/EnvelopeAndCorrelation.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/FixtureHelpers.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/NegativeVectors.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/ResponseContracts.cs",
     }
 )
 _REQUIRED_UNRECORDED_AUTHORITIES = (_LEDGER_RELATIVE,)

@@ -2,7 +2,7 @@ from __future__ import annotations
 from .discover_protocol_sources_and_phase186b_introduced_sources import *
 from .foundation import (
     __decomposed_authority_paths,
-    _ALLOWED_DECOMPOSED_SOURCE_PART_PATHS,
+    __ALLOWED_DECOMPOSED_SOURCE_PART_PATHS,
 )
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase186_provenance.py"
 __file__ = str(_PHASE192_FACADE_FILE)
@@ -137,7 +137,7 @@ def __discover_decomposed_source_part_paths(
         return set()
 
     paths: set[str] = set()
-    for path in sorted(_ALLOWED_DECOMPOSED_SOURCE_PART_PATHS):
+    for path in sorted(__ALLOWED_DECOMPOSED_SOURCE_PART_PATHS):
         if path not in tracked_paths:
             continue
         try:
