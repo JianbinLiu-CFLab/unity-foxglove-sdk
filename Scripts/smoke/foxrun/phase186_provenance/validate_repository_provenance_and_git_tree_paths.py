@@ -1,6 +1,9 @@
 from __future__ import annotations
 from .discover_protocol_sources_and_phase186b_introduced_sources import *
-from .foundation import __decomposed_authority_paths
+from .foundation import (
+    __decomposed_authority_paths,
+    _ALLOWED_DECOMPOSED_SOURCE_PART_PATHS,
+)
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase186_provenance.py"
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
@@ -123,45 +126,29 @@ def __validate_decomposed_source_files(
     return part_paths, original_paths, errors
 
 
-def __decomposed_source_part_paths(
+def __discover_decomposed_source_part_paths(
     repository: pathlib.Path,
-    payload: Mapping[str, object],
 ) -> set[str]:
-    """Return tracked C# decomposition parts under an explicit Decomposed root."""
+    """Return tracked protocol sources under explicit Decomposed roots."""
+
+    try:
+        tracked_paths = _subprocess_lines(["git", "ls-files"], repository)
+    except (OSError, RuntimeError):
+        return set()
 
     paths: set[str] = set()
-    records = payload.get("decomposedSources", [])
-    if not isinstance(records, list):
-        return paths
-    for record in records:
-        if not isinstance(record, Mapping) or not isinstance(record.get("parts"), list):
+    for path in sorted(_ALLOWED_DECOMPOSED_SOURCE_PART_PATHS):
+        if path not in tracked_paths:
             continue
-        for part in record["parts"]:
-            if not isinstance(part, Mapping) or not isinstance(part.get("path"), str):
-                continue
-            try:
-                path = _canonical_relative_path(
-                    part["path"],
-                    label="decomposed source part",
-                )
-            except ValueError:
-                continue
-            if "/Decomposed/" not in f"/{path}/" or not path.endswith(".cs"):
-                continue
-            try:
-                _resolve_regular_file_contained(
-                    repository,
-                    path,
-                    label="decomposed source part",
-                )
-                tracked = _subprocess_lines(
-                    ["git", "ls-files", "--error-unmatch", "--", path],
-                    repository,
-                )
-            except (OSError, RuntimeError, ValueError):
-                continue
-            if tracked == [path]:
-                paths.add(path)
+        try:
+            _resolve_regular_file_contained(
+                repository,
+                path,
+                label="decomposed source part",
+            )
+        except (OSError, ValueError):
+            continue
+        paths.add(path)
     return paths
 
 
@@ -304,9 +291,8 @@ def validate_repository_provenance(
     errors.extend(
         _validate_canonical_ledger_schema(payload, introduced_sources)
     )
-    discovered_for_parts = discovered_sources | __decomposed_source_part_paths(
+    discovered_for_parts = discovered_sources | __discover_decomposed_source_part_paths(
         repository,
-        payload,
     )
     part_paths, mapped_originals, source_map_errors = __validate_decomposed_source_files(
         repository,

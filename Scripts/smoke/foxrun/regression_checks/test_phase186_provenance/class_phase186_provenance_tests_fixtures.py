@@ -395,11 +395,17 @@ class _Phase186ProvenanceTests_fixtures:
             run_git(repository, "add", ".")
             run_git(repository, "commit", "--quiet", "-m", "baseline")
             revision = run_git(repository, "rev-parse", "HEAD")
-            part = repository / "Protocol/Decomposed/AuthorityPart.cs"
+            part = repository / (
+                "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/"
+                "Decomposed/Unexpected.cs"
+            )
             part.parent.mkdir(parents=True)
             part.write_text("line one\n", encoding="utf-8")
             original_path = "Protocol/Authority.cs"
-            part_path = "Protocol/Decomposed/AuthorityPart.cs"
+            part_path = (
+                "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/"
+                "Decomposed/Unexpected.cs"
+            )
             payload = {
                 "decomposedSources": [
                     {
@@ -519,6 +525,45 @@ class _Phase186ProvenanceTests_fixtures:
             )
 
         self.assertEqual(set(), part_paths)
+        self.assertTrue(
+            any("not a discovered protocol source" in error for error in errors),
+            errors,
+        )
+        self.assertEqual(
+            set(),
+            getattr(source_module, "__discover_decomposed_source_part_paths")(
+                repository
+            ),
+        )
+
+    def test_full_provenance_rejects_ledger_only_decomposed_part(self) -> None:
+        """The production validator rejects a ledger-only tracked decomposition part."""
+
+        module = load_module()
+        reference = ROOT / "third-party" / "ROS-TCP-Connector"
+        if not reference.is_dir():
+            self.skipTest("ROS-TCP-Connector reference checkout is unavailable")
+        payload = json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
+        record = payload["decomposedSources"][0]
+        path = (
+            "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/"
+            "Ros2CustomCdrEmitter/Generation.cs"
+        )
+        raw = (ROOT / pathlib.PurePosixPath(path)).read_bytes()
+        record["parts"].append(
+            {
+                "path": path,
+                "sha256": module._sha256_bytes(module._canonical_source_bytes(raw)),
+                "movedRange": {"startLine": 1, "endLine": 1},
+            }
+        )
+        with mock.patch.object(module, "_read_json", return_value=payload):
+            errors = module.validate_repository_provenance(
+                ROOT,
+                reference,
+                LEDGER_PATH,
+            )
+
         self.assertTrue(
             any("not a discovered protocol source" in error for error in errors),
             errors,
