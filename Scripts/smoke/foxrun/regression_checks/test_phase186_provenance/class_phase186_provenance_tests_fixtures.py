@@ -467,5 +467,85 @@ class _Phase186ProvenanceTests_fixtures:
         ):
             self.assertTrue(any(expected in error for error in errors), errors)
 
+    def test_decomposed_source_part_must_be_discovered(self) -> None:
+        """A correctly hashed part outside the discovered set is rejected."""
+
+        module = load_module()
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            validate_repository_provenance_and_git_tree_paths as source_module,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = pathlib.Path(temporary)
+            initialize_git_repository(repository)
+            original = repository / "Protocol/Authority.cs"
+            original.parent.mkdir(parents=True)
+            original.write_text("line one\nline two\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+            run_git(repository, "commit", "--quiet", "-m", "baseline")
+            revision = run_git(repository, "rev-parse", "HEAD")
+            part = repository / "Protocol/Decomposed/AuthorityPart.cs"
+            part.parent.mkdir(parents=True)
+            part.write_text("line one\n", encoding="utf-8")
+            original_path = "Protocol/Authority.cs"
+            part_path = "Protocol/Decomposed/AuthorityPart.cs"
+            payload = {
+                "decomposedSources": [
+                    {
+                        "originalPath": original_path,
+                        "sourceRevision": revision,
+                        "originalSha256": module._sha256_bytes(
+                            module._canonical_source_bytes(original.read_bytes())
+                        ),
+                        "parts": [
+                            {
+                                "path": part_path,
+                                "sha256": module._sha256_bytes(
+                                    module._canonical_source_bytes(part.read_bytes())
+                                ),
+                                "movedRange": {"startLine": 1, "endLine": 1},
+                            }
+                        ],
+                    }
+                ]
+            }
+            part_paths, _, errors = getattr(
+                source_module,
+                "__validate_decomposed_source_files",
+            )(
+                repository,
+                payload,
+                {original_path},
+                {original_path: "baseline"},
+            )
+
+        self.assertEqual(set(), part_paths)
+        self.assertTrue(
+            any("not a discovered protocol source" in error for error in errors),
+            errors,
+        )
+
+    def test_canonical_ledger_requires_required_top_level_keys(self) -> None:
+        """Required ledger keys cannot be omitted while decomposedSources is optional."""
+
+        module = load_module()
+        payload = json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
+        introduced, discovery_errors = module._phase186b_introduced_sources(ROOT)
+        self.assertEqual([], discovery_errors)
+        for missing in ("schemaVersion", "ledgerPath", "reference"):
+            candidate = dict(payload)
+            candidate.pop(missing)
+            errors = module._validate_canonical_ledger_schema(candidate, introduced)
+            self.assertTrue(
+                any(f"'{missing}'" in error for error in errors),
+                (missing, errors),
+            )
+        optional = dict(payload)
+        optional.pop("decomposedSources", None)
+        errors = module._validate_canonical_ledger_schema(optional, introduced)
+        self.assertFalse(
+            any("missing=['decomposedSources']" in error for error in errors),
+            errors,
+        )
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]

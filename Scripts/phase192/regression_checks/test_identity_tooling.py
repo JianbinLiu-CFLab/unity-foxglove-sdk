@@ -4112,7 +4112,13 @@ class IdentityToolingTests(unittest.TestCase):
             "    raise SystemExit(unittest.main(module=__name__))\n"
         )
         variants = (
-            "def unittest():\n    pass\n" + canonical_head,
+            canonical_head.replace(
+                "if __name__ == '__main__':\n",
+                "def unittest():\n"
+                "    pass\n"
+                "if __name__ == '__main__':\n",
+                1,
+            ),
             canonical_head + "\ndef load_tests(loader, tests, pattern):\n    raise SystemExit(99)\n",
             canonical_head + "\ndef __getattr__(name):\n    return None\n",
             canonical_head.replace(

@@ -86,6 +86,12 @@ def __validate_decomposed_source_files(
             except ValueError as exc:
                 errors.append(str(exc))
                 continue
+            if path not in discovered_sources:
+                errors.append(
+                    "decomposed source part is not a discovered protocol source: "
+                    + path
+                )
+                continue
             part_paths.add(path)
             try:
                 raw = _resolve_regular_file_contained(
@@ -115,6 +121,48 @@ def __validate_decomposed_source_files(
             + ", ".join(unexpected)
         )
     return part_paths, original_paths, errors
+
+
+def __decomposed_source_part_paths(
+    repository: pathlib.Path,
+    payload: Mapping[str, object],
+) -> set[str]:
+    """Return tracked C# decomposition parts under an explicit Decomposed root."""
+
+    paths: set[str] = set()
+    records = payload.get("decomposedSources", [])
+    if not isinstance(records, list):
+        return paths
+    for record in records:
+        if not isinstance(record, Mapping) or not isinstance(record.get("parts"), list):
+            continue
+        for part in record["parts"]:
+            if not isinstance(part, Mapping) or not isinstance(part.get("path"), str):
+                continue
+            try:
+                path = _canonical_relative_path(
+                    part["path"],
+                    label="decomposed source part",
+                )
+            except ValueError:
+                continue
+            if "/Decomposed/" not in f"/{path}/" or not path.endswith(".cs"):
+                continue
+            try:
+                _resolve_regular_file_contained(
+                    repository,
+                    path,
+                    label="decomposed source part",
+                )
+                tracked = _subprocess_lines(
+                    ["git", "ls-files", "--error-unmatch", "--", path],
+                    repository,
+                )
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if tracked == [path]:
+                paths.add(path)
+    return paths
 
 
 def validate_repository_provenance(
@@ -256,10 +304,14 @@ def validate_repository_provenance(
     errors.extend(
         _validate_canonical_ledger_schema(payload, introduced_sources)
     )
+    discovered_for_parts = discovered_sources | __decomposed_source_part_paths(
+        repository,
+        payload,
+    )
     part_paths, mapped_originals, source_map_errors = __validate_decomposed_source_files(
         repository,
         payload,
-        discovered_sources,
+        discovered_for_parts,
         introduced_sources,
     )
     errors.extend(source_map_errors)

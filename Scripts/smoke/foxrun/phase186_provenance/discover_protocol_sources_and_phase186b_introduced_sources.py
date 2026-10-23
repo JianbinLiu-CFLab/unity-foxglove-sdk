@@ -269,10 +269,14 @@ def _validate_canonical_ledger_schema(
         "implementations",
     }
     observed_top_level_keys = set(payload)
-    if not observed_top_level_keys.issubset(top_level_keys | {"decomposedSources"}):
+    allowed_top_level_keys = top_level_keys | {"decomposedSources"}
+    missing_top_level_keys = top_level_keys - observed_top_level_keys
+    unexpected_top_level_keys = observed_top_level_keys - allowed_top_level_keys
+    if missing_top_level_keys or unexpected_top_level_keys:
         errors.append(
-            "canonical ledger top-level schema must contain exactly "
-            + ", ".join(sorted(top_level_keys | {"decomposedSources"}))
+            "canonical ledger top-level schema is invalid; "
+            f"missing={sorted(missing_top_level_keys)}, "
+            f"unexpected={sorted(unexpected_top_level_keys)}"
         )
 
     reference = payload.get("reference")
