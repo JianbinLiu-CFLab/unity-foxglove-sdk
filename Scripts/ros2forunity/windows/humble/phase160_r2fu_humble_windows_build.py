@@ -246,6 +246,8 @@ def reject_cmd_shell_unsafe_path(label: str, path: pathlib.Path) -> None:
 
 
 def _load_source_sections() -> None:
+    """Load the decomposed source sections into the facade namespace."""
+
     section_dir = pathlib.Path(__file__).with_name("Decomposed") / "phase160_r2fu_humble_windows_build"
     for section_name in (
         "phase160_r2fu_humble_windows_build.SafetyAndEnvironment.py",
