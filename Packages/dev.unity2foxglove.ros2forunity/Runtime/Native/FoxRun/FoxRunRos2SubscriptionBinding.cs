@@ -368,7 +368,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
         }
 
-        }
     }
 }
 #endif
