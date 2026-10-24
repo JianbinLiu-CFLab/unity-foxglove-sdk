@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using Xunit;
 
 namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
@@ -449,9 +450,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
         [Fact]
         public void NativePublisherCapacityDoesNotTerminateSourceDiscovery()
         {
-            var source = File.ReadAllText(PathOf(
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/"
-                + "FoxRun/FoxRunRos2CustomPublisherHub.cs"));
+            var source = ReadCustomPublisherHubSource();
 
             Assert.DoesNotContain(
                 "index < behaviours.Length && _bindings.Count < MaximumBindings",
@@ -461,6 +460,25 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 "ObserveBindingDemand(",
                 source,
                 StringComparison.Ordinal);
+        }
+
+        private static string ReadCustomPublisherHubSource()
+        {
+            var facade = PathOf(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/"
+                + "FoxRunRos2CustomPublisherHub.cs");
+            var directory = PathOf(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/"
+                + "Decomposed/FoxRunRos2CustomPublisherHub");
+            var fragments = new[]
+            {
+                "FoxRunRos2CustomPublisherHub.Application.cs",
+                "FoxRunRos2CustomPublisherHub.Bindings.cs",
+                "FoxRunRos2CustomPublisherHub.Cleanup.cs",
+                "FoxRunRos2CustomPublisherHub.Registration.cs",
+                "FoxRunRos2CustomPublisherHub.SessionTracker.cs",
+            }.Select(name => Path.Combine(directory, name));
+            return string.Join(Environment.NewLine, new[] { facade }.Concat(fragments).Select(File.ReadAllText));
         }
 
         private static string PathOf(string relative)

@@ -105,8 +105,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ProviderTeardownIsObservableAndSessionDisposeIsTerminal()
         {
-            var publisherHub = ReadRepoText(
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherHub.cs");
+            var publisherHub = PhaseValidationSourceHelpers.ReadFoxRunRos2CustomPublisherHubSources();
             var provider = ReadRepoText(
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2TransportProvider.cs");
 
