@@ -1,6 +1,40 @@
 from __future__ import annotations
 from .discover_protocol_sources_and_phase186b_introduced_sources import *
 from .foundation import __decomposed_authority_paths
+
+__ALLOWED_DECOMPOSED_SOURCE_PART_PATHS = frozenset(
+    {
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.AdmissionAndBudget.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Cleanup.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Concurrency.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.CountersAndReplay.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Identity.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Lifecycle.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Limits.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Scenarios.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.TestHelpers.cs",
+    }
+)
+
+__KNOWN_DECOMPOSED_PROTOCOL_SOURCE_PATHS = __ALLOWED_DECOMPOSED_SOURCE_PART_PATHS | frozenset(
+    {
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Lifecycle.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Registration.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Removal.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.State.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/SequenceAndAdmissions.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/EncodingAndFrames.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/HeaderValidation.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/JsonParser.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/LegacyCodec.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/MessageParsing.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/DecoderAndDialect.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/EnvelopeAndCorrelation.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/FixtureHelpers.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/NegativeVectors.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolV2Tests/ResponseContracts.cs",
+    }
+)
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "phase186_provenance.py"
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
@@ -123,46 +157,71 @@ def __validate_decomposed_source_files(
     return part_paths, original_paths, errors
 
 
-def __decomposed_source_part_paths(
+def __discover_decomposed_source_part_paths(
     repository: pathlib.Path,
-    payload: Mapping[str, object],
 ) -> set[str]:
-    """Return tracked C# decomposition parts under an explicit Decomposed root."""
+    """Return the reviewed tracked protocol decomposition parts."""
+
+    try:
+        tracked_paths = _subprocess_lines(["git", "ls-files"], repository)
+    except (OSError, RuntimeError):
+        return set()
 
     paths: set[str] = set()
-    records = payload.get("decomposedSources", [])
-    if not isinstance(records, list):
-        return paths
-    for record in records:
-        if not isinstance(record, Mapping) or not isinstance(record.get("parts"), list):
+    for path in sorted(__ALLOWED_DECOMPOSED_SOURCE_PART_PATHS):
+        if path not in tracked_paths:
             continue
-        for part in record["parts"]:
-            if not isinstance(part, Mapping) or not isinstance(part.get("path"), str):
-                continue
-            try:
-                path = _canonical_relative_path(
-                    part["path"],
-                    label="decomposed source part",
-                )
-            except ValueError:
-                continue
-            if "/Decomposed/" not in f"/{path}/" or not path.endswith(".cs"):
-                continue
-            try:
-                _resolve_regular_file_contained(
-                    repository,
-                    path,
-                    label="decomposed source part",
-                )
-                tracked = _subprocess_lines(
-                    ["git", "ls-files", "--error-unmatch", "--", path],
-                    repository,
-                )
-            except (OSError, RuntimeError, ValueError):
-                continue
-            if tracked == [path]:
-                paths.add(path)
+        try:
+            _resolve_regular_file_contained(
+                repository,
+                path,
+                label="decomposed source part",
+            )
+        except (OSError, ValueError):
+            continue
+        paths.add(path)
     return paths
+
+
+def __is_decomposed_protocol_source_path(path: str) -> bool:
+    """Return whether a tracked path is a protocol decomposition source."""
+
+    pure = pathlib.PurePosixPath(path)
+    for root, pattern in _PROTOCOL_SOURCE_ROOTS[:2]:
+        root_parts = pathlib.PurePosixPath(root).parts
+        if pure.parts[: len(root_parts)] != root_parts:
+            continue
+        if not fnmatch.fnmatchcase(pure.name.casefold(), pattern.casefold()):
+            continue
+        if any(part.casefold() == "decomposed" for part in pure.parts[len(root_parts) :]):
+            return True
+    return False
+
+
+def __validate_decomposed_source_tree(repository: pathlib.Path) -> list[str]:
+    """Reject unreviewed or unsafe tracked protocol decomposition sources."""
+
+    try:
+        tracked_paths = _subprocess_lines(["git", "ls-files"], repository)
+    except (OSError, RuntimeError) as exc:
+        return [f"could not inspect tracked decomposed protocol sources: {exc}"]
+
+    errors: list[str] = []
+    for path in sorted(
+        path for path in tracked_paths if __is_decomposed_protocol_source_path(path)
+    ):
+        if path not in __KNOWN_DECOMPOSED_PROTOCOL_SOURCE_PATHS:
+            errors.append("unknown decomposed protocol source: " + path)
+            continue
+        try:
+            _resolve_regular_file_contained(
+                repository,
+                path,
+                label="decomposed protocol source",
+            )
+        except (OSError, ValueError) as exc:
+            errors.append(str(exc))
+    return errors
 
 
 def validate_repository_provenance(
@@ -304,9 +363,9 @@ def validate_repository_provenance(
     errors.extend(
         _validate_canonical_ledger_schema(payload, introduced_sources)
     )
-    discovered_for_parts = discovered_sources | __decomposed_source_part_paths(
+    errors.extend(__validate_decomposed_source_tree(repository))
+    discovered_for_parts = discovered_sources | __discover_decomposed_source_part_paths(
         repository,
-        payload,
     )
     part_paths, mapped_originals, source_map_errors = __validate_decomposed_source_files(
         repository,
