@@ -546,8 +546,8 @@ class _Phase186ProvenanceTests_fixtures:
         payload = json.loads(LEDGER_PATH.read_text(encoding="utf-8"))
         record = payload["decomposedSources"][0]
         path = (
-            "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun/Decomposed/"
-            "Ros2CustomCdrEmitter/Generation.cs"
+            "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/"
+            "Decomposed/U2R2ProtocolV2Tests/DecoderAndDialect.cs"
         )
         raw = (ROOT / pathlib.PurePosixPath(path)).read_bytes()
         record["parts"].append(
@@ -566,6 +566,36 @@ class _Phase186ProvenanceTests_fixtures:
 
         self.assertTrue(
             any("not a discovered protocol source" in error for error in errors),
+            errors,
+        )
+
+    def test_unknown_protocol_decomposed_source_is_rejected_by_tree_scan(self) -> None:
+        """Tracked protocol decomposition files require a reviewed static identity."""
+
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            validate_repository_provenance_and_git_tree_paths as source_module,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = pathlib.Path(temporary)
+            initialize_git_repository(repository)
+            unknown = repository / (
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/"
+                "Decomposed/Unexpected.cs"
+            )
+            unknown.parent.mkdir(parents=True)
+            unknown.write_text("class Unexpected {}\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+            errors = getattr(
+                source_module,
+                "__validate_decomposed_source_tree",
+            )(repository)
+
+        self.assertEqual(
+            [
+                "unknown decomposed protocol source: "
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/"
+                "Decomposed/Unexpected.cs"
+            ],
             errors,
         )
 

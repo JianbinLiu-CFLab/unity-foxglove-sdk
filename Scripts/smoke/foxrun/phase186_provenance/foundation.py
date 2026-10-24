@@ -81,30 +81,6 @@ __DECOMPOSED_AUTHORITY_ROOTS = (
     "Scripts/smoke/foxrun/phase186_provenance",
     "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance",
 )
-
-__ALLOWED_DECOMPOSED_SOURCE_PART_PATHS = frozenset(
-    {
-        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Lifecycle.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Registration.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.Removal.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/ContractAuthority.State.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ContractAuthority/SequenceAndAdmissions.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/EncodingAndFrames.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/HeaderValidation.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/JsonParser.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/LegacyCodec.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolCodec/MessageParsing.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.AdmissionAndBudget.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Cleanup.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Concurrency.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.CountersAndReplay.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Identity.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Lifecycle.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Limits.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Scenarios.cs",
-        "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.TestHelpers.cs",
-    }
-)
 _REQUIRED_UNRECORDED_AUTHORITIES = (_LEDGER_RELATIVE,)
 
 def __decomposed_authority_paths(repository: pathlib.Path) -> tuple[str, ...]:
