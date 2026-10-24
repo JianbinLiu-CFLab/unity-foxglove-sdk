@@ -22,8 +22,6 @@ using Debug = UnityEngine.Debug;
 
 namespace Unity2Foxglove
 {
-    public static partial class Phase186BatchModeRos2BridgeProbe
-    {
     internal sealed class Phase186RunConfiguration
     {
         private static readonly HashSet<string> ExpectedKeys =
@@ -416,7 +414,6 @@ namespace Unity2Foxglove
             }
             return true;
         }
-    }
     }
 }
 #endif
