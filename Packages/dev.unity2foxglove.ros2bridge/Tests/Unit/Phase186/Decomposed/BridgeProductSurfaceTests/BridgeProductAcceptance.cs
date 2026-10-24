@@ -31,6 +31,16 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                          builderRelative,
                          probeRelative,
                          sceneRelative,
+                        "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed.meta",
+                        "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed/Phase186BatchModeRos2BridgeProbe.meta",
+                        "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed/Phase186BatchModeRos2BridgeProbe/Phase186BatchModeRos2BridgeProbe.BatchExecution.cs",
+                        "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed/Phase186BatchModeRos2BridgeProbe/Phase186BatchModeRos2BridgeProbe.BatchExecution.cs.meta",
+                        "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed/Phase186BatchModeRos2BridgeProbe/Phase186BatchModeRos2BridgeProbe.Configuration.cs",
+                        "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed/Phase186BatchModeRos2BridgeProbe/Phase186BatchModeRos2BridgeProbe.Configuration.cs.meta",
+                        "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed/Phase186BatchModeRos2BridgeProbe/Phase186BatchModeRos2BridgeProbe.ManualPreparation.cs",
+                        "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed/Phase186BatchModeRos2BridgeProbe/Phase186BatchModeRos2BridgeProbe.ManualPreparation.cs.meta",
+                        "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed/Phase186BatchModeRos2BridgeProbe/Phase186RunConfiguration.cs",
+                        "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed/Phase186BatchModeRos2BridgeProbe/Phase186RunConfiguration.cs.meta",
                      })
             {
                 Assert.True(File.Exists(PathOf(relative)), relative);
@@ -209,7 +219,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.Contains("_enableFoxRunInbound", builder, StringComparison.Ordinal);
             Assert.DoesNotContain("WriteAllText", builder, StringComparison.Ordinal);
 
-            var probe = File.ReadAllText(PathOf(probeRelative));
+            var probe = ReadPhase186ProbeSource();
             Assert.Contains("-phase186RunConfig", probe, StringComparison.Ordinal);
             Assert.Contains("Application.logMessageReceived", probe, StringComparison.Ordinal);
             Assert.Contains("SessionState", probe, StringComparison.Ordinal);
@@ -402,9 +412,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
         [Fact]
         public void Phase186TopicGuardUsesCurrentRunPrefixInsteadOfHistoricalSubstrings()
         {
-            var probe = File.ReadAllText(PathOf(
-                "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
-                + "Phase186BatchModeRos2BridgeProbe.cs"));
+            var probe = ReadPhase186ProbeSource();
             var runtime = ReadPhase186AcceptanceSource();
 
             Assert.Contains(
@@ -492,6 +500,26 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 "LifecycleAndProgress.cs",
                 "EvidenceAndGates.cs",
                 "ValidationAndUi.cs",
+            }.Select(name => Path.Combine(directory, name));
+            return string.Join(
+                Environment.NewLine,
+                new[] { facade }.Concat(fragments).Select(File.ReadAllText));
+        }
+
+        private static string ReadPhase186ProbeSource()
+        {
+            var facade = PathOf(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
+                + "Phase186BatchModeRos2BridgeProbe.cs");
+            var directory = PathOf(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/Decomposed/"
+                + "Phase186BatchModeRos2BridgeProbe");
+            var fragments = new[]
+            {
+                "Phase186BatchModeRos2BridgeProbe.ManualPreparation.cs",
+                "Phase186BatchModeRos2BridgeProbe.BatchExecution.cs",
+                "Phase186BatchModeRos2BridgeProbe.Configuration.cs",
+                "Phase186RunConfiguration.cs",
             }.Select(name => Path.Combine(directory, name));
             return string.Join(
                 Environment.NewLine,
