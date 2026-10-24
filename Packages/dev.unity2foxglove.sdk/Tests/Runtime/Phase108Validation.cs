@@ -225,12 +225,22 @@ namespace Unity.FoxgloveSDK.Tests
                 OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/RestartAndEnvironment.cs",
                 OptionalPackage + "/Editor/Decomposed/Ros2ForUnityRuntimeSelection/SessionAndCommunication.cs",
             };
+            var expectedTypesupportSelectionSections = new[]
+            {
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/Ros2ForUnityCustomTypesupportSelectionTransaction.Discovery.cs",
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/Ros2ForUnityCustomTypesupportSelectionTransaction.Manifest.cs",
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/Ros2ForUnityCustomTypesupportSelectionTransaction.Models.cs",
+                OptionalPackage + "/Editor/Decomposed/Ros2ForUnityCustomTypesupportSelectionTransaction/Ros2ForUnityCustomTypesupportSelectionTransaction.NativeIdentity.cs",
+            };
             var unexpectedEditorFiles = editorFiles
                 .Where(path =>
                     !expectedTopLevelEditorFiles.Contains(
                         path,
                         StringComparer.Ordinal)
                     && !expectedRuntimeSelectionSections.Contains(
+                        path,
+                        StringComparer.Ordinal)
+                    && !expectedTypesupportSelectionSections.Contains(
                         path,
                         StringComparer.Ordinal)
                     && !path.StartsWith(
