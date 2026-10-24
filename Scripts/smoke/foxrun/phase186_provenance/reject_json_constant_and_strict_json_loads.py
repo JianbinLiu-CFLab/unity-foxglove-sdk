@@ -71,10 +71,11 @@ def _subprocess_nul_paths(command: Sequence[str], cwd: pathlib.Path) -> list[str
         capture_output=True,
     )
     if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout).decode(
-            "utf-8",
-            errors="strict",
-        ).strip()
+        raw_detail = completed.stderr or completed.stdout
+        try:
+            detail = raw_detail.decode("utf-8", errors="strict").strip()
+        except UnicodeDecodeError as exc:
+            raise RuntimeError("command failed with non-UTF-8 diagnostic") from exc
         raise RuntimeError(
             detail or f"command failed with exit code {completed.returncode}"
         )
