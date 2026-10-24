@@ -602,6 +602,8 @@ class _Phase186ProvenanceTests_fixtures:
     def test_unicode_unknown_protocol_decomposed_source_is_rejected_by_tree_scan(
         self,
     ) -> None:
+        """Quoted Unicode paths must still be rejected by the tree scan."""
+
         from Scripts.smoke.foxrun.phase186_provenance import (
             validate_repository_provenance_and_git_tree_paths as source_module,
         )

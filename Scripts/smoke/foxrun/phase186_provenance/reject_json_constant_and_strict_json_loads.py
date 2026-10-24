@@ -62,6 +62,8 @@ def _subprocess_lines(command: Sequence[str], cwd: pathlib.Path) -> list[str]:
 
 
 def _subprocess_nul_paths(command: Sequence[str], cwd: pathlib.Path) -> list[str]:
+    """Run a command and return strict UTF-8 NUL-delimited paths."""
+
     completed = subprocess.run(
         list(command),
         cwd=cwd,
