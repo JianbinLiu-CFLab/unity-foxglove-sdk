@@ -165,5 +165,3 @@ def resolve_cmake_generator(requested: str, env: dict[str, str], log_file: pathl
         elif requested == "auto":
             log.write("# auto selected visualstudio because ninja.exe was not found\n")
     return effective
-
-

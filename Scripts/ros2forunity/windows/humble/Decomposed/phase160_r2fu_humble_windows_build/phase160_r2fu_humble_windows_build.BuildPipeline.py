@@ -352,5 +352,3 @@ def write_evidence(
     ]
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
     evidence_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-

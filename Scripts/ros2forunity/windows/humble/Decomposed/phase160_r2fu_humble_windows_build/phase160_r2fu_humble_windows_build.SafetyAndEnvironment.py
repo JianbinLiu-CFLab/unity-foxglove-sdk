@@ -202,5 +202,3 @@ def capture_cmd_environment(vs_dev_cmd: pathlib.Path, env: dict[str, str], log_f
         key, value = line.split("=", 1)
         merged[key] = value
     return merged
-
-
