@@ -237,6 +237,42 @@ namespace Unity.FoxgloveSDK.Tests
 
             return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
+
+        public static string ReadCursorBridgeSources()
+        {
+            return ReadCursorBridgeSources(FindRequiredRepoRoot());
+        }
+
+        public static string ReadCursorBridgeSources(string root)
+        {
+            var directory = Path.Combine(
+                root,
+                "Tools",
+                "foxglove-extensions",
+                "unity-cursor-bridge",
+                "src");
+            var expected = new[]
+            {
+                "index.ts",
+                "helpers.ts",
+                "panel.ts",
+                "panel_dom.ts",
+            };
+            var actual = Directory.GetFiles(directory, "*.ts", SearchOption.TopDirectoryOnly)
+                .Select(path => Path.GetFileName(path))
+                .Where(name => !name.EndsWith(".test.ts", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            if (!expected.OrderBy(name => name, StringComparer.Ordinal).SequenceEqual(actual, StringComparer.Ordinal))
+                throw new InvalidDataException(
+                    "Cursor bridge source set mismatch. Expected: "
+                    + string.Join(", ", expected)
+                    + "; actual: " + string.Join(", ", actual));
+
+            return string.Join(
+                Environment.NewLine,
+                expected.Select(name => File.ReadAllText(Path.Combine(directory, name))));
+        }
         public static string ReadMediaFoundationH264EncoderSidecarSources()
         {
             var root = FindRequiredRepoRoot();

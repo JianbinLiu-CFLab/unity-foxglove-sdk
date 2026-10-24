@@ -371,8 +371,7 @@ namespace Unity.FoxgloveSDK.Tests
             var replayController = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var sceneOnlyAdvance = ExtractMethodBody(replayController, "public void ApplyTickToScene(ulong timeNs, bool deferCallbacks)");
             Check(sceneOnlyAdvance.Contains("_replayEngine.Tick(timeNs, _replayTickBuffer)", StringComparison.Ordinal)
-                  && sceneOnlyAdvance.Contains("ForwardReplayMessageToScene", StringComparison.Ordinal)
-                  && sceneOnlyAdvance.Contains("FireReplayBatchCompleted", StringComparison.Ordinal)
+                  && sceneOnlyAdvance.Contains("QueueReplaySceneBatch", StringComparison.Ordinal)
                   && !sceneOnlyAdvance.Contains("PublishMessages", StringComparison.Ordinal)
                   && !sceneOnlyAdvance.Contains("PublishReplay", StringComparison.Ordinal),
                 "139D-7C2: scene-only cursor advance avoids replay MessageData publication back to Foxglove");

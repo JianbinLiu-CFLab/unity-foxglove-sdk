@@ -495,4 +495,3 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     cursorController?.abort();
   };
 }
-

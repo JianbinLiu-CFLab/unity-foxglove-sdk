@@ -102,6 +102,11 @@ namespace Unity.FoxgloveSDK.Tests
                     "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
                     StringComparison.Ordinal))
                 return ReadCameraPublisherEditorSources();
+            if (string.Equals(
+                    normalized,
+                    "Tools/foxglove-extensions/unity-cursor-bridge/src/index.ts",
+                    StringComparison.Ordinal))
+                return ReadCursorBridgeSources();
 
             return ReadGenericCSharpSource(relativePath);
         }
