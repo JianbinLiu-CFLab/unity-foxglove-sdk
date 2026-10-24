@@ -12,6 +12,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Tests;
 using Unity.FoxgloveSDK.SourceGenerators;
 using Xunit;
 
@@ -213,9 +214,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         [Fact]
         public void CustomPublisherHubStopsOnSynchronousPublishSessionEnd()
         {
-            var hub = Text(
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/"
-                + "FoxRunRos2CustomPublisherHub.cs");
+            var hub = PhaseValidationSourceHelpers.ReadFoxRunRos2CustomPublisherHubSources();
             var updateStart = hub.IndexOf(
                 "private void Update()",
                 StringComparison.Ordinal);

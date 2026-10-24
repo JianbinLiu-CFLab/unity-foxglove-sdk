@@ -95,6 +95,53 @@ namespace Unity.FoxgloveSDK.Tests
             return string.Join(Environment.NewLine, new[] { facadePath }.Concat(fragmentPaths).Select(File.ReadAllText));
         }
 
+        public static string ReadFoxRunRos2CustomPublisherHubSources()
+        {
+            return ReadFoxRunRos2CustomPublisherHubSources(FindRequiredRepoRoot());
+        }
+
+        public static string ReadFoxRunRos2CustomPublisherHubSources(string root)
+        {
+            const string facade =
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherHub.cs";
+            var facadePath = Path.Combine(root, facade.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(facadePath))
+                throw new FileNotFoundException("Missing ROS2 for Unity custom publisher hub facade: " + facadePath, facadePath);
+
+            var fragmentDirectory = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime",
+                "Native",
+                "FoxRun",
+                "Decomposed",
+                "FoxRunRos2CustomPublisherHub");
+            var expectedFragments = new[]
+            {
+                "FoxRunRos2CustomPublisherHub.Application.cs",
+                "FoxRunRos2CustomPublisherHub.Bindings.cs",
+                "FoxRunRos2CustomPublisherHub.Cleanup.cs",
+                "FoxRunRos2CustomPublisherHub.Registration.cs",
+                "FoxRunRos2CustomPublisherHub.SessionTracker.cs",
+            };
+            if (!Directory.Exists(fragmentDirectory))
+                throw new DirectoryNotFoundException("ROS2 for Unity custom publisher hub fragment directory was not found: " + fragmentDirectory);
+
+            var actualFragments = Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            if (!expectedFragments.OrderBy(path => path, StringComparer.Ordinal).SequenceEqual(actualFragments, StringComparer.Ordinal))
+                throw new InvalidDataException(
+                    "ROS2 for Unity custom publisher hub source set mismatch. Expected: "
+                    + string.Join(", ", expectedFragments)
+                    + "; actual: " + string.Join(", ", actualFragments));
+
+            var fragmentPaths = expectedFragments.Select(name => Path.Combine(fragmentDirectory, name));
+            return string.Join(Environment.NewLine, new[] { facadePath }.Concat(fragmentPaths).Select(File.ReadAllText));
+        }
+
         public static string ReadCameraPublisherSources()
         {
             var root = FindRequiredRepoRoot();

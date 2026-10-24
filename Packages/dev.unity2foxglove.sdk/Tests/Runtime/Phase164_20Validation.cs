@@ -51,8 +51,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyR2fuTypedBindingsCachePublishersPerContract()
         {
-            var hub = Read(
-                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherHub.cs");
+            var hub = PhaseValidationSourceHelpers.ReadFoxRunRos2CustomPublisherHubSources();
             var binding = Read(
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherBinding.cs");
             var start = PhaseValidationSourceHelpers.SourceMethod(

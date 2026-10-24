@@ -12,6 +12,7 @@ using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Tests;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using UnityEngine;
 using Xunit;
@@ -55,14 +56,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Ros2ForUnity
                 "Native",
                 "FoxRun",
                 "FoxRunRos2TransportProvider.cs"));
-            var publisherHub = File.ReadAllText(Path.Combine(
-                root,
-                "Packages",
-                "dev.unity2foxglove.ros2forunity",
-                "Runtime",
-                "Native",
-                "FoxRun",
-                "FoxRunRos2CustomPublisherHub.cs"));
+            var publisherHub = PhaseValidationSourceHelpers.ReadFoxRunRos2CustomPublisherHubSources(root);
             var subscriptionHub = File.ReadAllText(Path.Combine(
                 root,
                 "Packages",
