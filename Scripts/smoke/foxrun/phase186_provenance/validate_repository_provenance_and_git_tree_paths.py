@@ -163,7 +163,7 @@ def __discover_decomposed_source_part_paths(
     """Return the reviewed tracked protocol decomposition parts."""
 
     try:
-        tracked_paths = _subprocess_lines(["git", "ls-files"], repository)
+        tracked_paths = _subprocess_nul_paths(["git", "ls-files", "-z"], repository)
     except (OSError, RuntimeError):
         return set()
 
@@ -202,7 +202,7 @@ def __validate_decomposed_source_tree(repository: pathlib.Path) -> list[str]:
     """Reject unreviewed or unsafe tracked protocol decomposition sources."""
 
     try:
-        tracked_paths = _subprocess_lines(["git", "ls-files"], repository)
+        tracked_paths = _subprocess_nul_paths(["git", "ls-files", "-z"], repository)
     except (OSError, RuntimeError) as exc:
         return [f"could not inspect tracked decomposed protocol sources: {exc}"]
 

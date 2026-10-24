@@ -599,6 +599,38 @@ class _Phase186ProvenanceTests_fixtures:
             errors,
         )
 
+    def test_unicode_unknown_protocol_decomposed_source_is_rejected_by_tree_scan(
+        self,
+    ) -> None:
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            validate_repository_provenance_and_git_tree_paths as source_module,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = pathlib.Path(temporary)
+            initialize_git_repository(repository)
+            run_git(repository, "config", "core.quotePath", "true")
+            unknown = repository / (
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/"
+                "Decomposed/Unexpectedé.cs"
+            )
+            unknown.parent.mkdir(parents=True)
+            unknown.write_text("class Unexpected {}\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+            errors = getattr(
+                source_module,
+                "__validate_decomposed_source_tree",
+            )(repository)
+
+        self.assertEqual(
+            [
+                "unknown decomposed protocol source: "
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/"
+                "Decomposed/Unexpectedé.cs"
+            ],
+            errors,
+        )
+
     def test_canonical_ledger_requires_required_top_level_keys(self) -> None:
         """Required ledger keys cannot be omitted while decomposedSources is optional."""
 
