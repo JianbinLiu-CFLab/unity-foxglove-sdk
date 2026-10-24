@@ -142,6 +142,50 @@ namespace Unity.FoxgloveSDK.Tests
             return string.Join(Environment.NewLine, new[] { facadePath }.Concat(fragmentPaths).Select(File.ReadAllText));
         }
 
+        public static string ReadRos2ForUnityCustomTypesupportSelectionTransactionSources()
+        {
+            return ReadRos2ForUnityCustomTypesupportSelectionTransactionSources(FindRequiredRepoRoot());
+        }
+
+        public static string ReadRos2ForUnityCustomTypesupportSelectionTransactionSources(string root)
+        {
+            const string facade =
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs";
+            var facadePath = Path.Combine(root, facade.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(facadePath))
+                throw new FileNotFoundException("Missing R2FU typesupport selection facade: " + facadePath, facadePath);
+
+            var fragmentDirectory = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Editor",
+                "Decomposed",
+                "Ros2ForUnityCustomTypesupportSelectionTransaction");
+            var expectedFragments = new[]
+            {
+                "Ros2ForUnityCustomTypesupportSelectionTransaction.Discovery.cs",
+                "Ros2ForUnityCustomTypesupportSelectionTransaction.Manifest.cs",
+                "Ros2ForUnityCustomTypesupportSelectionTransaction.Models.cs",
+                "Ros2ForUnityCustomTypesupportSelectionTransaction.NativeIdentity.cs",
+            };
+            if (!Directory.Exists(fragmentDirectory))
+                throw new DirectoryNotFoundException("R2FU typesupport selection fragment directory was not found: " + fragmentDirectory);
+
+            var actualFragments = Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            if (!expectedFragments.OrderBy(path => path, StringComparer.Ordinal).SequenceEqual(actualFragments, StringComparer.Ordinal))
+                throw new InvalidDataException(
+                    "R2FU typesupport selection source set mismatch. Expected: "
+                    + string.Join(", ", expectedFragments)
+                    + "; actual: " + string.Join(", ", actualFragments));
+
+            var fragmentPaths = expectedFragments.Select(name => Path.Combine(fragmentDirectory, name));
+            return string.Join(Environment.NewLine, new[] { facadePath }.Concat(fragmentPaths).Select(File.ReadAllText));
+        }
+
         public static string ReadCameraPublisherSources()
         {
             var root = FindRequiredRepoRoot();

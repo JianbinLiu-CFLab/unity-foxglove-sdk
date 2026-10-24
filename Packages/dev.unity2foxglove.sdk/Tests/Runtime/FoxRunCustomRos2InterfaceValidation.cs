@@ -177,7 +177,7 @@ namespace Unity.FoxgloveSDK.Tests
             var shippedLedger = PhaseValidationSourceHelpers.ReadRequiredRepoText(ShippedLedgerPath);
             var r2fuDiagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(R2fuDiagnosticsPath);
             var r2fuUnshippedLedger = PhaseValidationSourceHelpers.ReadRequiredRepoText(R2fuUnshippedLedgerPath);
-            var typesupportSelection = PhaseValidationSourceHelpers.ReadRequiredRepoText(TypesupportSelectionPath);
+            var typesupportSelection = PhaseValidationSourceHelpers.ReadRos2ForUnityCustomTypesupportSelectionTransactionSources();
             var runtimeSelection = PhaseValidationSourceHelpers.ReadRequiredRepoText(RuntimeSelectionPath);
             var defineInstaller = PhaseValidationSourceHelpers.ReadRequiredRepoText(DefineInstallerPath);
             var playModeGuard = PhaseValidationSourceHelpers.ReadRequiredRepoText(PlayModeGuardPath);
