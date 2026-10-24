@@ -26,14 +26,30 @@ class _Phase184ProfileAcceptanceOrchestratorTests_additional:
     def test_unity_routes_emit_native_gate_before_full_bridge_readiness(self):
         """Verify unity routes emit native gate before full bridge readiness."""
 
-        source = (
+        facade = (
             ROOT
             / "Unity2Foxglove"
             / "Assets"
             / "Scripts"
             / "ManualAcceptance"
             / "Phase184FoxRunProfileAcceptance.cs"
-        ).read_text(encoding="utf-8")
+        )
+        directory = facade.parent / "Decomposed" / "Phase184FoxRunProfileAcceptance"
+        names = (
+            "Phase184FoxRunProfileAcceptance.Lifecycle.cs",
+            "Phase184FoxRunProfileAcceptance.Context.cs",
+            "Phase184TransportClientMarkerState.cs",
+            "Phase184AcceptanceRoute.cs",
+            "Phase184FoxgloveProfileRoute.cs",
+            "Phase184MultiTargetRoute.cs",
+            "Phase184DegradedTargetRoute.cs",
+            "Phase184QosContractRoute.cs",
+            "Phase184StreamRoute.cs",
+            "Phase184AcceptanceText.cs",
+        )
+        source = facade.read_text(encoding="utf-8") + "\n" + "\n".join(
+            (directory / name).read_text(encoding="utf-8") for name in names
+        )
         multi = source[
             source.index("public sealed partial class Phase184MultiTargetRoute") :
             source.index("public sealed partial class Phase184DegradedTargetRoute")

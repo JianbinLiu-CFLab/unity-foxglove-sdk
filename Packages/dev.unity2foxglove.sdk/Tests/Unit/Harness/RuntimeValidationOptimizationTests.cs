@@ -174,6 +174,11 @@ internal static class TestSources
                     "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs",
                     StringComparison.Ordinal))
                 return Unity.FoxgloveSDK.Tests.PhaseValidationSourceHelpers.ReadRos2ForUnityCustomTypesupportSelectionTransactionSources(RepoRoot);
+            if (string.Equals(
+                    normalized,
+                    "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase184FoxRunProfileAcceptance.cs",
+                    StringComparison.Ordinal))
+                return Phase184AcceptanceSources();
 
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
@@ -341,6 +346,57 @@ internal static class TestSources
                 : EnumerateCSharpSections(facadePath, sectionDirectories[0]).ToArray();
             foreach (var section in sections)
                 source += Environment.NewLine + File.ReadAllText(section);
+            return source;
+        }
+
+        private static string Phase184AcceptanceSources()
+        {
+            var directory = Path.Combine(
+                RepoRoot,
+                "Unity2Foxglove",
+                "Assets",
+                "Scripts",
+                "ManualAcceptance");
+            var sectionDirectory = Path.Combine(
+                directory,
+                "Decomposed",
+                "Phase184FoxRunProfileAcceptance");
+            var facadePath = Path.Combine(directory, "Phase184FoxRunProfileAcceptance.cs");
+            var facade = File.ReadAllText(facadePath);
+            var mainSections = new[]
+            {
+                "Phase184FoxRunProfileAcceptance.Lifecycle.cs",
+                "Phase184FoxRunProfileAcceptance.Context.cs",
+            };
+            var source = facade;
+            var insertion = new System.Text.StringBuilder();
+            foreach (var name in mainSections)
+            {
+                var section = File.ReadAllText(Path.Combine(sectionDirectory, name));
+                var declaration = "public sealed partial class Phase184FoxRunProfileAcceptance";
+                var declarationIndex = section.IndexOf(declaration, StringComparison.Ordinal);
+                Assert.True(declarationIndex >= 0, "Missing Phase184 acceptance declaration in " + name);
+                var openBrace = section.IndexOf('{', declarationIndex);
+                var close = section.LastIndexOf("\n    }\n}", StringComparison.Ordinal);
+                Assert.True(openBrace >= 0 && close > openBrace, "Invalid Phase184 acceptance section " + name);
+                insertion.Append(section.Substring(openBrace + 1, close - openBrace - 1));
+            }
+            var facadeClose = source.LastIndexOf("\n    }\n}\n", StringComparison.Ordinal);
+            Assert.True(facadeClose >= 0, "Invalid Phase184 acceptance facade.");
+            source = source.Insert(facadeClose, insertion.ToString());
+            var remaining = new[]
+            {
+                "Phase184TransportClientMarkerState.cs",
+                "Phase184AcceptanceRoute.cs",
+                "Phase184FoxgloveProfileRoute.cs",
+                "Phase184MultiTargetRoute.cs",
+                "Phase184DegradedTargetRoute.cs",
+                "Phase184QosContractRoute.cs",
+                "Phase184StreamRoute.cs",
+                "Phase184AcceptanceText.cs",
+            };
+            foreach (var name in remaining)
+                source += Environment.NewLine + File.ReadAllText(Path.Combine(sectionDirectory, name));
             return source;
         }
 
