@@ -26,7 +26,32 @@ namespace Unity.FoxgloveSDK.Tests
                     ?? throw new DirectoryNotFoundException(facadePath),
                 Path.GetFileNameWithoutExtension(facadePath));
             if (!Directory.Exists(packagePath))
-                return File.ReadAllText(facadePath);
+            {
+                packagePath = Path.Combine(
+                    Path.GetDirectoryName(facadePath)
+                        ?? throw new DirectoryNotFoundException(facadePath),
+                    "Decomposed",
+                    Path.GetFileNameWithoutExtension(facadePath));
+                if (!Directory.Exists(packagePath))
+                    return File.ReadAllText(facadePath);
+
+                var decomposedSections = Directory
+                    .GetFiles(packagePath, "*.py", SearchOption.TopDirectoryOnly)
+                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                if (decomposedSections.Length == 0)
+                    throw new InvalidOperationException(
+                        "No exported Python source sections found in " + packagePath);
+
+                var decomposedSource = new StringBuilder(File.ReadAllText(facadePath));
+                foreach (var section in decomposedSections)
+                {
+                    decomposedSource.Append(Environment.NewLine);
+                    decomposedSource.Append(File.ReadAllText(section));
+                }
+
+                return decomposedSource.ToString();
+            }
 
             var sections = EnumeratePythonSectionPaths(packagePath).ToArray();
             if (sections.Length == 0)
