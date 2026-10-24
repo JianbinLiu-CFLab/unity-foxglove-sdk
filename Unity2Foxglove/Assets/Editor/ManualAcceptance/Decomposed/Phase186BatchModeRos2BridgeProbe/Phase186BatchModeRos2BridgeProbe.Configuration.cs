@@ -84,6 +84,5 @@ namespace Unity2Foxglove
                    "Unity project root could not be resolved.");
     }
 
-    }
 }
 #endif
