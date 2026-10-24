@@ -102,6 +102,11 @@ namespace Unity.FoxgloveSDK.Tests
                     "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
                     StringComparison.Ordinal))
                 return ReadCameraPublisherEditorSources();
+            if (string.Equals(
+                    normalized,
+                    "Tools/foxglove-extensions/unity-cursor-bridge/src/index.ts",
+                    StringComparison.Ordinal))
+                return ReadCursorBridgeSources();
 
             return ReadGenericCSharpSource(relativePath);
         }
@@ -141,15 +146,18 @@ namespace Unity.FoxgloveSDK.Tests
             var sectionFiles = Directory.GetFiles(
                 sectionDirectory,
                 "*.cs",
-                SearchOption.TopDirectoryOnly);
+                SearchOption.AllDirectories);
             var marker = File.ReadLines(facadePath)
                 .Select(line => Regex.Match(
                     line,
                     @"^\s*///\s*<remarks>Phase192 source sections:\s*(?<names>[^<]+)</remarks>\s*$",
                     RegexOptions.CultureInvariant))
                 .FirstOrDefault(match => match.Success);
+            var filesByName = sectionFiles.ToDictionary(
+                path => Path.GetRelativePath(sectionDirectory, path).Replace('\\', '/'),
+                StringComparer.OrdinalIgnoreCase);
             IEnumerable<string> orderedFiles = sectionFiles.OrderBy(
-                path => path,
+                path => Path.GetRelativePath(sectionDirectory, path),
                 StringComparer.Ordinal);
             if (marker != null)
             {
@@ -158,15 +166,14 @@ namespace Unity.FoxgloveSDK.Tests
                     .Select(name => name.Trim())
                     .Where(name => name.Length > 0)
                     .ToArray();
-                var filesByName = sectionFiles.ToDictionary(
-                    Path.GetFileName,
-                    StringComparer.OrdinalIgnoreCase);
                 if (names.Length != filesByName.Count
                     || names.Distinct(StringComparer.OrdinalIgnoreCase).Count() != names.Length
                     || names.Any(name => !filesByName.ContainsKey(name)))
                     throw new InvalidDataException(
                         "Invalid Phase192 source-section order in " + facadePath);
-                orderedFiles = names.Select(name => filesByName[name]);
+                orderedFiles = names.Select(name => Path.Combine(
+                    sectionDirectory,
+                    name.Replace('/', Path.DirectorySeparatorChar)));
             }
 
             var source = new StringBuilder(File.ReadAllText(facadePath));

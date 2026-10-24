@@ -51,7 +51,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void CursorBridgeKeepsDomConstructionOutOfRenderLoop()
         {
-            var source = Text("Tools/foxglove-extensions/unity-cursor-bridge/src/index.ts");
             var helperSource = Text("Tools/foxglove-extensions/unity-cursor-bridge/src/helpers.ts");
             var panelSource = Text("Tools/foxglove-extensions/unity-cursor-bridge/src/panel.ts");
             var domSource = Text("Tools/foxglove-extensions/unity-cursor-bridge/src/panel_dom.ts");

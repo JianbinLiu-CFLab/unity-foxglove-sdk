@@ -82,10 +82,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && sendCursor.Contains(": NO_TOKEN_HEADERS", StringComparison.Ordinal)
                   && !sendCursor.Contains("const headers: Record<string, string> = { \"Content-Type\": \"application/json\" };", StringComparison.Ordinal),
                 "164-38D-1: extension sendCursor reuses no-token headers");
-            Check(buildFollowPayload.Contains("startTime: lastStartTime", StringComparison.Ordinal)
-                  && buildFollowPayload.Contains("endTime: lastEndTime", StringComparison.Ordinal)
-                  && !buildFollowPayload.Contains("{ ...lastStartTime }", StringComparison.Ordinal)
-                  && !buildFollowPayload.Contains("{ ...lastEndTime }", StringComparison.Ordinal),
+            Check(buildFollowPayload.Contains("startTime,", StringComparison.Ordinal)
+                  && buildFollowPayload.Contains("endTime,", StringComparison.Ordinal)
+                  && !buildFollowPayload.Contains("...startTime", StringComparison.Ordinal)
+                  && !buildFollowPayload.Contains("...endTime", StringComparison.Ordinal),
                 "164-38D-2: follow payload reuses cached timeline bounds without object spreads");
             Check(source.Contains("let minIntervalMs = 1000 / state.maxHz", StringComparison.Ordinal)
                   && maxHzHandler.Contains("minIntervalMs = 1000 / state.maxHz", StringComparison.Ordinal)

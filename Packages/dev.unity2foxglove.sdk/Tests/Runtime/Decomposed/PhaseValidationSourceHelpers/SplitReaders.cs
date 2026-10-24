@@ -215,27 +215,78 @@ namespace Unity.FoxgloveSDK.Tests
 
             return source.ToString();
         }
-        private static string ReadCameraPublisherEditorSources()
+        public static string ReadCameraPublisherEditorSources()
         {
-            var root = FindRequiredRepoRoot();
+            return ReadCameraPublisherEditorSources(FindRequiredRepoRoot());
+        }
+
+        public static string ReadCameraPublisherEditorSources(string root)
+        {
             var directory = Path.Combine(
                 root,
                 "Packages",
                 "dev.unity2foxglove.sdk",
                 "Editor",
                 "Publishers");
-            var files = new[]
+            var fileNames = new[]
             {
                 "FoxgloveCameraPublisherEditor.cs",
                 "FoxgloveCameraPublisherEditor.Sections.cs",
                 "FoxgloveCameraPublisherEditor.Paths.cs",
                 "FoxgloveCameraPublisherEditor.Windows.cs",
-            }.Select(name => Path.Combine(directory, name)).ToArray();
-            foreach (var file in files)
-                if (!File.Exists(file))
-                    throw new FileNotFoundException("Missing camera publisher editor source: " + file, file);
+            };
+            var expected = new HashSet<string>(fileNames, StringComparer.Ordinal);
+            var actual = Directory.GetFiles(
+                    directory,
+                    "FoxgloveCameraPublisherEditor*.cs",
+                    SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            if (!expected.SetEquals(actual))
+                throw new InvalidDataException(
+                    "Camera editor source set mismatch. Expected: "
+                    + string.Join(", ", expected.OrderBy(name => name, StringComparer.Ordinal))
+                    + "; actual: " + string.Join(", ", actual.OrderBy(name => name, StringComparer.Ordinal)));
 
-            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
+            return string.Join(
+                Environment.NewLine,
+                fileNames.Select(name => File.ReadAllText(Path.Combine(directory, name))));
+        }
+
+        public static string ReadCursorBridgeSources()
+        {
+            return ReadCursorBridgeSources(FindRequiredRepoRoot());
+        }
+
+        public static string ReadCursorBridgeSources(string root)
+        {
+            var directory = Path.Combine(
+                root,
+                "Tools",
+                "foxglove-extensions",
+                "unity-cursor-bridge",
+                "src");
+            var expected = new[]
+            {
+                "index.ts",
+                "helpers.ts",
+                "panel.ts",
+                "panel_dom.ts",
+            };
+            var actual = Directory.GetFiles(directory, "*.ts", SearchOption.TopDirectoryOnly)
+                .Select(path => Path.GetFileName(path))
+                .Where(name => !name.EndsWith(".test.ts", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            if (!expected.OrderBy(name => name, StringComparer.Ordinal).SequenceEqual(actual, StringComparer.Ordinal))
+                throw new InvalidDataException(
+                    "Cursor bridge source set mismatch. Expected: "
+                    + string.Join(", ", expected)
+                    + "; actual: " + string.Join(", ", actual));
+
+            return string.Join(
+                Environment.NewLine,
+                expected.Select(name => File.ReadAllText(Path.Combine(directory, name))));
         }
         public static string ReadMediaFoundationH264EncoderSidecarSources()
         {

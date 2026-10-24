@@ -104,6 +104,15 @@ jobs:
           npm run typecheck
           npm test
 
+      - name: Run Unity cursor bridge tests
+        if: always()
+        working-directory: Tools/foxglove-extensions/unity-cursor-bridge
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
       - name: Enable Corepack for the pinned official MCAP harness
         if: always()
         run: corepack enable
@@ -132,7 +141,7 @@ jobs:
         run: |
           set -uo pipefail
           status=0
-          for flag in --phase121 --phase128 --phase129 --phase130 --phase131 --phase132 --phase138l --phase138m --phase138p --phase163-54 --phase164-41 --phase164-42 --phase175c; do
+          for flag in --phase121 --phase128 --phase129 --phase130 --phase131 --phase132 --phase138l --phase138m --phase138p --phase139d --phase163-54 --phase164-38 --phase164-41 --phase164-42 --phase175c; do
             dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- "$flag" || status=$?
           done
           exit "$status"

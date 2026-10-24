@@ -186,4 +186,3 @@ export function buildPanelDom(state: PanelState, canFollow: boolean): {
   tokenWarning.textContent = tokenEndpointWarningMessage(state.endpoint, state.token);
   return { root, enabledInput, endpointInput, tokenInput, maxHzInput, followInput, tokenWarning, replayTime, unityStatus };
 }
-

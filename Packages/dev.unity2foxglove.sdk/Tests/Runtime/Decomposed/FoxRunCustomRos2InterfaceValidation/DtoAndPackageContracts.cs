@@ -279,6 +279,29 @@ namespace Unity.FoxgloveSDK.Tests
                   && !sourceGeneratorProject.Contains("FoxRunRos2InterfaceJsonWriter.cs", StringComparison.Ordinal)
                   && !descriptorWriter.Contains("using Unity.FoxgloveSDK.Components;", StringComparison.Ordinal),
                 "181B-8: static-package editor helpers stay out of the analyzer compile surface");
+
+            var mapperDirectory = Path.Combine(
+                PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Editor",
+                "Native",
+                "FoxRun",
+                "Decomposed",
+                "Ros2CustomDtoMapperEmitter");
+            var expectedMapperFiles = new[]
+            {
+                "Ros2CustomDtoMapperEmitter.Mapping.cs",
+                "Ros2CustomDtoMapperEmitter.RosPayload.cs",
+                "Ros2CustomDtoMapperEmitter.Equality.cs",
+                "Ros2CustomDtoMapperEmitter.Utilities.cs",
+            };
+            var actualMapperFiles = Directory.GetFiles(mapperDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            Check(expectedMapperFiles.ToHashSet(StringComparer.Ordinal).SetEquals(actualMapperFiles)
+                  && expectedMapperFiles.All(name => sourceGeneratorProject.Contains(name, StringComparison.Ordinal)),
+                "181B-9: R2FU source-generator compile entries exactly cover the mapper partial source set");
         }
 
     }
