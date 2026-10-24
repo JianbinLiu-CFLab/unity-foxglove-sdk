@@ -52,13 +52,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void CursorBridgeKeepsDomConstructionOutOfRenderLoop()
         {
             var source = Text("Tools/foxglove-extensions/unity-cursor-bridge/src/index.ts");
-            var render = ExtractFunction(source, "context.onRender =");
+            var helperSource = Text("Tools/foxglove-extensions/unity-cursor-bridge/src/helpers.ts");
+            var panelSource = Text("Tools/foxglove-extensions/unity-cursor-bridge/src/panel.ts");
+            var domSource = Text("Tools/foxglove-extensions/unity-cursor-bridge/src/panel_dom.ts");
+            var render = ExtractFunction(panelSource, "context.onRender =");
 
             // Phase 140K Stage 1 promoted the cursor rate to a panel setting. Phase 164 caches the
             // derived interval outside onRender so the render loop only reads the current value.
-            Assert.Contains("const DEFAULT_MAX_HZ = 60;", source, StringComparison.Ordinal);
-            Assert.Contains("let minIntervalMs = 1000 / state.maxHz;", source, StringComparison.Ordinal);
-            Assert.Contains("minIntervalMs = 1000 / state.maxHz;", source, StringComparison.Ordinal);
+            Assert.Contains("export const DEFAULT_MAX_HZ = 60;", helperSource, StringComparison.Ordinal);
+            Assert.Contains("let minIntervalMs = 1000 / state.maxHz;", panelSource, StringComparison.Ordinal);
+            Assert.Contains("minIntervalMs = 1000 / state.maxHz;", panelSource, StringComparison.Ordinal);
             Assert.Contains("shouldSendCursor(", render, StringComparison.Ordinal);
             Assert.Contains("state.enabled", render, StringComparison.Ordinal);
             Assert.Contains("currentTime", render, StringComparison.Ordinal);
@@ -73,7 +76,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 CompactWhitespace(render),
                 StringComparison.Ordinal);
             Assert.DoesNotContain("1000 / state.maxHz", render, StringComparison.Ordinal);
-            Assert.Contains("function buildPanelDom", source, StringComparison.Ordinal);
+            Assert.Contains("export function buildPanelDom", domSource, StringComparison.Ordinal);
             Assert.Contains("panel.replayTime.textContent", render, StringComparison.Ordinal);
             Assert.DoesNotContain("replaceChildren", render, StringComparison.Ordinal);
         }
