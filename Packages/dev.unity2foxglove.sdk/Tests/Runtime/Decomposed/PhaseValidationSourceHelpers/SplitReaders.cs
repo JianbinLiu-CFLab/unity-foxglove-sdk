@@ -70,18 +70,29 @@ namespace Unity.FoxgloveSDK.Tests
                 "FoxRun",
                 "Decomposed",
                 "FoxRunRos2SubscriptionBinding");
-            var fragments = Directory.Exists(fragmentDirectory)
-                ? Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
-                    .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
-                    .OrderBy(path => path, StringComparer.Ordinal)
-                    .ToArray()
-                : Array.Empty<string>();
-            if (fragments.Length != 0)
-                throw new InvalidDataException(
-                    "Monolithic ROS2 for Unity subscription binding has unexpected C# fragments: "
-                    + string.Join(", ", fragments));
+            var expectedFragments = new[]
+            {
+                "FoxRunRos2SubscriptionBinding.Registration.cs",
+                "FoxRunRos2SubscriptionBinding.Application.cs",
+                "FoxRunRos2SubscriptionBinding.Acceptance.cs",
+                "FoxRunRos2SubscriptionBinding.Lifecycle.cs",
+                "FoxRunRos2SubscriptionBinding.Cleanup.cs",
+            };
+            if (!Directory.Exists(fragmentDirectory))
+                throw new DirectoryNotFoundException("ROS2 for Unity subscription binding fragment directory was not found: " + fragmentDirectory);
 
-            return File.ReadAllText(facadePath);
+            var actualFragments = Directory.GetFiles(fragmentDirectory, "*.cs", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(fragmentDirectory, path).Replace('\\', '/'))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            if (!expectedFragments.OrderBy(path => path, StringComparer.Ordinal).SequenceEqual(actualFragments, StringComparer.Ordinal))
+                throw new InvalidDataException(
+                    "ROS2 for Unity subscription binding source set mismatch. Expected: "
+                    + string.Join(", ", expectedFragments)
+                    + "; actual: " + string.Join(", ", actualFragments));
+
+            var fragmentPaths = expectedFragments.Select(name => Path.Combine(fragmentDirectory, name));
+            return string.Join(Environment.NewLine, new[] { facadePath }.Concat(fragmentPaths).Select(File.ReadAllText));
         }
 
         public static string ReadCameraPublisherSources()
