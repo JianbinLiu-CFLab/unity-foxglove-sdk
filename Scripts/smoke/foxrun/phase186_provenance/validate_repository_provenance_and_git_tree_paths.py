@@ -184,6 +184,8 @@ def __discover_decomposed_source_part_paths(
 
 
 def __is_decomposed_protocol_source_path(path: str) -> bool:
+    """Return whether a tracked path is a protocol decomposition source."""
+
     pure = pathlib.PurePosixPath(path)
     for root, pattern in _PROTOCOL_SOURCE_ROOTS[:2]:
         root_parts = pathlib.PurePosixPath(root).parts
@@ -197,6 +199,8 @@ def __is_decomposed_protocol_source_path(path: str) -> bool:
 
 
 def __validate_decomposed_source_tree(repository: pathlib.Path) -> list[str]:
+    """Reject unreviewed or unsafe tracked protocol decomposition sources."""
+
     try:
         tracked_paths = _subprocess_lines(["git", "ls-files"], repository)
     except (OSError, RuntimeError) as exc:
