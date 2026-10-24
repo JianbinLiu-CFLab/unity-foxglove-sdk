@@ -93,6 +93,7 @@ jobs:
         run: python3 -m unittest Scripts.performance.regression_checks.test_performance_tooling Scripts.performance.regression_checks.test_phase188_replay
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: always()
         with:
           node-version: "22"
 

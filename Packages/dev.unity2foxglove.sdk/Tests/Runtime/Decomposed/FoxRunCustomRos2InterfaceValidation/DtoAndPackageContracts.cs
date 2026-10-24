@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Xml.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2ForUnity.Native;
 
@@ -289,19 +290,34 @@ namespace Unity.FoxgloveSDK.Tests
                 "FoxRun",
                 "Decomposed",
                 "Ros2CustomDtoMapperEmitter");
-            var expectedMapperFiles = new[]
-            {
-                "Ros2CustomDtoMapperEmitter.Mapping.cs",
-                "Ros2CustomDtoMapperEmitter.RosPayload.cs",
-                "Ros2CustomDtoMapperEmitter.Equality.cs",
-                "Ros2CustomDtoMapperEmitter.Utilities.cs",
-            };
-            var actualMapperFiles = Directory.GetFiles(mapperDirectory, "*.cs", SearchOption.TopDirectoryOnly)
-                .Select(Path.GetFileName)
+            var projectDirectory = Path.GetDirectoryName(
+                Path.Combine(
+                    PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
+                    "Packages",
+                    "dev.unity2foxglove.ros2forunity",
+                    "Editor",
+                    "SourceGenerators",
+                    "FoxRunR2fuSourceGenerator.csproj"));
+            var mapperRoot = Path.GetFullPath(mapperDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var actualMapperFiles = Directory.GetFiles(mapperDirectory, "*.cs", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(mapperDirectory, path).Replace('\\', '/'))
                 .ToHashSet(StringComparer.Ordinal);
-            Check(expectedMapperFiles.ToHashSet(StringComparer.Ordinal).SetEquals(actualMapperFiles)
-                  && expectedMapperFiles.All(name => sourceGeneratorProject.Contains(name, StringComparison.Ordinal)),
-                "181B-9: R2FU source-generator compile entries exactly cover the mapper partial source set");
+            var compileMapperFiles = XDocument.Parse(sourceGeneratorProject)
+                .Descendants()
+                .Where(element => element.Name.LocalName == "Compile")
+                .SelectMany(element => (element.Attribute("Include")?.Value ?? string.Empty)
+                    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                .Select(value => Path.GetFullPath(Path.Combine(
+                    projectDirectory!,
+                    value.Replace('\\', Path.DirectorySeparatorChar))))
+                .Where(path => path.StartsWith(mapperRoot, StringComparison.OrdinalIgnoreCase))
+                .Select(path => Path.GetRelativePath(mapperDirectory, path).Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
+            Check(actualMapperFiles.Count == 4
+                  && compileMapperFiles.SetEquals(actualMapperFiles),
+                "181B-9: R2FU source-generator Compile entries exactly cover the mapper source set");
         }
 
     }

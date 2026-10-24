@@ -633,6 +633,74 @@ class _Phase186ProvenanceTests_fixtures:
             errors,
         )
 
+    def test_special_protocol_paths_are_preserved_by_nul_path_scan(self) -> None:
+        """NUL-delimited Git paths preserve spaces, newlines, and edge whitespace."""
+
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            reject_json_constant_and_strict_json_loads as source_module,
+        )
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            validate_repository_provenance_and_git_tree_paths as tree_module,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = pathlib.Path(temporary)
+            initialize_git_repository(repository)
+            run_git(repository, "config", "core.quotePath", "true")
+            root = (
+                repository
+                / "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed"
+            )
+            names = [
+                "Unexpected with spaces.cs",
+                " Unexpected-leading.cs",
+                "Unexpected-trailing .cs",
+            ]
+            if sys.platform != "win32":
+                names.append("Unexpected\nline.cs")
+            for name in names:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("class Unexpected {}\n", encoding="utf-8")
+            run_git(repository, "add", ".")
+
+            observed = source_module._subprocess_nul_paths(
+                ["git", "ls-files", "-z"],
+                repository,
+            )
+            expected = [
+                str(path.relative_to(repository)).replace("\\", "/")
+                for path in (root / name for name in names)
+            ]
+            self.assertTrue(set(expected).issubset(observed), (expected, observed))
+            errors = getattr(tree_module, "__validate_decomposed_source_tree")(
+                repository
+            )
+            for name in names:
+                self.assertTrue(any(name in error for error in errors), (name, errors))
+
+    def test_non_utf8_git_failure_is_reported_as_runtime_error(self) -> None:
+        """Invalid Git diagnostics are wrapped instead of escaping as UnicodeDecodeError."""
+
+        from subprocess import CompletedProcess
+
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            reject_json_constant_and_strict_json_loads as source_module,
+        )
+
+        result = CompletedProcess(
+            args=["git", "ls-files", "-z"],
+            returncode=1,
+            stdout=b"",
+            stderr=bytes([0xFF]),
+        )
+        with mock.patch.object(source_module.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "non-UTF-8 diagnostic"):
+                source_module._subprocess_nul_paths(
+                    ["git", "ls-files", "-z"],
+                    pathlib.Path("."),
+                )
+
     def test_canonical_ledger_requires_required_top_level_keys(self) -> None:
         """Required ledger keys cannot be omitted while decomposedSources is optional."""
 

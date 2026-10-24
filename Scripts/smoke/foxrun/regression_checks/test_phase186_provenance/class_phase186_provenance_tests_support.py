@@ -72,6 +72,10 @@ class _Phase186ProvenanceTests_support:
             "psutil==7.0.0",
             test_job,
         )
+        self.assertRegex(
+            test_job,
+            r"uses: actions/setup-node@[^\n]+\n\s+if: always\(\)\n\s+with:\n\s+node-version: \"22\"",
+        )
     def test_repository_rejects_noncanonical_ledger_path_even_when_payload_claims_canonical(
         self,
     ) -> None:
