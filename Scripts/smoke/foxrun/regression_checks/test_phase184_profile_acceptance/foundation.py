@@ -27,6 +27,7 @@ def read_orchestrator_source():
     """Read the facade and exported orchestrator package sections."""
 
     return read_split_source(MODULE_PATH)
+
 def load_module():
     """Load the script as a fresh module without running its CLI."""
 
