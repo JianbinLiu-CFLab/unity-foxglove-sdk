@@ -374,10 +374,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void CursorBridgeKeepsDomAndFormattingOffRenderHotPath()
         {
             var source = TestSources.Text("Tools/foxglove-extensions/unity-cursor-bridge/src/index.ts");
-            var buildPanelDom = TestSources.Slice(source, "function buildPanelDom", "export function initPanel");
-            var renderLoop = TestSources.Slice(source, "context.onRender = (renderState, done) =>", "  return () =>");
-            var shouldSend = TestSources.Slice(source, "export function shouldSendCursor", "function buildPanelDom");
-            var formatter = TestSources.Slice(source, "function formatReplayTimeUtc", "async function sendCursor");
+            var helperSource = TestSources.Text("Tools/foxglove-extensions/unity-cursor-bridge/src/helpers.ts");
+            var panelSource = TestSources.Text("Tools/foxglove-extensions/unity-cursor-bridge/src/panel.ts");
+            var domSource = TestSources.Text("Tools/foxglove-extensions/unity-cursor-bridge/src/panel_dom.ts");
+            var buildPanelDom = domSource;
+            var renderLoop = TestSources.Slice(panelSource, "context.onRender = (renderState, done) =>", "  return () =>");
+            var shouldSend = TestSources.Slice(helperSource, "export function shouldSendCursor", "export function buildFollowPayload");
+            var formatter = TestSources.Slice(helperSource, "export function formatReplayTimeUtc", "export async function sendCursor");
 
             Assert.Contains("root.innerHTML", buildPanelDom, StringComparison.Ordinal);
             Assert.Contains("querySelector", buildPanelDom, StringComparison.Ordinal);
@@ -391,9 +394,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("escapeHtml", renderLoop, StringComparison.Ordinal);
             // Phase 140K Stage 1 promoted the cursor rate to a panel setting; Phase 164 caches the
             // derived interval outside the render loop so render only reads the current value.
-            Assert.Contains("const DEFAULT_MAX_HZ = 60;", source, StringComparison.Ordinal);
-            Assert.Contains("let minIntervalMs = 1000 / state.maxHz;", source, StringComparison.Ordinal);
-            Assert.Contains("minIntervalMs = 1000 / state.maxHz;", source, StringComparison.Ordinal);
+            Assert.Contains("export const DEFAULT_MAX_HZ = 60;", helperSource, StringComparison.Ordinal);
+            Assert.Contains("let minIntervalMs = 1000 / state.maxHz;", panelSource, StringComparison.Ordinal);
+            Assert.Contains("minIntervalMs = 1000 / state.maxHz;", panelSource, StringComparison.Ordinal);
             Assert.Contains("shouldSendCursor(", renderLoop, StringComparison.Ordinal);
             Assert.Contains("state.enabled", renderLoop, StringComparison.Ordinal);
             Assert.Contains("currentTime", renderLoop, StringComparison.Ordinal);
@@ -409,14 +412,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 StringComparison.Ordinal);
             Assert.DoesNotContain("1000 / state.maxHz", renderLoop, StringComparison.Ordinal);
             Assert.DoesNotContain("1000 / DEFAULT_MAX_HZ", renderLoop, StringComparison.Ordinal);
-            Assert.Contains("lastCursorSec", source, StringComparison.Ordinal);
-            Assert.Contains("lastCursorNsec", source, StringComparison.Ordinal);
+            Assert.Contains("lastCursorSec", panelSource, StringComparison.Ordinal);
+            Assert.Contains("lastCursorNsec", panelSource, StringComparison.Ordinal);
             Assert.Contains("lastSec: number", shouldSend, StringComparison.Ordinal);
             Assert.Contains("lastNsec: number", shouldSend, StringComparison.Ordinal);
             Assert.Contains("currentTime.sec !== lastSec || currentTime.nsec !== lastNsec", shouldSend, StringComparison.Ordinal);
             Assert.DoesNotContain("cursorKey", renderLoop, StringComparison.Ordinal);
-            Assert.Contains("type ReplayTimeDisplayCache", source, StringComparison.Ordinal);
-            Assert.Contains("const replayTimeCache", source, StringComparison.Ordinal);
+            Assert.Contains("export type ReplayTimeDisplayCache", helperSource, StringComparison.Ordinal);
+            Assert.Contains("const replayTimeCache", panelSource, StringComparison.Ordinal);
             Assert.Contains("cache.lastSec", formatter, StringComparison.Ordinal);
             Assert.Contains("cache.text", formatter, StringComparison.Ordinal);
             Assert.Contains("iso.slice(0, 10)", formatter, StringComparison.Ordinal);
