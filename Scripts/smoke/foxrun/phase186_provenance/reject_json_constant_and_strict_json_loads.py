@@ -59,6 +59,30 @@ def _subprocess_lines(command: Sequence[str], cwd: pathlib.Path) -> list[str]:
         detail = (completed.stderr or completed.stdout).strip()
         raise RuntimeError(detail or f"command failed with exit code {completed.returncode}")
     return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def _subprocess_nul_paths(command: Sequence[str], cwd: pathlib.Path) -> list[str]:
+    """Run a command and return strict UTF-8 NUL-delimited paths."""
+
+    completed = subprocess.run(
+        list(command),
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).decode(
+            "utf-8",
+            errors="strict",
+        ).strip()
+        raise RuntimeError(
+            detail or f"command failed with exit code {completed.returncode}"
+        )
+    try:
+        output = completed.stdout.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError(f"command produced non-UTF-8 path output: {exc}") from exc
+    return [path for path in output.split("\0") if path]
 def _substantial_lines(source: str) -> list[str]:
     """Extract normalized implementation lines suitable for overlap checks."""
 
