@@ -164,6 +164,11 @@ internal static class TestSources
                     "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs",
                     StringComparison.Ordinal))
                 return Ros2ForUnitySubscriptionHubSourceComposer.Compose(RepoRoot);
+            if (string.Equals(
+                    normalized,
+                    "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs",
+                    StringComparison.Ordinal))
+                return Unity.FoxgloveSDK.Tests.PhaseValidationSourceHelpers.ReadRos2ForUnityCustomTypesupportSelectionTransactionSources(RepoRoot);
 
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");

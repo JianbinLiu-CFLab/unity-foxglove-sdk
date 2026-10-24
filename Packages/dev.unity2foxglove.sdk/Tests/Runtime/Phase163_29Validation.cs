@@ -55,7 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void RuntimeSelectionValidatesManifestJson()
         {
             var selection = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
-            var transaction = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs");
+            var transaction = PhaseValidationSourceHelpers.ReadRos2ForUnityCustomTypesupportSelectionTransactionSources();
             var switchMethod = ExtractMethod(selection, "SwitchActiveRuntimePackage");
             var applyMethod = ExtractMethod(transaction, "Apply");
 

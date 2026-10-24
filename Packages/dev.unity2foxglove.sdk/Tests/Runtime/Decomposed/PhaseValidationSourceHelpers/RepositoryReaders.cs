@@ -94,6 +94,11 @@ namespace Unity.FoxgloveSDK.Tests
                 return ReadRos2ForUnitySubscriptionHubSources();
             if (string.Equals(
                     normalized,
+                    "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs",
+                    StringComparison.Ordinal))
+                return ReadRos2ForUnityCustomTypesupportSelectionTransactionSources();
+            if (string.Equals(
+                    normalized,
                     "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
                     StringComparison.Ordinal))
                 return ReadCameraPublisherEditorSources();
