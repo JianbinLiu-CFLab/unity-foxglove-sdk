@@ -36,7 +36,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 Assert.True(File.Exists(PathOf(relative)), relative);
             }
 
-            var runtime = File.ReadAllText(PathOf(runtimeRelative));
+            var runtime = ReadPhase186AcceptanceSource();
             var interaction = File.ReadAllText(PathOf(interactionRelative));
             Assert.DoesNotContain("UnityEngine", interaction, StringComparison.Ordinal);
             Assert.Contains("Phase186ManualStep", interaction, StringComparison.Ordinal);
@@ -405,9 +405,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             var probe = File.ReadAllText(PathOf(
                 "Unity2Foxglove/Assets/Editor/ManualAcceptance/"
                 + "Phase186BatchModeRos2BridgeProbe.cs"));
-            var runtime = File.ReadAllText(PathOf(
-                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
-                + "Phase186Ros2BridgeAcceptance.cs"));
+            var runtime = ReadPhase186AcceptanceSource();
 
             Assert.Contains(
                 "\"/foxrun/phase186/\" + token + \"/\"",
@@ -479,6 +477,25 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
                 "FoxRunRos2CustomPublisherHub.SessionTracker.cs",
             }.Select(name => Path.Combine(directory, name));
             return string.Join(Environment.NewLine, new[] { facade }.Concat(fragments).Select(File.ReadAllText));
+        }
+
+        private static string ReadPhase186AcceptanceSource()
+        {
+            var facade = PathOf(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                + "Phase186Ros2BridgeAcceptance.cs");
+            var directory = PathOf(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/"
+                + "Decomposed/Phase186Ros2BridgeAcceptance");
+            var fragments = new[]
+            {
+                "LifecycleAndProgress.cs",
+                "EvidenceAndGates.cs",
+                "ValidationAndUi.cs",
+            }.Select(name => Path.Combine(directory, name));
+            return string.Join(
+                Environment.NewLine,
+                new[] { facade }.Concat(fragments).Select(File.ReadAllText));
         }
 
         private static string PathOf(string relative)
