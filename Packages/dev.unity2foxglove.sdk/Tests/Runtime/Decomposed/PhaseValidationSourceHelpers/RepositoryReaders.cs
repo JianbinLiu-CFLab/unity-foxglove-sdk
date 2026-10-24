@@ -193,7 +193,12 @@ namespace Unity.FoxgloveSDK.Tests
                 Path.GetDirectoryName(facadePath)
                     ?? throw new DirectoryNotFoundException(facadePath),
                 Path.GetFileNameWithoutExtension(facadePath));
-            return Directory.Exists(packagePath);
+            return Directory.Exists(packagePath)
+                || Directory.Exists(Path.Combine(
+                    Path.GetDirectoryName(facadePath)
+                        ?? throw new DirectoryNotFoundException(facadePath),
+                    "Decomposed",
+                    Path.GetFileNameWithoutExtension(facadePath)));
         }
         public static string ReadFoxgloveSessionSources()
         {
