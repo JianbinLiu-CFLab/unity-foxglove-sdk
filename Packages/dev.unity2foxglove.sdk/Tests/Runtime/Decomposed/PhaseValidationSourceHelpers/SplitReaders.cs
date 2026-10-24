@@ -122,11 +122,18 @@ namespace Unity.FoxgloveSDK.Tests
                 "dev.unity2foxglove.sdk",
                 "Editor",
                 "Publishers");
-            var path = Path.Combine(directory, "FoxgloveCameraPublisherEditor.cs");
-            if (!File.Exists(path))
-                throw new FileNotFoundException("Missing camera publisher editor source: " + path, path);
+            var files = new[]
+            {
+                "FoxgloveCameraPublisherEditor.cs",
+                "FoxgloveCameraPublisherEditor.Sections.cs",
+                "FoxgloveCameraPublisherEditor.Paths.cs",
+                "FoxgloveCameraPublisherEditor.Windows.cs",
+            }.Select(name => Path.Combine(directory, name)).ToArray();
+            foreach (var file in files)
+                if (!File.Exists(file))
+                    throw new FileNotFoundException("Missing camera publisher editor source: " + file, file);
 
-            return File.ReadAllText(path);
+            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
         public static string ReadMediaFoundationH264EncoderSidecarSources()
         {
