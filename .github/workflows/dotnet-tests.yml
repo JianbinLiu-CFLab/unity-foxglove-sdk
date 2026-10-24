@@ -104,6 +104,15 @@ jobs:
           npm run typecheck
           npm test
 
+      - name: Run Unity cursor bridge tests
+        if: always()
+        working-directory: Tools/foxglove-extensions/unity-cursor-bridge
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
       - name: Enable Corepack for the pinned official MCAP harness
         if: always()
         run: corepack enable

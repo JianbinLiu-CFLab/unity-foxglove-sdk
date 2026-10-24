@@ -373,7 +373,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void CursorBridgeKeepsDomAndFormattingOffRenderHotPath()
         {
-            var source = TestSources.Text("Tools/foxglove-extensions/unity-cursor-bridge/src/index.ts");
             var helperSource = TestSources.Text("Tools/foxglove-extensions/unity-cursor-bridge/src/helpers.ts");
             var panelSource = TestSources.Text("Tools/foxglove-extensions/unity-cursor-bridge/src/panel.ts");
             var domSource = TestSources.Text("Tools/foxglove-extensions/unity-cursor-bridge/src/panel_dom.ts");

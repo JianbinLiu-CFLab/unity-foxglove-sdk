@@ -153,7 +153,12 @@ internal static class TestSources
                     normalized,
                     "Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs",
                     StringComparison.Ordinal))
-                return CameraPublisherEditorSources();
+                return Unity.FoxgloveSDK.Tests.PhaseValidationSourceHelpers.ReadCameraPublisherEditorSources(RepoRoot);
+            if (string.Equals(
+                    normalized,
+                    "Tools/foxglove-extensions/unity-cursor-bridge/src/index.ts",
+                    StringComparison.Ordinal))
+                return Unity.FoxgloveSDK.Tests.PhaseValidationSourceHelpers.ReadCursorBridgeSources(RepoRoot);
             if (string.Equals(
                     normalized,
                     "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs",
@@ -173,26 +178,6 @@ internal static class TestSources
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
             return ReadLogicalSource(path);
-        }
-
-        private static string CameraPublisherEditorSources()
-        {
-            var directory = Path.Combine(
-                RepoRoot,
-                "Packages",
-                "dev.unity2foxglove.sdk",
-                "Editor",
-                "Publishers");
-            var files = new[]
-            {
-                "FoxgloveCameraPublisherEditor.cs",
-                "FoxgloveCameraPublisherEditor.Sections.cs",
-                "FoxgloveCameraPublisherEditor.Paths.cs",
-                "FoxgloveCameraPublisherEditor.Windows.cs",
-            }.Select(name => Path.Combine(directory, name)).ToArray();
-            foreach (var file in files)
-                Assert.True(File.Exists(file), "Camera publisher editor source not found: " + file);
-            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
 
         private static string ProgramSources()
@@ -333,9 +318,9 @@ internal static class TestSources
                         .ToArray();
                     foreach (var child in Directory.GetDirectories(localDecomposed, stem, SearchOption.TopDirectoryOnly))
                     {
-                        var files = Directory.GetFiles(child, "*.cs", SearchOption.TopDirectoryOnly);
+                        var files = Directory.GetFiles(child, "*.cs", SearchOption.AllDirectories);
                         var fileNames = new HashSet<string>(
-                            files.Select(Path.GetFileName),
+                            files.Select(path => Path.GetRelativePath(child, path).Replace('\\', '/')),
                             StringComparer.OrdinalIgnoreCase);
                         if (names.Length == files.Length
                             && names.All(fileNames.Contains))
@@ -363,7 +348,7 @@ internal static class TestSources
             string facadePath,
             string sectionDirectory)
         {
-            var files = Directory.GetFiles(sectionDirectory, "*.cs", SearchOption.TopDirectoryOnly);
+            var files = Directory.GetFiles(sectionDirectory, "*.cs", SearchOption.AllDirectories);
             var marker = File.ReadLines(facadePath)
                 .Select(line => Regex.Match(
                     line,
@@ -378,7 +363,9 @@ internal static class TestSources
                 .Select(name => name.Trim())
                 .Where(name => name.Length > 0)
                 .ToArray();
-            var filesByName = files.ToDictionary(Path.GetFileName, StringComparer.OrdinalIgnoreCase);
+            var filesByName = files.ToDictionary(
+                path => Path.GetRelativePath(sectionDirectory, path).Replace('\\', '/'),
+                StringComparer.OrdinalIgnoreCase);
             Assert.True(
                 names.Length == filesByName.Count
                 && names.Distinct(StringComparer.OrdinalIgnoreCase).Count() == names.Length
