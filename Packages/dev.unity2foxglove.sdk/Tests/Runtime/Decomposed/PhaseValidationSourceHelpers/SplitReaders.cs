@@ -273,9 +273,23 @@ namespace Unity.FoxgloveSDK.Tests
                 "panel.ts",
                 "panel_dom.ts",
             };
-            var actual = Directory.GetFiles(directory, "*.ts", SearchOption.TopDirectoryOnly)
+            var actualAll = Directory.GetFiles(directory, "*.ts", SearchOption.TopDirectoryOnly)
                 .Select(path => Path.GetFileName(path))
-                .Where(name => !name.EndsWith(".test.ts", StringComparison.OrdinalIgnoreCase))
+                .ToHashSet(StringComparer.Ordinal);
+            var knownTestFiles = new HashSet<string>(
+                new[] { "index.test.ts" },
+                StringComparer.Ordinal);
+            var unexpectedTestFiles = actualAll
+                .Where(name => name.EndsWith(".test.ts", StringComparison.OrdinalIgnoreCase)
+                               && !knownTestFiles.Contains(name))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            if (unexpectedTestFiles.Length > 0)
+                throw new InvalidDataException(
+                    "Cursor bridge source set contains unknown test files: "
+                    + string.Join(", ", unexpectedTestFiles));
+            var actual = actualAll
+                .Except(knownTestFiles, StringComparer.Ordinal)
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray();
             if (!expected.OrderBy(name => name, StringComparer.Ordinal).SequenceEqual(actual, StringComparer.Ordinal))

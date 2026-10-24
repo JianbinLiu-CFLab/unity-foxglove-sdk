@@ -171,9 +171,7 @@ namespace Unity.FoxgloveSDK.Tests
                     || names.Any(name => !filesByName.ContainsKey(name)))
                     throw new InvalidDataException(
                         "Invalid Phase192 source-section order in " + facadePath);
-                orderedFiles = names.Select(name => Path.Combine(
-                    sectionDirectory,
-                    name.Replace('/', Path.DirectorySeparatorChar)));
+                orderedFiles = names.Select(name => filesByName[name]);
             }
 
             var source = new StringBuilder(File.ReadAllText(facadePath));

@@ -75,6 +75,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Tools/foxglove-extensions/unity-cursor-bridge/src/index.ts");
             var sendCursor = SourceFunction(source, "async function sendCursor");
             var buildFollowPayload = SourceFunction(source, "function buildFollowPayload");
+            var followPayloadObject = ExtractReturnedObjectLiteral(buildFollowPayload);
             var maxHzHandler = Slice(source, "panel.maxHzInput.addEventListener", "panel.followInput?.addEventListener");
             var renderTail = Slice(source, "context.onRender = (renderState, done) =>", "return () =>");
 
@@ -82,11 +83,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && sendCursor.Contains(": NO_TOKEN_HEADERS", StringComparison.Ordinal)
                   && !sendCursor.Contains("const headers: Record<string, string> = { \"Content-Type\": \"application/json\" };", StringComparison.Ordinal),
                 "164-38D-1: extension sendCursor reuses no-token headers");
-            Check(buildFollowPayload.Contains("startTime,", StringComparison.Ordinal)
-                  && buildFollowPayload.Contains("endTime,", StringComparison.Ordinal)
-                  && !buildFollowPayload.Contains("...startTime", StringComparison.Ordinal)
-                  && !buildFollowPayload.Contains("...endTime", StringComparison.Ordinal),
-                "164-38D-2: follow payload reuses cached timeline bounds without object spreads");
+            Check(followPayloadObject.Contains("startTime,", StringComparison.Ordinal)
+                  && followPayloadObject.Contains("endTime,", StringComparison.Ordinal)
+                  && !followPayloadObject.Contains("...startTime", StringComparison.Ordinal)
+                  && !followPayloadObject.Contains("...endTime", StringComparison.Ordinal),
+                "164-38D-2: follow payload returns cached timeline bounds without object spreads");
             Check(source.Contains("let minIntervalMs = 1000 / state.maxHz", StringComparison.Ordinal)
                   && maxHzHandler.Contains("minIntervalMs = 1000 / state.maxHz", StringComparison.Ordinal)
                   && !renderTail.Contains("const minIntervalMs = 1000 / state.maxHz", StringComparison.Ordinal),
@@ -123,6 +124,79 @@ namespace Unity.FoxgloveSDK.Tests
             if (end < 0)
                 throw new Exception("[FAIL] missing end token: " + endToken);
             return source.Substring(start, end - start);
+        }
+
+        private static string ExtractReturnedObjectLiteral(string source)
+        {
+            var returnIndex = source.IndexOf("return {", StringComparison.Ordinal);
+            if (returnIndex < 0)
+                throw new Exception("[FAIL] missing returned follow payload object");
+            var openBrace = source.IndexOf('{', returnIndex);
+            var closeBrace = FindMatchingBrace(source, openBrace);
+            if (closeBrace < 0)
+                throw new Exception("[FAIL] unterminated returned follow payload object");
+            return source.Substring(openBrace, closeBrace - openBrace + 1);
+        }
+
+        private static int FindMatchingBrace(string source, int openBrace)
+        {
+            var depth = 0;
+            var quote = '\0';
+            var lineComment = false;
+            var blockComment = false;
+            for (var index = openBrace; index < source.Length; index++)
+            {
+                var current = source[index];
+                var next = index + 1 < source.Length ? source[index + 1] : '\0';
+                if (lineComment)
+                {
+                    if (current == '\n')
+                        lineComment = false;
+                    continue;
+                }
+                if (blockComment)
+                {
+                    if (current == '*' && next == '/')
+                    {
+                        blockComment = false;
+                        index++;
+                    }
+                    continue;
+                }
+                if (quote != '\0')
+                {
+                    if (current == '\\')
+                    {
+                        index++;
+                        continue;
+                    }
+                    if (current == quote)
+                        quote = '\0';
+                    continue;
+                }
+                if (current == '/' && next == '/')
+                {
+                    lineComment = true;
+                    index++;
+                    continue;
+                }
+                if (current == '/' && next == '*')
+                {
+                    blockComment = true;
+                    index++;
+                    continue;
+                }
+                if (current == '\'' || current == '"' || current == '`')
+                {
+                    quote = current;
+                    continue;
+                }
+                if (current == '{')
+                    depth++;
+                else if (current == '}' && --depth == 0)
+                    return index;
+            }
+            return -1;
         }
 
         private static int CountOccurrences(string text, string value)
