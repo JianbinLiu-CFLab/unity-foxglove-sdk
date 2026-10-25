@@ -119,6 +119,55 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             => TestSources.AssertConsolePhaseRemoved("Phase140_89Validation.cs", "--phase140-89", "Phase140_89Validation.Validate");
 
         [Fact]
+        public void Phase184AcceptanceSourceManifestPreservesSceneGuidOwnership()
+        {
+            var root = TestSources.RepoRoot;
+            var sectionDirectory = Path.Combine(
+                root,
+                "Unity2Foxglove",
+                "Assets",
+                "Scripts",
+                "ManualAcceptance",
+                "Decomposed",
+                "Phase184FoxRunProfileAcceptance");
+            var expectedSources = new[]
+            {
+                "Phase184AcceptanceRoute.cs",
+                "Phase184AcceptanceText.cs",
+                "Phase184DegradedTargetRoute.cs",
+                "Phase184FoxRunProfileAcceptance.Context.cs",
+                "Phase184FoxRunProfileAcceptance.Lifecycle.cs",
+                "Phase184FoxgloveProfileRoute.cs",
+                "Phase184MultiTargetRoute.cs",
+                "Phase184QosContractRoute.cs",
+                "Phase184StreamRoute.cs",
+                "Phase184TransportClientMarkerState.cs",
+            };
+            var actualSources = Directory.GetFiles(sectionDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(expectedSources.OrderBy(name => name, StringComparer.Ordinal), actualSources);
+
+            var scene = File.ReadAllText(Path.Combine(
+                root,
+                "Unity2Foxglove",
+                "Assets",
+                "Scenes",
+                "ManualAcceptance",
+                "Phase184FoxRunProfileAcceptance.unity"));
+            foreach (var guid in new[]
+            {
+                "983acb559504477ebd0c4d69a7d1edbe",
+                "7b052fef51264defb3b5934d0271da7a",
+                "7f1320889ffd4aae8580cf5507278c6a",
+                "ae2bf84a4ef244ccb4185841a415279b",
+                "f08839578006415a9d94a9ce4ef663a9",
+            })
+                Assert.Contains("guid: " + guid, scene, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CursorBridgeReaderRejectsNestedProductionSources()
         {
             using var temporary = new TemporaryDirectory();
