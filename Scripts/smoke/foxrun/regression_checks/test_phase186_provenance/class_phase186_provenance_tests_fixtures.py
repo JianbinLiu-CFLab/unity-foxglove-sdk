@@ -701,6 +701,67 @@ class _Phase186ProvenanceTests_fixtures:
                     pathlib.Path("."),
                 )
 
+    def test_non_utf8_line_failure_is_reported_as_runtime_error(self) -> None:
+        """Invalid command diagnostics are wrapped before CompletedProcess decoding leaks."""
+
+        from subprocess import CompletedProcess
+
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            reject_json_constant_and_strict_json_loads as source_module,
+        )
+
+        result = CompletedProcess(
+            args=["git", "status"],
+            returncode=1,
+            stdout=b"",
+            stderr=bytes([0xFF]),
+        )
+        with mock.patch.object(source_module.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "non-UTF-8 diagnostic"):
+                source_module._subprocess_lines(["git", "status"], pathlib.Path("."))
+
+    def test_non_utf8_line_success_is_reported_as_runtime_error(self) -> None:
+        """Invalid command output is rejected even when the command succeeds."""
+
+        from subprocess import CompletedProcess
+
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            reject_json_constant_and_strict_json_loads as source_module,
+        )
+
+        result = CompletedProcess(
+            args=["git", "status"],
+            returncode=0,
+            stdout=bytes([0xFF]),
+            stderr=b"",
+        )
+        with mock.patch.object(source_module.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "non-UTF-8 output"):
+                source_module._subprocess_lines(["git", "status"], pathlib.Path("."))
+
+    def test_provenance_validator_contains_non_utf8_line_failure(self) -> None:
+        """The outer provenance validator converts subprocess failures to diagnostics."""
+
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            validate_repository_provenance_and_git_tree_paths as tree_module,
+        )
+
+        with mock.patch.object(
+            tree_module,
+            "_subprocess_lines",
+            side_effect=RuntimeError("command failed with non-UTF-8 diagnostic"),
+        ):
+            errors = tree_module.validate_repository_provenance(
+                ROOT,
+                ROOT / "third-party" / "ROS-TCP-Connector",
+                LEDGER_PATH,
+            )
+
+        self.assertTrue(
+            any("could not resolve reference Git top-level" in error for error in errors),
+            errors,
+        )
+
     def test_canonical_ledger_requires_required_top_level_keys(self) -> None:
         """Required ledger keys cannot be omitted while decomposedSources is optional."""
 

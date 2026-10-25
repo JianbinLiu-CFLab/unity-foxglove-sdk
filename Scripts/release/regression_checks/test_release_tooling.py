@@ -976,7 +976,7 @@ class RunCiTests(unittest.TestCase):
         scope = workflow.split("  unity_scope:\n", 1)[1].split("  unity_compile:\n", 1)[0]
         self.assertIn("unity_required: ${{ steps.scope.outputs.unity_required }}", scope)
         self.assertIn("git diff --no-renames --name-only", scope)
-        self.assertIn(r"Packages/[^/]+/(Runtime|Editor|Plugins)/", scope)
+        self.assertIn(r"Packages/[^/]+/(Runtime|Editor|Plugins|Tests/Runtime)/", scope)
         self.assertIn(r"Packages/[^/]+/package\.json$", scope)
         self.assertIn(r"Unity2Foxglove/(Assets|Packages|ProjectSettings)/", scope)
         self.assertIn(r".*\.(asmdef|asmref|meta)$", scope)
@@ -1003,6 +1003,7 @@ class RunCiTests(unittest.TestCase):
         for path in (
             "Packages/dev.unity2foxglove.sdk/Runtime/Foo.cs",
             "Packages/dev.unity2foxglove.sdk/Editor/Foo.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Foo.cs",
             "Packages/dev.unity2foxglove.sdk/Plugins/Google.Protobuf.dll",
             "Packages/dev.unity2foxglove.sdk/package.json",
             "Unity2Foxglove/Assets/Foo.cs",
@@ -1035,7 +1036,7 @@ class RunCiTests(unittest.TestCase):
 set -euo pipefail
 required=false
 changed="$(cat "$1")"
-if printf '%s\\n' "$changed" | grep -E '^(Packages/[^/]+/(Runtime|Editor|Plugins)/|Packages/[^/]+/package\\.json$|Unity2Foxglove/(Assets|Packages|ProjectSettings)/|.*\\.(asmdef|asmref|meta)$)' >/dev/null; then
+if printf '%s\\n' "$changed" | grep -E '^(Packages/[^/]+/(Runtime|Editor|Plugins|Tests/Runtime)/|Packages/[^/]+/package\\.json$|Unity2Foxglove/(Assets|Packages|ProjectSettings)/|.*\\.(asmdef|asmref|meta)$)' >/dev/null; then
   required=true
 fi
 printf '%s' "$required"

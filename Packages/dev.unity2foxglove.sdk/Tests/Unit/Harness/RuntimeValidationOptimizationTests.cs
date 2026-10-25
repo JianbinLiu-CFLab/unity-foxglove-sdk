@@ -117,6 +117,57 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void Phase14089MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_89Validation.cs", "--phase140-89", "Phase140_89Validation.Validate");
+
+        [Fact]
+        public void CursorBridgeReaderRejectsNestedProductionSources()
+        {
+            using var temporary = new TemporaryDirectory();
+            var sourceRoot = Path.Combine(temporary.Path, "Tools", "foxglove-extensions", "unity-cursor-bridge", "src");
+            Directory.CreateDirectory(Path.Combine(sourceRoot, "subdir"));
+            foreach (var name in new[] { "index.ts", "helpers.ts", "panel.ts", "panel_dom.ts", "index.test.ts" })
+                File.WriteAllText(Path.Combine(sourceRoot, name), "export {};");
+            File.WriteAllText(Path.Combine(sourceRoot, "subdir", "production.ts"), "export {};");
+
+            var error = Assert.Throws<InvalidDataException>(
+                () => PhaseValidationSourceHelpers.ReadCursorBridgeSources(temporary.Path));
+
+            Assert.Contains("source set mismatch", error.Message, StringComparison.Ordinal);
+            Assert.Contains("subdir/production.ts", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CursorBridgeReaderRejectsNestedUnknownTestsAndAllowsRootIndexTest()
+        {
+            using var temporary = new TemporaryDirectory();
+            var sourceRoot = Path.Combine(temporary.Path, "Tools", "foxglove-extensions", "unity-cursor-bridge", "src");
+            Directory.CreateDirectory(Path.Combine(sourceRoot, "subdir"));
+            foreach (var name in new[] { "index.ts", "helpers.ts", "panel.ts", "panel_dom.ts", "index.test.ts" })
+                File.WriteAllText(Path.Combine(sourceRoot, name), "export {};");
+            File.WriteAllText(Path.Combine(sourceRoot, "subdir", "unexpected.test.ts"), "export {};");
+
+            var error = Assert.Throws<InvalidDataException>(
+                () => PhaseValidationSourceHelpers.ReadCursorBridgeSources(temporary.Path));
+
+            Assert.Contains("unknown test files", error.Message, StringComparison.Ordinal);
+            Assert.Contains("subdir/unexpected.test.ts", error.Message, StringComparison.Ordinal);
+        }
+
+        private sealed class TemporaryDirectory : IDisposable
+        {
+            public TemporaryDirectory()
+            {
+                Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(Path);
+            }
+
+            public string Path { get; }
+
+            public void Dispose()
+            {
+                if (Directory.Exists(Path))
+                    Directory.Delete(Path, recursive: true);
+            }
+        }
     }
 
 
