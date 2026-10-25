@@ -12,11 +12,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from Scripts.schema.generate_ros2_msg_schema_catalog import CATEGORIES, CSHARP_NAMESPACE, EXPECTED_FILE_COUNT
+from Scripts.schema.generate_ros2_msg_schema_catalog import CATEGORIES, CSHARP_NAMESPACE, DEFAULT_INPUT, EXPECTED_FILE_COUNT, REPO_ROOT
 
 
-REPO_ROOT = None
-DEFAULT_INPUT = None
 PROTO_MESSAGES = None
 DEFAULT_OUTPUT_DIR = None
 PRIMITIVE_TYPES = {"bool", "int16", "uint16", "int32", "uint32", "int64", "uint64", "uint8", "float32", "float64", "string"}
