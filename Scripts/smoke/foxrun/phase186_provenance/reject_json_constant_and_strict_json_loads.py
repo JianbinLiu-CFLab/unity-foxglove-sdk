@@ -51,14 +51,20 @@ def _subprocess_lines(command: Sequence[str], cwd: pathlib.Path) -> list[str]:
         cwd=cwd,
         check=False,
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="strict",
+        text=False,
     )
+    try:
+        stdout = (completed.stdout or b"").decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("command produced non-UTF-8 output") from exc
+    try:
+        stderr = (completed.stderr or b"").decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("command failed with non-UTF-8 diagnostic") from exc
     if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout).strip()
+        detail = (stderr or stdout).strip()
         raise RuntimeError(detail or f"command failed with exit code {completed.returncode}")
-    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    return [line.strip() for line in stdout.splitlines() if line.strip()]
 
 
 def _subprocess_nul_paths(command: Sequence[str], cwd: pathlib.Path) -> list[str]:

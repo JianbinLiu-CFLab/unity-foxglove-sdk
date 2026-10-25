@@ -117,6 +117,106 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void Phase14089MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_89Validation.cs", "--phase140-89", "Phase140_89Validation.Validate");
+
+        [Fact]
+        public void Phase184AcceptanceSourceManifestPreservesSceneGuidOwnership()
+        {
+            var root = TestSources.RepoRoot;
+            var sectionDirectory = Path.Combine(
+                root,
+                "Unity2Foxglove",
+                "Assets",
+                "Scripts",
+                "ManualAcceptance",
+                "Decomposed",
+                "Phase184FoxRunProfileAcceptance");
+            var expectedSources = new[]
+            {
+                "Phase184AcceptanceRoute.cs",
+                "Phase184AcceptanceText.cs",
+                "Phase184DegradedTargetRoute.cs",
+                "Phase184FoxRunProfileAcceptance.Context.cs",
+                "Phase184FoxRunProfileAcceptance.Lifecycle.cs",
+                "Phase184FoxgloveProfileRoute.cs",
+                "Phase184MultiTargetRoute.cs",
+                "Phase184QosContractRoute.cs",
+                "Phase184StreamRoute.cs",
+                "Phase184TransportClientMarkerState.cs",
+            };
+            var actualSources = Directory.GetFiles(sectionDirectory, "*.cs", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(expectedSources.OrderBy(name => name, StringComparer.Ordinal), actualSources);
+
+            var scene = File.ReadAllText(Path.Combine(
+                root,
+                "Unity2Foxglove",
+                "Assets",
+                "Scenes",
+                "ManualAcceptance",
+                "Phase184FoxRunProfileAcceptance.unity"));
+            foreach (var guid in new[]
+            {
+                "983acb559504477ebd0c4d69a7d1edbe",
+                "7b052fef51264defb3b5934d0271da7a",
+                "7f1320889ffd4aae8580cf5507278c6a",
+                "ae2bf84a4ef244ccb4185841a415279b",
+                "f08839578006415a9d94a9ce4ef663a9",
+            })
+                Assert.Contains("guid: " + guid, scene, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CursorBridgeReaderRejectsNestedProductionSources()
+        {
+            using var temporary = new TemporaryDirectory();
+            var sourceRoot = Path.Combine(temporary.Path, "Tools", "foxglove-extensions", "unity-cursor-bridge", "src");
+            Directory.CreateDirectory(Path.Combine(sourceRoot, "subdir"));
+            foreach (var name in new[] { "index.ts", "helpers.ts", "panel.ts", "panel_dom.ts", "index.test.ts" })
+                File.WriteAllText(Path.Combine(sourceRoot, name), "export {};");
+            File.WriteAllText(Path.Combine(sourceRoot, "subdir", "production.ts"), "export {};");
+
+            var error = Assert.Throws<InvalidDataException>(
+                () => PhaseValidationSourceHelpers.ReadCursorBridgeSources(temporary.Path));
+
+            Assert.Contains("source set mismatch", error.Message, StringComparison.Ordinal);
+            Assert.Contains("subdir/production.ts", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CursorBridgeReaderRejectsNestedUnknownTestsAndAllowsRootIndexTest()
+        {
+            using var temporary = new TemporaryDirectory();
+            var sourceRoot = Path.Combine(temporary.Path, "Tools", "foxglove-extensions", "unity-cursor-bridge", "src");
+            Directory.CreateDirectory(Path.Combine(sourceRoot, "subdir"));
+            foreach (var name in new[] { "index.ts", "helpers.ts", "panel.ts", "panel_dom.ts", "index.test.ts" })
+                File.WriteAllText(Path.Combine(sourceRoot, name), "export {};");
+            File.WriteAllText(Path.Combine(sourceRoot, "subdir", "unexpected.test.ts"), "export {};");
+
+            var error = Assert.Throws<InvalidDataException>(
+                () => PhaseValidationSourceHelpers.ReadCursorBridgeSources(temporary.Path));
+
+            Assert.Contains("unknown test files", error.Message, StringComparison.Ordinal);
+            Assert.Contains("subdir/unexpected.test.ts", error.Message, StringComparison.Ordinal);
+        }
+
+        private sealed class TemporaryDirectory : IDisposable
+        {
+            public TemporaryDirectory()
+            {
+                Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(Path);
+            }
+
+            public string Path { get; }
+
+            public void Dispose()
+            {
+                if (Directory.Exists(Path))
+                    Directory.Delete(Path, recursive: true);
+            }
+        }
     }
 
 
@@ -712,7 +812,7 @@ internal static class TestSources
         private static string NormalizeLineEndings(string text)
             => (text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\r", "\n", StringComparison.Ordinal);
 
-        private static string RepoRoot
+        internal static string RepoRoot
             => CachedRepoRoot;
 
         private static string FindRepoRoot()

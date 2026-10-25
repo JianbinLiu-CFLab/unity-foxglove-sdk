@@ -315,9 +315,18 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(path => path.StartsWith(mapperRoot, StringComparison.OrdinalIgnoreCase))
                 .Select(path => Path.GetRelativePath(mapperDirectory, path).Replace('\\', '/'))
                 .ToHashSet(StringComparer.Ordinal);
-            Check(actualMapperFiles.Count == 4
-                  && compileMapperFiles.SetEquals(actualMapperFiles),
-                "181B-9: R2FU source-generator Compile entries exactly cover the mapper source set");
+            var expectedMapperFiles = new HashSet<string>(
+                new[]
+                {
+                    "Ros2CustomDtoMapperEmitter.Mapping.cs",
+                    "Ros2CustomDtoMapperEmitter.RosPayload.cs",
+                    "Ros2CustomDtoMapperEmitter.Equality.cs",
+                    "Ros2CustomDtoMapperEmitter.Utilities.cs",
+                },
+                StringComparer.Ordinal);
+            Check(expectedMapperFiles.SetEquals(actualMapperFiles)
+                  && expectedMapperFiles.SetEquals(compileMapperFiles),
+                "181B-9: R2FU source-generator Compile entries exactly cover the canonical mapper source set");
         }
 
     }

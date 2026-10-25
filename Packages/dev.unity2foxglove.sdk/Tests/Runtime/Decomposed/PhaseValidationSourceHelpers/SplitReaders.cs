@@ -273,8 +273,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "panel.ts",
                 "panel_dom.ts",
             };
-            var actualAll = Directory.GetFiles(directory, "*.ts", SearchOption.TopDirectoryOnly)
-                .Select(path => Path.GetFileName(path))
+            var actualAll = Directory.GetFiles(directory, "*.ts", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(directory, path).Replace('\\', '/'))
                 .ToHashSet(StringComparer.Ordinal);
             var knownTestFiles = new HashSet<string>(
                 new[] { "index.test.ts" },
