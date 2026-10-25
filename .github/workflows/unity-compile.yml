@@ -50,7 +50,7 @@ jobs:
             changed="$(git diff-tree --no-commit-id --no-renames --name-only -r "$HEAD_SHA")"
           fi
 
-          if [ "$EVENT_NAME" != "workflow_dispatch" ] && printf '%s\n' "$changed" | grep -E '^(Packages/[^/]+/(Runtime|Editor|Plugins|Tests/Runtime)/|Packages/[^/]+/package\.json$|Unity2Foxglove/(Assets|Packages|ProjectSettings)/|.*\.(asmdef|asmref|meta)$)' >/dev/null; then
+          if [ "$EVENT_NAME" != "workflow_dispatch" ] && printf '%s\n' "$changed" | grep -E '^(Packages/[^/]+/(Runtime|Editor|Plugins|Tests/(Runtime|Unit))/|Packages/[^/]+/package\.json$|Unity2Foxglove/(Assets|Packages|ProjectSettings)/|.*\.(asmdef|asmref|meta)$)' >/dev/null; then
             required=true
           fi
 
