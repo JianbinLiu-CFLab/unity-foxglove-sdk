@@ -10,12 +10,16 @@ class H04ToolIdentityTests(unittest.TestCase):
         """R4.1 regression contract."""
         for path in FILES:
             text = path.read_text(encoding='utf-8')
-            section_directory = path.parent / "Decomposed" / path.stem
-            if section_directory.is_dir():
-                text += "\n" + "\n".join(
-                    section.read_text(encoding="utf-8")
-                    for section in sorted(section_directory.glob("*.py"))
-                )
+            section_directories = (
+                path.parent / "Decomposed" / path.stem,
+                path.with_name(path.stem),
+            )
+            for section_directory in section_directories:
+                if section_directory.is_dir():
+                    text += "\n" + "\n".join(
+                        section.read_text(encoding="utf-8")
+                        for section in sorted(section_directory.glob("*.py"))
+                    )
             self.assertIn('def resolve_tool(', text, path.name)
             self.assertIn('resolve_tool("git", env)', text, path.name)
             self.assertIn('resolve_tool("powershell", env)', text, path.name)

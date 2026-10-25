@@ -143,9 +143,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "146B-B2: Lyrical builder regenerates the RMW guard");
 
             var orchestrator = ReadRepoText(LyricalScripts + "/phase146b_r2fu_lyrical_windows_build.py");
-            Check(orchestrator.Contains("r2fu-lyrical-win64", StringComparison.Ordinal)
-                  && orchestrator.Contains("default_ros2_root(\"lyrical\")", StringComparison.Ordinal)
-                  && orchestrator.Contains("phase146b", StringComparison.Ordinal),
+            var orchestratorImplementation = ReadRepoText(LyricalScripts + "/phase146b_r2fu_lyrical_windows_build/implementation.py");
+            Check(orchestratorImplementation.Contains("r2fu-lyrical-win64", StringComparison.Ordinal)
+                  && orchestratorImplementation.Contains("default_ros2_root(\"lyrical\")", StringComparison.Ordinal)
+                  && orchestratorImplementation.Contains("phase146b", StringComparison.Ordinal)
+                  && orchestrator.Contains("implementation.py", StringComparison.Ordinal),
                 "146B-B3: Lyrical build orchestrator has distro-specific defaults");
         }
 
