@@ -18,9 +18,25 @@
     <Compile Include="..\Shared\FoxServiceSourceEmitter\**\*.cs" LinkBase="Shared\FoxServiceSourceEmitter" />
     <Compile Include="..\Shared\FoxServiceSchema\**\*.cs" LinkBase="Shared\FoxServiceSchema" />
     <Compile Include="..\Shared\FoxServiceDtoValidation\**\*.cs" LinkBase="Shared\FoxServiceDtoValidation" />
-    <Compile Include="..\Shared\FoxRunDescriptor\**\*.cs"
-             Exclude="..\Shared\FoxRunDescriptor\FoxRunGeneratedSourceReconciler.cs;..\Shared\FoxRunDescriptor\FoxRunTransportEmitterContributionRegistry.cs"
-             LinkBase="Shared\FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\Decomposed\FoxRunGenerationModel\EncodingVariantAvailability.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\Decomposed\FoxRunGenerationModel\GenerationMember.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\Decomposed\FoxRunGenerationModel\GenerationModel.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\Decomposed\FoxRunGenerationModel\GenerationType.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\Decomposed\FoxRunGenerationModel\NormalizedScheduleTuple.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\Decomposed\FoxRunGenerationModelValidator\ValidationRules.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\Decomposed\FoxRunGenerationModelValidator\ValidationTopology.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunCanonicalTypeNormalizer.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunEmissionTypeNameFormatter.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunGeneratedMemberIdentity.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunGenerationDescriptorComparer.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunGenerationDescriptorConstants.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunGenerationDescriptorJsonWriter.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunGenerationMemberContracts.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunGenerationModel.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunGenerationModelValidator.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunProtobufContractBuilder.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunProtobufFieldNumber.cs" LinkBase="Shared/FoxRunDescriptor" />
+    <Compile Include="..\Shared\FoxRunDescriptor\FoxRunTypeShape.cs" LinkBase="Shared/FoxRunDescriptor" />
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
     <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
   </ItemGroup>
