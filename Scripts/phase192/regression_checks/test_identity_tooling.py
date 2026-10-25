@@ -541,7 +541,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(65, len(surfaces))
+        self.assertEqual(66, len(surfaces))
 
     def test_identity_surface_uses_revision_local_source_layout(self) -> None:
         """Base/head worktrees load their own section-order parser."""
@@ -610,7 +610,7 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertIn("Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package.py", relative)
         self.assertIn("Scripts/schema/regression_checks/test_schema_tooling.py", relative)
         self.assertIn("Scripts/smoke/test_core_smoke_scripts.py", relative)
-        self.assertEqual(65, len(relative))
+        self.assertEqual(66, len(relative))
 
     def test_split_identity_surface_rejects_relative_star_chain_change(self) -> None:
         """Changing a section's relative star-import source changes runtime overwrite order."""
