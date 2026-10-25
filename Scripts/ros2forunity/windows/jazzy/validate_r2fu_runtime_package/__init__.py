@@ -37,12 +37,16 @@ for _phase192_name in _PHASE192_EXPORT_NAMES:
 
 
 class _Phase192PackageModule(_phase192_types.ModuleType):
+    """Forward package mutations to the implementation module."""
+
     def __setattr__(self, name, value):
+        """Propagate exported state changes to the implementation module."""
         super().__setattr__(name, value)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
             _phase192_section_0.__dict__[name] = value
 
     def __delattr__(self, name):
+        """Propagate exported state removals to the implementation module."""
         super().__delattr__(name)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
             _phase192_section_0.__dict__.pop(name, None)
