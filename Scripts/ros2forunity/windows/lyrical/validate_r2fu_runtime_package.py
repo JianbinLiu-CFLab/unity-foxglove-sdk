@@ -17,9 +17,8 @@ else:
         _phase192_sys.path.insert(0, str(_phase192_parent))
     _phase192_self = _phase192_sys.modules.get(__name__) if __name__ == "validate_r2fu_runtime_package" else None
     if _phase192_self is not None:
-        for _phase192_module_name in tuple(_phase192_sys.modules):
-            if _phase192_module_name == "validate_r2fu_runtime_package" or _phase192_module_name.startswith("validate_r2fu_runtime_package."):
-                _phase192_sys.modules.pop(_phase192_module_name, None)
+        _phase192_sys.modules.pop("validate_r2fu_runtime_package.implementation", None)
+        _phase192_sys.modules.pop("validate_r2fu_runtime_package", None)
     try:
         from validate_r2fu_runtime_package import *
         _phase192_package_module = _phase192_sys.modules.get("validate_r2fu_runtime_package")

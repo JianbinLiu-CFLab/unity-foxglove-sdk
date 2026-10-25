@@ -858,6 +858,7 @@ def _phase192_validate_template_registry_mutations(
 
     validate_closure_mutations()
     expected_module_key = Path(path).stem
+    allowed_module_keys = {expected_module_key, expected_module_key + ".implementation"}
     sys_aliases: set[str] = set()
     registry_aliases: set[str] = set()
     for node in tree.body:
@@ -2114,7 +2115,7 @@ def _phase192_validate_template_registry_mutations(
                         and modules_value(target.value)
                         and isinstance(target.slice, ast.Constant)
                         and isinstance(target.slice.value, str)
-                        and target.slice.value == expected_module_key
+                        and target.slice.value in allowed_module_keys
                         and isinstance(statement.value, ast.Name)
                         and statement.value.id in {"_phase192_self", "_phase192_canonical_self"}
                     ) and not dynamic_restore:
@@ -2149,7 +2150,7 @@ def _phase192_validate_template_registry_mutations(
                 len(node.args) == 2
                 and isinstance(node.args[0], ast.Constant)
                 and isinstance(node.args[0].value, str)
-                and node.args[0].value == expected_module_key
+                and node.args[0].value in allowed_module_keys
                 and isinstance(node.args[1], ast.Constant)
                 and node.args[1].value is None
                 and not node.keywords
