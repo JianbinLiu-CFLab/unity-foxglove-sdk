@@ -111,16 +111,18 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void ValidationNamingGuardsUseSharedRepoRootLocator()
+        public void ValidationNamingGuardsUseSharedSourceReader()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/ValidationNamingGuardsValidation.cs");
-            var helper = TestSources.Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/TestRepoRootLocator.cs");
+            var rootLocator = TestSources.Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/TestRepoRootLocator.cs");
+            var helper = TestSources.Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationSourceHelpers.cs");
             var project = TestSources.Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Assert.Contains("TestRepoRootLocator.FindRepoRoot()", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("Phase16Validation.FindRepoRoot()", source, StringComparison.Ordinal);
-            Assert.Contains("Unity2Foxglove", helper, StringComparison.Ordinal);
-            Assert.Contains("Packages\", \"dev.unity2foxglove.sdk\", \"package.json\"", helper, StringComparison.Ordinal);
+            Assert.Contains("PhaseValidationSourceHelpers.ReadRequiredRepoText", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("File.ReadAllText", source, StringComparison.Ordinal);
+            Assert.Contains("FindRequiredRepoRoot", helper, StringComparison.Ordinal);
+            Assert.Contains("Unity2Foxglove", rootLocator, StringComparison.Ordinal);
+            Assert.Contains("Packages\", \"dev.unity2foxglove.sdk\", \"package.json\"", rootLocator, StringComparison.Ordinal);
             Assert.Contains("TestRepoRootLocator.cs", project, StringComparison.Ordinal);
         }
 

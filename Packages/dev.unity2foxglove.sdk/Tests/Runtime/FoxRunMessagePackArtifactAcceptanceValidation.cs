@@ -293,7 +293,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Root() => FoxRunMessagePackPublicContractValidation.Root();
-        private static string Read(string path) => FoxRunMessagePackPublicContractValidation.Read(path);
+        private static string Read(string path) => PhaseValidationSourceHelpers.ReadRequiredRepoText(path);
         private static bool Exists(string path) => FoxRunMessagePackPublicContractValidation.Exists(path);
         private static bool ContainsAll(string source, params string[] values)
             => FoxRunMessagePackPublicContractValidation.ContainsAll(source, values);

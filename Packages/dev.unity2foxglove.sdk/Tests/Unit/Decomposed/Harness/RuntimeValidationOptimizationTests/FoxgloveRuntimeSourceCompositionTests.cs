@@ -60,8 +60,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             [Fact]
             public void SchemaGeneratorFacadeDoesNotHideSectionMarkers()
             {
-                var facade = TestSources.Text("Scripts/schema/generate_ros2_cdr_serializers.py");
+                var facade = File.ReadAllText(Path.Combine(
+                    PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
+                    "Scripts/schema/generate_ros2_cdr_serializers.py"));
                 Assert.DoesNotContain("_SOURCE_READER_MARKERS", facade, StringComparison.Ordinal);
+                Assert.DoesNotContain("def capacity_hint_for_schema", facade, StringComparison.Ordinal);
+                Assert.DoesNotContain("def writer_for_field", facade, StringComparison.Ordinal);
+                Assert.DoesNotContain("def generate_serializers", facade, StringComparison.Ordinal);
 
                 var source = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/schema/generate_ros2_cdr_serializers.py");
                 Assert.Contains("def capacity_hint_for_schema", source, StringComparison.Ordinal);
@@ -77,36 +82,81 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             [Fact]
             public void RuntimePythonReadersUseTheSplitAwareSourceEntryPoint()
             {
-                var root = Path.Combine(
-                    PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
-                    "Packages/dev.unity2foxglove.sdk/Tests/Runtime");
-                var facadePaths = new HashSet<string>(StringComparer.Ordinal)
-                {
-                    "Scripts/mcap/conformance/run_phase121_conformance.py",
-                    "Scripts/smoke/ros2/phase128_rviz2_acceptance.py",
-                    "Scripts/smoke/ros2/phase129_pointcloud2_acceptance.py",
-                    "Scripts/smoke/ros2/phase130_markerarray_acceptance.py",
-                    "Scripts/smoke/ros2/phase131_standard_visualization_acceptance.py",
-                    "Scripts/smoke/ros2/_ros2_windows_env.py",
-                };
+                var root = Path.Combine(PhaseValidationSourceHelpers.FindRequiredRepoRoot(), "Packages");
                 var violations = new List<string>();
-                foreach (var path in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+                foreach (var path in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+                             .Where(path => !IsGeneratedSourcePath(root, path)))
                 {
                     var source = File.ReadAllText(path);
+                    var logicalSource = source;
+                    var fragments = Path.Combine(
+                        Path.GetDirectoryName(path)!,
+                        "Decomposed",
+                        Path.GetFileNameWithoutExtension(path));
+                    if (Directory.Exists(fragments))
+                    {
+                        logicalSource += Environment.NewLine + string.Join(
+                            Environment.NewLine,
+                            Directory.EnumerateFiles(fragments, "*.cs", SearchOption.AllDirectories)
+                                .Select(File.ReadAllText));
+                    }
+
                     foreach (Match match in Regex.Matches(
-                                 source,
-                                 "(?:ReadRepoText|Read)\\(\\s*\\\"(?<path>Scripts/[^\\\"]+\\.py)\\\"",
+                                 logicalSource,
+                                 "(?<![\\w.])(?<reader>ReadRepoText|Read)\\(\\s*(?:\\\"(?<path>Scripts/[^\\\"]+\\.py)\\\"|(?<symbol>[A-Za-z_]\\w*))\\s*\\)",
                                  RegexOptions.CultureInvariant))
                     {
-                        if (!facadePaths.Contains(match.Groups["path"].Value))
+                        var relativePath = match.Groups["path"].Success
+                            ? match.Groups["path"].Value
+                            : ResolvePythonPath(logicalSource, match.Groups["symbol"].Value);
+                        if (string.IsNullOrEmpty(relativePath))
                             continue;
-                        if (!source.Contains("PhaseValidationSourceHelpers.ReadRequiredRepoText", StringComparison.Ordinal)
-                            && !source.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSource", StringComparison.Ordinal))
+                        relativePath = relativePath.Replace('/', Path.DirectorySeparatorChar);
+                        var facadePath = Path.Combine(root, "..", relativePath);
+                        var packagePath = Path.Combine(
+                            Path.GetDirectoryName(facadePath)!,
+                            Path.GetFileNameWithoutExtension(facadePath));
+                        var decomposedPath = Path.Combine(
+                            Path.GetDirectoryName(facadePath)!,
+                            "Decomposed",
+                            Path.GetFileNameWithoutExtension(facadePath));
+                        if (!Directory.Exists(packagePath) && !Directory.Exists(decomposedPath))
+                            continue;
+                        if (!logicalSource.Contains("PhaseValidationSourceHelpers.ReadRequiredRepoText", StringComparison.Ordinal)
+                            && !logicalSource.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSource", StringComparison.Ordinal))
                             violations.Add(path + ": Python reader bypasses the split-aware helper");
                     }
                 }
 
                 Assert.Empty(violations);
+            }
+
+            private static string ResolvePythonPath(string source, string symbol)
+            {
+                var declaration = Regex.Match(
+                    source,
+                    $"(?:const\\s+string|string|var)\\s+{Regex.Escape(symbol)}\\s*=\\s*\\\"(?<path>Scripts/[^\\\"]+\\.py)\\\"",
+                    RegexOptions.CultureInvariant);
+                return declaration.Success ? declaration.Groups["path"].Value : string.Empty;
+            }
+
+            private static bool IsGeneratedSourcePath(string root, string path)
+            {
+                var relative = Path.GetRelativePath(root, path);
+                return relative
+                    .Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)
+                    .Any(segment => string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(segment, "obj", StringComparison.OrdinalIgnoreCase));
+            }
+
+            [Fact]
+            public void GeneratedSourcePathFilterIsPlatformIndependent()
+            {
+                var root = Path.Combine(Path.GetTempPath(), "phase192-reader-scan");
+                Assert.True(IsGeneratedSourcePath(root, Path.Combine(root, "bin", "Generated.cs")));
+                Assert.True(IsGeneratedSourcePath(root, Path.Combine(root, "obj", "Generated.cs")));
+                Assert.True(IsGeneratedSourcePath(root, Path.Combine(root, "Nested", "obj", "Generated.cs")));
+                Assert.False(IsGeneratedSourcePath(root, Path.Combine(root, "Runtime", "Source.cs")));
             }
 
             [Fact]
@@ -656,6 +706,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     "RequiredRepoTextReadsPythonFacadesWithTheirSections",
                     "SchemaGeneratorFacadeDoesNotHideSectionMarkers",
                     "RuntimePythonReadersUseTheSplitAwareSourceEntryPoint",
+                    "GeneratedSourcePathFilterIsPlatformIndependent",
                     "FoxgloveRuntimeCompositionFailsClosedAndPreservesTrailingGateOrder",
                     "Ros2ForUnitySubscriptionHubCompositionPreservesSplitMethods",
                     "Ros2ForUnitySubscriptionHubCompositionFallsBackToMonolithicFacade",
