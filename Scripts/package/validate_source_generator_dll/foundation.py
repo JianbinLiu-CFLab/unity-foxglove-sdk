@@ -205,6 +205,24 @@ EXACT_SHARED_SOURCE_GROUPS = EXACT_SHARED_SOURCE_GROUPS + tuple(
     )
     for label, core, in_bridge in _VERBATIM_PROVIDER_COPIES
 )
+EXACT_SHARED_SOURCE_GROUPS = EXACT_SHARED_SOURCE_GROUPS + (
+    (
+        "Generation model validator rules",
+        (
+            REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
+        ),
+    ),
+    (
+        "Generation model validator topology",
+        (
+            REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs",
+        ),
+    ),
+)
 PROVIDER_TYPE_SHAPE = (
     REPO_ROOT
     / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/FoxRunTypeShape.cs"
