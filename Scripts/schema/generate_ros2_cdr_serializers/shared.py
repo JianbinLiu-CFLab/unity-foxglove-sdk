@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from generate_ros2_msg_schema_catalog import CATEGORIES, CSHARP_NAMESPACE, EXPECTED_FILE_COUNT
+from Scripts.schema.generate_ros2_msg_schema_catalog import CATEGORIES, CSHARP_NAMESPACE, EXPECTED_FILE_COUNT
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
