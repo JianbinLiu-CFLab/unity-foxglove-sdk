@@ -99,15 +99,89 @@ def frozen_identity_mutation_result(
 def _real_source_mutation_targets(root: Path) -> tuple[tuple[str, Path, object], ...]:
     """Return representative tracked sources for each identity surface."""
     managed = root / "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Phase186/Decomposed/BridgeProductSurfaceTests/BridgeProductAcceptance.cs"
-    python = root / "Scripts/phase192/identity_contracts.py"
+    python = root / "Scripts/phase192/identity_contracts/surface_rows.py"
     cpp = root / "Scripts/native/draco_native/Unity2FoxgloveDracoNative.cpp"
     tests = managed
     return (
         ("managed", managed, lambda text: text.replace("BridgeProductSurfaceTests", "BridgeProductSurfaceTestsRenamed", 1)),
-        ("python", python, lambda text: text.replace("def managed_rows(", "def managed_rows_renamed(", 1)),
+        ("python", python, lambda text: text.replace("def python_surface(", "def python_surface_renamed(", 1)),
         ("cpp", cpp, lambda text: text.replace("U2FDracoGetVersion(", "U2FDracoGetVersionX(", 1)),
         ("tests", tests, lambda text: text.replace("[Fact]", "", 1)),
     )
+
+
+_SURFACE_SPECS = {
+    "managed-public-member": (
+        "managed-paths.tsv",
+        "managed-api-surface.tsv",
+        ["path", "line", "visibility", "declaration"],
+        identity_contracts.managed_rows,
+    ),
+    "python-export": (
+        "python-paths.tsv",
+        "python-symbols.tsv",
+        ["path", "all", "exports"],
+        identity_contracts.python_surface,
+    ),
+    "cpp-symbol": (
+        "cpp-paths.tsv",
+        "cpp-symbol-surface.tsv",
+        ["path", "line", "symbol", "declaration"],
+        identity_contracts.cpp_rows,
+    ),
+    "test-name": (
+        "csharp-test-paths.tsv",
+        "csharp-test-names.tsv",
+        ["path", "test_name", "framework"],
+        identity_contracts.csharp_test_rows,
+    ),
+}
+
+
+def _manifest_paths(path: Path) -> list[str]:
+    """Read repository-relative paths from a Task 0 path manifest."""
+    with path.open(encoding="utf-8", newline="") as handle:
+        return [row[0] for row in csv.reader(handle, delimiter="\t") if row and row[0] != "path"]
+
+
+def _mutate_source(text: str, label: str) -> str:
+    """Apply one source-level mutation that the real extractor must observe."""
+    if label == "managed-public-member":
+        for visibility in ("public", "internal", "protected"):
+            marker = f"{visibility} "
+            if marker in text:
+                return text.replace(marker, "private ", 1)
+        raise AssertionError("managed mutation found no visible declaration")
+    if label == "python-export":
+        return text + "\n\ndef sensitivity_probe_export():\n    return None\n"
+    if label == "cpp-symbol":
+        return text + "\nstruct Phase192SensitivityProbe {};\n"
+    if label == "test-name":
+        return text + "\n[Fact]\npublic void Phase192SensitivityProbe() { }\n"
+    raise AssertionError(f"unknown sensitivity mutation: {label}")
+
+
+def _run_real_surface_mutation(
+    label: str,
+    identity_root: Path,
+    repository_root: Path,
+    temp_root: Path,
+) -> int:
+    """Mutate a real source copy, re-extract it, and compare its surface."""
+    paths_name, surface_name, header, extractor = _SURFACE_SPECS[label]
+    paths = _manifest_paths(identity_root / paths_name)
+    if not paths:
+        raise AssertionError(f"{label} path manifest is empty")
+    relative = paths[0]
+    source = repository_root / relative
+    if not source.is_file():
+        raise AssertionError(f"{label} source is missing: {relative}")
+    target = temp_root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_mutate_source(source.read_text(encoding="utf-8"), label), encoding="utf-8")
+    actual = temp_root / f"{label}.tsv"
+    identity_contracts.write_rows(actual, header, extractor(relative, target.read_text(encoding="utf-8")))
+    return identity_contracts.compare_tsv(identity_root / surface_name, actual)
 
 
 def generated_byte_mutation(manifest: Path, root: Path) -> int:
@@ -147,27 +221,13 @@ def main(argv: list[str] | None = None) -> int:
     if not args.identity.is_dir():
         raise FileNotFoundError(args.identity)
     results: list[str] = []
-    labels = {
-        "managed": "managed-public-member",
-        "python": "python-export",
-        "cpp": "cpp-symbol",
-        "tests": "test-name",
-    }
-    for kind, source, mutate in _real_source_mutation_targets(args.root.resolve()):
-        label = labels[kind]
-        if not source.is_file():
-            raise FileNotFoundError(source)
-        if source_mutation_result(kind, source, mutate) != 1:
-            raise AssertionError(f"{label} source mutation was not RED")
-        if frozen_identity_mutation_result(
-            kind,
-            source,
-            mutate,
-            args.identity,
-            args.root.resolve(),
-        ) != 1:
-            raise AssertionError(f"{label} frozen identity comparison was not RED")
-        results.append(f"MUTATION={label} RESULT=RED EXIT=1")
+    with tempfile.TemporaryDirectory(prefix="phase192-sensitivity-") as temp:
+        temp_root = Path(temp)
+        for label in _SURFACE_SPECS:
+            exit_code = _run_real_surface_mutation(label, args.identity, args.root, temp_root)
+            if exit_code != 1:
+                raise AssertionError(f"{label} mutation was not RED")
+            results.append(f"MUTATION={label} SOURCE_EXTRACTOR=REAL RESULT=RED EXIT=1")
     generated_exit = generated_byte_mutation(args.generated, args.root)
     if generated_exit != 1:
         raise AssertionError("generated byte mutation was not RED")
