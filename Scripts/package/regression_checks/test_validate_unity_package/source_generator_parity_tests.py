@@ -67,6 +67,8 @@ class SourceGeneratorParityTests:
         known_unguarded_variants = {
             "FoxgloveLogSourceGenerator.cs",
             "FoxgloveLogSourceGenerator.Models.cs",
+            "MemberExtraction.cs",
+            "Utilities.cs",
             "FoxRunGenerationModel.cs",
             "FoxRunTypeShape.cs",
         }

@@ -12,7 +12,12 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="src\**\*.cs" />
+    <Compile Include="src\**\*.cs" Exclude="src\Decomposed\FoxgloveLogSourceGenerator\**\*.cs" />
+    <Compile Include="src\Decomposed\FoxgloveLogSourceGenerator\CandidateDiscovery.cs" />
+    <Compile Include="src\Decomposed\FoxgloveLogSourceGenerator\MemberExtraction.cs" />
+    <Compile Include="src\Decomposed\FoxgloveLogSourceGenerator\GenerationAndDiagnostics.cs" />
+    <Compile Include="src\Decomposed\FoxgloveLogSourceGenerator\Services.cs" />
+    <Compile Include="src\Decomposed\FoxgloveLogSourceGenerator\Utilities.cs" />
     <Compile Include="..\Shared\FoxgloveSourceEmitter\**\*.cs" LinkBase="Shared\FoxgloveSourceEmitter" />
     <Compile Include="..\Shared\TypedMessagePack\**\*.cs" LinkBase="Shared\TypedMessagePack" />
     <Compile Include="..\Shared\FoxServiceSourceEmitter\**\*.cs" LinkBase="Shared\FoxServiceSourceEmitter" />
