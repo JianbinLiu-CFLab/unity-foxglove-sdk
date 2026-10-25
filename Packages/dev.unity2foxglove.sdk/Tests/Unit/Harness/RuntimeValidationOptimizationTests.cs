@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Unity.FoxgloveSDK.Tests;
@@ -186,6 +187,27 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var metaGuid = Regex.Match(File.ReadAllText(metaPath), @"^guid: (?<guid>[0-9a-f]{32})$", RegexOptions.Multiline);
                 Assert.True(metaGuid.Success, "Phase184 root stub meta GUID missing: " + expected.Stub);
                 Assert.Equal(guid, metaGuid.Groups["guid"].Value);
+                var stubType = expected.Component[(expected.Component.LastIndexOf('.') + 1)..];
+                var stub = File.ReadAllText(stubPath);
+                var syntax = CSharpSyntaxTree.ParseText(stub);
+                Assert.Empty(syntax.GetDiagnostics());
+                var declarations = syntax.GetRoot()
+                    .DescendantNodes()
+                    .OfType<ClassDeclarationSyntax>()
+                    .Where(candidate => candidate.Identifier.ValueText == stubType)
+                    .ToArray();
+                Assert.Single(declarations);
+                var declaration = declarations[0];
+                Assert.Contains(declaration.Modifiers, modifier => modifier.IsKind(SyntaxKind.PublicKeyword));
+                Assert.Contains(declaration.Modifiers, modifier => modifier.IsKind(SyntaxKind.SealedKeyword));
+                Assert.Contains(declaration.Modifiers, modifier => modifier.IsKind(SyntaxKind.PartialKeyword));
+                var namespaceName = declaration.Parent switch
+                {
+                    NamespaceDeclarationSyntax namespaceDeclaration => namespaceDeclaration.Name.ToString(),
+                    FileScopedNamespaceDeclarationSyntax fileScopedNamespace => fileScopedNamespace.Name.ToString(),
+                    _ => string.Empty,
+                };
+                Assert.Equal(expected.Component[..expected.Component.LastIndexOf('.')], namespaceName);
                 var ownership = sceneOwnership.Single(entry => entry.Guid == guid);
                 Assert.Equal(expected.Component, ownership.Component);
             }
