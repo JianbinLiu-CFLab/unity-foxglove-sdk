@@ -19,8 +19,10 @@ if __package__:
 else:
     from pathlib import Path as _Phase192Path
     _phase192_parent = _Phase192Path(__file__).resolve().parent
-    if str(_phase192_parent) not in _phase192_sys.path:
-        _phase192_sys.path.insert(0, str(_phase192_parent))
+    _phase192_repo_root = _Phase192Path(__file__).resolve().parents[2]
+    for _phase192_path in (_phase192_parent, _phase192_repo_root):
+        if str(_phase192_path) not in _phase192_sys.path:
+            _phase192_sys.path.insert(0, str(_phase192_path))
     _phase192_self = _phase192_sys.modules.get(__name__) if __name__ == "generate_ros2_cdr_serializers" else None
     if _phase192_self is not None:
         _phase192_sys.modules.pop("generate_ros2_cdr_serializers", None)
