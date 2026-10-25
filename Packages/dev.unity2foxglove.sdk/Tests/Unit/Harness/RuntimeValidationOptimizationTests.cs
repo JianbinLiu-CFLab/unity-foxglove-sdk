@@ -190,6 +190,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var stubType = expected.Component[(expected.Component.LastIndexOf('.') + 1)..];
                 var stub = File.ReadAllText(stubPath);
                 var syntax = CSharpSyntaxTree.ParseText(stub);
+                Assert.Empty(syntax.GetDiagnostics());
                 var declarations = syntax.GetRoot()
                     .DescendantNodes()
                     .OfType<ClassDeclarationSyntax>()
