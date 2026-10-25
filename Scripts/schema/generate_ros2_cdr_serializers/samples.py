@@ -117,3 +117,5 @@ def generate_samples(schemas: list[Schema]) -> str:
     return "\n".join(lines) + "\n"
 
 
+
+__all__ = [name for name in globals() if not name.startswith("__")]

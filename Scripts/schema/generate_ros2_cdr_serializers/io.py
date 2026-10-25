@@ -94,3 +94,5 @@ def generate(input_dir: Path, output_dir: Path) -> str:
     return f"[ros2-cdr-gen] generated {len(schemas)} serializers/deserializers in {output_dir}"
 
 
+
+__all__ = [name for name in globals() if not name.startswith("__")]

@@ -197,3 +197,5 @@ def load_schemas(input_dir: Path) -> list[Schema]:
     return schemas
 
 
+
+__all__ = [name for name in globals() if not name.startswith("__")]
