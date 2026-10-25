@@ -201,12 +201,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 Assert.Contains(declaration.Modifiers, modifier => modifier.IsKind(SyntaxKind.PublicKeyword));
                 Assert.Contains(declaration.Modifiers, modifier => modifier.IsKind(SyntaxKind.SealedKeyword));
                 Assert.Contains(declaration.Modifiers, modifier => modifier.IsKind(SyntaxKind.PartialKeyword));
-                var namespaceName = declaration.Parent switch
-                {
-                    NamespaceDeclarationSyntax namespaceDeclaration => namespaceDeclaration.Name.ToString(),
-                    FileScopedNamespaceDeclarationSyntax fileScopedNamespace => fileScopedNamespace.Name.ToString(),
-                    _ => string.Empty,
-                };
+                var namespaceName = string.Join(
+                    ".",
+                    declaration.Ancestors()
+                        .OfType<BaseNamespaceDeclarationSyntax>()
+                        .Select(namespaceDeclaration => namespaceDeclaration.Name.ToString())
+                        .Reverse());
                 Assert.Equal(expected.Component[..expected.Component.LastIndexOf('.')], namespaceName);
                 var ownership = sceneOwnership.Single(entry => entry.Guid == guid);
                 Assert.Equal(expected.Component, ownership.Component);
