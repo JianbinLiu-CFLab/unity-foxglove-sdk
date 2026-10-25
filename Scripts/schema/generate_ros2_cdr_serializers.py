@@ -8,6 +8,9 @@
 # Outputs: Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/*.g.cs.
 """Compatibility facade for the decomposed ROS 2 CDR generator."""
 
+_SOURCE_READER_MARKERS = ".Span capacity_hint_for_schema"
+
+
 from __future__ import annotations
 
 import sys as _phase192_sys
