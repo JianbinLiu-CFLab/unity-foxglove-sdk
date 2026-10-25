@@ -25,12 +25,16 @@ else:
             _phase192_sys.modules["identity_contracts"] = _phase192_self
 
 class _Phase192FacadeModule(_phase192_types.ModuleType):
+    """Forward facade mutations to the decomposed identity-contract package."""
+
     def __setattr__(self, name, value):
+        """Mirror facade assignments into the implementation module."""
         super().__setattr__(name, value)
         if _phase192_package_module is not None and _phase192_package_module is not self:
             setattr(_phase192_package_module, name, value)
 
     def __delattr__(self, name):
+        """Mirror facade deletions into the implementation module."""
         super().__delattr__(name)
         if _phase192_package_module is not None and _phase192_package_module is not self:
             try:
