@@ -207,6 +207,44 @@ EXACT_SHARED_SOURCE_GROUPS = EXACT_SHARED_SOURCE_GROUPS + tuple(
 )
 EXACT_SHARED_SOURCE_GROUPS = EXACT_SHARED_SOURCE_GROUPS + (
     (
+        "Foxglove log candidate discovery",
+        (
+            REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/Decomposed/FoxgloveLogSourceGenerator/CandidateDiscovery.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/Decomposed/FoxgloveLogSourceGenerator/CandidateDiscovery.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/Decomposed/FoxgloveLogSourceGenerator/CandidateDiscovery.cs",
+        ),
+    ),
+    (
+        "Foxglove log generation diagnostics",
+        (
+            REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/Decomposed/FoxgloveLogSourceGenerator/GenerationAndDiagnostics.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/Decomposed/FoxgloveLogSourceGenerator/GenerationAndDiagnostics.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/Decomposed/FoxgloveLogSourceGenerator/GenerationAndDiagnostics.cs",
+        ),
+    ),
+    (
+        "Foxglove log member extraction",
+        (
+            REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/Decomposed/FoxgloveLogSourceGenerator/MemberExtraction.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/Decomposed/FoxgloveLogSourceGenerator/MemberExtraction.cs",
+        ),
+    ),
+    (
+        "Foxglove log services",
+        (
+            REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/Decomposed/FoxgloveLogSourceGenerator/Services.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/Decomposed/FoxgloveLogSourceGenerator/Services.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/Decomposed/FoxgloveLogSourceGenerator/Services.cs",
+        ),
+    ),
+    (
+        "Foxglove log utilities",
+        (
+            REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/Decomposed/FoxgloveLogSourceGenerator/Utilities.cs",
+            REPO_ROOT / "Packages/dev.unity2foxglove.ros2bridge/Editor/SourceGenerators/src/Shared/Decomposed/FoxgloveLogSourceGenerator/Utilities.cs",
+        ),
+    ),
+    (
         "Generation model validator rules",
         (
             REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
