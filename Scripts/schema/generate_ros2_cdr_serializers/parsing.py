@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Decomposed ROS 2 CDR generator section."""
+"""Generate direct ROS 2 CDR serializers/deserializers for official Foxglove .msg schemas."""
 
 from __future__ import annotations
 
