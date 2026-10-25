@@ -85,8 +85,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var root = Path.Combine(PhaseValidationSourceHelpers.FindRequiredRepoRoot(), "Packages");
                 var violations = new List<string>();
                 foreach (var path in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
-                             .Where(path => !path.Contains("\\bin\\", StringComparison.OrdinalIgnoreCase)
-                                            && !path.Contains("\\obj\\", StringComparison.OrdinalIgnoreCase)))
+                             .Where(path => !IsGeneratedSourcePath(root, path)))
                 {
                     var source = File.ReadAllText(path);
                     var logicalSource = source;
@@ -103,11 +102,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     }
 
                     foreach (Match match in Regex.Matches(
-                                 source,
-                                 "(?<![\\w.])(?<reader>ReadRepoText|Read)\\(\\s*\\\"(?<path>Scripts/[^\\\"]+\\.py)\\\"",
+                                 logicalSource,
+                                 "(?<![\\w.])(?<reader>ReadRepoText|Read)\\(\\s*(?:\\\"(?<path>Scripts/[^\\\"]+\\.py)\\\"|(?<symbol>[A-Za-z_]\\w*))\\s*\\)",
                                  RegexOptions.CultureInvariant))
                     {
-                        var relativePath = match.Groups["path"].Value.Replace('/', Path.DirectorySeparatorChar);
+                        var relativePath = match.Groups["path"].Success
+                            ? match.Groups["path"].Value
+                            : ResolvePythonPath(logicalSource, match.Groups["symbol"].Value);
+                        if (string.IsNullOrEmpty(relativePath))
+                            continue;
+                        relativePath = relativePath.Replace('/', Path.DirectorySeparatorChar);
                         var facadePath = Path.Combine(root, "..", relativePath);
                         var packagePath = Path.Combine(
                             Path.GetDirectoryName(facadePath)!,
@@ -125,6 +129,34 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 }
 
                 Assert.Empty(violations);
+            }
+
+            private static string ResolvePythonPath(string source, string symbol)
+            {
+                var declaration = Regex.Match(
+                    source,
+                    $"(?:const\\s+string|string|var)\\s+{Regex.Escape(symbol)}\\s*=\\s*\\\"(?<path>Scripts/[^\\\"]+\\.py)\\\"",
+                    RegexOptions.CultureInvariant);
+                return declaration.Success ? declaration.Groups["path"].Value : string.Empty;
+            }
+
+            private static bool IsGeneratedSourcePath(string root, string path)
+            {
+                var relative = Path.GetRelativePath(root, path);
+                return relative
+                    .Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)
+                    .Any(segment => string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(segment, "obj", StringComparison.OrdinalIgnoreCase));
+            }
+
+            [Fact]
+            public void GeneratedSourcePathFilterIsPlatformIndependent()
+            {
+                var root = Path.Combine(Path.GetTempPath(), "phase192-reader-scan");
+                Assert.True(IsGeneratedSourcePath(root, Path.Combine(root, "bin", "Generated.cs")));
+                Assert.True(IsGeneratedSourcePath(root, Path.Combine(root, "obj", "Generated.cs")));
+                Assert.True(IsGeneratedSourcePath(root, Path.Combine(root, "Nested", "obj", "Generated.cs")));
+                Assert.False(IsGeneratedSourcePath(root, Path.Combine(root, "Runtime", "Source.cs")));
             }
 
             [Fact]
@@ -674,6 +706,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     "RequiredRepoTextReadsPythonFacadesWithTheirSections",
                     "SchemaGeneratorFacadeDoesNotHideSectionMarkers",
                     "RuntimePythonReadersUseTheSplitAwareSourceEntryPoint",
+                    "GeneratedSourcePathFilterIsPlatformIndependent",
                     "FoxgloveRuntimeCompositionFailsClosedAndPreservesTrailingGateOrder",
                     "Ros2ForUnitySubscriptionHubCompositionPreservesSplitMethods",
                     "Ros2ForUnitySubscriptionHubCompositionFallsBackToMonolithicFacade",
