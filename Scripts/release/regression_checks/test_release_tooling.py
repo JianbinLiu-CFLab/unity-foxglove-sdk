@@ -26,6 +26,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from Scripts.phase192.source_layout import read_split_source
+
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
@@ -66,6 +68,13 @@ def read_runtime_validation_source(path: Path) -> str:
             for companion in sorted(companion_dir.glob("*.cs"))
         )
     return "\n".join(sources)
+
+
+def read_python_validation_source(path: Path) -> str:
+    """Read a Python validation facade together with its exported package section."""
+    if path.with_suffix("").is_dir():
+        return read_split_source(path)
+    return path.read_text(encoding="utf-8")
 WORKFLOW_PATHS = (
     DOCS_WORKFLOW_PATH,
     DOTNET_WORKFLOW_PATH,
@@ -2820,7 +2829,7 @@ class R2fuArtifactHandoffTests(unittest.TestCase):
 
         for relative_path, expected_sha256 in expected_by_path.items():
             with self.subTest(path=relative_path):
-                source = (ROOT / relative_path).read_text(encoding="utf-8")
+                source = read_python_validation_source(ROOT / relative_path)
                 self.assertIn(expected_sha256, source)
 
     def test_runtime_adoption_sync_updates_only_the_selected_distro(self) -> None:
@@ -3020,7 +3029,7 @@ class R2fuArtifactHandoffTests(unittest.TestCase):
 
         for path in paths:
             with self.subTest(path=path):
-                source = path.read_text(encoding="utf-8")
+                source = read_python_validation_source(path)
                 self.assertIn("V083_EXCLUDED_TEST_TYPESUPPORT_DLLS", source)
                 self.assertNotIn("geometry_msgs_velocity_with_covariance_stamped", source)
                 for filename in expected_test_only:
