@@ -232,7 +232,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void GeneratedAndManualCdrBuildersUseSpanAndCapacityPatterns()
         {
             var generated = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs");
-            var generator = TestSources.Text("Scripts/schema/generate_ros2_cdr_serializers.py");
+            var generator = TestSources.Text("Scripts/schema/generate_ros2_cdr_serializers/generation_helpers.py")
+                + Environment.NewLine
+                + TestSources.Text("Scripts/schema/generate_ros2_cdr_serializers/serialization.py");
             var generatorTests = TestSources.Text("Scripts/schema/regression_checks/test_schema_tooling/schema_tests.py");
             var frame = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs");
             var scene = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSceneUpdateBuilder.cs");
