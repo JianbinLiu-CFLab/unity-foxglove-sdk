@@ -7,6 +7,7 @@ import importlib
 import importlib.util
 import keyword
 import re
+import unittest
 from pathlib import Path
 import sys
 from types import ModuleType
@@ -100,3 +101,33 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
             sys.modules.pop(module_name, None)
         raise
     return module
+
+
+def load_test_suite(module_name: str, source: Path, root: Path) -> unittest.TestSuite:
+    """Load an out-of-tree unittest module with its supplied package root."""
+
+    package_name = module_name.split(".", 1)[0]
+    saved_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == package_name or name.startswith(package_name + ".")
+    }
+    for name in tuple(saved_modules):
+        sys.modules.pop(name, None)
+    original_path = list(sys.path)
+    sys.path.insert(0, str(root.resolve()))
+    try:
+        importlib.invalidate_caches()
+        spec = importlib.util.spec_from_file_location(module_name, source.resolve())
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"unittest discovery failed for {module_name}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        return unittest.defaultTestLoader.loadTestsFromModule(module)
+    finally:
+        sys.path[:] = original_path
+        for name in tuple(sys.modules):
+            if name == package_name or name.startswith(package_name + "."):
+                sys.modules.pop(name, None)
+        sys.modules.update(saved_modules)

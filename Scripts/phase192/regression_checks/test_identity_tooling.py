@@ -81,6 +81,18 @@ class IdentityToolingTests(unittest.TestCase):
         rows = identity_contracts.cpp_rows("fixture.cpp", source)
         self.assertEqual(["Foo"], [row[2] for row in rows])
 
+    def test_cpp_surface_ignores_comments_and_strings(self) -> None:
+        """C++ comments and string literals cannot introduce identity symbols."""
+        source = (
+            "/*\n"
+            "int FakeComment(int value);\n"
+            "*/\n"
+            'const char* text = "int FakeString(int value);";\n'
+            "int RealExport(int value);\n"
+        )
+        rows = identity_contracts.cpp_rows("fixture.cpp", source)
+        self.assertEqual(["RealExport"], [row[2] for row in rows])
+
     def test_cpp_surface_records_special_member_declarations(self) -> None:
         """Constructors and destructors remain visible C++ identity rows."""
         source = (
@@ -513,6 +525,91 @@ class IdentityToolingTests(unittest.TestCase):
                 rows,
                 [["test_fixture.py", "test_fixture.Attached.test_attached", "unittest"]],
             )
+
+    def test_python_test_rows_uses_out_of_tree_package_context(self) -> None:
+        """Out-of-tree discovery resolves absolute and relative imports from its root."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "fixture_pkg/regression_checks"
+            package.mkdir(parents=True)
+            (root / "fixture_pkg/__init__.py").write_text(
+                "ROOT_VALUE = 'supplied-root'\n", encoding="utf-8"
+            )
+            (package / "__init__.py").write_text("", encoding="utf-8")
+            (package / "helpers.py").write_text(
+                "VALUE = 'relative-root'\n", encoding="utf-8"
+            )
+            fixture = package / "test_sample.py"
+            fixture.write_text(
+                "from fixture_pkg import ROOT_VALUE\n"
+                "from .helpers import VALUE\n"
+                "import unittest\n"
+                "class Attached(unittest.TestCase):\n"
+                "    def test_imports(self):\n"
+                "        self.assertEqual(ROOT_VALUE, 'supplied-root')\n"
+                "        self.assertEqual(VALUE, 'relative-root')\n",
+                encoding="utf-8",
+            )
+            rows = identity_contracts.python_test_rows(
+                "fixture_pkg/regression_checks/test_sample.py",
+                fixture.read_text(encoding="utf-8"),
+                root,
+            )
+            self.assertEqual(
+                rows,
+                [[
+                    "fixture_pkg/regression_checks/test_sample.py",
+                    "fixture_pkg.regression_checks.test_sample.Attached.test_imports",
+                    "unittest",
+                ]],
+            )
+
+    def test_real_surface_mutation_noop_is_not_red(self) -> None:
+        """A no-op extractor mutation cannot pass because unrelated rows differ."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "fixture.cpp"
+            original = "int Exported(int value) { return value; }\n"
+            source.write_text(original, encoding="utf-8")
+            identity = root / "identity"
+            identity.mkdir()
+            (identity / "cpp-paths.tsv").write_text(
+                "path\nfixture.cpp\nother.cpp\n", encoding="utf-8"
+            )
+            rows = identity_contracts.cpp_rows("fixture.cpp", original)
+            rows.append(["other.cpp", "1", "Other", "int Other()"])
+            identity_contracts.write_rows(
+                identity / "cpp-symbol-surface.tsv",
+                ["path", "line", "symbol", "declaration"],
+                rows,
+            )
+            with mock.patch.object(sensitivity_proof, "_mutate_source", lambda text, label: text):
+                self.assertEqual(
+                    0,
+                    sensitivity_proof._run_real_surface_mutation(
+                        "cpp-symbol", identity, root, root / "temp"
+                    ),
+                )
+
+    def test_real_surface_mutation_rejects_baseline_mismatch(self) -> None:
+        """A stale frozen row must fail before a mutation result is accepted."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "fixture.cpp"
+            source.write_text("int Exported(int value) { return value; }\n", encoding="utf-8")
+            identity = root / "identity"
+            identity.mkdir()
+            (identity / "cpp-paths.tsv").write_text("path\nfixture.cpp\n", encoding="utf-8")
+            identity_contracts.write_rows(
+                identity / "cpp-symbol-surface.tsv",
+                ["path", "line", "symbol", "declaration"],
+                [["fixture.cpp", "1", "Wrong", "int Wrong()"]],
+            )
+            with self.assertRaisesRegex(AssertionError, "frozen identity baseline mismatch"):
+                with mock.patch.object(sensitivity_proof, "_mutate_source", lambda text, label: text):
+                    sensitivity_proof._run_real_surface_mutation(
+                        "cpp-symbol", identity, root, root / "temp"
+                    )
 
     def test_revision_archive_rejects_escape_and_symlink_members(self) -> None:
         """Revision extraction refuses traversal and symlink members on all Python versions."""
