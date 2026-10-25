@@ -9,6 +9,20 @@ from __future__ import annotations
 from . import shared, models, parsing, generation_helpers, serialization, deserialization, samples, registry, io, cli
 
 _sections = (shared, models, parsing, generation_helpers, serialization, deserialization, samples, registry, io, cli)
+
+REPO_ROOT = shared.REPO_ROOT
+DEFAULT_INPUT = shared.DEFAULT_INPUT
+PROTO_MESSAGES = REPO_ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Runtime" / "Schemas" / "Proto" / "Generated" / "Messages"
+DEFAULT_OUTPUT_DIR = REPO_ROOT / "Packages" / "dev.unity2foxglove.ros2bridge" / "Runtime" / "Schemas" / "Ros2Msg" / "Generated"
+shared.REPO_ROOT = REPO_ROOT
+shared.DEFAULT_INPUT = DEFAULT_INPUT
+shared.PROTO_MESSAGES = PROTO_MESSAGES
+shared.DEFAULT_OUTPUT_DIR = DEFAULT_OUTPUT_DIR
+for _module in _sections:
+    _module.REPO_ROOT = REPO_ROOT
+    _module.DEFAULT_INPUT = DEFAULT_INPUT
+    _module.PROTO_MESSAGES = PROTO_MESSAGES
+    _module.DEFAULT_OUTPUT_DIR = DEFAULT_OUTPUT_DIR
 for _module in _sections:
     for _name, _value in list(vars(_module).items()):
         if not _name.startswith("__"):
