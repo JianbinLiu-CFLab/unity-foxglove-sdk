@@ -43,6 +43,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 var cases = new[]
                 {
+                    ("Scripts/schema/generate_ros2_cdr_serializers.py", "def capacity_hint_for_schema"),
+                    ("Scripts/schema/regression_checks/test_schema_tooling/schema_tests.py", "class SchemaToolingTests"),
                     ("Scripts/mcap/conformance/run_phase121_conformance.py", "OFFICIAL_REPOSITORY_URL"),
                     ("Scripts/smoke/ros2/phase128_rviz2_acceptance.py", "pixi"),
                     ("Scripts/smoke/ros2/phase129_pointcloud2_acceptance.py", "pixi"),
@@ -53,6 +55,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
                 foreach (var (facade, signature) in cases)
                     Assert.Contains(signature, PhaseValidationSourceHelpers.ReadRequiredRepoText(facade), StringComparison.Ordinal);
+            }
+
+            [Fact]
+            public void SchemaGeneratorFacadeDoesNotHideSectionMarkers()
+            {
+                var facade = TestSources.Text("Scripts/schema/generate_ros2_cdr_serializers.py");
+                Assert.DoesNotContain("_SOURCE_READER_MARKERS", facade, StringComparison.Ordinal);
+
+                var source = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/schema/generate_ros2_cdr_serializers.py");
+                Assert.Contains("def capacity_hint_for_schema", source, StringComparison.Ordinal);
+                Assert.Contains("def writer_for_field", source, StringComparison.Ordinal);
+                Assert.Contains("def generate_serializers", source, StringComparison.Ordinal);
+
+                var sensor = TestSources.Text("Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Harness/SensorRos2OptimizationTests.cs");
+                Assert.Contains("Scripts/schema/generate_ros2_cdr_serializers/generation_helpers.py", sensor, StringComparison.Ordinal);
+                Assert.Contains("Scripts/schema/generate_ros2_cdr_serializers/serialization.py", sensor, StringComparison.Ordinal);
+                Assert.DoesNotContain("Scripts/schema/generate_ros2_cdr_serializers.py\")", sensor, StringComparison.Ordinal);
             }
 
             [Fact]
@@ -635,6 +654,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 {
                     "SplitPythonScannersUseDeclaredSourceSections",
                     "RequiredRepoTextReadsPythonFacadesWithTheirSections",
+                    "SchemaGeneratorFacadeDoesNotHideSectionMarkers",
                     "RuntimePythonReadersUseTheSplitAwareSourceEntryPoint",
                     "FoxgloveRuntimeCompositionFailsClosedAndPreservesTrailingGateOrder",
                     "Ros2ForUnitySubscriptionHubCompositionPreservesSplitMethods",

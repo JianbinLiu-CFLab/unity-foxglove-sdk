@@ -10,8 +10,6 @@
 
 from __future__ import annotations
 
-_SOURCE_READER_MARKERS = ".Span capacity_hint_for_schema"
-
 import sys as _phase192_sys
 import types as _phase192_types
 
