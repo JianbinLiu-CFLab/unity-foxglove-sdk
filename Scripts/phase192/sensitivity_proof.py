@@ -168,7 +168,8 @@ def _run_real_surface_mutation(
     temp_root: Path,
 ) -> int:
     """Mutate a real source copy, re-extract it, and compare its surface."""
-    paths_name, surface_name, header, extractor = _SURFACE_SPECS[label]
+    del temp_root
+    paths_name, _, _, _ = _SURFACE_SPECS[label]
     paths = _manifest_paths(identity_root / paths_name)
     if not paths:
         raise AssertionError(f"{label} path manifest is empty")
@@ -176,12 +177,19 @@ def _run_real_surface_mutation(
     source = repository_root / relative
     if not source.is_file():
         raise AssertionError(f"{label} source is missing: {relative}")
-    target = temp_root / relative
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(_mutate_source(source.read_text(encoding="utf-8"), label), encoding="utf-8")
-    actual = temp_root / f"{label}.tsv"
-    identity_contracts.write_rows(actual, header, extractor(relative, target.read_text(encoding="utf-8")))
-    return identity_contracts.compare_tsv(identity_root / surface_name, actual)
+    kind = {
+        "managed-public-member": "managed",
+        "python-export": "python",
+        "cpp-symbol": "cpp",
+        "test-name": "tests",
+    }[label]
+    return frozen_identity_mutation_result(
+        kind,
+        source,
+        lambda text: _mutate_source(text, label),
+        identity_root,
+        repository_root,
+    )
 
 
 def generated_byte_mutation(manifest: Path, root: Path) -> int:

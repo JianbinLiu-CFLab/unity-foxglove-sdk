@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import ast
-import importlib.util
 import re
 import unittest
 from pathlib import Path
+
+from Scripts.phase192 import source_layout
+from .source_parsing import source_without_non_code
 
 __all__ = [
     "TEST_ATTRIBUTES",
@@ -155,17 +157,8 @@ def python_test_rows(
         raise ValueError("A repository root is required for unittest discovery")
 
     module_name = _module_name_for_path(path)
-    if root.resolve() == Path.cwd().resolve():
-        suite = unittest.defaultTestLoader.loadTestsFromName(module_name)
-    else:
-        source_path = root / Path(path.replace("/", "\\"))
-        unique_name = "_phase192_discovery_" + module_name.replace(".", "_")
-        spec = importlib.util.spec_from_file_location(unique_name, source_path)
-        if spec is None or spec.loader is None:
-            raise RuntimeError(f"unittest discovery failed for {module_name}")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        suite = unittest.defaultTestLoader.loadTestsFromModule(module)
+    source_path = root / Path(path)
+    suite = source_layout.load_test_suite(module_name, source_path, root)
 
     rows: list[list[str]] = []
     for case in _flatten_test_suite(suite):
@@ -182,7 +175,7 @@ def python_test_rows(
 
 def cpp_rows(path: str, text: str) -> list[list[str]]:
     """Return stable C++ type and function declaration rows."""
-    stripped = text
+    stripped = source_without_non_code(Path(path), text)
     lines = stripped.splitlines()
     rows: list[list[str]] = []
     brace_depth = 0
