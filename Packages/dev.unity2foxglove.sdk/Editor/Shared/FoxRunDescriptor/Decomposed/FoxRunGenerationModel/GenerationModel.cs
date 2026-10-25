@@ -10,6 +10,10 @@ using System.Linq;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    /// <summary>
+    /// Provider-neutral semantic model shared by FoxRun emission, descriptor
+    /// evidence, and validation so all hosts report the same contract they emit.
+    /// </summary>
     public sealed class FoxRunGenerationModel
     {
         public readonly int DescriptorVersion;
