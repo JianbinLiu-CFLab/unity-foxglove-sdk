@@ -143,8 +143,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "Phase184StreamRoute.cs",
                 "Phase184TransportClientMarkerState.cs",
             };
-            var actualSources = Directory.GetFiles(sectionDirectory, "*.cs", SearchOption.TopDirectoryOnly)
-                .Select(Path.GetFileName)
+            var actualSources = Directory.GetFiles(sectionDirectory, "*.cs", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(sectionDirectory, path).Replace('\\', '/'))
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray();
             Assert.Equal(expectedSources.OrderBy(name => name, StringComparer.Ordinal), actualSources);
@@ -156,15 +156,39 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "Scenes",
                 "ManualAcceptance",
                 "Phase184FoxRunProfileAcceptance.unity"));
-            foreach (var guid in new[]
+            var expectedOwnership = new Dictionary<string, (string Stub, string Component)>(StringComparer.Ordinal)
             {
-                "983acb559504477ebd0c4d69a7d1edbe",
-                "7b052fef51264defb3b5934d0271da7a",
-                "7f1320889ffd4aae8580cf5507278c6a",
-                "ae2bf84a4ef244ccb4185841a415279b",
-                "f08839578006415a9d94a9ce4ef663a9",
-            })
-                Assert.Contains("guid: " + guid, scene, StringComparison.Ordinal);
+                ["983acb559504477ebd0c4d69a7d1edbe"] = ("Phase184FoxgloveProfileRoute.cs", "Unity2Foxglove.ManualAcceptance.Phase184FoxgloveProfileRoute"),
+                ["7b052fef51264defb3b5934d0271da7a"] = ("Phase184MultiTargetRoute.cs", "Unity2Foxglove.ManualAcceptance.Phase184MultiTargetRoute"),
+                ["7f1320889ffd4aae8580cf5507278c6a"] = ("Phase184DegradedTargetRoute.cs", "Unity2Foxglove.ManualAcceptance.Phase184DegradedTargetRoute"),
+                ["ae2bf84a4ef244ccb4185841a415279b"] = ("Phase184QosContractRoute.cs", "Unity2Foxglove.ManualAcceptance.Phase184QosContractRoute"),
+                ["f08839578006415a9d94a9ce4ef663a9"] = ("Phase184StreamRoute.cs", "Unity2Foxglove.ManualAcceptance.Phase184StreamRoute"),
+            };
+            var componentBlocks = Regex.Matches(scene, @"(?ms)^--- !u!114 .*?(?=^--- !u!|\z)");
+            var sceneOwnership = componentBlocks
+                .Select(block =>
+                {
+                    var guid = Regex.Match(block.Value, @"m_Script: \{fileID: 11500000, guid: (?<guid>[0-9a-f]{32}), type: 3\}");
+                    var component = Regex.Match(block.Value, @"^  m_EditorClassIdentifier: [^:]+::(?<component>[^\r\n]+)$", RegexOptions.Multiline);
+                    return (Guid: guid.Success ? guid.Groups["guid"].Value : string.Empty,
+                        Component: component.Success ? component.Groups["component"].Value : string.Empty);
+                })
+                .Where(entry => expectedOwnership.ContainsKey(entry.Guid))
+                .ToArray();
+            Assert.Equal(expectedOwnership.Count, sceneOwnership.Length);
+            Assert.Equal(expectedOwnership.Count, sceneOwnership.Select(entry => entry.Guid).Distinct(StringComparer.Ordinal).Count());
+            foreach (var (guid, expected) in expectedOwnership)
+            {
+                var stubPath = Path.Combine(root, "Unity2Foxglove", "Assets", "Scripts", "ManualAcceptance", expected.Stub);
+                var metaPath = stubPath + ".meta";
+                Assert.True(File.Exists(stubPath), "Phase184 root stub missing: " + expected.Stub);
+                Assert.True(File.Exists(metaPath), "Phase184 root stub meta missing: " + expected.Stub);
+                var metaGuid = Regex.Match(File.ReadAllText(metaPath), @"^guid: (?<guid>[0-9a-f]{32})$", RegexOptions.Multiline);
+                Assert.True(metaGuid.Success, "Phase184 root stub meta GUID missing: " + expected.Stub);
+                Assert.Equal(guid, metaGuid.Groups["guid"].Value);
+                var ownership = sceneOwnership.Single(entry => entry.Guid == guid);
+                Assert.Equal(expected.Component, ownership.Component);
+            }
         }
 
         [Fact]
