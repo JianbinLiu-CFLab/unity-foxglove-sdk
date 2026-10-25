@@ -812,7 +812,7 @@ internal static class TestSources
         private static string NormalizeLineEndings(string text)
             => (text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\r", "\n", StringComparison.Ordinal);
 
-        private static string RepoRoot
+        internal static string RepoRoot
             => CachedRepoRoot;
 
         private static string FindRepoRoot()
