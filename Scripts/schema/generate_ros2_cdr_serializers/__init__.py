@@ -6,9 +6,9 @@
 
 from __future__ import annotations
 
-from . import models, parsing, generation_helpers, serialization, deserialization, samples, registry, io, cli
+from . import shared, models, parsing, generation_helpers, serialization, deserialization, samples, registry, io, cli
 
-_sections = (models, parsing, generation_helpers, serialization, deserialization, samples, registry, io, cli)
+_sections = (shared, models, parsing, generation_helpers, serialization, deserialization, samples, registry, io, cli)
 for _module in _sections:
     for _name, _value in list(vars(_module).items()):
         if not _name.startswith("__"):

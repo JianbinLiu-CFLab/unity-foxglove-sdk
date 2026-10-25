@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from ._shared import *
+from .shared import *
 
 def meta_guid(relative_path: str) -> str:
     """Generate a deterministic Unity .meta GUID for a generated asset."""

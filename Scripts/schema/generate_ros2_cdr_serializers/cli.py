@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from ._shared import *
+from .shared import *
 
 def main() -> int:
     """Run the generator and print a concise summary."""

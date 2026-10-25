@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from ._shared import *
+from .shared import *
 
 def csharp_string(value: str) -> str:
     """Escape a Python string as a C# string literal."""

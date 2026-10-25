@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from ._shared import *
+from .shared import *
 
 def sample_scalar(field: Field, schema_name: str, index: int) -> str:
     """Generate a deterministic C# sample expression for one scalar field."""

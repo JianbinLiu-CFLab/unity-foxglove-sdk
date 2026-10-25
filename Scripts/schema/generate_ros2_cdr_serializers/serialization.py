@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from ._shared import *
+from .shared import *
 
 def generate_serializers(schemas: list[Schema]) -> str:
     """Generate the C# per-schema direct CDR serializer source."""

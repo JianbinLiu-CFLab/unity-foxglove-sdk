@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from ._shared import *
+from .shared import *
 
 def generate_registry(schemas: list[Schema]) -> str:
     """Generate the C# serializer registry source."""

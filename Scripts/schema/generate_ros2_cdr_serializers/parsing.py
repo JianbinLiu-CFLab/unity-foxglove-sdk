@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from ._shared import *
+from .shared import *
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line paths for the generator."""
