@@ -186,6 +186,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var metaGuid = Regex.Match(File.ReadAllText(metaPath), @"^guid: (?<guid>[0-9a-f]{32})$", RegexOptions.Multiline);
                 Assert.True(metaGuid.Success, "Phase184 root stub meta GUID missing: " + expected.Stub);
                 Assert.Equal(guid, metaGuid.Groups["guid"].Value);
+                var stubType = expected.Component[(expected.Component.LastIndexOf('.') + 1)..];
+                var stub = File.ReadAllText(stubPath);
+                Assert.Contains("public sealed partial class " + stubType, stub, StringComparison.Ordinal);
                 var ownership = sceneOwnership.Single(entry => entry.Guid == guid);
                 Assert.Equal(expected.Component, ownership.Component);
             }
