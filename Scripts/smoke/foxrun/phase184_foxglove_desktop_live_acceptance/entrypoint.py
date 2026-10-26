@@ -787,7 +787,5 @@ def _entrypoint() -> int:
     return main()
 
 
-if __name__ == "__main__":
-    raise SystemExit(_entrypoint())
 
 __all__ = [name for name in globals() if not name.startswith("__")]
