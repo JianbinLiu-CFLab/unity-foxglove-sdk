@@ -711,7 +711,8 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertIn("Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py", relative)
         self.assertIn("Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py", relative)
         self.assertIn("Scripts/unity_build/unity_il2cpp.py", relative)
-        self.assertEqual(70, len(relative))
+        self.assertIn("Scripts/release/run_ci.py", relative)
+        self.assertEqual(71, len(relative))
 
     def test_split_identity_surface_rejects_relative_star_chain_change(self) -> None:
         """Changing a section's relative star-import source changes runtime overwrite order."""
