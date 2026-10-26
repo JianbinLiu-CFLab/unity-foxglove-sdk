@@ -77,6 +77,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     initial_module_names = set(sys.modules)
 
     def is_local_module_path(path: Path) -> bool:
+        """Return whether a module path belongs to the facade directory."""
         return path == facade or facade.parent in path.parents
 
     try:
