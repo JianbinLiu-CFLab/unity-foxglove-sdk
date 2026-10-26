@@ -69,6 +69,10 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     """Load a split facade after clearing its package and section modules."""
 
     facade = facade.resolve()
+    original_path = list(sys.path)
+    facade_parent = str(facade.parent)
+    sys.path[:] = [entry for entry in sys.path if entry != facade_parent]
+    sys.path.insert(0, facade_parent)
     prefixes = {module_name, facade.stem}
     package_dir = facade.with_suffix("")
     for loaded_name, loaded_module in tuple(sys.modules.items()):
@@ -95,11 +99,14 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     try:
-        spec.loader.exec_module(module)
-    except BaseException:
-        if sys.modules.get(module_name) is module:
-            sys.modules.pop(module_name, None)
-        raise
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            if sys.modules.get(module_name) is module:
+                sys.modules.pop(module_name, None)
+            raise
+    finally:
+        sys.path[:] = original_path
     return module
 
 
