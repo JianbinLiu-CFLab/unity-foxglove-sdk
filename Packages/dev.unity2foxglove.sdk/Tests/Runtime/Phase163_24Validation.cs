@@ -63,7 +63,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void UnityIl2CppBuildPreflightsGeneratedArtifacts()
         {
-            var build = ReadRepoText("Scripts/unity_build/unity_il2cpp.py");
+            var build = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/unity_build/unity_il2cpp.py");
             var tests = ReadRepoText("Scripts/release/regression_checks/test_release_tooling.py");
             var dryRunIndex = build.IndexOf("if args.dry_run:", StringComparison.Ordinal);
             var preflightIndex = build.IndexOf("generated_failures = validate_generated_artifacts(root)", StringComparison.Ordinal);
