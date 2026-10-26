@@ -6,7 +6,7 @@ from pathlib import Path as _Phase192Path
 
 _PHASE192_PACKAGE_DIR = _Phase192Path(__file__).resolve().parent
 if str(_PHASE192_PACKAGE_DIR) not in _phase192_sys.path:
-    _phase192_sys.path.insert(0, str(_PHASE192_PACKAGE_DIR))
+    _phase192_sys.path.append(str(_PHASE192_PACKAGE_DIR))
 
 from parts.foundation import (
     argparse,
