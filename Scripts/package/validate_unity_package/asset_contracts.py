@@ -113,6 +113,37 @@ def check_sdk_script_meta(results: list[CheckResult], sdk_files: list[Path] | No
     )
 
 
+def check_package_meta_yaml(
+    results: list[CheckResult],
+    package_roots: Iterable[Path] | None = None,
+) -> None:
+    """Ensure tracked Unity metadata keeps the basic YAML identity shape."""
+    roots = tuple(package_roots or (PACKAGE, ROS2_FOR_UNITY_PACKAGE, ROS2_BRIDGE_PACKAGE))
+    malformed: list[str] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for meta in root.rglob("*.meta"):
+            try:
+                text = meta.read_text(encoding="utf-8")
+            except OSError:
+                malformed.append(rel(meta))
+                continue
+            if "`" in text or not re.search(r"(?m)^fileFormatVersion:\s*2\s*$", text):
+                malformed.append(rel(meta))
+                continue
+            if META_GUID_RE.search(text) is None:
+                malformed.append(rel(meta))
+    add(
+        results,
+        "Unity package .meta YAML shape",
+        not malformed,
+        "; ".join(malformed[:MAX_REPORTED_MISSING_META])
+        if malformed
+        else f"{sum(1 for root in roots if root.is_dir() for _ in root.rglob('*.meta'))} metadata files have valid YAML identity headers",
+    )
+
+
 def check_sample_boundaries(results: list[CheckResult]) -> None:
     """Verify Basic and FullDemo sample boundaries remain intentional."""
     basic = SAMPLES / "BasicVisualization"
@@ -155,4 +186,5 @@ __all__ = [
     'check_sample_boundaries',
     'check_sample_meta',
     'check_sdk_script_meta',
+    'check_package_meta_yaml',
 ]

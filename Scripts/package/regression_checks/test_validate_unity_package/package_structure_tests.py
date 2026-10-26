@@ -80,6 +80,22 @@ class PackageStructureTests:
             self.validator.check_sdk_script_meta(results)
             self.assertTrue(results[-1].ok)
 
+    def test_package_meta_yaml_rejects_literal_escape_sequences(self) -> None:
+        """Unity package metadata must not contain escaped newline text."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            meta = root / "Editor.meta"
+            meta.write_text(
+                "fileFormatVersion: 2\nguid: 0123456789abcdef0123456789abcdef\n"
+                "DefaultImporter:\n  userData:`r`n",
+                encoding="utf-8",
+            )
+            results = []
+            self.validator.check_package_meta_yaml(results, (root,))
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Editor.meta", results[-1].detail)
+
     def test_sample_meta_checks_prefab_files(self) -> None:
         """Common Unity assets such as prefabs need stable .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:

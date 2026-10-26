@@ -7,6 +7,9 @@
 from __future__ import annotations
 
 import importlib.util
+import contextlib
+import io
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -36,13 +39,70 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         """Load a fresh validator module for each test."""
         self.validator = load_validator_module()
 
+    def test_validator_supports_module_entrypoint(self) -> None:
+        """The split validator remains runnable with Python's module launcher."""
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "Scripts.ros2forunity.windows.humble.validate_ros2forunity_package",
+                "--help",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("validate_ros2forunity_package", result.stdout)
+
+    def test_validator_facades_isolate_sequential_runpy_execution(self) -> None:
+        """Humble, Jazzy, and Lyrical runpy loads must not reuse package state."""
+        facades = [
+            (
+                distro,
+                ROOT / "Scripts" / "ros2forunity" / "windows" / distro
+                / "validate_r2fu_runtime_package.py",
+            )
+            for distro in ("humble", "jazzy", "lyrical")
+        ]
+        for run_name in ("__main__", None):
+            for module_name in tuple(sys.modules):
+                if module_name == "validate_r2fu_runtime_package" or module_name.startswith(
+                    "validate_r2fu_runtime_package."
+                ):
+                    sys.modules.pop(module_name, None)
+            previous = None
+            for distro, facade in facades:
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    if run_name is None:
+                        try:
+                            runpy.run_path(str(facade))
+                        except SystemExit as exc:
+                            self.fail(f"default runpy unexpectedly exited: {exc}")
+                    else:
+                        original_argv = sys.argv
+                        sys.argv = [str(facade)]
+                        with self.assertRaises(SystemExit) as raised:
+                            try:
+                                runpy.run_path(str(facade), run_name=run_name)
+                            finally:
+                                sys.argv = original_argv
+                        self.assertEqual(raised.exception.code, 0)
+                loaded = sys.modules["validate_r2fu_runtime_package"]
+                self.assertEqual(Path(loaded.__file__).resolve(), facade.resolve())
+                self.assertEqual(loaded.PACKAGE_NAME, f"dev.unity2foxglove.ros2forunity.runtime.{distro}.win64")
+                if previous is not None:
+                    self.assertIsNot(previous, loaded)
+                previous = loaded
+
     def test_runtime_facades_clear_bare_package_for_runpy_execution(self) -> None:
         """Sequential runpy execution must not retain a prior distro package."""
         for distro in ("humble", "jazzy", "lyrical"):
             facade = ROOT / "Scripts" / "ros2forunity" / "windows" / distro / "validate_r2fu_runtime_package.py"
             source = facade.read_text(encoding="utf-8")
             self.assertIn(
-                '_phase192_sys.modules.pop("validate_r2fu_runtime_package", None) if __name__ == "__main__" else None',
+                '_phase192_sys.modules.pop("validate_r2fu_runtime_package", None) if __name__ in {"__main__", "<run_path>"} else None',
                 source,
             )
             self.assertIn('if __name__ == "validate_r2fu_runtime_package"', source)

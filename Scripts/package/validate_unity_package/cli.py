@@ -31,6 +31,7 @@ def main() -> int:
     bridge_files = iter_bridge_asset_files()
     check_sample_meta(results, samples_files, bridge_files)
     check_sdk_script_meta(results, package_files)
+    check_package_meta_yaml(results)
     check_sample_boundaries(results)
     check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)
