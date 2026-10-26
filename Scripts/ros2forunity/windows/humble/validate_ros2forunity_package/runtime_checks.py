@@ -1,8 +1,10 @@
 from __future__ import annotations
+from pathlib import Path as _Phase192Path
 from .text_boundaries import *
-_PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "validate_ros2forunity_package.py"
+_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "validate_ros2forunity_package.py"
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
+del _Phase192Path
 
 def check_runtime_inventory(results: list[CheckResult]) -> None:
     """Validate the generated Humble runtime artifact inventory."""

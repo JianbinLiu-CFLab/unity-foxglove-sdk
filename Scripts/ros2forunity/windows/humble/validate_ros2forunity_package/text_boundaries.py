@@ -1,8 +1,10 @@
 from __future__ import annotations
+from pathlib import Path as _Phase192Path
 from .manifest import *
-_PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "validate_ros2forunity_package.py"
+_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "validate_ros2forunity_package.py"
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
+del _Phase192Path
 
 def check_text_boundaries(results: list[CheckResult]) -> None:
     """Check README and notices wording for attribution and non-bundling boundaries."""
