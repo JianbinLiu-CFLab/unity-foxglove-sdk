@@ -71,43 +71,54 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     facade = facade.resolve()
     original_path = list(sys.path)
     facade_parent = str(facade.parent)
-    sys.path[:] = [entry for entry in sys.path if entry != facade_parent]
-    sys.path.insert(0, facade_parent)
     prefixes = {module_name, facade.stem}
     package_dir = facade.with_suffix("")
-    for loaded_name, loaded_module in tuple(sys.modules.items()):
-        remove = any(
-            loaded_name == prefix or loaded_name.startswith(prefix + ".")
-            for prefix in prefixes
-        )
-        if not remove:
-            origin = getattr(getattr(loaded_module, "__spec__", None), "origin", None)
-            module_file = getattr(loaded_module, "__file__", None) or origin
-            if module_file:
-                try:
-                    resolved = Path(module_file).resolve()
-                except OSError:
-                    resolved = None
-                if resolved is not None:
-                    remove = resolved == facade or package_dir in resolved.parents
-        if remove:
-            sys.modules.pop(loaded_name, None)
-    importlib.invalidate_caches()
-    spec = importlib.util.spec_from_file_location(module_name, facade)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load module from {facade}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
+    saved_modules: dict[str, ModuleType] = {}
     try:
+        sys.path[:] = [entry for entry in sys.path if entry != facade_parent]
+        sys.path.insert(0, facade_parent)
+        for loaded_name, loaded_module in tuple(sys.modules.items()):
+            remove = any(
+                loaded_name == prefix or loaded_name.startswith(prefix + ".")
+                for prefix in prefixes
+            )
+            if not remove:
+                origin = getattr(getattr(loaded_module, "__spec__", None), "origin", None)
+                module_file = getattr(loaded_module, "__file__", None) or origin
+                if module_file:
+                    try:
+                        resolved = Path(module_file).resolve()
+                    except OSError:
+                        resolved = None
+                    if resolved is not None:
+                        remove = resolved == facade or package_dir in resolved.parents
+            if remove:
+                saved_modules[loaded_name] = loaded_module
+                sys.modules.pop(loaded_name, None)
+        importlib.invalidate_caches()
+        spec = importlib.util.spec_from_file_location(module_name, facade)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"Could not load module from {facade}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
         try:
             spec.loader.exec_module(module)
         except BaseException:
             if sys.modules.get(module_name) is module:
                 sys.modules.pop(module_name, None)
             raise
+        return module
+    except BaseException:
+        for loaded_name in tuple(sys.modules):
+            if loaded_name in saved_modules or any(
+                loaded_name == prefix or loaded_name.startswith(prefix + ".")
+                for prefix in prefixes
+            ):
+                sys.modules.pop(loaded_name, None)
+        sys.modules.update(saved_modules)
+        raise
     finally:
         sys.path[:] = original_path
-    return module
 
 
 def load_test_suite(module_name: str, source: Path, root: Path) -> unittest.TestSuite:
