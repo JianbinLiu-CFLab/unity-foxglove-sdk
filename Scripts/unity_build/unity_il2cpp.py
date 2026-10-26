@@ -33,6 +33,7 @@ class _Phase192FacadeModule(_phase192_types.ModuleType):
         super().__setattr__(name, value)
         if _phase192_package_module is not None and _phase192_package_module is not self:
             setattr(_phase192_package_module, name, value)
+            _phase192_package_module._phase192_sync_exported_state(name, value)
 
     def __delattr__(self, name):
         """Propagate exported state removals to the package module."""
@@ -40,6 +41,7 @@ class _Phase192FacadeModule(_phase192_types.ModuleType):
         if _phase192_package_module is not None and _phase192_package_module is not self:
             try:
                 delattr(_phase192_package_module, name)
+                _phase192_package_module._phase192_delete_exported_state(name)
             except AttributeError:
                 pass
 
