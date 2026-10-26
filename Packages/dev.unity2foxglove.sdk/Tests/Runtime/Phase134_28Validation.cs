@@ -65,7 +65,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReleaseValidatorRobustness()
         {
-            var runtimeValidator = ReadRepoText("Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py");
+            var runtimeValidator = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py");
             Check(runtimeValidator.Contains("def read_optional_text(path: Path) -> str:", StringComparison.Ordinal)
                   && runtimeValidator.Contains("node = read_optional_text(scripts / \"ROS2Node.cs\")", StringComparison.Ordinal)
                   && runtimeValidator.Contains("sensor = read_optional_text(scripts / \"Sensor.cs\")", StringComparison.Ordinal),
