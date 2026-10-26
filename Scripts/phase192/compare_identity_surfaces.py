@@ -594,7 +594,14 @@ def _phase192_validate_template_registry_mutations(
             for function in expected_method_tree.body
             if isinstance(function, ast.FunctionDef)
         }
-        if Path(path).as_posix().endswith("Scripts/unity_build/unity_il2cpp.py"):
+        if (
+            Path(path).as_posix().endswith("Scripts/unity_build/unity_il2cpp.py")
+            and any(
+                isinstance(node, ast.Attribute)
+                and node.attr == "_phase192_sync_exported_state"
+                for node in ast.walk(tree)
+            )
+        ):
             expected_method_tree = ast.parse(
                 "def __setattr__(self, name, value):\n"
                 "    super().__setattr__(name, value)\n"
