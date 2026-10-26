@@ -75,6 +75,11 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     package_dir = facade.with_suffix("")
     saved_modules: dict[str, ModuleType] = {}
     initial_module_names = set(sys.modules)
+
+    def is_local_module_path(path: Path) -> bool:
+        """Return whether a module path belongs to the facade directory."""
+        return path == facade or facade.parent in path.parents
+
     try:
         sys.path[:] = [entry for entry in sys.path if entry != facade_parent]
         sys.path.insert(0, facade_parent)
@@ -92,7 +97,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
                     except OSError:
                         resolved = None
                     if resolved is not None:
-                        remove = resolved == facade or package_dir in resolved.parents
+                        remove = is_local_module_path(resolved)
             if remove:
                 saved_modules[loaded_name] = loaded_module
                 sys.modules.pop(loaded_name, None)
@@ -125,10 +130,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
                     except OSError:
                         resolved = None
                     if resolved is not None:
-                        remove = (
-                            resolved.parent == facade.parent
-                            or package_dir in resolved.parents
-                        )
+                        remove = is_local_module_path(resolved)
             if remove:
                 sys.modules.pop(loaded_name, None)
         sys.modules.update(saved_modules)
