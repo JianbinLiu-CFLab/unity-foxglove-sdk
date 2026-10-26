@@ -488,6 +488,18 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual(self.run_ci.REPO_ROOT, expected_root)
         self.assertTrue(self.run_ci.CI_ROOT.is_relative_to(expected_root / "build" / "ci"))
 
+    def test_run_ci_supports_module_entrypoint(self) -> None:
+        """The package preserves the module invocation supported by the former script."""
+        result = subprocess.run(
+            [sys.executable, "-m", "Scripts.release.run_ci", "--help"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("usage:", result.stdout)
+
     def test_boundary_check_fails_when_git_command_fails(self) -> None:
         """Boundary checks must not pass when git itself fails."""
         failed = subprocess.CompletedProcess(args=["git"], returncode=128, stdout="", stderr="fatal")
