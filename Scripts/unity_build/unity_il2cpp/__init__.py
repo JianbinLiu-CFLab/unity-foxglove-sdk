@@ -11,10 +11,18 @@ _PHASE192_PARENT = _PHASE192_FACADE_FILE.parent
 if str(_PHASE192_PARENT) not in _phase192_sys.path:
     _phase192_sys.path.insert(0, str(_PHASE192_PARENT))
 
-from . import implementation as _phase192_section_0
+from . import foundation as _phase192_section_0
+from . import logging as _phase192_section_1
+from . import process as _phase192_section_2
+from . import cli as _phase192_section_3
 
-_phase192_section_0.REPO_ROOT_PARENT_DEPTH = 3
-_PHASE192_SECTION_MODULES = (_phase192_section_0,)
+_phase192_section_0.REPO_ROOT_PARENT_DEPTH = 2
+_PHASE192_SECTION_MODULES = (
+    _phase192_section_0,
+    _phase192_section_1,
+    _phase192_section_2,
+    _phase192_section_3,
+)
 _PHASE192_EXPORT_NAMES = set()
 for _phase192_section in _PHASE192_SECTION_MODULES:
     for _phase192_name in _phase192_section.__all__:
@@ -32,13 +40,15 @@ class _Phase192PackageModule(_phase192_types.ModuleType):
         """Propagate exported state changes to the implementation module."""
         super().__setattr__(name, value)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
-            _phase192_section_0.__dict__[name] = value
+            for _phase192_section in _PHASE192_SECTION_MODULES:
+                _phase192_section.__dict__[name] = value
 
     def __delattr__(self, name):
         """Propagate exported state removals to the implementation module."""
         super().__delattr__(name)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
-            _phase192_section_0.__dict__.pop(name, None)
+            for _phase192_section in _PHASE192_SECTION_MODULES:
+                _phase192_section.__dict__.pop(name, None)
 
 
 __all__ = sorted(_PHASE192_EXPORT_NAMES)
