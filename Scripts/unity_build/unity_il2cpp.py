@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
-from __future__ import annotations
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Cross-platform IL2CPP standalone Player build script.
+# Usage: python Scripts/unity_build/unity_il2cpp.py --target win64
+# Inputs: --target (win64|linux64|macos), --unity (path, optional)
+# Outputs: Defaults to build/Unity/<target>-il2cpp-<timestamp>/; overridable via --build-dir and --output.
+
+"""Build the Unity Foxglove demo project for IL2CPP standalone.
+
+The script resolves project and output paths relative to its own location.
+No hard-coded absolute paths - safe to use across clones.
+
+Examples:
+  python Scripts/unity_build/unity_il2cpp.py
+  python Scripts/unity_build/unity_il2cpp.py --target linux64
+  python Scripts/unity_build/unity_il2cpp.py --target macos --unity /path/to/Unity
+"""
+
 
 import sys as _phase192_sys
 import types as _phase192_types
