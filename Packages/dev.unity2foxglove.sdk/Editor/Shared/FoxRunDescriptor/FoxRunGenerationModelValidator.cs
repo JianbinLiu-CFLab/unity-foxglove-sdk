@@ -4,9 +4,6 @@
 // Module: Editor/Shared/FoxRunDescriptor
 // Purpose: Host-independent validation for the Provider-neutral FoxRun model.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace Unity.FoxgloveSDK.Editor
 {
