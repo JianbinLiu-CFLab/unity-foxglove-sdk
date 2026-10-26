@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyUnityIl2CppBuildRunner()
         {
-            var source = ReadRepoText("Scripts/unity_build/unity_il2cpp.py");
+            var source = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/unity_build/unity_il2cpp.py");
 
             Check(source.Contains("or find_unity_from_project_version(project_path)", StringComparison.Ordinal)
                   && source.IndexOf("or find_unity_from_project_version(project_path)", StringComparison.Ordinal)
