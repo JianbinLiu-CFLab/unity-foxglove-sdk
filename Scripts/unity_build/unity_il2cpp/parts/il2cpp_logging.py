@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-from foundation import *
+from parts.foundation import *
 class _LogTailState:
     """Bounded partial-record and file identity state for one build invocation."""
 

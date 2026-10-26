@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-from foundation import *
-from il2cpp_logging import *
+from parts.foundation import *
+from parts.il2cpp_logging import *
 class _WindowsKillOnCloseJob:
     """Own one Windows process tree through a kill-on-close Job Object."""
 
