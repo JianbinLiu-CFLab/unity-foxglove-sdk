@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 try:
-    from validate_r2fu_runtime_package import checks as _checks
+    from validate_r2fu_runtime_package.sections import checks as _checks
 except ImportError:
-    from Scripts.ros2forunity.windows.jazzy.validate_r2fu_runtime_package import checks as _checks
+    from Scripts.ros2forunity.windows.jazzy.validate_r2fu_runtime_package.sections import checks as _checks
 
 ADAPTER_PACKAGE = _checks.ADAPTER_PACKAGE
 ARTIFACT_NAME = _checks.ARTIFACT_NAME
