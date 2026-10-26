@@ -2289,6 +2289,61 @@ class IdentityToolingTests(unittest.TestCase):
             finally:
                 sys.modules.pop("helper", None)
 
+    def test_load_fresh_module_removes_new_nested_local_modules_on_failure(self) -> None:
+        """A failed load must remove newly imported nested packages from the facade directory."""
+        import sys
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            helper_dir = root / "helper"
+            helper_dir.mkdir()
+            (helper_dir / "__init__.py").write_text("\n", encoding="utf-8")
+            (helper_dir / "sub.py").write_text("VALUE = 1\n", encoding="utf-8")
+            facade = root / "fixture.py"
+            facade.write_text(
+                "import helper.sub\nraise RuntimeError('boom')\n",
+                encoding="utf-8",
+            )
+            for name in ("helper", "helper.sub"):
+                sys.modules.pop(name, None)
+            try:
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    source_layout.load_fresh_module("fixture", facade)
+                self.assertNotIn("helper", sys.modules)
+                self.assertNotIn("helper.sub", sys.modules)
+            finally:
+                for name in ("helper.sub", "helper"):
+                    sys.modules.pop(name, None)
+
+    def test_load_fresh_module_clears_preloaded_nested_local_modules(self) -> None:
+        """A fresh load must not reuse preloaded nested packages from the facade directory."""
+        import sys
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            helper_dir = root / "helper"
+            helper_dir.mkdir()
+            (helper_dir / "__init__.py").write_text("\n", encoding="utf-8")
+            sub_path = helper_dir / "sub.py"
+            sub_path.write_text("VALUE = 'old'\n", encoding="utf-8")
+            facade = root / "fixture.py"
+            facade.write_text(
+                "import helper.sub\nVALUE = helper.sub.VALUE\n",
+                encoding="utf-8",
+            )
+            original_path = list(sys.path)
+            sys.path.insert(0, str(root))
+            try:
+                import helper.sub
+
+                sub_path.write_text("VALUE = 'new-value'\n", encoding="utf-8")
+                module = source_layout.load_fresh_module("fixture", facade)
+                self.assertEqual("new-value", module.VALUE)
+            finally:
+                sys.path[:] = original_path
+                for name in ("fixture", "helper.sub", "helper"):
+                    sys.modules.pop(name, None)
+
     def test_load_fresh_module_restores_path_for_import_setup_failures(self) -> None:
         """Import setup failures must restore the caller's sys.path exactly."""
         import sys
