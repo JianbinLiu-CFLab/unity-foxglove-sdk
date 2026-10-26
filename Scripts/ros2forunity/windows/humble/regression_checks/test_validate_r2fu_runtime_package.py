@@ -42,13 +42,10 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             facade = ROOT / "Scripts" / "ros2forunity" / "windows" / distro / "validate_r2fu_runtime_package.py"
             source = facade.read_text(encoding="utf-8")
             self.assertIn(
-                '_phase192_self = _phase192_sys.modules.get("validate_r2fu_runtime_package")',
+                '_phase192_sys.modules.pop("validate_r2fu_runtime_package", None) if __name__ == "__main__" else None',
                 source,
             )
-            self.assertNotIn(
-                'if __name__ == "validate_r2fu_runtime_package"',
-                source,
-            )
+            self.assertIn('if __name__ == "validate_r2fu_runtime_package"', source)
 
     def test_inventory_category_counts_must_match_file_entries(self) -> None:
         """A declared native count cannot be satisfied by DLLs from other categories."""
