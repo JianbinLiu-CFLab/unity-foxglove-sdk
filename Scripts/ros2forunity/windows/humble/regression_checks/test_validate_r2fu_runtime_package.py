@@ -87,6 +87,30 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         """Runpy isolation must leave the Humble package validator resolvable."""
         original_path = list(sys.path)
         try:
+            facades = [
+                ROOT / "Scripts" / "ros2forunity" / "windows" / distro
+                / "validate_r2fu_runtime_package.py"
+                for distro in ("humble", "jazzy", "lyrical")
+            ]
+            for run_name in ("__main__", None):
+                for facade in facades:
+                    for module_name in tuple(sys.modules):
+                        if module_name == "validate_r2fu_runtime_package" or module_name.startswith(
+                            "validate_r2fu_runtime_package."
+                        ):
+                            sys.modules.pop(module_name, None)
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        if run_name is None:
+                            runpy.run_path(str(facade))
+                        else:
+                            original_argv = sys.argv
+                            sys.argv = [str(facade)]
+                            try:
+                                with self.assertRaises(SystemExit) as raised:
+                                    runpy.run_path(str(facade), run_name=run_name)
+                                self.assertEqual(raised.exception.code, 0)
+                            finally:
+                                sys.argv = original_argv
             sys.path.insert(
                 0,
                 str(ROOT / "Scripts" / "ros2forunity" / "windows" / "lyrical"),

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import types
 import unittest
 from contextlib import contextmanager
 from unittest import mock
@@ -2269,6 +2270,55 @@ class IdentityToolingTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "boom"):
                 source_layout.load_fresh_module("fixture", facade)
             self.assertNotIn("fixture", sys.modules)
+
+    def test_load_fresh_module_restores_path_for_import_setup_failures(self) -> None:
+        """Import setup failures must restore the caller's sys.path exactly."""
+        import sys
+
+        with tempfile.TemporaryDirectory() as temp:
+            facade = Path(temp) / "fixture.py"
+            facade.write_text("VALUE = 1\n", encoding="utf-8")
+            original_path = list(sys.path)
+            cases = (
+                (None, None),
+                (types.SimpleNamespace(loader=None), None),
+                (types.SimpleNamespace(loader=object()), RuntimeError("module init failed")),
+            )
+            for spec, module_error in cases:
+                with self.subTest(spec=spec, module_error=module_error):
+                    with mock.patch.object(
+                        source_layout.importlib.util,
+                        "spec_from_file_location",
+                        return_value=spec,
+                    ):
+                        module_from_spec = mock.patch.object(
+                            source_layout.importlib.util,
+                            "module_from_spec",
+                            side_effect=module_error,
+                        )
+                        with module_from_spec:
+                            with self.assertRaises(RuntimeError):
+                                source_layout.load_fresh_module("fixture", facade)
+                    self.assertEqual(original_path, sys.path)
+
+    def test_load_fresh_module_restores_cleared_modules_on_failure(self) -> None:
+        """A failed fresh load must restore modules removed during isolation."""
+        import sys
+
+        with tempfile.TemporaryDirectory() as temp:
+            facade = Path(temp) / "fixture.py"
+            facade.write_text("raise RuntimeError('boom')\n", encoding="utf-8")
+            sentinel = types.ModuleType("fixture")
+            sys.modules["fixture"] = sentinel
+            original_path = list(sys.path)
+            try:
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    source_layout.load_fresh_module("fixture", facade)
+                self.assertIs(sentinel, sys.modules["fixture"])
+                self.assertEqual(original_path, sys.path)
+            finally:
+                if sys.modules.get("fixture") is sentinel:
+                    sys.modules.pop("fixture", None)
 
     def test_initializer_future_import_is_not_a_public_surface_symbol(self) -> None:
         """Future imports do not create runtime package bindings."""
