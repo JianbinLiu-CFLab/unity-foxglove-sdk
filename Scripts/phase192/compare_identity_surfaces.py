@@ -608,7 +608,6 @@ def _phase192_validate_template_registry_mutations(
                 "        try:\n"
                 "            delattr(_phase192_package_module, name)\n"
                 "            _phase192_package_module._phase192_delete_exported_state(name)\n"
-"
                 "        except AttributeError:\n"
                 "            pass\n"
             )
