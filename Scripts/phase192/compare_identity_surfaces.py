@@ -3507,16 +3507,26 @@ def _relative_import_contract(
             if any(_SECTION_NAME_RE.fullmatch(part) is None or keyword.iskeyword(part) for part in parts):
                 raise ValueError(f"Invalid relative import in {source_path}: {node.module}")
             source_stem = Path(source_path).stem
+            target_base = package_dir.joinpath(*parts)
+            local_target = (
+                target_base.with_suffix(".py")
+                if target_base.with_suffix(".py").is_file()
+                else target_base / "__init__.py"
+            )
+            internal_implementation_split = (
+                source_stem == "implementation"
+                and local_target.is_file()
+            )
             if (
                 declared_sections is not None
                 and parts[0] not in declared_sections
                 and parts[0] != source_stem
+                and not internal_implementation_split
             ):
                 raise ValueError(
                     f"Relative import target is not a declared section in {source_path}: {node.module}"
                 )
-            target_base = package_dir.joinpath(*parts)
-            target = target_base.with_suffix(".py") if target_base.with_suffix(".py").is_file() else target_base / "__init__.py"
+            target = local_target
             if not target.is_file():
                 raise ValueError(f"Relative import target is missing in {source_path}: {node.module}")
         else:
