@@ -11,7 +11,7 @@ _PHASE192_PARENT = _PHASE192_FACADE_FILE.parent
 if str(_PHASE192_PARENT) not in _phase192_sys.path:
     _phase192_sys.path.insert(0, str(_PHASE192_PARENT))
 
-from . import implementation as _phase192_section_0
+from . import implementation_jazzy as _phase192_section_0
 
 _phase192_section_0.ROOT = _Phase192Path(_phase192_section_0.__file__).resolve().parents[5]
 _phase192_section_0.PACKAGE = _phase192_section_0.ROOT / "Packages" / _phase192_section_0.PACKAGE_NAME

@@ -17,7 +17,6 @@ else:
         _phase192_sys.path.insert(0, str(_phase192_parent))
     _phase192_self = _phase192_sys.modules.get(__name__) if __name__ == "validate_r2fu_runtime_package" else None
     if _phase192_self is not None:
-        _phase192_sys.modules.pop("validate_r2fu_runtime_package.implementation", None)
         _phase192_sys.modules.pop("validate_r2fu_runtime_package", None)
     try:
         from validate_r2fu_runtime_package import *
