@@ -3547,10 +3547,15 @@ def _relative_import_contract(
             else:
                 candidate = package_dir / f"{alias.name}.py"
                 candidate_package = package_dir / alias.name / "__init__.py"
+                internal_implementation_split = (
+                    Path(source_path).stem == "implementation"
+                    and (candidate.is_file() or candidate_package.is_file())
+                )
                 if (
                     declared_sections is not None
                     and alias.name not in declared_sections
                     and (candidate.is_file() or candidate_package.is_file())
+                    and not internal_implementation_split
                 ):
                     raise ValueError(
                         f"Relative import target is not a declared section in {source_path}: {alias.name}"
