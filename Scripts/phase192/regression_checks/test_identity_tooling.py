@@ -638,7 +638,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(70, len(surfaces))
+        self.assertEqual(71, len(surfaces))
 
     def test_identity_surface_uses_revision_local_source_layout(self) -> None:
         """Base/head worktrees load their own section-order parser."""
