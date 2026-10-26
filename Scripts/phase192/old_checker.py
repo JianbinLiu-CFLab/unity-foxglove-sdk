@@ -1,0 +1,7628 @@
+"""Compare split Python identity surfaces between two Git revisions."""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import copy
+import hashlib
+import importlib
+import importlib.util
+import json
+import keyword
+import re
+from contextlib import contextmanager
+from functools import lru_cache
+from pathlib import Path
+import subprocess
+import tarfile
+import tempfile
+from typing import Iterator, Mapping
+import sys
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+_TRY_TYPES = (ast.Try, getattr(ast, "TryStar", ast.Try))
+_TYPE_ALIAS_TYPE = getattr(ast, "TypeAlias", None)
+_SECTION_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+
+
+SPLIT_ROOTS = (Path("Scripts"),)
+IDENTITY_WAIVER_PATH = Path("Scripts/phase192/identity_waivers.json")
+
+def _load_identity_waivers(root: Path) -> dict[str, frozenset[str]]:
+    """Load the reviewed public-symbol removal waivers for one revision."""
+    path = root / IDENTITY_WAIVER_PATH
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid identity waiver file: {path}") from exc
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        raise ValueError(f"Invalid identity waiver schema: {path}")
+    entries = payload.get("waived_symbols", {})
+    if not isinstance(entries, dict):
+        raise ValueError(f"Invalid identity waiver entries: {path}")
+    waivers: dict[str, frozenset[str]] = {}
+    for relative, names in entries.items():
+        relative_path = Path(relative) if isinstance(relative, str) else None
+        if (
+            not isinstance(relative, str)
+            or not relative.endswith(".py")
+            or "\\" in relative
+            or ":" in relative
+            or relative_path.is_absolute()
+            or ".." in relative_path.parts
+        ):
+            raise ValueError(f"Invalid identity waiver path: {relative!r}")
+        if not isinstance(names, list) or any(
+            not isinstance(name, str) or not name or name.startswith("_")
+            for name in names
+        ):
+            raise ValueError(f"Invalid identity waiver symbols: {relative}")
+        waivers[relative] = frozenset(names)
+    return waivers
+
+def _git(repository: Path, *args: str) -> str:
+    """Run Git and return standard output."""
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repository,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"git command timed out: {' '.join(args)}") from exc
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or "git command failed")
+    return completed.stdout
+
+def _extract_archive_safely(archive: tarfile.TarFile, destination: Path) -> None:
+    """Internal helper for _extract_archive_safely."""
+    root = destination.resolve()
+    for member in archive.getmembers():
+        target = (destination / member.name).resolve()
+        if not target.is_relative_to(root):
+            raise RuntimeError(f"git archive member escapes checkout: {member.name}")
+        if member.issym() or member.islnk():
+            raise RuntimeError(f"git archive member is a link: {member.name}")
+        if member.isdir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        if not member.isfile():
+            raise RuntimeError(f"unsupported git archive member: {member.name}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source = archive.extractfile(member)
+        if source is None:
+            raise RuntimeError(f"git archive member cannot be read: {member.name}")
+        with source, target.open("wb") as output:
+            output.write(source.read())
+
+@contextmanager
+def _revision_checkout(repository: Path, revision: str) -> Iterator[Path]:
+    """Extract a revision without registering a persistent Git worktree."""
+    with tempfile.TemporaryDirectory(prefix="phase192-identity-") as temporary:
+        checkout = Path(temporary) / "tree"
+        checkout.mkdir()
+        archive_path = Path(temporary) / "revision.tar"
+        try:
+            with archive_path.open("wb") as archive:
+                archive_paths = [
+                    "Scripts/phase192",
+                    *(str(path) for path in SPLIT_ROOTS),
+                ]
+                completed = subprocess.run(
+                    ["git", "archive", "--format=tar", revision, "--", *archive_paths],
+                    cwd=repository,
+                    stdout=archive,
+                    stderr=subprocess.PIPE,
+                    text=False,
+                    check=False,
+                    timeout=60,
+                )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"git archive timed out for {revision}") from exc
+        if completed.returncode != 0:
+            detail = completed.stderr.decode(errors="replace").strip()
+            raise RuntimeError(detail or f"git archive failed for {revision}")
+        with tarfile.open(archive_path, mode="r") as archive:
+            _extract_archive_safely(archive, checkout)
+        yield checkout
+
+def _parse_source(source: str, path: str | Path) -> ast.Module:
+    """Compile and parse source so syntax-only identity checks match Python imports."""
+    compile(source, str(path), "exec")
+    return ast.parse(source, filename=str(path))
+
+def _section_modules_for_root(root: Path):
+    """Return a non-executing parser for the revision's package initializers."""
+    del root
+
+    def section_modules(package_dir: Path) -> tuple[Path, ...]:
+        """Internal helper for section_modules."""
+        init_path = package_dir / "__init__.py"
+        tree = _parse_source(init_path.read_text(encoding="utf-8"), init_path)
+        modules: list[Path] = []
+        seen: dict[str, Path] = {}
+        for node in tree.body:
+            if not isinstance(node, ast.ImportFrom) or node.level != 1:
+                continue
+            imported = [node.module] if node.module else [alias.name for alias in node.names]
+            for module_name in imported:
+                if module_name == "__init__":
+                    continue
+                if (
+                    not module_name
+                    or _SECTION_NAME_RE.fullmatch(module_name) is None
+                    or keyword.iskeyword(module_name)
+                ):
+                    raise ValueError(f"Invalid declared source section: {module_name!r} in {init_path}")
+                candidate = package_dir / f"{module_name}.py"
+                if not candidate.is_file():
+                    raise FileNotFoundError(
+                        f"Declared source section is missing: {candidate}"
+                    )
+                key = module_name.casefold()
+                if key in seen:
+                    raise ValueError(
+                        f"Duplicate declared source section (case-insensitive): {candidate}"
+                    )
+                seen[key] = candidate
+                modules.append(candidate)
+        if not modules:
+            raise ValueError(f"No exported source sections found in {init_path}")
+        return tuple(modules)
+
+    return section_modules
+
+def _split_facades(root: Path) -> tuple[Path, ...]:
+    """Return split facade paths under supported roots."""
+    paths: list[Path] = []
+    seen: dict[str, Path] = {}
+    for relative_root in SPLIT_ROOTS:
+        root_path = root / relative_root
+        if not root_path.is_dir():
+            continue
+        for facade in sorted(root_path.rglob("*.py")):
+            package = facade.with_suffix("")
+            if package.is_dir() and (package / "__init__.py").is_file():
+                key = facade.relative_to(root).as_posix().casefold()
+                if key in seen:
+                    raise ValueError(f"Duplicate facade path (case-insensitive): {facade}")
+                seen[key] = facade
+                paths.append(facade)
+    return tuple(paths)
+
+def _top_level_names(tree: ast.Module, *, include_imports: bool = True) -> set[str]:
+    """Approximate a section's runtime globals without executing its code."""
+    names: set[str] = set()
+
+    def add_target(target: ast.AST) -> None:
+        """Internal helper for add_target."""
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                add_target(item)
+
+    def visit(statements: list[ast.stmt]) -> None:
+        """Internal helper for visit."""
+        for node in statements:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                names.add(node.name)
+            elif isinstance(node, ast.Import):
+                if include_imports:
+                    for alias in node.names:
+                        names.add(alias.asname or alias.name.split(".", 1)[0])
+            elif isinstance(node, ast.ImportFrom):
+                if include_imports and node.module != "__future__":
+                    for alias in node.names:
+                        if alias.name != "*":
+                            names.add(alias.asname or alias.name)
+            elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for target in targets:
+                    add_target(target)
+            elif isinstance(node, (ast.For, ast.AsyncFor)):
+                add_target(node.target)
+                visit(node.body)
+                visit(node.orelse)
+            elif isinstance(node, (ast.With, ast.AsyncWith)):
+                for item in node.items:
+                    if item.optional_vars is not None:
+                        add_target(item.optional_vars)
+                visit(node.body)
+            elif isinstance(node, ast.If):
+                visit(node.body)
+                visit(node.orelse)
+            elif isinstance(node, ast.While):
+                visit(node.body)
+                visit(node.orelse)
+            elif isinstance(node, _TRY_TYPES):
+                visit(node.body)
+                for handler in node.handlers:
+                    # ``except ... as name`` is cleared by Python after the handler.
+                    visit(handler.body)
+                visit(node.orelse)
+                visit(node.finalbody)
+            elif isinstance(node, ast.Match):
+                for case in node.cases:
+                    visit(case.body)
+            elif isinstance(node, ast.Delete):
+                def discard_target(target: ast.AST) -> None:
+                    """Internal helper for discard_target."""
+                    if isinstance(target, ast.Name):
+                        names.discard(target.id)
+                    elif isinstance(target, (ast.Tuple, ast.List)):
+                        for item in target.elts:
+                            discard_target(item)
+                for target in node.targets:
+                    discard_target(target)
+
+    visit(tree.body)
+    return names
+
+def _direct_import_bound_names(tree: ast.Module) -> frozenset[str]:
+    """Return names bound by top-level import statements."""
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            names.update(alias.asname or alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            names.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+    return frozenset(names)
+
+def _declared_public_names(tree: ast.Module) -> frozenset[str]:
+    """Internal helper for _declared_public_names."""
+    return frozenset(
+        name for name in _top_level_names(tree, include_imports=True)
+        if not name.startswith("_")
+    )
+
+
+_PHASE192_TEMPLATE_IMPORTS = frozenset({"pathlib", "sys", "types", "unittest"})
+_PHASE192_TEMPLATE_CALLS = frozenset({
+    "add", "callable", "delattr", "getattr", "globals", "hasattr", "isinstance", "issubclass", "main", "print", "set",
+    "setattr", "sorted", "str", "super", "tuple", "SystemExit",
+})
+_PHASE192_TEMPLATE_METHODS = frozenset({
+    "__class__", "__delattr__", "__dict__", "__setattr__", "add", "get", "insert", "main", "pop", "resolve", "startswith",
+})
+
+
+def _phase192_template_name(name: str) -> bool:
+    """Return whether a name belongs to the generated forwarding template."""
+    return name.startswith("_phase192_") or name.startswith("_phase138u_") or name.startswith("_PHASE192_") or name.startswith("_PHASE138U_")
+
+
+def _phase192_template_call_is_safe(call: ast.Call) -> bool:
+    """Reject calls that could execute arbitrary import-time work in a wrapper."""
+    function = call.func
+    if isinstance(function, ast.Name):
+        return function.id in _PHASE192_TEMPLATE_CALLS or function.id in {
+            "_phase192_entrypoint",
+            "_phase192_main",
+            "_phase192_repository_root",
+        } or function.id.endswith("Path")
+    if isinstance(function, ast.Attribute):
+        return function.attr in _PHASE192_TEMPLATE_METHODS and (
+            isinstance(function.value, (ast.Name, ast.Attribute, ast.Call, ast.Subscript))
+        )
+    return False
+
+
+def _phase192_template_validate_calls(tree: ast.AST, path: str) -> None:
+    """Validate the deliberately small call vocabulary used by wrappers."""
+    trusted_path_imports = {"pathlib.Path"}
+    trusted_special_aliases = {"_phase192_entrypoint", "_phase192_main", "_phase192_repository_root"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            for alias in node.names:
+                bound_name = alias.asname or alias.name
+                if bound_name.endswith("Path") and f"{module}.{alias.name}" not in trusted_path_imports:
+                    raise ValueError(f"Untrusted Path alias in {path}")
+                if bound_name in trusted_special_aliases:
+                    raise ValueError(f"Untrusted generated-wrapper alias in {path}")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and not _phase192_template_call_is_safe(node):
+            raise ValueError(f"Unsupported generated-wrapper call in {path}")
+
+
+def _phase192_template_validate_imports(tree: ast.Module, path: str) -> None:
+    """Validate imports used by a generated facade or package initializer."""
+    local_facade = Path(path).stem
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".", 1)[0] not in _PHASE192_TEMPLATE_IMPORTS:
+                    raise ValueError(f"Unsupported generated-wrapper import in {path}")
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == "__future__":
+                if node.level or any(alias.name != "annotations" for alias in node.names):
+                    raise ValueError(f"Unsupported generated-wrapper future import in {path}")
+            elif node.level != 1:
+                root = (node.module or "").split(".", 1)[0]
+                if not (
+                    root in _PHASE192_TEMPLATE_IMPORTS
+                    or node.module == local_facade
+                    and any(alias.name == "*" for alias in node.names)
+                ):
+                    raise ValueError(f"Unsupported generated-wrapper import in {path}")
+
+
+def _phase192_template_validate_class(node: ast.ClassDef, path: str, *, package: bool) -> None:
+    """Validate the forwarding ModuleType subclass without executing it."""
+    expected = "_Phase192PackageModule" if package else "_Phase192FacadeModule"
+    if node.name not in {expected, "_Phase138UPackageModule"}:
+        raise ValueError(f"Unsupported generated-wrapper class in {path}")
+    if len(node.bases) != 1 or not isinstance(node.bases[0], ast.Attribute):
+        raise ValueError(f"Unsupported generated-wrapper base in {path}")
+    if node.bases[0].attr != "ModuleType":
+        raise ValueError(f"Unsupported generated-wrapper base in {path}")
+    for statement in node.body:
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant) and isinstance(statement.value.value, str):
+            continue
+        if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            raise ValueError(f"Unsupported generated-wrapper class body in {path}")
+        if statement.name not in {"__setattr__", "__delattr__"}:
+            raise ValueError(f"Unsupported generated-wrapper method in {path}")
+        if statement.decorator_list:
+            raise ValueError(f"Unsupported generated-wrapper method decorator in {path}")
+
+
+def _phase192_template_validate_facade(
+    tree: ast.Module,
+    path: str,
+    repository_root: Path | None = None,
+) -> None:
+    """Validate the generated facade shape before allowing its namespace shim."""
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    if len(classes) != 1:
+        raise ValueError(f"Generated facade must contain one forwarding class: {path}")
+    _phase192_template_validate_class(classes[0], path, package=False)
+    _phase192_template_validate_imports(tree, path)
+    _phase192_template_validate_calls(tree, path)
+    _phase192_validate_template_registry_mutations(tree, path, repository_root)
+    for node in tree.body:
+        if isinstance(node, (ast.Expr, ast.Import, ast.ImportFrom, ast.Assign, ast.Delete, ast.If, ast.Try, ast.ClassDef)):
+            continue
+        raise ValueError(f"Unsupported generated facade statement in {path}")
+    if not any(
+        isinstance(node, ast.ImportFrom)
+        and (
+            node.level == 1
+            or (node.level == 0 and node.module == Path(path).stem)
+        )
+        for node in ast.walk(tree)
+    ):
+        raise ValueError(f"Generated facade has no package import in {path}")
+
+
+def _phase192_validate_template_registry_mutations(
+    tree: ast.Module,
+    path: str,
+    repository_root: Path | None = None,
+) -> None:
+    """Allow only the exact sys.modules forwarding mutations emitted by templates."""
+    def validate_closure_mutations() -> None:
+        """Reject protected-object mutations hidden behind facade methods or aliases."""
+        protected_roots = {
+            "_phase192_types",
+            "_phase192_package_module",
+            "__name__",
+            "__package__",
+            "__spec__",
+            "__future__",
+            "__loader__",
+            "__cached__",
+            "__file__",
+            "__path__",
+            "__doc__",
+            "__all__",
+            "__annotations__",
+            "__builtins__",
+            "__dict__",
+            "main",
+            "_phase192_main",
+            "_phase192_entrypoint",
+            "_phase192_previous_path",
+        }
+        protected_alias_sources = {
+            "_phase192_sys",
+            "_phase192_types",
+            "_phase192_self",
+            "_phase192_package_module",
+            "_phase192_module",
+            "_phase192_canonical_self",
+            "_Phase192FacadeModule",
+            "main",
+            "_phase192_main",
+            "_phase192_entrypoint",
+            "_phase192_previous_path",
+            "__spec__",
+            "__builtins__",
+            "__dict__",
+        }
+        allowed_alias_targets = {
+            "_phase192_sys",
+            "_phase192_types",
+            "_phase192_module",
+            "_phase192_self",
+            "_phase192_package_module",
+            "_phase192_canonical_self",
+            "_phase192_previous_submodules",
+            "_phase192_previous_path",
+            "_phase192_previous_name",
+            "_phase192_previous_package",
+            "_phase192_parent",
+            "_phase192_name",
+            "_phase192_main",
+            "_phase192_entrypoint",
+            "__name__",
+            "__package__",
+        }
+
+        def target_names(target: ast.AST) -> tuple[str, ...]:
+            """Return names bound by a simple assignment target."""
+            if isinstance(target, ast.Name):
+                return (target.id,)
+            if isinstance(target, (ast.Tuple, ast.List)):
+                names: list[str] = []
+                for item in target.elts:
+                    names.extend(target_names(item))
+                return tuple(names)
+            return ()
+
+        def contains_globals_lookup(node: ast.AST) -> bool:
+            """Detect a globals() lookup inside a mutation expression."""
+            return any(
+                isinstance(item, ast.Call)
+                and isinstance(item.func, ast.Name)
+                and item.func.id == "globals"
+                for item in ast.walk(node)
+            )
+
+        def protected_globals_lookup(node: ast.AST) -> bool:
+            """Detect direct or getattr-based function globals lookups."""
+            def literal_string(value: ast.AST) -> str | None:
+                """Resolve a statically concatenated lookup key."""
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    return value.value
+                if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+                    left = literal_string(value.left)
+                    right = literal_string(value.right)
+                    if left is not None and right is not None:
+                        return left + right
+                return None
+
+            if isinstance(node, ast.Attribute) and node.attr == "__globals__":
+                return True
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+            ):
+                return False
+            key_node = node.args[1] if len(node.args) >= 2 else next(
+                (keyword.value for keyword in node.keywords if keyword.arg == "name"),
+                None,
+            )
+            return key_node is None or literal_string(key_node) == "__globals__"
+
+        def contains_protected_globals_store(node: ast.AST) -> bool:
+            """Detect writes through globals() to protected binding names."""
+            protected_names = protected_alias_sources | protected_roots | {"main", "_phase192_name"}
+            for item in ast.walk(node):
+                if isinstance(item, ast.Subscript) and contains_globals_lookup(item.value):
+                    if isinstance(item.slice, ast.Constant) and item.slice.value in protected_names:
+                        return True
+                    if item is not node or isinstance(item.ctx, ast.Load):
+                        return True
+                if (
+                    isinstance(item, ast.Call)
+                    and isinstance(item.func, ast.Attribute)
+                    and item.func.attr in {"get", "__getitem__"}
+                    and contains_globals_lookup(item.func.value)
+                    and item.args
+                ):
+                    return True
+            return False
+
+        def exact_global_get(node: ast.AST, key: str) -> bool:
+            """Recognize the exact CLI dispatch lookup used by a facade."""
+            return (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "get"
+                and isinstance(node.func.value, ast.Call)
+                and isinstance(node.func.value.func, ast.Name)
+                and node.func.value.func.id == "globals"
+                and len(node.args) == 1
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == key
+                and not node.keywords
+            )
+
+        def method_signature(function: ast.FunctionDef) -> tuple[object, ...]:
+            """Normalize a facade method while ignoring its documentation string."""
+            body = list(function.body)
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                body = body[1:]
+            return (
+                ast.dump(function.args, include_attributes=False),
+                (
+                    ast.dump(function.returns, include_attributes=False)
+                    if function.returns is not None
+                    else None
+                ),
+                tuple(
+                    ast.dump(decorator, include_attributes=False)
+                    for decorator in function.decorator_list
+                ),
+                tuple(ast.dump(statement, include_attributes=False) for statement in body),
+            )
+
+        expected_method_tree = ast.parse(
+            "def __setattr__(self, name, value):\n"
+            "    super().__setattr__(name, value)\n"
+            "    if _phase192_package_module is not None and _phase192_package_module is not self:\n"
+            "        setattr(_phase192_package_module, name, value)\n"
+            "\n"
+            "def __delattr__(self, name):\n"
+            "    super().__delattr__(name)\n"
+            "    if _phase192_package_module is not None and _phase192_package_module is not self:\n"
+            "        try:\n"
+            "            delattr(_phase192_package_module, name)\n"
+            "        except AttributeError:\n"
+            "            pass\n"
+        )
+        expected_methods = {
+            function.name: method_signature(function)
+            for function in expected_method_tree.body
+            if isinstance(function, ast.FunctionDef)
+        }
+
+        def mutation_root(node: ast.AST) -> str | None:
+            """Resolve a protected mutation root through runtime lookup forms."""
+            protected_lookup_names = protected_alias_sources | protected_roots
+
+            def constant_string(value: ast.AST) -> str | None:
+                """Resolve a statically concatenated string expression."""
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    return value.value
+                if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+                    left = constant_string(value.left)
+                    right = constant_string(value.right)
+                    if left is not None and right is not None:
+                        return left + right
+                return None
+
+            def globals_lookup_key(value: ast.AST) -> ast.AST | None:
+                """Return the key expression used by a globals mapping lookup."""
+                if isinstance(value, ast.Subscript):
+                    return value.slice
+                if (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)
+                    and value.func.attr in {"get", "__getitem__"}
+                ):
+                    if value.args:
+                        return value.args[0]
+                    for keyword in value.keywords:
+                        if keyword.arg in {"key", "name"}:
+                            return keyword.value
+                return None
+
+            def is_globals_call(value: ast.AST) -> bool:
+                """Return whether an expression is a zero-argument globals call."""
+                return (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Name)
+                    and value.func.id == "globals"
+                    and not value.args
+                    and not value.keywords
+                )
+
+            def getattr_object(value: ast.Call) -> ast.AST | None:
+                """Return the object expression passed to getattr."""
+                if value.args:
+                    return value.args[0]
+                for keyword in value.keywords:
+                    if keyword.arg == "object":
+                        return keyword.value
+                return None
+
+            current = node
+            while True:
+                if isinstance(current, ast.Attribute):
+                    current = current.value
+                elif isinstance(current, ast.Subscript):
+                    if is_globals_call(current.value):
+                        key = constant_string(current.slice)
+                        return key if key in protected_lookup_names else "__phase192_globals_lookup__"
+                    current = current.value
+                elif (
+                    isinstance(current, ast.Call)
+                    and isinstance(current.func, ast.Attribute)
+                    and current.func.attr in {"get", "__getitem__"}
+                ):
+                    if is_globals_call(current.func.value):
+                        key_node = globals_lookup_key(current)
+                        key = constant_string(key_node) if key_node is not None else None
+                        return key if key in protected_lookup_names else "__phase192_globals_lookup__"
+                    current = current.func.value
+                elif (
+                    isinstance(current, ast.Call)
+                    and isinstance(current.func, ast.Name)
+                    and current.func.id == "getattr"
+                ):
+                    object_node = getattr_object(current)
+                    if object_node is None:
+                        break
+                    current = object_node
+                else:
+                    break
+            return current.id if isinstance(current, ast.Name) and current.id in protected_roots else None
+
+        def contains_protected_source(node: ast.AST) -> bool:
+            """Detect a value that would propagate a protected object through an alias."""
+            return contains_globals_lookup(node) or any(
+                (
+                    isinstance(item, ast.Name) and item.id in protected_alias_sources
+                )
+                or protected_globals_handle(item)
+                for item in ast.walk(node)
+            )
+
+        def allowed_forward_call(node: ast.Call) -> bool:
+            """Recognize the exact facade-to-package forwarding calls."""
+            if not (
+                isinstance(node.func, ast.Name)
+                and node.func.id in {"setattr", "delattr"}
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "_phase192_package_module"
+            ):
+                return False
+            if node.func.id == "setattr":
+                return (
+                    len(node.args) == 3
+                    and isinstance(node.args[1], ast.Name)
+                    and node.args[1].id == "name"
+                    and isinstance(node.args[2], ast.Name)
+                    and node.args[2].id == "value"
+                    and not node.keywords
+                )
+            return (
+                len(node.args) == 2
+                and isinstance(node.args[1], ast.Name)
+                and node.args[1].id == "name"
+                and not node.keywords
+            )
+
+        protected_mutating_methods = frozenset(
+            {
+                "append",
+                "clear",
+                "extend",
+                "insert",
+                "pop",
+                "popitem",
+                "remove",
+                "reverse",
+                "setdefault",
+                "sort",
+                "update",
+                "__delitem__",
+                "__setitem__",
+            }
+        )
+
+        def protected_globals_handle(node: ast.AST) -> bool:
+            """Detect a protected function globals mapping through runtime lookup forms."""
+            if isinstance(node, ast.Attribute) and node.attr == "__globals__":
+                return mutation_root(node.value) is not None
+            return (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and (
+                    mutation_root(node) is not None
+                    or protected_globals_lookup(node)
+                )
+            )
+
+        snapshot_expression = ast.parse(
+            "{name: _phase192_sys.modules[name] for name in _phase192_sys.modules "
+            "if name == 'validate_source_generator_dll' or "
+            "name.startswith('validate_source_generator_dll.')}",
+            mode="eval",
+        ).body
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))
+                and any(contains_protected_source(generator.iter) for generator in node.generators)
+                and ast.dump(node, include_attributes=False)
+                != ast.dump(snapshot_expression, include_attributes=False)
+            ):
+                raise ValueError(f"Unsupported protected alias in {path}")
+            if isinstance(node, ast.ClassDef) and node.name == "_Phase192FacadeModule":
+                methods = {
+                    statement.name: statement
+                    for statement in node.body
+                    if isinstance(statement, ast.FunctionDef)
+                }
+                if set(methods) != set(expected_methods) or any(
+                    method_signature(methods[name]) != expected_methods[name]
+                    for name in expected_methods
+                ):
+                    raise ValueError(f"Unsupported facade method body in {path}")
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in {"sys", "types"}:
+                        expected = {
+                            "sys": "_phase192_sys",
+                            "types": "_phase192_types",
+                        }[alias.name]
+                        if (alias.asname or alias.name) != expected:
+                            raise ValueError(f"Unsupported protected alias in {path}")
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+                value = node.value
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                targets = [node.target]
+                value = node.value
+            else:
+                targets = []
+                value = None
+            names = tuple(name for target in targets for name in target_names(target))
+            for name in names:
+                if name == "_phase192_main" and not exact_global_get(value, "main"):
+                    raise ValueError(f"Unsupported protected alias in {path}")
+                if name == "_phase192_entrypoint" and not exact_global_get(value, "_entrypoint"):
+                    raise ValueError(f"Unsupported protected alias in {path}")
+            if value is not None and contains_protected_source(value):
+                for target in targets:
+                    if any(name not in allowed_alias_targets for name in target_names(target)):
+                        raise ValueError(f"Unsupported protected alias in {path}")
+            for target in targets:
+                if not isinstance(target, (ast.Attribute, ast.Subscript)):
+                    continue
+                if (
+                    (
+                        mutation_root(target) is not None
+                        or contains_protected_globals_store(target)
+                        or any(
+                            protected_globals_lookup(item)
+                            for item in ast.walk(target)
+                        )
+                    )
+                    and not (
+                        isinstance(target, ast.Attribute)
+                        and isinstance(target.value, ast.Name)
+                        and target.value.id == "_phase192_module"
+                        and target.attr == "__class__"
+                    )
+                    and not (
+                        isinstance(target, ast.Subscript)
+                        and isinstance(target.value, ast.Call)
+                        and isinstance(target.value.func, ast.Name)
+                        and target.value.func.id == "globals"
+                        and isinstance(target.slice, ast.Name)
+                        and target.slice.id == "_phase192_name"
+                    )
+                ):
+                    raise ValueError(f"Unsupported protected mutation in {path}")
+            if isinstance(node, ast.Call):
+                function = node.func
+                mutating = (
+                    isinstance(function, ast.Name)
+                    and function.id in {"setattr", "delattr"}
+                ) or (
+                    isinstance(function, ast.Attribute)
+                    and function.attr in {"__setattr__", "__delattr__"}
+                )
+                protected_method_mutation = (
+                    isinstance(function, ast.Attribute)
+                    and function.attr in protected_mutating_methods
+                    and (
+                        mutation_root(function.value) is not None
+                        or contains_globals_lookup(function.value)
+                        or any(
+                            protected_globals_lookup(item)
+                            for item in ast.walk(function.value)
+                        )
+                    )
+                )
+                if protected_method_mutation:
+                    raise ValueError(f"Unsupported protected mutation in {path}")
+                if mutating and not allowed_forward_call(node):
+                    root = mutation_root(function.value) if isinstance(function, ast.Attribute) else (
+                        mutation_root(node.args[0]) if node.args else None
+                    )
+                    if root is not None or contains_protected_globals_store(node):
+                        raise ValueError(f"Unsupported protected mutation in {path}")
+
+    validate_closure_mutations()
+    expected_module_key = Path(path).stem
+    allowed_module_keys = {expected_module_key, expected_module_key + ".implementation"}
+    sys_aliases: set[str] = set()
+    registry_aliases: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "sys":
+                    sys_aliases.add(alias.asname or "sys")
+        elif isinstance(node, ast.ImportFrom) and node.module == "sys":
+            for alias in node.names:
+                if alias.name == "modules":
+                    registry_aliases.add(alias.asname or alias.name)
+
+    def modules_value(node: ast.AST) -> bool:
+        """Recognize the generated module registry aliases."""
+        if isinstance(node, ast.Name):
+            return node.id in registry_aliases
+        return (
+            isinstance(node, ast.Attribute)
+            and node.attr == "modules"
+            and isinstance(node.value, ast.Name)
+            and node.value.id in sys_aliases
+        )
+
+    changed = True
+    while changed:
+        changed = False
+        for statement in ast.walk(tree):
+            if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+                continue
+            target = statement.targets[0]
+            if not isinstance(target, ast.Name) or not modules_value(statement.value):
+                continue
+            if target.id not in registry_aliases:
+                registry_aliases.add(target.id)
+                changed = True
+
+    def contains_registry_reference(node: ast.AST) -> bool:
+        """Recognize mutation targets rooted in the module registry."""
+        if modules_value(node):
+            return True
+        if isinstance(node, ast.Subscript):
+            return contains_registry_reference(node.value)
+        if isinstance(node, ast.Attribute):
+            return contains_registry_reference(node.value)
+        return False
+
+    protected_alias_sources = {
+        "_phase192_sys",
+        "_phase192_types",
+        "_phase192_self",
+        "_phase192_package_module",
+        "_phase192_module",
+        "_phase192_canonical_self",
+        "_phase192_previous_submodules",
+        "_phase192_previous_path",
+        "_Phase192FacadeModule",
+        "main",
+        "_phase192_main",
+        "_phase192_entrypoint",
+        "__spec__",
+        "__builtins__",
+        "__dict__",
+    }
+
+    def contains_protected_source(node: ast.AST) -> bool:
+        """Recognize protected sources propagated through loop aliases."""
+        return any(
+            isinstance(item, ast.Name) and item.id in protected_alias_sources
+            or isinstance(item, ast.Call)
+            and isinstance(item.func, ast.Name)
+            and item.func.id == "globals"
+            for item in ast.walk(node)
+        )
+
+    try:
+        relative_path = Path(path).resolve().relative_to(Path(repository_root).resolve()).as_posix()
+    except (TypeError, ValueError):
+        relative_path = None
+    loader_path = relative_path == "Scripts/package/validate_source_generator_dll.py"
+    if loader_path:
+        loader_type_imports = [
+            alias
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+            if alias.asname == "_phase192_types"
+        ]
+        if len(loader_type_imports) != 1 or loader_type_imports[0].name != "types":
+            raise ValueError(f"Unsupported loader types binding in {path}")
+        if any(
+            isinstance(node, ast.ImportFrom)
+            and any((alias.asname or alias.name) == "_phase192_types" for alias in node.names)
+            for node in ast.walk(tree)
+        ):
+            raise ValueError(f"Unsupported loader types binding in {path}")
+        if any(
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name)
+                and target.id == "_Phase192FacadeModule"
+                for target in node.targets
+            )
+            for node in ast.walk(tree)
+        ):
+            raise ValueError(f"Unsupported loader facade class binding in {path}")
+        loader_path_imports = [
+            alias
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "pathlib"
+            for alias in node.names
+            if alias.asname == "_Phase192Path"
+        ]
+        if len(loader_path_imports) != 1 or loader_path_imports[0].name != "Path":
+            raise ValueError(f"Unsupported loader path binding in {path}")
+        if any(
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+            and any(
+                isinstance(target, ast.Name) and target.id == "_Phase192Path"
+                for target in (
+                    node.targets
+                    if isinstance(node, ast.Assign)
+                    else [node.target]
+                )
+            )
+            for node in ast.walk(tree)
+        ):
+            raise ValueError(f"Unsupported loader path binding in {path}")
+        trusted_special_aliases = {
+            "_phase192_entrypoint",
+            "_phase192_main",
+            "_phase192_repository_root",
+        }
+        if any(
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+            and any(
+                isinstance(target, ast.Name) and target.id in trusted_special_aliases
+                for target in (
+                    node.targets
+                    if isinstance(node, ast.Assign)
+                    else [node.target]
+                )
+            )
+            for node in ast.walk(tree)
+        ):
+            raise ValueError(f"Unsupported loader trusted alias binding in {path}")
+
+        def exact_top_level_assignment(name: str, expression: str) -> bool:
+            """Recognize one exact top-level loader binding."""
+            expected = ast.parse(expression, mode="eval").body
+            assignments = [
+                statement
+                for statement in ast.walk(tree)
+                if isinstance(statement, ast.Assign)
+                and len(statement.targets) == 1
+                and isinstance(statement.targets[0], ast.Name)
+                and statement.targets[0].id == name
+            ]
+            matches = [
+                statement
+                for statement in assignments
+                if statement in tree.body
+                and ast.dump(statement.value, include_attributes=False)
+                == ast.dump(expected, include_attributes=False)
+            ]
+            return len(assignments) == len(matches) == 1
+
+        if not (
+            exact_top_level_assignment(
+                "__name__",
+                "__spec__.name if __spec__ is not None else __name__",
+            )
+            and exact_top_level_assignment(
+                "__package__",
+                "__spec__.parent if __spec__ is not None else __package__",
+            )
+        ):
+            raise ValueError(f"Unsupported loader module metadata binding in {path}")
+
+        def exact_module_class_guard(statement: ast.AST) -> bool:
+            """Recognize the exact guarded facade class assignment."""
+            if not (
+                isinstance(statement, ast.If)
+                and not statement.orelse
+                and len(statement.body) == 1
+                and isinstance(statement.test, ast.Compare)
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.IsNot)
+                and isinstance(statement.test.left, ast.Name)
+                and statement.test.left.id == "_phase192_module"
+                and len(statement.test.comparators) == 1
+                and isinstance(statement.test.comparators[0], ast.Constant)
+                and statement.test.comparators[0].value is None
+            ):
+                return False
+            assignment = statement.body[0]
+            return (
+                isinstance(assignment, ast.Assign)
+                and len(assignment.targets) == 1
+                and isinstance(assignment.targets[0], ast.Attribute)
+                and isinstance(assignment.targets[0].value, ast.Name)
+                and assignment.targets[0].value.id == "_phase192_module"
+                and assignment.targets[0].attr == "__class__"
+                and isinstance(assignment.value, ast.Name)
+                and assignment.value.id == "_Phase192FacadeModule"
+            )
+
+        all_module_class_assignments = [
+            statement
+            for statement in ast.walk(tree)
+            if isinstance(statement, ast.Assign)
+            and len(statement.targets) == 1
+            and isinstance(statement.targets[0], ast.Attribute)
+            and isinstance(statement.targets[0].value, ast.Name)
+            and statement.targets[0].value.id == "_phase192_module"
+            and statement.targets[0].attr == "__class__"
+        ]
+        if (
+            len(all_module_class_assignments) != 1
+            or sum(exact_module_class_guard(statement) for statement in tree.body) != 1
+        ):
+            raise ValueError(f"Unsupported loader module class binding in {path}")
+
+        def exact_cli_guard(statement: ast.AST) -> bool:
+            """Recognize the exact validator command-line dispatch guard."""
+            return (
+                isinstance(statement, ast.If)
+                and not statement.orelse
+                and isinstance(statement.test, ast.Compare)
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.Eq)
+                and isinstance(statement.test.left, ast.Name)
+                and statement.test.left.id == "__name__"
+                and len(statement.test.comparators) == 1
+                and isinstance(statement.test.comparators[0], ast.Constant)
+                and statement.test.comparators[0].value == "__main__"
+                and len(statement.body) == 1
+                and isinstance(statement.body[0], ast.Raise)
+                and isinstance(statement.body[0].exc, ast.Call)
+                and isinstance(statement.body[0].exc.func, ast.Name)
+                and statement.body[0].exc.func.id == "SystemExit"
+                and len(statement.body[0].exc.args) == 1
+                and isinstance(statement.body[0].exc.args[0], ast.Call)
+                and isinstance(statement.body[0].exc.args[0].func, ast.Name)
+                and statement.body[0].exc.args[0].func.id == "main"
+                and not statement.body[0].exc.args[0].args
+                and not statement.body[0].exc.args[0].keywords
+                and not statement.body[0].exc.keywords
+            )
+
+        def is_main_name_guard(statement: ast.AST) -> bool:
+            """Recognize any module-level __name__ main guard."""
+            if not (
+                isinstance(statement, ast.If)
+                and isinstance(statement.test, ast.Compare)
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.Eq)
+                and len(statement.test.comparators) == 1
+            ):
+                return False
+            left, right = statement.test.left, statement.test.comparators[0]
+            return (
+                isinstance(left, ast.Name)
+                and left.id == "__name__"
+                and isinstance(right, ast.Constant)
+                and right.value == "__main__"
+            ) or (
+                isinstance(right, ast.Name)
+                and right.id == "__name__"
+                and isinstance(left, ast.Constant)
+                and left.value == "__main__"
+            )
+
+        main_guards = [statement for statement in tree.body if is_main_name_guard(statement)]
+        if len(main_guards) != 1 or not exact_cli_guard(main_guards[0]):
+            raise ValueError(f"Unsupported loader command-line dispatch in {path}")
+
+    snapshot_filter = ast.parse(
+        "(name == 'validate_source_generator_dll' or "
+        "name.startswith('validate_source_generator_dll.'))",
+        mode="eval",
+    ).body
+    cleanup_condition = ast.parse(
+        "(_phase192_name == 'validate_source_generator_dll' or "
+        "_phase192_name.startswith('validate_source_generator_dll.')) "
+        "and _phase192_name not in _phase192_previous_submodules",
+        mode="eval",
+    ).body
+    cleanup_iter = ast.parse("tuple(_phase192_sys.modules)", mode="eval").body
+
+    def exact_snapshot(statement: ast.AST) -> bool:
+        """Recognize the one immutable loader module snapshot assignment."""
+        if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+            return False
+        target = statement.targets[0]
+        value = statement.value
+        return (
+            isinstance(target, ast.Name)
+            and target.id == "_phase192_previous_submodules"
+            and isinstance(value, ast.DictComp)
+            and len(value.generators) == 1
+            and isinstance(value.generators[0].target, ast.Name)
+            and value.generators[0].target.id == "name"
+            and isinstance(value.generators[0].iter, ast.Attribute)
+            and value.generators[0].iter.attr == "modules"
+            and isinstance(value.generators[0].iter.value, ast.Name)
+            and value.generators[0].iter.value.id == "_phase192_sys"
+            and isinstance(value.key, ast.Name)
+            and value.key.id == "name"
+            and isinstance(value.value, ast.Subscript)
+            and isinstance(value.value.value, ast.Attribute)
+            and value.value.value.attr == "modules"
+            and isinstance(value.value.value.value, ast.Name)
+            and value.value.value.value.id == "_phase192_sys"
+            and isinstance(value.value.slice, ast.Name)
+            and value.value.slice.id == "name"
+            and len(value.generators[0].ifs) == 1
+            and ast.dump(value.generators[0].ifs[0], include_attributes=False)
+            == ast.dump(snapshot_filter, include_attributes=False)
+        )
+
+    def exact_cleanup_loop(statement: ast.AST) -> tuple[int, int] | None:
+        """Recognize the guarded cleanup loop and its sole pop call."""
+        if not (
+            isinstance(statement, ast.For)
+            and isinstance(statement.target, ast.Name)
+            and statement.target.id == "_phase192_name"
+            and ast.dump(statement.iter, include_attributes=False)
+            == ast.dump(cleanup_iter, include_attributes=False)
+            and not statement.orelse
+            and len(statement.body) == 1
+            and isinstance(statement.body[0], ast.If)
+        ):
+            return None
+        guard = statement.body[0]
+        if (
+            ast.dump(guard.test, include_attributes=False)
+            != ast.dump(cleanup_condition, include_attributes=False)
+            or guard.orelse
+            or len(guard.body) != 1
+            or not isinstance(guard.body[0], ast.Expr)
+        ):
+            return None
+        call = guard.body[0].value
+        if not (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and modules_value(call.func.value)
+            and call.func.attr == "pop"
+            and len(call.args) == 2
+            and isinstance(call.args[0], ast.Name)
+            and call.args[0].id == "_phase192_name"
+            and isinstance(call.args[1], ast.Constant)
+            and call.args[1].value is None
+            and not call.keywords
+        ):
+            return None
+        return id(statement), id(call)
+
+    def exact_restore_loop(statement: ast.AST) -> tuple[int, int] | None:
+        """Recognize the sole immutable snapshot restore loop."""
+        if not (
+            isinstance(statement, ast.For)
+            and isinstance(statement.target, ast.Name)
+            and statement.target.id == "_phase192_name"
+            and isinstance(statement.iter, ast.Name)
+            and statement.iter.id == "_phase192_previous_submodules"
+            and not statement.orelse
+            and len(statement.body) == 1
+            and isinstance(statement.body[0], ast.Assign)
+        ):
+            return None
+        assignment = statement.body[0]
+        target = assignment.targets[0] if len(assignment.targets) == 1 else None
+        return (
+            (id(statement), id(assignment))
+            if (
+                isinstance(target, ast.Subscript)
+                and modules_value(target.value)
+                and isinstance(target.slice, ast.Name)
+                and target.slice.id == "_phase192_name"
+                and isinstance(assignment.value, ast.Subscript)
+                and isinstance(assignment.value.value, ast.Name)
+                and assignment.value.value.id == "_phase192_previous_submodules"
+                and isinstance(assignment.value.slice, ast.Name)
+                and assignment.value.slice.id == "_phase192_name"
+            )
+            else None
+        )
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, (ast.For, ast.AsyncFor))
+            and contains_protected_source(node.iter)
+            and exact_cleanup_loop(node) is None
+            and exact_restore_loop(node) is None
+        ):
+            raise ValueError(f"Unsupported protected alias in {path}")
+
+    def rooted_in(node: ast.AST, name: str) -> bool:
+        """Return whether a registry expression is rooted in one binding."""
+        if isinstance(node, ast.Name):
+            return node.id == name
+        if isinstance(node, (ast.Attribute, ast.Subscript)):
+            return rooted_in(node.value, name)
+        return False
+
+    def critical_bindings_are_immutable(transaction: ast.Try | None) -> bool:
+        """Reject rebinding of loader transaction state after initialization."""
+        if transaction is None:
+            return False
+
+        def exact_canonical_setup_guard(statement: ast.AST) -> tuple[ast.Assign, ast.Assign] | None:
+            """Recognize the exact initial canonical facade metadata setup."""
+            if not (
+                isinstance(statement, ast.If)
+                and not statement.orelse
+                and isinstance(statement.test, ast.Compare)
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.IsNot)
+                and isinstance(statement.test.left, ast.Name)
+                and statement.test.left.id == "_phase192_canonical_self"
+                and len(statement.test.comparators) == 1
+                and isinstance(statement.test.comparators[0], ast.Constant)
+                and statement.test.comparators[0].value is None
+                and len(statement.body) == 4
+                and isinstance(statement.body[0], ast.Assign)
+                and isinstance(statement.body[1], ast.Assign)
+                and isinstance(statement.body[2], ast.Assign)
+                and isinstance(statement.body[3], ast.Expr)
+            ):
+                return None
+            assignments = tuple(statement.body[:2])
+            if not all(
+                len(item.targets) == 1
+                and isinstance(item.targets[0], ast.Attribute)
+                and isinstance(item.targets[0].value, ast.Name)
+                and item.targets[0].value.id == "_phase192_canonical_self"
+                and isinstance(item.value, ast.Constant)
+                for item in assignments
+            ):
+                return None
+            first, second = assignments
+            if not (
+                first.targets[0].attr == "__package__"
+                and first.value.value == ""
+                and second.targets[0].attr == "__name__"
+                and second.value.value == "validate_source_generator_dll"
+            ):
+                return None
+            registry_assignment, registry_pop = statement.body[2], statement.body[3]
+            if not (
+                len(registry_assignment.targets) == 1
+                and isinstance(registry_assignment.targets[0], ast.Subscript)
+                and modules_value(registry_assignment.targets[0].value)
+                and isinstance(registry_assignment.targets[0].slice, ast.Constant)
+                and registry_assignment.targets[0].slice.value == "validate_source_generator_dll"
+                and isinstance(registry_assignment.value, ast.Name)
+                and registry_assignment.value.id == "_phase192_canonical_self"
+                and isinstance(registry_pop.value, ast.Call)
+                and isinstance(registry_pop.value.func, ast.Attribute)
+                and modules_value(registry_pop.value.func.value)
+                and registry_pop.value.func.attr == "pop"
+                and len(registry_pop.value.args) == 2
+                and isinstance(registry_pop.value.args[0], ast.Constant)
+                and registry_pop.value.args[0].value == "validate_source_generator_dll"
+                and isinstance(registry_pop.value.args[1], ast.Constant)
+                and registry_pop.value.args[1].value is None
+                and not registry_pop.value.keywords
+            ):
+                return None
+            return first, second
+
+        canonical_setup_guards = [
+            exact_canonical_setup_guard(statement)
+            for statement in transaction.body
+        ]
+        canonical_setup_guards = [guard for guard in canonical_setup_guards if guard is not None]
+        if len(canonical_setup_guards) != 1:
+            return False
+        canonical_setup_assignments = canonical_setup_guards[0]
+
+        def metadata_restore_kind(node: ast.AST) -> str | None:
+            """Recognize one exact facade metadata restore call."""
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "setattr"
+                and len(node.args) == 3
+                and not node.keywords
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "_phase192_canonical_self"
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[2], ast.Name)
+            ):
+                return None
+            if node.args[1].value == "__name__" and node.args[2].id == "_phase192_previous_name":
+                return "name"
+            if node.args[1].value == "__package__" and node.args[2].id == "_phase192_previous_package":
+                return "package"
+            return None
+
+        def exact_metadata_restore_guard(statement: ast.AST) -> tuple[ast.Call, ast.Call] | None:
+            """Recognize the exact guarded metadata restoration block."""
+            if not (
+                isinstance(statement, ast.If)
+                and not statement.orelse
+                and isinstance(statement.test, ast.Compare)
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.IsNot)
+                and isinstance(statement.test.left, ast.Name)
+                and statement.test.left.id == "_phase192_canonical_self"
+                and len(statement.test.comparators) == 1
+                and isinstance(statement.test.comparators[0], ast.Constant)
+                and statement.test.comparators[0].value is None
+                and len(statement.body) == 2
+                and all(isinstance(item, ast.Expr) for item in statement.body)
+            ):
+                return None
+            calls = tuple(item.value for item in statement.body)
+            if not all(isinstance(call, ast.Call) for call in calls):
+                return None
+            return calls  # type: ignore[return-value]
+
+        metadata_guards = [
+            exact_metadata_restore_guard(statement)
+            for statement in transaction.finalbody
+        ]
+        metadata_guards = [guard for guard in metadata_guards if guard is not None]
+        if len(metadata_guards) != 1:
+            return False
+        metadata_calls = metadata_guards[0]
+        if tuple(metadata_restore_kind(node) for node in metadata_calls) != ("name", "package"):
+            return False
+        allowed_metadata_call_ids = {id(node) for node in metadata_calls}
+        for statement in transaction.finalbody:
+            for node in ast.walk(statement):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id in {"setattr", "delattr"}
+                    and id(node) not in allowed_metadata_call_ids
+                ):
+                    return False
+        expected_top_level = {
+            "_phase192_canonical_self",
+            "_phase192_previous_submodules",
+            "_phase192_previous_path",
+            "_phase192_previous_name",
+            "_phase192_previous_package",
+        }
+        transaction_binding_names = expected_top_level | {
+            "_Phase192FacadeModule",
+            "_phase192_types",
+            "_phase192_module",
+            "_phase192_self",
+            "_phase192_package_module",
+            "main",
+            "__name__",
+            "__package__",
+            "SystemExit",
+            "__spec__",
+            "__future__",
+            "__loader__",
+            "__cached__",
+            "__file__",
+            "__path__",
+            "__doc__",
+            "__all__",
+            "__annotations__",
+            "__builtins__",
+        }
+        top_level_assignments = {
+            target.id
+            for statement in tree.body
+            if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Name)
+        }
+        if not expected_top_level.issubset(top_level_assignments):
+            return False
+        for name in expected_top_level:
+            if sum(
+                1
+                for statement in tree.body
+                if isinstance(statement, ast.Assign)
+                for target in statement.targets
+                if isinstance(target, ast.Name) and target.id == name
+            ) != 1:
+                return False
+        critical_order = [
+            "_phase192_canonical_self",
+            "_phase192_previous_submodules",
+            "_phase192_previous_path",
+            "_phase192_previous_name",
+            "_phase192_previous_package",
+        ]
+        critical_positions = {
+            name: index
+            for index, statement in enumerate(tree.body)
+            if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Name)
+            and target.id in critical_order
+            for name in [target.id]
+        }
+        if [critical_positions[name] for name in critical_order] != sorted(
+            critical_positions.values()
+        ):
+            return False
+        expected_values = {
+            "_phase192_module": [
+                "_phase192_sys.modules.get(__name__)",
+                "_phase192_sys.modules.get(__name__)",
+            ],
+            "_phase192_canonical_self": [
+                "_phase192_sys.modules.get(__name__) if __package__ and _phase192_sys.modules.get(__name__) is not None else None",
+            ],
+            "_phase192_previous_path": ["_phase192_sys.path[:]"],
+            "_phase192_previous_name": [
+                "__name__ if _phase192_canonical_self is not None else None",
+            ],
+            "_phase192_previous_package": [
+                "__package__ if _phase192_canonical_self is not None else None",
+            ],
+            "_phase192_self": [
+                "_phase192_sys.modules.get(__name__) if __name__ == 'validate_source_generator_dll' else None",
+            ],
+            "_phase192_package_module": [
+                "_phase192_sys.modules.get(__package__ + '.validate_source_generator_dll')",
+                "_phase192_sys.modules.get('validate_source_generator_dll')",
+            ],
+        }
+        for name, expressions in expected_values.items():
+            values = [
+                node.value
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == name
+            ]
+            expected_nodes = [ast.parse(expression, mode="eval").body for expression in expressions]
+            if len(values) != len(expected_nodes) or any(
+                ast.dump(value, include_attributes=False)
+                != ast.dump(expected, include_attributes=False)
+                for value, expected in zip(values, expected_nodes)
+            ):
+                return False
+        allowed_metadata_store_ids: set[int] = set()
+        metadata_expressions = {
+            "__name__": "__spec__.name if __spec__ is not None else __name__",
+            "__package__": "__spec__.parent if __spec__ is not None else __package__",
+        }
+        for statement in tree.body:
+            if not (
+                isinstance(statement, ast.Assign)
+                and len(statement.targets) == 1
+                and isinstance(statement.targets[0], ast.Name)
+                and statement.targets[0].id in metadata_expressions
+            ):
+                continue
+            expected = ast.parse(
+                metadata_expressions[statement.targets[0].id],
+                mode="eval",
+            ).body
+            if ast.dump(statement.value, include_attributes=False) == ast.dump(
+                expected,
+                include_attributes=False,
+            ):
+                allowed_metadata_store_ids.add(id(statement.targets[0]))
+        allowed_module_class_store_ids = {
+            id(node.targets[0])
+            for node in ast.walk(tree)
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Attribute)
+                and isinstance(node.targets[0].value, ast.Name)
+                and node.targets[0].value.id == "_phase192_module"
+                and node.targets[0].attr == "__class__"
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "_Phase192FacadeModule"
+            )
+        }
+        allowed_canonical_store_ids = {
+            id(item.targets[0]) for item in canonical_setup_assignments
+        }
+        allowed_attribute_store_ids = set(allowed_module_class_store_ids)
+        allowed_attribute_store_ids.update(allowed_canonical_store_ids)
+        allowed_mutating_call_ids = set(allowed_metadata_call_ids)
+        allowed_mutating_call_ids.update(
+            call_id for _, call_id in cleanup_loops + restore_loops
+        )
+        def is_allowed_facade_forward_call(node: ast.Call) -> bool:
+            """Recognize the exact facade-to-package attribute forwarding calls."""
+            if not (
+                isinstance(node.func, ast.Name)
+                and node.func.id in {"setattr", "delattr"}
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "_phase192_package_module"
+            ):
+                return False
+            if node.func.id == "setattr":
+                return (
+                    len(node.args) == 3
+                    and isinstance(node.args[1], ast.Name)
+                    and node.args[1].id == "name"
+                    and isinstance(node.args[2], ast.Name)
+                    and node.args[2].id == "value"
+                    and not node.keywords
+                )
+            return (
+                len(node.args) == 2
+                and isinstance(node.args[1], ast.Name)
+                and node.args[1].id == "name"
+                and not node.keywords
+            )
+
+        for statement in tree.body:
+            if isinstance(statement, ast.ClassDef) and statement.name in {
+                "_Phase192FacadeModule",
+                "_Phase138UPackageModule",
+                "_Phase192PackageModule",
+            }:
+                for node in ast.walk(statement):
+                    if isinstance(node, ast.Call) and is_allowed_facade_forward_call(node):
+                        allowed_mutating_call_ids.add(id(node))
+        for loop_id, assignment_id in restore_loops:
+            assignment = next(
+                node
+                for node in ast.walk(transaction)
+                if isinstance(node, ast.Assign) and id(node) == assignment_id
+            )
+            allowed_attribute_store_ids.add(id(assignment.targets[0]))
+        canonical_guard = next(
+            statement
+            for statement in transaction.body
+            if exact_canonical_setup_guard(statement) is not None
+        )
+        registry_assignment = canonical_guard.body[2]
+        registry_pop = canonical_guard.body[3].value
+        allowed_attribute_store_ids.add(id(registry_assignment.targets[0]))
+        allowed_mutating_call_ids.add(id(registry_pop))
+        for node in ast.walk(transaction):
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Subscript)
+                and modules_value(node.targets[0].value)
+                and isinstance(node.targets[0].slice, ast.Constant)
+                and node.targets[0].slice.value == "validate_source_generator_dll"
+                and isinstance(node.value, ast.Name)
+                and node.value.id in {"_phase192_self", "_phase192_canonical_self"}
+            ):
+                allowed_attribute_store_ids.add(id(node.targets[0]))
+        for statement in ast.walk(transaction):
+            if not (
+                isinstance(statement, ast.If)
+                and not statement.orelse
+                and isinstance(statement.test, ast.Compare)
+                and len(statement.test.ops) == 1
+                and isinstance(statement.test.ops[0], ast.IsNot)
+                and isinstance(statement.test.left, ast.Name)
+                and statement.test.left.id == "_phase192_self"
+                and len(statement.test.comparators) == 1
+                and isinstance(statement.test.comparators[0], ast.Constant)
+                and statement.test.comparators[0].value is None
+                and len(statement.body) == 1
+                and isinstance(statement.body[0], ast.Expr)
+            ):
+                continue
+            call = statement.body[0].value
+            if (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and modules_value(call.func.value)
+                and call.func.attr == "pop"
+                and len(call.args) == 2
+                and isinstance(call.args[0], ast.Constant)
+                and call.args[0].value == "validate_source_generator_dll"
+                and isinstance(call.args[1], ast.Constant)
+                and call.args[1].value is None
+                and not call.keywords
+            ):
+                allowed_mutating_call_ids.add(id(call))
+        path_restore_expression = ast.parse(
+            "_phase192_sys.path[:] = _phase192_previous_path",
+            mode="exec",
+        ).body[0]
+        path_restore_target = path_restore_expression.targets[0]
+        for node in ast.walk(transaction):
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and ast.dump(node.targets[0], include_attributes=False)
+                == ast.dump(path_restore_target, include_attributes=False)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "_phase192_previous_path"
+            ):
+                allowed_attribute_store_ids.add(id(node.targets[0]))
+        path_insert_expression = ast.parse(
+            "_phase192_sys.path.insert(0, str(_phase192_parent))",
+            mode="eval",
+        ).body
+        for node in ast.walk(transaction):
+            if (
+                isinstance(node, ast.Call)
+                and ast.dump(node, include_attributes=False)
+                == ast.dump(path_insert_expression, include_attributes=False)
+            ):
+                allowed_mutating_call_ids.add(id(node))
+
+        def mutation_root(node: ast.AST) -> str | None:
+            """Resolve a direct critical binding mutation root."""
+            roots = {
+                "_phase192_sys",
+                "_phase192_types",
+                "_phase192_previous_path",
+                "_phase192_self",
+                "_phase192_package_module",
+                "_phase192_module",
+                "_phase192_canonical_self",
+                "_Phase192FacadeModule",
+                "main",
+                "__name__",
+                "__package__",
+                "__spec__",
+                "__future__",
+                "__loader__",
+                "__cached__",
+                "__file__",
+                "__path__",
+                "__doc__",
+                "__all__",
+                "__annotations__",
+                "__builtins__",
+            }
+            current = node
+            while isinstance(current, (ast.Attribute, ast.Subscript)):
+                current = current.value
+            return current.id if isinstance(current, ast.Name) and current.id in roots else None
+
+        critical_mutation_names = {
+            "_phase192_sys",
+            "_phase192_types",
+            "_phase192_previous_path",
+            "_phase192_self",
+            "_phase192_package_module",
+            "_phase192_module",
+            "_phase192_canonical_self",
+            "_Phase192FacadeModule",
+            "main",
+            "__name__",
+            "__package__",
+            "__spec__",
+            "__future__",
+            "__loader__",
+            "__cached__",
+            "__file__",
+            "__path__",
+            "__doc__",
+            "__all__",
+            "__annotations__",
+            "__builtins__",
+        }
+
+        def contains_critical_mutation_name(node: ast.AST) -> bool:
+            """Detect critical binding names anywhere in a mutation expression."""
+            return any(
+                isinstance(item, ast.Name) and item.id in critical_mutation_names
+                for item in ast.walk(node)
+            )
+
+        def contains_globals_lookup(node: ast.AST) -> bool:
+            """Detect a globals() lookup inside a mutation expression."""
+            return any(
+                isinstance(item, ast.Call)
+                and isinstance(item.func, ast.Name)
+                and item.func.id == "globals"
+                for item in ast.walk(node)
+            )
+
+        def contains_protected_globals_store(node: ast.AST) -> bool:
+            """Detect writes through globals() to protected binding names."""
+            protected_names = critical_mutation_names | {"_phase192_name"}
+            for item in ast.walk(node):
+                if not (
+                    isinstance(item, ast.Subscript)
+                    and contains_globals_lookup(item.value)
+                    and isinstance(item.slice, ast.Constant)
+                    and item.slice.value in protected_names
+                ):
+                    continue
+                return True
+            return False
+
+        def target_names(target: ast.AST) -> tuple[str, ...]:
+            """Return names bound by a simple assignment target."""
+            if isinstance(target, ast.Name):
+                return (target.id,)
+            if isinstance(target, (ast.Tuple, ast.List)):
+                names: list[str] = []
+                for item in target.elts:
+                    names.extend(target_names(item))
+                return tuple(names)
+            return ()
+
+        protected_alias_sources = {
+            "_phase192_sys",
+            "_phase192_types",
+            "_phase192_self",
+            "_phase192_package_module",
+            "_phase192_module",
+            "_phase192_canonical_self",
+            "_Phase192FacadeModule",
+            "main",
+            "__spec__",
+            "__builtins__",
+        }
+
+        def contains_protected_alias_source(node: ast.AST) -> bool:
+            """Detect values that would propagate a protected object through an alias."""
+            return contains_globals_lookup(node) or any(
+                isinstance(item, ast.Name) and item.id in protected_alias_sources
+                for item in ast.walk(node)
+            )
+
+        def is_mutating_call(node: ast.Call) -> bool:
+            """Identify calls that can mutate a critical binding target."""
+            if isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"}:
+                return True
+            return (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr
+                in {"pop", "insert", "append", "extend", "remove", "clear", "update", "__setattr__", "__delattr__"}
+            )
+
+        def iter_module_nodes() -> Iterator[ast.AST]:
+            """Iterate module nodes, including forwarding class method bodies."""
+            for statement in tree.body:
+                yield from ast.walk(statement)
+
+        for node in iter_module_nodes():
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                targets = [node.target]
+            elif isinstance(node, ast.Delete):
+                targets = node.targets
+            else:
+                targets = []
+            for target in targets:
+                root = mutation_root(target) if isinstance(target, (ast.Attribute, ast.Subscript)) else None
+                if (
+                    isinstance(target, (ast.Attribute, ast.Subscript))
+                    and (
+                        contains_critical_mutation_name(target)
+                        or contains_protected_globals_store(target)
+                    )
+                    and id(target) not in allowed_attribute_store_ids
+                ):
+                    return False
+            if isinstance(node, ast.Call) and is_mutating_call(node):
+                root = mutation_root(node.func.value) if isinstance(node.func, ast.Attribute) else (
+                    mutation_root(node.args[0]) if node.args else None
+                )
+                if (
+                    (
+                        root is not None
+                        or contains_critical_mutation_name(node)
+                        or contains_protected_globals_store(node)
+                    )
+                    and id(node) not in allowed_mutating_call_ids
+                ):
+                    return False
+            if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                value = node.value
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if contains_protected_alias_source(value):
+                    for target in targets:
+                        if any(
+                            name not in transaction_binding_names
+                            for name in target_names(target)
+                        ):
+                            return False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                targets = [node.target]
+            else:
+                targets = []
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id in {"__name__", "__package__"}:
+                    if id(target) not in allowed_metadata_store_ids:
+                        return False
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "_phase192_module"
+                    and id(target) not in allowed_module_class_store_ids
+                ):
+                    return False
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "_phase192_canonical_self"
+                    and id(target) not in allowed_canonical_store_ids
+                ):
+                    return False
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id in {"_phase192_self", "_phase192_package_module"}
+                ):
+                    return False
+        for statement in (*transaction.body, *transaction.finalbody):
+            for node in ast.walk(statement):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id in {"setattr", "delattr"}
+                    and node.args
+                    and isinstance(node.args[0], ast.Name)
+                    and node.args[0].id in {"_phase192_self", "_phase192_package_module"}
+                ):
+                    return False
+        allowed_store_ids = {
+            id(target)
+            for statement in tree.body
+            if isinstance(statement, ast.Assign)
+            for target in statement.targets
+            if isinstance(target, ast.Name)
+            and target.id in expected_top_level
+            and (
+                target.id != "_phase192_previous_submodules"
+                or exact_snapshot(statement)
+            )
+        }
+        allowed_store_ids.update(allowed_metadata_store_ids)
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id in {
+                    "_phase192_module",
+                    "_phase192_self",
+                    "_phase192_package_module",
+                }
+            ):
+                continue
+            expected_nodes = [
+                ast.parse(expression, mode="eval").body
+                for expression in expected_values[node.targets[0].id]
+            ]
+            if any(
+                ast.dump(node.value, include_attributes=False)
+                == ast.dump(expected, include_attributes=False)
+                for expected in expected_nodes
+            ):
+                allowed_store_ids.add(id(node.targets[0]))
+        for loop_id, _ in cleanup_loops + restore_loops:
+            loop = next(
+                node for node in ast.walk(transaction)
+                if isinstance(node, ast.For) and id(node) == loop_id
+            )
+            allowed_store_ids.add(id(loop.target))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                targets = [node.target]
+            else:
+                targets = []
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id in transaction_binding_names:
+                    if id(target) not in allowed_store_ids:
+                        return False
+                if (
+                    rooted_in(target, "_phase192_previous_submodules")
+                    and not (
+                        isinstance(target, ast.Name)
+                        and target.id == "_phase192_previous_submodules"
+                        and isinstance(node, ast.Assign)
+                        and exact_snapshot(node)
+                        and node in tree.body
+                    )
+                ):
+                    return False
+                if isinstance(target, ast.Name) and target.id == "_phase192_sys":
+                    return False
+            if isinstance(node, ast.Delete) and any(
+                rooted_in(target, "_phase192_previous_submodules")
+                or isinstance(target, ast.Name)
+                and target.id in transaction_binding_names | {"_phase192_sys"}
+                for target in node.targets
+            ):
+                return False
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and rooted_in(node.func.value, "_phase192_previous_submodules")
+            ):
+                return False
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                if node.id in transaction_binding_names | {"_phase192_sys", "_phase192_name"}:
+                    if id(node) not in allowed_store_ids:
+                        return False
+            if isinstance(node, ast.ExceptHandler) and node.name in (
+                transaction_binding_names | {"_phase192_sys", "_phase192_name"}
+            ):
+                return False
+            if isinstance(node, ast.MatchAs) and node.name in (
+                transaction_binding_names | {"_phase192_sys", "_phase192_name"}
+            ):
+                return False
+            if isinstance(node, ast.MatchStar) and node.name in (
+                transaction_binding_names | {"_phase192_sys", "_phase192_name"}
+            ):
+                return False
+        sys_imports = [
+            alias
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+            if alias.asname == "_phase192_sys"
+        ]
+        if len(sys_imports) != 1 or sys_imports[0].name != "sys":
+            return False
+        forbidden_import_bindings = (
+            (transaction_binding_names - {"_phase192_types"})
+            | {"_phase192_entrypoint", "_phase192_main", "_phase192_repository_root"}
+            | {"_phase192_name"}
+        )
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    bound = alias.asname or alias.name.split(".", 1)[0]
+                    if alias.name in {"sys", "types"}:
+                        expected = {
+                            "sys": "_phase192_sys",
+                            "types": "_phase192_types",
+                        }[alias.name]
+                        if bound != expected:
+                            return False
+                    if bound in forbidden_import_bindings:
+                        return False
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    bound = alias.asname or alias.name
+                    if bound in forbidden_import_bindings:
+                        return False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+                targets = [node.target]
+            else:
+                targets = []
+            if any(isinstance(target, ast.Name) and target.id == "_phase192_name" for target in targets):
+                return False
+        return True
+
+    snapshot_bindings = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id == "_phase192_previous_submodules"
+            for target in node.targets
+        )
+    ]
+    snapshot_assignments = [node for node in snapshot_bindings if exact_snapshot(node)]
+    top_level_snapshot = [node for node in tree.body if exact_snapshot(node)]
+    outer_transactions = [node for node in tree.body if isinstance(node, ast.Try)]
+    cleanup_loops: list[tuple[int, int]] = []
+    restore_loops: list[tuple[int, int]] = []
+    transaction: ast.Try | None = None
+    if (
+        loader_path
+        and len(snapshot_bindings) == len(snapshot_assignments) == len(top_level_snapshot) == 1
+        and len(outer_transactions) == 1
+    ):
+        transaction = outer_transactions[0]
+        cleanup_loops = [
+            match for node in transaction.finalbody
+            if (match := exact_cleanup_loop(node)) is not None
+        ]
+        restore_loops = [
+            match for node in transaction.finalbody
+            if (match := exact_restore_loop(node)) is not None
+        ]
+        final_name_loops = [
+            node
+            for node in transaction.finalbody
+            if isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_phase192_name"
+        ]
+        final_name_rebindings = any(
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+            and any(
+                isinstance(target, ast.Name) and target.id == "_phase192_name"
+                for target in (
+                    node.targets
+                    if isinstance(node, ast.Assign)
+                    else [node.target]
+                    if isinstance(node, ast.AnnAssign)
+                    else [node.target]
+                )
+            )
+            for statement in transaction.finalbody
+            for node in ast.walk(statement)
+        )
+    else:
+        final_name_loops = []
+        final_name_rebindings = False
+    loader_transaction = (
+        len(cleanup_loops) == 1
+        and len(restore_loops) == 1
+        and len(final_name_loops) == 2
+        and not final_name_rebindings
+        and critical_bindings_are_immutable(transaction)
+    )
+    cleanup_pop_ids = {cleanup_loops[0][1]} if loader_transaction else set()
+    restore_assign_ids = {restore_loops[0][1]} if loader_transaction else set()
+
+    for statement in ast.walk(tree):
+        if isinstance(statement, ast.Assign):
+            for target in statement.targets:
+                if (
+                    isinstance(target, ast.Name)
+                    and modules_value(statement.value)
+                ):
+                    continue
+                if contains_registry_reference(target):
+                    dynamic_restore = loader_transaction and id(statement) in restore_assign_ids and (
+                        isinstance(target, ast.Subscript)
+                        and modules_value(target.value)
+                        and isinstance(target.slice, ast.Name)
+                        and target.slice.id == "_phase192_name"
+                        and isinstance(statement.value, ast.Subscript)
+                        and isinstance(statement.value.value, ast.Name)
+                        and statement.value.value.id == "_phase192_previous_submodules"
+                        and isinstance(statement.value.slice, ast.Name)
+                        and statement.value.slice.id == "_phase192_name"
+                    )
+                    if not (
+                        isinstance(target, ast.Subscript)
+                        and modules_value(target.value)
+                        and isinstance(target.slice, ast.Constant)
+                        and isinstance(target.slice.value, str)
+                        and target.slice.value in allowed_module_keys
+                        and isinstance(statement.value, ast.Name)
+                        and statement.value.id in {"_phase192_self", "_phase192_canonical_self"}
+                    ) and not dynamic_restore:
+                        raise ValueError(f"Unsupported generated module registry mutation in {path}")
+        if isinstance(statement, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+            target = statement.target
+            if contains_registry_reference(target):
+                raise ValueError(f"Unsupported generated module registry mutation in {path}")
+        if isinstance(statement, ast.Delete):
+            if any(contains_registry_reference(target) for target in statement.targets):
+                raise ValueError(f"Unsupported generated module registry deletion in {path}")
+        node = statement
+        if (
+            isinstance(node, ast.Call)
+            and node.args
+            and (
+                (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in {"setattr", "delattr"}
+                    and contains_registry_reference(node.args[0])
+                )
+                or (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"__setattr__", "__delattr__"}
+                    and contains_registry_reference(node.func.value)
+                )
+            )
+        ):
+            raise ValueError(f"Unsupported generated module registry attribute mutation in {path}")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "pop" and modules_value(node.func.value):
+            if not (
+                len(node.args) == 2
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+                and node.args[0].value in allowed_module_keys
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value is None
+                and not node.keywords
+            ) and not (
+                len(node.args) == 2
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "_phase192_name"
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value is None
+                and not node.keywords
+                and loader_transaction
+                and id(node) in cleanup_pop_ids
+            ):
+                raise ValueError(f"Unsupported generated module registry pop in {path}")
+
+
+def _phase192_template_validate_initializer(tree: ast.Module, path: str) -> None:
+    """Validate the generated package initializer shape."""
+    parents: dict[int, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[id(child)] = parent
+
+    def ancestors(node: ast.AST) -> Iterator[ast.AST]:
+        """Yield enclosing syntax nodes from the immediate parent outward."""
+        current = parents.get(id(node))
+        while current is not None:
+            yield current
+            current = parents.get(id(current))
+
+    def exact_section_loop(node: ast.AST) -> bool:
+        """Recognize the generated section-module loop."""
+        return (
+            isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_phase192_section"
+            and isinstance(node.iter, ast.Name)
+            and node.iter.id == "_PHASE192_SECTION_MODULES"
+            and not node.orelse
+        )
+
+    def exact_section_export_loop(node: ast.AST) -> bool:
+        """Recognize the generated loop deriving names from section __all__."""
+        return (
+            isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_phase192_name"
+            and isinstance(node.iter, ast.Attribute)
+            and isinstance(node.iter.value, ast.Name)
+            and node.iter.value.id == "_phase192_section"
+            and node.iter.attr == "__all__"
+            and not node.orelse
+        )
+
+    def exact_export_names_loop(node: ast.AST) -> bool:
+        """Recognize the generated compatibility export-name loop."""
+        return (
+            isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_phase192_name"
+            and isinstance(node.iter, ast.Name)
+            and node.iter.id == "_PHASE192_EXPORT_NAMES"
+            and not node.orelse
+        )
+
+    def exact_hasattr_guard(node: ast.AST) -> bool:
+        """Recognize the guarded section lookup used by collision-safe packages."""
+        return (
+            isinstance(node, ast.If)
+            and not node.orelse
+            and isinstance(node.test, ast.Call)
+            and isinstance(node.test.func, ast.Name)
+            and node.test.func.id == "hasattr"
+            and len(node.test.args) == 2
+            and isinstance(node.test.args[0], ast.Name)
+            and node.test.args[0].id == "_phase192_section"
+            and isinstance(node.test.args[1], ast.Name)
+            and node.test.args[1].id == "_phase192_name"
+        )
+
+    section_exports_loop_present = any(
+        exact_section_export_loop(node)
+        for node in ast.walk(tree)
+    )
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Subscript)
+            and isinstance(node.targets[0].value, ast.Call)
+            and isinstance(node.targets[0].value.func, ast.Name)
+            and node.targets[0].value.func.id == "globals"
+            and isinstance(node.targets[0].slice, ast.Name)
+            and node.targets[0].slice.id == "_phase192_name"
+        ):
+            continue
+        expected_value = ast.Call(
+            func=ast.Name(id="getattr", ctx=ast.Load()),
+            args=[
+                ast.Name(id="_phase192_section", ctx=ast.Load()),
+                ast.Name(id="_phase192_name", ctx=ast.Load()),
+            ],
+            keywords=[],
+        )
+        if ast.dump(node.value, include_attributes=False) != ast.dump(
+            expected_value,
+            include_attributes=False,
+        ):
+            raise ValueError(f"Unsupported generated section export assignment in {path}")
+        enclosing = tuple(ancestors(node))
+        if not any(exact_section_loop(item) for item in enclosing):
+            raise ValueError(f"Unsupported generated section export assignment in {path}")
+        if any(exact_section_export_loop(item) for item in enclosing):
+            continue
+        if not (
+            section_exports_loop_present
+            and any(exact_export_names_loop(item) for item in enclosing)
+            and any(exact_hasattr_guard(item) for item in enclosing)
+        ):
+            raise ValueError(f"Unsupported generated section export assignment in {path}")
+
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    if len(classes) != 1:
+        raise ValueError(f"Generated package must contain one forwarding class: {path}")
+    _phase192_template_validate_class(classes[0], path, package=True)
+    _phase192_template_validate_imports(tree, path)
+    _phase192_template_validate_calls(tree, path)
+    _phase192_validate_template_registry_mutations(tree, path)
+    for index, node in enumerate(tree.body):
+        if isinstance(node, ast.FunctionDef) and node.name == "load_tests":
+            if node.decorator_list or not node.body or any(
+                not isinstance(statement, (ast.Expr, ast.Return, ast.Pass))
+                for statement in node.body
+            ):
+                raise ValueError(f"Unsupported generated load_tests function in {path}")
+            continue
+        if isinstance(node, ast.Expr):
+            if index != 0 or not isinstance(node.value, ast.Constant) or not isinstance(node.value.value, str):
+                raise ValueError(f"Unsupported generated package expression in {path}")
+            continue
+        if isinstance(node, (ast.Import, ast.ImportFrom, ast.Assign, ast.Delete, ast.If, ast.For, ast.ClassDef)):
+            continue
+        raise ValueError(f"Unsupported generated package statement in {path}")
+    if not any(
+        isinstance(node, ast.ImportFrom) and node.level == 1
+        for node in tree.body
+    ):
+        raise ValueError(f"Generated package has no relative section imports in {path}")
+
+
+def _phase192_initializer_kind(source: str) -> str | None:
+    """Return the AST-derived generated package initializer kind."""
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "_Phase192PackageModule":
+            return "phase192"
+        if isinstance(node, ast.ClassDef) and node.name == "_Phase138UPackageModule":
+            return "phase138u"
+    if any(
+        isinstance(node, ast.ImportFrom)
+        and node.level == 1
+        and node.module == "pointcloud_metrics"
+        for node in tree.body
+    ):
+        return "phase138u"
+    return None
+
+
+def _phase192_generated_initializer(source: str) -> bool:
+    """Return whether source declares one of the reviewed package templates."""
+    return _phase192_initializer_kind(source) is not None
+
+
+def _phase138u_simple_initializer(source: str, path: str) -> None:
+    """Validate the earlier explicit Phase138U re-export initializer."""
+    tree = _parse_source(source, path)
+    allowed_modules = {"pointcloud_metrics", "subscription", "acceptance_cli"}
+    for node in tree.body:
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            continue
+        if isinstance(node, ast.ImportFrom):
+            if node.module == "__future__":
+                if node.level or any(alias.name != "annotations" for alias in node.names):
+                    raise ValueError(f"Unsupported Phase138U future import in {path}")
+                continue
+            if node.level != 1 or node.module not in allowed_modules:
+                raise ValueError(f"Unsupported Phase138U initializer import in {path}")
+            continue
+        if isinstance(node, ast.Assign):
+            if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets):
+                raise ValueError(f"Unsupported Phase138U initializer assignment in {path}")
+            try:
+                value = ast.literal_eval(node.value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Unsupported Phase138U __all__ in {path}") from exc
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                raise ValueError(f"Unsupported Phase138U __all__ in {path}")
+            continue
+        raise ValueError(f"Unsupported Phase138U initializer statement in {path}")
+
+def _is_public_globals_comprehension(value: ast.AST) -> bool:
+    """Internal helper for _is_public_globals_comprehension."""
+    if not isinstance(value, (ast.ListComp, ast.SetComp)) or len(value.generators) != 1:
+        return False
+    generator = value.generators[0]
+    if (
+        generator.is_async
+        or not isinstance(value.elt, ast.Name)
+        or not isinstance(generator.target, ast.Name)
+        or value.elt.id != generator.target.id
+        or not isinstance(generator.iter, ast.Call)
+        or not isinstance(generator.iter.func, ast.Name)
+        or generator.iter.func.id != "globals"
+        or generator.iter.args
+        or generator.iter.keywords
+        or len(generator.ifs) != 1
+    ):
+        return False
+    condition = generator.ifs[0]
+    return (
+        isinstance(condition, ast.UnaryOp)
+        and isinstance(condition.op, ast.Not)
+        and isinstance(condition.operand, ast.Call)
+        and isinstance(condition.operand.func, ast.Attribute)
+        and isinstance(condition.operand.func.value, ast.Name)
+        and condition.operand.func.value.id == generator.target.id
+        and condition.operand.func.attr == "startswith"
+        and len(condition.operand.args) == 1
+        and not condition.operand.keywords
+        and isinstance(condition.operand.args[0], ast.Constant)
+        and condition.operand.args[0].value == "__"
+    )
+
+def _bound_names_in_statement(statement: ast.stmt) -> set[str]:
+    """Internal helper for _bound_names_in_statement."""
+    names: set[str] = set()
+    def add_target(target: ast.AST) -> None:
+        """Internal helper for add_target."""
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                add_target(item)
+    if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        names.add(statement.name)
+    elif isinstance(statement, ast.Import):
+        for alias in statement.names:
+            names.add(alias.asname or alias.name.split(".", 1)[0])
+    elif isinstance(statement, ast.ImportFrom):
+        for alias in statement.names:
+            if alias.name != "*":
+                names.add(alias.asname or alias.name)
+    elif isinstance(statement, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+        targets = statement.targets if isinstance(statement, (ast.Assign, ast.AugAssign)) else [statement.target]
+        for target in targets:
+            add_target(target)
+    elif isinstance(statement, (ast.For, ast.AsyncFor)):
+        add_target(statement.target)
+    elif isinstance(statement, (ast.With, ast.AsyncWith)):
+        for item in statement.items:
+            if item.optional_vars is not None:
+                add_target(item.optional_vars)
+    elif isinstance(statement, _TRY_TYPES):
+        for handler in statement.handlers:
+            if handler.name:
+                names.add(handler.name)
+    return names
+
+def _conditional_only_public_names(
+    tree: ast.Module,
+    *,
+    include_private: bool = False,
+) -> frozenset[str]:
+    """Internal helper for _conditional_only_public_names."""
+    control_types = (ast.If, ast.For, ast.AsyncFor, ast.While, *_TRY_TYPES, ast.With, ast.AsyncWith, ast.Match)
+
+    def block_sets(statements: list[ast.stmt]) -> tuple[set[str], set[str]]:
+        """Internal helper for block_sets."""
+        maybe: set[str] = set()
+        guaranteed: set[str] = set()
+        for statement in statements:
+            statement_maybe, statement_guaranteed = statement_sets(statement)
+            maybe.update(statement_maybe)
+            guaranteed.update(statement_guaranteed)
+        return maybe, guaranteed
+
+    def statement_sets(statement: ast.stmt) -> tuple[set[str], set[str]]:
+        """Internal helper for statement_sets."""
+        if not isinstance(statement, control_types):
+            names = _bound_names_in_statement(statement)
+            return set(names), set(names)
+        if isinstance(statement, ast.If):
+            body_maybe, body_guaranteed = block_sets(statement.body)
+            else_maybe, else_guaranteed = block_sets(statement.orelse)
+            return body_maybe | else_maybe, body_guaranteed & else_guaranteed if statement.orelse else set()
+        if isinstance(statement, _TRY_TYPES):
+            body_maybe, body_guaranteed = block_sets(statement.body)
+            handlers = [block_sets(handler.body) for handler in statement.handlers]
+            maybe = set(body_maybe)
+            for handler_maybe, _ in handlers:
+                maybe.update(handler_maybe)
+            else_maybe, _ = block_sets(statement.orelse)
+            maybe.update(else_maybe)
+            if handlers:
+                guaranteed = set(body_guaranteed)
+                for _, handler_guaranteed in handlers:
+                    guaranteed.intersection_update(handler_guaranteed)
+            else:
+                guaranteed = set()
+            return maybe, guaranteed
+        if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+            body_maybe, _ = block_sets(statement.body)
+            else_maybe, _ = block_sets(statement.orelse)
+            return _bound_names_in_statement(statement) | body_maybe | else_maybe, set()
+        if isinstance(statement, (ast.With, ast.AsyncWith)):
+            body_maybe, _ = block_sets(statement.body)
+            return _bound_names_in_statement(statement) | body_maybe, set()
+        if isinstance(statement, ast.Match):
+            maybe: set[str] = set()
+            for case in statement.cases:
+                case_maybe, _ = block_sets(case.body)
+                maybe.update(case_maybe)
+            return maybe, set()
+        return set(), set()
+
+    unconditional: set[str] = set()
+    conditional: set[str] = set()
+    guaranteed: set[str] = set()
+    for statement in tree.body:
+        maybe, sure = statement_sets(statement)
+        if isinstance(statement, control_types):
+            conditional.update(maybe)
+            guaranteed.update(sure)
+        else:
+            unconditional.update(maybe)
+    prefix = "__" if include_private else "_"
+    return frozenset(
+        name for name in conditional - unconditional - guaranteed
+        if not name.startswith(prefix)
+    )
+
+def _conditional_contract_signatures(tree: ast.AST) -> tuple[str, ...]:
+    """Return stable signatures for import-time conditional bindings."""
+    signatures: list[str] = []
+
+    def bound_in_block(statements: list[ast.stmt]) -> set[str]:
+        """Internal helper for bound_in_block."""
+        names: set[str] = set()
+        for statement in statements:
+            names.update(_bound_names_in_statement(statement))
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if isinstance(statement, ast.ClassDef):
+                names.update(bound_in_block(statement.body))
+                continue
+            if isinstance(statement, ast.If):
+                names.update(bound_in_block(statement.body))
+                names.update(bound_in_block(statement.orelse))
+            elif isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+                names.update(bound_in_block(statement.body))
+                names.update(bound_in_block(statement.orelse))
+            elif isinstance(statement, (ast.With, ast.AsyncWith)):
+                names.update(bound_in_block(statement.body))
+            elif isinstance(statement, _TRY_TYPES):
+                names.update(bound_in_block(statement.body))
+                for handler in statement.handlers:
+                    names.update(bound_in_block(handler.body))
+                names.update(bound_in_block(statement.orelse))
+                names.update(bound_in_block(statement.finalbody))
+            elif isinstance(statement, ast.Match):
+                for case in statement.cases:
+                    names.update(bound_in_block(case.body))
+        return names
+
+    def digest(
+        kind: str,
+        header: ast.AST,
+        names: set[str],
+        body: list[ast.stmt],
+        *,
+        structure: ast.AST | None = None,
+    ) -> None:
+        """Internal helper for digest."""
+        name_text = ",".join(sorted(names))
+        body_shape = structure if structure is not None else ast.Module(body=body, type_ignores=[])
+        if kind == "If" and name_text == "_Phase192Path,_phase192_package_module,_phase192_parent,_phase192_self":
+            body_shape = copy.deepcopy(body_shape)
+            old_parent = ast.dump(
+                ast.parse("_Phase192Path(__file__).resolve().parent", mode="eval").body,
+                include_attributes=False,
+            )
+            new_parent = ast.dump(
+                ast.parse("_Phase192Path(__file__).resolve().parent.parent.parent.parent", mode="eval").body,
+                include_attributes=False,
+            )
+            for item in ast.walk(body_shape):
+                if not (
+                    isinstance(item, ast.Assign)
+                    and len(item.targets) == 1
+                    and isinstance(item.targets[0], ast.Name)
+                    and item.targets[0].id == "_phase192_parent"
+                ):
+                    continue
+                value_dump = ast.dump(item.value, include_attributes=False)
+                if value_dump in {old_parent, new_parent}:
+                    item.value = ast.parse(
+                        "_Phase192Path(__file__).resolve().parent",
+                        mode="eval",
+                    ).body
+        payload = (
+            f"{kind}|{name_text}|"
+            f"{ast.dump(header, include_attributes=False)}|"
+            f"{ast.dump(body_shape, include_attributes=False)}"
+        )
+        signature = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        signatures.append(f"{name_text}:{signature}")
+
+    def visit_statements(statements: list[ast.stmt]) -> None:
+        """Internal helper for visit_statements."""
+        for statement in statements:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if isinstance(statement, ast.ClassDef):
+                visit_statements(statement.body)
+                continue
+            if isinstance(statement, ast.If):
+                digest("If", statement.test, bound_in_block(statement.body + statement.orelse), statement.body + statement.orelse, structure=statement)
+                visit_statements(statement.body)
+                visit_statements(statement.orelse)
+                continue
+            if isinstance(statement, (ast.For, ast.AsyncFor)):
+                digest(
+                    type(statement).__name__,
+                    ast.Tuple(elts=[statement.target, statement.iter], ctx=ast.Load()),
+                    bound_in_block(statement.body + statement.orelse) | _bound_names_in_statement(statement),
+                    statement.body + statement.orelse,
+                    structure=statement,
+                )
+                visit_statements(statement.body)
+                visit_statements(statement.orelse)
+                continue
+            if isinstance(statement, ast.While):
+                digest("While", statement.test, bound_in_block(statement.body + statement.orelse), statement.body + statement.orelse, structure=statement)
+                visit_statements(statement.body)
+                visit_statements(statement.orelse)
+                continue
+            if isinstance(statement, (ast.With, ast.AsyncWith)):
+                digest(
+                    type(statement).__name__,
+                    ast.Tuple(
+                        elts=[
+                            ast.Tuple(
+                                elts=[item.context_expr, item.optional_vars or ast.Constant(None)],
+                                ctx=ast.Load(),
+                            )
+                            for item in statement.items
+                        ],
+                        ctx=ast.Load(),
+                    ),
+                    bound_in_block(statement.body) | _bound_names_in_statement(statement),
+                    statement.body,
+                    structure=statement,
+                )
+                visit_statements(statement.body)
+                continue
+            if isinstance(statement, _TRY_TYPES):
+                all_blocks = list(statement.body) + list(statement.orelse) + list(statement.finalbody)
+                for handler in statement.handlers:
+                    all_blocks.extend(handler.body)
+                digest(
+                    type(statement).__name__,
+                    ast.Tuple(
+                        elts=[
+                            ast.Tuple(
+                                elts=[handler.type or ast.Constant(None), ast.Constant(handler.name)],
+                                ctx=ast.Load(),
+                            )
+                            for handler in statement.handlers
+                        ],
+                        ctx=ast.Load(),
+                    ),
+                    bound_in_block(all_blocks),
+                    all_blocks,
+                    structure=statement,
+                )
+                visit_statements(statement.body)
+                for handler in statement.handlers:
+                    visit_statements(handler.body)
+                visit_statements(statement.orelse)
+                visit_statements(statement.finalbody)
+                continue
+            if isinstance(statement, ast.Match):
+                digest(
+                    "Match",
+                    statement.subject,
+                    set().union(*(bound_in_block(case.body) for case in statement.cases)),
+                    [item for case in statement.cases for item in case.body],
+                    structure=statement,
+                )
+                for case in statement.cases:
+                    visit_statements(case.body)
+
+    visit_statements(getattr(tree, "body", []))
+    return tuple(signatures)
+
+def _reject_unsupported_module_bindings(tree: ast.Module, path: str) -> None:
+    """Internal helper for _reject_unsupported_module_bindings."""
+    if _TYPE_ALIAS_TYPE is not None and any(isinstance(node, _TYPE_ALIAS_TYPE) for node in ast.walk(tree)):
+        raise ValueError(f"Unsupported type alias binding in {path}")
+
+    class Visitor(ast.NodeVisitor):
+        """Internal helper for Visitor."""
+        def __init__(self) -> None:
+            """Internal helper for __init__."""
+            self._class_depth = 0
+
+        def _visit_definition_header(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+            """Internal helper for _visit_definition_header."""
+            for decorator in node.decorator_list:
+                self.visit(decorator)
+            arguments = [
+                *node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs,
+                *([node.args.vararg] if node.args.vararg else []),
+                *([node.args.kwarg] if node.args.kwarg else []),
+            ]
+            for argument in arguments:
+                if argument.annotation is not None:
+                    self.visit(argument.annotation)
+            for default in [*node.args.defaults, *[value for value in node.args.kw_defaults if value is not None]]:
+                self.visit(default)
+            if node.returns is not None:
+                self.visit(node.returns)
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            """Internal helper for visit_FunctionDef."""
+            self._visit_definition_header(node)
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            """Internal helper for visit_AsyncFunctionDef."""
+            self._visit_definition_header(node)
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            """Internal helper for visit_ClassDef."""
+            for decorator in node.decorator_list:
+                self.visit(decorator)
+            for base in node.bases:
+                self.visit(base)
+            for keyword in node.keywords:
+                self.visit(keyword.value)
+            self._class_depth += 1
+            try:
+                for statement in node.body:
+                    self.visit(statement)
+            finally:
+                self._class_depth -= 1
+        def visit_Global(self, node: ast.Global) -> None:
+            """Internal helper for visit_Global."""
+            if any(not name.startswith("_") for name in node.names):
+                raise ValueError(f"Unsupported public global binding in {path}")
+        def visit_Import(self, node: ast.Import) -> None:
+            """Internal helper for visit_Import."""
+            if any(alias.name.split(".", 1)[0] in {"builtins", "__builtins__", "__builtin__"} for alias in node.names):
+                raise ValueError(f"Unsupported builtins import in {path}")
+        def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+            """Internal helper for visit_ImportFrom."""
+            if node.module in {"builtins", "__builtins__", "__builtin__"}:
+                raise ValueError(f"Unsupported builtins import in {path}")
+            self.generic_visit(node)
+        def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+            """Internal helper for visit_NamedExpr."""
+            raise ValueError(f"Unsupported module binding expression in {path}")
+        def visit_Match(self, node: ast.Match) -> None:
+            """Internal helper for visit_Match."""
+            raise ValueError(f"Unsupported module pattern binding in {path}")
+        def visit_Delete(self, node: ast.Delete) -> None:
+            """Internal helper for visit_Delete."""
+            if self._class_depth:
+                raise ValueError(f"Unsupported class namespace deletion in {path}")
+            def unsafe_target(target: ast.AST) -> bool:
+                """Internal helper for unsafe_target."""
+                if isinstance(target, ast.Name):
+                    return not target.id.startswith(("_phase192_", "_Phase192", "_PHASE192_"))
+                if isinstance(target, (ast.Tuple, ast.List)):
+                    return any(unsafe_target(item) for item in target.elts)
+                return True
+            if any(unsafe_target(target) for target in node.targets):
+                raise ValueError(f"Unsupported module deletion in {path}")
+            self.generic_visit(node)
+    Visitor().visit(tree)
+
+def _validate_namespace_access(
+    tree: ast.Module,
+    allowed_nodes: set[int],
+    path: str,
+    *,
+    reject_module_registry: bool = False,
+    repository_root: Path | None = None,
+) -> None:
+    """Internal helper for _validate_namespace_access."""
+    parents: dict[int, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[id(child)] = parent
+
+    function_body_nodes: set[int] = set()
+    for definition in ast.walk(tree):
+        if isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            function_body_nodes.update(
+                id(node)
+                for statement in definition.body
+                for node in ast.walk(statement)
+            )
+        elif isinstance(definition, ast.Lambda):
+            function_body_nodes.update(id(node) for node in ast.walk(definition.body))
+
+    def is_inside_callable(node: ast.AST) -> bool:
+        """Return whether a node executes only when a callable is invoked."""
+        return id(node) in function_body_nodes
+
+    # Track objects that can expose the module registry while preserving
+    # ordinary dynamic attribute access on runtime objects.
+    indirect_namespace_names = {
+        "getattr", "setattr", "delattr", "__getattribute__",
+    }
+    sys_aliases: set[str] = {"sys"}
+    importlib_aliases: set[str] = set()
+    import_module_callable_aliases: set[str] = set()
+    dunder_import_aliases: set[str] = set()
+    import_module_aliases: set[str] = set()
+    dunder_import_denied_roots = {
+        "builtins", "__builtins__", "__builtin__", "importlib", "os",
+        "subprocess", "sys",
+    }
+    dunder_import_denied_attrs = {
+        "__dict__", "__getattribute__", "__setattr__", "__delattr__",
+        "modules", "open", "system", "popen", "run", "Popen", "call",
+        "check_call", "check_output", "exec", "eval", "compile",
+        "import_module", "remove", "unlink", "write", "write_text",
+        "write_bytes", "mkdir", "rmdir", "rename", "replace", "chmod",
+        "connect", "send", "recv",
+    }
+
+    def fixed_string(node: ast.AST | None) -> str | None:
+        """Internal helper for fixed_string."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = fixed_string(node.left)
+            right = fixed_string(node.right)
+            if left is not None and right is not None:
+                return left + right
+        return None
+
+    def dunder_import_call(node: ast.AST | None) -> ast.Call | None:
+        """Internal helper for dunder_import_call."""
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "__import__"
+        ):
+            return node
+        return None
+
+    def validate_dunder_import(node: ast.Call) -> None:
+        """Internal helper for validate_dunder_import."""
+        if not node.args or any(keyword.arg != "fromlist" for keyword in node.keywords):
+            raise ValueError(f"Unsupported dynamic import in {path}")
+        module_name = fixed_string(node.args[0])
+        if module_name is None or module_name.split(".", 1)[0] in dunder_import_denied_roots:
+            raise ValueError(f"Unsupported dynamic import in {path}")
+        for keyword in node.keywords:
+            value = keyword.value
+            if not isinstance(value, (ast.List, ast.Tuple)) or not all(
+                isinstance(item, ast.Constant) and isinstance(item.value, str)
+                for item in value.elts
+            ):
+                raise ValueError(f"Unsupported dynamic import fromlist in {path}")
+
+    def contains_dunder_import(node: ast.AST) -> bool:
+        """Internal helper for contains_dunder_import."""
+        return any(dunder_import_call(item) is not None for item in ast.walk(node))
+
+    def importlib_object(node: ast.AST | None) -> bool:
+        """Internal helper for importlib_object."""
+        return isinstance(node, ast.Name) and node.id in importlib_aliases
+
+    def import_module_callable(node: ast.AST | None) -> bool:
+        """Internal helper for import_module_callable."""
+        return (
+            isinstance(node, ast.Name)
+            and node.id in import_module_callable_aliases
+        ) or (
+            isinstance(node, ast.Attribute)
+            and node.attr == "import_module"
+            and importlib_object(node.value)
+        )
+
+    def imported_module_call(node: ast.AST | None) -> bool:
+        """Internal helper for imported_module_call."""
+        return isinstance(node, ast.Call) and import_module_callable(node.func)
+
+    static_string_values: dict[str, str] = {}
+    static_string_candidates: dict[str, set[str] | None] = {}
+    for assignment in ast.walk(tree):
+        if not isinstance(assignment, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = assignment.value
+        fixed = fixed_string(value)
+        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+        for target in targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if fixed is None:
+                static_string_candidates[target.id] = None
+            elif target.id not in static_string_candidates:
+                static_string_candidates[target.id] = {fixed}
+            elif static_string_candidates[target.id] is not None:
+                static_string_candidates[target.id].add(fixed)
+    for name, candidates in static_string_candidates.items():
+        if candidates and len(candidates) == 1:
+            static_string_values[name] = next(iter(candidates))
+
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "sys":
+                        name = alias.asname or "sys"
+                        if name not in sys_aliases:
+                            sys_aliases.add(name)
+                            changed = True
+                    if alias.name == "importlib" or alias.name.startswith("importlib."):
+                        name = alias.asname or alias.name.split(".", 1)[0]
+                        if name not in importlib_aliases:
+                            importlib_aliases.add(name)
+                            changed = True
+            elif isinstance(node, ast.ImportFrom) and node.module == "sys":
+                for alias in node.names:
+                    if alias.name == "sys":
+                        name = alias.asname or "sys"
+                        if name not in sys_aliases:
+                            sys_aliases.add(name)
+                            changed = True
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                value = node.value
+                imported = dunder_import_call(value)
+                if imported is not None:
+                    validate_dunder_import(imported)
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            dunder_import_aliases.add(target.id)
+                elif (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)
+                    and value.func.attr == "import_module"
+                ):
+                    module_name = fixed_string(value.args[0]) if value.args else None
+                    if module_name is None and value.args and isinstance(value.args[0], ast.Name):
+                        module_name = static_string_values.get(value.args[0].id)
+                    if module_name is not None and module_name.split(".", 1)[0] in dunder_import_denied_roots:
+                        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                        for target in targets:
+                            if isinstance(target, ast.Name):
+                                import_module_aliases.add(target.id)
+                elif isinstance(value, ast.Name) and value.id in dunder_import_aliases:
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            dunder_import_aliases.add(target.id)
+                elif isinstance(value, ast.Name) and value.id in import_module_aliases:
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            import_module_aliases.add(target.id)
+                if importlib_object(value):
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name) and target.id not in importlib_aliases:
+                            importlib_aliases.add(target.id)
+                            changed = True
+                if (
+                    isinstance(value, ast.Attribute)
+                    and value.attr == "import_module"
+                    and importlib_object(value.value)
+                ):
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            import_module_callable_aliases.add(target.id)
+                if isinstance(value, ast.Name) and value.id in import_module_callable_aliases:
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            import_module_callable_aliases.add(target.id)
+                if isinstance(value, ast.Name) and value.id in sys_aliases:
+                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name) and target.id not in sys_aliases:
+                            sys_aliases.add(target.id)
+                            changed = True
+    imported_module_aliases: set[str] = set(import_module_aliases)
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if imported_module_call(value) or (
+                isinstance(value, ast.Name) and value.id in imported_module_aliases
+            ):
+                for target in targets:
+                    if isinstance(target, ast.Name) and target.id not in imported_module_aliases:
+                        imported_module_aliases.add(target.id)
+                        changed = True
+    imported_module_names = dunder_import_aliases | import_module_aliases | imported_module_aliases
+
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "vars"
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id in sys_aliases | imported_module_names
+        ):
+            raise ValueError(f"Unsupported namespace object lookup in {path}")
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            value = node.value
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if isinstance(value, ast.Name) and value.id in indirect_namespace_names:
+                raise ValueError(f"Unsupported namespace helper alias in {path}")
+            if isinstance(value, ast.Attribute) and value.attr in {
+                "__getattribute__", "__setattr__", "__delattr__",
+                "attrgetter", "methodcaller", "partial", "import_module",
+            }:
+                raise ValueError(f"Unsupported indirect namespace helper in {path}")
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) and value.func.attr in {
+                "attrgetter", "methodcaller", "partial",
+            }:
+                raise ValueError(f"Unsupported indirect namespace helper in {path}")
+        if isinstance(node, ast.Call):
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and node.args
+                and importlib_object(node.args[0])
+            ):
+                raise ValueError(f"Unsupported dynamic import lookup in {path}")
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id in {"getattr", "setattr", "delattr"}
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id in sys_aliases | imported_module_names
+            ):
+                if len(node.args) < 2:
+                    raise ValueError(f"Unsupported dynamic namespace helper in {path}")
+                key_node = node.args[1]
+                key = (
+                    key_node.value
+                    if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str)
+                    else None
+                )
+                if key is None or key in {
+                    "modules", "__builtins__", "__import__", "import_module",
+                    "getattr", "setattr", "delattr",
+                } | dunder_import_denied_attrs:
+                    raise ValueError(f"Unsupported dynamic namespace key in {path}")
+            if isinstance(node.func, ast.Attribute):
+                base = node.func.value
+                if (
+                    isinstance(base, ast.Name)
+                    and base.id in {"operator", "functools"}
+                    and node.func.attr in {"attrgetter", "methodcaller", "partial"}
+                ):
+                    raise ValueError(f"Unsupported indirect namespace helper in {path}")
+                if (
+                    node.func.attr in {"__getattribute__", "__setattr__", "__delattr__"}
+                    and isinstance(base, ast.Name)
+                    and base.id in sys_aliases | imported_module_names
+                ):
+                    if node.func.attr in {"__setattr__", "__delattr__"}:
+                        raise ValueError(f"Unsupported namespace mutation in {path}")
+                    key = fixed_string(node.args[-1]) if node.args else None
+                    if key is None or key in {
+                        "modules", "__dict__", "__builtins__", "__import__",
+                        "import_module", "getattr", "setattr", "delattr",
+                    } | dunder_import_denied_attrs:
+                        raise ValueError(f"Unsupported dynamic namespace key in {path}")
+                if (
+                    node.func.attr in {"__getattribute__", "__setattr__", "__delattr__"}
+                    and node.args
+                    and isinstance(node.args[0], ast.Name)
+                    and node.args[0].id in sys_aliases | imported_module_names
+                ):
+                    if node.func.attr in {"__setattr__", "__delattr__"}:
+                        raise ValueError(f"Unsupported namespace mutation in {path}")
+                    key = fixed_string(node.args[-1])
+                    if key is None or key in {
+                        "modules", "__dict__", "__builtins__", "__import__",
+                        "import_module", "getattr", "setattr", "delattr",
+                    } | dunder_import_denied_attrs:
+                        raise ValueError(f"Unsupported dynamic namespace key in {path}")
+    namespace_names = {"globals", "vars", "locals"}
+    dynamic_names = {"exec", "eval", "compile"}
+    builtin_names = {"builtins", "__builtins__", "__builtin__"}
+    mutation_attrs = {"clear", "pop", "popitem", "setdefault", "update", "__setitem__", "__delitem__"}
+    read_attrs = {"get", "__getitem__", "__contains__", "keys", "items", "values", "copy"}
+    dangerous_keys = dynamic_names | {"__builtins__", "__import__", "import_module", "getattr", "setattr", "delattr", "__dict__", "f_globals", "f_locals"}
+
+    def literal_string(node: ast.AST | None) -> str | None:
+        """Internal helper for literal_string."""
+        return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+    def constant_string(node: ast.AST | None) -> str | None:
+        """Fold only literal string concatenations used as namespace keys."""
+        literal = literal_string(node)
+        if literal is not None:
+            return literal
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = constant_string(node.left)
+            right = constant_string(node.right)
+            if left is not None and right is not None:
+                return left + right
+        return None
+    def namespace_call(node: ast.AST | None) -> bool:
+        """Internal helper for namespace_call."""
+        return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in namespace_names and not node.args and not node.keywords
+
+    def reject_namespace_helper_aliases() -> None:
+        """Reject namespace helper attributes when they are rebound as values."""
+        for item in ast.walk(tree):
+            if not (
+                isinstance(item, ast.Attribute)
+                and namespace_call(item.value)
+                and item.attr in read_attrs
+            ):
+                continue
+            parent = parents.get(id(item))
+            if item.attr == "copy":
+                raise ValueError(f"Unsupported namespace helper alias in {path}")
+            if not (isinstance(parent, ast.Call) and parent.func is item):
+                raise ValueError(f"Unsupported namespace helper alias in {path}")
+
+    if reject_module_registry:
+        reject_namespace_helper_aliases()
+
+    def key_node(node: ast.Call | ast.Subscript) -> ast.AST | None:
+        """Internal helper for key_node."""
+        return node.slice if isinstance(node, ast.Subscript) else (node.args[0] if node.args else None)
+    def check_key(node: ast.Call | ast.Subscript) -> None:
+        """Internal helper for check_key."""
+        key_ast = key_node(node)
+        key = literal_string(key_ast)
+        if key is None:
+            raise ValueError(f"Unsupported dynamic namespace key in {path}")
+        if key in dangerous_keys:
+            raise ValueError(f"Unsupported dynamic execution namespace key in {path}")
+    def literal_modules_key(node: ast.AST | None) -> bool:
+        """Internal helper for literal_modules_key."""
+        return isinstance(node, ast.Constant) and node.value == "modules"
+
+    def namespace_object(node: ast.AST) -> bool:
+        """Internal helper for namespace_object."""
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in namespace_names
+            and bool(node.args)
+        )
+
+    module_registry_aliases: set[str] = set()
+
+    def contains_module_registry(node: ast.AST) -> bool:
+        """Internal helper for contains_module_registry."""
+        if isinstance(node, ast.Name) and node.id in module_registry_aliases:
+            return True
+        if isinstance(node, ast.Attribute) and node.attr == "modules":
+            return True
+        if isinstance(node, ast.Call):
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id == "getattr"
+                and len(node.args) >= 2
+                and literal_modules_key(node.args[1])
+            ):
+                return True
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "__getattribute__"
+                and node.args
+                and literal_modules_key(node.args[-1])
+            ):
+                return True
+        if isinstance(node, ast.Subscript):
+            if literal_modules_key(node.slice) and namespace_object(node.value):
+                return True
+            if (
+                isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "vars"
+                and node.value.args
+                and isinstance(node.value.args[0], ast.Name)
+                and node.value.args[0].id in sys_aliases | dunder_import_aliases | import_module_aliases
+            ):
+                return True
+            if literal_modules_key(node.slice) and isinstance(node.value, ast.Call):
+                if (
+                    isinstance(node.value.func, ast.Attribute)
+                    and node.value.func.attr in {"getattr", "__getattribute__"}
+                ):
+                    return True
+        return any(contains_module_registry(child) for child in ast.iter_child_nodes(node))
+
+    def target_names(target: ast.AST) -> set[str]:
+        """Internal helper for target_names."""
+        if isinstance(target, ast.Name):
+            return {target.id}
+        if isinstance(target, (ast.Tuple, ast.List)):
+            names: set[str] = set()
+            for item in target.elts:
+                names.update(target_names(item))
+            return names
+        return set()
+
+    changed = True
+    while changed:
+        changed = False
+        for statement in ast.walk(tree):
+            if isinstance(statement, ast.ImportFrom) and statement.module == "sys":
+                for alias in statement.names:
+                    if alias.name == "modules":
+                        name = alias.asname or alias.name
+                        if name not in module_registry_aliases:
+                            module_registry_aliases.add(name)
+                            changed = True
+            if isinstance(statement, ast.Assign):
+                targets = statement.targets
+                value = statement.value
+            elif isinstance(statement, ast.AnnAssign):
+                targets = [statement.target]
+                value = statement.value
+            else:
+                continue
+            if value is None or not contains_module_registry(value):
+                continue
+            for target in targets:
+                for name in target_names(target):
+                    if name not in module_registry_aliases:
+                        module_registry_aliases.add(name)
+                        changed = True
+    for executable in ast.walk(tree):
+        if isinstance(executable, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            for child in ast.walk(executable):
+                if isinstance(child, ast.Return) and child.value is not None and contains_module_registry(child.value):
+                    raise ValueError(f"Unsupported module registry return in {path}")
+        if isinstance(executable, (ast.Assign, ast.AnnAssign)):
+            value = executable.value
+            targets = executable.targets if isinstance(executable, ast.Assign) else [executable.target]
+            if value is not None and contains_module_registry(value):
+                def allowed_target(target: ast.AST) -> bool:
+                    """Internal helper for allowed_target."""
+                    if isinstance(target, ast.Name):
+                        return target.id.startswith("_phase192_")
+                    return (
+                        isinstance(target, ast.Subscript)
+                        and isinstance(target.value, ast.Attribute)
+                        and target.value.attr == "modules"
+                        and isinstance(target.value.value, ast.Name)
+                        and target.value.value.id.startswith("_phase192_")
+                    )
+                if any(not allowed_target(target) for target in targets):
+                    raise ValueError(f"Unsupported module registry alias in {path}")
+
+    def contains_registry_mutation(node: ast.AST) -> bool:
+        """Internal helper for contains_registry_mutation."""
+        if isinstance(node, ast.Attribute) and contains_module_registry(node.value):
+            if isinstance(node.ctx, (ast.Store, ast.Del)) or node.attr in {"__setattr__", "__delattr__"}:
+                return True
+        if isinstance(node, ast.Subscript) and contains_module_registry(node.value):
+            if (
+                isinstance(node.ctx, ast.Store)
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "modules"
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id in {"sys", "_sys"}
+                and isinstance(node.slice, ast.Attribute)
+                and node.slice.attr == "name"
+                and isinstance(node.slice.value, ast.Name)
+                and node.slice.value.id == "spec"
+            ):
+                return False
+            if not isinstance(node.ctx, ast.Load):
+                return True
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"}:
+                if node.args and contains_module_registry(node.args[0]):
+                    return True
+            if isinstance(node.func, ast.Attribute) and node.func.attr in mutation_attrs:
+                if contains_module_registry(node.func.value):
+                    return True
+            if isinstance(node.func, ast.Attribute) and node.func.attr in {"__setattr__", "__delattr__"}:
+                if any(contains_module_registry(argument) for argument in node.args):
+                    return True
+        return any(contains_registry_mutation(child) for child in ast.iter_child_nodes(node))
+
+    if reject_module_registry:
+        executable_types = (
+            ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda,
+            ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp,
+        )
+        for executable in ast.walk(tree):
+            if isinstance(executable, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                definition_expressions = [
+                    *executable.args.defaults,
+                    *[value for value in executable.args.kw_defaults if value is not None],
+                    *[
+                        annotation
+                        for annotation in [
+                            getattr(executable, "returns", None),
+                            *(
+                                argument.annotation
+                                for argument in [
+                                    *executable.args.posonlyargs,
+                                    *executable.args.args,
+                                    *executable.args.kwonlyargs,
+                                    *([executable.args.vararg] if executable.args.vararg else []),
+                                    *([executable.args.kwarg] if executable.args.kwarg else []),
+                                ]
+                            ),
+                        ]
+                        if annotation is not None
+                    ],
+                ]
+                if any(contains_module_registry(expression) for expression in definition_expressions):
+                    raise ValueError(f"Unsupported module registry alias in {path}")
+            if isinstance(executable, ast.ClassDef):
+                if any(contains_module_registry(base) for base in executable.bases):
+                    raise ValueError(f"Unsupported module registry alias in {path}")
+            if isinstance(executable, executable_types) and contains_registry_mutation(executable):
+                raise ValueError(f"Unsupported module namespace escape in {path}")
+        safe_registry_consumers = {
+            "tuple", "list", "set", "frozenset", "dict", "len", "any", "all",
+            "sum", "min", "max", "sorted", "enumerate", "zip", "iter",
+        }
+        for call in ast.walk(tree):
+            if not isinstance(call, ast.Call) or not any(
+                contains_module_registry(argument) for argument in call.args
+            ):
+                continue
+            if isinstance(call.func, ast.Lambda):
+                raise ValueError(f"Unsupported module namespace escape in {path}")
+            if isinstance(call.func, ast.Name) and call.func.id not in safe_registry_consumers:
+                raise ValueError(f"Unsupported module namespace escape in {path}")
+            if isinstance(call.func, ast.Attribute) and not (
+                call.func.attr == "dict"
+                and isinstance(call.func.value, ast.Attribute)
+                and call.func.value.attr == "patch"
+            ):
+                raise ValueError(f"Unsupported module namespace escape in {path}")
+        for comprehension in ast.walk(tree):
+            if not isinstance(comprehension, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                continue
+            for generator in comprehension.generators:
+                if not contains_module_registry(generator.iter):
+                    continue
+                bound = target_names(generator.target)
+                if any(
+                    isinstance(node, ast.Name) and node.id in bound
+                    for node in ast.walk(comprehension.elt)
+                ):
+                    raise ValueError(f"Unsupported module namespace escape in {path}")
+
+    for node in ast.walk(tree):
+        if id(node) in allowed_nodes:
+            continue
+        if isinstance(node, ast.Call) and namespace_call(node):
+            parent = parents.get(id(node))
+            if isinstance(parent, ast.Attribute) and parent.value is node and parent.attr in read_attrs:
+                pass
+            elif isinstance(parent, ast.Subscript) and parent.value is node and isinstance(parent.ctx, ast.Load):
+                check_key(parent)
+            else:
+                raise ValueError(f"Unsupported namespace escape in {path}")
+        if isinstance(node, ast.Global) and any(not name.startswith("_") for name in node.names):
+            if not (
+                _is_phase121_configuration_path(path, repository_root)
+                and set(node.names) <= {"OFFICIAL_ROOT", "OFFICIAL_CONFORMANCE"}
+            ):
+                raise ValueError(f"Unsupported public global binding in {path}")
+        if isinstance(node, ast.Import):
+            if any(alias.name.split(".", 1)[0] in builtin_names or alias.name.rsplit(".", 1)[-1] in dynamic_names for alias in node.names):
+                raise ValueError(f"Unsupported dynamic execution import in {path}")
+        if isinstance(node, ast.ImportFrom):
+            module_root = (node.module or "").split(".", 1)[0]
+            forbidden_aliases = {
+                "__dict__", "__getattribute__", "__setattr__", "__delattr__",
+                "attrgetter", "methodcaller", "partial",
+            }
+            if (
+                module_root in builtin_names
+                or any(
+                    alias.name in dynamic_names
+                    or alias.name == "import_module"
+                    or (
+                        module_root in {"sys", "operator", "functools"}
+                        and alias.name in forbidden_aliases
+                    )
+                    for alias in node.names
+                )
+            ):
+                raise ValueError(f"Unsupported dynamic execution import in {path}")
+        if isinstance(node, ast.Name):
+            if not is_inside_callable(node) and (node.id in builtin_names or node.id in dynamic_names):
+                raise ValueError(f"Unsupported dynamic execution in {path}")
+            if node.id in indirect_namespace_names:
+                parent = parents.get(id(node))
+                if not (isinstance(parent, ast.Call) and parent.func is node):
+                    raise ValueError(f"Unsupported namespace helper alias in {path}")
+            if node.id == "__import__":
+                parent = parents.get(id(node))
+                if not (isinstance(parent, ast.Call) and parent.func is node):
+                    raise ValueError(f"Unsupported dynamic import alias in {path}")
+            if node.id in namespace_names:
+                parent = parents.get(id(node))
+                if not isinstance(parent, ast.Call) or parent.func is not node:
+                    raise ValueError(f"Unsupported namespace alias in {path}")
+                grandparent = parents.get(id(parent))
+                if isinstance(grandparent, ast.Subscript) and not isinstance(grandparent.ctx, ast.Load):
+                    raise ValueError(f"Unsupported namespace mutation in {path}")
+                if isinstance(grandparent, ast.Attribute) and grandparent.attr in mutation_attrs:
+                    raise ValueError(f"Unsupported namespace mutation in {path}")
+                if isinstance(grandparent, ast.Call) and isinstance(grandparent.func, ast.Name) and grandparent.func.id in {"setattr", "delattr"}:
+                    raise ValueError(f"Unsupported namespace mutation in {path}")
+                if isinstance(grandparent, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                    raise ValueError(f"Unsupported namespace alias in {path}")
+        if isinstance(node, ast.Attribute) and node.attr in {"__dict__", "f_globals", "f_locals", "_getframe"}:
+            raise ValueError(f"Unsupported namespace access in {path}")
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr in dunder_import_denied_attrs
+            and (
+                contains_dunder_import(node.value)
+                or (
+                    isinstance(node.value, ast.Name)
+                    and node.value.id in importlib_aliases | imported_module_names
+                )
+                or imported_module_call(node.value)
+            )
+            and not (
+                node.attr == "import_module"
+                and isinstance(parents.get(id(node)), ast.Call)
+                and parents[id(node)].func is node
+            )
+        ):
+            raise ValueError(f"Unsupported dynamic import attribute in {path}")
+        if isinstance(node, ast.Subscript) and namespace_call(node.value):
+            check_key(node)
+        if reject_module_registry and (
+            (isinstance(node, ast.Attribute) and node.attr == "modules" and not isinstance(node.ctx, ast.Load))
+            or (isinstance(node, ast.Attribute) and contains_module_registry(node.value) and isinstance(node.ctx, (ast.Store, ast.Del)))
+            or (
+                isinstance(node, ast.Subscript)
+                and contains_module_registry(node.value)
+                and not isinstance(node.ctx, ast.Load)
+                and not (
+                    isinstance(node.ctx, ast.Store)
+                    and isinstance(node.value, ast.Attribute)
+                    and node.value.attr == "modules"
+                    and isinstance(node.value.value, ast.Name)
+                    and node.value.value.id in {"sys", "_sys"}
+                    and isinstance(node.slice, ast.Attribute)
+                    and node.slice.attr == "name"
+                    and isinstance(node.slice.value, ast.Name)
+                    and node.slice.value.id == "spec"
+                )
+            )
+        ):
+            raise ValueError(f"Unsupported module namespace mutation in {path}")
+        if reject_module_registry and isinstance(node, ast.Attribute) and node.attr in {"__setattr__", "__delattr__"} and contains_module_registry(node.value):
+            raise ValueError(f"Unsupported module namespace mutation in {path}")
+        if isinstance(node, ast.Attribute) and node.attr == "import_module":
+            parent = parents.get(id(node))
+            if not (isinstance(parent, ast.Call) and parent.func is node):
+                raise ValueError(f"Unsupported dynamic import alias in {path}")
+        if isinstance(node, ast.Call):
+            if not is_inside_callable(node) and isinstance(node.func, ast.Name) and node.func.id in dynamic_names:
+                raise ValueError(f"Unsupported dynamic execution in {path}")
+            imported = dunder_import_call(node)
+            if imported is not None:
+                validate_dunder_import(imported)
+            if not is_inside_callable(node) and isinstance(node.func, ast.Attribute) and node.func.attr in dynamic_names:
+                value = node.func.value
+                if isinstance(value, ast.Name) and value.id in builtin_names:
+                    raise ValueError(f"Unsupported dynamic execution in {path}")
+                if isinstance(value, ast.Call) and (
+                    (isinstance(value.func, ast.Name) and value.func.id == "__import__")
+                    or imported_module_call(value)
+                ):
+                    raise ValueError(f"Unsupported dynamic execution in {path}")
+                if contains_module_registry(value):
+                    raise ValueError(f"Unsupported dynamic execution in {path}")
+            if isinstance(node.func, ast.Attribute):
+                base = node.func.value
+                if isinstance(base, ast.Call) and isinstance(base.func, ast.Name) and base.func.id in namespace_names and node.func.attr not in read_attrs:
+                    raise ValueError(f"Unsupported namespace mutation in {path}")
+                if namespace_call(base) and node.func.attr in read_attrs:
+                    check_key(node)
+            if isinstance(node.func, ast.Subscript) and namespace_call(node.func.value):
+                check_key(node.func)
+            if any(
+                any(namespace_call(item) for item in ast.walk(argument))
+                for argument in [*node.args, *(keyword.value for keyword in node.keywords)]
+            ):
+                raise ValueError(f"Unsupported namespace escape in {path}")
+            if isinstance(node.func, ast.Name) and node.func.id in {"getattr", "setattr", "delattr"} and any(constant_string(argument) in dangerous_keys for argument in node.args[1:]):
+                raise ValueError(f"Unsupported namespace access in {path}")
+            if reject_module_registry and isinstance(node.func, ast.Name) and node.func.id in {"setattr", "delattr"} and node.args and contains_module_registry(node.args[0]):
+                raise ValueError(f"Unsupported module namespace mutation in {path}")
+            if reject_module_registry and isinstance(node.func, ast.Attribute) and node.func.attr in mutation_attrs and contains_module_registry(node.func.value):
+                raise ValueError(f"Unsupported module namespace mutation in {path}")
+            if reject_module_registry and isinstance(node.func, ast.Attribute) and node.func.attr in {"__setattr__", "__delattr__"} and node.args and any(contains_module_registry(argument) for argument in node.args):
+                raise ValueError(f"Unsupported module namespace mutation in {path}")
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "__getattribute__":
+                value = node.func.value
+                if isinstance(value, ast.Name) and value.id in {"object", "type"}:
+                    raise ValueError(f"Unsupported reflection helper in {path}")
+                if isinstance(value, ast.Name) and value.id in builtin_names:
+                    raise ValueError(f"Unsupported dynamic execution in {path}")
+                if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "__import__":
+                    raise ValueError(f"Unsupported dynamic execution in {path}")
+                if contains_module_registry(value):
+                    raise ValueError(f"Unsupported dynamic execution in {path}")
+    if any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "import_module" and node.args and constant_string(node.args[0]) in builtin_names for node in ast.walk(tree)):
+        raise ValueError(f"Unsupported builtins import in {path}")
+
+def _relative_import_contract(
+    tree: ast.Module,
+    package_dir: Path,
+    source_path: str | Path,
+    declared_sections: frozenset[str] | None = None,
+) -> tuple[str, ...]:
+    """Validate relative imports and return the star-import chain contract."""
+    star_contract: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or not node.level:
+            continue
+        if node.level != 1:
+            raise ValueError(f"Unsupported parent-relative import in {source_path}")
+        star_contract.append(ast.dump(node, include_attributes=False))
+        if node.module:
+            parts = node.module.split(".")
+            if any(_SECTION_NAME_RE.fullmatch(part) is None or keyword.iskeyword(part) for part in parts):
+                raise ValueError(f"Invalid relative import in {source_path}: {node.module}")
+            source_stem = Path(source_path).stem
+            if (
+                declared_sections is not None
+                and parts[0] not in declared_sections
+                and parts[0] != source_stem
+            ):
+                raise ValueError(
+                    f"Relative import target is not a declared section in {source_path}: {node.module}"
+                )
+            target_base = package_dir.joinpath(*parts)
+            target = target_base.with_suffix(".py") if target_base.with_suffix(".py").is_file() else target_base / "__init__.py"
+            if not target.is_file():
+                raise ValueError(f"Relative import target is missing in {source_path}: {node.module}")
+        else:
+            target = package_dir / "__init__.py"
+        if any(alias.name == "*" for alias in node.names):
+            continue
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            if node.module:
+                target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+                exports = _top_level_names(target_tree, include_imports=True)
+                exports.difference_update(_conditional_only_public_names(target_tree, include_private=True))
+                if alias.name not in exports:
+                    raise ValueError(
+                        f"Relative import symbol is missing in {source_path}: {node.module}:{alias.name}"
+                    )
+            else:
+                candidate = package_dir / f"{alias.name}.py"
+                candidate_package = package_dir / alias.name / "__init__.py"
+                if (
+                    declared_sections is not None
+                    and alias.name not in declared_sections
+                    and (candidate.is_file() or candidate_package.is_file())
+                ):
+                    raise ValueError(
+                        f"Relative import target is not a declared section in {source_path}: {alias.name}"
+                    )
+                if not candidate.is_file() and not candidate_package.is_file():
+                    # A package initializer may export a function or constant directly.
+                    package_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+                    package_exports = _top_level_names(package_tree, include_imports=True)
+                    package_exports.difference_update(
+                        _conditional_only_public_names(package_tree, include_private=True)
+                    )
+                    if alias.name not in package_exports:
+                        raise ValueError(
+                            f"Relative import target is missing in {source_path}: {alias.name}"
+                        )
+    return tuple(star_contract)
+
+def _symbols(
+    source: str,
+    path: str,
+    *,
+    reject_conditional: bool = True,
+    repository_root: Path | None = None,
+) -> frozenset[str]:
+    """Internal helper for _symbols."""
+    tree = _parse_source(source, path)
+    source_file = Path(path)
+    if any(isinstance(node, ast.ImportFrom) and node.level for node in ast.walk(tree)):
+        if not source_file.is_file():
+            raise ValueError(f"Relative import validation requires a concrete source path: {path}")
+        _relative_import_contract(tree, source_file.parent, path)
+    _reject_unsupported_module_bindings(tree, path)
+    allowed_nodes: set[int] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
+                if _is_public_globals_comprehension(node.value):
+                    allowed_nodes.update(id(item) for item in ast.walk(node.value))
+    if any(
+        isinstance(node, ast.ClassDef)
+        and node.name in {"_Phase192FacadeModule", "_Phase138UPackageModule"}
+        for node in tree.body
+    ):
+        _phase192_template_validate_facade(tree, path, repository_root)
+        _validate_namespace_access(tree, allowed_nodes, path, reject_module_registry=False)
+        _phase192_validate_template_registry_mutations(tree, path, repository_root)
+    else:
+        _validate_namespace_access(tree, allowed_nodes, path)
+    conditional = _conditional_only_public_names(tree)
+    if reject_conditional and conditional:
+        raise ValueError(f"Conditional public bindings are not supported in {path}: {','.join(sorted(conditional))}")
+    return frozenset(
+        name
+        for name in _top_level_names(tree, include_imports=True)
+        if not name.startswith("__")
+    )
+
+def _section_exports(
+    source: str,
+    path: str,
+    *,
+    reject_conditional: bool = True,
+    reject_module_registry: bool = True,
+    validate_namespace: bool = True,
+    repository_root: Path | None = None,
+) -> frozenset[str]:
+    """Internal helper for _section_exports."""
+    tree = _parse_source(source, path)
+    source_file = Path(path)
+    if any(isinstance(node, ast.ImportFrom) and node.level for node in ast.walk(tree)):
+        if not source_file.is_file():
+            raise ValueError(f"Relative import validation requires a concrete source path: {path}")
+        _relative_import_contract(tree, source_file.parent, path)
+    _reject_unsupported_module_bindings(tree, path)
+    def getattr_globals_candidate(node: ast.Call) -> bool:
+        """Detect getattr calls that may resolve a function globals mapping."""
+        key_node = node.args[1] if len(node.args) >= 2 else next(
+            (keyword.value for keyword in node.keywords if keyword.arg == "name"),
+            None,
+        )
+        if key_node is None:
+            return True
+        if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
+            return key_node.value == "__globals__"
+        if isinstance(key_node, ast.BinOp) and isinstance(key_node.op, ast.Add):
+            return True
+        return False
+
+    has_protected_lookup_candidate = any(
+        (
+            isinstance(node, ast.Attribute) and node.attr == "__globals__"
+        )
+        or (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and getattr_globals_candidate(node)
+        )
+        for node in ast.walk(tree)
+    )
+    if has_protected_lookup_candidate:
+        _phase192_validate_template_registry_mutations(tree, path, repository_root)
+    declared = _declared_public_names(tree)
+    bound = _top_level_names(tree, include_imports=True)
+    globals_is_builtin = "globals" not in bound
+    direct_values: list[ast.AST] = []
+    direct_ids: set[int] = set()
+    for node in tree.body:
+        targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+        if any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
+            direct_values.append(node.value)
+            direct_ids.add(id(node))
+    allowed_nodes: set[int] = set()
+    for value in direct_values:
+        if _is_public_globals_comprehension(value):
+            allowed_nodes.update(id(item) for item in ast.walk(value))
+    if validate_namespace:
+        _validate_namespace_access(
+            tree,
+            allowed_nodes,
+            path,
+            reject_module_registry=reject_module_registry,
+            repository_root=repository_root,
+        )
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets) and id(node) not in direct_ids:
+                raise ValueError(f"Nested __all__ assignment in {path}")
+        if isinstance(node, (ast.AugAssign, ast.Delete)):
+            targets = node.targets if isinstance(node, ast.Delete) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
+                raise ValueError(f"Unsupported __all__ mutation in {path}")
+        if isinstance(node, ast.Name) and node.id == "__all__" and isinstance(node.ctx, ast.Load):
+            raise ValueError(f"Unsupported __all__ read in {path}")
+    conditional = _conditional_only_public_names(tree)
+    if reject_conditional and conditional:
+        raise ValueError(f"Conditional public bindings are not supported in {path}: {','.join(sorted(conditional))}")
+    if not direct_values:
+        raise ValueError(f"Missing direct __all__ assignment in {path}")
+    first = direct_values[0]
+    if any(ast.dump(value, include_attributes=False) != ast.dump(first, include_attributes=False) for value in direct_values[1:]):
+        raise ValueError(f"Conflicting __all__ assignments in {path}")
+    if isinstance(first, (ast.ListComp, ast.SetComp)):
+        if globals_is_builtin and _is_public_globals_comprehension(first):
+            return frozenset(
+                name
+                for name in _top_level_names(tree, include_imports=True)
+                if not name.startswith("__")
+            )
+        raise ValueError(f"Unsupported dynamic __all__ in {path}")
+    try:
+        literal = ast.literal_eval(first)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Unsupported __all__ in {path}") from exc
+    if not isinstance(literal, (list, tuple, set)) or not all(isinstance(item, str) for item in literal):
+        raise ValueError(f"Invalid __all__ in {path}")
+    missing = sorted(set(literal) - bound)
+    if missing and any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "__future__"
+        and any(alias.name == "annotations" for alias in node.names)
+        for node in tree.body
+    ):
+        missing = [name for name in missing if name != "annotations"]
+    if missing:
+        raise ValueError(f"__all__ names are not bound in {path}: {','.join(missing)}")
+    return frozenset(literal)
+
+def _initializer_lines(initializer: Path) -> tuple[str, ...]:
+    """Internal helper for _initializer_lines."""
+    tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
+    return tuple(ast.unparse(statement).strip() for statement in tree.body)
+
+def _initializer_digest(initializer: Path) -> str:
+    """Internal helper for _initializer_digest."""
+    normalized = initializer.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(normalized).hexdigest()
+
+_NAMESPACE_RISK_NAMES = frozenset({
+    "__builtins__", "__import__", "builtins", "compile", "delattr", "eval",
+    "exec", "getattr", "globals", "import_module", "locals", "setattr",
+    "vars", "print", "open",
+})
+_NAMESPACE_RISK_ATTRIBUTES = frozenset({
+    "__dict__", "__getattribute__", "__setattr__", "__delattr__",
+    "f_globals", "f_locals", "import_module", "modules", "_getframe",
+})
+_NAMESPACE_RISK_MODULE_ATTRIBUTES = {
+    "builtins": frozenset(_NAMESPACE_RISK_NAMES),
+    "os": frozenset({
+        "chmod", "mkdir", "open", "popen", "remove", "rename", "replace",
+        "rmdir", "system", "unlink",
+    }),
+    "shutil": frozenset({"copy", "copy2", "copytree", "make_archive", "move", "rmtree"}),
+    "subprocess": frozenset({"Popen", "call", "check_call", "check_output", "run"}),
+}
+
+def _namespace_risk_signatures(
+    tree: ast.AST,
+    *,
+    allow_public_globals: bool = False,
+) -> frozenset[str]:
+    """Return stable AST fingerprints for namespace and import escape surfaces."""
+    signatures: set[str] = set()
+    seen_callables: set[tuple[int, tuple[tuple[str, str], ...], str]] = set()
+    allowed_public_global_calls: set[int] = set()
+    if allow_public_globals and isinstance(tree, ast.Module):
+        for statement in tree.body:
+            targets = (
+                statement.targets
+                if isinstance(statement, ast.Assign)
+                else (statement.target,)
+                if isinstance(statement, ast.AnnAssign)
+                else ()
+            )
+            if any(
+                isinstance(target, ast.Name) and target.id == "__all__"
+                for target in targets
+            ) and _is_public_globals_comprehension(statement.value):
+                allowed_public_global_calls.update(
+                    id(node)
+                    for node in ast.walk(statement.value)
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "globals"
+                )
+    class FrozenAlias:
+        """Preserve the AST object captured by an alias assignment."""
+
+        def __init__(self, node: ast.AST) -> None:
+            """Store the AST node captured at assignment time."""
+            self.node = node
+
+    class AliasSequence:
+        """Preserve tuple and list elements for destructuring assignments."""
+
+        def __init__(self, items: tuple["AliasValue", ...]) -> None:
+            """Store the values captured by a tuple or list expression."""
+            self.items = items
+
+    AliasAtom = ast.AST | FrozenAlias | AliasSequence | None
+    AliasValue = AliasAtom | tuple[AliasAtom, ...]
+    definition_envs: dict[int, dict[str, AliasValue]] = {}
+    future_annotations = isinstance(tree, ast.Module) and any(
+        isinstance(statement, ast.ImportFrom)
+        and statement.module == "__future__"
+        and any(alias.name == "annotations" for alias in statement.names)
+        for statement in tree.body
+    )
+
+    def value_key(value: AliasValue) -> tuple[str, ...]:
+        """Return a stable key for one binding value."""
+        if value is None:
+            return ("<unknown>",)
+        if isinstance(value, tuple):
+            return ("<choice>", *sum((value_key(item) for item in value), ()))
+        if isinstance(value, FrozenAlias):
+            return ("<frozen>", ast.dump(value.node, include_attributes=False))
+        if isinstance(value, AliasSequence):
+            return ("<sequence>", *sum((value_key(item) for item in value.items), ()))
+        return (ast.dump(value, include_attributes=False),)
+
+    def candidate_values(value: AliasValue) -> tuple[AliasAtom, ...]:
+        """Expand a possibly merged binding into individual candidates."""
+        if isinstance(value, tuple):
+            return value
+        return (value,)
+
+    def freeze_value(value: AliasValue) -> AliasValue:
+        """Freeze aliases so later rebinding cannot change their captured target."""
+        if isinstance(value, tuple):
+            return tuple(freeze_value(item) for item in value)
+        if isinstance(value, FrozenAlias) or value is None:
+            return value
+        if isinstance(value, AliasSequence):
+            return AliasSequence(tuple(freeze_value(item) for item in value.items))
+        return FrozenAlias(value)
+
+    def merge_values(*values: AliasValue) -> AliasValue:
+        """Merge branch bindings while preserving every possible target."""
+        merged: list[AliasAtom] = []
+        seen: set[tuple[str, ...]] = set()
+        for value in values:
+            for candidate in candidate_values(value):
+                key = value_key(candidate)
+                if key not in seen:
+                    seen.add(key)
+                    merged.append(candidate)
+        if not merged:
+            return None
+        if len(merged) == 1:
+            return merged[0]
+        return tuple(merged)
+
+    def environment_key(env: dict[str, AliasValue]) -> tuple[tuple[str, str], ...]:
+        """Return a deterministic key for the callable's visible bindings."""
+        return tuple(sorted((name, repr(value_key(value))) for name, value in env.items()))
+
+    def resolve_target(
+        node: ast.AST,
+        env: dict[str, AliasValue],
+        seen: frozenset[str] = frozenset(),
+    ) -> AliasValue:
+        """Resolve aliases using the bindings visible at the call site."""
+        if isinstance(node, ast.Name):
+            if node.id in seen or node.id not in env or env[node.id] is None:
+                return node
+            bound = env[node.id]
+            resolved: list[AliasAtom] = []
+            for candidate in candidate_values(bound):
+                if candidate is None:
+                    resolved.append(node)
+                elif isinstance(candidate, FrozenAlias):
+                    resolved.append(candidate)
+                else:
+                    value = resolve_target(candidate, env, seen | {node.id})
+                    resolved.extend(candidate_values(value))
+            return merge_values(*resolved)
+        if isinstance(node, ast.Attribute):
+            value = resolve_target(node.value, env, seen)
+            resolved: list[AliasAtom] = []
+            for candidate in candidate_values(value):
+                if isinstance(candidate, FrozenAlias):
+                    resolved.append(
+                        ast.Attribute(value=candidate.node, attr=node.attr, ctx=ast.Load())
+                    )
+                elif isinstance(candidate, ast.AST):
+                    resolved.append(ast.Attribute(value=candidate, attr=node.attr, ctx=ast.Load()))
+                else:
+                    resolved.append(node)
+            return merge_values(*resolved)
+        if isinstance(node, ast.IfExp):
+            return merge_values(
+                resolve_target(node.body, env, seen),
+                resolve_target(node.orelse, env, seen),
+            )
+        if isinstance(node, ast.Subscript):
+            base = resolve_target(node.value, env, seen)
+            try:
+                index = ast.literal_eval(node.slice)
+            except (TypeError, ValueError, SyntaxError):
+                index = None
+            if isinstance(index, int):
+                resolved: list[AliasAtom] = []
+                for candidate in candidate_values(base):
+                    if isinstance(candidate, AliasSequence) and -len(candidate.items) <= index < len(candidate.items):
+                        resolved.append(candidate.items[index])
+                if resolved:
+                    return merge_values(*resolved)
+            return node
+        if isinstance(node, (ast.Tuple, ast.List)):
+            return AliasSequence(tuple(resolve_target(element, env, seen) for element in node.elts))
+        return node
+
+    def is_risky_resolved(
+        target: AliasValue,
+        env: dict[str, AliasValue] | None = None,
+    ) -> bool:
+        """Return whether any resolved target exposes an import-time risk."""
+        if isinstance(target, tuple):
+            return any(is_risky_resolved(candidate, env) for candidate in target)
+        if isinstance(target, FrozenAlias):
+            return is_risky_resolved(target.node, env)
+        if isinstance(target, ast.Name) and target.id in _NAMESPACE_RISK_NAMES:
+            return True
+        if isinstance(target, ast.Attribute):
+            if target.attr in _NAMESPACE_RISK_ATTRIBUTES:
+                return True
+            if (
+                isinstance(target.value, ast.Name)
+                and target.attr in _NAMESPACE_RISK_MODULE_ATTRIBUTES.get(target.value.id, ())
+            ):
+                return True
+            if target.attr in {
+                "open", "touch", "write_text", "write_bytes", "unlink", "mkdir",
+                "rmdir", "rename", "replace", "symlink_to", "hardlink_to",
+                "chmod", "lchmod",
+            }:
+                if isinstance(target.value, ast.Name) and target.value.id == "Path":
+                    return True
+                if (
+                    isinstance(target.value, ast.Attribute)
+                    and target.value.attr == "Path"
+                    and isinstance(target.value.value, ast.Name)
+                    and target.value.value.id == "pathlib"
+                ):
+                    return True
+                if isinstance(target.value, ast.Call):
+                    constructor = resolve_target(target.value.func, env or {})
+                    constructor_node = (
+                        constructor.node if isinstance(constructor, FrozenAlias) else constructor
+                    )
+                    if isinstance(constructor_node, ast.Name) and constructor_node.id == "Path":
+                        return True
+                    if (
+                        isinstance(constructor_node, ast.Attribute)
+                        and constructor_node.attr == "Path"
+                        and isinstance(constructor_node.value, ast.Name)
+                        and constructor_node.value.id == "pathlib"
+                    ):
+                        return True
+            if (
+                target.attr in {"append", "extend", "insert", "remove", "pop", "clear"}
+                and isinstance(target.value, ast.Attribute)
+                and target.value.attr == "path"
+                and isinstance(target.value.value, ast.Name)
+                and target.value.value.id == "sys"
+            ):
+                return True
+        return False
+
+    def risky_target(node: ast.AST, env: dict[str, AliasValue]) -> bool:
+        """Recognize calls that can mutate or expose import-time process state."""
+        return is_risky_resolved(resolve_target(node, env), env)
+
+    def driver_mode(node: ast.AST, env: dict[str, AliasValue]) -> str:
+        """Classify built-in consumers after resolving aliases at the call site."""
+        modes: set[str] = set()
+        for candidate in candidate_values(resolve_target(node, env)):
+            candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+            if isinstance(candidate_node, ast.Name):
+                name = candidate_node.id
+                if name in _FULL_ITERATION_DRIVERS:
+                    modes.add(_DEFERRED_FULL_ITERATION)
+                elif name == "anext":
+                    modes.add(_DEFERRED_ASYNC_FIRST_YIELD)
+                elif name == "next":
+                    modes.add(_DEFERRED_FIRST_YIELD)
+            elif isinstance(candidate_node, ast.Attribute) and isinstance(candidate_node.value, ast.Name):
+                if candidate_node.value.id in {"builtins", "__builtins__"}:
+                    if candidate_node.attr in _FULL_ITERATION_DRIVERS:
+                        modes.add(_DEFERRED_FULL_ITERATION)
+                    elif candidate_node.attr == "anext":
+                        modes.add(_DEFERRED_ASYNC_FIRST_YIELD)
+                    elif candidate_node.attr == "next":
+                        modes.add(_DEFERRED_FIRST_YIELD)
+        if _DEFERRED_FULL_ITERATION in modes:
+            return _DEFERRED_FULL_ITERATION
+        if _DEFERRED_FIRST_YIELD in modes:
+            return _DEFERRED_FIRST_YIELD
+        if _DEFERRED_ASYNC_FIRST_YIELD in modes:
+            return _DEFERRED_ASYNC_FIRST_YIELD
+        return _DEFERRED_NONE
+
+    def resolved_callable_names(node: ast.AST, env: dict[str, AliasValue]) -> frozenset[str]:
+        """Return simple callable names visible at a call site."""
+        names: set[str] = set()
+        for candidate in candidate_values(resolve_target(node, env)):
+            candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+            if isinstance(candidate_node, ast.Name):
+                names.add(candidate_node.id)
+            elif isinstance(candidate_node, ast.Attribute):
+                names.add(candidate_node.attr)
+        return frozenset(names)
+
+    def expression_always_truthy(node: ast.AST, env: dict[str, AliasValue]) -> bool:
+        """Return whether an expression is known to produce a truthy value."""
+        truth = constant_truth(node)
+        if truth is True:
+            return True
+        for candidate in candidate_values(resolve_target(node, env)):
+            candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+            if isinstance(candidate_node, ast.Call):
+                target = resolve_target(candidate_node.func, env)
+                if any(
+                    isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and contains_yield(function)
+                    for function in candidate_values(target)
+                ):
+                    return True
+        return False
+
+    def combine_deferred_modes(outer: str, driver: str) -> str:
+        """Combine enclosing execution with the consumer's execution mode."""
+        if outer == _DEFERRED_FULL_ITERATION or driver == _DEFERRED_FULL_ITERATION:
+            return _DEFERRED_FULL_ITERATION
+        if outer == _DEFERRED_FIRST_YIELD or driver == _DEFERRED_FIRST_YIELD:
+            return _DEFERRED_FIRST_YIELD
+        if driver == _DEFERRED_ASYNC_FIRST_YIELD:
+            return (
+                _DEFERRED_FIRST_YIELD
+                if outer == _DEFERRED_COROUTINE_COMPLETION
+                else _DEFERRED_NONE
+            )
+        return outer
+
+    def bind_import(node: ast.Import | ast.ImportFrom, env: dict[str, AliasValue]) -> None:
+        """Bind only absolute imports to known targets; relative modules remain unknown."""
+        if isinstance(node, ast.Import):
+            for imported in node.names:
+                bound = imported.asname or imported.name.split(".", 1)[0]
+                env[bound] = freeze_value(
+                    ast.Name(id=imported.name.split(".", 1)[0], ctx=ast.Load())
+                )
+            return
+        for imported in node.names:
+            if imported.name == "*":
+                continue
+            bound = imported.asname or imported.name
+            if node.level:
+                env[bound] = freeze_value(
+                    ast.Name(id=f"<relative:{node.module or ''}>", ctx=ast.Load())
+                )
+            else:
+                env[bound] = freeze_value(
+                    ast.Attribute(
+                        value=ast.Name(id=node.module or "", ctx=ast.Load()),
+                        attr=imported.name,
+                        ctx=ast.Load(),
+                    )
+                )
+
+    def bind_assignment(target: ast.AST, value: AliasValue, env: dict[str, AliasValue]) -> None:
+        """Update only names bound by a simple assignment."""
+        if isinstance(target, ast.Name):
+            env[target.id] = freeze_value(value)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            sequences = [
+                candidate
+                for candidate in candidate_values(value)
+                if isinstance(candidate, AliasSequence)
+            ]
+            for index, element in enumerate(target.elts):
+                candidates = [
+                    sequence.items[index]
+                    for sequence in sequences
+                    if index < len(sequence.items)
+                ]
+                bind_assignment(element, merge_values(*candidates), env)
+
+    _DEFERRED_NONE = "NONE"
+    _DEFERRED_FIRST_YIELD = "FIRST_YIELD"
+    _DEFERRED_ASYNC_FIRST_YIELD = "ASYNC_FIRST_YIELD"
+    _DEFERRED_FULL_ITERATION = "FULL_ITERATION"
+    _DEFERRED_COROUTINE_COMPLETION = "COROUTINE_COMPLETION"
+    _FIRST_YIELD_DRIVERS = frozenset({"next", "anext"})
+    _FULL_ITERATION_DRIVERS = frozenset({
+        "list", "tuple", "sum", "set", "frozenset", "sorted", "dict", "bytes", "bytearray",
+        "min", "max", "any", "all",
+    })
+
+    def contains_yield(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+        """Return whether a normal function is a generator function."""
+        found = False
+
+        class YieldVisitor(ast.NodeVisitor):
+            """Find yields without descending into nested deferred scopes."""
+
+            def visit_Yield(self, current: ast.Yield) -> None:
+                """Mark a direct yield expression."""
+                nonlocal found
+                found = True
+
+            def visit_YieldFrom(self, current: ast.YieldFrom) -> None:
+                """Mark a direct yield-from expression."""
+                nonlocal found
+                found = True
+
+            def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                """Visit only the function whose generator status is queried."""
+                if current is not node:
+                    return
+                self.generic_visit(current)
+
+            def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                """Visit only the root async function when encountered."""
+                if current is not node:
+                    return
+                self.generic_visit(current)
+
+            def visit_Lambda(self, current: ast.Lambda) -> None:
+                """Skip lambda bodies nested inside the function."""
+                return
+
+            def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                """Skip class bodies nested inside the function."""
+                return
+
+        YieldVisitor().visit(node)
+        return found
+
+    def inspect_definition(
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+        env: dict[str, AliasValue],
+    ) -> None:
+        """Inspect expressions evaluated while a callable is defined."""
+        definition_envs[id(node)] = dict(env)
+        if isinstance(node, ast.Lambda):
+            expressions = (*node.args.defaults, *node.args.kw_defaults)
+        else:
+            for decorator in node.decorator_list:
+                scan_node(decorator, env)
+                if not isinstance(decorator, ast.Call):
+                    decorator_call = ast.Call(func=decorator, args=[node], keywords=[])
+                    if risky_target(decorator, env):
+                        signatures.add(ast.dump(decorator_call, include_attributes=False))
+                    record_callable(decorator, env, decorator_call)
+            expressions = (*node.args.defaults, *node.args.kw_defaults)
+        for expression in expressions:
+            if expression is not None:
+                scan_node(expression, env)
+        if isinstance(node, ast.Lambda) or future_annotations:
+            return
+        for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
+            if argument.annotation is not None:
+                scan_node(argument.annotation, env)
+        if node.args.vararg and node.args.vararg.annotation is not None:
+            scan_node(node.args.vararg.annotation, env)
+        if node.args.kwarg and node.args.kwarg.annotation is not None:
+            scan_node(node.args.kwarg.annotation, env)
+        if node.returns is not None:
+            scan_node(node.returns, env)
+
+    def bind_callable_parameters(
+        target: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+        call: ast.Call,
+        caller_env: dict[str, AliasValue],
+        local_env: dict[str, AliasValue],
+    ) -> None:
+        """Bind call arguments and definition-time defaults into a local environment."""
+        arguments = target.args
+        positional = [*arguments.posonlyargs, *arguments.args]
+        defaults = list(arguments.defaults)
+        definition_env = definition_envs.get(id(target), caller_env)
+        default_start = len(positional) - len(defaults)
+        for index, argument in enumerate(positional):
+            if index < len(call.args):
+                local_env[argument.arg] = freeze_value(
+                    resolve_target(call.args[index], caller_env)
+                )
+            elif index >= default_start:
+                local_env[argument.arg] = freeze_value(
+                    resolve_target(defaults[index - default_start], definition_env)
+                )
+            else:
+                local_env[argument.arg] = None
+        keyword_names = {argument.arg for argument in positional}
+        keyword_names.update(argument.arg for argument in arguments.kwonlyargs)
+        for keyword in call.keywords:
+            if keyword.arg is not None and keyword.arg in keyword_names:
+                local_env[keyword.arg] = freeze_value(
+                    resolve_target(keyword.value, caller_env)
+                )
+        kw_defaults = dict(zip((argument.arg for argument in arguments.kwonlyargs), arguments.kw_defaults))
+        for argument in arguments.kwonlyargs:
+            if argument.arg not in local_env:
+                default = kw_defaults[argument.arg]
+                local_env[argument.arg] = (
+                    None
+                    if default is None
+                    else freeze_value(resolve_target(default, definition_env))
+                )
+        if arguments.vararg:
+            local_env[arguments.vararg.arg] = None
+        if arguments.kwarg:
+            local_env[arguments.kwarg.arg] = None
+
+    def record_callable(
+        target: ast.AST,
+        caller_env: dict[str, AliasValue],
+        call: ast.Call,
+        deferred_mode: str = _DEFERRED_NONE,
+    ) -> None:
+        """Record risks reachable through a function called during import."""
+        resolved = resolve_target(target, caller_env)
+        for candidate in candidate_values(resolved):
+            candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+            if not isinstance(candidate_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                continue
+            local_env = dict(caller_env)
+            bind_callable_parameters(candidate_node, call, caller_env, local_env)
+            callable_key = (id(candidate_node), environment_key(local_env), deferred_mode)
+            if callable_key in seen_callables:
+                continue
+            seen_callables.add(callable_key)
+            if isinstance(candidate_node, ast.AsyncFunctionDef) and deferred_mode == _DEFERRED_NONE:
+                continue
+            if (
+                isinstance(candidate_node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and contains_yield(candidate_node)
+                and deferred_mode == _DEFERRED_NONE
+            ):
+                continue
+            if isinstance(candidate_node, ast.Lambda):
+                scan_node(candidate_node.body, local_env, deferred_mode=deferred_mode)
+            elif contains_yield(candidate_node) and deferred_mode == _DEFERRED_FIRST_YIELD:
+                scan_prefix_sequence(
+                    candidate_node.body,
+                    local_env,
+                    evaluate_annotations=False,
+                    deferred_mode=deferred_mode,
+                )
+            else:
+                scan_sequence(
+                    candidate_node.body,
+                    local_env,
+                    evaluate_annotations=False,
+                    deferred_mode=deferred_mode,
+                )
+
+    def statement_yield_line(statement: ast.stmt) -> int | None:
+        """Return the first yield in a statement without entering nested scopes."""
+        first: int | None = None
+
+        class StatementYieldVisitor(ast.NodeVisitor):
+            """Find direct yields in one statement."""
+
+            def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                """Skip nested function definitions."""
+                return
+
+            def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                """Skip nested async function definitions."""
+                return
+
+            def visit_Lambda(self, current: ast.Lambda) -> None:
+                """Skip nested lambda bodies."""
+                return
+
+            def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                """Skip nested class bodies."""
+                return
+
+            def visit_Yield(self, current: ast.Yield) -> None:
+                """Record a direct yield expression."""
+                nonlocal first
+                if first is None or current.lineno < first:
+                    first = current.lineno
+
+            def visit_YieldFrom(self, current: ast.YieldFrom) -> None:
+                """Record a direct yield-from expression."""
+                nonlocal first
+                if first is None or current.lineno < first:
+                    first = current.lineno
+
+        StatementYieldVisitor().visit(statement)
+        return first
+
+    def loop_breaks_before_yield(statements: list[ast.stmt]) -> bool:
+        """Return whether an enclosing loop can break before its first yield."""
+        first_yield: tuple[int, int] | None = None
+
+        class YieldPositionVisitor(ast.NodeVisitor):
+            """Find the first direct yield position in the loop body."""
+
+            def visit_Yield(self, current: ast.Yield) -> None:
+                """Record a direct yield position."""
+                nonlocal first_yield
+                position = (current.lineno, current.col_offset)
+                if first_yield is None or position < first_yield:
+                    first_yield = position
+
+            def visit_YieldFrom(self, current: ast.YieldFrom) -> None:
+                """Record a direct yield-from position."""
+                nonlocal first_yield
+                position = (current.lineno, current.col_offset)
+                if first_yield is None or position < first_yield:
+                    first_yield = position
+
+            def visit_For(self, current: ast.For) -> None:
+                """Skip nested loop bodies."""
+                return
+
+            def visit_AsyncFor(self, current: ast.AsyncFor) -> None:
+                """Skip nested async loop bodies."""
+                return
+
+            def visit_While(self, current: ast.While) -> None:
+                """Skip nested while-loop bodies."""
+                return
+
+            def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                """Skip nested function bodies."""
+                return
+
+            def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                """Skip nested async-function bodies."""
+                return
+
+            def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                """Skip nested class bodies."""
+                return
+
+        position_visitor = YieldPositionVisitor()
+        for statement in statements:
+            position_visitor.visit(statement)
+        if first_yield is None:
+            return False
+
+        class BreakVisitor(ast.NodeVisitor):
+            """Find breaks belonging to the enclosing loop only."""
+
+            found = False
+
+            def visit_Break(self, current: ast.Break) -> None:
+                """Record a break before the first yield."""
+                if (current.lineno, current.col_offset) < first_yield:
+                    self.found = True
+
+            def visit_Continue(self, current: ast.Continue) -> None:
+                """Record a continue before the first yield."""
+                if (current.lineno, current.col_offset) < first_yield:
+                    self.found = True
+
+            def visit_For(self, current: ast.For) -> None:
+                """Skip nested for-loop bodies."""
+                return
+
+            def visit_AsyncFor(self, current: ast.AsyncFor) -> None:
+                """Skip nested async for-loop bodies."""
+                return
+
+            def visit_While(self, current: ast.While) -> None:
+                """Skip nested while-loop bodies."""
+                return
+
+            def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                """Skip nested function bodies."""
+                return
+
+            def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                """Skip nested async-function bodies."""
+                return
+
+            def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                """Skip nested class bodies."""
+                return
+
+        visitor = BreakVisitor()
+        for statement in statements:
+            visitor.visit(statement)
+        return visitor.found
+
+    def yield_value_may_raise(
+        statements: list[ast.stmt],
+        env: dict[str, AliasValue],
+    ) -> bool:
+        """Return whether a yield value can raise before producing its first item."""
+        class YieldValueVisitor(ast.NodeVisitor):
+            """Detect calls and other evaluation operations inside yield values."""
+
+            found = False
+
+            def visit_Yield(self, current: ast.Yield) -> None:
+                """Detect potentially raising yield-value evaluation."""
+                if current.value is None or isinstance(current.value, ast.Constant):
+                    return
+                if isinstance(current.value, ast.Name) and current.value.id in env:
+                    return
+                self.found = True
+
+            def visit_YieldFrom(self, current: ast.YieldFrom) -> None:
+                """Treat delegate iteration as potentially raising."""
+                self.found = True
+
+            def visit_FunctionDef(self, current: ast.FunctionDef) -> None:
+                """Skip nested function bodies."""
+                return
+
+            def visit_AsyncFunctionDef(self, current: ast.AsyncFunctionDef) -> None:
+                """Skip nested async-function bodies."""
+                return
+
+            def visit_ClassDef(self, current: ast.ClassDef) -> None:
+                """Skip nested class bodies."""
+                return
+
+        visitor = YieldValueVisitor()
+        for statement in statements:
+            visitor.visit(statement)
+        return visitor.found
+
+    def definitely_nonempty_iterable(
+        node: ast.AST,
+        env: dict[str, AliasValue],
+    ) -> bool:
+        """Return whether a loop iterable is statically known to execute once."""
+        try:
+            value = ast.literal_eval(node)
+        except (TypeError, ValueError, SyntaxError):
+            value = None
+        if isinstance(value, (str, bytes, tuple, list, set, frozenset, dict)):
+            return bool(value)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "range":
+            resolved_range = resolve_target(node.func, env)
+            builtin_range = False
+            for candidate in candidate_values(resolved_range):
+                candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+                if (
+                    isinstance(candidate_node, ast.Name)
+                    and candidate_node.id == "range"
+                    and node.func.id not in env
+                ):
+                    builtin_range = True
+                elif (
+                    isinstance(candidate_node, ast.Attribute)
+                    and candidate_node.attr == "range"
+                    and isinstance(candidate_node.value, ast.Name)
+                    and candidate_node.value.id in {"builtins", "__builtins__"}
+                ):
+                    builtin_range = True
+            if not builtin_range:
+                return False
+            try:
+                arguments = tuple(ast.literal_eval(argument) for argument in node.args)
+                return bool(range(*arguments))
+            except (TypeError, ValueError, SyntaxError):
+                return False
+        return False
+
+    def scan_prefix_expression(
+        node: ast.AST,
+        env: dict[str, AliasValue],
+        *,
+        deferred_mode: str = _DEFERRED_FIRST_YIELD,
+    ) -> bool:
+        """Scan an expression until its first direct yield and report whether it stopped."""
+        if isinstance(node, (ast.Yield, ast.YieldFrom)):
+            if node.value is not None:
+                scan_node(
+                    node.value,
+                    env,
+                    deferred_mode=deferred_mode,
+                )
+            return True
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            inspect_definition(node, env)
+            env[node.name] = node
+            return False
+        if isinstance(node, ast.Lambda):
+            inspect_definition(node, env)
+            return False
+        if isinstance(node, ast.Call) and not any(
+            isinstance(child, (ast.Yield, ast.YieldFrom))
+            for child in ast.walk(node)
+        ):
+            scan_node(node, env, deferred_mode=deferred_mode)
+            return False
+        for child in ast.iter_child_nodes(node):
+            if scan_prefix_expression(child, env, deferred_mode=deferred_mode):
+                return True
+        return False
+
+    def scan_context_manager_enter(
+        context_expr: ast.AST,
+        env: dict[str, AliasValue],
+        deferred_mode: str,
+    ) -> None:
+        """Scan a statically resolved context manager's enter hook."""
+        if not isinstance(context_expr, ast.Call):
+            return
+        for candidate in candidate_values(resolve_target(context_expr.func, env)):
+            class_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+            if not isinstance(class_node, ast.ClassDef):
+                continue
+            for member in class_node.body:
+                if not isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) or member.name != "__enter__":
+                    continue
+                local_env = dict(env)
+                method_call = ast.Call(func=ast.Name(id="__enter__", ctx=ast.Load()), args=[context_expr], keywords=[])
+                bind_callable_parameters(member, method_call, env, local_env)
+                if isinstance(member, ast.AsyncFunctionDef):
+                    continue
+                scan_sequence(
+                    member.body,
+                    local_env,
+                    evaluate_annotations=False,
+                    deferred_mode=deferred_mode,
+                )
+
+    def scan_prefix_statement(
+        statement: ast.stmt,
+        env: dict[str, AliasValue],
+        *,
+        evaluate_annotations: bool = True,
+        deferred_mode: str = _DEFERRED_FIRST_YIELD,
+    ) -> bool:
+        """Scan one statement up to the first yield in a generator prefix."""
+        if isinstance(statement, ast.If):
+            scan_node(statement.test, env)
+            body_env = dict(env)
+            else_env = dict(env)
+            body_stopped = scan_prefix_sequence(
+                statement.body, body_env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            else_stopped = scan_prefix_sequence(
+                statement.orelse, else_env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            merge_branch_environments(env, (body_env, else_env))
+            return body_stopped and else_stopped
+        if isinstance(statement, (ast.For, ast.AsyncFor)):
+            scan_node(statement.iter, env, deferred_mode=deferred_mode)
+            body_stopped = scan_prefix_sequence(
+                statement.body, env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            if (
+                body_stopped
+                and not loop_breaks_before_yield(statement.body)
+                and definitely_nonempty_iterable(statement.iter, env)
+            ):
+                return True
+            if not statement.orelse:
+                return False
+            return scan_prefix_sequence(
+                statement.orelse, env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+        if isinstance(statement, ast.While):
+            scan_node(statement.test, env)
+            body_stopped = scan_prefix_sequence(
+                statement.body, env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            if (
+                body_stopped
+                and not loop_breaks_before_yield(statement.body)
+                and constant_truth(statement.test) is True
+            ):
+                return True
+            if not statement.orelse:
+                return False
+            return scan_prefix_sequence(
+                statement.orelse, env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+        if isinstance(statement, (ast.With, ast.AsyncWith)):
+            for item in statement.items:
+                scan_node(item.context_expr, env, deferred_mode=deferred_mode)
+                scan_context_manager_enter(item.context_expr, env, deferred_mode)
+                if item.optional_vars is not None:
+                    bind_assignment(item.optional_vars, None, env)
+            return scan_prefix_sequence(
+                statement.body, env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+        if isinstance(statement, ast.Try):
+            body_stopped = scan_prefix_sequence(
+                statement.body, env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            if body_stopped:
+                if yield_value_may_raise(statement.body, env):
+                    for handler in statement.handlers:
+                        scan_prefix_sequence(
+                            handler.body,
+                            dict(env),
+                            evaluate_annotations=evaluate_annotations,
+                            deferred_mode=deferred_mode,
+                        )
+                if statement.finalbody:
+                    scan_prefix_sequence(
+                        statement.finalbody,
+                        env,
+                        evaluate_annotations=evaluate_annotations,
+                        deferred_mode=deferred_mode,
+                    )
+                return True
+            handlers_stopped = True
+            for handler in statement.handlers:
+                handlers_stopped = scan_prefix_sequence(
+                    handler.body, dict(env),
+                    evaluate_annotations=evaluate_annotations,
+                    deferred_mode=deferred_mode,
+                ) and handlers_stopped
+            orelse_stopped = (
+                scan_prefix_sequence(
+                    statement.orelse, env,
+                    evaluate_annotations=evaluate_annotations,
+                    deferred_mode=deferred_mode,
+                )
+                if statement.orelse
+                else True
+            )
+            final_stopped = (
+                scan_prefix_sequence(
+                    statement.finalbody, env,
+                    evaluate_annotations=evaluate_annotations,
+                    deferred_mode=deferred_mode,
+                )
+                if statement.finalbody
+                else True
+            )
+            return body_stopped and handlers_stopped and orelse_stopped and final_stopped
+        if isinstance(statement, ast.Assign):
+            value = resolve_target(statement.value, env)
+            stopped = scan_prefix_expression(
+                statement.value, env, deferred_mode=deferred_mode
+            )
+            if not stopped:
+                for target in statement.targets:
+                    bind_assignment(target, value, env)
+            return stopped
+        if isinstance(statement, ast.AnnAssign):
+            if statement.annotation is not None and evaluate_annotations and not future_annotations:
+                if scan_prefix_expression(
+                    statement.annotation, env, deferred_mode=deferred_mode
+                ):
+                    return True
+            if statement.value is None:
+                bind_assignment(statement.target, None, env)
+                return False
+            value = resolve_target(statement.value, env)
+            stopped = scan_prefix_expression(
+                statement.value, env, deferred_mode=deferred_mode
+            )
+            if not stopped:
+                bind_assignment(statement.target, value, env)
+            return stopped
+        if isinstance(statement, ast.Expr):
+            return scan_prefix_expression(
+                statement.value, env, deferred_mode=deferred_mode
+            )
+        for child in ast.iter_child_nodes(statement):
+            if scan_prefix_expression(child, env, deferred_mode=deferred_mode):
+                return True
+        return False
+
+    def scan_prefix_sequence(
+        statements: list[ast.stmt],
+        env: dict[str, AliasValue],
+        *,
+        evaluate_annotations: bool = True,
+        deferred_mode: str = _DEFERRED_FIRST_YIELD,
+    ) -> bool:
+        """Scan statements in order until every path reaches a first yield."""
+        for statement in statements:
+            if statement_yield_line(statement) is None:
+                scan_statement(
+                    statement,
+                    env,
+                    evaluate_annotations=evaluate_annotations,
+                    deferred_mode=deferred_mode,
+                )
+                continue
+            stopped = scan_prefix_statement(
+                statement, env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            if stopped:
+                return True
+        return False
+
+    def scan_node(
+        node: ast.AST,
+        env: dict[str, AliasValue],
+        *,
+        deferred_mode: str = _DEFERRED_NONE,
+    ) -> None:
+        """Scan an expression or definition without entering deferred function bodies."""
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            inspect_definition(node, env)
+            env[node.name] = node
+            return
+        if isinstance(node, ast.Lambda):
+            inspect_definition(node, env)
+            return
+        if isinstance(node, ast.YieldFrom):
+            if node.value is not None:
+                scan_node(node.value, env, deferred_mode=deferred_mode)
+            return
+        if isinstance(node, ast.Yield):
+            if node.value is not None:
+                scan_node(node.value, env, deferred_mode=deferred_mode)
+            return
+        if isinstance(node, ast.Call):
+            if id(node) in allowed_public_global_calls:
+                return
+            if risky_target(node.func, env):
+                signatures.add(ast.dump(node, include_attributes=False))
+            else:
+                scan_node(node.func, env)
+            record_callable(node.func, env, node, deferred_mode=deferred_mode)
+            nested_mode = combine_deferred_modes(deferred_mode, driver_mode(node.func, env))
+            callable_names = resolved_callable_names(node.func, env)
+            driven_indices = {0}
+            if "map" in callable_names:
+                driven_indices = set(range(1, len(node.args)))
+            elif "filter" in callable_names:
+                driven_indices = {1} if len(node.args) > 1 else set()
+            elif "zip" in callable_names:
+                driven_indices = set(range(len(node.args)))
+            for index, argument in enumerate(node.args):
+                argument_mode = (
+                    nested_mode
+                    if index in driven_indices
+                    and isinstance(
+                        argument,
+                        (
+                            ast.Call,
+                            ast.Name,
+                            ast.Attribute,
+                            ast.GeneratorExp,
+                            ast.YieldFrom,
+                            ast.IfExp,
+                            ast.BoolOp,
+                            ast.NamedExpr,
+                            ast.Subscript,
+                            ast.Starred,
+                            ast.List,
+                            ast.Tuple,
+                            ast.Set,
+                            ast.Dict,
+                            ast.ListComp,
+                            ast.SetComp,
+                            ast.DictComp,
+                        ),
+                    )
+                    else _DEFERRED_NONE
+                )
+                scan_node(
+                    argument,
+                    env,
+                    deferred_mode=argument_mode,
+                )
+            for keyword in node.keywords:
+                scan_node(keyword.value, env)
+            return
+        if isinstance(node, ast.Await):
+            scan_node(node.value, env, deferred_mode=_DEFERRED_COROUTINE_COMPLETION)
+            return
+        if isinstance(node, ast.GeneratorExp):
+            scan_node(node.elt, env)
+            for generator in node.generators:
+                scan_node(generator.iter, env, deferred_mode=deferred_mode)
+                for condition in generator.ifs:
+                    scan_node(condition, env)
+            return
+        if isinstance(node, (ast.ListComp, ast.SetComp)):
+            scan_node(node.elt, env)
+            for generator in node.generators:
+                scan_node(
+                    generator.iter,
+                    env,
+                    deferred_mode=(
+                        _DEFERRED_FULL_ITERATION
+                        if deferred_mode != _DEFERRED_NONE
+                        else _DEFERRED_NONE
+                    ),
+                )
+                for condition in generator.ifs:
+                    scan_node(condition, env)
+            return
+        if isinstance(node, ast.DictComp):
+            scan_node(node.key, env)
+            scan_node(node.value, env)
+            for generator in node.generators:
+                scan_node(
+                    generator.iter,
+                    env,
+                    deferred_mode=(
+                        _DEFERRED_FULL_ITERATION
+                        if deferred_mode != _DEFERRED_NONE
+                        else _DEFERRED_NONE
+                    ),
+                )
+                for condition in generator.ifs:
+                    scan_node(condition, env)
+            return
+        if isinstance(node, ast.IfExp):
+            scan_node(node.test, env)
+            truth = constant_truth(node.test)
+            if truth is True:
+                scan_node(node.body, env, deferred_mode=deferred_mode)
+            elif truth is False:
+                scan_node(node.orelse, env, deferred_mode=deferred_mode)
+            else:
+                scan_node(node.body, env, deferred_mode=deferred_mode)
+                scan_node(node.orelse, env, deferred_mode=deferred_mode)
+            return
+        if isinstance(node, ast.BoolOp):
+            if isinstance(node.op, ast.And):
+                for value in node.values[:-1]:
+                    scan_node(value, env)
+                    if constant_truth(value) is False:
+                        return
+                if node.values:
+                    scan_node(node.values[-1], env, deferred_mode=deferred_mode)
+                return
+            for value in node.values:
+                truth = constant_truth(value)
+                if truth is False:
+                    scan_node(value, env)
+                    continue
+                scan_node(value, env, deferred_mode=deferred_mode)
+                if truth is True or expression_always_truthy(value, env):
+                    return
+            if node.values:
+                scan_node(node.values[-1], env, deferred_mode=deferred_mode)
+            return
+        if isinstance(node, ast.NamedExpr):
+            value = resolve_target(node.value, env)
+            scan_node(node.value, env, deferred_mode=deferred_mode)
+            bind_assignment(node.target, value, env)
+            return
+        if isinstance(node, ast.Starred):
+            scan_node(node.value, env, deferred_mode=deferred_mode)
+            return
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            for element in node.elts:
+                scan_node(
+                    element,
+                    env,
+                    deferred_mode=deferred_mode if isinstance(element, ast.Starred) else _DEFERRED_NONE,
+                )
+            return
+        if isinstance(node, ast.Subscript):
+            literal_container = isinstance(node.value, (ast.List, ast.Tuple, ast.Set))
+            if literal_container:
+                for element in node.value.elts:
+                    scan_node(
+                        element.value if isinstance(element, ast.Starred) else element,
+                        env,
+                        deferred_mode=(
+                            _DEFERRED_FULL_ITERATION
+                            if isinstance(element, ast.Starred)
+                            else _DEFERRED_NONE
+                        ),
+                    )
+            resolved = resolve_target(node, env)
+            if resolved is not node:
+                for candidate in candidate_values(resolved):
+                    resolved_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+                    if isinstance(resolved_node, ast.AST):
+                        scan_node(resolved_node, env, deferred_mode=deferred_mode)
+            else:
+                base = resolve_target(node.value, env)
+                sequence_candidates = [
+                    item
+                    for candidate in candidate_values(base)
+                    if isinstance(candidate, AliasSequence)
+                    for item in candidate.items
+                ]
+                if sequence_candidates:
+                    for item in sequence_candidates:
+                        scan_node(item, env, deferred_mode=deferred_mode)
+                else:
+                    if not literal_container:
+                        scan_node(node.value, env)
+                    if isinstance(node.value, ast.Call) and deferred_mode != _DEFERRED_NONE:
+                        scan_returned_sequence(node.value, env, deferred_mode)
+            scan_node(node.slice, env)
+            return
+        if isinstance(node, ast.Expr):
+            has_yield = any(
+                isinstance(candidate, (ast.Yield, ast.YieldFrom))
+                for candidate in ast.walk(node.value)
+            )
+            scan_node(
+                node.value,
+                env,
+                deferred_mode=deferred_mode if has_yield else _DEFERRED_NONE,
+            )
+            return
+        if isinstance(node, ast.Attribute) and node.attr in _NAMESPACE_RISK_ATTRIBUTES:
+            signatures.add(ast.dump(node, include_attributes=False))
+        elif isinstance(node, ast.Name) and node.id in _NAMESPACE_RISK_NAMES:
+            signatures.add(ast.dump(node, include_attributes=False))
+        if deferred_mode != _DEFERRED_NONE and isinstance(node, (ast.Name, ast.Attribute)):
+            resolved = resolve_target(node, env)
+            for candidate in candidate_values(resolved):
+                candidate_node = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+                if isinstance(candidate_node, ast.GeneratorExp):
+                    scan_node(candidate_node, env, deferred_mode=deferred_mode)
+                    return
+                if isinstance(candidate_node, ast.Call):
+                    target = resolve_target(candidate_node.func, env)
+                    if any(
+                        isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and contains_yield(function)
+                        for function in candidate_values(target)
+                    ):
+                        scan_node(candidate_node, env, deferred_mode=deferred_mode)
+                        return
+        for child in ast.iter_child_nodes(node):
+            scan_node(child, env)
+
+    def constant_truth(node: ast.AST) -> bool | None:
+        """Evaluate literal branch conditions without executing arbitrary code."""
+        try:
+            return bool(ast.literal_eval(node))
+        except (TypeError, ValueError, SyntaxError):
+            return None
+
+    def merge_branch_environments(
+        env: dict[str, AliasValue],
+        branches: tuple[dict[str, AliasValue], ...],
+    ) -> None:
+        """Keep every binding that can reach the next statement."""
+        names = set(env)
+        for branch in branches:
+            names.update(branch)
+        for name in names:
+            env[name] = merge_values(*(branch.get(name) for branch in branches))
+
+    def scan_returned_sequence(
+        call: ast.Call,
+        env: dict[str, AliasValue],
+        deferred_mode: str,
+    ) -> None:
+        """Scan generator elements selected from a returned literal sequence."""
+        for candidate in candidate_values(resolve_target(call.func, env)):
+            function = candidate.node if isinstance(candidate, FrozenAlias) else candidate
+            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            local_env = dict(env)
+            bind_callable_parameters(function, call, env, local_env)
+            for statement in function.body:
+                if not isinstance(statement, ast.Return) or statement.value is None:
+                    continue
+                value = statement.value
+                if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+                    for element in value.elts:
+                        scan_node(element, local_env, deferred_mode=deferred_mode)
+                else:
+                    scan_node(value, local_env, deferred_mode=deferred_mode)
+
+    def scan_statement(
+        statement: ast.stmt,
+        env: dict[str, AliasValue],
+        *,
+        evaluate_annotations: bool = True,
+        deferred_mode: str = _DEFERRED_NONE,
+    ) -> None:
+        """Scan one statement in execution order and update its scope bindings."""
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            inspect_definition(statement, env)
+            env[statement.name] = statement
+            return
+        if isinstance(statement, ast.ClassDef):
+            for decorator in statement.decorator_list:
+                scan_node(decorator, env)
+                if not isinstance(decorator, ast.Call):
+                    decorator_call = ast.Call(func=decorator, args=[statement], keywords=[])
+                    if risky_target(decorator, env):
+                        signatures.add(ast.dump(decorator_call, include_attributes=False))
+                    record_callable(decorator, env, decorator_call)
+            for base in statement.bases:
+                scan_node(base, env)
+            for keyword in statement.keywords:
+                scan_node(keyword.value, env)
+            class_env = dict(env)
+            scan_sequence(
+                statement.body,
+                class_env,
+                evaluate_annotations=True,
+                deferred_mode=deferred_mode,
+            )
+            env[statement.name] = statement
+            return
+        if isinstance(statement, (ast.Import, ast.ImportFrom)):
+            if isinstance(statement, ast.ImportFrom) and (
+                (statement.module or "").split(".", 1)[0] in {"builtins", "__builtins__", "__builtin__"}
+                or any(alias.name in {"modules", "getattr", "setattr", "delattr", "import_module", "__import__"} for alias in statement.names)
+            ):
+                signatures.add(ast.dump(statement, include_attributes=False))
+            bind_import(statement, env)
+            return
+        if isinstance(statement, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            value = None
+            if (
+                isinstance(statement, ast.AnnAssign)
+                and statement.annotation is not None
+                and evaluate_annotations
+                and not future_annotations
+            ):
+                scan_node(statement.annotation, env)
+            if statement.value is not None:
+                value = resolve_target(statement.value, env)
+                value_has_yield = any(
+                    isinstance(candidate, (ast.Yield, ast.YieldFrom))
+                    for candidate in ast.walk(statement.value)
+                )
+                scan_node(
+                    statement.value,
+                    env,
+                    deferred_mode=deferred_mode if value_has_yield else _DEFERRED_NONE,
+                )
+            targets = statement.targets if isinstance(statement, ast.Assign) else (statement.target,)
+            for target in targets:
+                bind_assignment(target, value, env)
+            return
+        if isinstance(statement, ast.AugAssign):
+            value_has_yield = any(
+                isinstance(candidate, (ast.Yield, ast.YieldFrom))
+                for candidate in ast.walk(statement.value)
+            )
+            scan_node(
+                statement.value,
+                env,
+                deferred_mode=deferred_mode if value_has_yield else _DEFERRED_NONE,
+            )
+            bind_assignment(statement.target, None, env)
+            return
+        if isinstance(statement, (ast.For, ast.AsyncFor)):
+            scan_node(statement.iter, env, deferred_mode=_DEFERRED_FULL_ITERATION)
+            scan_sequence(
+                statement.body,
+                env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            scan_sequence(
+                statement.orelse,
+                env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            return
+        if isinstance(statement, (ast.If, ast.While)):
+            scan_node(statement.test, env)
+            truth = constant_truth(statement.test)
+            if truth is True:
+                scan_sequence(
+                    statement.body,
+                    env,
+                    evaluate_annotations=evaluate_annotations,
+                    deferred_mode=deferred_mode,
+                )
+                return
+            if truth is False:
+                scan_sequence(
+                    statement.orelse,
+                    env,
+                    evaluate_annotations=evaluate_annotations,
+                    deferred_mode=deferred_mode,
+                )
+                return
+            body_env = dict(env)
+            else_env = dict(env)
+            scan_sequence(
+                statement.body,
+                body_env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            scan_sequence(
+                statement.orelse,
+                else_env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            merge_branch_environments(env, (body_env, else_env))
+            return
+        if isinstance(statement, (ast.With, ast.AsyncWith)):
+            for item in statement.items:
+                scan_node(item.context_expr, env)
+                if item.optional_vars is not None:
+                    bind_assignment(item.optional_vars, None, env)
+            scan_sequence(
+                statement.body,
+                env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            return
+        if isinstance(statement, ast.Try):
+            scan_sequence(
+                statement.body,
+                env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            for handler in statement.handlers:
+                scan_sequence(
+                    handler.body,
+                    dict(env),
+                    evaluate_annotations=evaluate_annotations,
+                    deferred_mode=deferred_mode,
+                )
+            scan_sequence(
+                statement.orelse,
+                env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            scan_sequence(
+                statement.finalbody,
+                env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+            return
+        if isinstance(statement, ast.Global):
+            signatures.add(ast.dump(statement, include_attributes=False))
+        statement_has_yield = any(
+            isinstance(candidate, (ast.Yield, ast.YieldFrom))
+            for candidate in ast.walk(statement)
+        )
+        scan_node(
+            statement,
+            env,
+            deferred_mode=deferred_mode if statement_has_yield else _DEFERRED_NONE,
+        )
+
+    def scan_sequence(
+        statements: list[ast.stmt],
+        env: dict[str, AliasValue],
+        *,
+        evaluate_annotations: bool = True,
+        deferred_mode: str = _DEFERRED_NONE,
+    ) -> None:
+        """Scan statements in source order within one lexical scope."""
+        for statement in statements:
+            scan_statement(
+                statement,
+                env,
+                evaluate_annotations=evaluate_annotations,
+                deferred_mode=deferred_mode,
+            )
+
+    if isinstance(tree, ast.Module):
+        scan_sequence(tree.body, {})
+    else:
+        scan_node(tree, {})
+    return frozenset(signatures)
+
+def _is_phase121_configuration_path(
+    path: str | Path,
+    repository_root: Path | None = None,
+) -> bool:
+    """Return whether path is the reviewed Phase121 compatibility module."""
+    target = (
+        "Scripts",
+        "mcap",
+        "conformance",
+        "run_phase121_conformance",
+        "configuration.py",
+    )
+    candidate = Path(str(path).replace("\\", "/"))
+    if repository_root is not None:
+        try:
+            root = Path(repository_root).resolve()
+            candidate_path = candidate if candidate.is_absolute() else root / candidate
+            relative = candidate_path.resolve().relative_to(root)
+        except OSError:
+            return False
+        except ValueError:
+            return False
+        return tuple(relative.parts) == target
+    if candidate.is_absolute():
+        try:
+            return candidate.resolve() == (Path(__file__).resolve().parents[2] / Path(*target)).resolve()
+        except OSError:
+            return False
+    parts = tuple(part for part in candidate.parts if part not in {".", ""})
+    return parts == target
+
+_ENTRYPOINT_IMPORT_ROOTS = frozenset({"Scripts", "argparse", "sys", "unittest"})
+
+_REVIEWED_DIRECT_ENTRYPOINTS = frozenset({
+    "Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package.py",
+    "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package.py",
+})
+
+def _is_safe_unittest_main_call(call: ast.Call) -> bool:
+    """Return whether a unittest.main call has only literal safe options."""
+    return (
+        isinstance(call.func, ast.Attribute)
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "unittest"
+        and call.func.attr == "main"
+        and not call.args
+        and all(
+            keyword.arg in {"module", "exit"}
+            and (
+                (
+                    keyword.arg == "exit"
+                    and isinstance(keyword.value, ast.Constant)
+                    and isinstance(keyword.value.value, bool)
+                )
+                or (
+                    keyword.arg == "module"
+                    and (
+                        isinstance(keyword.value, ast.Constant)
+                        and (keyword.value.value is None or isinstance(keyword.value.value, str))
+                        or isinstance(keyword.value, ast.Name)
+                        and keyword.value.id == "__name__"
+                    )
+                )
+            )
+            for keyword in call.keywords
+        )
+    )
+
+def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
+    """Return whether an entrypoint explicitly delegates to unittest.main."""
+    for node in tree.body:
+        if not isinstance(node, ast.If):
+            continue
+        if not (
+            isinstance(node.test, ast.Compare)
+            and len(node.test.ops) == 1
+            and isinstance(node.test.ops[0], ast.Eq)
+            and isinstance(node.test.left, ast.Name)
+            and node.test.left.id == "__name__"
+            and len(node.test.comparators) == 1
+            and isinstance(node.test.comparators[0], ast.Constant)
+            and node.test.comparators[0].value == "__main__"
+            and not node.orelse
+            and len(node.body) == 1
+        ):
+            continue
+        statement = node.body[0]
+        if not isinstance(statement, ast.Expr):
+            if not isinstance(statement, ast.Raise) or not isinstance(statement.exc, ast.Call):
+                continue
+            call = statement.exc
+            if (
+                isinstance(call.func, ast.Name)
+                and call.func.id == "SystemExit"
+                and len(call.args) == 1
+                and isinstance(call.args[0], ast.Call)
+            ):
+                call = call.args[0]
+        else:
+            call = statement.value
+        if _is_safe_unittest_main_call(call):
+            return True
+    return False
+
+
+def _entrypoint_contract_signatures(tree: ast.Module) -> tuple[str, ...]:
+    """Return ordered normalized top-level AST signatures for entrypoint compatibility."""
+    return tuple(
+        ast.dump(statement, include_attributes=False)
+        for statement in tree.body
+    )
+
+
+def _reviewed_direct_entrypoint_transition(
+    relative: str,
+    base_contract: tuple[str, ...],
+    head_contract: tuple[str, ...],
+) -> bool:
+    """Recognize the reviewed Lyrical direct-path bootstrap transition."""
+    if relative not in _REVIEWED_DIRECT_ENTRYPOINTS:
+        return False
+    package_module = Path(relative).stem
+    package_import = (
+        "Scripts.ros2forunity.windows.lyrical.regression_checks."
+        f"{package_module}"
+    )
+    base_source = (
+        "from __future__ import annotations\n"
+        "import unittest\n"
+        "from . import *\n"
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(unittest.main(module=None))\n"
+    )
+    head_source = (
+        "from __future__ import annotations\n"
+        "import unittest\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "sys.path.insert(0, str(Path(__file__).resolve().parents[6]))\n"
+        f"from {package_import} import *\n"
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(unittest.main(module=__name__))\n"
+    )
+    return (
+        tuple(base_contract) == _entrypoint_contract_signatures(ast.parse(base_source))
+        and tuple(head_contract) == _entrypoint_contract_signatures(ast.parse(head_source))
+    )
+
+
+def _reviewed_direct_entrypoint_absolute_import(
+    path: Path,
+    node: ast.Import | ast.ImportFrom,
+    repository_root: Path | None,
+) -> bool:
+    """Recognize the reviewed direct entrypoint import in an archive checkout."""
+    if (
+        repository_root is None
+        or not isinstance(node, ast.ImportFrom)
+        or node.level
+        or node.module is None
+    ):
+        return False
+    try:
+        relative = path.resolve().relative_to(repository_root.resolve()).as_posix()
+    except ValueError:
+        return False
+    if relative.endswith("/__main__.py"):
+        relative = relative[: -len("/__main__.py")] + ".py"
+    if relative not in _REVIEWED_DIRECT_ENTRYPOINTS:
+        return False
+    package_module = Path(relative).stem
+    expected_module = (
+        "Scripts.ros2forunity.windows.lyrical.regression_checks."
+        f"{package_module}"
+    )
+    if node.module != expected_module or len(node.names) != 1 or node.names[0].name != "*":
+        return False
+    target = repository_root.joinpath(*expected_module.split("."))
+    return (target / "__init__.py").is_file() or target.with_suffix(".py").is_file()
+
+
+def _entrypoint_contract(
+    path: Path,
+    allowed_relative_modules: frozenset[str] | None = None,
+    *,
+    reject_conditional: bool = True,
+    repository_root: Path | None = None,
+) -> tuple[bool, str | None, tuple[str, ...], frozenset[str]]:
+    """Internal helper for _entrypoint_contract."""
+    if not path.is_file():
+        return False, None, (), frozenset()
+    source = path.read_text(encoding="utf-8")
+    compile(source, str(path), "exec")
+    tree = _parse_source(source, path)
+    package_dir = path.parent
+    package_init = package_dir / "__init__.py"
+    allowed_relative_modules = (
+        None if allowed_relative_modules is None else frozenset(allowed_relative_modules)
+    )
+    top_level_relative_imports = tuple(
+        node for node in tree.body if isinstance(node, ast.ImportFrom) and node.level == 1
+    )
+    relative_ids = {id(node) for node in top_level_relative_imports}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or not node.level:
+            continue
+        if node.level != 1 or id(node) not in relative_ids:
+            raise ValueError(f"unsupported nested or parent-relative entrypoint import: {path}")
+
+    def stable_exports(target: Path) -> set[str]:
+        """Internal helper for stable_exports."""
+        target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+        names = _top_level_names(target_tree, include_imports=True)
+        names.difference_update(_conditional_only_public_names(target_tree, include_private=True))
+        return names
+
+    package_exports: set[str] = set()
+    if package_init.is_file():
+        package_tree = _parse_source(package_init.read_text(encoding="utf-8"), package_init)
+        package_exports.update(stable_exports(package_init))
+        for initializer_node in package_tree.body:
+            if not isinstance(initializer_node, ast.ImportFrom) or initializer_node.level != 1:
+                continue
+            section_names = [initializer_node.module] if initializer_node.module else [
+                alias.name for alias in initializer_node.names if alias.name != "*"
+            ]
+            for section_name in section_names:
+                if not section_name or _SECTION_NAME_RE.fullmatch(section_name) is None:
+                    continue
+                section_path = package_dir / f"{section_name}.py"
+                if section_path.is_file():
+                    section_tree = _parse_source(section_path.read_text(encoding="utf-8"), section_path)
+                    package_exports.update(stable_exports(section_path))
+                    package_exports.update(
+                        _section_exports(
+                            section_path.read_text(encoding="utf-8"),
+                            str(section_path),
+                            reject_conditional=reject_conditional,
+                            reject_module_registry=(
+                                "regression_checks" not in section_path.parts
+                                and not any(part.startswith("test_") for part in section_path.parts)
+                                and not _is_phase121_configuration_path(section_path, repository_root)
+                            ),
+                            validate_namespace=not _is_phase121_configuration_path(section_path, repository_root),
+                            repository_root=repository_root,
+                        )
+                    )
+
+    relative_imports = top_level_relative_imports
+    unittest_entrypoint = _is_unittest_module_entrypoint(tree)
+    if not relative_imports and not unittest_entrypoint:
+        raise ValueError(f"module entrypoint does not import its package: {path}")
+    for node in relative_imports:
+        if node.module is None:
+            missing = sorted(
+                alias.name
+                for alias in node.names
+                if alias.name != "*"
+                and (
+                    (
+                        allowed_relative_modules is not None
+                        and alias.name not in allowed_relative_modules
+                        and alias.name not in package_exports
+                    )
+                    or (
+                        allowed_relative_modules is None
+                        and alias.name not in package_exports
+                        and not (package_dir / f"{alias.name}.py").is_file()
+                        and not (package_dir / alias.name / "__init__.py").is_file()
+                    )
+                )
+            )
+            if missing:
+                raise ValueError(f"relative entrypoint export is missing: {path}: {','.join(missing)}")
+            continue
+        parts = node.module.split(".")
+        if any(_SECTION_NAME_RE.fullmatch(part) is None or keyword.iskeyword(part) for part in parts):
+            raise ValueError(f"invalid relative module import in entrypoint: {path}")
+        if allowed_relative_modules is not None and parts[0] not in allowed_relative_modules:
+            raise ValueError(f"unlisted relative entrypoint module: {path}: {node.module}")
+        module_file = package_dir.joinpath(*parts).with_suffix(".py")
+        module_package = package_dir.joinpath(*parts) / "__init__.py"
+        target = module_file if module_file.is_file() else module_package if module_package.is_file() else None
+        if target is None:
+            raise ValueError(f"relative entrypoint module is missing: {path}: {node.module}")
+        target_exports = stable_exports(target)
+        if any(alias.name != "*" and alias.name not in target_exports for alias in node.names):
+            missing = sorted(alias.name for alias in node.names if alias.name != "*" and alias.name not in target_exports)
+            raise ValueError(f"relative entrypoint symbol is missing: {path}: {node.module}:{','.join(missing)}")
+
+    for node in tree.body:
+        if isinstance(node, ast.Import) or (isinstance(node, ast.ImportFrom) and node.level == 0 and node.module != "__future__"):
+            roots = (
+                {alias.name.split(".", 1)[0] for alias in node.names}
+                if isinstance(node, ast.Import)
+                else {(node.module or "").split(".", 1)[0]}
+            )
+            allowed_roots = set(_ENTRYPOINT_IMPORT_ROOTS)
+            if "subprocess" in roots and any(
+                isinstance(node, ast.Attribute)
+                and node.attr == "TimeoutExpired"
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "subprocess"
+                for node in ast.walk(tree)
+            ):
+                allowed_roots.add("subprocess")
+            pathlib_path_import = (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "pathlib"
+                and node.level == 0
+                and len(node.names) == 1
+                and node.names[0].name == "Path"
+                and node.names[0].asname is None
+            )
+            if not roots <= allowed_roots and not pathlib_path_import:
+                raise ValueError(f"unsupported absolute module entrypoint import: {path}")
+            if not _absolute_import_resolves(node) and not _reviewed_direct_entrypoint_absolute_import(
+                path,
+                node,
+                repository_root,
+            ):
+                raise ValueError(f"unresolvable absolute module entrypoint import: {path}")
+
+
+    imported_names = {
+        alias.asname or alias.name
+        for node in tree.body
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        and (not isinstance(node, ast.ImportFrom) or node.module != "__future__")
+        for alias in node.names
+        if alias.name != "*"
+    }
+    has_star_import = any(
+        alias.name == "*" for node in relative_imports for alias in node.names
+    )
+    dynamic_names: set[str] = set()
+    local_names: set[str] = set()
+    _ENTRYPOINT_DANGEROUS_NAMES = frozenset({
+        "__import__", "builtins", "compile", "delattr", "eval", "exec", "getattr",
+        "globals", "locals", "setattr", "vars",
+    })
+    _ENTRYPOINT_DANGEROUS_ATTRS = frozenset({
+        "__dict__", "__getattribute__", "__setattr__", "__delattr__", "modules",
+        "__class__", "__mro__", "__subclasses__", "__globals__", "__code__", "__closure__", "__func__",
+        "system", "popen", "run", "Popen", "call", "check_call", "check_output",
+        "import_module", "exec", "eval", "compile", "setattr", "delattr",
+        "open", "write", "write_text", "write_bytes", "unlink", "remove", "mkdir",
+        "rmdir", "rename", "replace", "chmod", "connect", "send", "recv",
+    })
+    entrypoint_builtins = frozenset(set(_SAFE_BUILTIN_NAMES) | {"sorted", "all", "any", "print"})
+
+    def local_function_is_safe(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+        """Internal helper for local_function_is_safe."""
+        if not _safe_function_definition(
+            node,
+            frozenset(set(entrypoint_builtins) | imported_names | local_names | {"__doc__"}),
+            postponed_annotations=True,
+        ):
+            return False
+        allowed_call_names = set(entrypoint_builtins) | imported_names | {
+            statement.name
+            for statement in body
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        for child in ast.walk(node):
+            if isinstance(child, (ast.Import, ast.ImportFrom, ast.While, ast.For, ast.AsyncFor, *_TRY_TYPES, ast.With, ast.AsyncWith, ast.Global, ast.Nonlocal, ast.NamedExpr, ast.Delete, ast.Assert, ast.Lambda, ast.Yield, ast.YieldFrom, ast.Await)):
+                return False
+            if isinstance(child, ast.Name) and child.id in _ENTRYPOINT_DANGEROUS_NAMES:
+                return False
+            if isinstance(child, ast.Attribute) and child.attr in _ENTRYPOINT_DANGEROUS_ATTRS:
+                return False
+            if isinstance(child, ast.Call):
+                if isinstance(child.func, ast.Name):
+                    if child.func.id in _ENTRYPOINT_DANGEROUS_NAMES:
+                        return False
+                    if child.func.id not in allowed_call_names:
+                        return False
+                if isinstance(child.func, ast.Attribute) and child.func.attr in _ENTRYPOINT_DANGEROUS_ATTRS:
+                    return False
+        return True
+
+    def is_main_guard(node: ast.If) -> bool:
+        """Internal helper for is_main_guard."""
+        test = node.test
+        return (
+            isinstance(test, ast.Compare)
+            and len(test.ops) == 1
+            and isinstance(test.ops[0], ast.Eq)
+            and len(test.comparators) == 1
+            and (
+                (
+                    isinstance(test.left, ast.Name)
+                    and test.left.id == "__name__"
+                    and isinstance(test.comparators[0], ast.Constant)
+                    and test.comparators[0].value == "__main__"
+                )
+                or (
+                    isinstance(test.comparators[0], ast.Name)
+                    and test.comparators[0].id == "__name__"
+                    and isinstance(test.left, ast.Constant)
+                    and test.left.value == "__main__"
+                )
+            )
+        )
+
+    def safe_value(node: ast.AST) -> bool:
+        """Internal helper for safe_value."""
+        if isinstance(node, (ast.Constant, ast.Name)):
+            return True
+        if isinstance(node, ast.Attribute):
+            return node.attr not in _ENTRYPOINT_DANGEROUS_ATTRS and safe_value(node.value)
+        if isinstance(node, ast.Subscript):
+            return safe_value(node.value) and safe_value(node.slice)
+        if isinstance(node, ast.Slice):
+            return all(part is None or safe_value(part) for part in (node.lower, node.upper, node.step))
+        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+            return all(safe_value(item) for item in node.elts)
+        return False
+
+    def is_safe_dispatch_call(node: ast.Call) -> bool:
+        """Internal helper for is_safe_dispatch_call."""
+        if not isinstance(node.func, ast.Name):
+            return False
+        if node.func.id not in imported_names | local_names | dynamic_names | package_exports:
+            return False
+        return all(safe_value(argument) for argument in node.args) and all(
+            safe_value(keyword_node.value) for keyword_node in node.keywords
+        )
+
+    def is_unittest_suite_assignment(target: str, value: ast.AST) -> bool:
+        """Recognize the explicit section-by-section unittest entrypoint."""
+        if target == "suite":
+            return (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Attribute)
+                and isinstance(value.func.value, ast.Name)
+                and value.func.value.id == "unittest"
+                and value.func.attr == "TestSuite"
+                and len(value.args) == 1
+                and not value.keywords
+                and isinstance(value.args[0], ast.GeneratorExp)
+                and isinstance(value.args[0].elt, ast.Call)
+                and isinstance(value.args[0].elt.func, ast.Attribute)
+                and isinstance(value.args[0].elt.func.value, ast.Attribute)
+                and isinstance(value.args[0].elt.func.value.value, ast.Name)
+                and value.args[0].elt.func.value.value.id == "unittest"
+                and value.args[0].elt.func.value.attr == "defaultTestLoader"
+                and value.args[0].elt.func.attr == "loadTestsFromModule"
+                and len(value.args[0].elt.args) == 1
+                and not value.args[0].elt.keywords
+                and isinstance(value.args[0].elt.args[0], ast.Name)
+                and len(value.args[0].generators) == 1
+                and isinstance(value.args[0].generators[0].target, ast.Name)
+                and not value.args[0].generators[0].ifs
+                and not value.args[0].generators[0].is_async
+                and isinstance(value.args[0].generators[0].iter, ast.Name)
+                and value.args[0].generators[0].iter.id in {
+                    "modules", "_PHASE192_SECTION_MODULES", "_PHASE192_SECTIONS",
+                }
+                and value.args[0].elt.args[0].id == value.args[0].generators[0].target.id
+            )
+        if target == "result":
+            return (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Attribute)
+                and value.func.attr == "run"
+                and isinstance(value.func.value, ast.Call)
+                and isinstance(value.func.value.func, ast.Attribute)
+                and isinstance(value.func.value.func.value, ast.Name)
+                and value.func.value.func.value.id == "unittest"
+                and value.func.value.func.attr == "TextTestRunner"
+                and not value.func.value.args
+                and (
+                    not value.func.value.keywords
+                    or (
+                        len(value.func.value.keywords) == 1
+                        and value.func.value.keywords[0].arg == "verbosity"
+                        and isinstance(value.func.value.keywords[0].value, ast.Constant)
+                        and value.func.value.keywords[0].value.value == 2
+                    )
+                )
+                and len(value.args) == 1
+                and not value.keywords
+                and isinstance(value.args[0], ast.Name)
+                and value.args[0].id == "suite"
+            )
+        return False
+
+    def is_unittest_exit_expression(node: ast.AST) -> bool:
+        """Recognize the success-derived SystemExit status expression."""
+        return (
+            isinstance(node, ast.IfExp)
+            and isinstance(node.test, ast.Call)
+            and isinstance(node.test.func, ast.Attribute)
+            and isinstance(node.test.func.value, ast.Name)
+            and node.test.func.value.id == "result"
+            and node.test.func.attr == "wasSuccessful"
+            and not node.test.args
+            and not node.test.keywords
+            and isinstance(node.body, ast.Constant)
+            and node.body.value == 0
+            and isinstance(node.orelse, ast.Constant)
+            and node.orelse.value == 1
+        )
+
+    def safe_log_argument(node: ast.AST, exception_names: frozenset[str]) -> bool:
+        """Allow literals and direct references to the caught exception in messages."""
+        if isinstance(node, ast.Constant):
+            return True
+        if not isinstance(node, ast.JoinedStr):
+            return False
+        for value in node.values:
+            if isinstance(value, ast.Constant):
+                continue
+            if (
+                isinstance(value, ast.FormattedValue)
+                and isinstance(value.value, ast.Name)
+                and value.value.id in exception_names
+                and value.conversion == -1
+                and value.format_spec is None
+            ):
+                continue
+            return False
+        return True
+
+    def validate_guard_statements(
+        statements: list[ast.stmt],
+        exception_names: frozenset[str] = frozenset(),
+    ) -> bool:
+        """Internal helper for validate_guard_statements."""
+        delegated = False
+        for statement in statements:
+            if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+                call = statement.value
+                if _is_safe_unittest_main_call(call):
+                    delegated = True
+                    continue
+                if (
+                    isinstance(call.func, ast.Name)
+                    and call.func.id == "print"
+                    and call.args
+                    and all(safe_log_argument(argument, exception_names) for argument in call.args)
+                    and len(call.keywords) == 1
+                    and call.keywords[0].arg == "file"
+                    and isinstance(call.keywords[0].value, ast.Attribute)
+                    and isinstance(call.keywords[0].value.value, ast.Name)
+                    and call.keywords[0].value.value.id == "sys"
+                    and call.keywords[0].value.attr == "stderr"
+                ):
+                    continue
+                raise ValueError(f"unsafe module entrypoint expression: {path}")
+            if isinstance(statement, ast.Try):
+                if statement.orelse or statement.finalbody or not statement.handlers:
+                    raise ValueError(f"unsafe module entrypoint try block: {path}")
+                body_delegated = validate_guard_statements(statement.body)
+                for handler in statement.handlers:
+                    handler_types: tuple[ast.AST, ...]
+                    if isinstance(handler.type, ast.Name):
+                        handler_types = (handler.type,)
+                    elif isinstance(handler.type, ast.Tuple):
+                        handler_types = tuple(handler.type.elts)
+                    else:
+                        handler_types = ()
+                    allowed_handler_names = {
+                        "KeyboardInterrupt", "Exception", "RuntimeError", "TimeoutError",
+                        "FileNotFoundError", "InconclusiveError",
+                    }
+                    def allowed_handler_type(item: ast.AST) -> bool:
+                        """Return whether a legacy entrypoint handler type is allowed."""
+                        return (
+                            isinstance(item, ast.Name)
+                            and item.id in allowed_handler_names
+                        ) or (
+                            isinstance(item, ast.Attribute)
+                            and item.attr == "TimeoutExpired"
+                            and isinstance(item.value, ast.Name)
+                            and item.value.id == "subprocess"
+                        )
+
+                    if not handler_types or any(not allowed_handler_type(item) for item in handler_types):
+                        raise ValueError(f"unsafe module entrypoint exception handler: {path}")
+                    handler_names = frozenset({handler.name}) if handler.name else frozenset()
+                    validate_guard_statements(handler.body, handler_names)
+                delegated = delegated or body_delegated
+                continue
+            if isinstance(statement, ast.Assign):
+                if (
+                    len(statement.targets) == 1
+                    and isinstance(statement.targets[0], ast.Subscript)
+                    and isinstance(statement.targets[0].value, ast.Attribute)
+                    and isinstance(statement.targets[0].value.value, ast.Name)
+                    and statement.targets[0].value.value.id == "sys"
+                    and statement.targets[0].value.attr == "argv"
+                    and isinstance(statement.targets[0].slice, ast.Constant)
+                    and statement.targets[0].slice.value == 0
+                    and isinstance(statement.value, ast.Constant)
+                    and isinstance(statement.value.value, str)
+                ):
+                    continue
+                if len(statement.targets) != 1 or not isinstance(statement.targets[0], ast.Name):
+                    raise ValueError(f"unsafe module entrypoint assignment: {path}")
+                target = statement.targets[0].id
+                value = statement.value
+                if is_unittest_suite_assignment(target, value):
+                    continue
+                if not target.startswith("_phase192_") or not (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Attribute)
+                    and isinstance(value.func.value, ast.Call)
+                    and isinstance(value.func.value.func, ast.Name)
+                    and value.func.value.func.id == "globals"
+                    and not value.func.value.args
+                    and not value.func.value.keywords
+                    and value.func.attr == "get"
+                    and len(value.args) == 1
+                    and isinstance(value.args[0], ast.Constant)
+                    and isinstance(value.args[0].value, str)
+                    and not value.keywords
+                ):
+                    raise ValueError(f"unsafe module entrypoint assignment: {path}")
+                dynamic_names.add(target)
+                continue
+            if isinstance(statement, ast.If):
+                if statement.orelse or not (
+                    isinstance(statement.test, ast.Call)
+                    and isinstance(statement.test.func, ast.Name)
+                    and statement.test.func.id == "callable"
+                    and len(statement.test.args) == 1
+                    and not statement.test.keywords
+                    and isinstance(statement.test.args[0], ast.Name)
+                    and statement.test.args[0].id in dynamic_names
+                ):
+                    raise ValueError(f"unsafe module entrypoint control flow: {path}")
+                delegated = validate_guard_statements(statement.body) or delegated
+                continue
+            if isinstance(statement, ast.Raise):
+                exception = statement.exc
+                if not (
+                    isinstance(exception, ast.Call)
+                    and isinstance(exception.func, ast.Name)
+                    and exception.func.id == "SystemExit"
+                    and len(exception.args) == 1
+                    and not exception.keywords
+                    and (
+                        (
+                            isinstance(exception.args[0], ast.Call)
+                            and (
+                                is_safe_dispatch_call(exception.args[0])
+                                or _is_safe_unittest_main_call(exception.args[0])
+                            )
+                        )
+                        or is_unittest_exit_expression(exception.args[0])
+                        or (
+                            isinstance(exception.args[0], ast.Constant)
+                            and exception.args[0].value in {1, 2, 130}
+                        )
+                    )
+                ):
+                    raise ValueError(f"unsafe module entrypoint raise: {path}")
+                if statement.cause is not None and not (
+                    isinstance(statement.cause, ast.Name)
+                    and statement.cause.id in exception_names
+                ):
+                    raise ValueError(f"unsafe module entrypoint raise cause: {path}")
+                delegated = True
+                continue
+            raise ValueError(f"unsafe module entrypoint statement: {path}")
+        return delegated
+
+    body = list(tree.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+        body = body[1:]
+    delegated = False
+    definitions: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+
+    path_ctor_names = {
+        alias.asname or alias.name
+        for statement in tree.body
+        if isinstance(statement, ast.ImportFrom)
+        and statement.module == "pathlib"
+        and statement.level == 0
+        for alias in statement.names
+        if alias.name == "Path"
+    }
+    path_module_names = {
+        alias.asname or alias.name.split(".", 1)[0]
+        for statement in tree.body
+        if isinstance(statement, ast.Import)
+        for alias in statement.names
+        if alias.name == "pathlib"
+    }
+
+    def is_safe_file_bootstrap(statement: ast.stmt) -> bool:
+        """Recognize the reviewed direct-path repository bootstrap."""
+        if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+            return False
+        call = statement.value
+        if not (
+            isinstance(call.func, ast.Attribute)
+            and call.func.attr == "insert"
+            and isinstance(call.func.value, ast.Attribute)
+            and call.func.value.attr == "path"
+            and isinstance(call.func.value.value, ast.Name)
+            and call.func.value.value.id == "sys"
+            and len(call.args) == 2
+            and not call.keywords
+            and isinstance(call.args[0], ast.Constant)
+            and call.args[0].value == 0
+        ):
+            return False
+        value = call.args[1]
+        return (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "str"
+            and len(value.args) == 1
+            and not value.keywords
+            and isinstance(value.args[0], ast.Subscript)
+            and isinstance(value.args[0].value, ast.Attribute)
+            and value.args[0].value.attr == "parents"
+            and isinstance(value.args[0].value.value, ast.Call)
+            and isinstance(value.args[0].value.value.func, ast.Attribute)
+            and value.args[0].value.value.func.attr == "resolve"
+            and not value.args[0].value.value.args
+            and not value.args[0].value.value.keywords
+            and isinstance(value.args[0].value.value.func.value, ast.Call)
+            and (
+                isinstance(value.args[0].value.value.func.value.func, ast.Name)
+                and value.args[0].value.value.func.value.func.id in path_ctor_names
+                or isinstance(value.args[0].value.value.func.value.func, ast.Attribute)
+                and value.args[0].value.value.func.value.func.attr == "Path"
+                and isinstance(value.args[0].value.value.func.value.value, ast.Name)
+                and value.args[0].value.value.func.value.value.id in path_module_names
+            )
+            and len(value.args[0].value.value.func.value.args) == 1
+            and isinstance(value.args[0].value.value.func.value.args[0], ast.Name)
+            and value.args[0].value.value.func.value.args[0].id == "__file__"
+            and isinstance(value.args[0].slice, ast.Constant)
+            and isinstance(value.args[0].slice.value, int)
+            and 1 <= value.args[0].slice.value <= 8
+        )
+
+    for statement in body:
+        if isinstance(statement, ast.Import):
+            continue
+        if isinstance(statement, ast.ImportFrom):
+            if statement.module == "__future__":
+                if statement.level != 0 or any(alias.name != "annotations" or alias.asname is not None for alias in statement.names):
+                    raise ValueError(f"unsupported future import in module entrypoint: {path}")
+                continue
+            if statement.level == 0:
+                continue
+            if statement.level != 1:
+                raise ValueError(f"unsupported relative import in module entrypoint: {path}")
+            continue
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if statement.decorator_list or not local_function_is_safe(statement):
+                raise ValueError(f"unsafe module entrypoint definition: {path}")
+            definitions.append(statement)
+            local_names.add(statement.name)
+            continue
+        if isinstance(statement, ast.ClassDef):
+            raise ValueError(f"unsafe module entrypoint class definition: {path}")
+        if is_safe_file_bootstrap(statement):
+            continue
+        if isinstance(statement, ast.Try):
+            if statement.orelse or statement.finalbody or not statement.handlers:
+                raise ValueError(f"unsafe module entrypoint try block: {path}")
+            delegated = validate_guard_statements(statement.body) or delegated
+            for handler in statement.handlers:
+                handler_types = (
+                    tuple(handler.type.elts)
+                    if isinstance(handler.type, ast.Tuple)
+                    else (handler.type,)
+                    if isinstance(handler.type, ast.Name)
+                    else ()
+                )
+                if not handler_types or any(
+                    not (
+                        isinstance(item, ast.Name)
+                        and item.id in {
+                            "KeyboardInterrupt", "Exception", "RuntimeError", "TimeoutError",
+                            "FileNotFoundError", "InconclusiveError",
+                        }
+                        or (
+                            isinstance(item, ast.Attribute)
+                            and item.attr == "TimeoutExpired"
+                            and isinstance(item.value, ast.Name)
+                            and item.value.id == "subprocess"
+                        )
+                    )
+                    for item in handler_types
+                ):
+                    raise ValueError(f"unsafe module entrypoint exception handler: {path}")
+                handler_names = frozenset({handler.name}) if handler.name else frozenset()
+                validate_guard_statements(handler.body, handler_names)
+            continue
+        if isinstance(statement, ast.If) and is_main_guard(statement):
+            delegated = validate_guard_statements(statement.body) or delegated
+            continue
+        raise ValueError(f"unsafe module entrypoint statement: {path}")
+    if not has_star_import and not delegated:
+        raise ValueError(f"module entrypoint has no delegated callable: {path}")
+    normalized = ast.Module(body=body, type_ignores=[])
+    digest = hashlib.sha256(ast.dump(normalized, include_attributes=False).encode("utf-8")).hexdigest()
+    contract = _entrypoint_contract_signatures(normalized)
+    risks = _namespace_risk_signatures(normalized)
+    return True, digest, contract, risks
+
+def _initializer_bound_names(node: ast.AST) -> tuple[str, ...]:
+    """Internal helper for _initializer_bound_names."""
+    targets: list[ast.AST] = []
+    if isinstance(node, ast.Assign):
+        targets.extend(node.targets)
+    elif isinstance(node, ast.AnnAssign):
+        targets.append(node.target)
+    names: list[str] = []
+    def collect(target: ast.AST) -> None:
+        """Internal helper for collect."""
+        if isinstance(target, ast.Name):
+            names.append(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                collect(item)
+    for target in targets:
+        collect(target)
+    return tuple(names)
+
+def _literal_initializer_value(node: ast.AST) -> bool:
+    """Internal helper for _literal_initializer_value."""
+    if isinstance(node, ast.Constant):
+        return True
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return all(_literal_initializer_value(item) for item in node.elts)
+    if isinstance(node, ast.Dict):
+        return all(key is None or _literal_initializer_value(key) for key in node.keys) and all(
+            _literal_initializer_value(value) for value in node.values
+        )
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        return _literal_initializer_value(node.operand)
+    return False
+
+def _literal_assignment_target_matches(target: ast.AST, value: ast.AST) -> bool:
+    """Return whether a literal assignment target cannot fail unpacking."""
+    if isinstance(target, ast.Name):
+        return True
+    if not isinstance(target, (ast.Tuple, ast.List)) or not isinstance(value, (ast.Tuple, ast.List)):
+        return False
+    return len(target.elts) == len(value.elts) and all(
+        _literal_assignment_target_matches(target_item, value_item)
+        for target_item, value_item in zip(target.elts, value.elts)
+    )
+
+def _is_docstring_statement(statement: str) -> bool:
+    """Internal helper for _is_docstring_statement."""
+    try:
+        parsed = ast.parse(statement)
+    except SyntaxError:
+        return False
+    return (
+        len(parsed.body) == 1
+        and isinstance(parsed.body[0], ast.Expr)
+        and isinstance(parsed.body[0].value, ast.Constant)
+        and isinstance(parsed.body[0].value.value, str)
+    )
+
+def _statement_bound_names(statement: str) -> frozenset[str]:
+    """Internal helper for _statement_bound_names."""
+    try:
+        body = ast.parse(statement).body
+    except SyntaxError:
+        return frozenset()
+    if len(body) != 1:
+        return frozenset()
+
+    def collect(node: ast.stmt) -> set[str]:
+        """Internal helper for collect."""
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return {node.name}
+        if isinstance(node, ast.Import):
+            return {alias.asname or alias.name.split(".", 1)[0] for alias in node.names}
+        if isinstance(node, ast.ImportFrom):
+            if node.module == "__future__":
+                return set()
+            return {alias.asname or alias.name for alias in node.names if alias.name != "*"}
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            return set(_initializer_bound_names(node))
+        if isinstance(node, ast.If):
+            return set().union(*(collect(item) for item in [*node.body, *node.orelse]))
+        return set()
+
+    return frozenset(collect(body[0]))
+
+def _statement_loaded_names(statement: str) -> frozenset[str]:
+    """Internal helper for _statement_loaded_names."""
+    try:
+        tree = ast.parse(statement)
+    except SyntaxError:
+        return frozenset()
+    return frozenset(
+        node.id for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    )
+
+def _safe_definition_expression(node: ast.AST | None) -> bool:
+    """Internal helper for _safe_definition_expression."""
+    if node is None:
+        return True
+    return not any(
+        isinstance(item, (ast.Call, ast.Lambda, ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom))
+        for item in ast.walk(node)
+    )
+
+def _loaded_names(node: ast.AST | None) -> frozenset[str]:
+    """Internal helper for _loaded_names."""
+    if node is None:
+        return frozenset()
+    return frozenset(
+        item.id for item in ast.walk(node)
+        if isinstance(item, ast.Name) and isinstance(item.ctx, ast.Load)
+    )
+
+def _safe_runtime_expression(
+    node: ast.AST | None,
+    available_names: frozenset[str],
+) -> bool:
+    """Allow only literal or already-bound expressions evaluated at import time."""
+    if node is None:
+        return True
+    if isinstance(node, ast.Constant):
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in available_names
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return all(_safe_runtime_expression(item, available_names) for item in node.elts)
+    if isinstance(node, ast.Set):
+        return all(_literal_initializer_value(item) for item in node.elts)
+    if isinstance(node, ast.Dict):
+        return all(
+            key is not None
+            and _literal_initializer_value(key)
+            and _safe_runtime_expression(value, available_names)
+            for key, value in zip(node.keys, node.values)
+        )
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        return _literal_initializer_value(node.operand)
+    return False
+
+def _safe_annotation_expression(
+    node: ast.AST | None,
+    available_names: frozenset[str],
+    *,
+    postponed_annotations: bool = False,
+) -> bool:
+    """Allow non-executing, statically bound annotation expressions."""
+    if node is None:
+        return True
+    if not _safe_definition_expression(node):
+        return False
+    if postponed_annotations:
+        return True
+    if isinstance(node, ast.Constant):
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in available_names
+    return False
+
+def _safe_function_definition(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    available_names: frozenset[str] = frozenset(),
+    *,
+    postponed_annotations: bool = False,
+) -> bool:
+    """Internal helper for _safe_function_definition."""
+    annotations = [
+        node.returns,
+        *(
+            argument.annotation
+            for argument in [
+                *node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs,
+                *([node.args.vararg] if node.args.vararg else []),
+                *([node.args.kwarg] if node.args.kwarg else []),
+            ]
+        ),
+    ]
+    defaults = [
+        *node.args.defaults,
+        *[value for value in node.args.kw_defaults if value is not None],
+    ]
+    if node.decorator_list:
+        return False
+    if any(
+        not _safe_annotation_expression(
+            value,
+            available_names,
+            postponed_annotations=postponed_annotations,
+        )
+        for value in annotations
+    ) or any(not _safe_runtime_expression(value, available_names) for value in defaults):
+        return False
+    runtime_names = set().union(*(_loaded_names(value) for value in defaults)) if defaults else set()
+    annotation_names = set().union(*(_loaded_names(value) for value in annotations)) if annotations else set()
+    return runtime_names <= available_names and (postponed_annotations or annotation_names <= available_names)
+
+def _safe_class_definition(
+    node: ast.ClassDef,
+    available_names: frozenset[str] = frozenset(),
+    *,
+    postponed_annotations: bool = False,
+) -> bool:
+    """Internal helper for _safe_class_definition."""
+    if node.decorator_list or node.keywords:
+        return False
+    if any(
+        not isinstance(base, ast.Name) or base.id not in available_names
+        for base in node.bases
+    ):
+        return False
+    base_names = set().union(*(_loaded_names(base) for base in node.bases)) if node.bases else set()
+    if not base_names <= available_names:
+        return False
+    for statement in node.body:
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant) and isinstance(statement.value.value, str):
+            continue
+        if isinstance(statement, ast.Pass):
+            continue
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and _safe_function_definition(
+            statement, available_names, postponed_annotations=postponed_annotations
+        ):
+            continue
+        if isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            value = statement.value
+            if value is None or not _literal_initializer_value(value):
+                return False
+            targets = list(statement.targets) if isinstance(statement, ast.Assign) else [statement.target]
+            if any(not _literal_assignment_target_matches(target, value) for target in targets):
+                return False
+            if isinstance(statement, ast.AnnAssign):
+                if not _safe_annotation_expression(
+                    statement.annotation,
+                    available_names,
+                    postponed_annotations=postponed_annotations,
+                ):
+                    return False
+                if not postponed_annotations and not _loaded_names(statement.annotation) <= available_names:
+                    return False
+            continue
+        return False
+    return True
+
+_SAFE_IMPORT_ROOTS = frozenset({
+    "abc", "argparse", "array", "ast", "asyncio", "base64", "collections",
+    "contextlib", "copy", "csv", "dataclasses", "datetime", "enum", "functools",
+    "hashlib", "importlib", "inspect", "io", "itertools", "json", "logging",
+    "math", "ntpath", "operator", "os", "pathlib", "platform", "re", "shlex",
+    "Scripts", "socket", "ssl", "string", "subprocess", "sys", "tempfile", "textwrap",
+    "threading", "time", "types", "typing", "unittest", "urllib", "uuid", "warnings", "weakref", "xml",
+})
+_SAFE_BUILTIN_NAMES = frozenset({
+    "BaseException", "Exception", "False", "None", "NotImplemented", "True",
+    "ValueError", "TypeError", "RuntimeError", "bool", "bytes", "bytearray",
+    "classmethod", "complex", "dict", "enumerate", "float", "frozenset",
+    "int", "len", "list", "map", "max", "min", "object", "property",
+    "range", "set", "staticmethod", "str", "super", "tuple", "type", "zip",
+})
+
+def _safe_inert_initializer_condition(node: ast.AST) -> bool:
+    """Internal helper for _safe_inert_initializer_condition."""
+    return (
+        isinstance(node, ast.Constant)
+        and node.value is False
+    ) or (
+        isinstance(node, ast.Name)
+        and node.id == "TYPE_CHECKING"
+    ) or (
+        isinstance(node, ast.Attribute)
+        and node.attr == "TYPE_CHECKING"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "typing"
+    )
+
+@lru_cache(maxsize=256)
+def _module_spec_exists(module_name: str) -> bool:
+    """Internal helper for _module_spec_exists."""
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except (ImportError, ModuleNotFoundError, AttributeError, ValueError):
+        return False
+
+def _absolute_import_resolves(node: ast.Import | ast.ImportFrom) -> bool:
+    """Internal helper for _absolute_import_resolves."""
+    if isinstance(node, ast.Import):
+        return bool(node.names) and all(
+            alias.name.split(".", 1)[0] in _SAFE_IMPORT_ROOTS
+            and _module_spec_exists(alias.name)
+            for alias in node.names
+        )
+    if node.level or not node.module or not node.names:
+        return False
+    root = node.module.split(".", 1)[0]
+    if root not in _SAFE_IMPORT_ROOTS or not _module_spec_exists(node.module):
+        return False
+    try:
+        module = importlib.import_module(node.module)
+    except (ImportError, ModuleNotFoundError, AttributeError, ValueError):
+        return False
+    for alias in node.names:
+        if alias.name == "*" and root == "Scripts":
+            continue
+        if alias.name == "*" or alias.name.startswith("__"):
+            return False
+        if hasattr(module, alias.name):
+            continue
+        if not _module_spec_exists(f"{node.module}.{alias.name}"):
+            return False
+    return True
+
+def _section_alias_bindings(
+    statements: tuple[str, ...] | list[str],
+    allowed_section_imports: frozenset[str],
+) -> dict[str, str]:
+    """Internal helper for _section_alias_bindings."""
+    bindings: dict[str, str] = {}
+    for statement in statements:
+        try:
+            tree = ast.parse(statement)
+        except SyntaxError:
+            continue
+        if len(tree.body) != 1 or not isinstance(tree.body[0], ast.ImportFrom):
+            continue
+        node = tree.body[0]
+        if node.level != 1 or node.module is not None:
+            continue
+        for alias in node.names:
+            if alias.name in allowed_section_imports and alias.asname:
+                bindings[alias.asname] = alias.name
+    return bindings
+
+def _definitely_bound_names(statement: str) -> frozenset[str]:
+    """Internal helper for _definitely_bound_names."""
+    try:
+        tree = ast.parse(statement)
+    except SyntaxError:
+        return frozenset()
+    if len(tree.body) != 1:
+        return frozenset()
+    node = tree.body[0]
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign, ast.AugAssign)):
+        return frozenset(_statement_bound_names(statement))
+    if isinstance(node, ast.If):
+        if not node.orelse:
+            return frozenset()
+        def block(statements: list[ast.stmt]) -> set[str]:
+            """Internal helper for block."""
+            result: set[str] = set()
+            for item in statements:
+                text = ast.unparse(item)
+                result.update(_definitely_bound_names(text))
+            return result
+        return frozenset(block(node.body) & block(node.orelse))
+    return frozenset()
+
+def _literal_truth_value(node: ast.AST) -> bool | None:
+    """Internal helper for _literal_truth_value."""
+    try:
+        value = ast.literal_eval(node)
+    except (TypeError, ValueError, SyntaxError):
+        return None
+    return bool(value)
+
+def _statement_deleted_names(statement: str) -> frozenset[str]:
+    """Internal helper for _statement_deleted_names."""
+    try:
+        tree = ast.parse(statement)
+    except SyntaxError:
+        return frozenset()
+    if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Delete):
+        return frozenset()
+    names: set[str] = set()
+    def collect(target: ast.AST) -> None:
+        """Internal helper for collect."""
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                collect(item)
+    for target in tree.body[0].targets:
+        collect(target)
+    return frozenset(names)
+
+def _safe_initializer_addition(
+    statement: str,
+    allowed_section_imports: frozenset[str] = frozenset(),
+    forbidden_names: frozenset[str] = frozenset(),
+    available_names: frozenset[str] = _SAFE_BUILTIN_NAMES,
+    *,
+    postponed_annotations: bool = False,
+    section_exports: Mapping[str, frozenset[str]] | None = None,
+) -> bool:
+    """Internal helper for _safe_initializer_addition."""
+    try:
+        parsed = ast.parse(statement)
+    except SyntaxError:
+        return False
+    if len(parsed.body) != 1:
+        return False
+    node = parsed.body[0]
+    bound = _statement_bound_names(statement)
+    if not (isinstance(node, ast.ImportFrom) and node.level) and bound & forbidden_names:
+        return False
+    if isinstance(node, ast.Expr):
+        return isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
+    if isinstance(node, ast.Pass):
+        return True
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return bool(bound) and all(
+            not name.startswith("__") and not name.startswith("_PHASE192_") for name in bound
+        ) and _safe_function_definition(
+        node, available_names, postponed_annotations=postponed_annotations
+    )
+    if isinstance(node, ast.ClassDef):
+        return False
+    if isinstance(node, ast.Import):
+        return bool(node.names) and _absolute_import_resolves(node) and all(
+            alias.name.split(".", 1)[0] not in {"builtins", "__builtins__", "__builtin__"}
+            and alias.name.split(".", 1)[0] not in {"exec", "eval", "compile"}
+            and not alias.name.startswith("__")
+            and not (alias.asname or "").startswith("__")
+            for alias in node.names
+        )
+    if isinstance(node, ast.ImportFrom):
+        if node.module == "__future__":
+            return False
+        if not node.level:
+            root = (node.module or "").split(".", 1)[0]
+            return bool(node.names) and _absolute_import_resolves(node) and all(
+                alias.name != "*"
+                and not alias.name.startswith("__")
+                and not (alias.asname or "").startswith("__")
+                and root not in {"builtins", "__builtins__", "__builtin__", "exec", "eval", "compile"}
+                for alias in node.names
+            )
+        section_exports = section_exports or {}
+        if node.module is None:
+            valid = bool(node.names) and all(
+                alias.name in allowed_section_imports
+                and alias.name != "*"
+                and (alias.asname is None or not alias.asname.startswith("__"))
+                for alias in node.names
+            )
+            if not valid:
+                return False
+            legitimate = {
+                alias.name
+                for alias in node.names
+                if alias.asname is None or alias.asname == alias.name
+            }
+            return not ((bound - legitimate) & forbidden_names)
+        section_name = node.module.split(".", 1)[0]
+        exports = section_exports.get(section_name)
+        valid = bool(node.names) and exports is not None and all(
+            alias.name in exports
+            and alias.name != "*"
+            and not alias.name.startswith("__")
+            and not (alias.asname or "").startswith("__")
+            for alias in node.names
+        )
+        if not valid:
+            return False
+        legitimate = {
+            alias.name
+            for alias in node.names
+            if alias.asname is None or alias.asname == alias.name
+        }
+        return not ((bound - legitimate) & forbidden_names)
+    if isinstance(node, ast.If):
+        if (
+            node.orelse
+            or not _safe_inert_initializer_condition(node.test)
+            or not _loaded_names(node.test) <= available_names
+        ):
+            return False
+        return all(
+            _safe_initializer_addition(
+                ast.unparse(item),
+                allowed_section_imports,
+                forbidden_names,
+                available_names,
+                postponed_annotations=postponed_annotations,
+                section_exports=section_exports,
+            )
+            for item in node.body
+        )
+    if isinstance(node, ast.Assert):
+        return (
+            _literal_truth_value(node.test) is True
+            and (node.msg is None or _literal_initializer_value(node.msg))
+        )
+    if isinstance(node, ast.Assign):
+        return bool(bound) and all(
+            not name.startswith("__") and not name.startswith("_PHASE192_") for name in bound
+        ) and _literal_initializer_value(node.value) and all(
+            _literal_assignment_target_matches(target, node.value)
+            for target in node.targets
+        )
+    if isinstance(node, ast.AnnAssign):
+        annotation_names = _loaded_names(node.annotation)
+        return bool(bound) and all(
+            not name.startswith("__") and not name.startswith("_PHASE192_") for name in bound
+        ) and _safe_annotation_expression(
+            node.annotation,
+            available_names,
+            postponed_annotations=postponed_annotations,
+        ) and (
+            postponed_annotations or annotation_names <= available_names
+        ) and node.value is not None and _literal_initializer_value(node.value) and isinstance(node.target, ast.Name)
+    return False
+
+def _section_tuple_names(statement: str) -> tuple[str, ...] | None:
+    """Internal helper for _section_tuple_names."""
+    try:
+        tree = ast.parse(statement)
+    except SyntaxError:
+        return None
+    if len(tree.body) != 1 or not isinstance(tree.body[0], ast.Assign):
+        return None
+    assignment = tree.body[0]
+    if not any(isinstance(target, ast.Name) and target.id == "_PHASE192_SECTION_MODULES" for target in assignment.targets):
+        return None
+    value = assignment.value
+    if not isinstance(value, (ast.Tuple, ast.List)):
+        return None
+    names = tuple(item.id for item in value.elts if isinstance(item, ast.Name))
+    if len(names) != len(value.elts) or any(not name.startswith("_phase192_section_") for name in names):
+        return None
+    return names
+
+
+def _initializer_statements_match(
+    base_statement: str,
+    head_statement: str,
+    preceding_head: tuple[str, ...] = (),
+    allowed_section_imports: frozenset[str] = frozenset(),
+) -> bool:
+    """Internal helper for _initializer_statements_match."""
+    if base_statement == head_statement:
+        return True
+    base_sections = _section_tuple_names(base_statement)
+    head_sections = _section_tuple_names(head_statement)
+    if base_sections is None or head_sections is None or len(set(head_sections)) != len(head_sections):
+        return False
+    bindings = _section_alias_bindings(preceding_head, allowed_section_imports)
+    if any(name not in bindings or bindings[name] not in allowed_section_imports for name in head_sections):
+        return False
+    cursor = 0
+    for name in base_sections:
+        try:
+            cursor = head_sections.index(name, cursor) + 1
+        except ValueError:
+            return False
+    return True
+
+
+def _initializer_is_additive(
+    base_initializer: tuple[str, ...],
+    head_initializer: tuple[str, ...],
+    allowed_section_imports: frozenset[str] = frozenset(),
+    forbidden_external_names: frozenset[str] = frozenset(),
+    section_exports: Mapping[str, frozenset[str]] | None = None,
+) -> bool:
+    """Internal helper for _initializer_is_additive."""
+    base = list(base_initializer)
+    head = list(head_initializer)
+    base_has_docstring = bool(base) and _is_docstring_statement(base[0])
+    head_has_docstring = bool(head) and _is_docstring_statement(head[0])
+    if base_has_docstring != head_has_docstring:
+        return False
+    if base_has_docstring and head_has_docstring:
+        base = base[1:]
+        head = head[1:]
+    matched_indexes: set[int] = set()
+    matched_by_head: dict[int, str] = {}
+    cursor = 0
+    for statement in base:
+        index = next(
+            (
+                candidate_index
+                for candidate_index in range(cursor, len(head))
+                if _initializer_statements_match(
+                     statement,
+                     head[candidate_index],
+                     tuple(head[:candidate_index]),
+                     allowed_section_imports,
+                 )
+            ),
+            None,
+        )
+        if index is None:
+            return False
+        matched_indexes.add(index)
+        matched_by_head[index] = statement
+        cursor = index + 1
+    forbidden_names = frozenset().union(
+        forbidden_external_names,
+        *(
+            set(_statement_bound_names(statement)) | set(_statement_loaded_names(statement))
+            for statement in base
+        ),
+    )
+    available_names = set(_SAFE_BUILTIN_NAMES)
+    postponed_annotations = "from __future__ import annotations" in base
+    seen_additions: set[str] = set()
+    for index, statement in enumerate(head):
+        bound = _statement_bound_names(statement)
+        if index in matched_by_head:
+            available_names.difference_update(_statement_deleted_names(statement))
+            available_names.update(_definitely_bound_names(statement))
+            available_names.update(_statement_loaded_names(statement))
+            continue
+        if bound & seen_additions:
+            return False
+        if not _safe_initializer_addition(
+            statement,
+            allowed_section_imports,
+            forbidden_names,
+            frozenset(available_names),
+            postponed_annotations=postponed_annotations,
+            section_exports=section_exports,
+        ):
+            return False
+        seen_additions.update(bound)
+        available_names.update(bound)
+    return True
+
+def _sections_preserve_order(base: tuple[str, ...], head: tuple[str, ...]) -> bool:
+    """Internal helper for _sections_preserve_order."""
+    if len(set(base)) != len(base) or len(set(head)) != len(head):
+        return False
+    index = 0
+    for section in head:
+        if index < len(base) and section == base[index]:
+            index += 1
+    return index == len(base)
+
+def _contract_preserves_order(base: tuple[str, ...], head: tuple[str, ...]) -> bool:
+    """Return whether every baseline contract entry remains in order."""
+    cursor = 0
+    for entry in head:
+        if cursor < len(base) and entry == base[cursor]:
+            cursor += 1
+    return cursor == len(base)
+
+
+def _validate_generated_section(
+    source: str,
+    path: Path,
+    package_dir: Path,
+    section_names: frozenset[str],
+) -> None:
+    """Validate a moved implementation section without pretending it is inert.
+
+    Split sections intentionally contain the original classes and functions, so
+    the strict initializer validator is not applicable to their bodies.  The
+    section still goes through the ordinary export/namespace parser and this
+    pass rejects import-time dynamic execution that cannot be part of a source
+    section.
+    """
+    tree = _parse_source(source, path)
+    _relative_import_contract(tree, package_dir, path, section_names)
+    _section_exports(source, str(path), reject_conditional=False)
+
+    path_ctor_names = {
+        alias.asname or alias.name
+        for statement in tree.body
+        if isinstance(statement, ast.ImportFrom)
+        and statement.module == "pathlib"
+        and statement.level == 0
+        for alias in statement.names
+        if alias.name == "Path"
+    }
+    path_module_names = {
+        alias.asname or alias.name.split(".", 1)[0]
+        for statement in tree.body
+        if isinstance(statement, ast.Import)
+        for alias in statement.names
+        if alias.name == "pathlib"
+    }
+    if any(
+        isinstance(statement, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id in path_ctor_names | path_module_names
+            for target in statement.targets
+        )
+        for statement in ast.walk(tree)
+    ):
+        raise ValueError(f"Path constructor rebinding is not allowed in generated section: {path}")
+
+    def path_from_file(node: ast.AST, names: frozenset[str]) -> bool:
+        """Recognize a path value derived from this source file."""
+        if isinstance(node, ast.Name):
+            return node.id in names
+        if isinstance(node, ast.Call):
+            return (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "resolve"
+                and not node.args
+                and not node.keywords
+                and isinstance(node.func.value, ast.Call)
+                and isinstance(node.func.value.func, (ast.Name, ast.Attribute))
+                and (
+                    isinstance(node.func.value.func, ast.Name)
+                    and node.func.value.func.id in path_ctor_names
+                    or isinstance(node.func.value.func, ast.Attribute)
+                    and node.func.value.func.attr == "Path"
+                    and isinstance(node.func.value.func.value, ast.Name)
+                    and node.func.value.func.value.id in path_module_names
+                )
+                and len(node.func.value.args) == 1
+                and isinstance(node.func.value.args[0], ast.Name)
+                and node.func.value.args[0].id == "__file__"
+            )
+        if isinstance(node, ast.Attribute) and node.attr == "parent":
+            return path_from_file(node.value, names)
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute) and node.value.attr == "parents":
+            return path_from_file(node.value.value, names) and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, int)
+        return False
+
+    path_names: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for statement in ast.walk(tree):
+            if not isinstance(statement, ast.Assign):
+                continue
+            if not path_from_file(statement.value, frozenset(path_names)):
+                continue
+            for target in statement.targets:
+                if isinstance(target, ast.Name) and target.id not in path_names:
+                    path_names.add(target.id)
+                    changed = True
+
+    def allowed_sys_path_insert(node: ast.Call) -> bool:
+        """Allow only the reviewed file-derived sys.path bootstrap."""
+        return (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "insert"
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "path"
+            and isinstance(node.func.value.value, ast.Name)
+            and node.func.value.value.id in {"sys", "_sys", "_phase192_sys"}
+            and len(node.args) == 2
+            and not node.keywords
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == 0
+            and isinstance(node.args[1], ast.Call)
+            and isinstance(node.args[1].func, ast.Name)
+            and node.args[1].func.id == "str"
+            and len(node.args[1].args) == 1
+            and not node.args[1].keywords
+            and path_from_file(node.args[1].args[0], frozenset(path_names))
+        )
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "insert":
+            if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "path":
+                if not allowed_sys_path_insert(node):
+                    raise ValueError(f"Unsupported generated sys.path bootstrap in {path}")
+    namespace_risks = set(_namespace_risk_signatures(tree, allow_public_globals=True))
+    normalized_path = path.as_posix().replace("\\", "/")
+    if normalized_path.startswith("Scripts/") or "/Scripts/" in normalized_path:
+        namespace_risks = {
+            risk
+            for risk in namespace_risks
+            if not ("attr='insert'" in risk and "attr='path'" in risk)
+        }
+    if namespace_risks:
+        raise ValueError(f"Unsupported import-time namespace risk in generated section: {path}")
+    parents: dict[int, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[id(child)] = parent
+
+    module_aliases: dict[str, str] = {}
+    callable_aliases: dict[str, str] = {}
+    for statement in tree.body:
+        if isinstance(statement, ast.Import):
+            for alias in statement.names:
+                module_aliases[alias.asname or alias.name.split(".", 1)[0]] = alias.name
+        elif isinstance(statement, ast.ImportFrom) and statement.level == 0:
+            module = statement.module or ""
+            for alias in statement.names:
+                if alias.name != "*":
+                    callable_aliases[alias.asname or alias.name] = f"{module}.{alias.name}"
+
+    function_body_nodes: set[int] = set()
+    for definition in ast.walk(tree):
+        if isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            function_body_nodes.update(id(node) for statement in definition.body for node in ast.walk(statement))
+
+    def is_inside_callable(node: ast.AST) -> bool:
+        """Return whether node executes only when a function is called."""
+        return id(node) in function_body_nodes
+
+    def is_export_globals_call(node: ast.Call) -> bool:
+        """Allow the generated __all__ comprehension to enumerate globals."""
+        current: ast.AST = node
+        while id(current) in parents and not isinstance(current, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            current = parents[id(current)]
+        if not isinstance(current, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            return False
+        owner = parents.get(id(current))
+        return isinstance(owner, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in owner.targets
+        )
+
+    def qualified_call(node: ast.Call) -> tuple[str, str] | None:
+        """Resolve a call target through import aliases without executing it."""
+        if isinstance(node.func, ast.Name):
+            target = callable_aliases.get(node.func.id)
+            if target:
+                module, _, attr = target.rpartition(".")
+                return module, attr
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            module = module_aliases.get(node.func.value.id)
+            if module:
+                return module, node.func.attr
+        if isinstance(node.func, ast.Attribute):
+            return None, node.func.attr
+        return None
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Global) and not is_inside_callable(node):
+            raise ValueError(f"Global rebinding is not allowed in generated section: {path}")
+        if isinstance(node, ast.Call):
+            if is_inside_callable(node):
+                continue
+            qualified = qualified_call(node)
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id in {
+                    "__import__", "compile", "eval", "exec", "open", "getattr",
+                    "setattr", "delattr", "globals", "locals", "vars",
+                }
+            ):
+                if node.func.id == "globals" and is_export_globals_call(node):
+                    if "globals" not in _top_level_names(tree, include_imports=True):
+                        continue
+                if not (
+                    node.func.id == "__import__"
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                    and node.args[0].value == "pathlib"
+                    and all(
+                        keyword.arg == "fromlist"
+                        and isinstance(keyword.value, (ast.List, ast.Tuple))
+                        and all(
+                            isinstance(item, ast.Constant)
+                            and isinstance(item.value, str)
+                            for item in keyword.value.elts
+                        )
+                        for keyword in node.keywords
+                    )
+                ):
+                    raise ValueError(f"Unsupported dynamic execution in generated section: {path}")
+            if qualified and (
+                qualified[1]
+                in {
+                    "system", "popen", "run", "Popen", "check_call", "check_output",
+                    "rmtree", "remove", "unlink", "write_text", "write_bytes", "mkdir",
+                    "rmdir", "rename", "replace", "chmod", "insert", "open", "touch",
+                    "append", "extend",
+                }
+                and (
+                    qualified[0] in {"os", "subprocess", "shutil", "sys"}
+                    or qualified[0] is None
+                    or qualified[0].startswith("pathlib")
+                )
+                and not (
+                    qualified[1] == "insert"
+                    and allowed_sys_path_insert(node)
+                )
+            ):
+                raise ValueError(f"Unsupported process execution in generated section: {path}")
+        if isinstance(node, ast.Attribute) and node.attr in {
+            "__class__", "__bases__", "__mro__", "__subclasses__",
+        } and isinstance(node.ctx, ast.Store):
+            raise ValueError(f"Unsupported type mutation in generated section: {path}")
+
+def _validate_import_time_section(
+    source: str,
+    path: Path,
+    package_dir: Path,
+    new_sections: frozenset[str],
+    seen: set[Path] | None = None,
+) -> None:
+    """Reject import-time control flow and side effects in an additive section."""
+    seen = set() if seen is None else seen
+    path = path.resolve()
+    if path in seen:
+        return
+    seen.add(path)
+    tree = _parse_source(source, path)
+    initializer_kind = _phase192_initializer_kind(source)
+    if path.name == "__init__.py" and initializer_kind is not None:
+        if initializer_kind == "phase192":
+            _phase192_template_validate_initializer(tree, str(path))
+        else:
+            _phase138u_simple_initializer(source, str(path))
+        return
+    postponed_annotations = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "__future__"
+        and not node.level
+        and any(alias.name == "annotations" for alias in node.names)
+        for node in tree.body
+    )
+    available_names: set[str] = set(_SAFE_BUILTIN_NAMES) | {
+        "__doc__", "__name__", "__package__", "__spec__"
+    }
+
+    def bound_names(node: ast.stmt) -> set[str]:
+        """Return simple names introduced by an import or literal definition."""
+        if isinstance(node, ast.Import):
+            return {alias.asname or alias.name.split(".", 1)[0] for alias in node.names}
+        if isinstance(node, ast.ImportFrom):
+            return {
+                alias.asname or alias.name
+                for alias in node.names
+                if alias.name != "*" and node.module != "__future__"
+            }
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return {node.name}
+        if isinstance(node, ast.Assign):
+            return set().union(*(target_names(target) for target in node.targets))
+        if isinstance(node, ast.AnnAssign):
+            return target_names(node.target)
+        return set()
+
+    def target_names(target: ast.AST) -> set[str]:
+        """Return names for a literal assignment target."""
+        if isinstance(target, ast.Name):
+            return {target.id}
+        if isinstance(target, (ast.Tuple, ast.List)):
+            return set().union(*(target_names(item) for item in target.elts))
+        return set()
+
+    def relative_target(name: str) -> Path:
+        """Resolve a package-relative section target without executing it."""
+        parts = name.split(".")
+        if not parts or any(_SECTION_NAME_RE.fullmatch(part) is None for part in parts):
+            raise ValueError(f"Unsafe relative import in {path}: {name}")
+        target = package_dir.joinpath(*parts).with_suffix(".py")
+        if not target.is_file():
+            target = package_dir.joinpath(*parts) / "__init__.py"
+        if not target.is_file():
+            raise ValueError(f"Missing relative import target in {path}: {name}")
+        return target
+
+    def validate_block(
+        statements: list[ast.stmt],
+        names: set[str],
+        *,
+        inert: bool = False,
+        module_level: bool = True,
+    ) -> None:
+        """Validate a restricted import-time statement block."""
+        for index, node in enumerate(statements):
+            if (
+                index == 0
+                and isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                continue
+            if isinstance(node, ast.Expr):
+                raise ValueError(f"Unsafe import-time expression in {path}")
+            if isinstance(node, ast.Pass):
+                continue
+            if isinstance(node, ast.Import):
+                if not node.names or not _absolute_import_resolves(node):
+                    raise ValueError(f"Unsafe import-time import in {path}")
+                names.update(bound_names(node))
+                continue
+            if isinstance(node, ast.ImportFrom):
+                if node.module == "__future__":
+                    if node.level or any(alias.name != "annotations" for alias in node.names):
+                        raise ValueError(f"Unsafe future import in {path}")
+                    continue
+                if not node.level:
+                    if not node.names or not _absolute_import_resolves(node):
+                        raise ValueError(f"Unsafe import-time import in {path}")
+                    names.update(bound_names(node))
+                    continue
+                if node.level != 1:
+                    raise ValueError(f"Unsafe parent-relative import in {path}")
+                imported_sections = [node.module] if node.module else [
+                    alias.name for alias in node.names if alias.name != "*"
+                ]
+                for imported in imported_sections:
+                    target = relative_target(imported)
+                    if imported.split(".", 1)[0] in new_sections:
+                        _validate_import_time_section(
+                            target.read_text(encoding="utf-8"),
+                            target,
+                            package_dir,
+                            new_sections,
+                            seen,
+                        )
+                names.update(bound_names(node))
+                continue
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if not _safe_function_definition(
+                    node,
+                    frozenset(names),
+                    postponed_annotations=postponed_annotations or inert,
+                ):
+                    raise ValueError(f"Unsafe import-time function definition in {path}")
+                names.add(node.name)
+                continue
+            if isinstance(node, ast.ClassDef):
+                raise ValueError(f"Unsafe import-time class definition in {path}")
+            if isinstance(node, ast.If):
+                if (
+                    node.orelse
+                    or not _safe_inert_initializer_condition(node.test)
+                    or not _loaded_names(node.test) <= frozenset(names)
+                ):
+                    raise ValueError(f"Unsafe import-time conditional in {path}")
+                validate_block(node.body, set(names), inert=True, module_level=False)
+                continue
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+                if any(
+                    not _literal_assignment_target_matches(target, node.value)
+                    for target in targets
+                ):
+                    raise ValueError(f"Unsafe import-time assignment target in {path}")
+                if any(
+                    isinstance(target, ast.Name)
+                    and target.id == "__all__"
+                    and _is_public_globals_comprehension(node.value)
+                    for target in targets
+                ):
+                    names.update(bound_names(node))
+                    continue
+                if node.value is None or not _literal_initializer_value(node.value):
+                    raise ValueError(f"Non-literal import-time assignment in {path}")
+                if isinstance(node, ast.AnnAssign):
+                    if not _safe_annotation_expression(
+                        node.annotation,
+                        frozenset(names),
+                        postponed_annotations=postponed_annotations or inert,
+                    ):
+                        raise ValueError(f"Unsafe import-time annotation in {path}")
+                    if not (postponed_annotations or inert) and not _loaded_names(node.annotation) <= frozenset(names):
+                        raise ValueError(f"Unbound import-time annotation in {path}")
+                names.update(bound_names(node))
+                continue
+            raise ValueError(f"Unsafe import-time statement in {path}: {type(node).__name__}")
+
+    validate_block(tree.body, available_names)
+
+def _validate_compatibility_new_sections(
+    base_root: Path,
+    head_root: Path,
+    base_surfaces: Mapping[str, tuple],
+    head_surfaces: Mapping[str, tuple],
+) -> None:
+    """Validate every section newly imported by compatibility mode."""
+    base_section_modules = _section_modules_for_root(base_root)
+    head_section_modules = _section_modules_for_root(head_root)
+    for relative in sorted(head_surfaces):
+        head_facade = head_root / relative
+        head_package = head_facade.with_suffix("")
+        head_sections = head_section_modules(head_package)
+        head_initializer = head_package / "__init__.py"
+        head_initializer_source = head_initializer.read_text(encoding="utf-8")
+        generated_kind = _phase192_initializer_kind(head_initializer_source)
+        generated_package = generated_kind is not None
+        base_package = (base_root / relative).with_suffix("")
+        base_sections = (
+            base_section_modules(base_package)
+            if relative in base_surfaces and base_package.is_dir()
+            else ()
+        )
+        old_names = frozenset(path.stem for path in base_sections)
+        new_names = frozenset(path.stem for path in head_sections) - old_names
+        if relative not in base_surfaces:
+            initializer = head_initializer
+            initializer_source = head_initializer_source
+            if generated_package:
+                initializer_tree = _parse_source(initializer_source, initializer)
+                if generated_kind == "phase192":
+                    _phase192_template_validate_initializer(initializer_tree, str(initializer))
+                else:
+                    _phase138u_simple_initializer(initializer_source, str(initializer))
+                section_names = frozenset(path.stem for path in head_sections)
+                for section in head_sections:
+                    _validate_generated_section(
+                        section.read_text(encoding="utf-8"),
+                        section,
+                        head_package,
+                        section_names,
+                    )
+            else:
+                _validate_import_time_section(
+                    initializer_source,
+                    initializer,
+                    head_package,
+                    frozenset(path.stem for path in head_sections),
+                )
+        for section in head_sections:
+            if section.stem not in new_names:
+                continue
+            if generated_package:
+                _validate_generated_section(
+                    section.read_text(encoding="utf-8"),
+                    section,
+                    head_package,
+                    frozenset(path.stem for path in head_sections),
+                )
+                continue
+            _validate_import_time_section(
+                section.read_text(encoding="utf-8"),
+                section,
+                head_package,
+                new_names,
+            )
+
+def _surface(
+    root: Path,
+    facade: Path,
+    section_modules=None,
+    *,
+    reject_conditional: bool = True,
+) -> tuple:
+    """Internal helper for _surface."""
+    relative = facade.relative_to(root).as_posix()
+    package = facade.with_suffix("")
+    section_modules = section_modules or _section_modules_for_root(root)
+    sections = section_modules(package)
+    section_exports: set[str] = set()
+    section_export_map: list[tuple[str, frozenset[str]]] = []
+    owner_map: dict[str, set[str]] = {}
+    conditional_names: set[str] = set()
+    risk_signatures: set[str] = set()
+    conditional_contract: list[str] = []
+    relative_star_contract: list[str] = []
+    module_import_names: set[str] = set()
+    legacy_test_section = "regression_checks" in facade.parts or facade.stem.startswith("test_")
+
+    def add_conditional_contract(signature: str) -> None:
+        """Internal helper for add_conditional_contract."""
+        conditional_contract.append(signature)
+
+    for section in sections:
+        section_source = section.read_text(encoding="utf-8")
+        section_tree = _parse_source(section_source, section)
+        phase121_configuration = _is_phase121_configuration_path(section, root)
+        module_import_names.update(_direct_import_bound_names(section_tree))
+        relative_star_contract.extend(
+            _relative_import_contract(
+                section_tree,
+                package,
+                section,
+                frozenset(path.stem for path in sections),
+            )
+        )
+        exports = _section_exports(
+            section_source,
+            str(section),
+            reject_conditional=reject_conditional,
+            reject_module_registry=(not legacy_test_section and not phase121_configuration),
+            validate_namespace=not phase121_configuration,
+            repository_root=root,
+        )
+        section_exports.update(exports)
+        for name in exports:
+            owner_map.setdefault(name, set()).add(f"section:{section.stem}")
+        section_export_map.append((section.stem, frozenset(exports)))
+        risk_signatures.update(_namespace_risk_signatures(section_tree))
+        for signature in _conditional_contract_signatures(section_tree):
+            add_conditional_contract(f"section:{section.stem}:{signature}")
+        conditional_names.update(
+            _conditional_only_public_names(
+                section_tree,
+                include_private=True,
+            )
+        )
+    facade_source = facade.read_text(encoding="utf-8")
+    facade_tree = _parse_source(facade_source, facade)
+    module_import_names.update(_direct_import_bound_names(facade_tree))
+    relative_star_contract.extend(
+        _relative_import_contract(
+            facade_tree,
+            facade.parent,
+            facade,
+            frozenset(path.stem for path in sections),
+        )
+    )
+    facade_symbols = _symbols(
+        facade_source,
+        str(facade),
+        reject_conditional=reject_conditional,
+        repository_root=root,
+    )
+    exported = set(section_exports)
+    exported.update(facade_symbols)
+    for name in facade_symbols:
+        owner_map.setdefault(name, set()).add("facade")
+    risk_signatures.update(_namespace_risk_signatures(facade_tree))
+    for signature in _conditional_contract_signatures(facade_tree):
+        add_conditional_contract(f"facade:{signature}")
+    conditional_names.update(
+        _conditional_only_public_names(
+            facade_tree,
+            include_private=True,
+        )
+    )
+    initializer = package / "__init__.py"
+    initializer_tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
+    module_import_names.update(_direct_import_bound_names(initializer_tree))
+    _relative_import_contract(
+        initializer_tree,
+        package,
+        initializer,
+        frozenset(path.stem for path in sections),
+    )
+    entrypoint_present, entrypoint_digest, entrypoint_contract, entrypoint_risks = _entrypoint_contract(
+        package / "__main__.py",
+        frozenset(path.stem for path in sections),
+        reject_conditional=reject_conditional,
+        repository_root=root,
+    )
+    risk_signatures.update(entrypoint_risks)
+    _reject_unsupported_module_bindings(initializer_tree, str(initializer))
+    risk_signatures.update(_namespace_risk_signatures(initializer_tree))
+    for signature in _conditional_contract_signatures(initializer_tree):
+        add_conditional_contract(f"initializer:{signature}")
+    initializer_names = {
+        name for name in _top_level_names(initializer_tree, include_imports=True)
+        if not name.startswith("_")
+    }
+    exported.update(initializer_names)
+    for name in initializer_names:
+        owner_map.setdefault(name, set()).add("initializer")
+    owner_map_tuple = tuple(
+        (name, tuple(sorted(owners)))
+        for name, owners in sorted(owner_map.items())
+    )
+    public_symbols = frozenset(
+        name
+        for name in exported
+        if not name.startswith("_") and name not in module_import_names
+    )
+    return (
+        frozenset(exported),
+        tuple(path.stem for path in sections),
+        _initializer_lines(initializer),
+        frozenset(section_exports),
+        _initializer_digest(initializer),
+        frozenset(conditional_names),
+        entrypoint_present,
+        tuple(section_export_map),
+        frozenset(risk_signatures),
+        tuple(conditional_contract),
+        entrypoint_digest,
+        entrypoint_contract,
+        owner_map_tuple,
+        tuple(relative_star_contract),
+        public_symbols,
+    )
+
+def _surfaces(
+    root: Path,
+    *,
+    strict: bool = True,
+) -> dict[str, tuple]:
+    """Internal helper for _surfaces."""
+    result: dict[str, tuple] = {}
+    section_modules = _section_modules_for_root(root)
+    for facade in _split_facades(root):
+        relative = facade.relative_to(root).as_posix()
+        package = facade.with_suffix("")
+        listed_paths = section_modules(package)
+        listed = {path.name for path in listed_paths}
+        actual_paths = [
+            path for path in package.glob("*.py")
+            if path.name not in {"__init__.py", "__main__.py"}
+        ]
+        actual_by_casefold: dict[str, Path] = {}
+        for path in actual_paths:
+            key = path.stem.casefold()
+            if key in actual_by_casefold:
+                raise ValueError(
+                    f"Duplicate source section file (case-insensitive): {actual_by_casefold[key]} / {path}"
+                )
+            actual_by_casefold[key] = path
+        actual = {path.name for path in actual_paths}
+        missing = sorted(actual - listed)
+        extra = sorted(listed - actual)
+        if extra or (strict and missing):
+            raise ValueError(
+                f"{relative}: exported sections differ from package files; "
+                f"missing={', '.join(missing) or '-'} extra={', '.join(extra) or '-'}"
+            )
+        entrypoint = package / "__main__.py"
+        if entrypoint.is_file():
+            entrypoint_tree = _parse_source(entrypoint.read_text(encoding="utf-8"), entrypoint)
+            if not any(
+                isinstance(node, ast.ImportFrom) and node.level == 1
+                for node in ast.walk(entrypoint_tree)
+            ) and not _is_unittest_module_entrypoint(entrypoint_tree):
+                raise ValueError(f"{relative}: module entrypoint does not import its package")
+        result[relative] = _surface(
+            root,
+            facade,
+            section_modules,
+            reject_conditional=strict,
+        )
+    return result
+
+def _conditional_signature_names(signature: str) -> set[str]:
+    """Extract bound names from a scoped conditional signature."""
+    if signature.startswith("section:"):
+        payload = signature.split(":", 2)[-1]
+    elif signature.startswith(("facade:", "initializer:")):
+        payload = signature.split(":", 1)[-1]
+    else:
+        payload = signature
+    name_text = payload.rsplit(":", 1)[0]
+    return {name for name in name_text.split(",") if name}
+
+def _compare_surfaces(
+    base_surfaces,
+    head_surfaces,
+    *,
+    strict: bool = True,
+    waived_symbols: Mapping[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """Compare identity surfaces using waivers from the trusted base revision."""
+    errors: list[str] = []
+    waiver_map = waived_symbols or {}
+    unknown_waiver_paths = sorted(set(waiver_map) - set(base_surfaces))
+    for relative in unknown_waiver_paths:
+        errors.append(f"INVALID_IDENTITY_WAIVER {relative}: facade is not in the base surface")
+
+    def unpack(surface):
+        """Internal helper for unpack."""
+        if len(surface) > 15:
+            raise ValueError(f"unsupported identity surface shape: {len(surface)} fields")
+        defaults = (
+            frozenset(), (), (), frozenset(), None, frozenset(), None, (),
+            frozenset(), (), None, (), (), (), frozenset(),
+        )
+        return tuple(surface) + defaults[len(surface):]
+
+    for relative, base_surface in sorted(base_surfaces.items()):
+        current = head_surfaces.get(relative)
+        if current is None:
+            errors.append(f"REMOVED_FACADE {relative}")
+            continue
+        (
+            base_symbols,
+            base_sections,
+            base_initializer,
+            base_section_exports,
+            base_digest,
+            base_conditional,
+            base_entrypoint,
+            base_section_map,
+            base_risks,
+            base_conditional_contract,
+            base_entrypoint_digest,
+            base_entrypoint_contract,
+            base_owner_map,
+            base_relative_star_contract,
+            base_public_symbols,
+        ) = unpack(base_surface)
+        (
+            head_symbols,
+            head_sections,
+            head_initializer,
+            head_section_exports,
+            head_digest,
+            head_conditional,
+            head_entrypoint,
+            head_section_map,
+            head_risks,
+            head_conditional_contract,
+            head_entrypoint_digest,
+            head_entrypoint_contract,
+            head_owner_map,
+            head_relative_star_contract,
+            head_public_symbols,
+        ) = unpack(current)
+        if not base_public_symbols and base_symbols:
+            base_public_symbols = frozenset(
+                name for name in base_symbols if not name.startswith("_")
+            )
+        if not head_public_symbols and head_symbols:
+            head_public_symbols = frozenset(
+                name for name in head_symbols if not name.startswith("_")
+            )
+        reviewed_entrypoint_transition = _reviewed_direct_entrypoint_transition(
+            relative,
+            tuple(base_entrypoint_contract or ()),
+            tuple(head_entrypoint_contract or ()),
+        )
+        missing_sections = sorted(set(base_sections) - set(head_sections))
+        extra_sections = sorted(set(head_sections) - set(base_sections))
+        if strict:
+            missing_symbols = sorted(set(base_symbols) - set(head_symbols))
+        else:
+            public_removals = set(base_public_symbols) - set(head_public_symbols)
+            waiver = set(waiver_map.get(relative, frozenset())) & set(base_public_symbols)
+            missing_symbols = sorted(public_removals - waiver)
+        extra_symbols = sorted(set(head_symbols) - set(base_symbols))
+        if strict and base_risks != head_risks:
+            errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
+        if (
+            strict
+            and tuple(base_conditional_contract or ()) != tuple(head_conditional_contract or ())
+        ):
+            errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
+        if strict and tuple(base_section_map or ()) != tuple(head_section_map or ()):
+            errors.append(f"SECTION_EXPORT_OWNER_CHANGED {relative}")
+        if strict and tuple(base_owner_map or ()) != tuple(head_owner_map or ()):
+            errors.append(f"SYMBOL_OWNER_CHANGED {relative}")
+        base_relative = tuple(base_relative_star_contract or ())
+        head_relative = tuple(head_relative_star_contract or ())
+        if (
+            (strict and base_relative != head_relative)
+            or (not strict and not _contract_preserves_order(base_relative, head_relative))
+        ):
+            errors.append(f"RELATIVE_STAR_IMPORT_CHANGED {relative}")
+        if not strict and base_risks != head_risks:
+            errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
+        if not strict:
+            base_contract = tuple(base_conditional_contract or ())
+            head_contract = tuple(head_conditional_contract or ())
+            if (
+                relative == "Scripts/package/validate_source_generator_dll.py"
+                and base_contract != head_contract
+            ):
+                errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
+                continue
+            matched_head_indexes: set[int] = set()
+            cursor = 0
+            preserves_order = True
+            for signature in base_contract:
+                try:
+                    index = head_contract.index(signature, cursor)
+                except ValueError:
+                    preserves_order = False
+                    break
+                matched_head_indexes.add(index)
+                cursor = index + 1
+            added_contract = [
+                signature for index, signature in enumerate(head_contract)
+                if index not in matched_head_indexes
+            ]
+            existing_conditional_names = set(base_symbols) | set(base_conditional)
+            added_existing_bindings = {
+                signature for signature in added_contract
+                if any(
+                    name in existing_conditional_names
+                    for name in _conditional_signature_names(signature)
+                )
+            }
+            if not preserves_order or added_existing_bindings:
+                errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
+        if base_entrypoint and head_entrypoint:
+            if strict and base_entrypoint_digest != head_entrypoint_digest:
+                errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
+            elif not strict:
+                entrypoint_changed = (
+                    (
+                        base_entrypoint_digest is not None
+                        and head_entrypoint_digest is not None
+                        and base_entrypoint_digest != head_entrypoint_digest
+                    )
+                    or (
+                        (base_entrypoint_digest is None or head_entrypoint_digest is None)
+                        and tuple(base_entrypoint_contract or ()) != tuple(head_entrypoint_contract or ())
+                    )
+                )
+                if entrypoint_changed and not reviewed_entrypoint_transition:
+                    errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
+        if not strict and base_owner_map and head_owner_map:
+            base_owners = dict(base_owner_map)
+            head_owners = dict(head_owner_map)
+            owner_changes = sorted(
+                name for name in set(base_owners) & set(head_owners)
+                if tuple(base_owners[name]) != tuple(head_owners[name])
+            )
+            new_collisions = sorted(
+                name for name, owners in head_owners.items()
+                if len(owners) > 1 and name not in base_owners
+            )
+            if owner_changes:
+                errors.append(f"SYMBOL_OWNER_CHANGED {relative}: {','.join(owner_changes)}")
+            if new_collisions:
+                errors.append(f"SYMBOL_OWNER_COLLISION {relative}: {','.join(new_collisions)}")
+        if not strict and base_section_map and head_section_map:
+            base_exports_by_section = dict(base_section_map)
+            head_exports_by_section = dict(head_section_map)
+            def duplicate_exports(exports_by_section):
+                """Internal helper for duplicate_exports."""
+                owners: dict[str, set[str]] = {}
+                for section_name, exports in exports_by_section.items():
+                    for name in exports:
+                        owners.setdefault(name, set()).add(section_name)
+                return {name for name, sections_for_name in owners.items() if len(sections_for_name) > 1}
+            new_collisions = duplicate_exports(head_exports_by_section) - duplicate_exports(base_exports_by_section)
+            base_owners: dict[str, set[str]] = {}
+            head_owners: dict[str, set[str]] = {}
+            for section_name, exports in base_exports_by_section.items():
+                for name in exports:
+                    base_owners.setdefault(name, set()).add(section_name)
+            for section_name, exports in head_exports_by_section.items():
+                for name in exports:
+                    head_owners.setdefault(name, set()).add(section_name)
+            owner_changes = sorted(
+                name for name in set(base_owners) & set(head_owners)
+                if base_owners[name] != head_owners[name]
+            )
+            base_section_exports_all = set().union(*base_exports_by_section.values()) if base_exports_by_section else set()
+            new_sections = set(head_exports_by_section) - set(base_exports_by_section)
+            new_section_collisions = {
+                f"{section_name}:{name}"
+                for section_name in new_sections
+                for name in head_exports_by_section[section_name]
+                if name in base_section_exports_all or name in base_symbols
+            }
+            if new_collisions or new_section_collisions:
+                details = sorted(new_collisions) + sorted(new_section_collisions)
+                errors.append(f"SECTION_EXPORT_COLLISION {relative}: {','.join(details)}")
+            if owner_changes:
+                errors.append(f"SECTION_EXPORT_OWNER_CHANGED {relative}: {','.join(owner_changes)}")
+        if strict:
+            initializer_ok = (
+                base_digest == head_digest
+                if base_digest is not None and head_digest is not None
+                else base_initializer == head_initializer
+            )
+        else:
+            if base_owner_map:
+                base_external_names = {
+                    name
+                    for name, owners in base_owner_map
+                    if any(owner != "initializer" for owner in owners)
+                }
+            else:
+                base_external_names = set(base_symbols)
+            initializer_ok = _initializer_is_additive(
+                base_initializer,
+                head_initializer,
+                frozenset(head_sections),
+                frozenset(base_external_names)
+                | (set(head_section_exports) - set(base_section_exports)),
+                dict(head_section_map or ()),
+            )
+        if not initializer_ok:
+            errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
+        if not _sections_preserve_order(base_sections, head_sections):
+            errors.append(f"SECTION_ORDER_CHANGED {relative}")
+        if missing_sections:
+            errors.append(f"MISSING_SECTIONS {relative}: {','.join(missing_sections)}")
+        if strict and extra_sections:
+            errors.append(f"EXTRA_SECTIONS {relative}: {','.join(extra_sections)}")
+        if missing_symbols:
+            errors.append(f"MISSING_SYMBOLS {relative}: {','.join(missing_symbols)}")
+        conditional_changed = sorted(
+            (set(base_symbols) - set(base_conditional)) & set(head_conditional)
+        )
+        if conditional_changed:
+            errors.append(
+                f"CONDITIONAL_SYMBOL_CHANGED {relative}: {','.join(conditional_changed)}"
+            )
+        if base_entrypoint and not head_entrypoint:
+            errors.append(f"MISSING_MODULE_ENTRYPOINT {relative}")
+        if strict and not base_entrypoint and head_entrypoint:
+            errors.append(f"ADDED_MODULE_ENTRYPOINT {relative}")
+        if strict and extra_symbols:
+            errors.append(f"EXTRA_SYMBOLS {relative}: {','.join(extra_symbols)}")
+    if strict:
+        for relative in sorted(set(head_surfaces) - set(base_surfaces)):
+            errors.append(f"ADDED_FACADE {relative}")
+    return errors
+
+def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = True) -> int:
+    """Internal helper for compare_revisions."""
+    base = _git(repository, "rev-parse", "--verify", base + "^{commit}").strip()
+    head = _git(repository, "rev-parse", "--verify", head + "^{commit}").strip()
+    with _revision_checkout(repository, base) as base_root, _revision_checkout(repository, head) as head_root:
+        base_surfaces = _surfaces(base_root, strict=strict)
+        head_surfaces = _surfaces(head_root, strict=strict)
+        base_waivers = _load_identity_waivers(base_root)
+        head_waivers = _load_identity_waivers(head_root)
+        if strict and base_waivers != head_waivers:
+            print("IDENTITY_WAIVER_CHANGED Scripts/phase192/identity_waivers.json")
+            return 1
+        if not strict:
+            _validate_compatibility_new_sections(
+                base_root,
+                head_root,
+                base_surfaces,
+                head_surfaces,
+            )
+    errors = _compare_surfaces(
+        base_surfaces,
+        head_surfaces,
+        strict=strict,
+        waived_symbols=base_waivers if not strict else None,
+    )
+    if errors:
+        for error in errors:
+            print(error)
+        return 1
+    verdict = "IDENTITY_EQUIVALENT" if strict else "IDENTITY_COMPATIBLE"
+    print(
+        f"{verdict} base={base} head={head} "
+        f"base_facades={len(base_surfaces)} head_facades={len(head_surfaces)}"
+    )
+    return 0
+
+def main(argv: list[str] | None = None) -> int:
+    """Internal helper for main."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base", required=True)
+    parser.add_argument("--head", required=True)
+    parser.add_argument("--repository", type=Path, default=Path("."))
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument(
+        "--strict",
+        dest="strict",
+        action="store_true",
+        default=True,
+        help="reject additions and initializer changes; use for a decomposition audit (default)",
+    )
+    modes.add_argument(
+        "--compatibility",
+        dest="strict",
+        action="store_false",
+        help="allow additive surface and initializer changes while blocking removals",
+    )
+    args = parser.parse_args(argv)
+    return compare_revisions(args.repository.resolve(), args.base, args.head, strict=args.strict)
+
+if __name__ == "__main__":
+    raise SystemExit(main())

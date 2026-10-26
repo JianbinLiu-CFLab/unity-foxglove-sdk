@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from .foundation import (
+from foundation import (
     argparse,
     ctypes,
     os,
@@ -81,12 +81,12 @@ from .foundation import (
     format_elapsed,
     is_important_log_line,
 )
-from .logging import (
+from il2cpp_logging import (
     _LogTailState,
     read_new_important_lines,
     finish_log_tail,
 )
-from .process import (
+from process import (
     _WindowsKillOnCloseJob,
     _resume_suspended_windows_process,
     _posix_process_group_exists,
@@ -99,16 +99,16 @@ from .process import (
     terminate_process,
     run_with_progress,
 )
-from .cli import (
+from cli import (
     non_negative_int,
     parse_args,
     _interrupt_build,
     main,
 )
-from . import foundation as _phase192_foundation
-from . import logging as _phase192_logging
-from . import process as _phase192_process
-from . import cli as _phase192_cli
+import foundation as _phase192_foundation
+import il2cpp_logging as _phase192_logging
+import process as _phase192_process
+import cli as _phase192_cli
 
 _phase192_foundation.REPO_ROOT_PARENT_DEPTH = 2
 _PHASE192_SECTION_MODULES = (

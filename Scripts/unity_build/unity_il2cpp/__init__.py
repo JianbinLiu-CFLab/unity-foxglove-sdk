@@ -6,10 +6,13 @@ import types as _phase192_types
 from pathlib import Path as _Phase192Path
 
 _PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "unity_il2cpp.py"
+_PHASE192_PACKAGE_DIR = _Phase192Path(__file__).resolve().parent
 __file__ = str(_PHASE192_FACADE_FILE)
 _PHASE192_PARENT = _PHASE192_FACADE_FILE.parent
 if str(_PHASE192_PARENT) not in _phase192_sys.path:
     _phase192_sys.path.insert(0, str(_PHASE192_PARENT))
+if str(_PHASE192_PACKAGE_DIR) not in _phase192_sys.path:
+    _phase192_sys.path.insert(0, str(_PHASE192_PACKAGE_DIR))
 
 from . import implementation as _phase192_section_0
 
