@@ -80,6 +80,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
 
             [Fact]
+            public void MessagePackInputDispatchEmitterCompositionPreservesDeclaredSections()
+            {
+                const string facadePath = "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/MessagePackInputDispatchEmitter.cs";
+                var facade = TestSources.Text(facadePath);
+                var source = PhaseValidationSourceHelpers.ReadRequiredRepoText(facadePath);
+                foreach (var section in new[]
+                {
+                    "MessagePackInputDispatchEmitter.Core.cs",
+                    "MessagePackInputDispatchEmitter.Readers.cs",
+                    "MessagePackInputDispatchEmitter.Shapes.cs",
+                })
+                {
+                    Assert.Contains(section, facade, StringComparison.Ordinal);
+                    Assert.Contains(section, source, StringComparison.Ordinal);
+                }
+
+                Assert.Contains("IFoxgloveTransactionalInputSource", source, StringComparison.Ordinal);
+                Assert.Contains("FoxgloveMsgPackReader", source, StringComparison.Ordinal);
+                Assert.Contains("TryReserveInput", source, StringComparison.Ordinal);
+            }
+
+            [Fact]
             public void RuntimePythonReadersUseTheSplitAwareSourceEntryPoint()
             {
                 var root = Path.Combine(PhaseValidationSourceHelpers.FindRequiredRepoRoot(), "Packages");
@@ -101,14 +123,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                                 .Select(File.ReadAllText));
                     }
 
+                    var splitAwareReaders = FindSplitAwareReaderMethods(logicalSource);
                     foreach (Match match in Regex.Matches(
                                  logicalSource,
-                                 "(?<![\\w.])(?<reader>ReadRepoText|Read)\\(\\s*(?:\\\"(?<path>Scripts/[^\\\"]+\\.py)\\\"|(?<symbol>[A-Za-z_]\\w*))\\s*\\)",
+                                 "(?<![\\w.])(?<reader>ReadRequiredRepoText|ReadSplitPythonSource|ReadRepoText|Read)\\(\\s*(?<argument>[^)]*?)\\s*\\)",
                                  RegexOptions.CultureInvariant))
                     {
-                        var relativePath = match.Groups["path"].Success
-                            ? match.Groups["path"].Value
-                            : ResolvePythonPath(logicalSource, match.Groups["symbol"].Value);
+                        var relativePath = ResolvePythonPath(logicalSource, match.Groups["argument"].Value);
                         if (string.IsNullOrEmpty(relativePath))
                             continue;
                         relativePath = relativePath.Replace('/', Path.DirectorySeparatorChar);
@@ -122,22 +143,128 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                             Path.GetFileNameWithoutExtension(facadePath));
                         if (!Directory.Exists(packagePath) && !Directory.Exists(decomposedPath))
                             continue;
-                        if (!logicalSource.Contains("PhaseValidationSourceHelpers.ReadRequiredRepoText", StringComparison.Ordinal)
-                            && !logicalSource.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSource", StringComparison.Ordinal))
-                            violations.Add(path + ": Python reader bypasses the split-aware helper");
+
+                        var reader = match.Groups["reader"].Value;
+                        if (!IsSplitAwareReader(reader, splitAwareReaders))
+                            violations.Add(path + ": Python reader " + reader + " bypasses the split-aware helper");
                     }
                 }
 
-                Assert.Empty(violations);
+                Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
             }
 
-            private static string ResolvePythonPath(string source, string symbol)
+            private static HashSet<string> FindSplitAwareReaderMethods(string source)
             {
-                var declaration = Regex.Match(
-                    source,
-                    $"(?:const\\s+string|string|var)\\s+{Regex.Escape(symbol)}\\s*=\\s*\\\"(?<path>Scripts/[^\\\"]+\\.py)\\\"",
-                    RegexOptions.CultureInvariant);
-                return declaration.Success ? declaration.Groups["path"].Value : string.Empty;
+                var names = new HashSet<string>(StringComparer.Ordinal);
+                foreach (Match match in Regex.Matches(
+                             source,
+                             "(?ms)(?:public|private|internal|protected|static|sealed|async|\\s)+string\\s+(?<name>[A-Za-z_]\\w*)\\s*\\([^)]*\\)\\s*(?:=>\\s*(?<expression>[^;]+);|\\{(?<body>.*?)\\})",
+                             RegexOptions.CultureInvariant))
+                {
+                    var body = match.Groups["expression"].Value + match.Groups["body"].Value;
+                    if (body.Contains("PhaseValidationSourceHelpers.ReadRequiredRepoText", StringComparison.Ordinal)
+                        || body.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSource", StringComparison.Ordinal)
+                        || body.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSourcePath", StringComparison.Ordinal))
+                        names.Add(match.Groups["name"].Value);
+                }
+
+                if (source.Contains("string ReadRepoText", StringComparison.Ordinal)
+                    && source.Contains("PhaseValidationSourceHelpers.ReadSplitPythonSourcePath", StringComparison.Ordinal))
+                    names.Add("ReadRepoText");
+                return names;
+            }
+
+            private static bool IsSplitAwareReader(string reader, HashSet<string> splitAwareReaders)
+                => reader is "ReadRequiredRepoText" or "ReadSplitPythonSource"
+                    || splitAwareReaders.Contains(reader);
+
+            private static string ResolvePythonPath(string source, string expression)
+            {
+                var expressions = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (Match match in Regex.Matches(
+                             source,
+                             "(?m)(?:const\\s+string|string|var)\\s+(?<name>[A-Za-z_]\\w*)\\s*=\\s*(?<expression>[^;]+);",
+                             RegexOptions.CultureInvariant))
+                    expressions[match.Groups["name"].Value] = match.Groups["expression"].Value.Trim();
+
+                foreach (Match match in Regex.Matches(
+                             source,
+                             "(?m)string\\s+(?<name>[A-Za-z_]\\w*)\\s*(?:\\([^)]*\\))?\\s*=>\\s*(?<expression>[^;]+);",
+                             RegexOptions.CultureInvariant))
+                    expressions[match.Groups["name"].Value] = match.Groups["expression"].Value.Trim();
+
+                for (var pass = 0; pass < expressions.Count + 1; pass++)
+                {
+                    foreach (var name in expressions.Keys.ToArray())
+                    {
+                        var value = EvaluateStringExpression(expressions[name], expressions);
+                        if (!string.IsNullOrEmpty(value))
+                            expressions[name] = value;
+                    }
+                }
+
+                var resolved = EvaluateStringExpression(expression, expressions);
+                return resolved.StartsWith("Scripts/", StringComparison.Ordinal)
+                       && resolved.EndsWith(".py", StringComparison.Ordinal)
+                    ? resolved
+                    : string.Empty;
+            }
+
+            private static string EvaluateStringExpression(
+                string expression,
+                IReadOnlyDictionary<string, string> values)
+            {
+                var text = expression.Trim();
+                while (text.Length >= 2 && text[0] == '(' && text[^1] == ')')
+                    text = text[1..^1].Trim();
+
+                var parts = SplitTopLevelExpression(text, '+');
+                if (parts.Count > 1)
+                {
+                    var evaluated = parts.Select(part => EvaluateStringExpression(part, values)).ToArray();
+                    return evaluated.Any(string.IsNullOrEmpty) ? string.Empty : string.Concat(evaluated);
+                }
+
+                if (text.StartsWith("Path.Combine(", StringComparison.Ordinal)
+                    && text.EndsWith(")", StringComparison.Ordinal))
+                {
+                    var arguments = SplitTopLevelExpression(text[13..^1], ',');
+                    var evaluated = arguments.Select(part => EvaluateStringExpression(part, values)).ToArray();
+                    return evaluated.Any(string.IsNullOrEmpty)
+                        ? string.Empty
+                        : string.Join("/", evaluated.Select(part => part.Trim('/')));
+                }
+
+                if (text.Length >= 2 && text[0] == '"' && text[^1] == '"')
+                    return text[1..^1]
+                        .Replace("\\\"", "\"")
+                        .Replace("\\\\", "\\");
+                return values.TryGetValue(text, out var value) ? value : string.Empty;
+            }
+
+            private static List<string> SplitTopLevelExpression(string expression, char separator)
+            {
+                var parts = new List<string>();
+                var start = 0;
+                var depth = 0;
+                var quoted = false;
+                for (var index = 0; index < expression.Length; index++)
+                {
+                    var character = expression[index];
+                    if (character == '"' && (index == 0 || expression[index - 1] != '\\'))
+                        quoted = !quoted;
+                    else if (!quoted && character == '(')
+                        depth++;
+                    else if (!quoted && character == ')')
+                        depth--;
+                    else if (!quoted && depth == 0 && character == separator)
+                    {
+                        parts.Add(expression[start..index].Trim());
+                        start = index + 1;
+                    }
+                }
+                parts.Add(expression[start..].Trim());
+                return parts;
             }
 
             private static bool IsGeneratedSourcePath(string root, string path)
@@ -705,6 +832,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     "SplitPythonScannersUseDeclaredSourceSections",
                     "RequiredRepoTextReadsPythonFacadesWithTheirSections",
                     "SchemaGeneratorFacadeDoesNotHideSectionMarkers",
+                    "MessagePackInputDispatchEmitterCompositionPreservesDeclaredSections",
                     "RuntimePythonReadersUseTheSplitAwareSourceEntryPoint",
                     "GeneratedSourcePathFilterIsPlatformIndependent",
                     "FoxgloveRuntimeCompositionFailsClosedAndPreservesTrailingGateOrder",

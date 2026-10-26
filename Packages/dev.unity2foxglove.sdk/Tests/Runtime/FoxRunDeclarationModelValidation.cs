@@ -5,7 +5,6 @@
 // Purpose: Phase 183A validation migrated to the open Provider declaration model.
 
 using System;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using Unity.FoxgloveSDK.Components;
@@ -187,27 +186,25 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyDescriptorAndGeneratorBoundary()
         {
-            var root = TestRepoRootLocator.FindRepoRoot();
-            var descriptor = File.ReadAllText(
-                Path.Combine(
-                    root,
-                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/"
-                    + "FoxRunDescriptor/FoxRunGenerationDescriptorConstants.cs"));
-            var model = File.ReadAllText(
-                Path.Combine(
-                    root,
-                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/"
-                    + "FoxRunDescriptor/FoxRunGenerationModel.cs"));
-            var generator = File.ReadAllText(
-                Path.Combine(
-                    root,
-                    "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/"
-                    + "src/FoxgloveLogSourceGenerator.cs"));
+            var descriptor = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/"
+                + "FoxRunDescriptor/FoxRunGenerationDescriptorConstants.cs");
+            var model = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/"
+                + "FoxRunDescriptor/FoxRunGenerationModel.cs");
+            var generator = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/"
+                + "src/FoxgloveLogSourceGenerator.cs");
             Check(
                 descriptor.Contains("DescriptorVersion = 6", StringComparison.Ordinal)
-                && model.Contains("PublishTransportIds", StringComparison.Ordinal)
-                && model.Contains("SubscribeTransportId", StringComparison.Ordinal),
-                "183A-E1: descriptor v6 carries direction-specific Provider IDs");
+                && model.Contains("public sealed class FoxRunGenerationMember", StringComparison.Ordinal)
+                && model.Contains("public readonly IReadOnlyList<string> PublishTransportIds", StringComparison.Ordinal)
+                && model.Contains("public readonly string SubscribeTransportId", StringComparison.Ordinal)
+                && model.Contains("public FoxRunGenerationMember(", StringComparison.Ordinal)
+                && model.Contains("public FoxgloveSourceEmitter.TopicMember ToTopicMember()", StringComparison.Ordinal)
+                && model.Contains("publishTransportIds: PublishTransportIds", StringComparison.Ordinal)
+                && model.Contains("subscribeTransportId: SubscribeTransportId", StringComparison.Ordinal),
+                "183A-E1: descriptor v6 carries direction-specific Provider IDs through the composed model");
             Check(
                 !generator.Contains("Ros2Native", StringComparison.Ordinal)
                 && !generator.Contains("Ros2Bridge", StringComparison.Ordinal)
