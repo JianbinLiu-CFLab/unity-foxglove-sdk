@@ -293,7 +293,7 @@ _PHASE192_TEMPLATE_CALLS = frozenset({
     "setattr", "sorted", "str", "super", "tuple", "SystemExit",
 })
 _PHASE192_TEMPLATE_METHODS = frozenset({
-    "__class__", "__delattr__", "__dict__", "__setattr__", "add", "get", "insert", "main", "pop", "resolve", "startswith",
+    "__class__", "__delattr__", "__dict__", "__setattr__", "_phase192_delete_exported_state", "_phase192_sync_exported_state", "add", "get", "insert", "main", "pop", "resolve", "startswith",
 })
 
 
