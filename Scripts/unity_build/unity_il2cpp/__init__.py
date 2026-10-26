@@ -25,7 +25,7 @@ for _phase192_section in _PHASE192_SECTION_MODULES:
         _PHASE192_EXPORT_NAMES.add(_phase192_name)
 for _phase192_section in _PHASE192_SECTION_MODULES:
     for _phase192_name in _PHASE192_EXPORT_NAMES:
-        _phase192_section.__dict__[_phase192_name] = globals()[_phase192_name]
+        setattr(_phase192_section, _phase192_name, globals()[_phase192_name])
 
 
 class _Phase192PackageModule(_phase192_types.ModuleType):
@@ -35,13 +35,16 @@ class _Phase192PackageModule(_phase192_types.ModuleType):
         """Propagate exported state changes to the implementation module."""
         super().__setattr__(name, value)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
-            _phase192_section_0.__dict__[name] = value
+            setattr(_phase192_section_0, name, value)
 
     def __delattr__(self, name):
         """Propagate exported state removals to the implementation module."""
         super().__delattr__(name)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
-            _phase192_section_0.__dict__.pop(name, None)
+            try:
+                delattr(_phase192_section_0, name)
+            except AttributeError:
+                pass
 
 
 __all__ = sorted(_PHASE192_EXPORT_NAMES)

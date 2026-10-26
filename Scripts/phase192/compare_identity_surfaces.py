@@ -293,7 +293,7 @@ _PHASE192_TEMPLATE_CALLS = frozenset({
     "setattr", "sorted", "str", "super", "tuple", "SystemExit",
 })
 _PHASE192_TEMPLATE_METHODS = frozenset({
-    "__class__", "__delattr__", "__dict__", "__setattr__", "_phase192_delete_exported_state", "_phase192_sync_exported_state", "add", "get", "insert", "main", "pop", "resolve", "startswith",
+    "__class__", "__delattr__", "__dict__", "__setattr__", "add", "get", "insert", "main", "pop", "resolve", "startswith",
 })
 
 
@@ -594,35 +594,6 @@ def _phase192_validate_template_registry_mutations(
             for function in expected_method_tree.body
             if isinstance(function, ast.FunctionDef)
         }
-        if (
-            Path(path).as_posix().endswith("Scripts/unity_build/unity_il2cpp.py")
-            and any(
-                isinstance(node, ast.Attribute)
-                and node.attr == "_phase192_sync_exported_state"
-                for node in ast.walk(tree)
-            )
-        ):
-            expected_method_tree = ast.parse(
-                "def __setattr__(self, name, value):\n"
-                "    super().__setattr__(name, value)\n"
-                "    if _phase192_package_module is not None and _phase192_package_module is not self:\n"
-                "        setattr(_phase192_package_module, name, value)\n"
-                "        _phase192_package_module._phase192_sync_exported_state(name, value)\n"
-                "\n"
-                "def __delattr__(self, name):\n"
-                "    super().__delattr__(name)\n"
-                "    if _phase192_package_module is not None and _phase192_package_module is not self:\n"
-                "        try:\n"
-                "            delattr(_phase192_package_module, name)\n"
-                "            _phase192_package_module._phase192_delete_exported_state(name)\n"
-                "        except AttributeError:\n"
-                "            pass\n"
-            )
-            expected_methods = {
-                function.name: method_signature(function)
-                for function in expected_method_tree.body
-                if isinstance(function, ast.FunctionDef)
-            }
 
         def mutation_root(node: ast.AST) -> str | None:
             """Resolve a protected mutation root through runtime lookup forms."""
@@ -3536,26 +3507,16 @@ def _relative_import_contract(
             if any(_SECTION_NAME_RE.fullmatch(part) is None or keyword.iskeyword(part) for part in parts):
                 raise ValueError(f"Invalid relative import in {source_path}: {node.module}")
             source_stem = Path(source_path).stem
-            target_base = package_dir.joinpath(*parts)
-            local_target = (
-                target_base.with_suffix(".py")
-                if target_base.with_suffix(".py").is_file()
-                else target_base / "__init__.py"
-            )
-            internal_implementation_split = (
-                source_stem == "implementation"
-                and local_target.is_file()
-            )
             if (
                 declared_sections is not None
                 and parts[0] not in declared_sections
                 and parts[0] != source_stem
-                and not internal_implementation_split
             ):
                 raise ValueError(
                     f"Relative import target is not a declared section in {source_path}: {node.module}"
                 )
-            target = local_target
+            target_base = package_dir.joinpath(*parts)
+            target = target_base.with_suffix(".py") if target_base.with_suffix(".py").is_file() else target_base / "__init__.py"
             if not target.is_file():
                 raise ValueError(f"Relative import target is missing in {source_path}: {node.module}")
         else:
@@ -3576,15 +3537,10 @@ def _relative_import_contract(
             else:
                 candidate = package_dir / f"{alias.name}.py"
                 candidate_package = package_dir / alias.name / "__init__.py"
-                internal_implementation_split = (
-                    Path(source_path).stem == "implementation"
-                    and (candidate.is_file() or candidate_package.is_file())
-                )
                 if (
                     declared_sections is not None
                     and alias.name not in declared_sections
                     and (candidate.is_file() or candidate_package.is_file())
-                    and not internal_implementation_split
                 ):
                     raise ValueError(
                         f"Relative import target is not a declared section in {source_path}: {alias.name}"
