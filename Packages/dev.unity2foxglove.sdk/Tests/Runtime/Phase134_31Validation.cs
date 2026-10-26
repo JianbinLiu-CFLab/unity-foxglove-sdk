@@ -43,9 +43,9 @@ namespace Unity.FoxgloveSDK.Tests
             var source = string.Join("\n", new[]
             {
                 PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/unity_build/unity_il2cpp.py"),
-                PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/unity_build/unity_il2cpp/foundation.py"),
-                PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/unity_build/unity_il2cpp/process.py"),
-                PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/unity_build/unity_il2cpp/cli.py"),
+                PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/unity_build/unity_il2cpp/parts/foundation.py"),
+                PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/unity_build/unity_il2cpp/parts/process.py"),
+                PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/unity_build/unity_il2cpp/parts/cli.py"),
             });
 
             Check(source.Contains("or find_unity_from_project_version(project_path)", StringComparison.Ordinal)
