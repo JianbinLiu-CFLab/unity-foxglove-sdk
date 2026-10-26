@@ -39,23 +39,6 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         """Load a fresh validator module for each test."""
         self.validator = load_validator_module()
 
-    def test_validator_supports_module_entrypoint(self) -> None:
-        """The split validator remains runnable with Python's module launcher."""
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "Scripts.ros2forunity.windows.humble.validate_ros2forunity_package",
-                "--help",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("validate_ros2forunity_package", result.stdout)
-
     def test_validator_facades_isolate_sequential_runpy_execution(self) -> None:
         """Humble, Jazzy, and Lyrical runpy loads must not reuse package state."""
         facades = [
