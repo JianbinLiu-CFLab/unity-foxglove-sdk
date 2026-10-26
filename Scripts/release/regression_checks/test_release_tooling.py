@@ -90,6 +90,10 @@ def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    if path == RUN_CI_PATH:
+        for module_name in tuple(sys.modules):
+            if module_name == "run_ci" or module_name.startswith("run_ci."):
+                sys.modules.pop(module_name, None)
     sys.modules.pop(spec.name, None)
     sys.modules[spec.name] = module
     try:
@@ -481,6 +485,16 @@ class RunCiTests(unittest.TestCase):
     def test_run_ci_imports_under_current_python(self) -> None:
         """The CI runner module loads without f-string syntax failures."""
         self.assertTrue(hasattr(self.run_ci, "main"))
+
+    def test_run_ci_load_clears_cached_package_sections(self) -> None:
+        """Each isolated load must rebuild the split implementation package."""
+        first_section = sys.modules["run_ci.foundation"]
+        first_section.REPO_ROOT = Path("stale-run-ci-root")
+
+        second = load_module("run_ci_under_test", RUN_CI_PATH)
+
+        self.assertIsNot(first_section, sys.modules["run_ci.foundation"])
+        self.assertEqual(RUN_CI_PATH.parents[2], second.REPO_ROOT)
 
     def test_run_ci_uses_repository_build_root(self) -> None:
         """The split runner must keep CI artifacts below the repository build root."""
