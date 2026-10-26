@@ -20,7 +20,7 @@ _phase192_section_0.CORE_PACKAGE = _phase192_section_0.ROOT / "Packages" / "dev.
 _phase192_section_0.RUNTIME_ROOT = _phase192_section_0.PACKAGE / "Runtime" / "Ros2ForUnity"
 _phase192_section_0.PLUGIN_ROOT = _phase192_section_0.RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64"
 _phase192_section_0.MANIFEST = _phase192_section_0.PACKAGE / "RuntimeSupport" / "runtime-manifest.json"
-_phase192_section_0.INVENTORY = _phase192_section_0.PACKAGE / "RuntimeSupport" / f"r2fu-{_phase192_section_0.PACKAGE_NAME.split('.')[4]}-win64-runtime-inventory.json"
+_phase192_section_0.INVENTORY = _phase192_section_0.PACKAGE / "RuntimeSupport" / "r2fu-humble-win64-runtime-inventory.json"
 _phase192_section_0.PUBLIC_DOCS = (
     _phase192_section_0.PACKAGE / "README.md",
     _phase192_section_0.PACKAGE / "THIRD_PARTY_NOTICES.md",
@@ -29,11 +29,14 @@ _phase192_section_0.PUBLIC_DOCS = (
 )
 
 _PHASE192_SECTION_MODULES = (_phase192_section_0,)
-_PHASE192_EXPORT_NAMES = set(_phase192_section_0.__all__)
-for _phase192_name in _PHASE192_EXPORT_NAMES:
-    globals()[_phase192_name] = getattr(_phase192_section_0, _phase192_name)
-for _phase192_name in _PHASE192_EXPORT_NAMES:
-    _phase192_section_0.__dict__[_phase192_name] = globals()[_phase192_name]
+_PHASE192_EXPORT_NAMES = set()
+for _phase192_section in _PHASE192_SECTION_MODULES:
+    for _phase192_name in _phase192_section.__all__:
+        globals()[_phase192_name] = getattr(_phase192_section, _phase192_name)
+        _PHASE192_EXPORT_NAMES.add(_phase192_name)
+for _phase192_section in _PHASE192_SECTION_MODULES:
+    for _phase192_name in _PHASE192_EXPORT_NAMES:
+        _phase192_section.__dict__[_phase192_name] = globals()[_phase192_name]
 
 
 class _Phase192PackageModule(_phase192_types.ModuleType):
