@@ -66,6 +66,22 @@ namespace Unity.FoxgloveSDK.Tests
                 source.Append(File.ReadAllText(section));
             }
 
+            var companionPath = Path.Combine(packagePath, "sections");
+            if (Directory.Exists(companionPath))
+            {
+                foreach (var section in Directory
+                    .GetFiles(companionPath, "*.py", SearchOption.TopDirectoryOnly)
+                    .Where(path => !string.Equals(
+                        Path.GetFileName(path),
+                        "__init__.py",
+                        StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+                {
+                    source.Append(Environment.NewLine);
+                    source.Append(File.ReadAllText(section));
+                }
+            }
+
             return source.ToString();
         }
         private static string StripPythonCommentsAndStrings(
