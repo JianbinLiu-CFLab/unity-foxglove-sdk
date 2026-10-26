@@ -49,35 +49,59 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             )
             for distro in ("humble", "jazzy", "lyrical")
         ]
-        for run_name in ("__main__", None):
-            for module_name in tuple(sys.modules):
-                if module_name == "validate_r2fu_runtime_package" or module_name.startswith(
-                    "validate_r2fu_runtime_package."
-                ):
-                    sys.modules.pop(module_name, None)
-            previous = None
-            for distro, facade in facades:
-                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                    if run_name is None:
-                        try:
-                            runpy.run_path(str(facade))
-                        except SystemExit as exc:
-                            self.fail(f"default runpy unexpectedly exited: {exc}")
-                    else:
-                        original_argv = sys.argv
-                        sys.argv = [str(facade)]
-                        with self.assertRaises(SystemExit) as raised:
+        original_path = list(sys.path)
+        try:
+            for run_name in ("__main__", None):
+                for module_name in tuple(sys.modules):
+                    if module_name == "validate_r2fu_runtime_package" or module_name.startswith(
+                        "validate_r2fu_runtime_package."
+                    ):
+                        sys.modules.pop(module_name, None)
+                previous = None
+                for distro, facade in facades:
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        if run_name is None:
                             try:
-                                runpy.run_path(str(facade), run_name=run_name)
-                            finally:
-                                sys.argv = original_argv
-                        self.assertEqual(raised.exception.code, 0)
-                loaded = sys.modules["validate_r2fu_runtime_package"]
-                self.assertEqual(Path(loaded.__file__).resolve(), facade.resolve())
-                self.assertEqual(loaded.PACKAGE_NAME, f"dev.unity2foxglove.ros2forunity.runtime.{distro}.win64")
-                if previous is not None:
-                    self.assertIsNot(previous, loaded)
-                previous = loaded
+                                runpy.run_path(str(facade))
+                            except SystemExit as exc:
+                                self.fail(f"default runpy unexpectedly exited: {exc}")
+                        else:
+                            original_argv = sys.argv
+                            sys.argv = [str(facade)]
+                            with self.assertRaises(SystemExit) as raised:
+                                try:
+                                    runpy.run_path(str(facade), run_name=run_name)
+                                finally:
+                                    sys.argv = original_argv
+                            self.assertEqual(raised.exception.code, 0)
+                    loaded = sys.modules["validate_r2fu_runtime_package"]
+                    self.assertEqual(Path(loaded.__file__).resolve(), facade.resolve())
+                    self.assertEqual(loaded.PACKAGE_NAME, f"dev.unity2foxglove.ros2forunity.runtime.{distro}.win64")
+                    if previous is not None:
+                        self.assertIsNot(previous, loaded)
+                    previous = loaded
+        finally:
+            sys.path[:] = original_path
+
+    def test_runpy_sequence_does_not_pollute_package_validator_imports(self) -> None:
+        """Runpy isolation must leave the Humble package validator resolvable."""
+        original_path = list(sys.path)
+        try:
+            sys.path.insert(
+                0,
+                str(ROOT / "Scripts" / "ros2forunity" / "windows" / "lyrical"),
+            )
+            from Scripts.phase192.source_layout import load_fresh_module
+
+            validator = load_fresh_module(
+                "validate_ros2forunity_package",
+                ROOT / "Scripts" / "ros2forunity" / "windows" / "humble"
+                / "validate_ros2forunity_package.py",
+            )
+            self.assertEqual("dev.unity2foxglove.ros2forunity.runtime.humble.win64", validator.RUNTIME_PACKAGE_NAME)
+            self.assertIsInstance(validator.TEXT_CACHE, dict)
+        finally:
+            sys.path[:] = original_path
 
     def test_runtime_facades_clear_bare_package_for_runpy_execution(self) -> None:
         """Sequential runpy execution must not retain a prior distro package."""
