@@ -6,33 +6,23 @@ import types as _phase192_types
 from pathlib import Path as _Phase192Path
 
 _PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "unity_il2cpp.py"
-_PHASE192_PACKAGE_DIR = _Phase192Path(__file__).resolve().parent
 __file__ = str(_PHASE192_FACADE_FILE)
 _PHASE192_PARENT = _PHASE192_FACADE_FILE.parent
 if str(_PHASE192_PARENT) not in _phase192_sys.path:
     _phase192_sys.path.insert(0, str(_PHASE192_PARENT))
-if str(_PHASE192_PACKAGE_DIR) not in _phase192_sys.path:
-    _phase192_sys.path.insert(0, str(_PHASE192_PACKAGE_DIR))
 
 from . import implementation as _phase192_section_0
 
 _phase192_section_0.REPO_ROOT_PARENT_DEPTH = 3
 _PHASE192_SECTION_MODULES = (_phase192_section_0,)
-_PHASE192_MUTATION_MODULES = (
-    _phase192_section_0,
-    _phase192_section_0._phase192_foundation,
-    _phase192_section_0._phase192_logging,
-    _phase192_section_0._phase192_process,
-    _phase192_section_0._phase192_cli,
-)
 _PHASE192_EXPORT_NAMES = set()
 for _phase192_section in _PHASE192_SECTION_MODULES:
     for _phase192_name in _phase192_section.__all__:
         globals()[_phase192_name] = getattr(_phase192_section, _phase192_name)
         _PHASE192_EXPORT_NAMES.add(_phase192_name)
-for _phase192_section in _PHASE192_MUTATION_MODULES:
+for _phase192_section in _PHASE192_SECTION_MODULES:
     for _phase192_name in _PHASE192_EXPORT_NAMES:
-        setattr(_phase192_section, _phase192_name, globals()[_phase192_name])
+        _phase192_section.__dict__[_phase192_name] = globals()[_phase192_name]
 
 
 class _Phase192PackageModule(_phase192_types.ModuleType):
@@ -42,18 +32,13 @@ class _Phase192PackageModule(_phase192_types.ModuleType):
         """Propagate exported state changes to the implementation module."""
         super().__setattr__(name, value)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
-            for _phase192_target in _PHASE192_MUTATION_MODULES:
-                setattr(_phase192_target, name, value)
+            _phase192_section_0.__dict__[name] = value
 
     def __delattr__(self, name):
         """Propagate exported state removals to the implementation module."""
         super().__delattr__(name)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
-            try:
-                for _phase192_target in _PHASE192_MUTATION_MODULES:
-                    delattr(_phase192_target, name)
-            except AttributeError:
-                pass
+            _phase192_section_0.__dict__.pop(name, None)
 
 
 __all__ = sorted(_PHASE192_EXPORT_NAMES)
