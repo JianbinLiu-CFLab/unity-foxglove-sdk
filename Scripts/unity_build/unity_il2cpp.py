@@ -7,17 +7,7 @@
 # Inputs: --target (win64|linux64|macos), --unity (path, optional)
 # Outputs: Defaults to build/Unity/<target>-il2cpp-<timestamp>/; overridable via --build-dir and --output.
 
-"""Build the Unity Foxglove demo project for IL2CPP standalone.
-
-The script resolves project and output paths relative to its own location.
-No hard-coded absolute paths - safe to use across clones.
-
-Examples:
-  python Scripts/unity_build/unity_il2cpp.py
-  python Scripts/unity_build/unity_il2cpp.py --target linux64
-  python Scripts/unity_build/unity_il2cpp.py --target macos --unity /path/to/Unity
-"""
-
+from __future__ import annotations
 
 import sys as _phase192_sys
 import types as _phase192_types
