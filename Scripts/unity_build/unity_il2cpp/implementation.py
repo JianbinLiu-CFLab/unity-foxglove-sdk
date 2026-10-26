@@ -145,6 +145,7 @@ def _phase192_sync_parts():
         _phase192_target.time = time
         _phase192_target.Path = Path
         _phase192_target.repo_root = repo_root
+        _phase192_target.resolve_unity_for_command = resolve_unity_for_command
         _phase192_target.REPO_ROOT_PARENT_DEPTH = REPO_ROOT_PARENT_DEPTH
         _phase192_target.LOG_POLL_SLEEP_SECONDS = LOG_POLL_SLEEP_SECONDS
         _phase192_target.DEFAULT_PROGRESS_INTERVAL_SECONDS = DEFAULT_PROGRESS_INTERVAL_SECONDS
