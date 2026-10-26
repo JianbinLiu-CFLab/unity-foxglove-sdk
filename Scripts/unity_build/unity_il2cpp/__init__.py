@@ -18,12 +18,19 @@ from . import implementation as _phase192_section_0
 
 _phase192_section_0.REPO_ROOT_PARENT_DEPTH = 3
 _PHASE192_SECTION_MODULES = (_phase192_section_0,)
+_PHASE192_MUTATION_MODULES = (
+    _phase192_section_0,
+    _phase192_section_0._phase192_foundation,
+    _phase192_section_0._phase192_logging,
+    _phase192_section_0._phase192_process,
+    _phase192_section_0._phase192_cli,
+)
 _PHASE192_EXPORT_NAMES = set()
 for _phase192_section in _PHASE192_SECTION_MODULES:
     for _phase192_name in _phase192_section.__all__:
         globals()[_phase192_name] = getattr(_phase192_section, _phase192_name)
         _PHASE192_EXPORT_NAMES.add(_phase192_name)
-for _phase192_section in _PHASE192_SECTION_MODULES:
+for _phase192_section in _PHASE192_MUTATION_MODULES:
     for _phase192_name in _PHASE192_EXPORT_NAMES:
         setattr(_phase192_section, _phase192_name, globals()[_phase192_name])
 
@@ -35,14 +42,16 @@ class _Phase192PackageModule(_phase192_types.ModuleType):
         """Propagate exported state changes to the implementation module."""
         super().__setattr__(name, value)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
-            setattr(_phase192_section_0, name, value)
+            for _phase192_target in _PHASE192_MUTATION_MODULES:
+                setattr(_phase192_target, name, value)
 
     def __delattr__(self, name):
         """Propagate exported state removals to the implementation module."""
         super().__delattr__(name)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
             try:
-                delattr(_phase192_section_0, name)
+                for _phase192_target in _PHASE192_MUTATION_MODULES:
+                    delattr(_phase192_target, name)
             except AttributeError:
                 pass
 
