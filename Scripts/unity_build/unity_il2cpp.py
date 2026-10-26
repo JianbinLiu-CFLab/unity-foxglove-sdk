@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Purpose: Cross-platform IL2CPP standalone Player build script.
+# Usage: python Scripts/unity_build/unity_il2cpp.py --target win64
+# Inputs: --target (win64|linux64|macos), --unity (path, optional)
+# Outputs: Defaults to build/Unity/<target>-il2cpp-<timestamp>/; overridable via --build-dir and --output.
+
 from __future__ import annotations
 
 import sys as _phase192_sys
