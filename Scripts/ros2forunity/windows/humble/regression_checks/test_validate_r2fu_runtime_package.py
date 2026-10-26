@@ -36,6 +36,20 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         """Load a fresh validator module for each test."""
         self.validator = load_validator_module()
 
+    def test_runtime_facades_clear_bare_package_for_runpy_execution(self) -> None:
+        """Sequential runpy execution must not retain a prior distro package."""
+        for distro in ("humble", "jazzy", "lyrical"):
+            facade = ROOT / "Scripts" / "ros2forunity" / "windows" / distro / "validate_r2fu_runtime_package.py"
+            source = facade.read_text(encoding="utf-8")
+            self.assertIn(
+                '_phase192_self = _phase192_sys.modules.get("validate_r2fu_runtime_package")',
+                source,
+            )
+            self.assertNotIn(
+                'if __name__ == "validate_r2fu_runtime_package"',
+                source,
+            )
+
     def test_inventory_category_counts_must_match_file_entries(self) -> None:
         """A declared native count cannot be satisfied by DLLs from other categories."""
         files = [
