@@ -74,6 +74,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     prefixes = {module_name, facade.stem}
     package_dir = facade.with_suffix("")
     saved_modules: dict[str, ModuleType] = {}
+    initial_module_names = set(sys.modules)
     try:
         sys.path[:] = [entry for entry in sys.path if entry != facade_parent]
         sys.path.insert(0, facade_parent)
@@ -110,10 +111,25 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         return module
     except BaseException:
         for loaded_name in tuple(sys.modules):
-            if loaded_name in saved_modules or any(
+            remove = loaded_name in saved_modules or any(
                 loaded_name == prefix or loaded_name.startswith(prefix + ".")
                 for prefix in prefixes
-            ):
+            )
+            if not remove and loaded_name not in initial_module_names:
+                loaded_module = sys.modules[loaded_name]
+                origin = getattr(getattr(loaded_module, "__spec__", None), "origin", None)
+                module_file = getattr(loaded_module, "__file__", None) or origin
+                if module_file:
+                    try:
+                        resolved = Path(module_file).resolve()
+                    except OSError:
+                        resolved = None
+                    if resolved is not None:
+                        remove = (
+                            resolved.parent == facade.parent
+                            or package_dir in resolved.parents
+                        )
+            if remove:
                 sys.modules.pop(loaded_name, None)
         sys.modules.update(saved_modules)
         raise

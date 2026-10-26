@@ -2271,6 +2271,24 @@ class IdentityToolingTests(unittest.TestCase):
                 source_layout.load_fresh_module("fixture", facade)
             self.assertNotIn("fixture", sys.modules)
 
+    def test_load_fresh_module_removes_new_local_modules_on_failure(self) -> None:
+        """A failed load must remove newly imported modules from the facade directory."""
+        import sys
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            facade = root / "fixture.py"
+            helper = root / "helper.py"
+            helper.write_text("VALUE = 1\n", encoding="utf-8")
+            facade.write_text("import helper\nraise RuntimeError('boom')\n", encoding="utf-8")
+            sys.modules.pop("helper", None)
+            try:
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    source_layout.load_fresh_module("fixture", facade)
+                self.assertNotIn("helper", sys.modules)
+            finally:
+                sys.modules.pop("helper", None)
+
     def test_load_fresh_module_restores_path_for_import_setup_failures(self) -> None:
         """Import setup failures must restore the caller's sys.path exactly."""
         import sys
