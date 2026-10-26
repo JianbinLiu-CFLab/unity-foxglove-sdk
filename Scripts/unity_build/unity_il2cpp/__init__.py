@@ -32,16 +32,17 @@ class _Phase192PackageModule(_phase192_types.ModuleType):
         """Propagate exported state changes to the implementation module."""
         super().__setattr__(name, value)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
-            setattr(_phase192_section_0, name, value)
+            _phase192_section_0.__dict__[name] = value
+            for _phase192_split_section in _phase192_section_0._PHASE192_SECTION_MODULES:
+                _phase192_split_section.__dict__[name] = value
 
     def __delattr__(self, name):
         """Propagate exported state removals to the implementation module."""
         super().__delattr__(name)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
-            try:
-                delattr(_phase192_section_0, name)
-            except AttributeError:
-                pass
+            _phase192_section_0.__dict__.pop(name, None)
+            for _phase192_split_section in _phase192_section_0._PHASE192_SECTION_MODULES:
+                _phase192_split_section.__dict__.pop(name, None)
 
 
 __all__ = sorted(_PHASE192_EXPORT_NAMES)
