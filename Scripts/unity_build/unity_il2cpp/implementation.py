@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import sys as _phase192_sys
-from pathlib import Path as _Phase192Path
-
-_PHASE192_PACKAGE_DIR = _Phase192Path(__file__).resolve().parent
-if str(_PHASE192_PACKAGE_DIR) not in _phase192_sys.path:
-    _phase192_sys.path.append(str(_PHASE192_PACKAGE_DIR))
-
-from parts.foundation import (
+from unity_il2cpp.parts.foundation import (
     argparse,
     ctypes,
     os,
@@ -88,12 +81,12 @@ from parts.foundation import (
     format_elapsed,
     is_important_log_line,
 )
-from parts.il2cpp_logging import (
+from unity_il2cpp.parts.il2cpp_logging import (
     _LogTailState,
     read_new_important_lines,
     finish_log_tail,
 )
-from parts.process import (
+from unity_il2cpp.parts.process import (
     _WindowsKillOnCloseJob,
     _resume_suspended_windows_process,
     _posix_process_group_exists,
@@ -106,16 +99,16 @@ from parts.process import (
     terminate_process,
     run_with_progress,
 )
-from parts.cli import (
+from unity_il2cpp.parts.cli import (
     non_negative_int,
     parse_args,
     _interrupt_build,
     main,
 )
-import parts.foundation as _phase192_foundation
-import parts.il2cpp_logging as _phase192_logging
-import parts.process as _phase192_process
-import parts.cli as _phase192_cli
+import unity_il2cpp.parts.foundation as _phase192_foundation
+import unity_il2cpp.parts.il2cpp_logging as _phase192_logging
+import unity_il2cpp.parts.process as _phase192_process
+import unity_il2cpp.parts.cli as _phase192_cli
 
 _phase192_foundation.REPO_ROOT_PARENT_DEPTH = 2
 _PHASE192_SECTION_MODULES = (

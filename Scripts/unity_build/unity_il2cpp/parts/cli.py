@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-from parts.foundation import *
-from parts.il2cpp_logging import *
-from parts.process import *
+from unity_il2cpp.parts.foundation import *
+from unity_il2cpp.parts.il2cpp_logging import *
+from unity_il2cpp.parts.process import *
 def non_negative_int(value: str) -> int:
     """Parse an integer whose only timeout-disable sentinel is zero."""
 
