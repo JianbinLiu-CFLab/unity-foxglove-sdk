@@ -4,6 +4,8 @@ from __future__ import annotations
 import sys as _phase192_sys
 import types as _phase192_types
 
+_phase192_sys.modules.pop("validate_r2fu_runtime_package", None) if __name__ == "__main__" else None
+
 if __package__:
     from .validate_r2fu_runtime_package import *
     _phase192_package_module = _phase192_sys.modules.get(__package__ + ".validate_r2fu_runtime_package")
