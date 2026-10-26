@@ -580,14 +580,12 @@ def _phase192_validate_template_registry_mutations(
             "    super().__setattr__(name, value)\n"
             "    if _phase192_package_module is not None and _phase192_package_module is not self:\n"
             "        setattr(_phase192_package_module, name, value)\n"
-            "        _phase192_package_module._phase192_sync_exported_state(name, value)\n"
             "\n"
             "def __delattr__(self, name):\n"
             "    super().__delattr__(name)\n"
             "    if _phase192_package_module is not None and _phase192_package_module is not self:\n"
             "        try:\n"
             "            delattr(_phase192_package_module, name)\n"
-            "            _phase192_package_module._phase192_delete_exported_state(name)\n"
             "        except AttributeError:\n"
             "            pass\n"
         )
@@ -596,6 +594,29 @@ def _phase192_validate_template_registry_mutations(
             for function in expected_method_tree.body
             if isinstance(function, ast.FunctionDef)
         }
+        if Path(path).as_posix().endswith("Scripts/unity_build/unity_il2cpp.py"):
+            expected_method_tree = ast.parse(
+                "def __setattr__(self, name, value):\n"
+                "    super().__setattr__(name, value)\n"
+                "    if _phase192_package_module is not None and _phase192_package_module is not self:\n"
+                "        setattr(_phase192_package_module, name, value)\n"
+                "        _phase192_package_module._phase192_sync_exported_state(name, value)\n"
+                "\n"
+                "def __delattr__(self, name):\n"
+                "    super().__delattr__(name)\n"
+                "    if _phase192_package_module is not None and _phase192_package_module is not self:\n"
+                "        try:\n"
+                "            delattr(_phase192_package_module, name)\n"
+                "            _phase192_package_module._phase192_delete_exported_state(name)\n"
+"
+                "        except AttributeError:\n"
+                "            pass\n"
+            )
+            expected_methods = {
+                function.name: method_signature(function)
+                for function in expected_method_tree.body
+                if isinstance(function, ast.FunctionDef)
+            }
 
         def mutation_root(node: ast.AST) -> str | None:
             """Resolve a protected mutation root through runtime lookup forms."""
