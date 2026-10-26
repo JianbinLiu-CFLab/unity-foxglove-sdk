@@ -6,12 +6,12 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+from Scripts.phase192.source_layout import load_fresh_module
 
 
 ROOT = Path(__file__).resolve().parents[5]
@@ -20,12 +20,7 @@ VALIDATOR_PATH = ROOT / "Scripts" / "ros2forunity" / "windows" / "humble" / "val
 
 def load_validator_module():
     """Load the optional package validator module under test."""
-    spec = importlib.util.spec_from_file_location("validate_ros2forunity_package", VALIDATOR_PATH)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_fresh_module("validate_ros2forunity_package", VALIDATOR_PATH)
 
 
 class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
