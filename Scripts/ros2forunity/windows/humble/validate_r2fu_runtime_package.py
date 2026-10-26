@@ -10,11 +10,10 @@ if __package__:
 else:
     from pathlib import Path as _Phase192Path
     _phase192_parent = _Phase192Path(__file__).resolve().parent
-    _phase192_repo_root = _Phase192Path(__file__).resolve().parents[5]
+    _phase192_repo_root = _Phase192Path(__file__).resolve().parents[4]
     if str(_phase192_repo_root) not in _phase192_sys.path:
         _phase192_sys.path.insert(0, str(_phase192_repo_root))
-    if str(_phase192_parent) not in _phase192_sys.path:
-        _phase192_sys.path.insert(0, str(_phase192_parent))
+    _phase192_sys.path.insert(0, str(_phase192_parent))
     _phase192_self = _phase192_sys.modules.get(__name__) if __name__ == "validate_r2fu_runtime_package" else None
     if _phase192_self is not None:
         _phase192_sys.modules.pop("validate_r2fu_runtime_package", None)
