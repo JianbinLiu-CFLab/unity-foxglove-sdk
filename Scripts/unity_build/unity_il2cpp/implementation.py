@@ -118,11 +118,13 @@ _PHASE192_SECTION_MODULES = (
     _phase192_cli,
 )
 def _phase192_sync_exported_state(name, value):
+    """Synchronize facade-patched globals with split implementation modules."""
     for _phase192_section in _PHASE192_SECTION_MODULES:
         setattr(_phase192_section, name, value)
 
 
 def _phase192_delete_exported_state(name):
+    """Remove facade-deleted globals from split implementation modules."""
     for _phase192_section in _PHASE192_SECTION_MODULES:
         delattr(_phase192_section, name)
 
