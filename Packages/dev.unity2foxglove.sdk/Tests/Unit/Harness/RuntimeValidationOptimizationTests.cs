@@ -282,6 +282,11 @@ internal static class TestSources
             var normalized = relativePath.Replace('\\', '/');
             if (string.Equals(
                     normalized,
+                    "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp",
+                    StringComparison.Ordinal))
+                return Unity.FoxgloveSDK.Tests.PhaseValidationSourceHelpers.ReadUnity2FoxgloveRos2BridgeSources(RepoRoot);
+            if (string.Equals(
+                    normalized,
                     "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
                     StringComparison.Ordinal))
                 return McapReplayEngineSources();

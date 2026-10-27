@@ -22,6 +22,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
         public static string Text(string relativePath)
         {
+            if (string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp",
+                    StringComparison.Ordinal))
+                return ReadUnity2FoxgloveRos2BridgeSources();
+
             var path = Path.Combine(
                 CachedRepoRoot,
                 relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -68,6 +74,41 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             return source + Environment.NewLine + string.Join(
                 Environment.NewLine,
                 orderedFiles.Select(File.ReadAllText));
+        }
+
+        private static string ReadUnity2FoxgloveRos2BridgeSources()
+        {
+            var relativePath = "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp";
+            var path = Path.Combine(
+                CachedRepoRoot,
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
+
+            var sections = new List<string>();
+            foreach (var line in File.ReadAllLines(path))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith(
+                        "#include \"unity2foxglove_ros2_bridge/",
+                        StringComparison.Ordinal)
+                    && trimmed.EndsWith(".inl\"", StringComparison.Ordinal))
+                {
+                    var include = trimmed.Substring(10, trimmed.Length - 11);
+                    var fragmentPath = Path.Combine(
+                        Path.GetDirectoryName(path)!,
+                        include.Replace('/', Path.DirectorySeparatorChar));
+                    Assert.True(
+                        File.Exists(fragmentPath),
+                        "Source fragment not found: " + fragmentPath);
+                    sections.Add(File.ReadAllText(fragmentPath).TrimEnd('\r', '\n'));
+                }
+                else
+                {
+                    sections.Add(line);
+                }
+            }
+
+            return string.Join(Environment.NewLine, sections) + Environment.NewLine;
         }
 
         public static string Slice(string source, string startText, string endText)

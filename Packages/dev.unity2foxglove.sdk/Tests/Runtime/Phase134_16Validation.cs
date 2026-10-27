@@ -156,7 +156,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void SidecarResetsPerClientStateAndRejectsMalformedFrames()
         {
-            var source = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp");
+            var source = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp");
             var cmake = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/CMakeLists.txt");
             var packageXml = File.ReadAllText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/package.xml");
 

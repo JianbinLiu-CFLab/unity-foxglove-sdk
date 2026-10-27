@@ -73,6 +73,33 @@ def read_split_source(facade: Path) -> str:
     return "\n".join(parts)
 
 
+def read_included_source(facade: Path) -> str:
+    """Read a source facade and inline its relative `.inl` includes."""
+
+    parts: list[str] = []
+    lines = facade.read_text(encoding="utf-8").splitlines(keepends=True)
+    fragment_lines = [
+        line
+        for line in lines
+        if line.strip().startswith('#include "') and line.strip().endswith('.inl"')
+    ]
+    fragment_index = 0
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('#include "') and stripped.endswith('.inl"'):
+            include = stripped[10:-1]
+            fragment = facade.parent.joinpath(*include.split('/'))
+            if not fragment.is_file():
+                raise FileNotFoundError(f"Included source fragment is missing: {fragment}")
+            parts.append(fragment.read_text(encoding="utf-8"))
+            fragment_index += 1
+            if fragment_index < len(fragment_lines):
+                parts.append("\n")
+        else:
+            parts.append(line)
+    return "".join(parts)
+
+
 def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     """Load a split facade after clearing its package and section modules."""
 
