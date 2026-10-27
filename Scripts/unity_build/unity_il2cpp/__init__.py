@@ -12,6 +12,8 @@ if str(_PHASE192_PARENT) not in _phase192_sys.path:
     _phase192_sys.path.insert(0, str(_PHASE192_PARENT))
 
 from . import implementation as _phase192_section_0
+
+_phase192_section_0.REPO_ROOT_PARENT_DEPTH = 3
 _PHASE192_SECTION_MODULES = (_phase192_section_0,)
 _PHASE192_EXPORT_NAMES = set()
 for _phase192_section in _PHASE192_SECTION_MODULES:

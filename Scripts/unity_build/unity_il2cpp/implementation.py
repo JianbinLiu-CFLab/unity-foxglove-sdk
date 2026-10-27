@@ -110,7 +110,7 @@ import unity_il2cpp.parts.il2cpp_logging as _phase192_logging
 import unity_il2cpp.parts.process as _phase192_process
 import unity_il2cpp.parts.cli as _phase192_cli
 
-_phase192_foundation.REPO_ROOT_PARENT_DEPTH = 4
+_phase192_foundation.REPO_ROOT_PARENT_DEPTH = 3
 _PHASE192_SECTION_MODULES = (
     _phase192_foundation,
     _phase192_logging,
