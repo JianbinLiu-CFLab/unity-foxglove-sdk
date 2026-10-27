@@ -19,11 +19,11 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
-from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module, read_included_source, read_split_source
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module, read_included_source as _read_included_source, read_split_source
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 MODULE_PATH = ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
 TEST_ROOT = ROOT / "build" / "phase184" / "test-orchestrator"
-BRIDGE_SOURCE_PATH = (
+_BRIDGE_SOURCE_PATH = (
     ROOT
     / "Tools"
     / "ros2_bridge"
@@ -31,10 +31,10 @@ BRIDGE_SOURCE_PATH = (
     / "src"
     / "unity2foxglove_ros2_bridge.cpp"
 )
-def read_bridge_source():
+def _read_bridge_source():
     """Read the bridge facade and inline its reviewed source fragments."""
 
-    return read_included_source(BRIDGE_SOURCE_PATH)
+    return _read_included_source(_BRIDGE_SOURCE_PATH)
 def read_orchestrator_source():
     """Read the facade and exported orchestrator package sections."""
 
