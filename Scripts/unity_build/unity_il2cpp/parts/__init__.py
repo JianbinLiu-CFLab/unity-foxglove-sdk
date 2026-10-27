@@ -1,10 +1,9 @@
 import sys as _phase192_sys
-import types as _phase192_types
+import importlib as _phase192_importlib
 
-_phase192_parent_package = _phase192_types.ModuleType("Scripts.unity_build")
-_phase192_parent_package.__path__ = []
-_phase192_sys.modules["Scripts.unity_build"] = _phase192_parent_package
-_phase192_sys.modules["Scripts"].__dict__["unity_build"] = _phase192_parent_package
+_phase192_parent_package = _phase192_sys.modules.get("Scripts.unity_build")
+if _phase192_parent_package is None:
+    _phase192_parent_package = _phase192_importlib.import_module("Scripts.unity_build")
 _phase192_package_module = _phase192_sys.modules[__package__.rsplit(".parts", 1)[0]]
 _phase192_sys.modules["unity_il2cpp"] = _phase192_package_module
 _phase192_sys.modules["Scripts.unity_build.unity_il2cpp"] = _phase192_package_module

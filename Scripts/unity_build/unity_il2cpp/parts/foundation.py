@@ -131,7 +131,7 @@ IMPORTANT_LOG_MARKERS = (
 
 def repo_root() -> Path:
     """Repository root resolved from the configured parent-depth constant."""
-    return Path(__file__).resolve().parents[4]
+    return Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 
 
 def default_target() -> str:
