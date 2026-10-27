@@ -137,6 +137,21 @@
           }
         }
       ]
+    },
+    {
+      "originalPath": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol.cpp",
+      "sourceRevision": "65c3231d5f30fa7ed7c9f3f68546a7a3db403ab8",
+      "originalSha256": "e41296fc70d407603c8882c98bfa13c615cb4641ee9fbb79401b42af9ac3bafc",
+      "parts": [
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_state.cpp",
+          "sha256": "ea2bbcb3724f663ebe3ab4d4ff62eb82a85882ae5c8fad59e165d8aa6cf8188a",
+          "movedRange": {
+            "startLine": 547,
+            "endLine": 818
+          }
+        }
+      ]
     }
   ],
   "implementations": [
@@ -332,7 +347,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol.cpp",
-      "sha256": "e41296fc70d407603c8882c98bfa13c615cb4641ee9fbb79401b42af9ac3bafc",
+      "sha256": "3ce0a93ab48a5d4c40167515f5ca92f1440f40545e6f175fed270ad88537b68b",
       "classification": "original",
       "influence": "Original strict C++ U2R2 v2 protocol implementation.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
