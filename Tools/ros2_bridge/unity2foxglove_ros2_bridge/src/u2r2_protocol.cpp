@@ -3,6 +3,7 @@
 
 #include "unity2foxglove_ros2_bridge/u2r2_protocol.hpp"
 #include "unity2foxglove_ros2_bridge/u2r2_protocol_authority.hpp"
+#include "u2r2_response_map.hpp"
 
 #include <algorithm>
 #include <array>
@@ -358,41 +359,6 @@ bool RequiredBoolean(const nlohmann::json & header, const char * name)
   return iterator->get<bool>();
 }
 
-bool TryGetSuccessResponse(
-  Operation request_operation,
-  Operation & response_operation)
-{
-  switch (request_operation) {
-    case Operation::Hello:
-      response_operation = Operation::HelloAck;
-      return true;
-    case Operation::HealthPing:
-      response_operation = Operation::HealthPong;
-      return true;
-    case Operation::PreparePublisher:
-      response_operation = Operation::PublisherReady;
-      return true;
-    case Operation::Publish:
-      response_operation = Operation::PublishResult;
-      return true;
-    case Operation::RegisterSubscription:
-      response_operation = Operation::SubscriptionReady;
-      return true;
-    case Operation::UnregisterSubscription:
-      response_operation = Operation::SubscriptionRemoved;
-      return true;
-    default:
-      response_operation = Operation::Unknown;
-      return false;
-  }
-}
-
-bool IsRequest(Operation operation)
-{
-  Operation response_operation;
-  return TryGetSuccessResponse(operation, response_operation);
-}
-
 bool IsResponse(Operation operation)
 {
   switch (operation) {
@@ -721,7 +687,7 @@ Message parse_v2(const Frame & frame)
   Message message;
   message.operation = operation;
   message.operation_name = operation_name;
-  message.is_request = IsRequest(operation);
+  message.is_request = internal::IsRequest(operation);
   message.is_response = IsResponse(operation);
   if (!message.is_request &&
     !message.is_response &&

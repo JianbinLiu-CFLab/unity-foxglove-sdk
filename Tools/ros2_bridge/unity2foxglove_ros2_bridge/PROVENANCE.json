@@ -145,7 +145,7 @@
       "parts": [
         {
           "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_state.cpp",
-          "sha256": "ea2bbcb3724f663ebe3ab4d4ff62eb82a85882ae5c8fad59e165d8aa6cf8188a",
+          "sha256": "cae953db8976e4ffeb3d396e7186d7cb9c742080e01146646ee46e0332599bca",
           "movedRange": {
             "startLine": 547,
             "endLine": 818
@@ -347,7 +347,7 @@
     },
     {
       "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol.cpp",
-      "sha256": "3ce0a93ab48a5d4c40167515f5ca92f1440f40545e6f175fed270ad88537b68b",
+      "sha256": "a99b83a1babf4a2c6411925d2dbd138d8f48cc0d3fbd46f0e2cc83f9368d800d",
       "classification": "original",
       "influence": "Original strict C++ U2R2 v2 protocol implementation.",
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"

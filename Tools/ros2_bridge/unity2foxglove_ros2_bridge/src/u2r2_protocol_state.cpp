@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "unity2foxglove_ros2_bridge/u2r2_protocol.hpp"
+#include "u2r2_response_map.hpp"
 
 #include <algorithm>
 #include <array>
@@ -20,24 +21,6 @@ namespace
   throw ProtocolError("invalid_frame", message);
 }
 
-bool TryGetSuccessResponse(Operation request_operation, Operation & response_operation)
-{
-  switch (request_operation) {
-    case Operation::Hello: response_operation = Operation::HelloAck; return true;
-    case Operation::HealthPing: response_operation = Operation::HealthPong; return true;
-    case Operation::PreparePublisher: response_operation = Operation::PublisherReady; return true;
-    case Operation::Publish: response_operation = Operation::PublishResult; return true;
-    case Operation::RegisterSubscription: response_operation = Operation::SubscriptionReady; return true;
-    case Operation::UnregisterSubscription: response_operation = Operation::SubscriptionRemoved; return true;
-    default: response_operation = Operation::Unknown; return false;
-  }
-}
-
-bool IsRequest(Operation operation)
-{
-  Operation response_operation;
-  return TryGetSuccessResponse(operation, response_operation);
-}
 }  // namespace
 
 namespace
@@ -270,7 +253,7 @@ ResponseExpectation::ResponseExpectation(
             "invalid_request_id",
             "a correlated U2R2 request ID must be nonzero");
   }
-  if (!TryGetSuccessResponse(
+  if (!internal::TryGetSuccessResponse(
       request_operation_,
       success_response_operation_))
   {
@@ -289,7 +272,7 @@ ResponseExpectation::ResponseExpectation(
 
 ResponseExpectation ResponseExpectation::from_request(const Message & request)
 {
-  if (!request.is_request || !IsRequest(request.operation)) {
+  if (!request.is_request || !internal::IsRequest(request.operation)) {
     throw std::invalid_argument(
             "request must identify a parsed U2R2 request");
   }
