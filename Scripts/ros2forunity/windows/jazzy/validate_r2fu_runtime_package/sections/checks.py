@@ -81,6 +81,11 @@ run_checks = _runtime.run_checks
 
 _EXPORT_NAMES = ('ADAPTER_PACKAGE', 'ARTIFACT_NAME', 'CORE_PACKAGE', 'CRITICAL_DLLS', 'CheckResult', 'EXIT_FAILURE', 'EXIT_SUCCESS', 'EXPECTED_ARTIFACT_SHA256', 'EXPECTED_RMW_IMPLEMENTATION', 'ElementTree', 'INTERNAL_TOKENS', 'INVENTORY', 'Iterable', 'LEAKY_UPSTREAM_EXAMPLES', 'LOCAL_PATCH_MARKER', 'MANIFEST', 'MODIFICATIONS_COPYRIGHT', 'PACKAGE', 'PACKAGE_NAME', 'PATCHED_VENDOR_FILES', 'PHASE161_ADDED_DLLS', 'PHASE161_ASSET_CRITICAL_BASELINE', 'PHASE161_SUPPLEMENTAL_RUNTIME_DLLS', 'PLUGIN_ROOT', 'PUBLIC_DOCS', 'Path', 'PurePosixPath', 'REPO_ROOT_PARENT_DEPTH', 'ROOT', 'RUNTIME_ROOT', 'V083_EXCLUDED_TEST_TYPESUPPORT_DLLS', '_manifest_without_acceptance', 'acceptance_commit_is_ancestor_and_package_unchanged', 'add', 'annotations', 'argparse', 'check_generator_alignment', 'check_inventory', 'check_package_boundaries', 'check_package_metadata', 'check_package_path_patch', 'check_public_docs', 'check_required_files', 'check_ros2cs_metadata_portability', 'check_runtime_asmdef', 'check_runtime_files', 'check_runtime_manifest', 'check_runtime_source_patches', 'core_runtime_has_forbidden_tokens', 'dataclass', 'file_sha256', 'fresh_project_acceptance_binding_matches_manifest', 'fresh_project_acceptance_passed', 'fresh_project_acceptance_record_is_valid', 'fresh_project_acceptance_status', 'hashlib', 'inventory_category_counts_match', 'is_sha256', 'iter_files', 'json', 'load_json', 'main', 'os', 'parse_args', 'print_results', 'published_runtime_is_not_prototype', 're', 'read_optional_text', 'rel', 'run_checks', 'subprocess', 'sys', 'unity_editor_using_is_guarded')
 
+_ORIGINAL_SECTION_VALUES = {
+    _name: globals().get(_name)
+    for _name in _EXPORT_NAMES
+}
+
 def sync(source: dict[str, object], wrappers: dict[str, object]) -> None:
     """Mirror facade state into both implementation sections."""
     global ADAPTER_PACKAGE, ARTIFACT_NAME, CORE_PACKAGE, CRITICAL_DLLS, CheckResult, EXIT_FAILURE, EXIT_SUCCESS, EXPECTED_ARTIFACT_SHA256, EXPECTED_RMW_IMPLEMENTATION, ElementTree, INTERNAL_TOKENS, INVENTORY, Iterable, LEAKY_UPSTREAM_EXAMPLES, LOCAL_PATCH_MARKER, MANIFEST, MODIFICATIONS_COPYRIGHT, PACKAGE, PACKAGE_NAME, PATCHED_VENDOR_FILES, PHASE161_ADDED_DLLS, PHASE161_ASSET_CRITICAL_BASELINE, PHASE161_SUPPLEMENTAL_RUNTIME_DLLS, PLUGIN_ROOT, PUBLIC_DOCS, Path, PurePosixPath, REPO_ROOT_PARENT_DEPTH, ROOT, RUNTIME_ROOT, V083_EXCLUDED_TEST_TYPESUPPORT_DLLS, _manifest_without_acceptance, acceptance_commit_is_ancestor_and_package_unchanged, add, annotations, argparse, check_generator_alignment, check_inventory, check_package_boundaries, check_package_metadata, check_package_path_patch, check_public_docs, check_required_files, check_ros2cs_metadata_portability, check_runtime_asmdef, check_runtime_files, check_runtime_manifest, check_runtime_source_patches, core_runtime_has_forbidden_tokens, dataclass, file_sha256, fresh_project_acceptance_binding_matches_manifest, fresh_project_acceptance_passed, fresh_project_acceptance_record_is_valid, fresh_project_acceptance_status, hashlib, inventory_category_counts_match, is_sha256, iter_files, json, load_json, main, os, parse_args, print_results, published_runtime_is_not_prototype, re, read_optional_text, rel, run_checks, subprocess, sys, unity_editor_using_is_guarded
@@ -378,7 +383,17 @@ def sync(source: dict[str, object], wrappers: dict[str, object]) -> None:
         _runtime.unity_editor_using_is_guarded = source["unity_editor_using_is_guarded"]
 
     for _name, _value in source.items():
-        if _name not in wrappers or _value is not wrappers.get(_name):
+        if _name in wrappers:
+            _installed = (
+                _ORIGINAL_SECTION_VALUES.get(_name)
+                if _value is wrappers.get(_name)
+                else _value
+            )
+            if _installed is not None:
+                globals()[_name] = _installed
+                _foundation.__dict__[_name] = _installed
+                _runtime.__dict__[_name] = _installed
+        else:
             globals()[_name] = _value
 
 __all__ = ['ADAPTER_PACKAGE', 'ARTIFACT_NAME', 'CORE_PACKAGE', 'CRITICAL_DLLS', 'CheckResult', 'EXIT_FAILURE', 'EXIT_SUCCESS', 'EXPECTED_ARTIFACT_SHA256', 'EXPECTED_RMW_IMPLEMENTATION', 'ElementTree', 'INTERNAL_TOKENS', 'INVENTORY', 'Iterable', 'LEAKY_UPSTREAM_EXAMPLES', 'LOCAL_PATCH_MARKER', 'MANIFEST', 'MODIFICATIONS_COPYRIGHT', 'PACKAGE', 'PACKAGE_NAME', 'PATCHED_VENDOR_FILES', 'PHASE161_ADDED_DLLS', 'PHASE161_ASSET_CRITICAL_BASELINE', 'PHASE161_SUPPLEMENTAL_RUNTIME_DLLS', 'PLUGIN_ROOT', 'PUBLIC_DOCS', 'Path', 'PurePosixPath', 'REPO_ROOT_PARENT_DEPTH', 'ROOT', 'RUNTIME_ROOT', 'V083_EXCLUDED_TEST_TYPESUPPORT_DLLS', '_manifest_without_acceptance', 'acceptance_commit_is_ancestor_and_package_unchanged', 'add', 'annotations', 'argparse', 'check_generator_alignment', 'check_inventory', 'check_package_boundaries', 'check_package_metadata', 'check_package_path_patch', 'check_public_docs', 'check_required_files', 'check_ros2cs_metadata_portability', 'check_runtime_asmdef', 'check_runtime_files', 'check_runtime_manifest', 'check_runtime_source_patches', 'core_runtime_has_forbidden_tokens', 'dataclass', 'file_sha256', 'fresh_project_acceptance_binding_matches_manifest', 'fresh_project_acceptance_passed', 'fresh_project_acceptance_record_is_valid', 'fresh_project_acceptance_status', 'hashlib', 'inventory_category_counts_match', 'is_sha256', 'iter_files', 'json', 'load_json', 'main', 'os', 'parse_args', 'print_results', 'published_runtime_is_not_prototype', 're', 'read_optional_text', 'rel', 'run_checks', 'subprocess', 'sys', 'unity_editor_using_is_guarded']

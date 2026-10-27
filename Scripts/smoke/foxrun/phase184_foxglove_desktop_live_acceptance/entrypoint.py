@@ -779,7 +779,9 @@ def main(
     except protocol.AcceptanceFailure:
         return 1
     except SystemExit as exc:
-        return int(exc.code)
+        if exc.code is None:
+            return 0
+        return exc.code if isinstance(exc.code, int) else 1
     return 0 if summary["verdict"] == "PASS" else 1
 
 

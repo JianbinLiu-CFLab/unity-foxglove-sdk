@@ -3091,6 +3091,15 @@ class UnityIl2CppBuildTests(unittest.TestCase):
             sys.modules.get("Scripts.unity_build.unity_il2cpp.implementation"),
         )
 
+    def test_split_package_reuses_nested_part_modules_across_import_prefixes(self) -> None:
+        """Nested Unity parts keep one module object across import prefixes."""
+        import Scripts.unity_build.unity_il2cpp as package
+        import unity_il2cpp.parts.foundation as top_level
+        import Scripts.unity_build.unity_il2cpp.parts.foundation as namespaced
+
+        self.assertIs(package, sys.modules.get("unity_il2cpp"))
+        self.assertIs(top_level, namespaced)
+
     def test_generated_artifact_preflight_reports_missing_files(self) -> None:
         """Missing generated files should fail before Unity is started."""
         with tempfile.TemporaryDirectory() as temp:

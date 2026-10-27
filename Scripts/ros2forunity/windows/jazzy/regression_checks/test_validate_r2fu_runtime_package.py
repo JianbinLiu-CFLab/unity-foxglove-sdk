@@ -47,6 +47,13 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             str(inspect.signature(implementation_jazzy.check_inventory)),
         )
 
+    def test_split_validator_reuses_checks_module_across_import_prefixes(self) -> None:
+        """Top-level and namespaced validator imports share one checks module."""
+        import validate_r2fu_runtime_package.sections.checks as top_level
+        import Scripts.ros2forunity.windows.jazzy.validate_r2fu_runtime_package.sections.checks as namespaced
+
+        self.assertIs(top_level, namespaced)
+
     def test_split_sync_propagates_facade_override_to_checks(self) -> None:
         """A facade monkeypatch must reach the checks module and both sections."""
         from Scripts.ros2forunity.windows.jazzy.validate_r2fu_runtime_package import implementation_jazzy
@@ -63,6 +70,11 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         finally:
             implementation_jazzy.check_inventory = original
             implementation_jazzy._sync()
+        self.assertIs(original, implementation_jazzy.check_inventory)
+        self.assertIs(checks._foundation.check_inventory, checks._runtime.check_inventory)
+        self.assertIsNot(replacement, checks.check_inventory)
+        self.assertIsNot(replacement, checks._foundation.check_inventory)
+        self.assertIsNot(replacement, checks._runtime.check_inventory)
 
     def test_inventory_category_counts_must_match_file_entries(self) -> None:
         """A declared native count cannot be satisfied by DLLs from other categories."""

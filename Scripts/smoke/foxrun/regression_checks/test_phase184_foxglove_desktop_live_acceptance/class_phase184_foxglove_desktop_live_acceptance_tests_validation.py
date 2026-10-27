@@ -1,4 +1,5 @@
 from __future__ import annotations
+from unittest import mock
 from .class_phase184_foxglove_desktop_live_acceptance_tests_fixtures import *
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "test_phase184_foxglove_desktop_live_acceptance.py"
 __file__ = str(_PHASE192_FACADE_FILE)
@@ -21,6 +22,13 @@ class _Phase184FoxgloveDesktopLiveAcceptanceTests_validation:
             )
             self.assertEqual(0, completed.returncode)
             self.assertIn("usage:", completed.stdout)
+    def test_main_normalizes_non_integer_system_exit_codes(self):
+        """Non-integer SystemExit values become stable failure codes."""
+        with mock.patch.object(coordinator, "parse_args", side_effect=SystemExit("usage")):
+            self.assertEqual(1, coordinator.main([]))
+        with mock.patch.object(coordinator, "parse_args", side_effect=SystemExit()):
+            self.assertEqual(0, coordinator.main([]))
+
     def test_connection_window_starts_after_current_client_readiness(self):
         """Verify connection window starts after current client readiness."""
 
