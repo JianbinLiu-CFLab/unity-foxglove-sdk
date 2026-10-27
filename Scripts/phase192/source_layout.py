@@ -59,6 +59,9 @@ def section_modules(package_dir: Path) -> tuple[Path, ...]:
 def read_split_source(facade: Path) -> str:
     """Read a facade and its package sections in the package export order."""
 
+    if facade.suffix.casefold() == ".cpp":
+        return read_included_source(facade)
+
     package_dir = facade.with_suffix("")
     parts = [facade.read_text(encoding="utf-8")]
     declared = section_modules(package_dir)
