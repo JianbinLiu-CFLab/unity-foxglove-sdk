@@ -18,7 +18,9 @@ from . import foundation as _phase192_section_0
 from . import workspace as _phase192_section_1
 from . import evidence as _phase192_section_2
 from . import assembly as _phase192_section_3
-_phase192_section_4 = _phase192_importlib.import_module(__name__ + ".characterize")
+from . import characterize as _phase192_section_4
+if not hasattr(_phase192_section_4, "__all__"):
+    _phase192_section_4 = _phase192_importlib.import_module(__name__ + ".characterize")
 from . import cli as _phase192_section_5
 
 _PHASE192_SECTION_MODULES = (
