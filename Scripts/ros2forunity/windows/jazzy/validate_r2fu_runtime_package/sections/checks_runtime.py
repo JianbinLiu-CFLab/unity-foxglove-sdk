@@ -441,6 +441,10 @@ def check_generator_alignment(results: list[CheckResult]) -> None:
     generator_path = ROOT / "Scripts" / "ros2forunity" / "windows" / "jazzy" / "build_r2fu_runtime_package.py"
     try:
         generator = generator_path.read_text(encoding="utf-8", errors="replace")
+        section_dir = generator_path.parent / "Decomposed" / generator_path.stem
+        if section_dir.is_dir():
+            for section in sorted(section_dir.glob("*.py"), key=lambda path: path.name.casefold()):
+                generator += "\n" + section.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         add(results, "runtime package generator script readable", False, f"{rel(generator_path)}: {exc}")
         return
