@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 try:
-    from validate_r2fu_runtime_package.sections import checks as _checks
-except ImportError:
     from Scripts.ros2forunity.windows.humble.validate_r2fu_runtime_package.sections import checks as _checks
+except ImportError:
+    from validate_r2fu_runtime_package.sections import checks as _checks
 
 json = _checks.json
 argparse = _checks.argparse

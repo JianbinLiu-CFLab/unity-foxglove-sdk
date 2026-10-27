@@ -50,10 +50,5 @@ _phase192_module = _phase192_sys.modules.get(__name__)
 if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192FacadeModule
 
-if __name__ in {"__main__", "<run_path>"}:
-    for _phase192_name in tuple(_phase192_sys.modules):
-        if _phase192_name.startswith("validate_r2fu_runtime_package."):
-            _phase192_sys.modules.pop(_phase192_name, None)
-
 if __name__ == "__main__":
     raise SystemExit(main())
