@@ -776,8 +776,12 @@ def main(
         args = parse_args(argv)
         summary = run_acceptance(args, dependencies=dependencies)
         validate_desktop_live_summary(summary)
-    except (protocol.AcceptanceFailure, SystemExit):
+    except protocol.AcceptanceFailure:
         return 1
+    except SystemExit as exc:
+        if exc.code is None:
+            return 0
+        return exc.code if isinstance(exc.code, int) else 1
     return 0 if summary["verdict"] == "PASS" else 1
 
 

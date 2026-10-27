@@ -31,7 +31,7 @@ from typing import Any, Callable
 from urllib.parse import quote, urlencode
 
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
-REPOSITORY_ROOT = SCRIPT_PATH.parents[3]
+REPOSITORY_ROOT = SCRIPT_PATH.parents[4]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 

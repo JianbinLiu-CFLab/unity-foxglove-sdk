@@ -641,6 +641,17 @@ class IdentityToolingTests(unittest.TestCase):
         )
         self.assertEqual(73, len(surfaces))
 
+    def test_identity_surface_includes_nested_split_modules(self) -> None:
+        """Nested package modules participate in the identity contract."""
+        surface = compare_identity_surfaces._surfaces(
+            compare_identity_surfaces.REPOSITORY_ROOT
+        )["Scripts/unity_build/unity_il2cpp.py"]
+        self.assertEqual(16, len(surface))
+        self.assertIn(
+            "parts/il2cpp_logging.py",
+            {entry[0] for entry in surface[-1]},
+        )
+
     def test_identity_surface_uses_revision_local_source_layout(self) -> None:
         """Base/head worktrees load their own section-order parser."""
         with tempfile.TemporaryDirectory() as temp:

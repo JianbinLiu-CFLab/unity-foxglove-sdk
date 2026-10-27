@@ -7229,6 +7229,19 @@ def _surface(
         for name in exported
         if not name.startswith("_") and name not in module_import_names
     )
+    nested_contract: list[tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]]] = []
+    for nested in sorted(package.rglob("*.py")):
+        if nested.parent == package or nested.name in {"__init__.py", "__main__.py"}:
+            continue
+        nested_tree = _parse_source(nested.read_text(encoding="utf-8"), nested)
+        nested_contract.append(
+            (
+                nested.relative_to(package).as_posix(),
+                tuple(sorted(_top_level_names(nested_tree, include_imports=False))),
+                tuple(sorted(_direct_import_bound_names(nested_tree))),
+                tuple(sorted(_namespace_risk_signatures(nested_tree))),
+            )
+        )
     return (
         frozenset(exported),
         tuple(path.stem for path in sections),
@@ -7245,6 +7258,7 @@ def _surface(
         owner_map_tuple,
         tuple(relative_star_contract),
         public_symbols,
+        tuple(nested_contract),
     )
 
 def _surfaces(
@@ -7323,11 +7337,11 @@ def _compare_surfaces(
 
     def unpack(surface):
         """Internal helper for unpack."""
-        if len(surface) > 15:
+        if len(surface) > 16:
             raise ValueError(f"unsupported identity surface shape: {len(surface)} fields")
         defaults = (
             frozenset(), (), (), frozenset(), None, frozenset(), None, (),
-            frozenset(), (), None, (), (), (), frozenset(),
+            frozenset(), (), None, (), (), (), frozenset(), (),
         )
         return tuple(surface) + defaults[len(surface):]
 
@@ -7352,6 +7366,7 @@ def _compare_surfaces(
             base_owner_map,
             base_relative_star_contract,
             base_public_symbols,
+            base_nested_contract,
         ) = unpack(base_surface)
         (
             head_symbols,
@@ -7369,6 +7384,7 @@ def _compare_surfaces(
             head_owner_map,
             head_relative_star_contract,
             head_public_symbols,
+            head_nested_contract,
         ) = unpack(current)
         if not base_public_symbols and base_symbols:
             base_public_symbols = frozenset(
@@ -7401,6 +7417,8 @@ def _compare_surfaces(
             errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
         if strict and tuple(base_section_map or ()) != tuple(head_section_map or ()):
             errors.append(f"SECTION_EXPORT_OWNER_CHANGED {relative}")
+        if tuple(base_nested_contract or ()) != tuple(head_nested_contract or ()):
+            errors.append(f"NESTED_MODULE_CONTRACT_CHANGED {relative}")
         if strict and tuple(base_owner_map or ()) != tuple(head_owner_map or ()):
             errors.append(f"SYMBOL_OWNER_CHANGED {relative}")
         base_relative = tuple(base_relative_star_contract or ())

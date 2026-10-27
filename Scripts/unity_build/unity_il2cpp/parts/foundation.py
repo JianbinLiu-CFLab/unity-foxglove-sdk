@@ -40,7 +40,7 @@ from typing import Dict, List, Optional, Tuple
 TARGETS = ("win64", "linux64", "macos")
 
 # Number of parent directories between this script and the repository root.
-REPO_ROOT_PARENT_DEPTH = 2
+REPO_ROOT_PARENT_DEPTH = 4
 
 # Process exit codes returned by this build CLI.
 EXIT_SUCCESS = 0
@@ -131,7 +131,7 @@ IMPORTANT_LOG_MARKERS = (
 
 def repo_root() -> Path:
     """Repository root resolved from the configured parent-depth constant."""
-    return Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
+    return Path(__file__).resolve().parents[4]
 
 
 def default_target() -> str:
@@ -477,10 +477,4 @@ def is_important_log_line(line: str) -> bool:
     if not stripped:
         return False
     return any(marker in stripped for marker in IMPORTANT_LOG_MARKERS)
-from pathlib import Path as _Phase192Path
-_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "unity_il2cpp.py"
-__file__ = str(_PHASE192_FACADE_FILE)
-del _Phase192Path, _PHASE192_FACADE_FILE
-
-
 __all__ = ['argparse', 'ctypes', 'os', 'platform', 're', 'signal', 'stat', 'subprocess', 'sys', 'time', 'uuid', 'datetime', 'timezone', 'Path', 'Dict', 'List', 'Optional', 'Tuple', 'TARGETS', 'REPO_ROOT_PARENT_DEPTH', 'EXIT_SUCCESS', 'EXIT_PREFLIGHT_FAILURE', 'EXIT_USAGE_ERROR', 'EXIT_TIMEOUT', 'SECONDS_PER_HOUR', 'SECONDS_PER_MINUTE', 'LOG_POLL_SLEEP_SECONDS', 'DEFAULT_PROGRESS_INTERVAL_SECONDS', 'MIN_PROGRESS_INTERVAL_SECONDS', 'MAX_PROGRESS_INTERVAL_SECONDS', 'DEFAULT_BUILD_TIMEOUT_MINUTES', 'UNITY_TERMINATION_WAIT_SECONDS', 'PROCESS_DIAGNOSTIC_TIMEOUT_SECONDS', 'PROCESS_TREE_POLL_SECONDS', 'WINDOWS_CREATE_SUSPENDED', 'WINDOWS_JOB_OBJECT_BASIC_PROCESS_ID_LIST', 'WINDOWS_JOB_OBJECT_EXTENDED_LIMIT_INFORMATION', 'WINDOWS_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE', 'WINDOWS_JOB_QUERY_BUFFER_BYTES', 'WINDOWS_PROCESS_SET_QUOTA', 'WINDOWS_PROCESS_TERMINATE', 'WINDOWS_THREAD_SUSPEND_RESUME', 'WINDOWS_TH32CS_SNAPTHREAD', 'WINDOWS_DWORD_FAILURE', 'WINDOWS_JOB_TERMINATE_EXIT_CODE', 'WINDOWS_EXECUTABLE_MAGIC', 'PROJECT_VERSION_SPLIT_MAX', 'PROJECT_VERSION_VALUE_INDEX', 'PROJECT_VERSION_MAX_BYTES', 'UNITY_EDITOR_VERSION_PATTERN', 'INITIAL_LOG_OFFSET', 'MAX_LOG_READ_BYTES', 'MAX_FINAL_LOG_CHUNKS', 'UNITY_EXECUTABLE_COMMAND_INDEX', 'REQUIRED_GENERATED_ARTIFACTS', 'IMPORTANT_LOG_MARKERS', 'repo_root', 'default_target', 'unity_version_key', 'accepted_unity_candidate', 'is_unity_editor_version', 'contained_unity_candidate', 'newest_existing', 'find_unity_explicit', 'find_unity_from_env', 'find_unity_from_project_version', 'find_unity_from_hub', 'find_unity', 'relative_to_root', 'require_workspace_path', 'validate_generated_artifacts', 'resolve_unity_for_command', 'output_fingerprint', 'build_command', 'default_build_dir', 'default_output_path', 'format_elapsed', 'is_important_log_line']

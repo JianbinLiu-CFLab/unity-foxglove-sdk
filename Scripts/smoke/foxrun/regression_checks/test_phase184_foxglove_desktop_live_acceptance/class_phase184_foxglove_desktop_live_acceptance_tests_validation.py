@@ -1,10 +1,35 @@
 from __future__ import annotations
+from unittest import mock
 from .class_phase184_foxglove_desktop_live_acceptance_tests_fixtures import *
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "test_phase184_foxglove_desktop_live_acceptance.py"
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveDesktopLiveAcceptanceTests_validation:
     """Decomposed Phase192 implementation component."""
+    def test_package_entrypoints_and_repository_root(self):
+        """Verify package and direct entrypoints expose the repository root and help exit."""
+        self.assertEqual(coordinator.REPOSITORY_ROOT, coordinator._default_dependencies().repository_root)
+        for command, emits_help in (
+            ([sys.executable, "-m", "Scripts.smoke.foxrun.phase184_foxglove_desktop_live_acceptance", "--help"], False),
+            ([sys.executable, str(COORDINATOR_PATH), "--help"], True),
+        ):
+            completed = subprocess.run(
+                command,
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode)
+            if emits_help:
+                self.assertIn("usage:", completed.stdout)
+    def test_main_normalizes_non_integer_system_exit_codes(self):
+        """Non-integer SystemExit values become stable failure codes."""
+        with mock.patch.object(coordinator, "parse_args", side_effect=SystemExit("usage")):
+            self.assertEqual(1, coordinator.main([]))
+        with mock.patch.object(coordinator, "parse_args", side_effect=SystemExit()):
+            self.assertEqual(0, coordinator.main([]))
+
     def test_connection_window_starts_after_current_client_readiness(self):
         """Verify connection window starts after current client readiness."""
 
