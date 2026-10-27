@@ -11,6 +11,7 @@ find_package(nlohmann_json REQUIRED)
 
 add_library(u2r2_protocol STATIC
   src/u2r2_protocol.cpp
+  src/u2r2_protocol_state.cpp
   src/u2r2_protocol_authority.cpp
 )
 target_compile_features(u2r2_protocol PUBLIC cxx_std_20)
