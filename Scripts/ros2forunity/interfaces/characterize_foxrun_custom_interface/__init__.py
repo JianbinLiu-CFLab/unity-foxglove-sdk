@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import importlib as _phase192_importlib
 import sys as _phase192_sys
 import types as _phase192_types
 from pathlib import Path as _Phase192Path
@@ -18,9 +17,7 @@ from . import foundation as _phase192_section_0
 from . import workspace as _phase192_section_1
 from . import evidence as _phase192_section_2
 from . import assembly as _phase192_section_3
-from . import characterize as _phase192_section_4
-if not hasattr(_phase192_section_4, "__all__"):
-    _phase192_section_4 = _phase192_importlib.import_module(__name__ + ".characterize")
+from . import characterization_core as _phase192_section_4
 from . import cli as _phase192_section_5
 
 _PHASE192_SECTION_MODULES = (
@@ -44,14 +41,14 @@ class _Phase192PackageModule(_phase192_types.ModuleType):
     """Mirror facade state into the decomposed implementation modules."""
 
     def __setattr__(self, name, value):
-        """Mirror assignments into the decomposed implementation."""
+        """Update this package facade and the implementation module."""
         super().__setattr__(name, value)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
             for _phase192_section in _PHASE192_SECTION_MODULES:
                 _phase192_section.__dict__[name] = value
 
     def __delattr__(self, name):
-        """Mirror deletions into the decomposed implementation."""
+        """Remove an attribute from this package facade and implementation."""
         super().__delattr__(name)
         if not name.startswith("__") and not name.startswith("_phase192_") and name not in {"_PHASE192_SECTION_MODULES", "_PHASE192_EXPORT_NAMES"}:
             for _phase192_section in _PHASE192_SECTION_MODULES:
