@@ -15,7 +15,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.Tests
 {
-    /// <remarks>Phase192 source sections: RepositoryReaders.cs, SplitReaders.cs, PythonReaders.cs, SyntaxQueries.cs</remarks>
+    /// <remarks>Phase192 source sections: RepositoryReaders.cs, SplitReaders.cs, PythonReaders.cs, SourceMethodContains.cs, ReadMediaFoundationH264EncoderSidecarSources.cs</remarks>
     internal static partial class PhaseValidationSourceHelpers
     {
         private const string FoxgloveRuntimeTrailingGateMarker =
@@ -52,20 +52,23 @@ namespace Unity.FoxgloveSDK.Tests
         private static readonly string[] Ros2BridgeRuntimeSourceFileNames =
         {
             "Ros2BridgeRuntime.cs",
-            "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
-            "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
-            "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
-            "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs",
+            "Decomposed/Ros2BridgeWorkerLease/RuntimeControl.cs",
+            "Decomposed/Ros2BridgeWorkerLease/WorkerLoop.cs",
+            "Decomposed/Ros2BridgeWorkerLease/ConnectionHandshake.cs",
+            "Decomposed/Ros2BridgeWorkerLease/PreparationFlow.cs",
+            "Decomposed/Ros2BridgeWorkerLease/Retirement.cs",
+            "Decomposed/Ros2BridgeWorkerLease/DisposalAndDiagnostics.cs",
+            "Decomposed/Ros2BridgeWorkerLease/ValueTypes.cs",
         };
         private static readonly string[] Ros2CustomCdrEmitterSourceFileNames =
         {
             "Ros2CustomCdrEmitter.cs",
-            "Decomposed/Ros2CustomCdrEmitter/Generation.cs",
-            "Decomposed/Ros2CustomCdrEmitter/Readers.cs",
-            "Decomposed/Ros2CustomCdrEmitter/Writers.cs",
-            "Decomposed/Ros2CustomCdrEmitter/ValidationAndProjection.cs",
-            "Decomposed/Ros2CustomCdrEmitter/NamingAndUtilities.cs",
-            "Decomposed/Ros2CustomCdrEmitter/Shapes.cs",
+            "Decomposed/FoxRunBridgeSourceEmitter/DispatchEmission.cs",
+            "Decomposed/FoxRunBridgeSourceEmitter/CdrReaders.cs",
+            "Decomposed/FoxRunBridgeSourceEmitter/CdrWriters.cs",
+            "Decomposed/FoxRunBridgeSourceEmitter/ShapeProjection.cs",
+            "Decomposed/FoxRunBridgeSourceEmitter/NamingAndValidation.cs",
+            "Decomposed/FoxRunBridgeSourceEmitter/DataModels.cs",
         };
         private static readonly HashSet<string> PythonSectionKeywords = new HashSet<string>(StringComparer.Ordinal)
         {
