@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRuntimePackageBuilderZipSafety()
         {
-            var source = ReadRepoText("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
+            var source = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
             Check(source.Contains("PurePosixPath", StringComparison.Ordinal)
                   && source.Contains("safe_runtime_zip_relative_path", StringComparison.Ordinal),
                 "134-28A-1: runtime package builder normalizes zip entry paths as POSIX paths");
@@ -84,7 +84,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReleaseBuilderCompatibility()
         {
-            var builder = ReadRepoText("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
+            var builder = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
             Check(builder.Contains("hashlib.md5(seed.encode(\"utf-8\"), usedforsecurity=False)", StringComparison.Ordinal),
                 "134-28D-1: deterministic Unity GUID MD5 marks non-security use");
             Check(builder.Contains("def rmtree_with_writable_retry(path: Path) -> None:", StringComparison.Ordinal)
