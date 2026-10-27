@@ -40,7 +40,7 @@ from typing import Dict, List, Optional, Tuple
 TARGETS = ("win64", "linux64", "macos")
 
 # Number of parent directories between this script and the repository root.
-REPO_ROOT_PARENT_DEPTH = 4
+REPO_ROOT_PARENT_DEPTH = 3
 
 # Process exit codes returned by this build CLI.
 EXIT_SUCCESS = 0
@@ -131,7 +131,7 @@ IMPORTANT_LOG_MARKERS = (
 
 def repo_root() -> Path:
     """Repository root resolved from the configured parent-depth constant."""
-    return Path(__file__).resolve().parents[4]
+    return Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH].parent
 
 
 def default_target() -> str:

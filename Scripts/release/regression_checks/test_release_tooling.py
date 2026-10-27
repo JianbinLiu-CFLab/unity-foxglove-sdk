@@ -3079,6 +3079,11 @@ class UnityIl2CppBuildTests(unittest.TestCase):
     def test_split_package_keeps_repository_root_and_public_signatures(self) -> None:
         """The facade and package share the root and callable signatures."""
         self.assertEqual(ROOT, self.unity_il2cpp.repo_root())
+        self.assertEqual(3, self.unity_il2cpp.REPO_ROOT_PARENT_DEPTH)
+        import unity_il2cpp.parts.foundation as foundation
+
+        self.assertEqual(3, foundation.REPO_ROOT_PARENT_DEPTH)
+        self.assertEqual(ROOT, foundation.repo_root())
         self.assertEqual(
             "(args: 'argparse.Namespace') -> 'Tuple[List[str], Path, Path, Path]'",
             str(inspect.signature(self.unity_il2cpp.build_command)),
@@ -3090,6 +3095,18 @@ class UnityIl2CppBuildTests(unittest.TestCase):
             sys.modules.get("unity_il2cpp.implementation"),
             sys.modules.get("Scripts.unity_build.unity_il2cpp.implementation"),
         )
+
+    def test_direct_entrypoint_help_runs_in_a_clean_process(self) -> None:
+        """The documented direct entrypoint must parse help before importing parts."""
+        result = subprocess.run(
+            [sys.executable, "-B", str(UNITY_IL2CPP_PATH), "--help"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("usage:", result.stdout)
 
     def test_split_package_reuses_nested_part_modules_across_import_prefixes(self) -> None:
         """Nested Unity parts keep one module object across import prefixes."""
