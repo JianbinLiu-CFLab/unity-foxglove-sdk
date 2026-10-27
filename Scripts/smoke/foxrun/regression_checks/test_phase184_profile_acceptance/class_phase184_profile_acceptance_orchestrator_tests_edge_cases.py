@@ -97,14 +97,9 @@ class _Phase184ProfileAcceptanceOrchestratorTests_edge_cases:
     def test_windows_bridge_runtime_encloses_ros_initialization_and_shutdown(self):
         """Verify windows bridge runtime encloses ROS initialization and shutdown."""
 
-        source = (
-            ROOT
-            / "Tools"
-            / "ros2_bridge"
-            / "unity2foxglove_ros2_bridge"
-            / "src"
-            / "unity2foxglove_ros2_bridge.cpp"
-        ).read_text(encoding="utf-8")
+        source = read_split_source(
+            ROOT / "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp"
+        )
         main_source = source[source.index("int main(int argc, char ** argv)") :]
         winsock = main_source.index("std::unique_ptr<WinsockRuntime> winsock;")
         winsock_start = main_source.index(
@@ -124,14 +119,9 @@ class _Phase184ProfileAcceptanceOrchestratorTests_edge_cases:
     def test_windows_bridge_only_times_out_partial_frame_reads(self):
         """Verify windows bridge only times out partial frame reads."""
 
-        source = (
-            ROOT
-            / "Tools"
-            / "ros2_bridge"
-            / "unity2foxglove_ros2_bridge"
-            / "src"
-            / "unity2foxglove_ros2_bridge.cpp"
-        ).read_text(encoding="utf-8")
+        source = read_split_source(
+            ROOT / "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp"
+        )
         read_exact = source[
             source.index("bool read_exact_into(") : source.index(
                 "bool read_exact(", source.index("bool read_exact_into(")
@@ -151,14 +141,9 @@ class _Phase184ProfileAcceptanceOrchestratorTests_edge_cases:
     def test_bridge_health_readiness_does_not_create_a_data_generation(self):
         """Verify a health probe uses process ownership without creating data entities."""
 
-        source = (
-            ROOT
-            / "Tools"
-            / "ros2_bridge"
-            / "unity2foxglove_ros2_bridge"
-            / "src"
-            / "unity2foxglove_ros2_bridge.cpp"
-        ).read_text(encoding="utf-8")
+        source = read_split_source(
+            ROOT / "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp"
+        )
         owned_client = source[
             source.index("void process_owned_client(") : source.index(
                 "void process_client(",

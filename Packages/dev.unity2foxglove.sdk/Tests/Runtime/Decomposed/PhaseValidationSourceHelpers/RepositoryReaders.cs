@@ -48,6 +48,12 @@ namespace Unity.FoxgloveSDK.Tests
 
             if (string.Equals(
                     normalized,
+                    "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp",
+                    StringComparison.Ordinal))
+                return ReadUnity2FoxgloveRos2BridgeSources();
+
+            if (string.Equals(
+                    normalized,
                     "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
                     StringComparison.Ordinal))
                 return ReadMcapReplayEngineSources();
@@ -110,6 +116,50 @@ namespace Unity.FoxgloveSDK.Tests
 
             return ReadGenericCSharpSource(relativePath);
         }
+        public static string ReadUnity2FoxgloveRos2BridgeSources()
+            => ReadUnity2FoxgloveRos2BridgeSources(FindRequiredRepoRoot());
+
+        public static string ReadUnity2FoxgloveRos2BridgeSources(string root)
+        {
+            var facadePath = Path.Combine(
+                root,
+                "Tools",
+                "ros2_bridge",
+                "unity2foxglove_ros2_bridge",
+                "src",
+                "unity2foxglove_ros2_bridge.cpp");
+            if (!File.Exists(facadePath))
+                throw new FileNotFoundException("Missing ROS2 bridge sidecar source: " + facadePath, facadePath);
+
+            var source = new StringBuilder();
+            foreach (var line in File.ReadAllLines(facadePath))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith(
+                        "#include \"unity2foxglove_ros2_bridge/",
+                        StringComparison.Ordinal)
+                    && trimmed.EndsWith(".inl\"", StringComparison.Ordinal))
+                {
+                    var include = trimmed.Substring(10, trimmed.Length - 11);
+                    var fragmentPath = Path.Combine(
+                        Path.GetDirectoryName(facadePath)!,
+                        include.Replace('/', Path.DirectorySeparatorChar));
+                    if (!File.Exists(fragmentPath))
+                        throw new FileNotFoundException(
+                            "Missing ROS2 bridge sidecar source fragment: " + fragmentPath,
+                            fragmentPath);
+                    source.Append(File.ReadAllText(fragmentPath).TrimEnd('\r', '\n'));
+                    source.AppendLine();
+                }
+                else
+                {
+                    source.AppendLine(line);
+                }
+            }
+
+            return source.ToString();
+        }
+
         private static string ReadGenericCSharpSource(string relativePath)
         {
             var facadePath = RepoPath(relativePath);
