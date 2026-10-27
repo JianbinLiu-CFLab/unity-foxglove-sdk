@@ -24,7 +24,7 @@ from pathlib import Path, PurePosixPath
 from typing import Iterable
 
 
-REPO_ROOT_PARENT_DEPTH = 5
+REPO_ROOT_PARENT_DEPTH = 6
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 

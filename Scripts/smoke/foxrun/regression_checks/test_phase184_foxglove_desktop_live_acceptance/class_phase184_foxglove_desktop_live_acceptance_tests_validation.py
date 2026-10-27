@@ -5,6 +5,22 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 class _Phase184FoxgloveDesktopLiveAcceptanceTests_validation:
     """Decomposed Phase192 implementation component."""
+    def test_package_entrypoints_and_repository_root(self):
+        """Verify package and direct entrypoints expose the repository root and help exit."""
+        self.assertEqual(coordinator.REPOSITORY_ROOT, coordinator._default_dependencies().repository_root)
+        for command in (
+            [sys.executable, "-m", "Scripts.smoke.foxrun.phase184_foxglove_desktop_live_acceptance", "--help"],
+            [sys.executable, str(COORDINATOR_PATH), "--help"],
+        ):
+            completed = subprocess.run(
+                command,
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode)
+            self.assertIn("usage:", completed.stdout)
     def test_connection_window_starts_after_current_client_readiness(self):
         """Verify connection window starts after current client readiness."""
 

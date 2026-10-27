@@ -10,6 +10,7 @@ import ast
 import contextlib
 import ctypes
 import importlib.util
+import inspect
 import io
 import json
 import os
@@ -3074,6 +3075,21 @@ class UnityIl2CppBuildTests(unittest.TestCase):
     def setUp(self) -> None:
         """Load a fresh unity_il2cpp module for each test."""
         self.unity_il2cpp = load_module("unity_il2cpp_under_test", UNITY_IL2CPP_PATH)
+
+    def test_split_package_keeps_repository_root_and_public_signatures(self) -> None:
+        """The facade and package share the root and callable signatures."""
+        self.assertEqual(ROOT, self.unity_il2cpp.repo_root())
+        self.assertEqual(
+            "(args: 'argparse.Namespace') -> 'Tuple[List[str], Path, Path, Path]'",
+            str(inspect.signature(self.unity_il2cpp.build_command)),
+        )
+        import Scripts.unity_build.unity_il2cpp as namespaced
+
+        self.assertIs(namespaced, sys.modules.get("unity_il2cpp"))
+        self.assertIs(
+            sys.modules.get("unity_il2cpp.implementation"),
+            sys.modules.get("Scripts.unity_build.unity_il2cpp.implementation"),
+        )
 
     def test_generated_artifact_preflight_reports_missing_files(self) -> None:
         """Missing generated files should fail before Unity is started."""

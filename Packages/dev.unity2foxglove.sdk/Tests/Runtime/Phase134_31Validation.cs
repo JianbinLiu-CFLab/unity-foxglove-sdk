@@ -45,6 +45,7 @@ namespace Unity.FoxgloveSDK.Tests
                 PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/unity_build/unity_il2cpp.py"),
                 PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/unity_build/unity_il2cpp/parts/foundation.py"),
                 PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/unity_build/unity_il2cpp/parts/process.py"),
+                PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/unity_build/unity_il2cpp/parts/il2cpp_logging.py"),
                 PhaseValidationSourceHelpers.ReadRequiredRepoText("Scripts/unity_build/unity_il2cpp/parts/cli.py"),
             });
 
@@ -61,6 +62,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("Unity timed out after", StringComparison.Ordinal)
                   && source.Contains("terminating owned process tree", StringComparison.Ordinal),
                 "134-31A-3: Unity IL2CPP timeout path terminates the hung process with a clear diagnostic");
+            Check(source.Contains("def read_new_important_lines", StringComparison.Ordinal)
+                  && source.Contains("def finish_log_tail", StringComparison.Ordinal)
+                  && source.Contains("class _LogTailState", StringComparison.Ordinal),
+                "134-31A-4: Unity IL2CPP logging tail state remains part of the validated split source");
         }
 
         private static void VerifyConformanceWrapper()
