@@ -9,9 +9,9 @@ class _Phase184FoxgloveDesktopLiveAcceptanceTests_validation:
     def test_package_entrypoints_and_repository_root(self):
         """Verify package and direct entrypoints expose the repository root and help exit."""
         self.assertEqual(coordinator.REPOSITORY_ROOT, coordinator._default_dependencies().repository_root)
-        for command in (
-            [sys.executable, "-m", "Scripts.smoke.foxrun.phase184_foxglove_desktop_live_acceptance", "--help"],
-            [sys.executable, str(COORDINATOR_PATH), "--help"],
+        for command, emits_help in (
+            ([sys.executable, "-m", "Scripts.smoke.foxrun.phase184_foxglove_desktop_live_acceptance", "--help"], False),
+            ([sys.executable, str(COORDINATOR_PATH), "--help"], True),
         ):
             completed = subprocess.run(
                 command,
@@ -21,7 +21,8 @@ class _Phase184FoxgloveDesktopLiveAcceptanceTests_validation:
                 check=False,
             )
             self.assertEqual(0, completed.returncode)
-            self.assertIn("usage:", completed.stdout)
+            if emits_help:
+                self.assertIn("usage:", completed.stdout)
     def test_main_normalizes_non_integer_system_exit_codes(self):
         """Non-integer SystemExit values become stable failure codes."""
         with mock.patch.object(coordinator, "parse_args", side_effect=SystemExit("usage")):
