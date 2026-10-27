@@ -293,11 +293,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     TestSources.Runtime("PhaseValidationSourceHelpers.cs"),
                     "public static string ReadFoxgloveRuntimeSources()");
                 Assert.Contains(
-                    "Directory.GetFiles(dir, \"FoxgloveRuntime*.cs\", SearchOption.TopDirectoryOnly)",
+                    "var fileNames = FoxgloveRuntimeSourceFileNames",
                     helper,
                     StringComparison.Ordinal);
                 Assert.Contains("expected.SetEquals(actual)", helper, StringComparison.Ordinal);
-                Assert.DoesNotContain(".Where(File.Exists)", helper, StringComparison.Ordinal);
+                Assert.Contains("fileNames", helper, StringComparison.Ordinal);
 
                 var source = TestSources.Text(
                     "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
@@ -525,10 +525,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var root = CreateSourceFixture(
                     "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
                     "Ros2BridgeRuntime.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+                    "Decomposed/Ros2BridgeWorkerLease/RuntimeControl.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/WorkerLoop.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/PreparationFlow.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ConnectionHandshake.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/Retirement.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/DisposalAndDiagnostics.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ValueTypes.cs");
                 var runtimeRoot = Path.Combine(
                     root,
                     "Packages",
@@ -554,10 +557,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var root = CreateSourceFixture(
                     "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
                     "Ros2BridgeRuntime.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+                    "Decomposed/Ros2BridgeWorkerLease/RuntimeControl.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/WorkerLoop.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/PreparationFlow.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ConnectionHandshake.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/Retirement.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/DisposalAndDiagnostics.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ValueTypes.cs");
                 var runtimeRoot = Path.Combine(
                     root,
                     "Packages",
@@ -584,10 +590,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var root = CreateSourceFixture(
                     "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
                     "Ros2BridgeRuntime.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+                    "Decomposed/Ros2BridgeWorkerLease/RuntimeControl.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/WorkerLoop.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/PreparationFlow.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ConnectionHandshake.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/Retirement.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/DisposalAndDiagnostics.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ValueTypes.cs");
                 var runtimeRoot = Path.Combine(
                     root,
                     "Packages",
@@ -614,10 +623,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var root = CreateSourceFixture(
                     "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
                     "Ros2BridgeRuntime.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+                    "Decomposed/Ros2BridgeWorkerLease/RuntimeControl.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/WorkerLoop.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/PreparationFlow.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ConnectionHandshake.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/Retirement.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/DisposalAndDiagnostics.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ValueTypes.cs");
                 var runtimeRoot = Path.Combine(
                     root,
                     "Packages",
@@ -644,10 +656,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var root = CreateSourceFixture(
                     "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
                     "Ros2BridgeRuntime.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+                    "Decomposed/Ros2BridgeWorkerLease/RuntimeControl.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/WorkerLoop.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/PreparationFlow.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ConnectionHandshake.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/Retirement.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/DisposalAndDiagnostics.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ValueTypes.cs");
                 var runtimeRoot = Path.Combine(
                     root,
                     "Packages",
@@ -674,10 +689,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var root = CreateSourceFixture(
                     "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge",
                     "Ros2BridgeRuntime.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.QueueAndStats.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.WorkerLifecycle.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.ConnectionAndPreparation.cs",
-                    "Decomposed/Ros2BridgeRuntime/Ros2BridgeRuntime.RetirementAndNested.cs");
+                    "Decomposed/Ros2BridgeWorkerLease/RuntimeControl.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/WorkerLoop.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/PreparationFlow.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ConnectionHandshake.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/Retirement.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/DisposalAndDiagnostics.cs",
+                    "Decomposed/Ros2BridgeWorkerLease/ValueTypes.cs");
                 var fragment = Path.Combine(
                     root,
                     "Packages",
@@ -685,8 +703,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     "Runtime",
                     "Ros2Bridge",
                     "Decomposed",
-                    "Ros2BridgeRuntime",
-                    "Ros2BridgeRuntime.QueueAndStats.cs");
+                    "Ros2BridgeWorkerLease",
+                    "RuntimeControl.cs");
                 try
                 {
                     File.Delete(fragment);
@@ -705,12 +723,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var root = CreateSourceFixture(
                     "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun",
                     "Ros2CustomCdrEmitter.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/Generation.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/Readers.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/Writers.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/ValidationAndProjection.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/NamingAndUtilities.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/Shapes.cs");
+                    "Decomposed/FoxRunBridgeSourceEmitter/DispatchEmission.cs",
+                    "Decomposed/FoxRunBridgeSourceEmitter/CdrReaders.cs",
+                    "Decomposed/FoxRunBridgeSourceEmitter/CdrWriters.cs",
+                    "Decomposed/FoxRunBridgeSourceEmitter/ShapeProjection.cs",
+                    "Decomposed/FoxRunBridgeSourceEmitter/NamingAndValidation.cs",
+                    "Decomposed/FoxRunBridgeSourceEmitter/DataModels.cs");
                 var fragmentDirectory = Path.Combine(
                     root,
                     "Packages",
@@ -718,9 +736,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     "Editor",
                     "FoxRun",
                     "Decomposed",
-                    "Ros2CustomCdrEmitter");
+                    "FoxRunBridgeSourceEmitter");
                 var nestedDirectory = Path.Combine(fragmentDirectory, "Nested");
-                var duplicate = Path.Combine(nestedDirectory, "Generation.cs");
+                var duplicate = Path.Combine(nestedDirectory, "DispatchEmission.cs");
                 try
                 {
                     Directory.CreateDirectory(nestedDirectory);
@@ -740,12 +758,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var root = CreateSourceFixture(
                     "Packages/dev.unity2foxglove.ros2bridge/Editor/FoxRun",
                     "Ros2CustomCdrEmitter.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/Generation.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/Readers.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/Writers.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/ValidationAndProjection.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/NamingAndUtilities.cs",
-                    "Decomposed/Ros2CustomCdrEmitter/Shapes.cs");
+                    "Decomposed/FoxRunBridgeSourceEmitter/DispatchEmission.cs",
+                    "Decomposed/FoxRunBridgeSourceEmitter/CdrReaders.cs",
+                    "Decomposed/FoxRunBridgeSourceEmitter/CdrWriters.cs",
+                    "Decomposed/FoxRunBridgeSourceEmitter/ShapeProjection.cs",
+                    "Decomposed/FoxRunBridgeSourceEmitter/NamingAndValidation.cs",
+                    "Decomposed/FoxRunBridgeSourceEmitter/DataModels.cs");
                 var paths = new[]
                 {
                     Path.Combine(
@@ -762,8 +780,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                         "Editor",
                         "FoxRun",
                         "Decomposed",
-                        "Ros2CustomCdrEmitter",
-                        "Generation.cs"),
+                        "FoxRunBridgeSourceEmitter",
+                        "DispatchEmission.cs"),
                 };
                 try
                 {

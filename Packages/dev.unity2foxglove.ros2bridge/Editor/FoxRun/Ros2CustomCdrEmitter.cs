@@ -13,9 +13,9 @@ using Unity.FoxgloveSDK.Editor;
 
 namespace Unity2Foxglove.Ros2Bridge.Editor
 {
-    /// <remarks>Phase192 source sections: Generation.cs, NamingAndUtilities.cs, Readers.cs, Shapes.cs, ValidationAndProjection.cs, Writers.cs</remarks>
     internal static partial class FoxRunBridgeSourceEmitter
     {
+        /// <remarks>Phase192 source sections: DispatchEmission.cs, CdrReaders.cs, CdrWriters.cs, ShapeProjection.cs, NamingAndValidation.cs, DataModels.cs</remarks>
         private const string RosPackageName =
             "unity2foxglove_foxrun_interfaces_v1";
         private const string BridgeProviderId =

@@ -19,7 +19,7 @@ namespace Unity2Foxglove.Ros2Bridge
     /// Detached worker-reachable resource group. The public runtime shell may
     /// release this object after an in-place retirement transfer.
     /// </summary>
-    /// <remarks>Phase192 source sections: Ros2BridgeRuntime.ConnectionAndPreparation.cs, Ros2BridgeRuntime.QueueAndStats.cs, Ros2BridgeRuntime.RetirementAndNested.cs, Ros2BridgeRuntime.WorkerLifecycle.cs</remarks>
+    /// <remarks>Phase192 source sections: RuntimeControl.cs, WorkerLoop.cs, ConnectionHandshake.cs, PreparationFlow.cs, Retirement.cs, DisposalAndDiagnostics.cs, ValueTypes.cs</remarks>
     internal sealed partial class Ros2BridgeWorkerLease :
         Components.IFoxRunDetachedRetirementLease
     {
@@ -266,25 +266,6 @@ namespace Unity2Foxglove.Ros2Bridge
             if (readiness == Ros2BridgePublisherReadiness.Pending)
                 _signal.Set();
             return readiness;
-        }
-
-        internal void Start()
-        {
-            lock (_gate)
-            {
-                _enabled = true;
-                _autoConnect = true;
-                _stopRequested = false;
-                var generation = ++_workerGeneration;
-                _worker = new Thread(WorkerEntry)
-                {
-                    IsBackground = true,
-                    Name = _workerIdentity
-                };
-                _worker.Start(new WorkerStart(this, generation));
-            }
-
-            _signal.Set();
         }
 
     }
