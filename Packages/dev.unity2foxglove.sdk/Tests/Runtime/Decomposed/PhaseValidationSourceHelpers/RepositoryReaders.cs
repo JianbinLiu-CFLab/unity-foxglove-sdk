@@ -54,6 +54,12 @@ namespace Unity.FoxgloveSDK.Tests
 
             if (string.Equals(
                     normalized,
+                    "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_bridge_smoke.cpp",
+                    StringComparison.Ordinal))
+                return ReadIncludedCppSource(normalized);
+
+            if (string.Equals(
+                    normalized,
                     "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs",
                     StringComparison.Ordinal))
                 return ReadMcapReplayEngineSources();
@@ -157,6 +163,35 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
+            return source.ToString();
+        }
+
+        public static string ReadIncludedCppSource(string relativePath)
+        {
+            var facadePath = RepoPath(relativePath);
+            var source = new StringBuilder();
+            foreach (var line in File.ReadAllLines(facadePath))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith("#include \"", StringComparison.Ordinal)
+                    && trimmed.EndsWith(".inl\"", StringComparison.Ordinal))
+                {
+                    var include = trimmed.Substring(10, trimmed.Length - 11);
+                    var fragmentPath = Path.Combine(
+                        Path.GetDirectoryName(facadePath)!,
+                        include.Replace('/', Path.DirectorySeparatorChar));
+                    if (!File.Exists(fragmentPath))
+                        throw new FileNotFoundException(
+                            "Missing C++ source fragment: " + fragmentPath,
+                            fragmentPath);
+                    source.Append(File.ReadAllText(fragmentPath).TrimEnd('\r', '\n'));
+                    source.AppendLine();
+                }
+                else
+                {
+                    source.AppendLine(line);
+                }
+            }
             return source.ToString();
         }
 
