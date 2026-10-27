@@ -280,6 +280,9 @@ internal static class TestSources
         public static string Text(string relativePath)
         {
             var normalized = relativePath.Replace('\\', '/');
+            if (normalized.StartsWith("Scripts/", StringComparison.Ordinal)
+                && normalized.EndsWith(".py", StringComparison.OrdinalIgnoreCase))
+                return Unity.FoxgloveSDK.Tests.PhaseValidationSourceHelpers.ReadSplitPythonSource(normalized);
             if (string.Equals(
                     normalized,
                     "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp",
