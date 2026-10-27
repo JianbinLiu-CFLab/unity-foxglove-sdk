@@ -2,9 +2,11 @@ import sys as _phase192_sys
 import types as _phase192_types
 
 for _phase192_parent_name in ("Scripts", "Scripts.ros2forunity", "Scripts.ros2forunity.windows", "Scripts.ros2forunity.windows.jazzy"):
-    _phase192_parent_package = _phase192_types.ModuleType(_phase192_parent_name)
-    _phase192_parent_package.__path__ = []
-    _phase192_sys.modules[_phase192_parent_name] = _phase192_parent_package
+    _phase192_parent_package = _phase192_sys.modules.get(_phase192_parent_name)
+    if _phase192_parent_package is None:
+        _phase192_parent_package = _phase192_types.ModuleType(_phase192_parent_name)
+        _phase192_parent_package.__path__ = []
+        _phase192_sys.modules[_phase192_parent_name] = _phase192_parent_package
     if "." in _phase192_parent_name:
         _phase192_parent_root, _phase192_parent_leaf = _phase192_parent_name.rsplit(".", 1)
         _phase192_sys.modules[_phase192_parent_root].__dict__[_phase192_parent_leaf] = _phase192_parent_package
