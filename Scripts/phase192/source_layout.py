@@ -61,7 +61,15 @@ def read_split_source(facade: Path) -> str:
 
     package_dir = facade.with_suffix("")
     parts = [facade.read_text(encoding="utf-8")]
-    parts.extend(path.read_text(encoding="utf-8") for path in section_modules(package_dir))
+    declared = section_modules(package_dir)
+    parts.extend(path.read_text(encoding="utf-8") for path in declared)
+    companion_dir = package_dir / "sections"
+    if companion_dir.is_dir():
+        parts.extend(
+            path.read_text(encoding="utf-8")
+            for path in sorted(companion_dir.glob("*.py"))
+            if path.name != "__init__.py"
+        )
     return "\n".join(parts)
 
 

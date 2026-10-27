@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+# R2FU source-gate pins: 4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d; V083_EXCLUDED_TEST_TYPESUPPORT_DLLS; test_msgs_complex_nested_key__rosidl_typesupport_c_native.dll; test_msgs_keyed_long__rosidl_typesupport_c_native.dll; test_msgs_keyed_string__rosidl_typesupport_c_native.dll; test_msgs_non_keyed_with_nested_key__rosidl_typesupport_c_native.dll
+
 import sys as _phase192_sys
 import types as _phase192_types
 
