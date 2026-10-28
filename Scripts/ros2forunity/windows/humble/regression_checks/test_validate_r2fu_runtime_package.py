@@ -138,6 +138,33 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             )
             self.assertIn('if __name__ == "validate_r2fu_runtime_package"', source)
 
+    def test_validator_facade_uses_repository_root_depth(self) -> None:
+        """The split Humble validator resolves its repository root from the section path."""
+        self.assertEqual(5, self.validator.REPO_ROOT_PARENT_DEPTH)
+        self.assertEqual(ROOT, self.validator.ROOT)
+
+    def test_humble_implementation_loads_without_repository_on_sys_path(self) -> None:
+        """The implementation facade bootstraps its repository import when loaded by path."""
+        implementation = ROOT / "Scripts" / "ros2forunity" / "windows" / "humble" / "validate_r2fu_runtime_package" / "implementation_humble.py"
+        code = (
+            "import importlib.util, sys\n"
+            f"path = r'{implementation}'\n"
+            "sys.path = [entry for entry in sys.path if entry and str(entry) not in path]\n"
+            "spec = importlib.util.spec_from_file_location('phase192_standalone_humble', path)\n"
+            "module = importlib.util.module_from_spec(spec)\n"
+            "sys.modules[spec.name] = module\n"
+            "spec.loader.exec_module(module)\n"
+            "assert module.REPO_ROOT_PARENT_DEPTH == 5\n"
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=Path(tempfile.gettempdir()),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+
     def test_inventory_category_counts_must_match_file_entries(self) -> None:
         """A declared native count cannot be satisfied by DLLs from other categories."""
         files = [
