@@ -143,8 +143,8 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertEqual(5, self.validator.REPO_ROOT_PARENT_DEPTH)
         self.assertEqual(ROOT, self.validator.ROOT)
 
-    def test_humble_implementation_loads_without_repository_on_sys_path(self) -> None:
-        """The implementation facade bootstraps its repository import when loaded by path."""
+    def test_humble_implementation_loads_without_repository_root_on_sys_path(self) -> None:
+        """The implementation facade does not require the repository root on sys.path."""
         implementation = ROOT / "Scripts" / "ros2forunity" / "windows" / "humble" / "validate_r2fu_runtime_package" / "implementation_humble.py"
         code = (
             "import importlib.util, sys\n"
