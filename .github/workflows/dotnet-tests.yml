@@ -244,6 +244,15 @@ jobs:
           fi
           PYTHONPATH="$trusted_root" python3 "$base_checker" --base "$PHASE192_BASE_SHA" --head "$PHASE192_HEAD_SHA" --repository . --compatibility
 
+          # Run the checked-in head checker as a second gate so newly supported
+          # manifest-backed Python facades cannot remain outside the trusted
+          # base checker's older identity surface.
+          python3 Scripts/phase192/compare_identity_surfaces.py \
+            --base "$PHASE192_BASE_SHA" \
+            --head "$PHASE192_HEAD_SHA" \
+            --repository . \
+            --compatibility
+
       - name: Run official MCAP differential conformance
         if: always()
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/${{ github.run_id }}-${{ github.run_attempt }}/phase121-conformance-report.json
