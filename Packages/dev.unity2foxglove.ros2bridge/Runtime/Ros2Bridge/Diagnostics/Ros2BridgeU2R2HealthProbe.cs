@@ -27,12 +27,18 @@ namespace Unity2Foxglove.Ros2Bridge
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Ros2BridgeTcpClient.ValidateLoopbackHost(host);
+                var normalizedHost = string.Equals(
+                    host,
+                    "localhost",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? "127.0.0.1"
+                    : host;
+                Ros2BridgeTcpClient.ValidateLoopbackHost(normalizedHost);
                 if (port <= 0 || port > 65535)
                     throw new ArgumentOutOfRangeException(nameof(port), "ROS2 Bridge port must be in 1..65535.");
 
                 using var client = new TcpClient();
-                var connect = client.ConnectAsync(host, port);
+                var connect = client.ConnectAsync(normalizedHost, port);
                 if (!WaitOrCancel(connect, RemainingMilliseconds(stopwatch, totalTimeoutMs), cancellationToken))
                     throw new TimeoutException("Timed out connecting to ROS2 Bridge sidecar.");
                 connect.GetAwaiter().GetResult();

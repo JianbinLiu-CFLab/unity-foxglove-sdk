@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             await fixture.Accepting.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
             var stopwatch = Stopwatch.StartNew();
-            var result = new Ros2BridgeU2R2HealthProbe().Ping("127.0.0.1", port, 2_000);
+            var result = new Ros2BridgeU2R2HealthProbe().Ping("localhost", port, 2_000);
             stopwatch.Stop();
 
             Assert.False(result.Succeeded);
