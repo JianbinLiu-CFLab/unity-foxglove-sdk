@@ -116,6 +116,122 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void MediaFoundationSourceReaderRejectsMissingFragment()
+        {
+            var fixtureRoot = TestSources.CreateMediaFoundationFixture();
+            try
+            {
+                File.Delete(Path.Combine(
+                    fixtureRoot,
+                    "Packages",
+                    "dev.unity2foxglove.sdk",
+                    "Runtime",
+                    "Schemas",
+                    "Proto",
+                    "Video",
+                    "MediaFoundationH264EncoderSidecar.NativeLifecycle.cs"));
+
+                var error = Assert.Throws<InvalidDataException>(() =>
+                {
+                    PhaseValidationSourceHelpers.ReadMediaFoundationH264EncoderSidecarSources(fixtureRoot);
+                });
+                Assert.Contains("Missing:", error.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                Directory.Delete(fixtureRoot, recursive: true);
+            }
+        }
+
+        [Fact]
+        public void MediaFoundationSourceReaderRejectsUnregisteredFragment()
+        {
+            var fixtureRoot = TestSources.CreateMediaFoundationFixture();
+            try
+            {
+                var directory = Path.Combine(
+                    fixtureRoot,
+                    "Packages",
+                    "dev.unity2foxglove.sdk",
+                    "Runtime",
+                    "Schemas",
+                    "Proto",
+                    "Video");
+                File.WriteAllText(
+                    Path.Combine(directory, "MediaFoundationH264EncoderSidecar.Diagnostics.cs"),
+                    "namespace Fixture { public partial class MediaFoundationH264EncoderSidecar { } }");
+
+                var error = Assert.Throws<InvalidDataException>(() =>
+                {
+                    PhaseValidationSourceHelpers.ReadMediaFoundationH264EncoderSidecarSources(fixtureRoot);
+                });
+                Assert.Contains("unexpected:", error.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                Directory.Delete(fixtureRoot, recursive: true);
+            }
+        }
+
+        [Fact]
+        public void IncludedCppSourceReaderRejectsMissingFragment()
+        {
+            var fixtureRoot = TestSources.CreateBridgeSmokeCppFixture();
+            try
+            {
+                File.Delete(Path.Combine(
+                    fixtureRoot,
+                    "Tools",
+                    "ros2_bridge",
+                    "unity2foxglove_ros2_bridge",
+                    "test",
+                    "test_bridge_smoke",
+                    "TransportIntegrationTests.inl"));
+
+                var error = Assert.Throws<InvalidDataException>(() =>
+                {
+                    PhaseValidationSourceHelpers.ReadIncludedCppSource(
+                        fixtureRoot,
+                        "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_bridge_smoke.cpp");
+                });
+                Assert.Contains("Missing:", error.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                Directory.Delete(fixtureRoot, recursive: true);
+            }
+        }
+
+        [Fact]
+        public void IncludedCppSourceReaderRejectsUnregisteredFragment()
+        {
+            var fixtureRoot = TestSources.CreateBridgeSmokeCppFixture();
+            try
+            {
+                var directory = Path.Combine(
+                    fixtureRoot,
+                    "Tools",
+                    "ros2_bridge",
+                    "unity2foxglove_ros2_bridge",
+                    "test",
+                    "test_bridge_smoke");
+                File.WriteAllText(Path.Combine(directory, "Diagnostics.inl"), "int diagnostics = 0;\n");
+
+                var error = Assert.Throws<InvalidDataException>(() =>
+                {
+                    PhaseValidationSourceHelpers.ReadIncludedCppSource(
+                        fixtureRoot,
+                        "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_bridge_smoke.cpp");
+                });
+                Assert.Contains("unexpected:", error.Message, StringComparison.Ordinal);
+            }
+            finally
+            {
+                Directory.Delete(fixtureRoot, recursive: true);
+            }
+        }
+
+        [Fact]
         public void Phase14089MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_89Validation.cs", "--phase140-89", "Phase140_89Validation.Validate");
 
@@ -411,12 +527,86 @@ internal static class TestSources
                 "MediaFoundationH264EncoderSidecar.Output.cs",
                 "MediaFoundationH264EncoderSidecar.ComInterop.cs",
             };
-            var paths = fileNames
-                .Select(name => Path.Combine(root, name))
-                .Where(File.Exists)
-                .ToArray();
-            Assert.NotEmpty(paths);
+            var expected = new HashSet<string>(fileNames, StringComparer.Ordinal);
+            var actual = Directory.GetFiles(
+                    root,
+                    "MediaFoundationH264EncoderSidecar*.cs",
+                    SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            Assert.Equal(expected.OrderBy(name => name, StringComparer.Ordinal),
+                actual.OrderBy(name => name, StringComparer.Ordinal));
+            var paths = fileNames.Select(name => Path.Combine(root, name)).ToArray();
             return string.Join(Environment.NewLine, paths.Select(File.ReadAllText));
+        }
+
+        internal static string CreateMediaFoundationFixture()
+        {
+            var fixtureRoot = Path.Combine(
+                Path.GetTempPath(),
+                "phase192-media-foundation-" + Guid.NewGuid().ToString("N"));
+            var sourceDirectory = Path.Combine(
+                RepoRoot,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Schemas",
+                "Proto",
+                "Video");
+            var targetDirectory = Path.Combine(
+                fixtureRoot,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Schemas",
+                "Proto",
+                "Video");
+            Directory.CreateDirectory(targetDirectory);
+            foreach (var fileName in new[]
+            {
+                "MediaFoundationH264EncoderSidecar.cs",
+                "MediaFoundationH264EncoderSidecar.Lifecycle.cs",
+                "MediaFoundationH264EncoderSidecar.NativeLifecycle.cs",
+                "MediaFoundationH264EncoderSidecar.Output.cs",
+                "MediaFoundationH264EncoderSidecar.ComInterop.cs",
+            })
+            {
+                File.Copy(
+                    Path.Combine(sourceDirectory, fileName),
+                    Path.Combine(targetDirectory, fileName));
+            }
+
+            return fixtureRoot;
+        }
+
+        internal static string CreateBridgeSmokeCppFixture()
+        {
+            var fixtureRoot = Path.Combine(
+                Path.GetTempPath(),
+                "phase192-bridge-smoke-" + Guid.NewGuid().ToString("N"));
+            var testDirectory = Path.Combine(
+                fixtureRoot,
+                "Tools",
+                "ros2_bridge",
+                "unity2foxglove_ros2_bridge",
+                "test");
+            var fragmentDirectory = Path.Combine(testDirectory, "test_bridge_smoke");
+            Directory.CreateDirectory(fragmentDirectory);
+            var names = new[]
+            {
+                "FixtureAndHelpers.inl",
+                "ProtocolContractTests.inl",
+                "LifecycleSetup.inl",
+                "SessionAndPublisherTests.inl",
+                "PublisherContractTests.inl",
+                "TransportIntegrationTests.inl",
+            };
+            File.WriteAllLines(
+                Path.Combine(testDirectory, "test_bridge_smoke.cpp"),
+                names.Select(name => "#include \"test_bridge_smoke/" + name + "\""));
+            foreach (var name in names)
+                File.WriteAllText(Path.Combine(fragmentDirectory, name), "int value = 0;\n");
+            return fixtureRoot;
         }
 
         private static string ReadLogicalSource(string facadePath)

@@ -115,8 +115,16 @@ _PROTOCOL_SOURCE_ROOTS = (
         "u2r2_protocol*.cpp",
     ),
     (
+        "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority",
+        "*.inl",
+    ),
+    (
         "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test",
         "test_u2r2_protocol*.cpp",
+    ),
+    (
+        "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority",
+        "*.inl",
     ),
     (
         "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test",

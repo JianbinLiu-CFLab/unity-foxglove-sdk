@@ -152,6 +152,116 @@
           }
         }
       ]
+    },
+    {
+      "originalPath": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority.cpp",
+      "sourceRevision": "707e805a1c3a6d3552a2ef5b44693f32e683c844",
+      "originalSha256": "8914c1bd2bed1c9c02d855d98dc749e3ed9eb7ff7b58f163cbd9640f7aeb7f1d",
+      "parts": [
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority/Contracts.inl",
+          "sha256": "96d1000df27c8c6651df4e9f85a1a25eaddd2e5c3b01e5cab6658e979fe1e7b9",
+          "movedRange": {
+            "startLine": 2475,
+            "endLine": 3386
+          }
+        },
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority/Lifecycle.inl",
+          "sha256": "ab63bc4215fa0d148f8157a96944092afc03be1f3e8a67492792b319443d4fff",
+          "movedRange": {
+            "startLine": 3387,
+            "endLine": 3449
+          }
+        },
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority/LimitsAndResources.inl",
+          "sha256": "40e9d2336c06a15df0921e8cd9cf1fd75bc77d096ae1997fec8bb6802577682a",
+          "movedRange": {
+            "startLine": 508,
+            "endLine": 1117
+          }
+        },
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority/RequestReplay.inl",
+          "sha256": "22cd12e07e38bddec80a5f8dfebac54e51590b39c241d905b09c81c3e2a1b383",
+          "movedRange": {
+            "startLine": 1895,
+            "endLine": 2474
+          }
+        },
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority/SchedulerAndReplay.inl",
+          "sha256": "0f7fb47a7dd95baf1f76f45f732bd290529635139f0f1517a4e91081382471a8",
+          "movedRange": {
+            "startLine": 1118,
+            "endLine": 1894
+          }
+        },
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority/ValidationAndIdentity.inl",
+          "sha256": "6f39b71f045012d2db056fa6419c2fc0ef1cf16645df70442772873bb6f50ffc",
+          "movedRange": {
+            "startLine": 24,
+            "endLine": 506
+          }
+        }
+      ]
+    },
+    {
+      "originalPath": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority.cpp",
+      "sourceRevision": "e36be4270a9b0bb54befe3a9c7f87b30175a7819",
+      "originalSha256": "790808b1f33f97081e811f0b556f0a2c75c08013084f3830223b0a22c529f58d",
+      "parts": [
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority/AdmissionAndScheduler.inl",
+          "sha256": "40a3bee82fe6b445df67ad5842ffb123d58344fd7a13ab3403b6f0cd04674a97",
+          "movedRange": {
+            "startLine": 773,
+            "endLine": 1188
+          }
+        },
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority/ConcurrencyAndResources.inl",
+          "sha256": "2923074c5d75cb67b50b58e905cf0e30223073b18915d2c04e98f08e3216c252",
+          "movedRange": {
+            "startLine": 1567,
+            "endLine": 1968
+          }
+        },
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority/Helpers.inl",
+          "sha256": "602bd6cbb984d1562271faf4925f90f89973e456af5b72c4d290c3d59d3776a5",
+          "movedRange": {
+            "startLine": 385,
+            "endLine": 771
+          }
+        },
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority/RemainingAuthorityTests.inl",
+          "sha256": "5f63be4b0b898e3b2078229bb51968ed0c79d8d93daab9359d1ac9ade547b0f6",
+          "movedRange": {
+            "startLine": 2244,
+            "endLine": 2542
+          }
+        },
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority/ReplayAndLifecycle.inl",
+          "sha256": "78b00e91e070c0088f15112357b8f997e2507e13649184c71f7d417778e8657d",
+          "movedRange": {
+            "startLine": 1190,
+            "endLine": 1565
+          }
+        },
+        {
+          "path": "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority/ScenarioAndContract.inl",
+          "sha256": "3f32f8e17ab3a8e02953683948e2f8e44836e6d9e3a6210dd03b8c36d0863c9f",
+          "movedRange": {
+            "startLine": 1970,
+            "endLine": 2242
+          }
+        }
+      ]
     }
   ],
   "implementations": [
@@ -243,13 +353,13 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/discover_protocol_sources_and_phase186b_introduced_sources.py",
-      "sha256": "28ce65ceaf17ef202e55240ad0cf8dcb1ca7c847cf5f98b0bb88c5736e37b4dd",
+      "sha256": "626a30df3cc84739003b93d65b9b5872a1fe652587500f9ff6f46d1361152dbf",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/foundation.py",
-      "sha256": "2bad8fa9fddc26f12a7b4fc2fc73d295e56a0a9a389908d73324c0c1ea54f233",
+      "sha256": "59c806fb67e88a121743d8b5c8eaeced6f2ccc98cf0ad5445a68aae952f20e5e",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },

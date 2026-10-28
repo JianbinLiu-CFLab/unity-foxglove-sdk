@@ -377,6 +377,7 @@ def _validate_canonical_ledger_schema(
 
     original_paths: list[str] = []
     part_paths: list[str] = []
+    part_paths_by_source: list[list[str]] = []
     source_map_keys = {
         "originalPath",
         "sourceRevision",
@@ -422,6 +423,7 @@ def _validate_canonical_ledger_schema(
                 f"decomposedSources[{index}].parts must be a non-empty array"
             )
             continue
+        record_part_paths: list[str] = []
         for part_index, part in enumerate(parts):
             if not isinstance(part, Mapping) or set(part) != part_keys:
                 errors.append(
@@ -439,6 +441,7 @@ def _validate_canonical_ledger_schema(
                 )
             else:
                 part_paths.append(path)
+                record_part_paths.append(path)
             if not isinstance(digest, str) or _SHA256_PATTERN.fullmatch(digest) is None:
                 errors.append(
                     f"decomposedSources[{index}].parts[{part_index}].sha256 must be lowercase hex"
@@ -456,10 +459,11 @@ def _validate_canonical_ledger_schema(
                 errors.append(
                     f"decomposedSources[{index}].parts[{part_index}].movedRange must be a positive inclusive range"
                 )
+        part_paths_by_source.append(record_part_paths)
     if original_paths != sorted(original_paths):
         errors.append("canonical ledger decomposedSources must be sorted by originalPath")
-    if part_paths != sorted(part_paths):
-        errors.append("canonical ledger decomposedSources parts must be sorted by path")
+    if any(paths != sorted(paths) for paths in part_paths_by_source):
+        errors.append("canonical ledger decomposedSources parts must be sorted by path within each source")
     if len(set(original_paths)) != len(original_paths):
         errors.append("canonical ledger decomposedSources originalPath values must be unique")
     if len(set(part_paths)) != len(part_paths):

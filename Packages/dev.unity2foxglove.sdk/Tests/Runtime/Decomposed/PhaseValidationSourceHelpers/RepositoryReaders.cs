@@ -41,22 +41,27 @@ namespace Unity.FoxgloveSDK.Tests
             return path;
         }
         public static string ReadRequiredRepoText(string relativePath)
+            => ReadRequiredRepoText(FindRequiredRepoRoot(), relativePath);
+
+        public static string ReadRequiredRepoText(string root, string relativePath)
         {
             var normalized = relativePath.Replace('\\', '/');
             if (IsPythonFacadePath(normalized))
-                return ReadSplitPythonSource(normalized);
+                return ReadSplitPythonSourcePath(Path.Combine(
+                    root,
+                    normalized.Replace('/', Path.DirectorySeparatorChar)));
 
             if (string.Equals(
                     normalized,
                     "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp",
                     StringComparison.Ordinal))
-                return ReadUnity2FoxgloveRos2BridgeSources();
+                return ReadUnity2FoxgloveRos2BridgeSources(root);
 
             if (string.Equals(
                     normalized,
                     "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_bridge_smoke.cpp",
                     StringComparison.Ordinal))
-                return ReadIncludedCppSource(normalized);
+                return ReadIncludedCppSource(root, normalized);
 
             if (string.Equals(
                     normalized,
@@ -67,7 +72,7 @@ namespace Unity.FoxgloveSDK.Tests
                     normalized,
                     "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs",
                     StringComparison.Ordinal))
-                return ReadMediaFoundationH264EncoderSidecarSources();
+                return ReadMediaFoundationH264EncoderSidecarSources(root);
 
             if (string.Equals(
                     normalized,
@@ -137,6 +142,41 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(facadePath))
                 throw new FileNotFoundException("Missing ROS2 bridge sidecar source: " + facadePath, facadePath);
 
+            var expectedIncludes = new[]
+            {
+                "unity2foxglove_ros2_bridge/SocketAndOptions.inl",
+                "unity2foxglove_ros2_bridge/ModelsAndBinding.inl",
+                "unity2foxglove_ros2_bridge/FramingAndParsing.inl",
+                "unity2foxglove_ros2_bridge/PublisherRuntime.inl",
+                "unity2foxglove_ros2_bridge/SessionWriter.inl",
+                "unity2foxglove_ros2_bridge/ProtocolDispatchAndMainSupport.inl",
+            };
+            var includes = File.ReadLines(facadePath)
+                .Select(line => line.Trim())
+                .Where(line => line.StartsWith("#include \"unity2foxglove_ros2_bridge/", StringComparison.Ordinal)
+                    && line.EndsWith(".inl\"", StringComparison.Ordinal))
+                .Select(line => line.Substring(10, line.Length - 11))
+                .ToArray();
+            var fragmentDirectory = Path.Combine(
+                Path.GetDirectoryName(facadePath)!,
+                "unity2foxglove_ros2_bridge");
+            var actual = Directory.GetFiles(
+                    fragmentDirectory,
+                    "*.inl",
+                    SearchOption.TopDirectoryOnly)
+                .Select(path => Path.GetRelativePath(
+                    Path.GetDirectoryName(facadePath)!,
+                    path).Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
+            if (!expectedIncludes.SequenceEqual(includes) || !actual.SetEquals(expectedIncludes))
+            {
+                throw new InvalidDataException(
+                    "ROS2 bridge source include manifest mismatch. Missing: "
+                    + string.Join(", ", expectedIncludes.Except(actual))
+                    + "; unexpected: "
+                    + string.Join(", ", actual.Except(expectedIncludes)));
+            }
+
             var source = new StringBuilder();
             foreach (var line in File.ReadAllLines(facadePath))
             {
@@ -167,8 +207,58 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static string ReadIncludedCppSource(string relativePath)
+            => ReadIncludedCppSource(FindRequiredRepoRoot(), relativePath);
+
+        public static string ReadIncludedCppSource(string root, string relativePath)
         {
-            var facadePath = RepoPath(relativePath);
+            var facadePath = Path.Combine(
+                root,
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(facadePath))
+                throw new FileNotFoundException("Missing C++ source facade: " + relativePath, facadePath);
+            var expectedIncludes = string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_bridge_smoke.cpp",
+                    StringComparison.Ordinal)
+                ? new[]
+                {
+                    "test_bridge_smoke/FixtureAndHelpers.inl",
+                    "test_bridge_smoke/ProtocolContractTests.inl",
+                    "test_bridge_smoke/LifecycleSetup.inl",
+                    "test_bridge_smoke/SessionAndPublisherTests.inl",
+                    "test_bridge_smoke/PublisherContractTests.inl",
+                    "test_bridge_smoke/TransportIntegrationTests.inl",
+                }
+                : Array.Empty<string>();
+            var includes = File.ReadLines(facadePath)
+                .Select(line => line.Trim())
+                .Where(line => line.StartsWith("#include \"", StringComparison.Ordinal)
+                    && line.EndsWith(".inl\"", StringComparison.Ordinal))
+                .Select(line => line.Substring(10, line.Length - 11))
+                .ToArray();
+            if (expectedIncludes.Length > 0)
+            {
+                var fragmentDirectory = Path.Combine(
+                    Path.GetDirectoryName(facadePath)!,
+                    "test_bridge_smoke");
+                var actual = Directory.GetFiles(
+                        fragmentDirectory,
+                        "*.inl",
+                        SearchOption.TopDirectoryOnly)
+                    .Select(path => Path.GetRelativePath(
+                        Path.GetDirectoryName(facadePath)!,
+                        path).Replace('\\', '/'))
+                    .ToHashSet(StringComparer.Ordinal);
+                if (!expectedIncludes.SequenceEqual(includes)
+                    || !actual.SetEquals(expectedIncludes))
+                {
+                    throw new InvalidDataException(
+                        "C++ source include manifest mismatch. Missing: "
+                        + string.Join(", ", expectedIncludes.Except(actual))
+                        + "; unexpected: "
+                        + string.Join(", ", actual.Except(expectedIncludes)));
+                }
+            }
             var source = new StringBuilder();
             foreach (var line in File.ReadAllLines(facadePath))
             {

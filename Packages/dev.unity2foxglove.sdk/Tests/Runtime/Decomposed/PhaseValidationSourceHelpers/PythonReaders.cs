@@ -35,13 +35,33 @@ namespace Unity.FoxgloveSDK.Tests
                 if (!Directory.Exists(packagePath))
                     return File.ReadAllText(facadePath);
 
-                var decomposedSections = Directory
-                    .GetFiles(packagePath, "*.py", SearchOption.TopDirectoryOnly)
-                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                var manifestPath = Path.Combine(packagePath, "sections.manifest");
+                if (!File.Exists(manifestPath))
+                    throw new InvalidDataException("Missing Python source section manifest: " + manifestPath);
+                var manifest = File.ReadLines(manifestPath)
+                    .Select(line => line.Trim())
+                    .Where(line => line.Length > 0 && !line.StartsWith("#", StringComparison.Ordinal))
                     .ToArray();
-                if (decomposedSections.Length == 0)
-                    throw new InvalidOperationException(
-                        "No exported Python source sections found in " + packagePath);
+                if (manifest.Length == 0
+                    || manifest.Length != manifest.Distinct(StringComparer.OrdinalIgnoreCase).Count()
+                    || manifest.Any(name => !name.EndsWith(".py", StringComparison.OrdinalIgnoreCase)
+                        || name.Contains('/', StringComparison.Ordinal)
+                        || name.Contains('\\', StringComparison.Ordinal)))
+                    throw new InvalidDataException("Invalid Python source section manifest: " + manifestPath);
+                var actual = Directory
+                    .GetFiles(packagePath, "*.py", SearchOption.TopDirectoryOnly)
+                    .Select(Path.GetFileName)
+                    .Where(name => !string.Equals(name, "__init__.py", StringComparison.OrdinalIgnoreCase))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                if (!actual.SetEquals(manifest))
+                    throw new InvalidDataException(
+                        "Python source section manifest mismatch. Missing: "
+                        + string.Join(", ", manifest.Except(actual, StringComparer.OrdinalIgnoreCase))
+                        + "; unexpected: "
+                        + string.Join(", ", actual.Except(manifest, StringComparer.OrdinalIgnoreCase)));
+                var decomposedSections = manifest
+                    .Select(name => Path.Combine(packagePath, name))
+                    .ToArray();
 
                 var decomposedSource = new StringBuilder(File.ReadAllText(facadePath));
                 foreach (var section in decomposedSections)

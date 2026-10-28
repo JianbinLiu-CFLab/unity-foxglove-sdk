@@ -17,7 +17,7 @@ __all__ = [
     "declares_source_symbol",
 ]
 
-SOURCE_EXTENSIONS = {".cs", ".py", ".cpp", ".cc", ".c", ".h", ".hpp", ".ts"}
+SOURCE_EXTENSIONS = {".cs", ".py", ".cpp", ".cc", ".c", ".h", ".hpp", ".inl", ".ts"}
 
 SOURCE_NON_CODE = re.compile(
     r"//[^\r\n]*|/\*.*?\*/|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'",

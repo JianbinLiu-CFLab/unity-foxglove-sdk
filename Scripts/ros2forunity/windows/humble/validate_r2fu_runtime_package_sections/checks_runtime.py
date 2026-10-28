@@ -428,7 +428,27 @@ def check_generator_alignment(results: list[CheckResult]) -> None:
         generator = generator_path.read_text(encoding="utf-8", errors="replace")
         section_dir = generator_path.parent / "Decomposed" / generator_path.stem
         if section_dir.is_dir():
-            for section in sorted(section_dir.glob("*.py"), key=lambda path: path.name.casefold()):
+            manifest_path = section_dir / "sections.manifest"
+            manifest = tuple(
+                line.strip()
+                for line in manifest_path.read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+            )
+            actual = tuple(
+                sorted(
+                    path.name
+                    for path in section_dir.glob("*.py")
+                    if path.name != "__init__.py"
+                )
+            )
+            if len(manifest) != len(set(manifest)) or set(manifest) != set(actual):
+                raise ValueError(
+                    "runtime package section manifest mismatch: "
+                    f"missing={sorted(set(manifest) - set(actual))}; "
+                    f"unexpected={sorted(set(actual) - set(manifest))}"
+                )
+            for section_name in manifest:
+                section = section_dir / section_name
                 generator += "\n" + section.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         add(results, "runtime package generator script readable", False, f"{rel(generator_path)}: {exc}")
