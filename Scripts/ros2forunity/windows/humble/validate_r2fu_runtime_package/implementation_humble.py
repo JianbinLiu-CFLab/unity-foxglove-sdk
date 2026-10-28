@@ -5,7 +5,10 @@ from pathlib import Path as _Phase192Path
 
 _phase192_repo_root = _Phase192Path(__file__).resolve().parents[5]
 _phase192_sys.path.insert(0, str(_phase192_repo_root))
-from Scripts.ros2forunity.windows.humble.validate_r2fu_runtime_package_sections import checks as _checks
+try:
+    from validate_r2fu_runtime_package_sections import checks as _checks
+except ImportError:
+    from Scripts.ros2forunity.windows.humble.validate_r2fu_runtime_package_sections import checks as _checks
 
 
 json = _checks.json
