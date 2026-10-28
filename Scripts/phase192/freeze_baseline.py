@@ -24,7 +24,43 @@ from Scripts.phase192.task0_entry import (
     validate_classification,
     worktree_fingerprint,
 )
-SOURCE_EXTENSIONS = frozenset({".cs", ".py", ".cpp", ".cc", ".c", ".h", ".hpp", ".ts"})
+SOURCE_EXTENSIONS = frozenset({".cs", ".py", ".cpp", ".cc", ".c", ".h", ".hpp", ".inl", ".ts"})
+CPP_SOURCE_EXTENSIONS = frozenset({".cpp", ".cc", ".c", ".h", ".hpp", ".inl"})
+CPP_INCLUDE_RE = re.compile(r'^\s*#include\s+"(?P<path>[^"]+\.inl)"\s*$')
+CPP_INCLUDE_MANIFEST = {
+    "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp": (
+        "unity2foxglove_ros2_bridge/SocketAndOptions.inl",
+        "unity2foxglove_ros2_bridge/ModelsAndBinding.inl",
+        "unity2foxglove_ros2_bridge/FramingAndParsing.inl",
+        "unity2foxglove_ros2_bridge/PublisherRuntime.inl",
+        "unity2foxglove_ros2_bridge/SessionWriter.inl",
+        "unity2foxglove_ros2_bridge/ProtocolDispatchAndMainSupport.inl",
+    ),
+    "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/u2r2_protocol_authority.cpp": (
+        "u2r2_protocol_authority/ValidationAndIdentity.inl",
+        "u2r2_protocol_authority/LimitsAndResources.inl",
+        "u2r2_protocol_authority/SchedulerAndReplay.inl",
+        "u2r2_protocol_authority/RequestReplay.inl",
+        "u2r2_protocol_authority/Contracts.inl",
+        "u2r2_protocol_authority/Lifecycle.inl",
+    ),
+    "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_bridge_smoke.cpp": (
+        "test_bridge_smoke/FixtureAndHelpers.inl",
+        "test_bridge_smoke/ProtocolContractTests.inl",
+        "test_bridge_smoke/LifecycleSetup.inl",
+        "test_bridge_smoke/SessionAndPublisherTests.inl",
+        "test_bridge_smoke/PublisherContractTests.inl",
+        "test_bridge_smoke/TransportIntegrationTests.inl",
+    ),
+    "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/test_u2r2_protocol_authority.cpp": (
+        "test_u2r2_protocol_authority/Helpers.inl",
+        "test_u2r2_protocol_authority/AdmissionAndScheduler.inl",
+        "test_u2r2_protocol_authority/ReplayAndLifecycle.inl",
+        "test_u2r2_protocol_authority/ConcurrencyAndResources.inl",
+        "test_u2r2_protocol_authority/ScenarioAndContract.inl",
+        "test_u2r2_protocol_authority/RemainingAuthorityTests.inl",
+    ),
+}
 GENERATED_PROTO_ROOT = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Generated/"
 GENERATED_CDR_ROOT = "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/"
 GENERATED_TYPESUPPORT_ROOTS = (
@@ -352,6 +388,66 @@ def excluded_manifests(root: Path, output: Path, paths: list[str]) -> dict[str, 
 def _read_text(path: Path) -> str:
     """Phase192 identity baseline helper."""
     return path.read_text(encoding="utf-8", errors="replace")
+
+def _expand_cpp_includes(
+    root: Path,
+    relative: str,
+    text: str,
+    stack: tuple[str, ...] = (),
+) -> tuple[str, frozenset[str]]:
+    """Expand reviewed C++ ``.inl`` includes and validate include topology."""
+    if relative in stack:
+        raise ValueError(f"cyclic C++ include topology: {' -> '.join((*stack, relative))}")
+    expected = CPP_INCLUDE_MANIFEST.get(relative)
+    includes = tuple(
+        match.group("path")
+        for line in text.splitlines()
+        if (match := CPP_INCLUDE_RE.match(line))
+    )
+    if expected is not None and includes:
+        if includes != expected:
+            raise ValueError(
+                f"{relative}: C++ include topology differs from the reviewed manifest"
+            )
+        directory = (root / relative).parent
+        expected_root = expected[0].split("/", 1)[0]
+        actual_files = tuple(
+            path.relative_to(directory).as_posix()
+            for path in sorted(directory.rglob("*.inl"))
+            if path.is_file()
+            and path.relative_to(directory).parts[:1] == (expected_root,)
+        )
+        if set(actual_files) != set(expected):
+            raise ValueError(
+                f"{relative}: C++ fragment set differs from the reviewed manifest"
+            )
+    included: set[str] = set()
+    output: list[str] = []
+    source_path = root / relative
+    for line in text.splitlines(keepends=True):
+        match = CPP_INCLUDE_RE.match(line)
+        if match is None:
+            output.append(line)
+            continue
+        include = match.group("path")
+        fragment = (source_path.parent / Path(include)).resolve()
+        try:
+            fragment_relative = fragment.relative_to(root.resolve()).as_posix()
+        except ValueError as exc:
+            raise ValueError(f"C++ include escapes repository: {relative}: {include}") from exc
+        if not fragment.is_file() or fragment.suffix.casefold() != ".inl":
+            raise FileNotFoundError(f"Missing C++ source fragment: {fragment_relative}")
+        fragment_text, fragment_included = _expand_cpp_includes(
+            root,
+            fragment_relative,
+            _read_text(fragment),
+            (*stack, relative),
+        )
+        included.add(fragment_relative)
+        included.update(fragment_included)
+        output.append(fragment_text)
+    return "".join(output), frozenset(included)
+
 def identity_surfaces(root: Path, output: Path, paths: list[str]) -> dict[str, int]:
     """Phase192 identity baseline helper."""
     from Scripts.phase192 import identity_contracts
@@ -360,12 +456,21 @@ def identity_surfaces(root: Path, output: Path, paths: list[str]) -> dict[str, i
     hand = [path for path in paths if (root / path).is_file() and not is_generated(path) and not is_vendor(path)]
     csharp = [path for path in hand if Path(path).suffix.casefold() == ".cs"]
     python = [path for path in hand if Path(path).suffix.casefold() == ".py"]
-    cpp = [path for path in hand if Path(path).suffix.casefold() in {".cpp", ".cc", ".c", ".h", ".hpp"}]
+    cpp_candidates = [path for path in hand if Path(path).suffix.casefold() in CPP_SOURCE_EXTENSIONS]
+    expanded_cpp: dict[str, str] = {}
+    included_cpp_fragments: set[str] = set()
+    for relative in cpp_candidates:
+        source = _read_text(root / relative)
+        if Path(relative).suffix.casefold() in {".cpp", ".cc", ".c"}:
+            source, included = _expand_cpp_includes(root, relative, source)
+            included_cpp_fragments.update(included)
+        expanded_cpp[relative] = source
+    cpp = [path for path in cpp_candidates if path not in included_cpp_fragments]
     csharp_tests = [path for path in csharp if "/Tests/" in f"/{path}" or "/test/" in f"/{path}" or "[Fact]" in _read_text(root / path) or "[Theory]" in _read_text(root / path)]
     python_tests = python_test_paths(python)
     write_tsv(identity / "managed-paths.tsv", ["path"], [[path] for path in csharp])
     write_tsv(identity / "python-paths.tsv", ["path"], [[path] for path in python])
-    write_tsv(identity / "cpp-paths.tsv", ["path"], [[path] for path in cpp])
+    write_tsv(identity / "cpp-paths.tsv", ["path"], [[path] for path in cpp_candidates])
     write_tsv(identity / "csharp-test-paths.tsv", ["path"], [[path] for path in csharp_tests])
     errors: list[list[str]] = []
     def collect(command: str, selected: list[str], function, filename: str, header: list[str]) -> int:
@@ -381,7 +486,18 @@ def identity_surfaces(root: Path, output: Path, paths: list[str]) -> dict[str, i
     managed_count = collect("managed", csharp, identity_contracts.managed_rows, "managed-api-surface.tsv", ["path", "line", "visibility", "declaration"])
     python_count = collect("python", python, identity_contracts.python_surface, "python-symbols.tsv", ["path", "all", "exports"])
     annotation_count = collect("python-annotations", python, identity_contracts.python_annotation_rows, "python-annotations.tsv", ["path", "symbol", "kind", "detail"])
-    cpp_count = collect("cpp", cpp, identity_contracts.cpp_rows, "cpp-symbol-surface.tsv", ["path", "line", "symbol", "declaration"])
+    cpp_rows = []
+    for relative in cpp:
+        try:
+            cpp_rows.extend(identity_contracts.cpp_rows(relative, expanded_cpp[relative]))
+        except Exception as error:
+            errors.append(["cpp", relative, type(error).__name__, str(error)])
+    identity_contracts.write_rows(
+        identity / "cpp-symbol-surface.tsv",
+        ["path", "line", "symbol", "declaration"],
+        cpp_rows,
+    )
+    cpp_count = len(cpp_rows)
     csharp_test_count = collect("tests", csharp_tests, identity_contracts.csharp_test_rows, "csharp-test-names.tsv", ["path", "test_name", "framework"])
     python_test_count = 0
     python_test_rows: list[list[str]] = []

@@ -221,12 +221,31 @@ def _load_source_sections() -> None:
     """Load the decomposed source sections into the facade namespace."""
 
     section_dir = Path(__file__).with_name("Decomposed") / "build_r2fu_runtime_package"
-    for section_name in (
-        "01_types_and_inputs.py",
-        "02_package_files.py",
-        "03_runtime_extraction_and_patching.py",
-        "04_build_pipeline.py",
+    manifest_path = section_dir / "sections.manifest"
+    section_names = tuple(
+        line.strip()
+        for line in manifest_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+    if len(section_names) != len(set(section_names)) or any(
+        not section_name.endswith(".py") or "/" in section_name or "\\" in section_name
+        for section_name in section_names
     ):
+        raise RuntimeError(f"Invalid runtime package section manifest: {manifest_path}")
+    actual_names = tuple(
+        sorted(
+            path.name
+            for path in section_dir.glob("*.py")
+            if path.name != "__init__.py"
+        )
+    )
+    if set(actual_names) != set(section_names):
+        raise RuntimeError(
+            "Runtime package section manifest mismatch: "
+            f"missing={sorted(set(section_names) - set(actual_names))}; "
+            f"unexpected={sorted(set(actual_names) - set(section_names))}"
+        )
+    for section_name in section_names:
         section_path = section_dir / section_name
         source = section_path.read_text(encoding="utf-8")
         exec(compile(source, str(section_path), "exec"), globals(), globals())

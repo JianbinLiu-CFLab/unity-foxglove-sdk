@@ -157,6 +157,44 @@ class FreezeBaselineTests(unittest.TestCase):
             self.assertEqual(counts["missing_tracked_sources"], 1)
             self.assertIn("Missing.cs", (output / "missing-tracked-sources.tsv").read_text(encoding="utf-8"))
 
+    def test_source_inventory_includes_cpp_inl_fragments(self) -> None:
+        """C++ implementation fragments are included in the governed inventory."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fragment = root / "Tools/ros2_bridge/src/Feature.inl"
+            fragment.parent.mkdir(parents=True)
+            fragment.write_text("int governed_fragment = 1;\n", encoding="utf-8")
+            output = root / "baseline"
+            freeze_baseline.source_inventory(
+                root,
+                output,
+                ["Tools/ros2_bridge/src/Feature.inl"],
+            )
+            self.assertIn(
+                "Feature.inl",
+                (output / "area-manifest.tsv").read_text(encoding="utf-8"),
+            )
+
+    def test_cpp_include_expansion_covers_fragment_symbols(self) -> None:
+        """C++ identity rows are collected from expanded facade sources."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            facade = root / "Tools/ros2_bridge/src/facade.cpp"
+            fragment = root / "Tools/ros2_bridge/src/feature/Feature.inl"
+            fragment.parent.mkdir(parents=True)
+            facade.write_text('#include "feature/Feature.inl"\n', encoding="utf-8")
+            fragment.write_text("void governed_fragment_symbol() {}\n", encoding="utf-8")
+            expanded, included = freeze_baseline._expand_cpp_includes(
+                root,
+                "Tools/ros2_bridge/src/facade.cpp",
+                facade.read_text(encoding="utf-8"),
+            )
+            self.assertIn("governed_fragment_symbol", expanded)
+            self.assertEqual(
+                frozenset({"Tools/ros2_bridge/src/feature/Feature.inl"}),
+                included,
+            )
+
     def test_plan_hashes_report_missing_paths(self) -> None:
         """Plan hashing exposes missing governance inputs to the caller."""
         with tempfile.TemporaryDirectory() as temp:

@@ -147,6 +147,40 @@ def _section_modules_for_root(root: Path):
 
     def section_modules(package_dir: Path) -> tuple[Path, ...]:
         """Internal helper for section_modules."""
+        manifest_path = package_dir / "sections.manifest"
+        if manifest_path.is_file():
+            names = tuple(
+                line.strip()
+                for line in manifest_path.read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.lstrip().startswith("#")
+            )
+            if not names or len(names) != len(set(names)):
+                raise ValueError(f"Invalid source section manifest: {manifest_path}")
+            if any(
+                not name.endswith(".py")
+                or "/" in name
+                or "\\" in name
+                or re.fullmatch(r"[A-Za-z0-9_]+", Path(name).stem) is None
+                for name in names
+            ):
+                raise ValueError(f"Invalid source section manifest: {manifest_path}")
+            paths = tuple(package_dir / name for name in names)
+            if any(not path.is_file() for path in paths):
+                missing = [path.name for path in paths if not path.is_file()]
+                raise FileNotFoundError(
+                    f"Declared source sections are missing from {manifest_path}: {', '.join(missing)}"
+                )
+            actual = {
+                path.name
+                for path in package_dir.glob("*.py")
+                if path.name not in {"__init__.py", "__main__.py"}
+            }
+            if actual != set(names):
+                raise ValueError(
+                    f"Source section manifest differs from package files: {manifest_path}; "
+                    f"missing={sorted(set(names) - actual)} extra={sorted(actual - set(names))}"
+                )
+            return paths
         init_path = package_dir / "__init__.py"
         tree = _parse_source(init_path.read_text(encoding="utf-8"), init_path)
         modules: list[Path] = []
@@ -182,6 +216,16 @@ def _section_modules_for_root(root: Path):
 
     return section_modules
 
+def _section_package_for_facade(facade: Path) -> Path | None:
+    """Return the standard or manifest-backed section directory for a facade."""
+    package = facade.with_suffix("")
+    if (package / "__init__.py").is_file():
+        return package
+    manifest_package = facade.parent / "Decomposed" / facade.stem
+    if (manifest_package / "sections.manifest").is_file():
+        return manifest_package
+    return None
+
 def _split_facades(root: Path) -> tuple[Path, ...]:
     """Return split facade paths under supported roots."""
     paths: list[Path] = []
@@ -191,8 +235,8 @@ def _split_facades(root: Path) -> tuple[Path, ...]:
         if not root_path.is_dir():
             continue
         for facade in sorted(root_path.rglob("*.py")):
-            package = facade.with_suffix("")
-            if package.is_dir() and (package / "__init__.py").is_file():
+            package = _section_package_for_facade(facade)
+            if package is not None:
                 key = facade.relative_to(root).as_posix().casefold()
                 if key in seen:
                     raise ValueError(f"Duplicate facade path (case-insensitive): {facade}")
@@ -6629,6 +6673,8 @@ def _validate_generated_section(
     path: Path,
     package_dir: Path,
     section_names: frozenset[str],
+    *,
+    require_all: bool = True,
 ) -> None:
     """Validate a moved implementation section without pretending it is inert.
 
@@ -6640,7 +6686,10 @@ def _validate_generated_section(
     """
     tree = _parse_source(source, path)
     _relative_import_contract(tree, package_dir, path, section_names)
-    _section_exports(source, str(path), reject_conditional=False)
+    if require_all:
+        _section_exports(source, str(path), reject_conditional=False)
+    else:
+        _symbols(source, str(path), reject_conditional=False)
 
     path_ctor_names = {
         alias.asname or alias.name
@@ -7047,28 +7096,43 @@ def _validate_compatibility_new_sections(
     head_section_modules = _section_modules_for_root(head_root)
     for relative in sorted(head_surfaces):
         head_facade = head_root / relative
-        head_package = head_facade.with_suffix("")
+        head_package = _section_package_for_facade(head_facade)
+        if head_package is None:
+            raise ValueError(f"Missing source section package for {head_facade}")
         head_sections = head_section_modules(head_package)
         head_initializer = head_package / "__init__.py"
-        head_initializer_source = head_initializer.read_text(encoding="utf-8")
-        generated_kind = _phase192_initializer_kind(head_initializer_source)
+        manifest_path = head_package / "sections.manifest"
+        head_initializer_source = (
+            head_initializer.read_text(encoding="utf-8")
+            if head_initializer.is_file()
+            else ""
+        )
+        generated_kind = (
+            "manifest"
+            if manifest_path.is_file() and not head_initializer.is_file()
+            else _phase192_initializer_kind(head_initializer_source)
+        )
         generated_package = generated_kind is not None
-        base_package = (base_root / relative).with_suffix("")
+        base_package = _section_package_for_facade(base_root / relative)
         base_sections = (
             base_section_modules(base_package)
-            if relative in base_surfaces and base_package.is_dir()
+            if relative in base_surfaces and base_package is not None
             else ()
         )
         old_names = frozenset(path.stem for path in base_sections)
         new_names = frozenset(path.stem for path in head_sections) - old_names
         if relative not in base_surfaces:
-            initializer = head_initializer
+            initializer = head_initializer if head_initializer.is_file() else manifest_path
             initializer_source = head_initializer_source
             if generated_package:
-                initializer_tree = _parse_source(initializer_source, initializer)
+                initializer_tree = (
+                    ast.parse("pass\n", filename=str(initializer))
+                    if generated_kind == "manifest"
+                    else _parse_source(initializer_source, initializer)
+                )
                 if generated_kind == "phase192":
                     _phase192_template_validate_initializer(initializer_tree, str(initializer))
-                else:
+                elif generated_kind not in {"manifest"}:
                     _phase138u_simple_initializer(initializer_source, str(initializer))
                 section_names = frozenset(path.stem for path in head_sections)
                 for section in head_sections:
@@ -7077,6 +7141,7 @@ def _validate_compatibility_new_sections(
                         section,
                         head_package,
                         section_names,
+                        require_all=generated_kind != "manifest",
                     )
             else:
                 _validate_import_time_section(
@@ -7094,6 +7159,7 @@ def _validate_compatibility_new_sections(
                     section,
                     head_package,
                     frozenset(path.stem for path in head_sections),
+                    require_all=generated_kind != "manifest",
                 )
                 continue
             _validate_import_time_section(
@@ -7112,7 +7178,9 @@ def _surface(
 ) -> tuple:
     """Internal helper for _surface."""
     relative = facade.relative_to(root).as_posix()
-    package = facade.with_suffix("")
+    package = _section_package_for_facade(facade)
+    if package is None:
+        raise ValueError(f"Missing source section package for {facade}")
     section_modules = section_modules or _section_modules_for_root(root)
     sections = section_modules(package)
     section_exports: set[str] = set()
@@ -7124,6 +7192,7 @@ def _surface(
     relative_star_contract: list[str] = []
     module_import_names: set[str] = set()
     legacy_test_section = "regression_checks" in facade.parts or facade.stem.startswith("test_")
+    manifest_package = not (package / "__init__.py").is_file()
 
     def add_conditional_contract(signature: str) -> None:
         """Internal helper for add_conditional_contract."""
@@ -7142,14 +7211,22 @@ def _surface(
                 frozenset(path.stem for path in sections),
             )
         )
-        exports = _section_exports(
-            section_source,
-            str(section),
-            reject_conditional=reject_conditional,
-            reject_module_registry=(not legacy_test_section and not phase121_configuration),
-            validate_namespace=not phase121_configuration,
-            repository_root=root,
-        )
+        if manifest_package:
+            exports = _symbols(
+                section_source,
+                str(section),
+                reject_conditional=reject_conditional,
+                repository_root=root,
+            )
+        else:
+            exports = _section_exports(
+                section_source,
+                str(section),
+                reject_conditional=reject_conditional,
+                reject_module_registry=(not legacy_test_section and not phase121_configuration),
+                validate_namespace=not phase121_configuration,
+                repository_root=root,
+            )
         section_exports.update(exports)
         for name in exports:
             owner_map.setdefault(name, set()).add(f"section:{section.stem}")
@@ -7174,11 +7251,19 @@ def _surface(
             frozenset(path.stem for path in sections),
         )
     )
-    facade_symbols = _symbols(
-        facade_source,
-        str(facade),
-        reject_conditional=reject_conditional,
-        repository_root=root,
+    facade_symbols = (
+        frozenset(
+            name
+            for name in _top_level_names(facade_tree, include_imports=True)
+            if not name.startswith("__")
+        )
+        if manifest_package
+        else _symbols(
+            facade_source,
+            str(facade),
+            reject_conditional=reject_conditional,
+            repository_root=root,
+        )
     )
     exported = set(section_exports)
     exported.update(facade_symbols)
@@ -7194,14 +7279,20 @@ def _surface(
         )
     )
     initializer = package / "__init__.py"
-    initializer_tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
-    module_import_names.update(_direct_import_bound_names(initializer_tree))
-    _relative_import_contract(
-        initializer_tree,
-        package,
-        initializer,
-        frozenset(path.stem for path in sections),
-    )
+    if initializer.is_file():
+        initializer_tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
+        module_import_names.update(_direct_import_bound_names(initializer_tree))
+        _relative_import_contract(
+            initializer_tree,
+            package,
+            initializer,
+            frozenset(path.stem for path in sections),
+        )
+    else:
+        initializer_tree = ast.parse(
+            "pass\n",
+            filename=str(package / "sections.manifest"),
+        )
     entrypoint_present, entrypoint_digest, entrypoint_contract, entrypoint_risks = _entrypoint_contract(
         package / "__main__.py",
         frozenset(path.stem for path in sections),
@@ -7245,9 +7336,21 @@ def _surface(
     return (
         frozenset(exported),
         tuple(path.stem for path in sections),
-        _initializer_lines(initializer),
+        _initializer_lines(initializer)
+        if initializer.is_file()
+        else tuple(
+            line.strip()
+            for line in (package / "sections.manifest")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ),
         frozenset(section_exports),
-        _initializer_digest(initializer),
+        _initializer_digest(initializer)
+        if initializer.is_file()
+        else hashlib.sha256(
+            (package / "sections.manifest").read_bytes()
+        ).hexdigest(),
         frozenset(conditional_names),
         entrypoint_present,
         tuple(section_export_map),
@@ -7271,7 +7374,9 @@ def _surfaces(
     section_modules = _section_modules_for_root(root)
     for facade in _split_facades(root):
         relative = facade.relative_to(root).as_posix()
-        package = facade.with_suffix("")
+        package = _section_package_for_facade(facade)
+        if package is None:
+            raise ValueError(f"Missing source section package for {facade}")
         listed_paths = section_modules(package)
         listed = {path.name for path in listed_paths}
         actual_paths = [
