@@ -160,7 +160,7 @@ def _section_modules_for_root(root: Path):
                 not name.endswith(".py")
                 or "/" in name
                 or "\\" in name
-                or re.fullmatch(r"[A-Za-z0-9_]+", Path(name).stem) is None
+                or re.fullmatch(r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*", Path(name).stem) is None
                 for name in names
             ):
                 raise ValueError(f"Invalid source section manifest: {manifest_path}")

@@ -639,7 +639,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(74, len(surfaces))
+        self.assertEqual(77, len(surfaces))
 
     def test_identity_surface_includes_nested_split_modules(self) -> None:
         """Nested package modules participate in the identity contract."""
@@ -725,7 +725,7 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertIn("Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py", relative)
         self.assertIn("Scripts/unity_build/unity_il2cpp.py", relative)
         self.assertIn("Scripts/release/run_ci.py", relative)
-        self.assertEqual(74, len(relative))
+        self.assertEqual(77, len(relative))
 
     def test_identity_surface_recognizes_manifest_backed_decomposed_facade(self) -> None:
         """A Decomposed/<facade-stem> manifest participates in identity checks."""
@@ -740,6 +740,22 @@ class IdentityToolingTests(unittest.TestCase):
             surfaces = compare_identity_surfaces._surfaces(root, strict=True)
             self.assertIn("Scripts/ros2forunity/windows/humble/build.py", surfaces)
             self.assertEqual(("01_core",), surfaces["Scripts/ros2forunity/windows/humble/build.py"][1])
+
+    def test_identity_surface_accepts_dotted_manifest_section_names(self) -> None:
+        """Manifest-backed sections may preserve legacy dotted filenames."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            facade = root / "Scripts/ros2forunity/windows/humble/phase160.py"
+            package = root / "Scripts/ros2forunity/windows/humble/Decomposed/phase160"
+            package.mkdir(parents=True)
+            facade.write_text("PUBLIC = 1\n", encoding="utf-8")
+            name = "phase160_r2fu_humble_windows_build.BuildPipeline.py"
+            (package / "sections.manifest").write_text(name + "\n", encoding="utf-8")
+            (package / name).write_text("VALUE = 1\n", encoding="utf-8")
+            surfaces = compare_identity_surfaces._surfaces(root, strict=True)
+            self.assertEqual(("phase160_r2fu_humble_windows_build.BuildPipeline",), surfaces[
+                "Scripts/ros2forunity/windows/humble/phase160.py"
+            ][1])
 
     def test_split_identity_surface_rejects_relative_star_chain_change(self) -> None:
         """Changing a section's relative star-import source changes runtime overwrite order."""

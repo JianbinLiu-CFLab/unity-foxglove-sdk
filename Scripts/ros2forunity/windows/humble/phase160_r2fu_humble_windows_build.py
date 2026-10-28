@@ -249,11 +249,31 @@ def _load_source_sections() -> None:
     """Load the decomposed source sections into the facade namespace."""
 
     section_dir = pathlib.Path(__file__).with_name("Decomposed") / "phase160_r2fu_humble_windows_build"
-    for section_name in (
-        "phase160_r2fu_humble_windows_build.SafetyAndEnvironment.py",
-        "phase160_r2fu_humble_windows_build.EnvironmentAndValidation.py",
-        "phase160_r2fu_humble_windows_build.BuildPipeline.py",
+    manifest_path = section_dir / "sections.manifest"
+    section_names = tuple(
+        line.strip()
+        for line in manifest_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+    if len(section_names) != len(set(section_names)) or any(
+        not section_name.endswith(".py") or "/" in section_name or "\\" in section_name
+        for section_name in section_names
     ):
+        raise RuntimeError(f"Invalid build section manifest: {manifest_path}")
+    actual_names = tuple(
+        sorted(
+            path.name
+            for path in section_dir.glob("*.py")
+            if path.name != "__init__.py"
+        )
+    )
+    if set(actual_names) != set(section_names):
+        raise RuntimeError(
+            "Build section manifest mismatch: "
+            f"missing={sorted(set(section_names) - set(actual_names))}; "
+            f"unexpected={sorted(set(actual_names) - set(section_names))}"
+        )
+    for section_name in section_names:
         section_path = section_dir / section_name
         source = section_path.read_text(encoding="utf-8")
         exec(compile(source, str(section_path), "exec"), globals(), globals())
