@@ -222,7 +222,10 @@ def _section_package_for_facade(facade: Path) -> Path | None:
     if (package / "__init__.py").is_file():
         return package
     manifest_package = facade.parent / "Decomposed" / facade.stem
-    if (manifest_package / "sections.manifest").is_file():
+    if manifest_package.is_dir():
+        manifest_path = manifest_package / "sections.manifest"
+        if not manifest_path.is_file():
+            raise ValueError(f"Missing source section manifest: {manifest_path}")
         return manifest_package
     return None
 

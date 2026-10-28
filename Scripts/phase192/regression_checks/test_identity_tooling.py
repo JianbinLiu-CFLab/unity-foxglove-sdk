@@ -792,6 +792,18 @@ class IdentityToolingTests(unittest.TestCase):
                 errors,
             )
 
+    def test_identity_surface_rejects_missing_decomposed_manifest(self) -> None:
+        """A discovered Decomposed facade must declare its section manifest."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            facade = root / "Scripts/ros2forunity/windows/jazzy/build.py"
+            package = root / "Scripts/ros2forunity/windows/jazzy/Decomposed/build"
+            package.mkdir(parents=True)
+            facade.write_text("PUBLIC = 1\n", encoding="utf-8")
+            (package / "01_core.py").write_text("VALUE = 1\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Missing source section manifest"):
+                compare_identity_surfaces._split_facades(root)
+
     def test_identity_surface_accepts_dotted_manifest_section_names(self) -> None:
         """Manifest-backed sections may preserve legacy dotted filenames."""
         with tempfile.TemporaryDirectory() as temp:
