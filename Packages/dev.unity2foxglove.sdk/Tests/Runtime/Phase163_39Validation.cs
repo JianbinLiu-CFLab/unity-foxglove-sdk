@@ -114,7 +114,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Read(string repoRoot, string relativePath)
-            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            => PhaseValidationSourceHelpers.ReadRequiredRepoText(repoRoot, relativePath);
 
         private static void Check(bool condition, string description)
         {

@@ -18,9 +18,10 @@ namespace Unity.FoxgloveSDK.Tests
     internal static partial class PhaseValidationSourceHelpers
     {
         public static string ReadMediaFoundationH264EncoderSidecarSources()
-        {
-            var root = FindRequiredRepoRoot();
+            => ReadMediaFoundationH264EncoderSidecarSources(FindRequiredRepoRoot());
 
+        public static string ReadMediaFoundationH264EncoderSidecarSources(string root)
+        {
             var dir = Path.Combine(
                 root,
                 "Packages",
@@ -44,10 +45,24 @@ namespace Unity.FoxgloveSDK.Tests
                 "MediaFoundationH264EncoderSidecar.Output.cs",
                 "MediaFoundationH264EncoderSidecar.ComInterop.cs",
             };
-            var files = fileNames
-                .Select(name => Path.Combine(dir, name))
-                .Where(File.Exists)
-                .ToArray();
+            var expected = new HashSet<string>(fileNames, StringComparer.Ordinal);
+            var actual = Directory.GetFiles(
+                    dir,
+                    "MediaFoundationH264EncoderSidecar*.cs",
+                    SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            if (!expected.SetEquals(actual))
+            {
+                var missing = expected.Except(actual).OrderBy(name => name, StringComparer.Ordinal);
+                var unexpected = actual.Except(expected).OrderBy(name => name, StringComparer.Ordinal);
+                throw new InvalidDataException(
+                    "Media Foundation H.264 sidecar source set mismatch. "
+                    + "Missing: " + string.Join(", ", missing)
+                    + "; unexpected: " + string.Join(", ", unexpected));
+            }
+
+            var files = fileNames.Select(name => Path.Combine(dir, name)).ToArray();
 
             var source = new StringBuilder();
             foreach (var file in files)
