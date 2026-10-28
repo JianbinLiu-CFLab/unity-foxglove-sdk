@@ -640,6 +640,18 @@ class IdentityToolingTests(unittest.TestCase):
             compare_identity_surfaces.REPOSITORY_ROOT
         )
         self.assertEqual(77, len(surfaces))
+        jazzy = surfaces[
+            "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py"
+        ]
+        self.assertEqual(
+            (
+                "01_types_and_inputs",
+                "02_package_files",
+                "03_runtime_extraction_and_patching",
+                "04_build_pipeline",
+            ),
+            jazzy[1],
+        )
 
     def test_identity_surface_includes_nested_split_modules(self) -> None:
         """Nested package modules participate in the identity contract."""
@@ -740,6 +752,57 @@ class IdentityToolingTests(unittest.TestCase):
             surfaces = compare_identity_surfaces._surfaces(root, strict=True)
             self.assertIn("Scripts/ros2forunity/windows/humble/build.py", surfaces)
             self.assertEqual(("01_core",), surfaces["Scripts/ros2forunity/windows/humble/build.py"][1])
+
+    def test_manifest_backed_identity_rejects_section_mutation(self) -> None:
+        """A public section mutation is visible through a Decomposed manifest."""
+        with tempfile.TemporaryDirectory() as temp:
+            roots = [Path(temp) / name for name in ("base", "head")]
+            names = (
+                "01_types_and_inputs.py",
+                "02_package_files.py",
+                "03_runtime_extraction_and_patching.py",
+                "04_build_pipeline.py",
+            )
+            for root in roots:
+                package = root / "Scripts/ros2forunity/windows/jazzy/Decomposed/build_r2fu_runtime_package"
+                package.mkdir(parents=True)
+                (root / "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py").write_text(
+                    "PUBLIC = 1\n", encoding="utf-8"
+                )
+                (package / "sections.manifest").write_text(
+                    "".join(name + "\n" for name in names), encoding="utf-8"
+                )
+                for name in names:
+                    (package / name).write_text(
+                        "SECTION_VALUE = 1\n", encoding="utf-8"
+                    )
+            (
+                roots[1]
+                / "Scripts/ros2forunity/windows/jazzy/Decomposed/build_r2fu_runtime_package/sections.manifest"
+            ).write_text(
+                "".join(name + "\n" for name in (names[0], names[1], names[3], names[2])),
+                encoding="utf-8",
+            )
+            base = compare_identity_surfaces._surfaces(roots[0], strict=True)
+            head = compare_identity_surfaces._surfaces(roots[1], strict=True)
+            errors = compare_identity_surfaces._compare_surfaces(base, head, strict=False)
+            self.assertTrue(errors)
+            self.assertIn(
+                "SECTION_ORDER_CHANGED Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py",
+                errors,
+            )
+
+    def test_identity_surface_rejects_missing_decomposed_manifest(self) -> None:
+        """A discovered Decomposed facade must declare its section manifest."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            facade = root / "Scripts/ros2forunity/windows/jazzy/build.py"
+            package = root / "Scripts/ros2forunity/windows/jazzy/Decomposed/build"
+            package.mkdir(parents=True)
+            facade.write_text("PUBLIC = 1\n", encoding="utf-8")
+            (package / "01_core.py").write_text("VALUE = 1\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Missing source section manifest"):
+                compare_identity_surfaces._split_facades(root)
 
     def test_identity_surface_accepts_dotted_manifest_section_names(self) -> None:
         """Manifest-backed sections may preserve legacy dotted filenames."""
