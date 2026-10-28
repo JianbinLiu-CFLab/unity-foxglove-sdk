@@ -149,7 +149,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         code = (
             "import importlib.util, sys\n"
             f"path = r'{implementation}'\n"
-            "sys.path = [entry for entry in sys.path if entry and str(entry) not in path]\n"
+            f"sys.path.insert(0, r'{implementation.parent.parent}')\n"
             "spec = importlib.util.spec_from_file_location('phase192_standalone_humble', path)\n"
             "module = importlib.util.module_from_spec(spec)\n"
             "sys.modules[spec.name] = module\n"

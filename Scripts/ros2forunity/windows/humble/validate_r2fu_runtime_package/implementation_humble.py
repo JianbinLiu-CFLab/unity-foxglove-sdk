@@ -1,12 +1,5 @@
 from __future__ import annotations
 
-import sys as _phase192_sys
-from pathlib import Path as _Phase192Path
-
-_PHASE192_REPO_ROOT = _Phase192Path(__file__).resolve().parents[5]
-if str(_PHASE192_REPO_ROOT) not in _phase192_sys.path:
-    _phase192_sys.path.insert(0, str(_PHASE192_REPO_ROOT))
-
 try:
     from validate_r2fu_runtime_package_sections import checks as _checks
 except ImportError:
