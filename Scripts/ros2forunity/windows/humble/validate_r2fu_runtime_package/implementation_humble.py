@@ -41,177 +41,177 @@ INTERNAL_TOKENS = _checks.INTERNAL_TOKENS
 CheckResult = _checks.CheckResult
 
 def rel(path: Path) -> str:
-    'Format a path relative to the repository root when possible.'
+    """Format a path relative to the repository root when possible."""
     _sync()
     return _checks.rel(path)
 
 def add(results: list[CheckResult], name: str, ok: bool, detail: str='') -> None:
-    'Append one check result to the accumulated report.'
+    """Append one check result to the accumulated report."""
     _sync()
     return _checks.add(results, name, ok, detail)
 
 def iter_files(root: Path) -> Iterable[Path]:
-    'Yield files below a root, returning an empty iterable when absent.'
+    """Yield files below a root, returning an empty iterable when absent."""
     _sync()
     return _checks.iter_files(root)
 
 def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
-    'Load JSON and record whether parsing succeeded.'
+    """Load JSON and record whether parsing succeeded."""
     _sync()
     return _checks.load_json(path, results, name)
 
 def read_optional_text(path: Path) -> str:
-    'Read UTF-8 text when present, returning an empty string for absent files.'
+    """Read UTF-8 text when present, returning an empty string for absent files."""
     _sync()
     return _checks.read_optional_text(path)
 
 def file_sha256(path: Path) -> str:
-    'Return the SHA-256 digest for a package payload file.'
+    """Return the SHA-256 digest for a package payload file."""
     _sync()
     return _checks.file_sha256(path)
 
 def critical_runtime_file_path(name: str) -> Path:
-    'Resolve critical runtime files across managed and native plugin roots.'
+    """Resolve critical runtime files across managed and native plugin roots."""
     _sync()
     return _checks.critical_runtime_file_path(name)
 
 def is_sha256(value: object) -> bool:
-    'Return true for a complete lowercase SHA-256 hex string.'
+    """Return true for a complete lowercase SHA-256 hex string."""
     _sync()
     return _checks.is_sha256(value)
 
 def unity_editor_using_is_guarded(text: str) -> bool:
-    'Return true when every UnityEditor using is inside a UNITY_EDITOR block.'
+    """Return true when every UnityEditor using is inside a UNITY_EDITOR block."""
     _sync()
     return _checks.unity_editor_using_is_guarded(text)
 
 def check_package_metadata(results: list[CheckResult]) -> None:
-    'Validate Unity package metadata.'
+    """Validate Unity package metadata."""
     _sync()
     return _checks.check_package_metadata(results)
 
 def check_required_files(results: list[CheckResult]) -> None:
-    'Validate files required by the runtime package contract.'
+    """Validate files required by the runtime package contract."""
     _sync()
     return _checks.check_required_files(results)
 
 def check_ros2cs_metadata_portability(results: list[CheckResult]) -> None:
-    'Require package-relative roots in both shipped plugin inventories.'
+    """Require package-relative roots in both shipped plugin inventories."""
     _sync()
     return _checks.check_ros2cs_metadata_portability(results)
 
 def check_message_package_floor(results: list[CheckResult]) -> None:
-    'Validate generated message packages required by packaged R2FU scripts.'
+    """Validate generated message packages required by packaged R2FU scripts."""
     _sync()
     return _checks.check_message_package_floor(results)
 
 def check_runtime_manifest(results: list[CheckResult], data: dict) -> None:
-    'Validate the runtime support manifest.'
+    """Validate the runtime support manifest."""
     _sync()
     return _checks.check_runtime_manifest(results, data)
 
 def inventory_category_counts_match(categories: object, files: object) -> bool:
-    'Return whether declared inventory categories exactly match file rows.'
+    """Return whether declared inventory categories exactly match file rows."""
     _sync()
     return _checks.inventory_category_counts_match(categories, files)
 
 def fresh_project_acceptance_status(manifest: dict) -> str:
-    'Return the normalized fresh-project acceptance status.'
+    """Return the normalized fresh-project acceptance status."""
     _sync()
     return _checks.fresh_project_acceptance_status(manifest)
 
 def published_runtime_is_not_prototype(manifest: dict) -> bool:
-    'Return whether the manifest is not marked as a Prototype release.'
+    """Return whether the manifest is not marked as a Prototype release."""
     _sync()
     return _checks.published_runtime_is_not_prototype(manifest)
 
 def fresh_project_acceptance_passed(manifest: dict) -> bool:
-    'Return whether fresh-project acceptance passed.'
+    """Return whether fresh-project acceptance passed."""
     _sync()
     return _checks.fresh_project_acceptance_passed(manifest)
 
 def _manifest_without_acceptance(commit_sha: str, manifest_relative: str) -> dict | None:
-    'Read a committed runtime manifest without its mutable acceptance record.'
+    """Read a committed runtime manifest without its mutable acceptance record."""
     _sync()
     return _checks._manifest_without_acceptance(commit_sha, manifest_relative)
 
 def acceptance_commit_is_ancestor_and_package_unchanged(acceptance_sha: str, candidate_sha: str) -> bool:
-    'Return whether an accepted commit is an ancestor with an unchanged runtime payload.'
+    """Return whether an accepted commit is an ancestor with an unchanged runtime payload."""
     _sync()
     return _checks.acceptance_commit_is_ancestor_and_package_unchanged(acceptance_sha, candidate_sha)
 
 def fresh_project_acceptance_binding_matches_manifest(manifest: dict) -> bool:
-    'Return whether a passed acceptance record remains valid for this candidate.'
+    """Return whether a passed acceptance record remains valid for this candidate."""
     _sync()
     return _checks.fresh_project_acceptance_binding_matches_manifest(manifest)
 
 def fresh_project_acceptance_record_is_valid(manifest: dict) -> bool:
-    'Return whether the manifest carries a deferred or bound acceptance record.'
+    """Return whether the manifest carries a deferred or bound acceptance record."""
     _sync()
     return _checks.fresh_project_acceptance_record_is_valid(manifest)
 
 def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bool=False, skip_dll_hash: bool=False) -> None:
-    'Validate the copied runtime inventory.'
+    """Validate the copied runtime inventory."""
     _sync()
     return _checks.check_inventory(results, manifest, release_gate, skip_dll_hash)
 
 def check_runtime_files(results: list[CheckResult]) -> None:
-    'Validate critical runtime files and package layout.'
+    """Validate critical runtime files and package layout."""
     _sync()
     return _checks.check_runtime_files(results)
 
 def check_package_path_patch(results: list[CheckResult]) -> None:
-    'Validate the ROS2ForUnity.cs package path patch.'
+    """Validate the ROS2ForUnity.cs package path patch."""
     _sync()
     return _checks.check_package_path_patch(results)
 
 def check_runtime_asmdef(results: list[CheckResult]) -> None:
-    'Validate the runtime assembly definition is safe for Editor and Player.'
+    """Validate the runtime assembly definition is safe for Editor and Player."""
     _sync()
     return _checks.check_runtime_asmdef(results)
 
 def check_runtime_source_patches(results: list[CheckResult]) -> None:
-    'Validate local lifecycle, time-source, and attribution patches on vendored R2FU sources.'
+    """Validate local lifecycle, time-source, and attribution patches on vendored R2FU sources."""
     _sync()
     return _checks.check_runtime_source_patches(results)
 
 def check_generator_alignment(results: list[CheckResult]) -> None:
-    'Validate the generator knows about the lifecycle-patched package shape.'
+    """Validate the generator knows about the lifecycle-patched package shape."""
     _sync()
     return _checks.check_generator_alignment(results)
 
 def check_public_docs(results: list[CheckResult], manifest: dict) -> None:
-    'Validate public runtime docs avoid internal planning names.'
+    """Validate public runtime docs avoid internal planning names."""
     _sync()
     return _checks.check_public_docs(results, manifest)
 
 def check_package_boundaries(results: list[CheckResult]) -> None:
-    'Validate the SDK and adapter package dependency boundaries.'
+    """Validate the SDK and adapter package dependency boundaries."""
     _sync()
     return _checks.check_package_boundaries(results)
 
 def core_runtime_has_forbidden_tokens() -> bool:
-    'Return True when the core SDK Runtime contains R2FU-only tokens.'
+    """Return True when the core SDK Runtime contains R2FU-only tokens."""
     _sync()
     return _checks.core_runtime_has_forbidden_tokens()
 
 def run_checks(release_gate: bool=False, skip_dll_hash: bool=False) -> list[CheckResult]:
-    'Run all runtime package checks.'
+    """Run all runtime package checks."""
     _sync()
     return _checks.run_checks(release_gate, skip_dll_hash)
 
 def print_results(results: list[CheckResult]) -> None:
-    'Print validation results in a compact PASS/FAIL format.'
+    """Print validation results in a compact PASS/FAIL format."""
     _sync()
     return _checks.print_results(results)
 
 def parse_args(argv: list[str] | None=None) -> argparse.Namespace:
-    'Parse validator command-line arguments.'
+    """Parse validator command-line arguments."""
     _sync()
     return _checks.parse_args(argv)
 
 def main(argv: list[str] | None=None) -> int:
-    'Run validation and return a process exit code.'
+    """Run validation and return a process exit code."""
     _sync()
     return _checks.main(argv)
 
