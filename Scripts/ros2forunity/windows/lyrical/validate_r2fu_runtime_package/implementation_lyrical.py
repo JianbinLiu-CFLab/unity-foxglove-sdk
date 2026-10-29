@@ -35,7 +35,6 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from lyrical_artifact_config import ARTIFACT_NAME, EXPECTED_ARTIFACT_SHA256
-from Scripts.phase192.source_layout import read_split_csharp_source
 
 if len(EXPECTED_ARTIFACT_SHA256) != 64:
     raise ValueError("EXPECTED_ARTIFACT_SHA256 must be a 64-character SHA-256 hex digest.")
@@ -220,12 +219,31 @@ def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
     return data
 
 
+def _read_split_csharp_source(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    marker = re.search(
+        r"^\s*///\s*<remarks>Phase192 source sections:\s*(?P<names>[^<]+)</remarks>\s*$",
+        text,
+        re.MULTILINE,
+    )
+    if marker is None:
+        return text
+    section_directory = path.parent / "Decomposed" / path.stem
+    names = [name.strip() for name in marker.group("names").split(",") if name.strip()]
+    actual = sorted(item.name for item in section_directory.glob("*.cs"))
+    if sorted(names) != actual:
+        raise ValueError(f"C# source section manifest mismatch in {section_directory}")
+    return text + "\n" + "\n".join(
+        (section_directory / name).read_text(encoding="utf-8") for name in names
+    )
+
+
 def read_optional_text(path: Path) -> str:
     """Read UTF-8 text when present, returning an empty string for absent files."""
     if not path.exists():
         return ""
     if path.suffix.casefold() == ".cs":
-        return read_split_csharp_source(path)
+        return _read_split_csharp_source(path)
     return path.read_text(encoding="utf-8", errors="replace")
 
 
