@@ -4224,6 +4224,8 @@ def _entrypoint_contract(
     return True, digest, contract, risks
 
 from Scripts.phase192.identity_initializer_contracts import (
+    _SAFE_BUILTIN_NAMES,
+    _SAFE_IMPORT_ROOTS,
     _absolute_import_resolves,
     _contract_preserves_order,
     _definitely_bound_names,
