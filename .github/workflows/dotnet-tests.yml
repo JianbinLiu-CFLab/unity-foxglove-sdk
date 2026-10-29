@@ -257,7 +257,6 @@ jobs:
             python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
           import subprocess
           import sys
-          from pathlib import Path
 
           text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
           base_sha, head_sha = sys.argv[2:]
@@ -277,47 +276,37 @@ jobs:
               "entrypoint",
           )
 
-          def git_source(revision, path):
-              return subprocess.check_output(
-                  ["git", "show", f"{revision}:{path}"],
-                  text=True,
-              )
-
-          def exact_cleanup_block():
-              lines = ['if __name__ in {"__main__", "<run_path>"}:\n']
-              lines.extend(
-                  f'    _phase192_sys.modules.pop("validate_ros2forunity_package.{name}", None)\n'
+          cleanup_lines = [
+              'if __name__ in {"__main__", "<run_path>"}:',
+              *(
+                  f'    _phase192_sys.modules.pop("validate_ros2forunity_package.{name}", None)'
                   for name in expected_keys
-              )
-              lines.append('    _phase192_sys.modules.pop("validate_ros2forunity_package", None)\n')
-              return "".join(lines)
-
-          cleanup_block = exact_cleanup_block()
+              ),
+              '    _phase192_sys.modules.pop("validate_ros2forunity_package", None)',
+              "",
+          ]
           if len(errors) != 1 or not any(line.endswith(path) for path in expected_paths for line in errors):
               sys.stderr.write(text)
               raise SystemExit(1)
           for path in expected_paths:
-              head = git_source(head_sha, path)
-              base = git_source(base_sha, path)
-              if head.count(cleanup_block) != 1:
-                  sys.stderr.write(f"Unexpected validator cleanup block: {path}\n")
-                  raise SystemExit(1)
-              head_without = head.replace(cleanup_block, "", 1)
-              if path.endswith("jazzy/validate_ros2forunity_package.py"):
-                  old_cleanup = (
-                      '_phase192_sys.modules.pop("validate_ros2forunity_package", None) '
-                      'if __name__ in {"__main__", "<run_path>"} else None\n'
-                  )
-                  base_without = base.replace(old_cleanup, "", 1)
-              else:
-                  base_without = base
-              normalize_boundary = lambda source: source.replace(
-                  "\\n\\n\\nif __package__:",
-                  "\\n\\nif __package__:",
-                  1,
+              diff = subprocess.check_output(
+                  ["git", "diff", "--unified=0", base_sha, head_sha, "--", path],
+                  text=True,
               )
-              if normalize_boundary(head_without) != normalize_boundary(base_without):
-                  sys.stderr.write(f"Unexpected non-cleanup validator change: {path}\n")
+              changed = [
+                  line
+                  for line in diff.splitlines()
+                  if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+              ]
+              expected_changes = [f"+{line}" for line in cleanup_lines]
+              if path.endswith("jazzy/validate_ros2forunity_package.py"):
+                  expected_changes = [
+                      '-_phase192_sys.modules.pop("validate_ros2forunity_package", None) '
+                      'if __name__ in {"__main__", "<run_path>"} else None',
+                      *expected_changes[0:10],
+                  ]
+              if changed != expected_changes:
+                  sys.stderr.write(f"Unexpected validator transition: {path}\n")
                   raise SystemExit(1)
           print("IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION: exact Humble/Jazzy child-module cleanup transition")
           PY
