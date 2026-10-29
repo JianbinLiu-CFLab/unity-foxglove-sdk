@@ -254,22 +254,72 @@ jobs:
           trusted_status=$?
           set -e
           if [ "$trusted_status" -ne 0 ]; then
-            python3 - "$trusted_log" <<'PY'
-          import re
+            python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
+          import subprocess
           import sys
           from pathlib import Path
 
           text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
-          errors = [line for line in text.splitlines() if line.startswith("ValueError: ")]
-          allowed = re.compile(
-              r"^ValueError: Unsupported generated module registry pop in "
-              r".*Scripts/ros2forunity/windows/(?:humble|jazzy)/"
-              r"validate_ros2forunity_package\.py$"
+          base_sha, head_sha = sys.argv[2:]
+          errors = [line.replace("\\", "/") for line in text.splitlines() if line.startswith("ValueError: ")]
+          expected_paths = (
+              "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
+              "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
           )
-          if not errors or any(not allowed.fullmatch(line) for line in errors):
+          expected_keys = (
+              "core",
+              "package_metadata",
+              "manifest",
+              "text_boundaries",
+              "runtime_checks",
+              "sample_checks",
+              "boundary_checks",
+              "entrypoint",
+          )
+
+          def git_source(revision, path):
+              return subprocess.check_output(
+                  ["git", "show", f"{revision}:{path}"],
+                  text=True,
+              )
+
+          def exact_cleanup_block():
+              lines = ['if __name__ in {"__main__", "<run_path>"}:\n']
+              lines.extend(
+                  f'    _phase192_sys.modules.pop("validate_ros2forunity_package.{name}", None)\n'
+                  for name in expected_keys
+              )
+              lines.append('    _phase192_sys.modules.pop("validate_ros2forunity_package", None)\n')
+              return "".join(lines)
+
+          cleanup_block = exact_cleanup_block()
+          if len(errors) != 1 or not any(line.endswith(path) for path in expected_paths for line in errors):
               sys.stderr.write(text)
               raise SystemExit(1)
-          print("IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION: trusted base checker lacks child-module cleanup contract")
+          for path in expected_paths:
+              head = git_source(head_sha, path)
+              base = git_source(base_sha, path)
+              if head.count(cleanup_block) != 1:
+                  sys.stderr.write(f"Unexpected validator cleanup block: {path}\n")
+                  raise SystemExit(1)
+              head_without = head.replace(cleanup_block, "", 1)
+              if path.endswith("jazzy/validate_ros2forunity_package.py"):
+                  old_cleanup = (
+                      '_phase192_sys.modules.pop("validate_ros2forunity_package", None) '
+                      'if __name__ in {"__main__", "<run_path>"} else None\n'
+                  )
+                  base_without = base.replace(old_cleanup, "", 1)
+              else:
+                  base_without = base
+              normalize_boundary = lambda source: source.replace(
+                  "\\n\\n\\nif __package__:",
+                  "\\n\\nif __package__:",
+                  1,
+              )
+              if normalize_boundary(head_without) != normalize_boundary(base_without):
+                  sys.stderr.write(f"Unexpected non-cleanup validator change: {path}\n")
+                  raise SystemExit(1)
+          print("IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION: exact Humble/Jazzy child-module cleanup transition")
           PY
           else
             cat "$trusted_log"
