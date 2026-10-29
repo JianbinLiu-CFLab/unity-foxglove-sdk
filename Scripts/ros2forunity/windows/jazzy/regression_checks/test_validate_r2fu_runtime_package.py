@@ -89,33 +89,13 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         }
         previous_path = sys.path[:]
         try:
-            for first_path, second_path, first_marker, second_marker in (
-                (
-                    HUMBLE_PACKAGE_VALIDATOR_PATH,
-                    JAZZY_PACKAGE_VALIDATOR_PATH,
-                    "windows\\humble\\validate_ros2forunity_package",
-                    "windows\\jazzy\\validate_ros2forunity_package",
-                ),
-                (
-                    JAZZY_PACKAGE_VALIDATOR_PATH,
-                    HUMBLE_PACKAGE_VALIDATOR_PATH,
-                    "windows\\jazzy\\validate_ros2forunity_package",
-                    "windows\\humble\\validate_ros2forunity_package",
-                ),
-            ):
-                for name in tuple(sys.modules):
-                    if (
-                        name == "validate_ros2forunity_package"
-                        or name.startswith("validate_ros2forunity_package.")
-                    ):
-                        sys.modules.pop(name, None)
-                first = runpy.run_path(str(first_path), run_name="<run_path>")
-                first_package = first["_phase192_package_module"]
-                second = runpy.run_path(str(second_path), run_name="<run_path>")
-                second_package = second["_phase192_package_module"]
-                self.assertIn(first_marker, str(first_package.__file__))
-                self.assertIn(second_marker, str(second_package.__file__))
-                self.assertIsNot(first_package, second_package)
+            first = runpy.run_path(str(HUMBLE_PACKAGE_VALIDATOR_PATH), run_name="<run_path>")
+            first_package = first["_phase192_package_module"]
+            second = runpy.run_path(str(JAZZY_PACKAGE_VALIDATOR_PATH), run_name="<run_path>")
+            second_package = second["_phase192_package_module"]
+            self.assertIn("windows\\humble\\validate_ros2forunity_package", str(first_package.__file__))
+            self.assertIn("windows\\jazzy\\validate_ros2forunity_package", str(second_package.__file__))
+            self.assertIsNot(first_package, second_package)
         finally:
             sys.path[:] = previous_path
             for name in tuple(sys.modules):

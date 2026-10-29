@@ -14,15 +14,14 @@ from __future__ import annotations
 import sys as _phase192_sys
 import types as _phase192_types
 
-_phase192_sys.modules.pop("validate_ros2forunity_package", None) if __name__ in {"__main__", "<run_path>"} else None
-
 if __package__:
     from .validate_ros2forunity_package import *
     _phase192_package_module = _phase192_sys.modules.get(__package__ + ".validate_ros2forunity_package")
 else:
     from pathlib import Path as _Phase192Path
     _phase192_parent = _Phase192Path(__file__).resolve().parent
-    _phase192_sys.path.insert(0, str(_phase192_parent))
+    if str(_phase192_parent) not in _phase192_sys.path:
+        _phase192_sys.path.insert(0, str(_phase192_parent))
     _phase192_self = _phase192_sys.modules.get(__name__) if __name__ == "validate_ros2forunity_package" else None
     if _phase192_self is not None:
         _phase192_sys.modules.pop("validate_ros2forunity_package", None)
