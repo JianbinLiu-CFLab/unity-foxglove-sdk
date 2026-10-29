@@ -35,6 +35,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from lyrical_artifact_config import ARTIFACT_NAME, EXPECTED_ARTIFACT_SHA256
+from Scripts.phase192.source_layout import read_split_csharp_source
 
 if len(EXPECTED_ARTIFACT_SHA256) != 64:
     raise ValueError("EXPECTED_ARTIFACT_SHA256 must be a 64-character SHA-256 hex digest.")
@@ -221,7 +222,11 @@ def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
 
 def read_optional_text(path: Path) -> str:
     """Read UTF-8 text when present, returning an empty string for absent files."""
-    return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+    if not path.exists():
+        return ""
+    if path.suffix.casefold() == ".cs":
+        return read_split_csharp_source(path)
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def file_sha256(path: Path) -> str:

@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
+from Scripts.phase192.source_layout import read_split_csharp_source
+
 
 REPO_ROOT_PARENT_DEPTH = 6
 EXIT_SUCCESS = 0
@@ -196,7 +198,11 @@ def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
 
 def read_optional_text(path: Path) -> str:
     """Read UTF-8 text when present, returning an empty string for absent files."""
-    return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+    if not path.exists():
+        return ""
+    if path.suffix.casefold() == ".cs":
+        return read_split_csharp_source(path)
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def file_sha256(path: Path) -> str:

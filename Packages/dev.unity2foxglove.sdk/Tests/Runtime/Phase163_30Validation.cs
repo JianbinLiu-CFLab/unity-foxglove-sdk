@@ -199,7 +199,7 @@ namespace Unity.FoxgloveSDK.Tests
             var path = Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
             return relativePath.EndsWith(".py", StringComparison.Ordinal)
                 ? PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(path)
-                : File.ReadAllText(path);
+                : PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
         private static void Check(bool condition, string label)
