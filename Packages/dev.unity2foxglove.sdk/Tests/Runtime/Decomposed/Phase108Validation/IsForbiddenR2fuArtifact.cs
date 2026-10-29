@@ -94,6 +94,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             if (string.Equals(
                     relativePath.Replace('\\', '/'),
+                    OptionalPackageValidator,
+                    StringComparison.Ordinal))
+            {
+                return PhaseValidationSourceHelpers.ReadSplitPythonSource(relativePath);
+            }
+
+            if (string.Equals(
+                    relativePath.Replace('\\', '/'),
                     OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs",
                     StringComparison.Ordinal)
                 || string.Equals(
