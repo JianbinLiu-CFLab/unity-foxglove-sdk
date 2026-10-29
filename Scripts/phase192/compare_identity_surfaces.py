@@ -459,8 +459,6 @@ def _phase192_validate_template_registry_mutations(
     repository_root: Path | None = None,
 ) -> None:
     """Allow only the exact sys.modules forwarding mutations emitted by templates."""
-    module_key = Path(path).stem
-
     def validate_closure_mutations() -> None:
         """Reject protected-object mutations hidden behind facade methods or aliases."""
         protected_roots = {
@@ -795,10 +793,9 @@ def _phase192_validate_template_registry_mutations(
             )
 
         snapshot_expression = ast.parse(
-            (
-                "{name: _phase192_sys.modules[name] for name in _phase192_sys.modules "
-                f"if name == {module_key!r} or name.startswith({(module_key + '.')!r})}}"
-            ),
+            "{name: _phase192_sys.modules[name] for name in _phase192_sys.modules "
+            "if name == 'validate_source_generator_dll' or "
+            "name.startswith('validate_source_generator_dll.')}",
             mode="eval",
         ).body
         for node in ast.walk(tree):
@@ -988,9 +985,6 @@ def _phase192_validate_template_registry_mutations(
     except (TypeError, ValueError):
         relative_path = None
     loader_path = relative_path == "Scripts/package/validate_source_generator_dll.py"
-    robust_transaction_path = loader_path or relative_path == (
-        "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py"
-    )
     if loader_path:
         loader_type_imports = [
             alias
@@ -1190,18 +1184,14 @@ def _phase192_validate_template_registry_mutations(
             raise ValueError(f"Unsupported loader command-line dispatch in {path}")
 
     snapshot_filter = ast.parse(
-        f"(name == {module_key!r} or name.startswith({(module_key + '.')!r}))",
+        "(name == 'validate_source_generator_dll' or "
+        "name.startswith('validate_source_generator_dll.'))",
         mode="eval",
     ).body
     cleanup_condition = ast.parse(
-        f"(_phase192_name == {module_key!r} or "
-        f"_phase192_name.startswith({(module_key + '.')!r})) "
+        "(_phase192_name == 'validate_source_generator_dll' or "
+        "_phase192_name.startswith('validate_source_generator_dll.')) "
         "and _phase192_name not in _phase192_previous_submodules",
-        mode="eval",
-    ).body
-    pre_cleanup_condition = ast.parse(
-        f"(_phase192_name == {module_key!r} or "
-        f"_phase192_name.startswith({(module_key + '.')!r}))",
         mode="eval",
     ).body
     cleanup_iter = ast.parse("tuple(_phase192_sys.modules)", mode="eval").body
@@ -1275,44 +1265,6 @@ def _phase192_validate_template_registry_mutations(
             return None
         return id(statement), id(call)
 
-    def exact_pre_cleanup_loop(statement: ast.AST) -> tuple[int, int] | None:
-        """Recognize the guarded pre-import module cleanup loop."""
-        if not (
-            isinstance(statement, ast.For)
-            and isinstance(statement.target, ast.Name)
-            and statement.target.id == "_phase192_name"
-            and ast.dump(statement.iter, include_attributes=False)
-            == ast.dump(cleanup_iter, include_attributes=False)
-            and not statement.orelse
-            and len(statement.body) == 1
-            and isinstance(statement.body[0], ast.If)
-        ):
-            return None
-        guard = statement.body[0]
-        if (
-            ast.dump(guard.test, include_attributes=False)
-            != ast.dump(pre_cleanup_condition, include_attributes=False)
-            or guard.orelse
-            or len(guard.body) != 1
-            or not isinstance(guard.body[0], ast.Expr)
-        ):
-            return None
-        call = guard.body[0].value
-        if not (
-            isinstance(call, ast.Call)
-            and isinstance(call.func, ast.Attribute)
-            and modules_value(call.func.value)
-            and call.func.attr == "pop"
-            and len(call.args) == 2
-            and isinstance(call.args[0], ast.Name)
-            and call.args[0].id == "_phase192_name"
-            and isinstance(call.args[1], ast.Constant)
-            and call.args[1].value is None
-            and not call.keywords
-        ):
-            return None
-        return id(statement), id(call)
-
     def exact_restore_loop(statement: ast.AST) -> tuple[int, int] | None:
         """Recognize the sole immutable snapshot restore loop."""
         if not (
@@ -1349,7 +1301,6 @@ def _phase192_validate_template_registry_mutations(
             isinstance(node, (ast.For, ast.AsyncFor))
             and contains_protected_source(node.iter)
             and exact_cleanup_loop(node) is None
-            and exact_pre_cleanup_loop(node) is None
             and exact_restore_loop(node) is None
         ):
             raise ValueError(f"Unsupported protected alias in {path}")
@@ -1402,7 +1353,7 @@ def _phase192_validate_template_registry_mutations(
                 first.targets[0].attr == "__package__"
                 and first.value.value == ""
                 and second.targets[0].attr == "__name__"
-                and second.value.value == module_key
+                and second.value.value == "validate_source_generator_dll"
             ):
                 return None
             registry_assignment, registry_pop = statement.body[2], statement.body[3]
@@ -1411,7 +1362,7 @@ def _phase192_validate_template_registry_mutations(
                 and isinstance(registry_assignment.targets[0], ast.Subscript)
                 and modules_value(registry_assignment.targets[0].value)
                 and isinstance(registry_assignment.targets[0].slice, ast.Constant)
-                and registry_assignment.targets[0].slice.value == module_key
+                and registry_assignment.targets[0].slice.value == "validate_source_generator_dll"
                 and isinstance(registry_assignment.value, ast.Name)
                 and registry_assignment.value.id == "_phase192_canonical_self"
                 and isinstance(registry_pop.value, ast.Call)
@@ -1420,7 +1371,7 @@ def _phase192_validate_template_registry_mutations(
                 and registry_pop.value.func.attr == "pop"
                 and len(registry_pop.value.args) == 2
                 and isinstance(registry_pop.value.args[0], ast.Constant)
-                and registry_pop.value.args[0].value == module_key
+                and registry_pop.value.args[0].value == "validate_source_generator_dll"
                 and isinstance(registry_pop.value.args[1], ast.Constant)
                 and registry_pop.value.args[1].value is None
                 and not registry_pop.value.keywords
@@ -1581,16 +1532,13 @@ def _phase192_validate_template_registry_mutations(
                 "__package__ if _phase192_canonical_self is not None else None",
             ],
             "_phase192_self": [
-                f"_phase192_sys.modules.get(__name__) if __name__ == {module_key!r} else None",
+                "_phase192_sys.modules.get(__name__) if __name__ == 'validate_source_generator_dll' else None",
             ],
             "_phase192_package_module": [
-                f"_phase192_sys.modules.get(__package__ + '.{module_key}')",
-                f"_phase192_sys.modules.get({module_key!r})",
+                "_phase192_sys.modules.get(__package__ + '.validate_source_generator_dll')",
+                "_phase192_sys.modules.get('validate_source_generator_dll')",
             ],
         }
-        if module_key == "validate_ros2forunity_package":
-            transaction_binding_names.add("_phase192_main")
-            expected_values["_phase192_main"] = ["globals().get('main')"]
         for name, expressions in expected_values.items():
             values = [
                 node.value
@@ -1650,7 +1598,7 @@ def _phase192_validate_template_registry_mutations(
         allowed_attribute_store_ids.update(allowed_canonical_store_ids)
         allowed_mutating_call_ids = set(allowed_metadata_call_ids)
         allowed_mutating_call_ids.update(
-            call_id for _, call_id in pre_cleanup_loops + cleanup_loops + restore_loops
+            call_id for _, call_id in cleanup_loops + restore_loops
         )
         def is_allowed_facade_forward_call(node: ast.Call) -> bool:
             """Recognize the exact facade-to-package attribute forwarding calls."""
@@ -1710,7 +1658,7 @@ def _phase192_validate_template_registry_mutations(
                 and isinstance(node.targets[0], ast.Subscript)
                 and modules_value(node.targets[0].value)
                 and isinstance(node.targets[0].slice, ast.Constant)
-                and node.targets[0].slice.value == module_key
+                and node.targets[0].slice.value == "validate_source_generator_dll"
                 and isinstance(node.value, ast.Name)
                 and node.value.id in {"_phase192_self", "_phase192_canonical_self"}
             ):
@@ -1739,7 +1687,7 @@ def _phase192_validate_template_registry_mutations(
                 and call.func.attr == "pop"
                 and len(call.args) == 2
                 and isinstance(call.args[0], ast.Constant)
-                and call.args[0].value == module_key
+                and call.args[0].value == "validate_source_generator_dll"
                 and isinstance(call.args[1], ast.Constant)
                 and call.args[1].value is None
                 and not call.keywords
@@ -2000,19 +1948,16 @@ def _phase192_validate_template_registry_mutations(
             )
         }
         allowed_store_ids.update(allowed_metadata_store_ids)
-        allowed_assignment_names = {
-            "_phase192_module",
-            "_phase192_self",
-            "_phase192_package_module",
-        }
-        if module_key == "validate_ros2forunity_package":
-            allowed_assignment_names.add("_phase192_main")
         for node in ast.walk(tree):
             if not (
                 isinstance(node, ast.Assign)
                 and len(node.targets) == 1
                 and isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id in allowed_assignment_names
+                and node.targets[0].id in {
+                    "_phase192_module",
+                    "_phase192_self",
+                    "_phase192_package_module",
+                }
             ):
                 continue
             expected_nodes = [
@@ -2025,7 +1970,7 @@ def _phase192_validate_template_registry_mutations(
                 for expected in expected_nodes
             ):
                 allowed_store_ids.add(id(node.targets[0]))
-        for loop_id, _ in pre_cleanup_loops + cleanup_loops + restore_loops:
+        for loop_id, _ in cleanup_loops + restore_loops:
             loop = next(
                 node for node in ast.walk(transaction)
                 if isinstance(node, ast.For) and id(node) == loop_id
@@ -2141,11 +2086,10 @@ def _phase192_validate_template_registry_mutations(
     top_level_snapshot = [node for node in tree.body if exact_snapshot(node)]
     outer_transactions = [node for node in tree.body if isinstance(node, ast.Try)]
     cleanup_loops: list[tuple[int, int]] = []
-    pre_cleanup_loops: list[tuple[int, int]] = []
     restore_loops: list[tuple[int, int]] = []
     transaction: ast.Try | None = None
     if (
-        robust_transaction_path
+        loader_path
         and len(snapshot_bindings) == len(snapshot_assignments) == len(top_level_snapshot) == 1
         and len(outer_transactions) == 1
     ):
@@ -2153,10 +2097,6 @@ def _phase192_validate_template_registry_mutations(
         cleanup_loops = [
             match for node in transaction.finalbody
             if (match := exact_cleanup_loop(node)) is not None
-        ]
-        pre_cleanup_loops = [
-            match for node in transaction.body
-            if (match := exact_pre_cleanup_loop(node)) is not None
         ]
         restore_loops = [
             match for node in transaction.finalbody
@@ -2195,7 +2135,6 @@ def _phase192_validate_template_registry_mutations(
         and critical_bindings_are_immutable(transaction)
     )
     cleanup_pop_ids = {cleanup_loops[0][1]} if loader_transaction else set()
-    cleanup_pop_ids.update(loop[1] for loop in pre_cleanup_loops)
     restore_assign_ids = {restore_loops[0][1]} if loader_transaction else set()
 
     for statement in ast.walk(tree):
