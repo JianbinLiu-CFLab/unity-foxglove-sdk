@@ -75,7 +75,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && !runtimeValidator.Contains("sensor.index(\"readings.SetHeaderFrame\")", StringComparison.Ordinal),
                 "134-28C-2: runtime validator avoids unsafe Sensor.index null-guard check");
 
-            var optionalValidator = ReadRepoText("Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py");
+            var optionalValidator = PhaseValidationSourceHelpers.ReadSplitPythonSource(
+                "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py");
             Check(optionalValidator.Contains("manifest_text = MANIFEST.read_text", StringComparison.Ordinal)
                   && optionalValidator.Contains("if MANIFEST.exists() else \"\"", StringComparison.Ordinal)
                   && !optionalValidator.Contains("(PACKAGE / \"Compliance\" / \"ros2-for-unity-adoption-manifest.json\").read_text", StringComparison.Ordinal),
