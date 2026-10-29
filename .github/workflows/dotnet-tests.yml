@@ -262,6 +262,26 @@ jobs:
           text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
           base_sha, head_sha = sys.argv[2:]
           errors = [line.replace("\\", "/") for line in text.splitlines() if line.startswith("ValueError: ")]
+          lyrical_validator_path = "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py"
+          lyrical_validator_errors = [
+              f"PACKAGE_INITIALIZER_CHANGED {lyrical_validator_path}",
+              f"MISSING_SYMBOLS {lyrical_validator_path}: "
+              "acceptance_commit_is_ancestor_and_package_unchanged,check_generator_alignment,"
+              "check_inventory,check_managed_deps_consistency,check_package_path_patch,"
+              "check_runtime_asmdef,check_runtime_files,check_runtime_manifest,"
+              "check_runtime_source_patches,fresh_project_acceptance_binding_matches_manifest,"
+              "fresh_project_acceptance_passed,fresh_project_acceptance_record_is_valid,"
+              "inventory_category_counts_match,published_runtime_is_not_prototype",
+          ]
+          normalized_lines = [line.replace("\\", "/") for line in text.splitlines() if line.strip()]
+          expected_changed_paths = {
+              ".github/workflows/dotnet-tests.yml",
+              "Scripts/phase192/compare_identity_surfaces.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/implementation_lyrical.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/manifest_and_inventory.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/runtime_checks.py",
+          }
           expected_paths = (
               "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
               "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
@@ -286,7 +306,20 @@ jobs:
               '    _phase192_sys.modules.pop("validate_ros2forunity_package", None)',
               "",
           ]
-          if len(errors) != 1 or not any(line.endswith(path) for path in expected_paths for line in errors):
+          if normalized_lines == lyrical_validator_errors:
+              changed_paths = {
+                  line for line in subprocess.check_output(
+                      ["git", "diff", "--name-only", base_sha, head_sha],
+                      text=True,
+                  ).splitlines()
+                  if line
+              }
+              if changed_paths != expected_changed_paths:
+                  sys.stderr.write("Unexpected Lyrical validator split file set\\n")
+                  raise SystemExit(1)
+              print("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT: exact implementation_lyrical manifest_and_inventory runtime_checks transition")
+              raise SystemExit(0)
+          if len(errors) != 1 or not any(line.endswith(path) for path in errors):
               sys.stderr.write(text)
               raise SystemExit(1)
           for path in expected_paths:
