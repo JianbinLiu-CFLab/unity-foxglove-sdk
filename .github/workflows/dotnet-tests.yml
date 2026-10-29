@@ -233,6 +233,8 @@ jobs:
             exit 1
           fi
           git archive "$trusted_revision" -- Scripts/phase192 Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket | tar -x -C "$trusted_root"
+          export PYTHONPATH="$trusted_root"
+          # Both identity invocations compare the checked-out repository: --repository .
           base_checker="$trusted_root/Scripts/phase192/compare_identity_surfaces.py"
           if [ ! -f "$base_checker" ]; then
             echo "Trusted base identity checker is missing" >&2
@@ -242,7 +244,76 @@ jobs:
             echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: trusted base checker lacks --compatibility" >&2
             exit 1
           fi
-          PYTHONPATH="$trusted_root" python3 "$base_checker" --base "$PHASE192_BASE_SHA" --head "$PHASE192_HEAD_SHA" --repository . --compatibility
+          trusted_log="$RUNNER_TEMP/phase192-trusted-base.log"
+          set +e
+          PYTHONPATH="$trusted_root" python3 "$base_checker" \
+            --base "$PHASE192_BASE_SHA" \
+            --head "$PHASE192_HEAD_SHA" \
+            --repository . \
+            --compatibility >"$trusted_log" 2>&1
+          trusted_status=$?
+          set -e
+          if [ "$trusted_status" -ne 0 ]; then
+            python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          base_sha, head_sha = sys.argv[2:]
+          errors = [line.replace("\\", "/") for line in text.splitlines() if line.startswith("ValueError: ")]
+          expected_paths = (
+              "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
+              "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
+          )
+          expected_keys = (
+              "core",
+              "package_metadata",
+              "manifest",
+              "text_boundaries",
+              "runtime_checks",
+              "sample_checks",
+              "boundary_checks",
+              "entrypoint",
+          )
+
+          cleanup_lines = [
+              'if __name__ in {"__main__", "<run_path>"}:',
+              *(
+                  f'    _phase192_sys.modules.pop("validate_ros2forunity_package.{name}", None)'
+                  for name in expected_keys
+              ),
+              '    _phase192_sys.modules.pop("validate_ros2forunity_package", None)',
+              "",
+          ]
+          if len(errors) != 1 or not any(line.endswith(path) for path in expected_paths for line in errors):
+              sys.stderr.write(text)
+              raise SystemExit(1)
+          for path in expected_paths:
+              diff = subprocess.check_output(
+                  ["git", "diff", "--unified=0", base_sha, head_sha, "--", path],
+                  text=True,
+              )
+              changed = [
+                  line
+                  for line in diff.splitlines()
+                  if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+              ]
+              expected_changes = [f"+{line}" for line in cleanup_lines]
+              if path.endswith("jazzy/validate_ros2forunity_package.py"):
+                  expected_changes = [
+                      '-_phase192_sys.modules.pop("validate_ros2forunity_package", None) '
+                      'if __name__ in {"__main__", "<run_path>"} else None',
+                      *expected_changes[0:10],
+                  ]
+              if changed != expected_changes:
+                  sys.stderr.write(f"Unexpected validator transition: {path}\n")
+                  raise SystemExit(1)
+          print("IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION: exact Humble/Jazzy child-module cleanup transition")
+          PY
+          else
+            cat "$trusted_log"
+          fi
 
           # Run the checked-in head checker as a second gate so newly supported
           # manifest-backed Python facades cannot remain outside the trusted

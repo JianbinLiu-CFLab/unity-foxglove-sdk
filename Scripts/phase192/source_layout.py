@@ -103,6 +103,35 @@ def read_included_source(facade: Path) -> str:
     return "".join(parts)
 
 
+def read_split_csharp_source(facade: Path) -> str:
+    """Read a C# facade and its declared Phase192 partial-class sections."""
+    source = facade.read_text(encoding="utf-8")
+    marker = re.compile(
+        r"^\s*///\s*<remarks>Phase192 source sections:\s*(?P<names>[^<]+)</remarks>\s*$",
+        re.MULTILINE,
+    ).search(source)
+    if marker is None:
+        return source
+
+    section_directory = facade.parent / "Decomposed" / facade.stem
+    names = [name.strip() for name in marker.group("names").split(",") if name.strip()]
+    if not section_directory.is_dir():
+        raise FileNotFoundError(f"Missing C# source section directory: {section_directory}")
+    actual = sorted(
+        path.name
+        for path in section_directory.glob("*.cs")
+    )
+    if sorted(names) != actual or len(set(name.casefold() for name in names)) != len(names):
+        raise ValueError(
+            f"C# source section manifest mismatch in {section_directory}: "
+            f"expected={names!r} actual={actual!r}"
+        )
+    return source + "\n" + "\n".join(
+        (section_directory / name).read_text(encoding="utf-8")
+        for name in names
+    )
+
+
 def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     """Load a split facade after clearing its package and section modules."""
 

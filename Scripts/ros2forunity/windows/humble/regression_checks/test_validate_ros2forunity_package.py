@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -64,6 +65,101 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("validate_ros2forunity_package: 155 check(s) passed.", result.stdout)
+
+    def test_runpy_sequence_isolates_optional_package_submodules(self) -> None:
+        """Sequential Humble/Jazzy runpy loads must not reuse section modules."""
+        facades = tuple(
+            (
+                distro,
+                ROOT / "Scripts" / "ros2forunity" / "windows" / distro
+                / "validate_ros2forunity_package.py",
+            )
+            for distro in ("humble", "jazzy")
+        )
+        previous_modules = {
+            name: module
+            for name, module in sys.modules.items()
+            if name == "validate_ros2forunity_package"
+            or name.startswith("validate_ros2forunity_package.")
+        }
+        previous_path = sys.path[:]
+        try:
+            for first, second in (facades, tuple(reversed(facades))):
+                for name in tuple(sys.modules):
+                    if (
+                        name == "validate_ros2forunity_package"
+                        or name.startswith("validate_ros2forunity_package.")
+                    ):
+                        sys.modules.pop(name, None)
+                for _, facade in facades:
+                    facade_parent = str(facade.parent)
+                    while facade_parent in sys.path:
+                        sys.path.remove(facade_parent)
+                first_result = runpy.run_path(str(first[1]), run_name="<run_path>")
+                first_package = first_result["_phase192_package_module"]
+                first_modules = {
+                    name: sys.modules[name]
+                    for name in sys.modules
+                    if name.startswith("validate_ros2forunity_package.")
+                }
+                second_result = runpy.run_path(str(second[1]), run_name="<run_path>")
+                second_package = second_result["_phase192_package_module"]
+                self.assertIn(
+                    f"windows/{first[0]}/validate_ros2forunity_package.py",
+                    Path(first_package.__file__).resolve().as_posix(),
+                )
+                self.assertIn(
+                    f"windows/{second[0]}/validate_ros2forunity_package.py",
+                    Path(second_package.__file__).resolve().as_posix(),
+                )
+                self.assertIsNot(first_package, second_package)
+                self.assertEqual(
+                    f"r2fu-{first[0]}-win64-runtime-inventory.json",
+                    Path(first_package.RUNTIME_INVENTORY).name,
+                )
+                self.assertEqual(
+                    f"r2fu-{second[0]}-win64-runtime-inventory.json",
+                    Path(second_package.RUNTIME_INVENTORY).name,
+                )
+                if second[0] == "humble":
+                    self.assertTrue(second_package.RUNTIME_PACKAGE_NAME.endswith(".humble.win64"))
+                    self.assertEqual("r2fu-humble-win64", second_package.RUNTIME_ID)
+                else:
+                    self.assertEqual(
+                        "r2fu-jazzy-win64-runtime-notices.md",
+                        Path(second_package.RUNTIME_NOTICES).name,
+                    )
+                    self.assertEqual("rmw_fastrtps_cpp", second_package.EXPECTED_RMW_IMPLEMENTATION)
+                for section in (
+                    "core",
+                    "package_metadata",
+                    "manifest",
+                    "text_boundaries",
+                    "runtime_checks",
+                    "sample_checks",
+                    "boundary_checks",
+                    "entrypoint",
+                ):
+                    first_module = first_modules[f"validate_ros2forunity_package.{section}"]
+                    second_module = sys.modules[f"validate_ros2forunity_package.{section}"]
+                    self.assertIsNot(first_module, second_module)
+                    self.assertIn(
+                        f"windows/{first[0]}/validate_ros2forunity_package",
+                        Path(first_module.__spec__.origin).resolve().as_posix(),
+                    )
+                    self.assertIn(
+                        f"windows/{second[0]}/validate_ros2forunity_package",
+                        Path(second_module.__spec__.origin).resolve().as_posix(),
+                    )
+        finally:
+            sys.path[:] = previous_path
+            for name in tuple(sys.modules):
+                if (
+                    name == "validate_ros2forunity_package"
+                    or name.startswith("validate_ros2forunity_package.")
+                ):
+                    sys.modules.pop(name, None)
+            sys.modules.update(previous_modules)
 
     def test_main_clears_file_caches_before_running_checks(self) -> None:
         """The validator entrypoint should reset cached file reads before checks."""

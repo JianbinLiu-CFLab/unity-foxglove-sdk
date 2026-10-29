@@ -14,6 +14,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+
+from Scripts.phase192.source_layout import read_split_csharp_source
 from pathlib import Path
 from unittest import mock
 
@@ -416,11 +418,9 @@ class RuntimePackageValidatorTests(unittest.TestCase):
 
     def test_runtime_source_declares_rmw_guard(self) -> None:
         """ROS2ForUnity startup path declares and enforces the expected RMW."""
-        source = (
-            self.validator.RUNTIME_ROOT
-            / "Scripts"
-            / "ROS2ForUnity.cs"
-        ).read_text(encoding="utf-8", errors="replace")
+        source = read_split_csharp_source(
+            self.validator.RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs"
+        )
 
         self.assertIn("expectedRmwImplementation", source)
         self.assertIn("ValidateRmwImplementation", source)
@@ -442,11 +442,9 @@ class RuntimePackageValidatorTests(unittest.TestCase):
 
     def test_runtime_source_retains_windows_ucrt_environment_helper(self) -> None:
         """The regenerated Windows runtime must keep the native environment bridge."""
-        source = (
-            self.validator.RUNTIME_ROOT
-            / "Scripts"
-            / "ROS2ForUnity.cs"
-        ).read_text(encoding="utf-8", errors="replace")
+        source = read_split_csharp_source(
+            self.validator.RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs"
+        )
 
         self.assertEqual(1, source.count("private static extern int _wputenv_s"))
         self.assertIn("_wputenv_s(name, value ?? String.Empty)", source)

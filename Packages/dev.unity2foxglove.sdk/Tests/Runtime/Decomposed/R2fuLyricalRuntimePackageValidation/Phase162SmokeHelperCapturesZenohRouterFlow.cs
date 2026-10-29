@@ -228,7 +228,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var text = path.EndsWith(".py", StringComparison.OrdinalIgnoreCase)
                 ? PhaseValidationSourceHelpers.ReadSplitPythonSourcePath(path)
-                : File.ReadAllText(path);
+                : PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             FileTextCache[path] = text;
             return text;
         }

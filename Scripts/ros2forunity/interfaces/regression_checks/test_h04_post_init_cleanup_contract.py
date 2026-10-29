@@ -1,6 +1,8 @@
 from pathlib import Path
 import unittest
 
+from Scripts.phase192.source_layout import read_split_csharp_source
+
 ROOT = Path(__file__).resolve().parents[4]
 FILES = [
     ROOT / 'Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs',
@@ -15,7 +17,7 @@ class H04PostInitCleanupTests(unittest.TestCase):
     def test_constructor_post_init_failure_has_cleanup_boundary(self):
         """R4.1 regression contract."""
         for path in FILES:
-            source = path.read_text(encoding='utf-8')
+            source = read_split_csharp_source(path)
             validation = source.find('ValidateRmwImplementation(rmwImpl);')
             self.assertGreaterEqual(validation, 0, path.name)
             post_init_catch = source.find('catch', validation)
@@ -42,7 +44,7 @@ class H04PostInitCleanupTests(unittest.TestCase):
     def test_lifecycle_flags_are_not_left_owned_on_validation_failure(self):
         """R4.1 regression contract."""
         for path in FILES:
-            source = path.read_text(encoding='utf-8')
+            source = read_split_csharp_source(path)
             validation = source.find('ValidateRmwImplementation(rmwImpl);')
             self.assertGreaterEqual(validation, 0, path.name)
             if 'runtime.jazzy' in str(path):

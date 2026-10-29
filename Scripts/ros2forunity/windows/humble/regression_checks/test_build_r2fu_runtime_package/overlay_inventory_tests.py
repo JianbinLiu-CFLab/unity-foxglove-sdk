@@ -103,9 +103,14 @@ class RuntimeOverlayInventoryTests:
         """A refreshed Humble package must retain the UCRT environment helper."""
         overlays = self.builder.collect_local_patch_overlays(self.builder.DEFAULT_PACKAGE)
         relative = "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs"
-        source = overlays[relative]
+        section_paths = (
+            "Runtime/Ros2ForUnity/Scripts/Decomposed/ROS2ForUnity/ROS2ForUnity.Lifecycle.cs",
+            "Runtime/Ros2ForUnity/Scripts/Decomposed/ROS2ForUnity/ROS2ForUnity.ProcessEnvironmentLease.cs",
+        )
+        source = "\n".join(overlays[path] for path in (relative, *section_paths))
 
         self.assertIn(relative, self.builder.LOCAL_PATCH_OVERLAY_FILES)
+        self.assertTrue(all(path in overlays for path in section_paths))
         self.assertIn("_wputenv_s(name, value ?? String.Empty)", source)
         self.assertIn(
             "[DllImport(\"ucrtbase.dll\", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]",

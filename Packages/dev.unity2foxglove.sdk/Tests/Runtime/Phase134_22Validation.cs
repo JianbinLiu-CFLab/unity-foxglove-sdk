@@ -201,7 +201,8 @@ namespace Unity.FoxgloveSDK.Tests
             var path = Path.Combine(RepoRoot, RuntimeRoot.Replace('/', Path.DirectorySeparatorChar), fileName);
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing bundled Jazzy runtime wrapper source: " + fileName, path);
-            return File.ReadAllText(path);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                Path.Combine(RuntimeRoot, fileName).Replace('\\', '/'));
         }
 
         private static string ReadRuntimeSource(string runtimeRoot, string fileName)
@@ -209,7 +210,8 @@ namespace Unity.FoxgloveSDK.Tests
             var path = Path.Combine(RepoRoot, runtimeRoot.Replace('/', Path.DirectorySeparatorChar), fileName);
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing bundled runtime wrapper source: " + fileName, path);
-            return File.ReadAllText(path);
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                Path.Combine(runtimeRoot, fileName).Replace('\\', '/'));
         }
 
         private static string[] RuntimeSourceRoots()

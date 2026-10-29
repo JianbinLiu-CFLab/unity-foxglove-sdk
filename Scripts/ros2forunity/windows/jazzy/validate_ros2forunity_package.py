@@ -14,7 +14,16 @@ from __future__ import annotations
 import sys as _phase192_sys
 import types as _phase192_types
 
-_phase192_sys.modules.pop("validate_ros2forunity_package", None) if __name__ in {"__main__", "<run_path>"} else None
+if __name__ in {"__main__", "<run_path>"}:
+    _phase192_sys.modules.pop("validate_ros2forunity_package.core", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.package_metadata", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.manifest", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.text_boundaries", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.runtime_checks", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.sample_checks", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.boundary_checks", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.entrypoint", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package", None)
 
 if __package__:
     from .validate_ros2forunity_package import *

@@ -23,7 +23,6 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
-
 REPO_ROOT_PARENT_DEPTH = 5
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
@@ -154,7 +153,26 @@ def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
 
 def read_optional_text(path: Path) -> str:
     """Read UTF-8 text when present, returning an empty string for absent files."""
-    return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+    if not path.exists():
+        return ""
+    if path.suffix.casefold() == ".cs":
+        text = path.read_text(encoding="utf-8")
+        marker = re.search(
+            r"^\s*///\s*<remarks>Phase192 source sections:\s*(?P<names>[^<]+)</remarks>\s*$",
+            text,
+            re.MULTILINE,
+        )
+        if marker is not None:
+            section_directory = path.parent / "Decomposed" / path.stem
+            names = [name.strip() for name in marker.group("names").split(",") if name.strip()]
+            actual = sorted(item.name for item in section_directory.glob("*.cs"))
+            if sorted(names) != actual:
+                raise ValueError(f"C# source section manifest mismatch in {section_directory}")
+            return text + "\n" + "\n".join(
+                (section_directory / name).read_text(encoding="utf-8") for name in names
+            )
+        return text
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def file_sha256(path: Path) -> str:
