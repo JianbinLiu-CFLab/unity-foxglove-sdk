@@ -1416,6 +1416,27 @@ def check_generator_alignment(results: list[CheckResult]) -> None:
         return
 
     add(results, "runtime package generator script readable", True, rel(generator_path))
+    generator_sources = [generator_path]
+    section_dir = generator_path.with_name("Decomposed") / generator_path.stem
+    manifest_path = section_dir / "sections.manifest"
+    if manifest_path.is_file():
+        section_names = tuple(
+            line.strip()
+            for line in manifest_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        for section_name in section_names:
+            section_path = section_dir / section_name
+            try:
+                generator_sources.append(section_path)
+                section_path.read_text(encoding="utf-8", errors="replace")
+            except OSError as exc:
+                add(results, "runtime package generator section readable", False, f"{rel(section_path)}: {exc}")
+    generator = "\n".join(
+        source.read_text(encoding="utf-8", errors="replace")
+        for source in generator_sources
+        if source.is_file()
+    )
     required = (
         "collect_local_patch_overlays",
         "apply_local_patch_overlays",
