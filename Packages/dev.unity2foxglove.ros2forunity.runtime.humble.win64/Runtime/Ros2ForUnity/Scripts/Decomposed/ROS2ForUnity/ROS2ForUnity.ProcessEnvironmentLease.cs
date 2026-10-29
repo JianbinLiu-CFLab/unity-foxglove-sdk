@@ -316,6 +316,5 @@ internal static class Ros2ForUnityProcessEnvironmentLease
             ApplyNative(name, value);
     }
 }
-}
 
 }  // namespace ROS2
