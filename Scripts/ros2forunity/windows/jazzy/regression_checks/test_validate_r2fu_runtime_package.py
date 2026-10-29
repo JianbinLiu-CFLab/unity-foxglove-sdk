@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import runpy
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,8 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[5]
 VALIDATOR_PATH = ROOT / "Scripts" / "ros2forunity" / "windows" / "jazzy" / "validate_r2fu_runtime_package.py"
+HUMBLE_PACKAGE_VALIDATOR_PATH = ROOT / "Scripts" / "ros2forunity" / "windows" / "humble" / "validate_ros2forunity_package.py"
+JAZZY_PACKAGE_VALIDATOR_PATH = ROOT / "Scripts" / "ros2forunity" / "windows" / "jazzy" / "validate_ros2forunity_package.py"
 
 
 def load_validator_module():
@@ -75,6 +78,33 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertIsNot(replacement, checks.check_inventory)
         self.assertIsNot(replacement, checks._foundation.check_inventory)
         self.assertIsNot(replacement, checks._runtime.check_inventory)
+
+    def test_runpy_distro_facades_reload_top_level_package(self) -> None:
+        """Same-process runpy execution must not reuse another distro package."""
+        previous_modules = {
+            name: module
+            for name, module in sys.modules.items()
+            if name == "validate_ros2forunity_package"
+            or name.startswith("validate_ros2forunity_package.")
+        }
+        previous_path = sys.path[:]
+        try:
+            first = runpy.run_path(str(HUMBLE_PACKAGE_VALIDATOR_PATH), run_name="<run_path>")
+            first_package = first["_phase192_package_module"]
+            second = runpy.run_path(str(JAZZY_PACKAGE_VALIDATOR_PATH), run_name="<run_path>")
+            second_package = second["_phase192_package_module"]
+            self.assertIn("windows\\humble\\validate_ros2forunity_package", str(first_package.__file__))
+            self.assertIn("windows\\jazzy\\validate_ros2forunity_package", str(second_package.__file__))
+            self.assertIsNot(first_package, second_package)
+        finally:
+            sys.path[:] = previous_path
+            for name in tuple(sys.modules):
+                if (
+                    name == "validate_ros2forunity_package"
+                    or name.startswith("validate_ros2forunity_package.")
+                ):
+                    sys.modules.pop(name, None)
+            sys.modules.update(previous_modules)
 
     def test_inventory_category_counts_must_match_file_entries(self) -> None:
         """A declared native count cannot be satisfied by DLLs from other categories."""
