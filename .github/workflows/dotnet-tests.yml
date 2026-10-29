@@ -233,6 +233,8 @@ jobs:
             exit 1
           fi
           git archive "$trusted_revision" -- Scripts/phase192 Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket | tar -x -C "$trusted_root"
+          export PYTHONPATH="$trusted_root"
+          # Both identity invocations compare the checked-out repository: --repository .
           base_checker="$trusted_root/Scripts/phase192/compare_identity_surfaces.py"
           if [ ! -f "$base_checker" ]; then
             echo "Trusted base identity checker is missing" >&2
