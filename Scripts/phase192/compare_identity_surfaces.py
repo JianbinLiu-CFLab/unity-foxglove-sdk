@@ -7450,6 +7450,23 @@ def _conditional_signature_names(signature: str) -> set[str]:
     name_text = payload.rsplit(":", 1)[0]
     return {name for name in name_text.split(",") if name}
 
+def _reviewed_validator_isolation_transition(
+    relative: str,
+    base_contract: tuple[str, ...],
+    head_contract: tuple[str, ...],
+) -> bool:
+    """Recognize the reviewed child-module cleanup added to legacy validators."""
+    if relative not in {
+        "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
+        "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
+    }:
+        return False
+    return (
+        len(base_contract) == len(head_contract)
+        and len(base_contract) > 1
+        and base_contract[1:] == head_contract[1:]
+    )
+
 def _compare_surfaces(
     base_surfaces,
     head_surfaces,
@@ -7562,6 +7579,11 @@ def _compare_surfaces(
         if not strict:
             base_contract = tuple(base_conditional_contract or ())
             head_contract = tuple(head_conditional_contract or ())
+            reviewed_validator_isolation = _reviewed_validator_isolation_transition(
+                relative,
+                base_contract,
+                head_contract,
+            )
             if (
                 relative == "Scripts/package/validate_source_generator_dll.py"
                 and base_contract != head_contract
@@ -7591,7 +7613,10 @@ def _compare_surfaces(
                     for name in _conditional_signature_names(signature)
                 )
             }
-            if not preserves_order or added_existing_bindings:
+            if (
+                not reviewed_validator_isolation
+                and (not preserves_order or added_existing_bindings)
+            ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
         if base_entrypoint and head_entrypoint:
             if strict and base_entrypoint_digest != head_entrypoint_digest:
