@@ -7462,9 +7462,15 @@ def _reviewed_validator_isolation_transition(
     }:
         return False
     return (
-        len(base_contract) == len(head_contract)
-        and len(base_contract) > 1
-        and base_contract[1:] == head_contract[1:]
+        (
+            len(head_contract) == len(base_contract) + 1
+            and head_contract[1:] == base_contract
+        )
+        or (
+            len(base_contract) == len(head_contract)
+            and len(base_contract) > 1
+            and base_contract[1:] == head_contract[1:]
+        )
     )
 
 def _compare_surfaces(

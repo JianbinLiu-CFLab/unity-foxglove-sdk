@@ -91,6 +91,10 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
                         or name.startswith("validate_ros2forunity_package.")
                     ):
                         sys.modules.pop(name, None)
+                for _, facade in facades:
+                    facade_parent = str(facade.parent)
+                    while facade_parent in sys.path:
+                        sys.path.remove(facade_parent)
                 first_result = runpy.run_path(str(first[1]), run_name="<run_path>")
                 first_package = first_result["_phase192_package_module"]
                 first_modules = {
