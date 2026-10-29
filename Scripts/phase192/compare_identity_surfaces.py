@@ -906,6 +906,27 @@ def _phase192_validate_template_registry_mutations(
     validate_closure_mutations()
     expected_module_key = Path(path).stem
     allowed_module_keys = {expected_module_key, expected_module_key + ".implementation"}
+    try:
+        relative_path = Path(path).resolve().relative_to(Path(repository_root).resolve()).as_posix()
+    except (TypeError, ValueError):
+        relative_path = None
+    if relative_path in {
+        "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
+        "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
+    }:
+        allowed_module_keys.update(
+            f"validate_ros2forunity_package.{name}"
+            for name in (
+                "core",
+                "package_metadata",
+                "manifest",
+                "text_boundaries",
+                "runtime_checks",
+                "sample_checks",
+                "boundary_checks",
+                "entrypoint",
+            )
+        )
     sys_aliases: set[str] = set()
     registry_aliases: set[str] = set()
     for node in tree.body:

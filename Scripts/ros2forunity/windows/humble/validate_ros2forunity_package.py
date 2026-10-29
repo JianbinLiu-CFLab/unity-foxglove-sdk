@@ -15,12 +15,15 @@ import sys as _phase192_sys
 import types as _phase192_types
 
 if __name__ in {"__main__", "<run_path>"}:
-    for _phase192_name in tuple(_phase192_sys.modules):
-        if (
-            _phase192_name == "validate_ros2forunity_package"
-            or _phase192_name.startswith("validate_ros2forunity_package.")
-        ):
-            _phase192_sys.modules.pop(_phase192_name, None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.core", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.package_metadata", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.manifest", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.text_boundaries", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.runtime_checks", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.sample_checks", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.boundary_checks", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package.entrypoint", None)
+    _phase192_sys.modules.pop("validate_ros2forunity_package", None)
 
 if __package__:
     from .validate_ros2forunity_package import *
