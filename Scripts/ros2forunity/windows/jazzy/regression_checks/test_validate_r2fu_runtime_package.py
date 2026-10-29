@@ -88,13 +88,34 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             or name.startswith("validate_ros2forunity_package.")
         }
         previous_path = sys.path[:]
+        distro_paths = {
+            HUMBLE_PACKAGE_VALIDATOR_PATH.parent.resolve(),
+            JAZZY_PACKAGE_VALIDATOR_PATH.parent.resolve(),
+        }
+
+        def clear_distro_paths() -> None:
+            """Remove distro package directories from sys.path before each run."""
+            sys.path[:] = [
+                entry
+                for entry in sys.path
+                if not entry or Path(entry).resolve() not in distro_paths
+            ]
+
         try:
+            clear_distro_paths()
             first = runpy.run_path(str(HUMBLE_PACKAGE_VALIDATOR_PATH), run_name="<run_path>")
             first_package = first["_phase192_package_module"]
+            clear_distro_paths()
             second = runpy.run_path(str(JAZZY_PACKAGE_VALIDATOR_PATH), run_name="<run_path>")
             second_package = second["_phase192_package_module"]
-            self.assertIn("windows\\humble\\validate_ros2forunity_package", str(first_package.__file__))
-            self.assertIn("windows\\jazzy\\validate_ros2forunity_package", str(second_package.__file__))
+            self.assertIn(
+                "windows/humble/validate_ros2forunity_package.py",
+                Path(first_package.__file__).resolve().as_posix(),
+            )
+            self.assertIn(
+                "windows/jazzy/validate_ros2forunity_package.py",
+                Path(second_package.__file__).resolve().as_posix(),
+            )
             self.assertIsNot(first_package, second_package)
         finally:
             sys.path[:] = previous_path

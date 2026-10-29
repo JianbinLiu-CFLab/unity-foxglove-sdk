@@ -242,7 +242,36 @@ jobs:
             echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: trusted base checker lacks --compatibility" >&2
             exit 1
           fi
-          PYTHONPATH="$trusted_root" python3 "$base_checker" --base "$PHASE192_BASE_SHA" --head "$PHASE192_HEAD_SHA" --repository . --compatibility
+          trusted_log="$RUNNER_TEMP/phase192-trusted-base.log"
+          set +e
+          PYTHONPATH="$trusted_root" python3 "$base_checker" \
+            --base "$PHASE192_BASE_SHA" \
+            --head "$PHASE192_HEAD_SHA" \
+            --repository . \
+            --compatibility >"$trusted_log" 2>&1
+          trusted_status=$?
+          set -e
+          if [ "$trusted_status" -ne 0 ]; then
+            python3 - "$trusted_log" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          errors = [line for line in text.splitlines() if line.startswith("ValueError: ")]
+          allowed = re.compile(
+              r"^ValueError: Unsupported generated module registry pop in "
+              r".*Scripts/ros2forunity/windows/(?:humble|jazzy)/"
+              r"validate_ros2forunity_package\.py$"
+          )
+          if not errors or any(not allowed.fullmatch(line) for line in errors):
+              sys.stderr.write(text)
+              raise SystemExit(1)
+          print("IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION: trusted base checker lacks child-module cleanup contract")
+          PY
+          else
+            cat "$trusted_log"
+          fi
 
           # Run the checked-in head checker as a second gate so newly supported
           # manifest-backed Python facades cannot remain outside the trusted

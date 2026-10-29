@@ -56,6 +56,8 @@ LOCAL_PATCH_OVERLAY_FILES = {
     "Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs",
     "Runtime/Ros2ForUnity/Scripts/ROS2UnityCore.cs",
     "Runtime/Ros2ForUnity/Scripts/Sensor.cs",
+    "Runtime/Ros2ForUnity/Scripts/Decomposed/ROS2ForUnity/ROS2ForUnity.Lifecycle.cs",
+    "Runtime/Ros2ForUnity/Scripts/Decomposed/ROS2ForUnity/ROS2ForUnity.ProcessEnvironmentLease.cs",
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2ScalableTimeSource.cs",
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2TimeSource.cs",
 }

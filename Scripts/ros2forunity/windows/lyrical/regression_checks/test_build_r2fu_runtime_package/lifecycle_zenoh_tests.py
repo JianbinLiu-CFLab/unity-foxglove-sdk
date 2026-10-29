@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .foundation import *
+from Scripts.phase192.source_layout import read_split_csharp_source
 
 
 class LyricalLifecycleZenohTests:
@@ -8,7 +9,7 @@ class LyricalLifecycleZenohTests:
 
     def test_standalone_isolation_keeps_windows_env_setup_single_pass(self) -> None:
         """Standalone env ownership should not be repeated in the Windows PATH block."""
-        source = (
+        facade = (
             ROOT
             / "Packages"
             / self.builder.PACKAGE_NAME
@@ -16,7 +17,8 @@ class LyricalLifecycleZenohTests:
             / "Ros2ForUnity"
             / "Scripts"
             / "ROS2ForUnity.cs"
-        ).read_text(encoding="utf-8")
+        )
+        source = read_split_csharp_source(facade)
 
         patched = self.builder.patch_standalone_environment_isolation(source)
         constructor = patched[patched.find("internal ROS2ForUnity()") :]

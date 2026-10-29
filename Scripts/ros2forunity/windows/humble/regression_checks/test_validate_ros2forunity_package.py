@@ -104,8 +104,14 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
                 }
                 second_result = runpy.run_path(str(second[1]), run_name="<run_path>")
                 second_package = second_result["_phase192_package_module"]
-                self.assertIn(f"windows\\{first[0]}\\validate_ros2forunity_package.py", first_package.__file__)
-                self.assertIn(f"windows\\{second[0]}\\validate_ros2forunity_package.py", second_package.__file__)
+                self.assertIn(
+                    f"windows/{first[0]}/validate_ros2forunity_package.py",
+                    Path(first_package.__file__).resolve().as_posix(),
+                )
+                self.assertIn(
+                    f"windows/{second[0]}/validate_ros2forunity_package.py",
+                    Path(second_package.__file__).resolve().as_posix(),
+                )
                 self.assertIsNot(first_package, second_package)
                 self.assertEqual(
                     f"r2fu-{first[0]}-win64-runtime-inventory.json",
@@ -137,8 +143,14 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
                     first_module = first_modules[f"validate_ros2forunity_package.{section}"]
                     second_module = sys.modules[f"validate_ros2forunity_package.{section}"]
                     self.assertIsNot(first_module, second_module)
-                    self.assertIn(f"windows\\{first[0]}\\validate_ros2forunity_package", first_module.__spec__.origin)
-                    self.assertIn(f"windows\\{second[0]}\\validate_ros2forunity_package", second_module.__spec__.origin)
+                    self.assertIn(
+                        f"windows/{first[0]}/validate_ros2forunity_package",
+                        Path(first_module.__spec__.origin).resolve().as_posix(),
+                    )
+                    self.assertIn(
+                        f"windows/{second[0]}/validate_ros2forunity_package",
+                        Path(second_module.__spec__.origin).resolve().as_posix(),
+                    )
         finally:
             sys.path[:] = previous_path
             for name in tuple(sys.modules):
