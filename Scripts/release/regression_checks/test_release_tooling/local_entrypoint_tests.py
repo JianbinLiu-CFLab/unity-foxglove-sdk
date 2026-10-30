@@ -50,4 +50,6 @@ class LocalEntrypointValidatorTests(unittest.TestCase):
             command,
         )
 
+LocalEntrypointValidatorTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
+
 __all__ = ["LocalEntrypointValidatorTests"]

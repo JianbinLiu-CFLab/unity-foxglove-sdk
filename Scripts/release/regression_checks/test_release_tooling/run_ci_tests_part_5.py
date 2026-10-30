@@ -1,4 +1,8 @@
 from .foundation import *
+from .run_ci_tests_part_1 import _RunCiTestsPart1
+from .run_ci_tests_part_2 import _RunCiTestsPart2
+from .run_ci_tests_part_3 import _RunCiTestsPart3
+from .run_ci_tests_part_4 import _RunCiTestsPart4
 
 class _RunCiTestsPart5:
     """Decomposed RunCiTests method group 5."""
@@ -422,4 +426,9 @@ class _RunCiTestsPart5:
         )
         self.assertEqual(2, observed["max_workers"])
 
-__all__ = ["_RunCiTestsPart5"]
+class RunCiTests(_RunCiTestsPart1, _RunCiTestsPart2, _RunCiTestsPart3, _RunCiTestsPart4, _RunCiTestsPart5, unittest.TestCase):
+    pass
+
+RunCiTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
+
+__all__ = ["_RunCiTestsPart5", "RunCiTests"]

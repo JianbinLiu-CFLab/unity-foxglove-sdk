@@ -227,4 +227,6 @@ class R2fuArtifactHandoffTests(unittest.TestCase):
                 for filename in expected_test_only:
                     self.assertIn(filename, source)
 
+R2fuArtifactHandoffTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
+
 __all__ = ["R2fuArtifactHandoffTests"]

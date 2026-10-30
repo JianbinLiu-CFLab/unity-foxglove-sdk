@@ -199,4 +199,6 @@ class UnityBatchCompileGateTests(unittest.TestCase):
             self.assertEqual(str(unity.resolve()), command[0])
             self.assertEqual(str(project.resolve()), command[command.index("-projectPath") + 1])
 
+UnityBatchCompileGateTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
+
 __all__ = ["UnityBatchCompileGateTests"]

@@ -55,4 +55,6 @@ class McapConformanceToolTests(unittest.TestCase):
         self.assertTrue(failure["timedOut"])
         self.assertIn("Timed out after 180 second(s).", failure["details"])
 
+McapConformanceToolTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
+
 __all__ = ["McapConformanceToolTests"]

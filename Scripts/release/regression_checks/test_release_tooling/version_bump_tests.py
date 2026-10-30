@@ -312,4 +312,6 @@ class VersionBumpTests(unittest.TestCase):
             self.assertIn('version: "2.0.0"', text)
             self.assertIn('date-released: "2026-06-08"', text)
 
+VersionBumpTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
+
 __all__ = ["VersionBumpTests"]

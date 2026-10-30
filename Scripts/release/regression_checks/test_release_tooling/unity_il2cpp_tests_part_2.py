@@ -1,4 +1,5 @@
 from .foundation import *
+from .unity_il2cpp_tests_part_1 import _UnityIl2CppBuildTestsPart1
 
 class _UnityIl2CppBuildTestsPart2:
     """Decomposed UnityIl2CppBuildTests method group 2."""
@@ -606,4 +607,9 @@ class _UnityIl2CppBuildTestsPart2:
             pass
         UnityIl2CppBuildTests._wait_for_pid_exit(pid)
 
-__all__ = ["_UnityIl2CppBuildTestsPart2"]
+class UnityIl2CppBuildTests(_UnityIl2CppBuildTestsPart1, _UnityIl2CppBuildTestsPart2, unittest.TestCase):
+    pass
+
+UnityIl2CppBuildTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
+
+__all__ = ["_UnityIl2CppBuildTestsPart2", "UnityIl2CppBuildTests"]
