@@ -668,6 +668,289 @@ class IdentityToolingTests(unittest.TestCase):
             {entry[0] for entry in surface[-1]},
         )
 
+    def test_identity_namespace_facade_reexports_namespace_risk_constants(self) -> None:
+        """The identity facade keeps the namespace-risk compatibility names."""
+        namespace = __import__(
+            "Scripts.phase192.identity_namespace_analysis",
+            fromlist=["_NAMESPACE_RISK_NAMES"],
+        )
+        for name in (
+            "_NAMESPACE_RISK_NAMES",
+            "_NAMESPACE_RISK_ATTRIBUTES",
+            "_NAMESPACE_RISK_MODULE_ATTRIBUTES",
+        ):
+            with self.subTest(name=name):
+                self.assertTrue(hasattr(compare_identity_surfaces, name))
+                self.assertEqual(getattr(namespace, name), getattr(compare_identity_surfaces, name))
+
+    def test_namespace_analysis_helpers_stay_below_source_split_threshold(self) -> None:
+        """Namespace analysis implementation remains split into maintainable modules."""
+        for relative in (
+            "Scripts/phase192/identity_namespace_analysis.py",
+            "Scripts/phase192/identity_namespace_scanner.py",
+        ):
+            with self.subTest(relative=relative):
+                lines = (compare_identity_surfaces.REPOSITORY_ROOT / relative).read_text(encoding="utf-8").splitlines()
+                self.assertLess(len(lines), 1000)
+
+    def test_reviewed_validator_isolation_transition_requires_exact_cleanup(self) -> None:
+        """Only the reviewed eight-module cleanup insertion is compatibility-waived."""
+        cleanup = "facade::7cdf800c9922e9368a642e72b34a53b8fa0049b842fda84b2ca8041537599915"
+        humble_base = ("facade:old", "facade:rest")
+        humble_head = (cleanup, *humble_base)
+        self.assertTrue(
+            compare_identity_surfaces._reviewed_validator_isolation_transition(
+                "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
+                humble_base,
+                humble_head,
+            )
+        )
+        for evil_head in (("facade:evil", *humble_base), ("facade:evil", "facade:old", "facade:rest")):
+            with self.subTest(evil_head=evil_head):
+                self.assertFalse(
+                    compare_identity_surfaces._reviewed_validator_isolation_transition(
+                        "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
+                        humble_base,
+                        evil_head,
+                    )
+                )
+        self.assertFalse(
+            compare_identity_surfaces._reviewed_validator_isolation_transition(
+                "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
+                humble_base,
+                ("facade::mutated-cleanup", *humble_base),
+            )
+        )
+        jazzy_base = ("section:core:stable", "facade:old", "facade:rest")
+        self.assertTrue(
+            compare_identity_surfaces._reviewed_validator_isolation_transition(
+                "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
+                jazzy_base,
+                (jazzy_base[0], cleanup, *jazzy_base[1:]),
+            )
+        )
+
+    def test_identity_helper_source_contract_reports_helper_only_changes(self) -> None:
+        """Identity tooling reports changes made only in imported helper implementations."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            helper = root / "Scripts/phase192/identity_surface_conditions.py"
+            helper.parent.mkdir(parents=True)
+            helper.write_text("VALUE = 'base'\n", encoding="utf-8")
+            base = compare_identity_surfaces._identity_helper_source_contract(root)
+            helper.write_text("VALUE = 'head'\n", encoding="utf-8")
+            head = compare_identity_surfaces._identity_helper_source_contract(root)
+            self.assertNotEqual(base, head)
+            self.assertIn(
+                "HELPER_SOURCE_CHANGED Scripts/phase192/identity_surface_conditions.py",
+                compare_identity_surfaces._compare_identity_helper_contracts(base, head),
+            )
+            self.assertIn(
+                "Scripts/phase192/identity_surface_conditions.py",
+                {entry[0] for entry in head},
+            )
+
+    def test_reviewed_namespace_split_requires_exact_helper_digests(self) -> None:
+        """The reviewed namespace split waiver rejects any later helper mutation."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base_root = root / "base"
+            head_root = root / "head"
+            for checkout in (base_root, head_root):
+                for relative in compare_identity_surfaces._IDENTITY_HELPER_RELATIVES:
+                    path = checkout / relative
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    if relative == "Scripts/phase192/identity_namespace_analysis.py":
+                        continue
+                    if relative == "Scripts/phase192/identity_namespace_scanner.py":
+                        continue
+                    path.write_text("VALUE = 1\n", encoding="utf-8")
+            base_analysis = subprocess.check_output(
+                ["git", "show", "origin/main:Scripts/phase192/identity_namespace_analysis.py"],
+                cwd=compare_identity_surfaces.REPOSITORY_ROOT,
+            )
+            head_analysis = (
+                compare_identity_surfaces.REPOSITORY_ROOT
+                / "Scripts/phase192/identity_namespace_analysis.py"
+            ).read_bytes()
+            head_scanner = (
+                compare_identity_surfaces.REPOSITORY_ROOT
+                / "Scripts/phase192/identity_namespace_scanner.py"
+            ).read_bytes()
+            (base_root / "Scripts/phase192/identity_namespace_analysis.py").write_bytes(base_analysis)
+            (head_root / "Scripts/phase192/identity_namespace_analysis.py").write_bytes(head_analysis)
+            (head_root / "Scripts/phase192/identity_namespace_scanner.py").write_bytes(head_scanner)
+            base_contract = compare_identity_surfaces._identity_helper_source_contract(base_root)
+            head_contract = compare_identity_surfaces._identity_helper_source_contract(head_root)
+            self.assertEqual(
+                [],
+                compare_identity_surfaces._compare_identity_helper_contracts(
+                    base_contract,
+                    head_contract,
+                    base_root=base_root,
+                    head_root=head_root,
+                ),
+            )
+            for relative in (
+                "Scripts/phase192/identity_namespace_analysis.py",
+                "Scripts/phase192/identity_namespace_scanner.py",
+            ):
+                with self.subTest(relative=relative):
+                    path = head_root / relative
+                    path.write_bytes(path.read_bytes() + b"\nMUTATION = True\n")
+                    mutated = compare_identity_surfaces._identity_helper_source_contract(head_root)
+                    errors = compare_identity_surfaces._compare_identity_helper_contracts(
+                        base_contract,
+                        mutated,
+                        base_root=base_root,
+                        head_root=head_root,
+                    )
+                    self.assertIn(f"HELPER_SOURCE_CHANGED {relative}", errors)
+                    path.write_bytes(head_analysis if relative.endswith("analysis.py") else head_scanner)
+
+    def test_load_fresh_module_isolates_absolute_phase192_helpers_across_checkouts(self) -> None:
+        """Fresh loads must replace Scripts.phase192 helpers from checkout A with checkout B."""
+        import sys
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            roots = []
+            for marker in ("A", "B"):
+                checkout = root / marker
+                package = checkout / "Scripts/phase192"
+                package.mkdir(parents=True)
+                (checkout / "Scripts/__init__.py").write_text("\n", encoding="utf-8")
+                (package / "__init__.py").write_text("\n", encoding="utf-8")
+                (package / "identity_surface_conditions.py").write_text(
+                    f"MARKER = {marker!r}\n", encoding="utf-8"
+                )
+                (package / "identity_namespace_analysis.py").write_text(
+                    "from Scripts.phase192.identity_surface_conditions import MARKER\n"
+                    "NAMESPACE_MARKER = MARKER\n",
+                    encoding="utf-8",
+                )
+                facade = package / "compare_identity_surfaces.py"
+                facade.write_text(
+                    "from Scripts.phase192.identity_surface_conditions import MARKER\n"
+                    "from Scripts.phase192.identity_namespace_analysis import NAMESPACE_MARKER\n",
+                    encoding="utf-8",
+                )
+                roots.append((checkout, facade))
+
+            names = (
+                "compare_identity_surfaces",
+                "Scripts",
+                "Scripts.phase192",
+                "Scripts.phase192.identity_surface_conditions",
+                "Scripts.phase192.identity_namespace_analysis",
+            )
+            for name in names:
+                sys.modules.pop(name, None)
+            try:
+                first = source_layout.load_fresh_module("compare_identity_surfaces", roots[0][1])
+                second = source_layout.load_fresh_module("compare_identity_surfaces", roots[1][1])
+                self.assertEqual("A", first.MARKER)
+                self.assertEqual("B", second.MARKER)
+                self.assertEqual("B", second.NAMESPACE_MARKER)
+                self.assertTrue(str(roots[1][0]) in sys.modules["Scripts.phase192.identity_namespace_analysis"].__file__)
+                self.assertTrue(str(roots[1][0]) in sys.modules["Scripts.phase192.identity_surface_conditions"].__file__)
+            finally:
+                for name in names:
+                    sys.modules.pop(name, None)
+
+    def test_load_fresh_module_preserves_real_scripts_package_graph_across_checkouts(self) -> None:
+        """Fresh loads keep every Scripts parent package valid for real facade paths."""
+        import sys
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_names = (
+                "phase192",
+                "package",
+                "smoke",
+                "smoke/foxglove",
+                "smoke/foxrun",
+                "unity_build",
+                "ros2forunity",
+            )
+            checkouts = []
+            for marker in ("A", "B"):
+                checkout = root / marker
+                scripts = checkout / "Scripts"
+                scripts.mkdir(parents=True)
+                (scripts / "__init__.py").write_text(
+                    f"MARKER = {marker!r}\n", encoding="utf-8"
+                )
+                for package_name in package_names:
+                    package = scripts / package_name
+                    package.mkdir(parents=True, exist_ok=True)
+                    (package / "__init__.py").write_text(
+                        f"MARKER = {marker!r}\n", encoding="utf-8"
+                    )
+                facade = scripts / "smoke/foxrun/phase184_profile_acceptance.py"
+                facade.write_text(
+                    "from Scripts import MARKER as SCRIPTS_MARKER\n"
+                    "from Scripts.package import MARKER as PACKAGE_MARKER\n"
+                    "from Scripts.smoke import MARKER as SMOKE_MARKER\n"
+                    "from Scripts.smoke.foxglove import MARKER as FOXGLOVE_MARKER\n"
+                    "from Scripts.smoke.foxrun import MARKER as FOXRUN_MARKER\n"
+                    "from Scripts.unity_build import MARKER as UNITY_BUILD_MARKER\n"
+                    "from Scripts.ros2forunity import MARKER as ROS2FORUNITY_MARKER\n"
+                    "from Scripts.phase192 import MARKER as PHASE192_MARKER\n"
+                    "VALUE = (SCRIPTS_MARKER, PACKAGE_MARKER, SMOKE_MARKER, FOXGLOVE_MARKER, FOXRUN_MARKER, UNITY_BUILD_MARKER, ROS2FORUNITY_MARKER, PHASE192_MARKER)\n",
+                    encoding="utf-8",
+                )
+                checkouts.append((checkout, facade))
+
+            names = [
+                "phase184_profile_acceptance",
+                "Scripts",
+                "Scripts.package",
+                "Scripts.smoke",
+                "Scripts.smoke.foxglove",
+                "Scripts.smoke.foxrun",
+                "Scripts.unity_build",
+                "Scripts.ros2forunity",
+                "Scripts.phase192",
+            ]
+            for name in names:
+                sys.modules.pop(name, None)
+            try:
+                first = source_layout.load_fresh_module("phase184_profile_acceptance", checkouts[0][1])
+                self.assertEqual(("A",) * 8, first.VALUE)
+                second = source_layout.load_fresh_module("phase184_profile_acceptance", checkouts[1][1])
+                self.assertEqual(("B",) * 8, second.VALUE)
+                for name in names[1:]:
+                    module = sys.modules[name]
+                    self.assertIn(str(checkouts[1][0]), str(getattr(module, "__file__", "")))
+            finally:
+                for name in names:
+                    sys.modules.pop(name, None)
+
+    def test_phase163_37_harness_guard_reads_composed_csharp_source(self) -> None:
+        """Phase163-37 must inspect the facade and its split TestSources sections."""
+        path = (
+            compare_identity_surfaces.REPOSITORY_ROOT
+            / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_37Validation.cs"
+        )
+        source = path.read_text(encoding="utf-8")
+        self.assertIn("PhaseValidationSourceHelpers.ReadRequiredRepoText(", source)
+        self.assertIn(
+            '"Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeValidationOptimizationTests.cs"',
+            source,
+        )
+
+    def test_jazzy_ctrl_c_handler_has_shutdown_shared_implementation(self) -> None:
+        """Jazzy ENABLE_MONO Ctrl+C handling resolves to a defined shared shutdown method."""
+        facade = (
+            compare_identity_surfaces.REPOSITORY_ROOT
+            / "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs"
+        )
+        lifecycle = facade.parent / "Decomposed/ROS2ForUnity/ROS2ForUnity.Lifecycle.cs"
+        combined = facade.read_text(encoding="utf-8") + "\n" + lifecycle.read_text(encoding="utf-8")
+        self.assertIn("ShutdownShared();", combined)
+        self.assertRegex(combined, r"(?:private|internal) static void ShutdownShared\s*\(")
+
     def test_identity_surface_uses_revision_local_source_layout(self) -> None:
         """Base/head worktrees load their own section-order parser."""
         with tempfile.TemporaryDirectory() as temp:

@@ -138,6 +138,9 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     facade = facade.resolve()
     original_path = list(sys.path)
     facade_parent = str(facade.parent)
+    scripts_directories = [ancestor for ancestor in facade.parents if ancestor.name == "Scripts"]
+    source_root = scripts_directories[0].parent if scripts_directories else facade.parent
+    source_paths = {str(source_root), facade_parent}
     prefixes = {module_name, facade.stem}
     package_dir = facade.with_suffix("")
     saved_modules: dict[str, ModuleType] = {}
@@ -147,24 +150,69 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         """Return whether a module path belongs to the facade directory."""
         return path == facade or facade.parent in path.parents
 
+    def module_paths(module: ModuleType) -> tuple[Path, ...]:
+        """Return source paths recorded by a module or package."""
+        candidates: list[Path] = []
+        origin = getattr(getattr(module, "__spec__", None), "origin", None)
+        module_file = getattr(module, "__file__", None) or origin
+        if module_file:
+            candidates.append(Path(module_file))
+        try:
+            module_paths_value = getattr(module, "__path__", ())
+            module_path_entries = tuple(module_paths_value or ())
+        except Exception:
+            module_path_entries = ()
+        for entry in module_path_entries:
+            candidates.append(Path(entry))
+        resolved: list[Path] = []
+        for candidate in candidates:
+            try:
+                resolved.append(candidate.resolve())
+            except OSError:
+                continue
+        return tuple(resolved)
+
+    def is_stale_phase192_module(name: str, module: ModuleType) -> bool:
+        """Return whether an absolute Scripts package belongs to another checkout."""
+        if name != "Scripts" and not name.startswith("Scripts."):
+            return False
+        paths = module_paths(module)
+        if not paths:
+            return False
+        return not any(path == source_root or source_root in path.parents for path in paths)
+
+    def should_remove(loaded_name: str, loaded_module: ModuleType) -> bool:
+        """Return whether one cached module would contaminate the fresh checkout."""
+        if any(
+            loaded_name == prefix or loaded_name.startswith(prefix + ".")
+            for prefix in prefixes
+        ):
+            return True
+        for path in module_paths(loaded_module):
+            if is_local_module_path(path):
+                return True
+        if (
+            loaded_name == "Scripts.samples"
+            or loaded_name.startswith("Scripts.samples.")
+            or loaded_name == "unity_il2cpp"
+            or loaded_name.startswith("unity_il2cpp.")
+            or loaded_name == "Scripts.unity_build.unity_il2cpp"
+            or loaded_name.startswith("Scripts.unity_build.unity_il2cpp.")
+        ):
+            return True
+        if loaded_name == "Scripts" or loaded_name.startswith("Scripts."):
+            return is_stale_phase192_module(loaded_name, loaded_module)
+        if is_stale_phase192_module(loaded_name, loaded_module):
+            return True
+        return False
+
     try:
-        sys.path[:] = [entry for entry in sys.path if entry != facade_parent]
+        sys.path[:] = [entry for entry in sys.path if entry not in source_paths]
         sys.path.insert(0, facade_parent)
+        if str(source_root) != facade_parent:
+            sys.path.insert(1, str(source_root))
         for loaded_name, loaded_module in tuple(sys.modules.items()):
-            remove = any(
-                loaded_name == prefix or loaded_name.startswith(prefix + ".")
-                for prefix in prefixes
-            )
-            if not remove:
-                origin = getattr(getattr(loaded_module, "__spec__", None), "origin", None)
-                module_file = getattr(loaded_module, "__file__", None) or origin
-                if module_file:
-                    try:
-                        resolved = Path(module_file).resolve()
-                    except OSError:
-                        resolved = None
-                    if resolved is not None:
-                        remove = is_local_module_path(resolved)
+            remove = should_remove(loaded_name, loaded_module)
             if remove:
                 saved_modules[loaded_name] = loaded_module
                 sys.modules.pop(loaded_name, None)
@@ -188,16 +236,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
                 for prefix in prefixes
             )
             if not remove and loaded_name not in initial_module_names:
-                loaded_module = sys.modules[loaded_name]
-                origin = getattr(getattr(loaded_module, "__spec__", None), "origin", None)
-                module_file = getattr(loaded_module, "__file__", None) or origin
-                if module_file:
-                    try:
-                        resolved = Path(module_file).resolve()
-                    except OSError:
-                        resolved = None
-                    if resolved is not None:
-                        remove = is_local_module_path(resolved)
+                remove = should_remove(loaded_name, sys.modules[loaded_name])
             if remove:
                 sys.modules.pop(loaded_name, None)
         sys.modules.update(saved_modules)
