@@ -23,10 +23,10 @@ class _UnityIl2CppBuildTestsPart1:
         )
         import Scripts.unity_build.unity_il2cpp as namespaced
 
-        self.assertIs(namespaced, sys.modules.get("unity_il2cpp"))
+        self.assertIs(namespaced, module_registry().get("unity_il2cpp"))
         self.assertIs(
-            sys.modules.get("unity_il2cpp.implementation"),
-            sys.modules.get("Scripts.unity_build.unity_il2cpp.implementation"),
+            module_registry().get("unity_il2cpp.implementation"),
+            module_registry().get("Scripts.unity_build.unity_il2cpp.implementation"),
         )
 
     def test_direct_entrypoint_help_runs_in_a_clean_process(self) -> None:
@@ -47,7 +47,7 @@ class _UnityIl2CppBuildTestsPart1:
         import unity_il2cpp.parts.foundation as top_level
         import Scripts.unity_build.unity_il2cpp.parts.foundation as namespaced
 
-        self.assertIs(package, sys.modules.get("unity_il2cpp"))
+        self.assertIs(package, module_registry().get("unity_il2cpp"))
         self.assertIs(top_level, namespaced)
 
     def test_generated_artifact_preflight_reports_missing_files(self) -> None:

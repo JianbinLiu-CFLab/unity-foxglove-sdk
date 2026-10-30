@@ -84,23 +84,7 @@ WORKFLOW_PATHS = (
 )
 
 
-def load_module(name: str, path: Path):
-    """Load a Python script as an isolated module."""
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    if path == RUN_CI_PATH:
-        for module_name in tuple(sys.modules):
-            if module_name == "run_ci" or module_name.startswith("run_ci."):
-                sys.modules.pop(module_name, None)
-    sys.modules.pop(spec.name, None)
-    sys.modules[spec.name] = module
-    try:
-        spec.loader.exec_module(module)
-    except Exception:
-        sys.modules.pop(spec.name, None)
-        raise
-    return module
+from Scripts.release.regression_checks._test_loader import load_module, module_registry
 
 
 def active_workflow_line_index(
@@ -118,4 +102,4 @@ def active_workflow_line_index(
             return index
     raise ValueError(f"active workflow line is missing: {exact_line}")
 
-__all__ = ['BUMP_VERSION_PATH', 'DOCS_WORKFLOW_PATH', 'DOTNET_WORKFLOW_PATH', 'LOCAL_ENTRYPOINT_VALIDATOR_PATH', 'MCAP_CONFORMANCE_PATH', 'PACKAGE_WORKFLOW_PATH', 'PHASE16_VALIDATION_PATH', 'PHASE186_WINDOWS_LIVE_WORKFLOW_PATH', 'Path', 'REPOSITORY_BOUNDARY_WORKFLOW_PATH', 'ROOT', 'RUN_CI_PATH', 'UNITY_BATCH_COMPILE_PATH', 'UNITY_COMPILE_WORKFLOW_PATH', 'UNITY_IL2CPP_PATH', 'WORKFLOW_PATHS', 'active_workflow_line_index', 'annotations', 'ast', 'contextlib', 'ctypes', 'importlib', 'inspect', 'io', 'json', 'load_module', 'mock', 'os', 're', 'read_python_validation_source', 'read_runtime_validation_source', 'read_split_source', 'shutil', 'signal', 'subprocess', 'sys', 'tempfile', 'threading', 'time', 'types', 'unittest']
+__all__ = ['BUMP_VERSION_PATH', 'DOCS_WORKFLOW_PATH', 'DOTNET_WORKFLOW_PATH', 'LOCAL_ENTRYPOINT_VALIDATOR_PATH', 'MCAP_CONFORMANCE_PATH', 'PACKAGE_WORKFLOW_PATH', 'PHASE16_VALIDATION_PATH', 'PHASE186_WINDOWS_LIVE_WORKFLOW_PATH', 'Path', 'REPOSITORY_BOUNDARY_WORKFLOW_PATH', 'ROOT', 'RUN_CI_PATH', 'UNITY_BATCH_COMPILE_PATH', 'UNITY_COMPILE_WORKFLOW_PATH', 'UNITY_IL2CPP_PATH', 'WORKFLOW_PATHS', 'active_workflow_line_index', 'annotations', 'ast', 'contextlib', 'ctypes', 'importlib', 'inspect', 'io', 'json', 'load_module', 'module_registry', 'mock', 'os', 're', 'read_python_validation_source', 'read_runtime_validation_source', 'read_split_source', 'shutil', 'signal', 'subprocess', 'sys', 'tempfile', 'threading', 'time', 'types', 'unittest']

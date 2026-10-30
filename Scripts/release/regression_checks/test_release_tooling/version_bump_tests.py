@@ -16,7 +16,7 @@ class VersionBumpTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 load_module("broken_release_tool_under_test", broken)
 
-        self.assertNotIn("broken_release_tool_under_test", sys.modules)
+        self.assertNotIn("broken_release_tool_under_test", module_registry())
 
     def test_update_readme_keeps_only_current_release_note_without_corruption(self) -> None:
         """Keep one current release note and remove archive navigation from README."""

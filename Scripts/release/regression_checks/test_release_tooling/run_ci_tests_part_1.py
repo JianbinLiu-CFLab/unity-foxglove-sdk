@@ -58,12 +58,12 @@ class _RunCiTestsPart1:
 
     def test_run_ci_load_clears_cached_package_sections(self) -> None:
         """Each isolated load must rebuild the split implementation package."""
-        _phase192_first_section = sys.modules["run_ci.foundation"]
+        _phase192_first_section = module_registry()["run_ci.foundation"]
         _phase192_first_section.REPO_ROOT = Path("stale-run-ci-root")
 
         second = load_module("run_ci_under_test", RUN_CI_PATH)
 
-        self.assertIsNot(_phase192_first_section, sys.modules["run_ci.foundation"])
+        self.assertIsNot(_phase192_first_section, module_registry()["run_ci.foundation"])
         self.assertEqual(RUN_CI_PATH.parents[2], second.REPO_ROOT)
 
     def test_run_ci_uses_repository_build_root(self) -> None:
