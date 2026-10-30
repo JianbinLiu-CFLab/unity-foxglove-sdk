@@ -371,7 +371,7 @@ jobs:
                   raise SystemExit(1)
               print("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT: exact implementation_lyrical manifest_and_inventory runtime_checks transition")
               raise SystemExit(0)
-          if len(errors) != 1 or not any(line.endswith(path) for path in errors):
+          if len(errors) != 1 or not any(line.endswith(path) for path in expected_paths for line in errors):
               sys.stderr.write(text)
               raise SystemExit(1)
           for path in expected_paths:
