@@ -673,6 +673,8 @@ class IdentityToolingTests(unittest.TestCase):
                 "run_ci_tests_part_1",
                 "run_ci_tests_part_2",
                 "run_ci_tests_part_3",
+                "run_ci_tests_part_4",
+                "run_ci_tests_part_5",
                 "local_entrypoint_tests",
                 "mcap_conformance_tests",
                 "r2fu_artifact_handoff_tests",

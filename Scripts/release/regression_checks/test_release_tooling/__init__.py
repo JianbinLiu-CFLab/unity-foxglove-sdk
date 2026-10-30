@@ -17,6 +17,8 @@ from . import version_bump_tests as _phase192_version_bump_tests
 from . import run_ci_tests_part_1 as _phase192_run_ci_tests_part_1
 from . import run_ci_tests_part_2 as _phase192_run_ci_tests_part_2
 from . import run_ci_tests_part_3 as _phase192_run_ci_tests_part_3
+from . import run_ci_tests_part_4 as _phase192_run_ci_tests_part_4
+from . import run_ci_tests_part_5 as _phase192_run_ci_tests_part_5
 from . import local_entrypoint_tests as _phase192_local_entrypoint_tests
 from . import mcap_conformance_tests as _phase192_mcap_conformance_tests
 from . import r2fu_artifact_handoff_tests as _phase192_r2fu_artifact_handoff_tests
@@ -31,7 +33,7 @@ LocalEntrypointValidatorTests = _phase192_local_entrypoint_tests.LocalEntrypoint
 McapConformanceToolTests = _phase192_mcap_conformance_tests.McapConformanceToolTests
 R2fuArtifactHandoffTests = _phase192_r2fu_artifact_handoff_tests.R2fuArtifactHandoffTests
 UnityBatchCompileGateTests = _phase192_unity_batch_compile_gate_tests.UnityBatchCompileGateTests
-class RunCiTests(_phase192_run_ci_tests_part_1._RunCiTestsPart1, _phase192_run_ci_tests_part_2._RunCiTestsPart2, _phase192_run_ci_tests_part_3._RunCiTestsPart3, unittest.TestCase):
+class RunCiTests(_phase192_run_ci_tests_part_1._RunCiTestsPart1, _phase192_run_ci_tests_part_2._RunCiTestsPart2, _phase192_run_ci_tests_part_3._RunCiTestsPart3, _phase192_run_ci_tests_part_4._RunCiTestsPart4, _phase192_run_ci_tests_part_5._RunCiTestsPart5, unittest.TestCase):
     """Regression coverage for local CI runner reliability."""
     pass
 
@@ -40,7 +42,7 @@ class UnityIl2CppBuildTests(_phase192_unity_il2cpp_tests_part_1._UnityIl2CppBuil
     pass
 
 
-_PHASE192_SECTION_MODULES = (_phase192_foundation, _phase192_version_bump_tests, _phase192_run_ci_tests_part_1, _phase192_run_ci_tests_part_2, _phase192_run_ci_tests_part_3, _phase192_local_entrypoint_tests, _phase192_mcap_conformance_tests, _phase192_r2fu_artifact_handoff_tests, _phase192_unity_il2cpp_tests_part_1, _phase192_unity_il2cpp_tests_part_2, _phase192_unity_batch_compile_gate_tests,)
+_PHASE192_SECTION_MODULES = (_phase192_foundation, _phase192_version_bump_tests, _phase192_run_ci_tests_part_1, _phase192_run_ci_tests_part_2, _phase192_run_ci_tests_part_3, _phase192_run_ci_tests_part_4, _phase192_run_ci_tests_part_5, _phase192_local_entrypoint_tests, _phase192_mcap_conformance_tests, _phase192_r2fu_artifact_handoff_tests, _phase192_unity_il2cpp_tests_part_1, _phase192_unity_il2cpp_tests_part_2, _phase192_unity_batch_compile_gate_tests,)
 _PHASE192_EXPORT_NAMES = {
     _phase192_name
     for _phase192_name in globals()
