@@ -191,8 +191,17 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         for path in module_paths(loaded_module):
             if is_local_module_path(path):
                 return True
-        if loaded_name == "Scripts" or loaded_name.startswith("Scripts."):
+        if (
+            loaded_name == "Scripts.samples"
+            or loaded_name.startswith("Scripts.samples.")
+            or loaded_name == "unity_il2cpp"
+            or loaded_name.startswith("unity_il2cpp.")
+            or loaded_name == "Scripts.unity_build.unity_il2cpp"
+            or loaded_name.startswith("Scripts.unity_build.unity_il2cpp.")
+        ):
             return True
+        if loaded_name == "Scripts" or loaded_name.startswith("Scripts."):
+            return is_stale_phase192_module(loaded_name, loaded_module)
         if is_stale_phase192_module(loaded_name, loaded_module):
             return True
         return False
