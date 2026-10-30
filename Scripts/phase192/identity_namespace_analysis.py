@@ -745,6 +745,7 @@ def _namespace_risk_signatures(
         *,
         deferred_mode: str = _DEFERRED_FIRST_YIELD,
     ) -> bool:
+        """Delegate prefix-expression scanning to the split scanner."""
         return context.scan_prefix_expression(node, env, deferred_mode=deferred_mode)
 
     def scan_prefix_statement(
@@ -754,6 +755,7 @@ def _namespace_risk_signatures(
         evaluate_annotations: bool = True,
         deferred_mode: str = _DEFERRED_FIRST_YIELD,
     ) -> bool:
+        """Delegate prefix-statement scanning to the split scanner."""
         return context.scan_prefix_statement(
             statement, env, evaluate_annotations=evaluate_annotations, deferred_mode=deferred_mode
         )
@@ -765,6 +767,7 @@ def _namespace_risk_signatures(
         evaluate_annotations: bool = True,
         deferred_mode: str = _DEFERRED_FIRST_YIELD,
     ) -> bool:
+        """Delegate prefix-sequence scanning to the split scanner."""
         return context.scan_prefix_sequence(
             statements, env, evaluate_annotations=evaluate_annotations, deferred_mode=deferred_mode
         )
@@ -775,6 +778,7 @@ def _namespace_risk_signatures(
         *,
         deferred_mode: str = _DEFERRED_NONE,
     ) -> None:
+        """Delegate node scanning to the split scanner."""
         return context.scan_node(node, env, deferred_mode=deferred_mode)
 
     def scan_statement(
@@ -784,6 +788,7 @@ def _namespace_risk_signatures(
         evaluate_annotations: bool = True,
         deferred_mode: str = _DEFERRED_NONE,
     ) -> None:
+        """Delegate statement scanning to the split scanner."""
         return context.scan_statement(
             statement,
             env,
@@ -798,6 +803,7 @@ def _namespace_risk_signatures(
         evaluate_annotations: bool = True,
         deferred_mode: str = _DEFERRED_NONE,
     ) -> None:
+        """Delegate sequence scanning to the split scanner."""
         return context.scan_sequence(
             statements,
             env,
@@ -810,15 +816,18 @@ def _namespace_risk_signatures(
         env: dict[str, AliasValue],
         deferred_mode: str,
     ) -> None:
+        """Delegate returned-sequence scanning to the split scanner."""
         return context.scan_returned_sequence(call, env, deferred_mode)
 
     def constant_truth(node: ast.AST) -> bool | None:
+        """Delegate constant truth evaluation to the split scanner."""
         return context.constant_truth(node)
 
     def merge_branch_environments(
         env: dict[str, AliasValue],
         branches: tuple[dict[str, AliasValue], ...],
     ) -> None:
+        """Delegate branch-environment merging to the split scanner."""
         return context.merge_branch_environments(env, branches)
 
     from Scripts.phase192.identity_namespace_scanner import scan_namespace
