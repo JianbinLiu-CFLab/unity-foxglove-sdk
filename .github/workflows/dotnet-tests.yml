@@ -271,6 +271,7 @@ jobs:
               "check_runtime_asmdef,check_runtime_files,check_runtime_manifest,"
               "check_runtime_source_patches,fresh_project_acceptance_binding_matches_manifest,"
               "fresh_project_acceptance_passed,fresh_project_acceptance_record_is_valid,"
+              "fresh_project_acceptance_status,"
               "inventory_category_counts_match,published_runtime_is_not_prototype",
           ]
           normalized_lines = [line.replace("\\", "/") for line in text.splitlines() if line.strip()]
@@ -315,7 +316,7 @@ jobs:
                   if line
               }
               if changed_paths != expected_changed_paths:
-                  sys.stderr.write("Unexpected Lyrical validator split file set\\n")
+                  sys.stderr.write("Unexpected Lyrical validator split file set\n")
                   raise SystemExit(1)
               print("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT: exact implementation_lyrical manifest_and_inventory runtime_checks transition")
               raise SystemExit(0)
