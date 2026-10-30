@@ -262,6 +262,24 @@ jobs:
           text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
           base_sha, head_sha = sys.argv[2:]
           errors = [line.replace("\\", "/") for line in text.splitlines() if line.startswith("ValueError: ")]
+          lyrical_package_validator_path = "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py"
+          lyrical_package_validator_error = f"ValueError: Unsupported generated module registry pop in {lyrical_package_validator_path}"
+          expected_lyrical_package_paths = {
+              ".github/workflows/dotnet-tests.yml",
+              "Scripts/phase192/compare_identity_surfaces.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling.py",
+              lyrical_package_validator_path,
+              "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/__init__.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/__main__.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/boundary_checks.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/core.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/entrypoint.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/manifest.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/package_metadata.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/runtime_checks.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/sample_checks.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/text_boundaries.py",
+          }
           lyrical_validator_path = "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py"
           lyrical_validator_errors = [
               f"PACKAGE_INITIALIZER_CHANGED {lyrical_validator_path}",
@@ -307,6 +325,39 @@ jobs:
               '    _phase192_sys.modules.pop("validate_ros2forunity_package", None)',
               "",
           ]
+          if len(errors) == 1 and errors[0].endswith("Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py") and errors[0].startswith("ValueError: Unsupported generated module registry pop in "):
+              changed_paths = {
+                  line for line in subprocess.check_output(
+                      ["git", "diff", "--name-only", base_sha, head_sha],
+                      text=True,
+                  ).splitlines()
+                  if line
+              }
+              if changed_paths != expected_lyrical_package_paths:
+                  sys.stderr.write("Unexpected Lyrical validator split file set\n")
+                  raise SystemExit(1)
+              lyrical_source = subprocess.check_output(
+                  ["git", "show", f"{head_sha}:{lyrical_package_validator_path}"],
+                  text=True,
+              )
+              required_cleanup = (
+                  '    _phase192_sys.modules.pop("validate_ros2forunity_package.core", None)',
+                  '    _phase192_sys.modules.pop("validate_ros2forunity_package.package_metadata", None)',
+                  '    _phase192_sys.modules.pop("validate_ros2forunity_package.manifest", None)',
+                  '    _phase192_sys.modules.pop("validate_ros2forunity_package.text_boundaries", None)',
+                  '    _phase192_sys.modules.pop("validate_ros2forunity_package.runtime_checks", None)',
+                  '    _phase192_sys.modules.pop("validate_ros2forunity_package.sample_checks", None)',
+                  '    _phase192_sys.modules.pop("validate_ros2forunity_package.boundary_checks", None)',
+                  '    _phase192_sys.modules.pop("validate_ros2forunity_package.entrypoint", None)',
+              )
+              if (
+                  any(lyrical_source.count(line) != 1 for line in required_cleanup)
+                  or lyrical_source.count('    _phase192_sys.modules.pop("validate_ros2forunity_package", None)') < 1
+              ):
+                  sys.stderr.write("Unexpected Lyrical validator facade cleanup\n")
+                  raise SystemExit(1)
+              print("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_FACADE_SPLIT: exact new facade and section package transition")
+              raise SystemExit(0)
           if normalized_lines == lyrical_validator_errors:
               changed_paths = {
                   line for line in subprocess.check_output(
@@ -320,7 +371,7 @@ jobs:
                   raise SystemExit(1)
               print("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT: exact implementation_lyrical manifest_and_inventory runtime_checks transition")
               raise SystemExit(0)
-          if len(errors) != 1 or not any(line.endswith(path) for path in errors):
+          if len(errors) != 1 or not any(line.endswith(path) for path in expected_paths for line in errors):
               sys.stderr.write(text)
               raise SystemExit(1)
           for path in expected_paths:
