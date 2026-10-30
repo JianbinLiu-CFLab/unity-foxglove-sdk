@@ -188,13 +188,13 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
             for prefix in prefixes
         ):
             return True
+        for path in module_paths(loaded_module):
+            if is_local_module_path(path):
+                return True
         if loaded_name == "Scripts" or loaded_name.startswith("Scripts."):
             return is_stale_phase192_module(loaded_name, loaded_module)
         if is_stale_phase192_module(loaded_name, loaded_module):
             return True
-        for path in module_paths(loaded_module):
-            if is_local_module_path(path):
-                return True
         return False
 
     try:
