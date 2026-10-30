@@ -6,6 +6,60 @@ from .foundation import *
 class RuntimeLayoutMetadataTests:
     """Exercise plugin layout, docs, and package metadata contracts"""
 
+    def test_generator_alignment_rejects_invalid_section_manifests(self) -> None:
+        """Generator alignment requires an exact, readable Python section manifest."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            generator = root / "Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py"
+            section_dir = generator.with_name("Decomposed") / generator.stem
+            section_dir.mkdir(parents=True)
+            generator.write_text(
+                "\n".join(
+                    (
+                        "collect_local_patch_overlays",
+                        "apply_local_patch_overlays",
+                        "collect_meta_overlays",
+                        "apply_meta_overlays",
+                        "LOCAL_PATCH_OVERLAY_FILES",
+                        "patch_ros_time_source_contract",
+                        "LEAKY_UPSTREAM_EXAMPLES",
+                        "runtime_asmdef",
+                        "validate_ros2cs_metadata_descriptions",
+                        "make_writable",
+                        "windows_long_path",
+                        "PackageInfo.FindForAssetPath",
+                        "UNITY_EDITOR",
+                        "Application.streamingAssetsPath",
+                    )
+                ),
+                encoding="utf-8",
+            )
+            for manifest, files in (
+                (None, ("01_types.py",)),
+                ("01_types.py\n01_types.py\n", ("01_types.py",)),
+                ("01_types.py\n", ("01_types.py", "02_extra.py")),
+                ("02_missing.py\n", ("01_types.py",)),
+            ):
+                with self.subTest(manifest=manifest, files=files):
+                    for path in section_dir.glob("*.py"):
+                        path.unlink()
+                    for name in files:
+                        (section_dir / name).write_text("VALUE = 1\n", encoding="utf-8")
+                    manifest_path = section_dir / "sections.manifest"
+                    if manifest is None:
+                        manifest_path.unlink(missing_ok=True)
+                    else:
+                        manifest_path.write_text(manifest, encoding="utf-8")
+                    self.validator.ROOT = root
+                    results = []
+                    self.validator.check_generator_alignment(results)
+                    manifest_result = next(
+                        result
+                        for result in results
+                        if result.name == "runtime package generator section manifest valid"
+                    )
+                    self.assertFalse(manifest_result.ok)
+
     def test_runtime_dll_metas_use_plugin_importer_in_both_plugin_roots(self) -> None:
         """Managed and native DLL metadata must be Unity plugin metadata."""
         metas = list((self.validator.RUNTIME_ROOT / "Plugins").glob("*.dll.meta"))

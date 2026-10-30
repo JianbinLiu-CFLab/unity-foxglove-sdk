@@ -282,7 +282,6 @@ jobs:
           }
           lyrical_validator_path = "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py"
           lyrical_validator_errors = [
-              f"PACKAGE_INITIALIZER_CHANGED {lyrical_validator_path}",
               f"MISSING_SYMBOLS {lyrical_validator_path}: "
               "acceptance_commit_is_ancestor_and_package_unchanged,check_generator_alignment,"
               "check_inventory,check_managed_deps_consistency,check_package_path_patch,"

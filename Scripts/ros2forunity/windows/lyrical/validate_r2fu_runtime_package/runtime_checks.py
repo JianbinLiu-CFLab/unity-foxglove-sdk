@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from section_manifest import load_section_names
+
 def check_runtime_files(results: list[CheckResult]) -> None:
     """Validate critical runtime files and package layout."""
     for dll in CRITICAL_PLUGIN_DLLS:
@@ -483,20 +485,18 @@ def check_generator_alignment(results: list[CheckResult]) -> None:
     add(results, "runtime package generator script readable", True, rel(generator_path))
     generator_sources = [generator_path]
     section_dir = generator_path.with_name("Decomposed") / generator_path.stem
-    manifest_path = section_dir / "sections.manifest"
-    if manifest_path.is_file():
-        section_names = tuple(
-            line.strip()
-            for line in manifest_path.read_text(encoding="utf-8").splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
-        )
-        for section_name in section_names:
-            section_path = section_dir / section_name
-            try:
-                generator_sources.append(section_path)
-                section_path.read_text(encoding="utf-8", errors="replace")
-            except OSError as exc:
-                add(results, "runtime package generator section readable", False, f"{rel(section_path)}: {exc}")
+    try:
+        section_names = load_section_names(section_dir)
+    except (OSError, ValueError) as exc:
+        add(results, "runtime package generator section manifest valid", False, str(exc))
+        section_names = ()
+    for section_name in section_names:
+        section_path = section_dir / section_name
+        try:
+            generator_sources.append(section_path)
+            section_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            add(results, "runtime package generator section readable", False, f"{rel(section_path)}: {exc}")
     generator = "\n".join(
         source.read_text(encoding="utf-8", errors="replace")
         for source in generator_sources
