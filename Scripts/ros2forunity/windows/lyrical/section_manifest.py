@@ -37,4 +37,3 @@ def load_section_names(section_dir: Path) -> tuple[str, ...]:
             f"unexpected={sorted(set(actual_names) - set(names))}"
         )
     return names
-
