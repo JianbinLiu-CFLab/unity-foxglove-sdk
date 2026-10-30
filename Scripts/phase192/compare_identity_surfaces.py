@@ -913,6 +913,7 @@ def _phase192_validate_template_registry_mutations(
     if relative_path in {
         "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
         "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
+        "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py",
     }:
         allowed_module_keys.update(
             f"validate_ros2forunity_package.{name}"
