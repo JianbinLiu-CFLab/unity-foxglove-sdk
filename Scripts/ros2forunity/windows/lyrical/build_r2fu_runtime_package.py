@@ -25,11 +25,6 @@ import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-_SECTION_MANIFEST_DIR = Path(__file__).resolve().parent
-if str(_SECTION_MANIFEST_DIR) not in sys.path:
-    sys.path.insert(0, str(_SECTION_MANIFEST_DIR))
-from section_manifest import load_section_names
-
 
 REPO_ROOT_PARENT_DEPTH = 4
 EXIT_SUCCESS = 0
@@ -248,6 +243,40 @@ RMW_VALIDATE_BLOCK = """    private static void ValidateRmwImplementation(string
 """
 
 
+
+
+def load_section_names(section_dir: Path) -> tuple[str, ...]:
+    """Return the manifest order after validating the exact section file set."""
+    manifest_path = section_dir / "sections.manifest"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"Missing runtime package section manifest: {manifest_path}")
+    names = tuple(
+        line.strip()
+        for line in manifest_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+    folded = {name.casefold() for name in names}
+    if not names or len(names) != len(folded) or any(
+        not name.endswith(".py")
+        or Path(name).name != name
+        or name in {"__init__.py", "__main__.py"}
+        for name in names
+    ):
+        raise ValueError(f"Invalid runtime package section manifest: {manifest_path}")
+    actual_names = tuple(
+        sorted(
+            path.name
+            for path in section_dir.glob("*.py")
+            if path.name not in {"__init__.py", "__main__.py"}
+        )
+    )
+    if set(actual_names) != set(names):
+        raise ValueError(
+            "Runtime package section manifest mismatch: "
+            f"missing={sorted(set(names) - set(actual_names))}; "
+            f"unexpected={sorted(set(actual_names) - set(names))}"
+        )
+    return names
 
 
 def _load_source_sections() -> None:

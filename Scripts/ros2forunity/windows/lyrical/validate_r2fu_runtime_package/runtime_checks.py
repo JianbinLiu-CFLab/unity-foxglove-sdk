@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from section_manifest import load_section_names
+from build_r2fu_runtime_package import load_section_names
 
 def check_runtime_files(results: list[CheckResult]) -> None:
     """Validate critical runtime files and package layout."""
