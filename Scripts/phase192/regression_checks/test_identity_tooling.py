@@ -913,6 +913,11 @@ class IdentityToolingTests(unittest.TestCase):
                 "Scripts.ros2forunity",
                 "Scripts.phase192",
             ]
+            saved_modules = {
+                name: module
+                for name, module in sys.modules.items()
+                if name == "Scripts" or name.startswith("Scripts.")
+            }
             for name in names:
                 sys.modules.pop(name, None)
             try:
@@ -924,8 +929,11 @@ class IdentityToolingTests(unittest.TestCase):
                     module = sys.modules[name]
                     self.assertIn(str(checkouts[1][0]), str(getattr(module, "__file__", "")))
             finally:
-                for name in names:
-                    sys.modules.pop(name, None)
+                for name in tuple(sys.modules):
+                    if name == "Scripts" or name.startswith("Scripts."):
+                        if name not in saved_modules:
+                            sys.modules.pop(name, None)
+                sys.modules.update(saved_modules)
 
     def test_load_fresh_module_removes_arbitrary_source_aliases(self) -> None:
         """Fresh loads remove aliases for source modules without a hardcoded package list."""
@@ -961,9 +969,14 @@ class IdentityToolingTests(unittest.TestCase):
                 "Scripts.shared.implementation",
                 "tool_alias.implementation",
             )
+            saved_modules = {
+                name: module
+                for name, module in sys.modules.items()
+                if name == "Scripts" or name.startswith("Scripts.")
+            }
             for name in names:
                 sys.modules.pop(name, None)
-            sys.modules["Scripts.tool.implementation"] = alias_module
+            sys.modules["Scripts.shared.implementation"] = alias_module
             sys.modules["tool_alias.implementation"] = alias_module
             try:
                 loaded = source_layout.load_fresh_module("facade", facade)
@@ -971,8 +984,14 @@ class IdentityToolingTests(unittest.TestCase):
                 self.assertIsNot(alias_module, sys.modules.get("Scripts.tool.implementation"))
                 self.assertNotIn("tool_alias.implementation", sys.modules)
             finally:
-                for name in names:
-                    sys.modules.pop(name, None)
+                for name in tuple(sys.modules):
+                    if (
+                        name == "Scripts"
+                        or name.startswith("Scripts.")
+                        or name == "tool_alias.implementation"
+                    ) and name not in saved_modules:
+                        sys.modules.pop(name, None)
+                sys.modules.update(saved_modules)
 
     def test_phase163_37_harness_guard_reads_composed_csharp_source(self) -> None:
         """Phase163-37 must inspect the facade and its split TestSources sections."""
