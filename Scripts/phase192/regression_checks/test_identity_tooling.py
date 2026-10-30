@@ -750,6 +750,64 @@ class IdentityToolingTests(unittest.TestCase):
                 {entry[0] for entry in head},
             )
 
+    def test_reviewed_namespace_split_requires_exact_helper_digests(self) -> None:
+        """The reviewed namespace split waiver rejects any later helper mutation."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base_root = root / "base"
+            head_root = root / "head"
+            for checkout in (base_root, head_root):
+                for relative in compare_identity_surfaces._IDENTITY_HELPER_RELATIVES:
+                    path = checkout / relative
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    if relative == "Scripts/phase192/identity_namespace_analysis.py":
+                        continue
+                    if relative == "Scripts/phase192/identity_namespace_scanner.py":
+                        continue
+                    path.write_text("VALUE = 1\n", encoding="utf-8")
+            base_analysis = subprocess.check_output(
+                ["git", "show", "origin/main:Scripts/phase192/identity_namespace_analysis.py"],
+                cwd=compare_identity_surfaces.REPOSITORY_ROOT,
+            )
+            head_analysis = (
+                compare_identity_surfaces.REPOSITORY_ROOT
+                / "Scripts/phase192/identity_namespace_analysis.py"
+            ).read_bytes()
+            head_scanner = (
+                compare_identity_surfaces.REPOSITORY_ROOT
+                / "Scripts/phase192/identity_namespace_scanner.py"
+            ).read_bytes()
+            (base_root / "Scripts/phase192/identity_namespace_analysis.py").write_bytes(base_analysis)
+            (head_root / "Scripts/phase192/identity_namespace_analysis.py").write_bytes(head_analysis)
+            (head_root / "Scripts/phase192/identity_namespace_scanner.py").write_bytes(head_scanner)
+            base_contract = compare_identity_surfaces._identity_helper_source_contract(base_root)
+            head_contract = compare_identity_surfaces._identity_helper_source_contract(head_root)
+            self.assertEqual(
+                [],
+                compare_identity_surfaces._compare_identity_helper_contracts(
+                    base_contract,
+                    head_contract,
+                    base_root=base_root,
+                    head_root=head_root,
+                ),
+            )
+            for relative in (
+                "Scripts/phase192/identity_namespace_analysis.py",
+                "Scripts/phase192/identity_namespace_scanner.py",
+            ):
+                with self.subTest(relative=relative):
+                    path = head_root / relative
+                    path.write_bytes(path.read_bytes() + b"\nMUTATION = True\n")
+                    mutated = compare_identity_surfaces._identity_helper_source_contract(head_root)
+                    errors = compare_identity_surfaces._compare_identity_helper_contracts(
+                        base_contract,
+                        mutated,
+                        base_root=base_root,
+                        head_root=head_root,
+                    )
+                    self.assertIn(f"HELPER_SOURCE_CHANGED {relative}", errors)
+                    path.write_bytes(head_analysis if relative.endswith("analysis.py") else head_scanner)
+
     def test_load_fresh_module_isolates_absolute_phase192_helpers_across_checkouts(self) -> None:
         """Fresh loads must replace Scripts.phase192 helpers from checkout A with checkout B."""
         import sys

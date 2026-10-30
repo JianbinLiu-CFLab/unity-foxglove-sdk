@@ -5040,6 +5040,10 @@ _IDENTITY_HELPER_RELATIVES = (
     "Scripts/phase192/identity_namespace_scanner.py",
     "Scripts/phase192/identity_initializer_contracts.py",
 )
+_REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS = {
+    "Scripts/phase192/identity_namespace_analysis.py": "8d6a93568b472173007befcfbd67c97aec146569e0d2ff23e9f1ade0f51d1a26",
+    "Scripts/phase192/identity_namespace_scanner.py": "657bf0dcc2ef4b74b8a334de85132b8a0376be1c08bb4e76da1673c39893104e",
+}
 
 
 def _identity_helper_source_contract(root: Path) -> tuple[tuple[str, str | None], ...]:
@@ -5063,17 +5067,17 @@ def _compare_identity_helper_contracts(
     base_map = dict(base_contract)
     head_map = dict(head_contract)
     errors: list[str] = []
-    reviewed_namespace_split = (
+    reviewed_namespace_split = False
+    if (
         base_root is not None
         and head_root is not None
         and not (base_root / "Scripts/phase192/identity_namespace_scanner.py").is_file()
-        and (head_root / "Scripts/phase192/identity_namespace_scanner.py").is_file()
-        and len((head_root / "Scripts/phase192/identity_namespace_analysis.py").read_text(encoding="utf-8").splitlines()) < 1000
-        and len((head_root / "Scripts/phase192/identity_namespace_scanner.py").read_text(encoding="utf-8").splitlines()) < 1000
-        and "from Scripts.phase192.identity_namespace_scanner import scan_namespace" in (
-            head_root / "Scripts/phase192/identity_namespace_analysis.py"
-        ).read_text(encoding="utf-8")
-    )
+    ):
+        reviewed_namespace_split = all(
+            (head_root / relative).is_file()
+            and hashlib.sha256((head_root / relative).read_bytes()).hexdigest() == digest
+            for relative, digest in _REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS.items()
+        )
     for relative in _IDENTITY_HELPER_RELATIVES:
         if base_map.get(relative) != head_map.get(relative):
             if reviewed_namespace_split and relative in {
