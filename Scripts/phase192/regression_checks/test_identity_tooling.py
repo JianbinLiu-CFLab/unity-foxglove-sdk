@@ -913,11 +913,7 @@ class IdentityToolingTests(unittest.TestCase):
                 "Scripts.ros2forunity",
                 "Scripts.phase192",
             ]
-            saved_modules = {
-                name: module
-                for name, module in sys.modules.items()
-                if name == "Scripts" or name.startswith("Scripts.")
-            }
+            saved_modules = dict(sys.modules)
             for name in names:
                 sys.modules.pop(name, None)
             try:
@@ -969,11 +965,7 @@ class IdentityToolingTests(unittest.TestCase):
                 "Scripts.shared.implementation",
                 "tool_alias.implementation",
             )
-            saved_modules = {
-                name: module
-                for name, module in sys.modules.items()
-                if name == "Scripts" or name.startswith("Scripts.")
-            }
+            saved_modules = dict(sys.modules)
             for name in names:
                 sys.modules.pop(name, None)
             sys.modules["Scripts.shared.implementation"] = alias_module
@@ -985,11 +977,7 @@ class IdentityToolingTests(unittest.TestCase):
                 self.assertNotIn("tool_alias.implementation", sys.modules)
             finally:
                 for name in tuple(sys.modules):
-                    if (
-                        name == "Scripts"
-                        or name.startswith("Scripts.")
-                        or name == "tool_alias.implementation"
-                    ) and name not in saved_modules:
+                    if name not in saved_modules:
                         sys.modules.pop(name, None)
                 sys.modules.update(saved_modules)
 

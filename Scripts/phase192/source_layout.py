@@ -221,7 +221,34 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
                 if module is loaded_module
             )
         canonical = canonical_module_names(paths)
-        return len(aliases) > 1 and any(name not in canonical for name in aliases)
+        if not canonical or len(aliases) <= 1 or not any(name in canonical for name in aliases):
+            return False
+        if any(
+            alias not in canonical
+            and (canonical_name == alias or canonical_name.endswith("." + alias))
+            for canonical_name in canonical
+            for alias in aliases
+        ):
+            return False
+        try:
+            is_package = bool(tuple(getattr(loaded_module, "__path__", ()) or ()))
+        except Exception:
+            is_package = False
+        if is_package:
+            return False
+        if loaded_name in canonical:
+            return True
+        parent_name = loaded_name.rsplit(".", 1)[0] if "." in loaded_name else None
+        parent_module = sys.modules.get(parent_name) if parent_name else None
+        if parent_module is not None:
+            parent_paths = module_paths(parent_module)
+            parent_canonical = canonical_module_names(parent_paths)
+            parent_aliases = initial_module_aliases.get(id(parent_module), ())
+            if parent_canonical and any(
+                name in parent_canonical for name in parent_aliases
+            ) and parent_name not in parent_canonical:
+                return False
+        return True
 
     def has_duplicate_namespace_paths(loaded_name: str, loaded_module: ModuleType) -> bool:
         """Return whether a non-root namespace package carries duplicate source paths."""
