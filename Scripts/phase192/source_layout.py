@@ -145,6 +145,10 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     package_dir = facade.with_suffix("")
     saved_modules: dict[str, ModuleType] = {}
     initial_module_names = set(sys.modules)
+    initial_module_aliases: dict[int, tuple[str, ...]] = {}
+    for name, module in tuple(sys.modules.items()):
+        initial_module_aliases.setdefault(id(module), tuple())
+        initial_module_aliases[id(module)] += (name,)
 
     def is_local_module_path(path: Path) -> bool:
         """Return whether a module path belongs to the facade directory."""
@@ -181,6 +185,52 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
             return False
         return not any(path == source_root or source_root in path.parents for path in paths)
 
+    def canonical_module_names(paths: tuple[Path, ...]) -> frozenset[str]:
+        """Return canonical Scripts names represented by source paths."""
+        names: set[str] = set()
+        for path in paths:
+            try:
+                relative = path.relative_to(source_root)
+            except ValueError:
+                continue
+            parts = list(relative.parts)
+            if not parts or parts[0] != "Scripts":
+                continue
+            if path.name == "__init__.py":
+                parts.pop()
+            elif path.suffix == ".py":
+                parts[-1] = path.stem
+            else:
+                continue
+            if parts:
+                names.add(".".join(parts))
+        return frozenset(names)
+
+    def is_source_alias(loaded_name: str, loaded_module: ModuleType) -> bool:
+        """Return whether a source module is registered under a non-canonical alias."""
+        paths = module_paths(loaded_module)
+        if not paths:
+            return False
+        aliases = initial_module_aliases.get(id(loaded_module))
+        if aliases is None:
+            aliases = tuple(
+                name
+                for name, module in sys.modules.items()
+                if module is loaded_module
+            )
+        canonical = canonical_module_names(paths)
+        return len(aliases) > 1 and any(name not in canonical for name in aliases)
+
+    def has_duplicate_namespace_paths(loaded_name: str, loaded_module: ModuleType) -> bool:
+        """Return whether a non-root namespace package carries duplicate source paths."""
+        if loaded_name == "Scripts" or not loaded_name.startswith("Scripts."):
+            return False
+        module_spec = getattr(loaded_module, "__spec__", None)
+        if getattr(module_spec, "origin", None) not in {None, "built-in", "frozen"}:
+            return False
+        paths = module_paths(loaded_module)
+        return len(paths) > 1 and len(set(paths)) != len(paths)
+
     def should_remove(loaded_name: str, loaded_module: ModuleType) -> bool:
         """Return whether one cached module would contaminate the fresh checkout."""
         if any(
@@ -191,14 +241,9 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         for path in module_paths(loaded_module):
             if is_local_module_path(path):
                 return True
-        if (
-            loaded_name == "Scripts.samples"
-            or loaded_name.startswith("Scripts.samples.")
-            or loaded_name == "unity_il2cpp"
-            or loaded_name.startswith("unity_il2cpp.")
-            or loaded_name == "Scripts.unity_build.unity_il2cpp"
-            or loaded_name.startswith("Scripts.unity_build.unity_il2cpp.")
-        ):
+        if is_source_alias(loaded_name, loaded_module):
+            return True
+        if has_duplicate_namespace_paths(loaded_name, loaded_module):
             return True
         if loaded_name == "Scripts" or loaded_name.startswith("Scripts."):
             return is_stale_phase192_module(loaded_name, loaded_module)
