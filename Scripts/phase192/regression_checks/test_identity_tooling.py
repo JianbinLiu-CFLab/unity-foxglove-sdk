@@ -639,7 +639,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(80, len(surfaces))
+        self.assertEqual(81, len(surfaces))
         jazzy = surfaces[
             "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py"
         ]
@@ -656,6 +656,13 @@ class IdentityToolingTests(unittest.TestCase):
             "Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py"
         ]
         self.assertEqual(jazzy[1], lyrical[1])
+        lyrical_orchestrator = surfaces[
+            "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build.py"
+        ]
+        self.assertEqual(
+            ("safety_and_environment", "build_pipeline", "evidence"),
+            lyrical_orchestrator[1],
+        )
 
     def test_identity_surface_includes_nested_split_modules(self) -> None:
         """Nested package modules participate in the identity contract."""
@@ -1082,7 +1089,11 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertIn("Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py", relative)
         self.assertIn("Scripts/unity_build/unity_il2cpp.py", relative)
         self.assertIn("Scripts/release/run_ci.py", relative)
-        self.assertEqual(80, len(relative))
+        self.assertIn(
+            "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build.py",
+            relative,
+        )
+        self.assertEqual(81, len(relative))
 
     def test_identity_surface_recognizes_manifest_backed_decomposed_facade(self) -> None:
         """A Decomposed/<facade-stem> manifest participates in identity checks."""
