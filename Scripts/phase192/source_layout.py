@@ -211,6 +211,8 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         paths = module_paths(loaded_module)
         if not paths:
             return False
+        if not any(path == source_root or source_root in path.parents for path in paths):
+            return False
         aliases = initial_module_aliases.get(id(loaded_module))
         if aliases is None:
             aliases = tuple(
