@@ -2370,6 +2370,97 @@ def _phase192_template_validate_initializer(tree: ast.Module, path: str) -> None
         raise ValueError(f"Generated package has no relative section imports in {path}")
 
 
+def _reviewed_validator_initializer_is_safe(source: str, path: str) -> None:
+    """Validate the exact import-time shape allowed for the reviewed validator split."""
+    tree = _parse_source(source, path)
+    _phase192_template_validate_initializer(tree, path)
+    parents: dict[int, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[id(child)] = parent
+
+    def has_runtime_parent(node: ast.AST) -> bool:
+        """Return whether a node is nested in a function or class body."""
+        current = parents.get(id(node))
+        while current is not None:
+            if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                return True
+            current = parents.get(id(current))
+        return False
+
+    def exact_section_export_assignment(node: ast.Assign) -> bool:
+        """Recognize the generated globals export assignment."""
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Subscript):
+            return False
+        target = node.targets[0]
+        return (
+            isinstance(target.value, ast.Call)
+            and isinstance(target.value.func, ast.Name)
+            and target.value.func.id == "globals"
+            and isinstance(target.slice, ast.Name)
+            and target.slice.id == "_phase192_name"
+        )
+
+    def exact_section_sync_assignment(node: ast.Assign) -> bool:
+        """Recognize the generated section namespace sync assignment."""
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Subscript):
+            return False
+        target = node.targets[0]
+        return (
+            isinstance(target.value, ast.Attribute)
+            and isinstance(target.value.value, ast.Name)
+            and target.value.value.id == "_phase192_section"
+            and target.value.attr == "__dict__"
+            and isinstance(target.slice, ast.Name)
+            and target.slice.id == "_phase192_name"
+        )
+
+    allowed_section_configuration = frozenset(
+        {"ROOT", "PACKAGE", "ADAPTER_PACKAGE", "CORE_PACKAGE", "RUNTIME_ROOT", "PLUGIN_ROOT", "MANIFEST", "INVENTORY", "PUBLIC_DOCS"}
+    )
+
+    for node in ast.walk(tree):
+        if has_runtime_parent(node):
+            continue
+        if isinstance(node, ast.Assign):
+            if exact_section_export_assignment(node) or exact_section_sync_assignment(node):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    if target.id == "__all__":
+                        expected = ast.Call(
+                            func=ast.Name(id="sorted", ctx=ast.Load()),
+                            args=[ast.Name(id="_PHASE192_EXPORT_NAMES", ctx=ast.Load())],
+                            keywords=[],
+                        )
+                        if ast.dump(node.value, include_attributes=False) != ast.dump(
+                            expected,
+                            include_attributes=False,
+                        ):
+                            raise ValueError(f"Unsupported generated package export assignment in {path}")
+                        continue
+                    if target.id == "__file__" or target.id.startswith(("_PHASE192_", "_phase192_")):
+                        continue
+                    raise ValueError(f"Unsupported generated package rebinding in {path}")
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "_phase192_section_0"
+                    and target.attr in allowed_section_configuration
+                ):
+                    continue
+                if (
+                    isinstance(target, ast.Attribute)
+                    and target.attr == "__class__"
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "_phase192_module"
+                ):
+                    continue
+                raise ValueError(f"Unsupported generated package rebinding in {path}")
+        elif isinstance(node, ast.Delete):
+            raise ValueError(f"Unsupported generated package deletion in {path}")
+
+
 def _phase192_initializer_kind(source: str) -> str | None:
     """Return the AST-derived generated package initializer kind."""
     tree = ast.parse(source)
@@ -5374,7 +5465,12 @@ def _compare_surfaces(
                 dict(head_section_map or ()),
             )
         if reviewed_validator_split:
-            initializer_ok = True
+            try:
+                _reviewed_validator_initializer_is_safe(head_initializer, relative)
+            except (SyntaxError, ValueError):
+                initializer_ok = False
+            else:
+                initializer_ok = True
         if not initializer_ok:
             errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
         if not _sections_preserve_order(base_sections, head_sections):

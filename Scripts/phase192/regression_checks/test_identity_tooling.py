@@ -927,6 +927,53 @@ class IdentityToolingTests(unittest.TestCase):
                 for name in names:
                     sys.modules.pop(name, None)
 
+    def test_load_fresh_module_removes_arbitrary_source_aliases(self) -> None:
+        """Fresh loads remove aliases for source modules without a hardcoded package list."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            scripts = root / "Scripts"
+            tool = scripts / "tool"
+            shared = scripts / "shared"
+            tool.mkdir(parents=True)
+            shared.mkdir(parents=True)
+            (scripts / "__init__.py").write_text("", encoding="utf-8")
+            (tool / "__init__.py").write_text(
+                "from Scripts.shared.implementation import VALUE\n",
+                encoding="utf-8",
+            )
+            (shared / "__init__.py").write_text("", encoding="utf-8")
+            (shared / "implementation.py").write_text(
+                "VALUE = 'fresh'\n",
+                encoding="utf-8",
+            )
+            facade = tool / "facade.py"
+            facade.write_text(
+                "from Scripts.shared.implementation import VALUE\n",
+                encoding="utf-8",
+            )
+            alias_module = types.ModuleType("Scripts.shared.implementation")
+            alias_module.__file__ = str(shared / "implementation.py")
+            names = (
+                "facade",
+                "Scripts",
+                "Scripts.tool",
+                "Scripts.shared",
+                "Scripts.shared.implementation",
+                "tool_alias.implementation",
+            )
+            for name in names:
+                sys.modules.pop(name, None)
+            sys.modules["Scripts.tool.implementation"] = alias_module
+            sys.modules["tool_alias.implementation"] = alias_module
+            try:
+                loaded = source_layout.load_fresh_module("facade", facade)
+                self.assertEqual("fresh", loaded.VALUE)
+                self.assertIsNot(alias_module, sys.modules.get("Scripts.tool.implementation"))
+                self.assertNotIn("tool_alias.implementation", sys.modules)
+            finally:
+                for name in names:
+                    sys.modules.pop(name, None)
+
     def test_phase163_37_harness_guard_reads_composed_csharp_source(self) -> None:
         """Phase163-37 must inspect the facade and its split TestSources sections."""
         path = (
@@ -4294,6 +4341,42 @@ class IdentityToolingTests(unittest.TestCase):
                     ),
                     str(initializer),
                 )
+
+    def test_reviewed_validator_split_rejects_initializer_rebindings(self) -> None:
+        """The reviewed validator split cannot waive arbitrary facade rebindings."""
+        relative = "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py"
+        initializer = Path(
+            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py"
+        )
+        source = initializer.read_text(encoding="utf-8")
+        base_surface = {
+            relative: (
+                frozenset({"main", "run_checks"}),
+                ("implementation_lyrical",),
+                "from . import implementation_lyrical\n",
+                frozenset(),
+            )
+        }
+        for mutation in (
+            "main = lambda: 0\n",
+            "_phase192_section_0.run_checks = lambda *args, **kwargs: []\n",
+            "_phase192_section_0.main = None\n",
+        ):
+            with self.subTest(mutation=mutation):
+                head_surface = {
+                    relative: (
+                        frozenset({"main", "run_checks"}),
+                        ("implementation_lyrical", "manifest_and_inventory", "runtime_checks"),
+                        source + "\n" + mutation,
+                        frozenset(),
+                    )
+                }
+                errors = compare_identity_surfaces._compare_surfaces(
+                    base_surface,
+                    head_surface,
+                    strict=False,
+                )
+                self.assertIn("PACKAGE_INITIALIZER_CHANGED " + relative, errors)
 
     def test_split_section_rejects_shadowed_globals_builtin(self) -> None:
         """Dynamic __all__ cannot invoke a module-defined globals replacement."""

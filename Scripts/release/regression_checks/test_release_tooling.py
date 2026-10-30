@@ -769,6 +769,18 @@ class RunCiTests(unittest.TestCase):
         self.assertNotIn("python3 Scripts/phase192/compare_identity_surfaces.py", joined)
         self.assertNotIn("--strict", joined)
 
+    def test_dotnet_workflow_cannot_waive_validator_initializer_changes(self) -> None:
+        """The trusted-base compatibility fallback must not accept facade rebindings."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        start = workflow.index("          lyrical_validator_errors = [")
+        end = workflow.index("          normalized_lines =", start)
+        fallback = workflow[start:end]
+        self.assertNotIn("PACKAGE_INITIALIZER_CHANGED", fallback)
+        self.assertIn(
+            "python3 Scripts/phase192/compare_identity_surfaces.py \\",
+            workflow,
+        )
+
     def test_dotnet_workflow_provisions_phase186_websocket_runtime_dependency(self) -> None:
         """The module-execution regression must run with its websocket dependency installed."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
