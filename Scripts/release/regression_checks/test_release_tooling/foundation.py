@@ -31,8 +31,6 @@ from Scripts.phase192.source_layout import read_split_source
 
 
 ROOT = Path(__file__).resolve().parents[4]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 BUMP_VERSION_PATH = ROOT / "Scripts" / "release" / "bump_version.py"
 RUN_CI_PATH = ROOT / "Scripts" / "release" / "run_ci.py"
 MCAP_CONFORMANCE_PATH = ROOT / "Scripts" / "mcap" / "conformance" / "run_phase121_conformance.py"
