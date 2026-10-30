@@ -3412,7 +3412,12 @@ def _initializer_digest(initializer: Path) -> str:
     normalized = initializer.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
     return hashlib.sha256(normalized).hexdigest()
 
-from Scripts.phase192.identity_namespace_analysis import _namespace_risk_signatures
+from Scripts.phase192.identity_namespace_analysis import (
+    _NAMESPACE_RISK_ATTRIBUTES,
+    _NAMESPACE_RISK_MODULE_ATTRIBUTES,
+    _NAMESPACE_RISK_NAMES,
+    _namespace_risk_signatures,
+)
 
 
 def _is_phase121_configuration_path(
@@ -5026,6 +5031,41 @@ def _reviewed_validator_section_split(
         and head_sections == ("implementation_lyrical", "manifest_and_inventory", "runtime_checks")
     )
 
+_REVIEWED_VALIDATOR_CLEANUP_SIGNATURE = (
+    "facade::7cdf800c9922e9368a642e72b34a53b8fa0049b842fda84b2ca8041537599915"
+)
+_IDENTITY_HELPER_RELATIVES = (
+    "Scripts/phase192/identity_surface_conditions.py",
+    "Scripts/phase192/identity_namespace_analysis.py",
+    "Scripts/phase192/identity_namespace_scanner.py",
+    "Scripts/phase192/identity_initializer_contracts.py",
+)
+
+
+def _identity_helper_source_contract(root: Path) -> tuple[tuple[str, str | None], ...]:
+    """Return source digests for identity helpers used by the checker."""
+    contract: list[tuple[str, str | None]] = []
+    for relative in _IDENTITY_HELPER_RELATIVES:
+        path = root / relative
+        digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+        contract.append((relative, digest))
+    return tuple(contract)
+
+
+def _compare_identity_helper_contracts(
+    base_contract: tuple[tuple[str, str | None], ...],
+    head_contract: tuple[tuple[str, str | None], ...],
+) -> list[str]:
+    """Report helper implementation changes independently of facade surfaces."""
+    base_map = dict(base_contract)
+    head_map = dict(head_contract)
+    errors: list[str] = []
+    for relative in _IDENTITY_HELPER_RELATIVES:
+        if base_map.get(relative) != head_map.get(relative):
+            errors.append(f"HELPER_SOURCE_CHANGED {relative}")
+    return errors
+
+
 def _reviewed_validator_isolation_transition(
     relative: str,
     base_contract: tuple[str, ...],
@@ -5037,16 +5077,18 @@ def _reviewed_validator_isolation_transition(
         "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
     }:
         return False
-    return (
-        (
+    if relative.endswith("/humble/validate_ros2forunity_package.py"):
+        return (
             len(head_contract) == len(base_contract) + 1
+            and head_contract[0] == _REVIEWED_VALIDATOR_CLEANUP_SIGNATURE
             and head_contract[1:] == base_contract
         )
-        or (
-            len(base_contract) == len(head_contract)
-            and len(base_contract) > 1
-            and base_contract[1:] == head_contract[1:]
-        )
+    return (
+        len(head_contract) == len(base_contract) + 1
+        and len(base_contract) > 0
+        and head_contract[0] == base_contract[0]
+        and head_contract[1] == _REVIEWED_VALIDATOR_CLEANUP_SIGNATURE
+        and head_contract[2:] == base_contract[1:]
     )
 
 def _compare_surfaces(
@@ -5336,6 +5378,8 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
     with _revision_checkout(repository, base) as base_root, _revision_checkout(repository, head) as head_root:
         base_surfaces = _surfaces(base_root, strict=strict)
         head_surfaces = _surfaces(head_root, strict=strict)
+        base_helper_contract = _identity_helper_source_contract(base_root)
+        head_helper_contract = _identity_helper_source_contract(head_root)
         base_waivers = _load_identity_waivers(base_root)
         head_waivers = _load_identity_waivers(head_root)
         if strict and base_waivers != head_waivers:
@@ -5354,6 +5398,10 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
         strict=strict,
         waived_symbols=base_waivers if not strict else None,
     )
+    errors = _compare_identity_helper_contracts(
+        base_helper_contract,
+        head_helper_contract,
+    ) + errors
     if errors:
         for error in errors:
             print(error)
