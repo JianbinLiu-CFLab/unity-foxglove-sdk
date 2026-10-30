@@ -192,7 +192,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
             if is_local_module_path(path):
                 return True
         if loaded_name == "Scripts" or loaded_name.startswith("Scripts."):
-            return is_stale_phase192_module(loaded_name, loaded_module)
+            return True
         if is_stale_phase192_module(loaded_name, loaded_module):
             return True
         return False
