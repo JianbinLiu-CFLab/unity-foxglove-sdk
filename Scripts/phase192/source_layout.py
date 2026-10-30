@@ -145,6 +145,13 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     package_dir = facade.with_suffix("")
     saved_modules: dict[str, ModuleType] = {}
     initial_module_names = set(sys.modules)
+    target_scripts_prefix: str | None = None
+    try:
+        relative_facade = facade.relative_to(source_root)
+    except ValueError:
+        relative_facade = None
+    if relative_facade is not None and relative_facade.parts[:1] == ("Scripts",):
+        target_scripts_prefix = ".".join(relative_facade.parts[:-1])
     initial_module_aliases: dict[int, tuple[str, ...]] = {}
     for name, module in tuple(sys.modules.items()):
         initial_module_aliases.setdefault(id(module), tuple())
@@ -183,7 +190,11 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         paths = module_paths(module)
         if not paths:
             return False
-        return not any(path == source_root or source_root in path.parents for path in paths)
+        if any(path == source_root or source_root in path.parents for path in paths):
+            return False
+        if name == "Scripts":
+            return True
+        return target_scripts_prefix is not None
 
     def canonical_module_names(paths: tuple[Path, ...]) -> frozenset[str]:
         """Return canonical Scripts names represented by source paths."""
@@ -221,23 +232,21 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
                 if module is loaded_module
             )
         canonical = canonical_module_names(paths)
-        if not canonical or len(aliases) <= 1 or not any(name in canonical for name in aliases):
+        logical_aliases = set(aliases)
+        module_name = getattr(loaded_module, "__name__", None)
+        if isinstance(module_name, str):
+            logical_aliases.add(module_name)
+        if not canonical or not any(name in canonical for name in logical_aliases):
             return False
         if any(
             alias not in canonical
             and (canonical_name == alias or canonical_name.endswith("." + alias))
             for canonical_name in canonical
-            for alias in aliases
+            for alias in logical_aliases
         ):
             return False
-        try:
-            is_package = bool(tuple(getattr(loaded_module, "__path__", ()) or ()))
-        except Exception:
-            is_package = False
-        if is_package:
-            return False
         if loaded_name in canonical:
-            return True
+            return False
         parent_name = loaded_name.rsplit(".", 1)[0] if "." in loaded_name else None
         parent_module = sys.modules.get(parent_name) if parent_name else None
         if parent_module is not None:
@@ -245,7 +254,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
             parent_canonical = canonical_module_names(parent_paths)
             parent_aliases = initial_module_aliases.get(id(parent_module), ())
             if parent_canonical and any(
-                name in parent_canonical for name in parent_aliases
+                name in parent_canonical for name in (*parent_aliases, getattr(parent_module, "__name__", ""))
             ) and parent_name not in parent_canonical:
                 return False
         return True

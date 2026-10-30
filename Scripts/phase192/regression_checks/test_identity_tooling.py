@@ -844,6 +844,7 @@ class IdentityToolingTests(unittest.TestCase):
                 "Scripts.phase192.identity_surface_conditions",
                 "Scripts.phase192.identity_namespace_analysis",
             )
+            saved_modules = dict(sys.modules)
             for name in names:
                 sys.modules.pop(name, None)
             try:
@@ -855,8 +856,10 @@ class IdentityToolingTests(unittest.TestCase):
                 self.assertTrue(str(roots[1][0]) in sys.modules["Scripts.phase192.identity_namespace_analysis"].__file__)
                 self.assertTrue(str(roots[1][0]) in sys.modules["Scripts.phase192.identity_surface_conditions"].__file__)
             finally:
-                for name in names:
-                    sys.modules.pop(name, None)
+                for name in tuple(sys.modules):
+                    if name not in saved_modules:
+                        sys.modules.pop(name, None)
+                sys.modules.update(saved_modules)
 
     def test_load_fresh_module_preserves_real_scripts_package_graph_across_checkouts(self) -> None:
         """Fresh loads keep every Scripts parent package valid for real facade paths."""
@@ -968,7 +971,6 @@ class IdentityToolingTests(unittest.TestCase):
             saved_modules = dict(sys.modules)
             for name in names:
                 sys.modules.pop(name, None)
-            sys.modules["Scripts.shared.implementation"] = alias_module
             sys.modules["tool_alias.implementation"] = alias_module
             try:
                 loaded = source_layout.load_fresh_module("facade", facade)
