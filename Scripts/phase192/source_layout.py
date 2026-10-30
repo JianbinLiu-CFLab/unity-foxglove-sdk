@@ -138,7 +138,8 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     facade = facade.resolve()
     original_path = list(sys.path)
     facade_parent = str(facade.parent)
-    source_root = facade.parents[2] if facade.parent.name == "phase192" and facade.parent.parent.name == "Scripts" else facade.parent
+    scripts_directories = [ancestor for ancestor in facade.parents if ancestor.name == "Scripts"]
+    source_root = scripts_directories[0].parent if scripts_directories else facade.parent
     source_paths = {str(source_root), facade_parent}
     prefixes = {module_name, facade.stem}
     package_dir = facade.with_suffix("")

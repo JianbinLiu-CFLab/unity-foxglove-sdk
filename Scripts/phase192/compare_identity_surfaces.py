@@ -5041,9 +5041,15 @@ _IDENTITY_HELPER_RELATIVES = (
     "Scripts/phase192/identity_initializer_contracts.py",
 )
 _REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS = {
-    "Scripts/phase192/identity_namespace_analysis.py": "8d6a93568b472173007befcfbd67c97aec146569e0d2ff23e9f1ade0f51d1a26",
-    "Scripts/phase192/identity_namespace_scanner.py": "657bf0dcc2ef4b74b8a334de85132b8a0376be1c08bb4e76da1673c39893104e",
+    "Scripts/phase192/identity_namespace_analysis.py": "41685a4bd95a9c45e7979bf4501fb8d062a9b4fc404fcedf4ca071c1471ce947",
+    "Scripts/phase192/identity_namespace_scanner.py": "392e527bcc853bea3620c390bdc2844cd8e0c07c0ec957f00560e8046c40ed36",
 }
+
+
+def _normalized_source_digest(path: Path) -> str:
+    """Return a stable LF-normalized source digest."""
+    normalized = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(normalized).hexdigest()
 
 
 def _identity_helper_source_contract(root: Path) -> tuple[tuple[str, str | None], ...]:
@@ -5051,7 +5057,10 @@ def _identity_helper_source_contract(root: Path) -> tuple[tuple[str, str | None]
     contract: list[tuple[str, str | None]] = []
     for relative in _IDENTITY_HELPER_RELATIVES:
         path = root / relative
-        digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+        if path.is_file():
+            digest = _normalized_source_digest(path)
+        else:
+            digest = None
         contract.append((relative, digest))
     return tuple(contract)
 
@@ -5075,7 +5084,7 @@ def _compare_identity_helper_contracts(
     ):
         reviewed_namespace_split = all(
             (head_root / relative).is_file()
-            and hashlib.sha256((head_root / relative).read_bytes()).hexdigest() == digest
+            and _normalized_source_digest(head_root / relative) == digest
             for relative, digest in _REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS.items()
         )
     for relative in _IDENTITY_HELPER_RELATIVES:

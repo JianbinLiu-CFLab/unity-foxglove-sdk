@@ -858,6 +858,75 @@ class IdentityToolingTests(unittest.TestCase):
                 for name in names:
                     sys.modules.pop(name, None)
 
+    def test_load_fresh_module_preserves_real_scripts_package_graph_across_checkouts(self) -> None:
+        """Fresh loads keep every Scripts parent package valid for real facade paths."""
+        import sys
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_names = (
+                "phase192",
+                "package",
+                "smoke",
+                "smoke/foxglove",
+                "smoke/foxrun",
+                "unity_build",
+                "ros2forunity",
+            )
+            checkouts = []
+            for marker in ("A", "B"):
+                checkout = root / marker
+                scripts = checkout / "Scripts"
+                scripts.mkdir(parents=True)
+                (scripts / "__init__.py").write_text(
+                    f"MARKER = {marker!r}\n", encoding="utf-8"
+                )
+                for package_name in package_names:
+                    package = scripts / package_name
+                    package.mkdir(parents=True, exist_ok=True)
+                    (package / "__init__.py").write_text(
+                        f"MARKER = {marker!r}\n", encoding="utf-8"
+                    )
+                facade = scripts / "smoke/foxrun/phase184_profile_acceptance.py"
+                facade.write_text(
+                    "from Scripts import MARKER as SCRIPTS_MARKER\n"
+                    "from Scripts.package import MARKER as PACKAGE_MARKER\n"
+                    "from Scripts.smoke import MARKER as SMOKE_MARKER\n"
+                    "from Scripts.smoke.foxglove import MARKER as FOXGLOVE_MARKER\n"
+                    "from Scripts.smoke.foxrun import MARKER as FOXRUN_MARKER\n"
+                    "from Scripts.unity_build import MARKER as UNITY_BUILD_MARKER\n"
+                    "from Scripts.ros2forunity import MARKER as ROS2FORUNITY_MARKER\n"
+                    "from Scripts.phase192 import MARKER as PHASE192_MARKER\n"
+                    "VALUE = (SCRIPTS_MARKER, PACKAGE_MARKER, SMOKE_MARKER, FOXGLOVE_MARKER, FOXRUN_MARKER, UNITY_BUILD_MARKER, ROS2FORUNITY_MARKER, PHASE192_MARKER)\n",
+                    encoding="utf-8",
+                )
+                checkouts.append((checkout, facade))
+
+            names = [
+                "phase184_profile_acceptance",
+                "Scripts",
+                "Scripts.package",
+                "Scripts.smoke",
+                "Scripts.smoke.foxglove",
+                "Scripts.smoke.foxrun",
+                "Scripts.unity_build",
+                "Scripts.ros2forunity",
+                "Scripts.phase192",
+            ]
+            for name in names:
+                sys.modules.pop(name, None)
+            try:
+                first = source_layout.load_fresh_module("phase184_profile_acceptance", checkouts[0][1])
+                self.assertEqual(("A",) * 8, first.VALUE)
+                second = source_layout.load_fresh_module("phase184_profile_acceptance", checkouts[1][1])
+                self.assertEqual(("B",) * 8, second.VALUE)
+                for name in names[1:]:
+                    module = sys.modules[name]
+                    self.assertIn(str(checkouts[1][0]), str(getattr(module, "__file__", "")))
+            finally:
+                for name in names:
+                    sys.modules.pop(name, None)
+
     def test_phase163_37_harness_guard_reads_composed_csharp_source(self) -> None:
         """Phase163-37 must inspect the facade and its split TestSources sections."""
         path = (
