@@ -325,7 +325,7 @@ jobs:
               '    _phase192_sys.modules.pop("validate_ros2forunity_package", None)',
               "",
           ]
-          if errors == [lyrical_package_validator_error]:
+          if len(errors) == 1 and errors[0].endswith("Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py") and errors[0].startswith("ValueError: Unsupported generated module registry pop in "):
               changed_paths = {
                   line for line in subprocess.check_output(
                       ["git", "diff", "--name-only", base_sha, head_sha],
