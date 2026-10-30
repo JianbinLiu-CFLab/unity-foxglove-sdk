@@ -30,6 +30,25 @@ internal partial class ROS2ForUnity
             CompleteShutdownShared();
     }
 
+    private static void ShutdownShared()
+    {
+        bool shouldShutdown;
+        lock (lifecycleGate)
+        {
+            if (shutdownInProgress)
+                return;
+
+            shouldShutdown = isInitialized;
+            if (shouldShutdown)
+                shutdownInProgress = true;
+            else
+                ownerCount = 0;
+        }
+
+        if (shouldShutdown)
+            CompleteShutdownShared();
+    }
+
     internal static void RetryPendingShutdown()
     {
         bool restoreOnly;

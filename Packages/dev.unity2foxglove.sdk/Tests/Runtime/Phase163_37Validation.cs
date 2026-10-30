@@ -64,7 +64,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyHarnessGuards(string repoRoot)
         {
-            var testSources = Read(repoRoot, "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeValidationOptimizationTests.cs");
+            var testSources = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                repoRoot,
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeValidationOptimizationTests.cs");
             Check(testSources.Contains("Assert.True(start >= 0, \"Could not locate source slice start: \" + startText);", StringComparison.Ordinal),
                 "163-37C-1: TestSources.Slice fails when a start marker is missing");
 
