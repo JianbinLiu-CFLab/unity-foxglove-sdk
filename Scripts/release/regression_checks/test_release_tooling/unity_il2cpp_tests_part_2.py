@@ -608,6 +608,7 @@ class _UnityIl2CppBuildTestsPart2:
         UnityIl2CppBuildTests._wait_for_pid_exit(pid)
 
 class UnityIl2CppBuildTests(_UnityIl2CppBuildTestsPart1, _UnityIl2CppBuildTestsPart2, unittest.TestCase):
+    """Regression coverage for Unity IL2CPP build tooling."""
     pass
 
 UnityIl2CppBuildTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'

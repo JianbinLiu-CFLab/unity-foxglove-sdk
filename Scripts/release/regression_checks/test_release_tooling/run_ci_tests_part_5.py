@@ -427,6 +427,7 @@ class _RunCiTestsPart5:
         self.assertEqual(2, observed["max_workers"])
 
 class RunCiTests(_RunCiTestsPart1, _RunCiTestsPart2, _RunCiTestsPart3, _RunCiTestsPart4, _RunCiTestsPart5, unittest.TestCase):
+    """Regression coverage for local CI runner reliability."""
     pass
 
 RunCiTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
