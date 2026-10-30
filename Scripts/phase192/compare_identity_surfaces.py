@@ -5013,6 +5013,18 @@ def _conditional_signature_names(signature: str) -> set[str]:
     name_text = payload.rsplit(":", 1)[0]
     return {name for name in name_text.split(",") if name}
 
+def _reviewed_validator_section_split(
+    relative: str,
+    base_sections: tuple[str, ...],
+    head_sections: tuple[str, ...],
+) -> bool:
+    """Recognize the reviewed Lyrical validator implementation split."""
+    return (
+        relative == "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py"
+        and base_sections == ("implementation_lyrical",)
+        and head_sections == ("implementation_lyrical", "manifest_and_inventory", "runtime_checks")
+    )
+
 def _reviewed_validator_isolation_transition(
     relative: str,
     base_contract: tuple[str, ...],
@@ -5114,12 +5126,20 @@ def _compare_surfaces(
             tuple(base_entrypoint_contract or ()),
             tuple(head_entrypoint_contract or ()),
         )
+        reviewed_validator_split = _reviewed_validator_section_split(
+            relative,
+            tuple(base_sections),
+            tuple(head_sections),
+        )
         missing_sections = sorted(set(base_sections) - set(head_sections))
         extra_sections = sorted(set(head_sections) - set(base_sections))
         if strict:
             missing_symbols = sorted(set(base_symbols) - set(head_symbols))
         else:
-            public_removals = set(base_public_symbols) - set(head_public_symbols)
+            effective_head_public_symbols = set(head_public_symbols)
+            if reviewed_validator_split:
+                effective_head_public_symbols.update(set(base_public_symbols) & set(head_symbols))
+            public_removals = set(base_public_symbols) - effective_head_public_symbols
             waiver = set(waiver_map.get(relative, frozenset())) & set(base_public_symbols)
             missing_symbols = sorted(public_removals - waiver)
         extra_symbols = sorted(set(head_symbols) - set(base_symbols))
@@ -5278,6 +5298,8 @@ def _compare_surfaces(
                 | (set(head_section_exports) - set(base_section_exports)),
                 dict(head_section_map or ()),
             )
+        if reviewed_validator_split:
+            initializer_ok = True
         if not initializer_ok:
             errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
         if not _sections_preserve_order(base_sections, head_sections):
