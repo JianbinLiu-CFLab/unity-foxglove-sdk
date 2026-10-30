@@ -7,12 +7,6 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 del _Phase192Path
 
-from .core import *
-from .package_metadata import *
-from .manifest import *
-from .text_boundaries import *
-from .runtime_checks import *
-from .sample_checks import *
 from .boundary_checks import *
 
 def print_results(results: list[CheckResult]) -> None:

@@ -7,7 +7,7 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 del _Phase192Path
 
-from .core import *
+from .runtime_checks import *
 
 def check_sample_source_boundary(results: list[CheckResult]) -> None:
     """Validate package samples are source-only and name their acceptance boundaries."""

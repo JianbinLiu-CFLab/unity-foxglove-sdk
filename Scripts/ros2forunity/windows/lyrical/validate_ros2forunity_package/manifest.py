@@ -7,7 +7,7 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 del _Phase192Path
 
-from .core import *
+from .package_metadata import *
 
 def check_manifest(results: list[CheckResult]) -> None:
     """Validate the R2FU adoption manifest."""

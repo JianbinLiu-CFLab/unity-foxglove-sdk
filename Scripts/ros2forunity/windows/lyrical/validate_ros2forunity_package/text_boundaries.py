@@ -7,7 +7,7 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 del _Phase192Path
 
-from .core import *
+from .manifest import *
 
 def check_text_boundaries(results: list[CheckResult]) -> None:
     """Check README and notices wording for attribution and non-bundling boundaries."""

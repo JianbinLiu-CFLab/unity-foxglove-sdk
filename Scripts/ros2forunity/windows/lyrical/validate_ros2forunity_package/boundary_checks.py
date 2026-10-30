@@ -7,7 +7,7 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 del _Phase192Path
 
-from .core import *
+from .sample_checks import *
 
 def check_runtime_source_boundary(results: list[CheckResult]) -> None:
     """Allow facade-only Runtime source while rejecting upstream ROS2/R2FU dependencies."""

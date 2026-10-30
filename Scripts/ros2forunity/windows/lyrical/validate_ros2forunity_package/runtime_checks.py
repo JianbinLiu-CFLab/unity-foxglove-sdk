@@ -7,7 +7,7 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
 del _Phase192Path
 
-from .core import *
+from .text_boundaries import *
 
 def check_runtime_inventory(results: list[CheckResult]) -> None:
     """Validate the generated Lyrical runtime artifact inventory."""
