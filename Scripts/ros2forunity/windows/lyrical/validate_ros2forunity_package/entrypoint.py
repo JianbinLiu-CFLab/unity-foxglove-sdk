@@ -40,8 +40,4 @@ def main() -> int:
     return EXIT_SUCCESS
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
-
 __all__ = [name for name in globals() if not name.startswith("__")]
