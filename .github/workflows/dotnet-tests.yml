@@ -349,9 +349,11 @@ jobs:
                   '    _phase192_sys.modules.pop("validate_ros2forunity_package.sample_checks", None)',
                   '    _phase192_sys.modules.pop("validate_ros2forunity_package.boundary_checks", None)',
                   '    _phase192_sys.modules.pop("validate_ros2forunity_package.entrypoint", None)',
-                  '    _phase192_sys.modules.pop("validate_ros2forunity_package", None)',
               )
-              if any(lyrical_source.count(line) != 1 for line in required_cleanup):
+              if (
+                  any(lyrical_source.count(line) != 1 for line in required_cleanup)
+                  or lyrical_source.count('    _phase192_sys.modules.pop("validate_ros2forunity_package", None)') < 1
+              ):
                   sys.stderr.write("Unexpected Lyrical validator facade cleanup\n")
                   raise SystemExit(1)
               print("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_FACADE_SPLIT: exact new facade and section package transition")
