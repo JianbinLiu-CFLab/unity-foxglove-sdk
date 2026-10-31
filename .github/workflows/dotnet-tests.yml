@@ -292,7 +292,17 @@ jobs:
               "inventory_category_counts_match,published_runtime_is_not_prototype",
           ]
           phase146b_validator_path = "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build.py"
-          phase146b_validator_error_prefix = f"MISSING_SYMBOLS {phase146b_validator_path}:"
+          phase146b_validator_errors = [
+              f"MISSING_SYMBOLS {phase146b_validator_path}: "
+              "capture_cmd_environment,capture_ros2_environment,classify_output,"
+              "clean_colcon_outputs,copy_lyrical_pixi_runtime_closure,"
+              "deploy_asset_from_successful_colcon,ensure_r2fu_checkout,find_vswhere,"
+              "has_complete_asset,is_contaminating_python_path,kill_process_tree_windows,"
+              "patch_ros2cs_lyrical_windows_standalone,record_where_diagnostics,"
+              "reject_cmd_shell_unsafe_path,resolve_cmake_generator,resolve_vs_dev_cmd,"
+              "run_direct_colcon_build,run_lyrical_dependency_import,run_upstream_build,"
+              "scrub_environment,verify_cl_compile,verify_python,write_evidence",
+          ]
           normalized_lines = [line.replace("\\", "/") for line in text.splitlines() if line.strip()]
           expected_validator_split_paths = {
               ".github/workflows/dotnet-tests.yml",
@@ -383,7 +393,7 @@ jobs:
                   raise SystemExit(1)
               print("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT: exact implementation_lyrical manifest_and_inventory runtime_checks transition")
               raise SystemExit(0)
-          if len(normalized_lines) == 1 and normalized_lines[0].startswith(phase146b_validator_error_prefix):
+          if normalized_lines == phase146b_validator_errors:
               changed_paths = {
                   line for line in subprocess.check_output(
                       ["git", "diff", "--name-only", base_sha, head_sha],

@@ -25,11 +25,6 @@ import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-try:
-    from Scripts.ros2forunity.windows.lyrical.section_manifest import load_section_names
-except ModuleNotFoundError:
-    from section_manifest import load_section_names
-
 
 REPO_ROOT_PARENT_DEPTH = 4
 EXIT_SUCCESS = 0
@@ -251,7 +246,16 @@ def _load_source_sections() -> None:
     """Load the decomposed source sections into the facade namespace."""
 
     section_dir = Path(__file__).with_name("Decomposed") / "build_r2fu_runtime_package"
-    section_names = load_section_names(section_dir)
+    original_path = list(sys.path)
+    try:
+        lyrical_directory = Path(__file__).resolve().parent
+        if str(lyrical_directory) not in sys.path:
+            sys.path.insert(0, str(lyrical_directory))
+        from section_manifest import load_section_names
+
+        section_names = load_section_names(section_dir)
+    finally:
+        sys.path[:] = original_path
     for section_name in section_names:
         section_path = section_dir / section_name
         source = section_path.read_text(encoding="utf-8")

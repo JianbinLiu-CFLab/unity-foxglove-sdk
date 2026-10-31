@@ -29,11 +29,6 @@ import time
 from dataclasses import dataclass
 from typing import Iterable
 
-try:
-    from Scripts.ros2forunity.windows.lyrical.section_manifest import load_section_names
-except ModuleNotFoundError:
-    from section_manifest import load_section_names
-
 
 R2FU_REPO_URL = "https://github.com/RobotecAI/ros2-for-unity.git"
 R2FU_BRANCH = "feature/lyrical-support"
@@ -305,7 +300,16 @@ def _load_source_sections(
         / "phase146b_r2fu_lyrical_windows_build"
     )
     target_namespace = globals() if namespace is None else namespace
-    section_names = load_section_names(section_dir)
+    original_path = list(sys.path)
+    try:
+        lyrical_directory = pathlib.Path(__file__).resolve().parents[1]
+        if str(lyrical_directory) not in sys.path:
+            sys.path.insert(0, str(lyrical_directory))
+        from section_manifest import load_section_names
+
+        section_names = load_section_names(section_dir)
+    finally:
+        sys.path[:] = original_path
     for section_name in section_names:
         section_path = section_dir / section_name
         source = section_path.read_text(encoding="utf-8")

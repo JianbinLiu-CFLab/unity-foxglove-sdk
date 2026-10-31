@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from .foundation import *
 
 
@@ -81,6 +83,34 @@ class RuntimeLayoutMetadataTests:
                     (section_dir / "sections.manifest").write_text(manifest, encoding="utf-8")
                     with self.assertRaises((FileNotFoundError, ValueError)):
                         module._load_source_sections(section_dir, {})
+
+    def test_phase146b_implementation_loads_by_file_path_outside_repository_cwd(self) -> None:
+        """The implementation resolves the shared loader from its own source path."""
+        implementation_path = (
+            ROOT
+            / "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py"
+        )
+        code = (
+            "import importlib.util, sys\n"
+            f"path = {str(implementation_path)!r}\n"
+            "spec = importlib.util.spec_from_file_location('phase146b_external_load', path)\n"
+            "module = importlib.util.module_from_spec(spec)\n"
+            "sys.modules[spec.name] = module\n"
+            "spec.loader.exec_module(module)\n"
+            "print('PHASE146B_EXTERNAL_FILE_LOAD_OK')\n"
+        )
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+        with tempfile.TemporaryDirectory() as temp:
+            result = subprocess.run(
+                [sys.executable, "-B", "-c", code],
+                cwd=temp,
+                env=environment,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("PHASE146B_EXTERNAL_FILE_LOAD_OK", result.stdout)
 
     def test_runtime_dll_metas_use_plugin_importer_in_both_plugin_roots(self) -> None:
         """Managed and native DLL metadata must be Unity plugin metadata."""

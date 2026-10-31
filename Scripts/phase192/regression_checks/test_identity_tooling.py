@@ -4839,6 +4839,10 @@ class IdentityToolingTests(unittest.TestCase):
                 self.assertIn(path, workflow)
         self.assertIn("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT", workflow)
         self.assertIn("IDENTITY_GATE_REVIEWED_PHASE146B_BUILD_FACADE_SPLIT", workflow)
+        self.assertIn("phase146b_validator_errors = [", workflow)
+        self.assertIn("capture_cmd_environment,capture_ros2_environment,classify_output", workflow)
+        self.assertIn("if normalized_lines == phase146b_validator_errors:", workflow)
+        self.assertNotIn("startswith(phase146b_validator_error_prefix)", workflow)
 
     def test_compatibility_rejects_mutation_of_legacy_entrypoint(self) -> None:
         """Legacy compatibility paths still reject an entrypoint digest mutation."""

@@ -38,13 +38,10 @@ class RuntimePackageExtractionTests(
 
     def test_builder_uses_shared_section_manifest_loader(self) -> None:
         """The builder and validator must share one manifest contract."""
-        shared_manifest = (
-            ROOT / "Scripts/ros2forunity/windows/lyrical/section_manifest.py"
-        ).resolve()
-        self.assertEqual(
-            shared_manifest,
-            Path(self.builder.load_section_names.__code__.co_filename).resolve(),
-        )
+        source = BUILDER_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("def load_section_names", source)
+        self.assertIn("from section_manifest import load_section_names", source)
+        self.assertIn("section_names = load_section_names(section_dir)", source)
 
 
 __all__ = ["RuntimePackageExtractionTests"]
