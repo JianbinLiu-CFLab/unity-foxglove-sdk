@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import importlib.util as _phase192_importlib_util
 import os
 import pathlib
 import queue
@@ -28,6 +29,20 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import Iterable
+
+
+_PHASE192_SECTION_MANIFEST_PATH = pathlib.Path(__file__).resolve().parents[1] / "section_manifest.py"
+_PHASE192_SECTION_MANIFEST_SPEC = _phase192_importlib_util.spec_from_file_location(
+    "_phase192_section_manifest",
+    _PHASE192_SECTION_MANIFEST_PATH,
+)
+if _PHASE192_SECTION_MANIFEST_SPEC is None or _PHASE192_SECTION_MANIFEST_SPEC.loader is None:
+    raise ImportError(f"Unable to load section manifest: {_PHASE192_SECTION_MANIFEST_PATH}")
+_PHASE192_SECTION_MANIFEST_MODULE = _phase192_importlib_util.module_from_spec(
+    _PHASE192_SECTION_MANIFEST_SPEC,
+)
+_PHASE192_SECTION_MANIFEST_SPEC.loader.exec_module(_PHASE192_SECTION_MANIFEST_MODULE)
+_phase192_load_section_names = _PHASE192_SECTION_MANIFEST_MODULE.load_section_names
 
 
 R2FU_REPO_URL = "https://github.com/RobotecAI/ros2-for-unity.git"
@@ -130,7 +145,7 @@ def resolve_tool(tool: str, env: dict[str, str]) -> str:
     resolved = shutil.which(tool, path=env.get("Path") or env.get("PATH"))
     if resolved and pathlib.Path(resolved).is_file():
         return str(pathlib.Path(resolved).resolve())
-    raise Phase160Error("BLOCKED_UNKNOWN_TOOLCHAIN", f"Trusted {tool} executable was not found")
+    raise Phase146BError("BLOCKED_UNKNOWN_TOOLCHAIN", f"Trusted {tool} executable was not found")
 
 
 def record_checkout_identity(checkout: pathlib.Path, env: dict[str, str], log_file: pathlib.Path) -> None:
@@ -288,48 +303,26 @@ def run_command(
 
 
 
-def _load_source_sections() -> None:
+def _load_source_sections(
+    section_dir: pathlib.Path | None = None,
+    namespace: dict[str, object] | None = None,
+) -> None:
     """Load the decomposed source sections into the facade namespace."""
 
-    section_dir = pathlib.Path(__file__).resolve().parents[1] / "Decomposed" / "phase146b_r2fu_lyrical_windows_build"
-    manifest_path = section_dir / "sections.manifest"
-    section_names = tuple(
-        line.strip()
-        for line in manifest_path.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
+    section_dir = section_dir or (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "Decomposed"
+        / "phase146b_r2fu_lyrical_windows_build"
     )
-    if (
-        len(section_names) != len(set(section_names))
-        or any(
-            not section_name.endswith(".py")
-            or "/" in section_name
-            or "\\" in section_name
-            or section_name in {"__init__.py", "__main__.py"}
-            for section_name in section_names
-        )
-    ):
-        raise RuntimeError(f"Invalid build section manifest: {manifest_path}")
-    actual_names = tuple(
-        sorted(
-            path.name
-            for path in section_dir.glob("*.py")
-            if path.name not in {"__init__.py", "__main__.py"}
-        )
-    )
-    if set(actual_names) != set(section_names):
-        raise RuntimeError(
-            "Build section manifest mismatch: "
-            f"missing={sorted(set(section_names) - set(actual_names))}; "
-            f"unexpected={sorted(set(actual_names) - set(section_names))}"
-        )
+    target_namespace = globals() if namespace is None else namespace
+    section_names = _phase192_load_section_names(section_dir)
     for section_name in section_names:
         section_path = section_dir / section_name
         source = section_path.read_text(encoding="utf-8")
-        exec(compile(source, str(section_path), "exec"), globals(), globals())
+        exec(compile(source, str(section_path), "exec"), target_namespace, target_namespace)
 
 
 _load_source_sections()
-del _load_source_sections
 def main(argv: list[str]) -> int:
     """Program entry point."""
 

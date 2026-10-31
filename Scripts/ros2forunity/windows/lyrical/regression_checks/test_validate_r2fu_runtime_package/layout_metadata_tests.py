@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import shutil
+
 from .foundation import *
 
 
@@ -59,6 +62,90 @@ class RuntimeLayoutMetadataTests:
                         if result.name == "runtime package generator section manifest valid"
                     )
                     self.assertFalse(manifest_result.ok)
+
+    def test_phase146b_loader_rejects_empty_or_comment_only_manifest(self) -> None:
+        """The Phase146B loader fails closed before executing an empty package."""
+        implementation_path = (
+            ROOT
+            / "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py"
+        )
+        spec = importlib.util.spec_from_file_location(
+            "phase146b_r2fu_lyrical_windows_build.implementation_test",
+            implementation_path,
+        )
+        module = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temp:
+            section_dir = Path(temp)
+            for manifest in ("", "# generated sections\n"):
+                with self.subTest(manifest=manifest):
+                    (section_dir / "sections.manifest").write_text(manifest, encoding="utf-8")
+                    with self.assertRaises((FileNotFoundError, ValueError)):
+                        module._load_source_sections(section_dir, {})
+
+    def test_phase146b_implementation_loads_by_file_path_outside_repository_cwd(self) -> None:
+        """The implementation resolves the shared loader from its own source path."""
+        implementation_path = (
+            ROOT
+            / "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py"
+        )
+        code = (
+            "import importlib.util, sys\n"
+            f"path = {str(implementation_path)!r}\n"
+            "spec = importlib.util.spec_from_file_location('phase146b_external_load', path)\n"
+            "module = importlib.util.module_from_spec(spec)\n"
+            "sys.modules[spec.name] = module\n"
+            "spec.loader.exec_module(module)\n"
+            "print('PHASE146B_EXTERNAL_FILE_LOAD_OK')\n"
+        )
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+        with tempfile.TemporaryDirectory() as temp:
+            result = subprocess.run(
+                [sys.executable, "-B", "-c", code],
+                cwd=temp,
+                env=environment,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("PHASE146B_EXTERNAL_FILE_LOAD_OK", result.stdout)
+
+    def test_phase146b_loader_isolated_across_file_path_checkouts(self) -> None:
+        """Each file-path checkout must load its own section manifest module."""
+        source_root = ROOT / "Scripts/ros2forunity/windows/lyrical"
+        implementation_source = source_root / "phase146b_r2fu_lyrical_windows_build/implementation.py"
+        section_manifest_source = source_root / "section_manifest.py"
+        original_path = list(sys.path)
+        with tempfile.TemporaryDirectory() as temp:
+            modules = []
+            expected_paths = []
+            for index in (1, 2):
+                checkout = Path(temp) / f"checkout-{index}"
+                checkout.mkdir(parents=True)
+                manifest_path = checkout / "section_manifest.py"
+                shutil.copy2(section_manifest_source, manifest_path)
+                spec = importlib.util.spec_from_file_location(
+                    f"phase146b_isolation_{index}",
+                    manifest_path,
+                )
+                module = importlib.util.module_from_spec(spec)
+                self.assertIsNotNone(spec.loader)
+                spec.loader.exec_module(module)
+                modules.append(module)
+                expected_paths.append(manifest_path)
+
+            self.assertEqual(
+                [path.resolve() for path in expected_paths],
+                [Path(module.__file__).resolve() for module in modules],
+            )
+            self.assertIsNot(modules[0], modules[1])
+            implementation_source_text = implementation_source.read_text(encoding="utf-8")
+            self.assertNotIn("sys.path.insert", implementation_source_text)
+            self.assertIn("spec_from_file_location", implementation_source_text)
+        self.assertEqual(original_path, sys.path)
 
     def test_runtime_dll_metas_use_plugin_importer_in_both_plugin_roots(self) -> None:
         """Managed and native DLL metadata must be Unity plugin metadata."""

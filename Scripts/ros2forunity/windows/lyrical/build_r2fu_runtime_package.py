@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import inspect
+import importlib.util as _phase192_importlib_util
 import json
 import os
 import re
@@ -24,7 +25,6 @@ import zipfile
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-
 
 REPO_ROOT_PARENT_DEPTH = 4
 EXIT_SUCCESS = 0
@@ -78,6 +78,27 @@ LOCAL_PATCH_OVERLAY_FILES = {
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2ScalableTimeSource.cs",
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2TimeSource.cs",
 }
+
+
+_PHASE192_SECTION_MANIFEST_PATH = Path(__file__).with_name("section_manifest.py")
+_PHASE192_SECTION_MANIFEST_SPEC = _phase192_importlib_util.spec_from_file_location(
+    "_phase192_section_manifest",
+    _PHASE192_SECTION_MANIFEST_PATH,
+)
+if _PHASE192_SECTION_MANIFEST_SPEC is None or _PHASE192_SECTION_MANIFEST_SPEC.loader is None:
+    raise ImportError(f"Unable to load section manifest: {_PHASE192_SECTION_MANIFEST_PATH}")
+_PHASE192_SECTION_MANIFEST_MODULE = _phase192_importlib_util.module_from_spec(
+    _PHASE192_SECTION_MANIFEST_SPEC,
+)
+_PHASE192_SECTION_MANIFEST_SPEC.loader.exec_module(_PHASE192_SECTION_MANIFEST_MODULE)
+_shared_load_section_names = _PHASE192_SECTION_MANIFEST_MODULE.load_section_names
+
+
+def load_section_names(section_dir: Path) -> tuple[str, ...]:
+    """Return the manifest order after validating the exact section file set."""
+    return _shared_load_section_names(section_dir)
+
+
 SUPPLEMENTAL_RUNTIME_RELATIVE = "Runtime/Ros2ForUnity/StreamingAssets/Ros2ForUnity/share/ament_index"
 
 LEAKY_UPSTREAM_EXAMPLES = (
@@ -241,43 +262,6 @@ RMW_VALIDATE_BLOCK = """    private static void ValidateRmwImplementation(string
     }
 
 """
-
-
-
-
-def load_section_names(section_dir: Path) -> tuple[str, ...]:
-    """Return the manifest order after validating the exact section file set."""
-    manifest_path = section_dir / "sections.manifest"
-    if not manifest_path.is_file():
-        raise FileNotFoundError(f"Missing runtime package section manifest: {manifest_path}")
-    names = tuple(
-        line.strip()
-        for line in manifest_path.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    )
-    folded = {name.casefold() for name in names}
-    if not names or len(names) != len(folded) or any(
-        not name.endswith(".py")
-        or Path(name).name != name
-        or name in {"__init__.py", "__main__.py"}
-        for name in names
-    ):
-        raise ValueError(f"Invalid runtime package section manifest: {manifest_path}")
-    actual_names = tuple(
-        sorted(
-            path.name
-            for path in section_dir.glob("*.py")
-            if path.name not in {"__init__.py", "__main__.py"}
-        )
-    )
-    if set(actual_names) != set(names):
-        raise ValueError(
-            "Runtime package section manifest mismatch: "
-            f"missing={sorted(set(names) - set(actual_names))}; "
-            f"unexpected={sorted(set(actual_names) - set(names))}"
-        )
-    return names
-
 
 def _load_source_sections() -> None:
     """Load the decomposed source sections into the facade namespace."""

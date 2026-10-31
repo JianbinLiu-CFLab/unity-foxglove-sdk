@@ -2415,50 +2415,235 @@ def _reviewed_validator_initializer_is_safe(source: str, path: str) -> None:
             and target.slice.id == "_phase192_name"
         )
 
-    allowed_section_configuration = frozenset(
-        {"ROOT", "PACKAGE", "ADAPTER_PACKAGE", "CORE_PACKAGE", "RUNTIME_ROOT", "PLUGIN_ROOT", "MANIFEST", "INVENTORY", "PUBLIC_DOCS"}
+    def expression(source_text: str) -> ast.AST:
+        """Parse one reviewed expression without source-location attributes."""
+        return ast.parse(source_text, filename=path, mode="eval").body
+
+    def same_expression(actual: ast.AST, expected: str) -> bool:
+        """Compare an AST expression with its reviewed source form."""
+        return ast.dump(actual, include_attributes=False) == ast.dump(
+            expression(expected),
+            include_attributes=False,
+        )
+
+    expected_assignments = {
+        "_PHASE192_FACADE_FILE": (
+            "_Phase192Path(__file__).resolve().parents[1] / "
+            '"validate_r2fu_runtime_package.py"'
+        ),
+        "__file__": "str(_PHASE192_FACADE_FILE)",
+        "_PHASE192_PARENT": "_PHASE192_FACADE_FILE.parent",
+        "_PHASE192_SECTION_MODULES": "(_phase192_section_0, _phase192_section_1, _phase192_section_2)",
+        "_PHASE192_EXPORT_NAMES": "set()",
+        "_phase192_module": "_phase192_sys.modules.get(__name__)",
+    }
+    expected_configuration = {
+        "ROOT": "_Phase192Path(_phase192_section_0.__file__).resolve().parents[5]",
+        "PACKAGE": '_phase192_section_0.ROOT / "Packages" / _phase192_section_0.PACKAGE_NAME',
+        "ADAPTER_PACKAGE": '_phase192_section_0.ROOT / "Packages" / "dev.unity2foxglove.ros2forunity"',
+        "CORE_PACKAGE": '_phase192_section_0.ROOT / "Packages" / "dev.unity2foxglove.sdk"',
+        "RUNTIME_ROOT": '_phase192_section_0.PACKAGE / "Runtime" / "Ros2ForUnity"',
+        "PLUGIN_ROOT": '_phase192_section_0.RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64"',
+        "MANIFEST": '_phase192_section_0.PACKAGE / "RuntimeSupport" / "runtime-manifest.json"',
+        "INVENTORY": '_phase192_section_0.PACKAGE / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"',
+        "PUBLIC_DOCS": (
+            '(_phase192_section_0.PACKAGE / "README.md", '
+            '_phase192_section_0.PACKAGE / "THIRD_PARTY_NOTICES.md", '
+            '_phase192_section_0.PACKAGE / "package.json", '
+            '_phase192_section_0.MANIFEST)'
+        ),
+    }
+
+    expected_imports = (
+        ("from", "__future__", 0, "annotations", None),
+        ("import", "sys", 0, "sys", "_phase192_sys"),
+        ("import", "types", 0, "types", "_phase192_types"),
+        ("from", "pathlib", 0, "Path", "_Phase192Path"),
+        ("from", "", 1, "implementation_lyrical", "_phase192_section_0"),
+        ("from", "", 1, "manifest_and_inventory", "_phase192_section_1"),
+        ("from", "", 1, "runtime_checks", "_phase192_section_2"),
     )
+    actual_imports: list[tuple[str, str, int, str, str | None]] = []
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            actual_imports.extend(
+                ("import", alias.name, 0, alias.name, alias.asname)
+                for alias in node.names
+            )
+        elif isinstance(node, ast.ImportFrom):
+            actual_imports.extend(
+                ("from", node.module or "", node.level, alias.name, alias.asname)
+                for alias in node.names
+            )
+    if tuple(actual_imports) != expected_imports:
+        raise ValueError(f"Unsupported generated package imports in {path}")
+
+    def exact_path_guard(node: ast.If) -> bool:
+        """Recognize the reviewed package-parent path insertion guard."""
+        if not same_expression(
+            node.test,
+            "str(_PHASE192_PARENT) not in _phase192_sys.path",
+        ) or node.orelse or len(node.body) != 1:
+            return False
+        statement = node.body[0]
+        return isinstance(statement, ast.Expr) and same_expression(
+            statement.value,
+            "_phase192_sys.path.insert(0, str(_PHASE192_PARENT))",
+        )
+
+    def exact_module_guard(node: ast.If) -> bool:
+        """Recognize the reviewed forwarding-module class guard."""
+        if not same_expression(
+            node.test,
+            "_phase192_module is not None",
+        ) or node.orelse or len(node.body) != 1:
+            return False
+        statement = node.body[0]
+        return (
+            isinstance(statement, ast.Assign)
+            and len(statement.targets) == 1
+            and isinstance(statement.targets[0], ast.Attribute)
+            and isinstance(statement.targets[0].value, ast.Name)
+            and statement.targets[0].value.id == "_phase192_module"
+            and statement.targets[0].attr == "__class__"
+            and same_expression(statement.value, "_Phase192PackageModule")
+        )
+
+    def exact_population_loop(node: ast.For) -> bool:
+        """Recognize the generated export collection loop in full."""
+        if (
+            not isinstance(node.target, ast.Name)
+            or node.target.id != "_phase192_section"
+            or not isinstance(node.iter, ast.Name)
+            or node.iter.id != "_PHASE192_SECTION_MODULES"
+            or node.orelse
+            or len(node.body) != 1
+            or not isinstance(node.body[0], ast.For)
+        ):
+            return False
+        inner = node.body[0]
+        if (
+            not isinstance(inner.target, ast.Name)
+            or inner.target.id != "_phase192_name"
+            or not isinstance(inner.iter, ast.Attribute)
+            or not isinstance(inner.iter.value, ast.Name)
+            or inner.iter.value.id != "_phase192_section"
+            or inner.iter.attr != "__all__"
+            or inner.orelse
+            or len(inner.body) != 2
+        ):
+            return False
+        export, record = inner.body
+        return (
+            isinstance(export, ast.Assign)
+            and exact_section_export_assignment(export)
+            and same_expression(
+                export.value,
+                "getattr(_phase192_section, _phase192_name)",
+            )
+            and isinstance(record, ast.Expr)
+            and same_expression(
+                record.value,
+                "_PHASE192_EXPORT_NAMES.add(_phase192_name)",
+            )
+        )
+
+    def exact_sync_loop(node: ast.For) -> bool:
+        """Recognize the generated section namespace synchronization loop."""
+        if (
+            not isinstance(node.target, ast.Name)
+            or node.target.id != "_phase192_section"
+            or not isinstance(node.iter, ast.Name)
+            or node.iter.id != "_PHASE192_SECTION_MODULES"
+            or node.orelse
+            or len(node.body) != 1
+            or not isinstance(node.body[0], ast.For)
+        ):
+            return False
+        inner = node.body[0]
+        if (
+            not isinstance(inner.target, ast.Name)
+            or inner.target.id != "_phase192_name"
+            or not isinstance(inner.iter, ast.Name)
+            or inner.iter.id != "_PHASE192_EXPORT_NAMES"
+            or inner.orelse
+            or len(inner.body) != 1
+            or not isinstance(inner.body[0], ast.Assign)
+            or not exact_section_sync_assignment(inner.body[0])
+        ):
+            return False
+        return same_expression(
+            inner.body[0].value,
+            "globals()[_phase192_name]",
+        )
+
+    top_level_loops = [node for node in tree.body if isinstance(node, ast.For)]
+    if len(top_level_loops) != 2 or not exact_population_loop(top_level_loops[0]) or not exact_sync_loop(top_level_loops[1]):
+        raise ValueError(f"Unsupported generated package section loops in {path}")
+    top_level_ifs = [node for node in tree.body if isinstance(node, ast.If)]
+    if len(top_level_ifs) != 2 or not any(exact_path_guard(node) for node in top_level_ifs) or not any(exact_module_guard(node) for node in top_level_ifs):
+        raise ValueError(f"Unsupported generated package guards in {path}")
+
+    seen_assignments: set[str] = set()
+    seen_configuration: set[str] = set()
+    seen_module_class = False
 
     for node in ast.walk(tree):
         if has_runtime_parent(node):
             continue
         if isinstance(node, ast.Assign):
-            if exact_section_export_assignment(node) or exact_section_sync_assignment(node):
+            if exact_section_export_assignment(node):
+                if not same_expression(node.value, "getattr(_phase192_section, _phase192_name)"):
+                    raise ValueError(f"Unsupported generated section export assignment in {path}")
                 continue
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    if target.id == "__all__":
-                        expected = ast.Call(
-                            func=ast.Name(id="sorted", ctx=ast.Load()),
-                            args=[ast.Name(id="_PHASE192_EXPORT_NAMES", ctx=ast.Load())],
-                            keywords=[],
-                        )
-                        if ast.dump(node.value, include_attributes=False) != ast.dump(
-                            expected,
-                            include_attributes=False,
-                        ):
-                            raise ValueError(f"Unsupported generated package export assignment in {path}")
-                        continue
-                    if target.id == "__file__" or target.id.startswith(("_PHASE192_", "_phase192_")):
-                        continue
-                    raise ValueError(f"Unsupported generated package rebinding in {path}")
-                if (
-                    isinstance(target, ast.Attribute)
-                    and isinstance(target.value, ast.Name)
-                    and target.value.id == "_phase192_section_0"
-                    and target.attr in allowed_section_configuration
-                ):
-                    continue
-                if (
-                    isinstance(target, ast.Attribute)
-                    and target.attr == "__class__"
-                    and isinstance(target.value, ast.Name)
-                    and target.value.id == "_phase192_module"
-                ):
-                    continue
+            if exact_section_sync_assignment(node):
+                if not same_expression(node.value, "globals()[_phase192_name]"):
+                    raise ValueError(f"Unsupported generated section sync assignment in {path}")
+                continue
+            if len(node.targets) != 1:
                 raise ValueError(f"Unsupported generated package rebinding in {path}")
+            target = node.targets[0]
+            if isinstance(target, ast.Name) and target.id in expected_assignments:
+                if target.id in seen_assignments or not same_expression(node.value, expected_assignments[target.id]):
+                    raise ValueError(f"Unsupported generated package rebinding in {path}")
+                seen_assignments.add(target.id)
+                continue
+            if isinstance(target, ast.Name) and target.id == "__all__":
+                if "__all__" in seen_assignments or not same_expression(node.value, "sorted(_PHASE192_EXPORT_NAMES)"):
+                    raise ValueError(f"Unsupported generated package export assignment in {path}")
+                seen_assignments.add("__all__")
+                continue
+            if (
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "_phase192_section_0"
+                and target.attr in expected_configuration
+            ):
+                if target.attr in seen_configuration or not same_expression(node.value, expected_configuration[target.attr]):
+                    raise ValueError(f"Unsupported generated package configuration in {path}")
+                seen_configuration.add(target.attr)
+                continue
+            if (
+                isinstance(target, ast.Attribute)
+                and isinstance(target.value, ast.Name)
+                and target.value.id == "_phase192_module"
+                and target.attr == "__class__"
+            ):
+                if seen_module_class or not same_expression(node.value, "_Phase192PackageModule"):
+                    raise ValueError(f"Unsupported generated package module class in {path}")
+                seen_module_class = True
+                continue
+            raise ValueError(f"Unsupported generated package rebinding in {path}")
         elif isinstance(node, ast.Delete):
             raise ValueError(f"Unsupported generated package deletion in {path}")
+
+    if (
+        set(expected_assignments) != (seen_assignments - {"__all__"})
+        or set(expected_configuration) != seen_configuration
+        or "__all__" not in seen_assignments
+        or not seen_module_class
+    ):
+        raise ValueError(f"Incomplete generated package initializer in {path}")
 
 
 def _phase192_initializer_kind(source: str) -> str | None:

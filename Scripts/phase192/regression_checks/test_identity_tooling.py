@@ -992,48 +992,75 @@ class IdentityToolingTests(unittest.TestCase):
             root = Path(temp)
             scripts = root / "Scripts"
             tool = scripts / "tool"
-            shared = scripts / "shared"
             tool.mkdir(parents=True)
-            shared.mkdir(parents=True)
             (scripts / "__init__.py").write_text("", encoding="utf-8")
             (tool / "__init__.py").write_text(
-                "from Scripts.shared.implementation import VALUE\n",
+                "from Scripts.tool.implementation import VALUE\n",
                 encoding="utf-8",
             )
-            (shared / "__init__.py").write_text("", encoding="utf-8")
-            (shared / "implementation.py").write_text(
+            (tool / "implementation.py").write_text(
                 "VALUE = 'fresh'\n",
                 encoding="utf-8",
             )
             facade = tool / "facade.py"
             facade.write_text(
-                "from Scripts.shared.implementation import VALUE\n",
+                "from Scripts.tool.implementation import VALUE\n",
                 encoding="utf-8",
             )
-            alias_module = types.ModuleType("Scripts.shared.implementation")
-            alias_module.__file__ = str(shared / "implementation.py")
+            alias_module = types.ModuleType("Scripts.tool.implementation")
+            alias_module.__file__ = str(tool / "implementation.py")
+            alias_only_module = types.ModuleType("tool_alias.implementation")
+            alias_only_module.__file__ = str(tool / "implementation.py")
+            suffix_alias_module = types.ModuleType("implementation")
+            suffix_alias_module.__file__ = str(tool / "implementation.py")
             names = (
                 "facade",
                 "Scripts",
                 "Scripts.tool",
-                "Scripts.shared",
-                "Scripts.shared.implementation",
+                "Scripts.tool.implementation",
                 "tool_alias.implementation",
+                "implementation",
             )
             saved_modules = dict(sys.modules)
             for name in names:
                 sys.modules.pop(name, None)
-            sys.modules["tool_alias.implementation"] = alias_module
+            sys.modules["tool_alias.implementation"] = alias_only_module
+            sys.modules["shared.implementation"] = suffix_alias_module
             try:
                 loaded = source_layout.load_fresh_module("facade", facade)
                 self.assertEqual("fresh", loaded.VALUE)
                 self.assertIsNot(alias_module, sys.modules.get("Scripts.tool.implementation"))
                 self.assertNotIn("tool_alias.implementation", sys.modules)
+                self.assertNotIn("implementation", sys.modules)
             finally:
                 for name in tuple(sys.modules):
                     if name not in saved_modules:
                         sys.modules.pop(name, None)
                 sys.modules.update(saved_modules)
+
+    def test_load_fresh_module_preserves_unrelated_repo_source_aliases(self) -> None:
+        """Fresh loads must not evict an unrelated repo package used by later tests."""
+        repository = compare_identity_surfaces.REPOSITORY_ROOT
+        ambient_name = "ambient_ros2_alias.foundation"
+        ambient = types.ModuleType(ambient_name)
+        ambient.__file__ = str(
+            repository / "Scripts/smoke/ros2/_ros2_windows_env/foundation.py"
+        )
+        saved_ambient = sys.modules.get(ambient_name)
+        sys.modules[ambient_name] = ambient
+        try:
+            with tempfile.TemporaryDirectory(dir=repository / "Scripts") as temp:
+                facade = Path(temp) / "tool_facade.py"
+                facade.write_text("VALUE = 'fresh'\n", encoding="utf-8")
+                loaded = source_layout.load_fresh_module("tool_facade", facade)
+                self.assertEqual("fresh", loaded.VALUE)
+                self.assertIs(ambient, sys.modules.get(ambient_name))
+                sys.modules.pop("tool_facade", None)
+        finally:
+            if saved_ambient is None:
+                sys.modules.pop(ambient_name, None)
+            else:
+                sys.modules[ambient_name] = saved_ambient
 
     def test_phase163_37_harness_guard_reads_composed_csharp_source(self) -> None:
         """Phase163-37 must inspect the facade and its split TestSources sections."""
@@ -4423,17 +4450,40 @@ class IdentityToolingTests(unittest.TestCase):
                 frozenset(),
             )
         }
-        for mutation in (
-            "main = lambda: 0\n",
-            "_phase192_section_0.run_checks = lambda *args, **kwargs: []\n",
-            "_phase192_section_0.main = None\n",
-        ):
+        mutations = (
+            ("public", source + "\nmain = lambda: 0\n"),
+            (
+                "section_export",
+                source + "\n_phase192_section_0.run_checks = lambda *args, **kwargs: []\n",
+            ),
+            ("section_public", source + "\n_phase192_section_0.main = None\n"),
+            ("export_names", source + "\n_PHASE192_EXPORT_NAMES = set()\n"),
+            ("section_modules", source + "\n_PHASE192_SECTION_MODULES = ()\n"),
+            ("section_binding", source + "\n_phase192_section_0 = None\n"),
+            (
+                "configuration_rhs",
+                source + '\n_phase192_section_0.ROOT = Path("/tmp/untrusted")\n',
+            ),
+            (
+                "module_class_rhs",
+                source + "\n_phase192_module.__class__ = _phase192_types.ModuleType\n",
+            ),
+            (
+                "section_sync_rhs",
+                source.replace(
+                    "_phase192_section.__dict__[_phase192_name] = globals()[_phase192_name]",
+                    "_phase192_section.__dict__[_phase192_name] = None",
+                    1,
+                ),
+            ),
+        )
+        for mutation, mutated_source in mutations:
             with self.subTest(mutation=mutation):
                 head_surface = {
                     relative: (
                         frozenset({"main", "run_checks"}),
                         ("implementation_lyrical", "manifest_and_inventory", "runtime_checks"),
-                        source + "\n" + mutation,
+                        mutated_source,
                         frozenset(),
                     )
                 }
@@ -4781,6 +4831,52 @@ class IdentityToolingTests(unittest.TestCase):
         """The compatibility gate must not overwrite the trusted base checker."""
         workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
         self.assertNotIn('cp Scripts/phase192/compare_identity_surfaces.py "$base_checker"', workflow)
+
+    def test_workflow_fallback_allowlists_cover_reviewed_lyrical_transitions(self) -> None:
+        """Fallback identity transitions must enumerate the complete reviewed file sets."""
+        workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
+        reviewed_transition = {
+            "Scripts/phase192/regression_checks/test_identity_tooling.py",
+            "Scripts/phase192/source_layout.py",
+            "Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py",
+            "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py",
+            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package/matrix_tests.py",
+            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_phase146b_build_defaults.py",
+            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/layout_metadata_tests.py",
+        }
+        for path in reviewed_transition:
+            with self.subTest(path=path):
+                self.assertIn(path, workflow)
+        self.assertIn("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT", workflow)
+        self.assertIn("IDENTITY_GATE_REVIEWED_PHASE146B_BUILD_FACADE_SPLIT", workflow)
+        self.assertIn("sensitive_transition_paths = {", workflow)
+        self.assertIn("changed_paths & sensitive_transition_paths", workflow)
+        expected_block = workflow.split("expected_phase192_split_paths = {", 1)[1].split("}", 1)[0]
+        self.assertNotIn(".github/workflows/dotnet-tests.yml", expected_block)
+        self.assertNotIn("Scripts/phase192/compare_identity_surfaces.py", expected_block)
+        package_block = workflow.split("expected_lyrical_package_paths = {", 1)[1].split("}", 1)[0]
+        self.assertNotIn(".github/workflows/dotnet-tests.yml", package_block)
+        self.assertNotIn("Scripts/phase192/compare_identity_surfaces.py", package_block)
+        self.assertIn("phase146b_validator_errors = [", workflow)
+        self.assertIn('"capture_cmd_environment",', workflow)
+        self.assertIn('"capture_ros2_environment",', workflow)
+        self.assertIn('"classify_output",', workflow)
+        self.assertIn("phase146b_expected_missing_symbols = (", workflow)
+        self.assertIn(
+            "actual_missing_symbols != list(phase146b_expected_missing_symbols)",
+            workflow,
+        )
+        self.assertNotIn("expected_validator_split_paths = expected_phase192_split_paths", workflow)
+        validator_block = workflow.split("expected_validator_split_paths = {", 1)[1].split("}", 1)[0]
+        for path in (
+            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py",
+            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/implementation_lyrical.py",
+            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/manifest_and_inventory.py",
+            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/runtime_checks.py",
+        ):
+            self.assertIn(path, validator_block)
+        self.assertNotIn(".github/workflows/dotnet-tests.yml", validator_block)
+        self.assertNotIn("Scripts/phase192/compare_identity_surfaces.py", validator_block)
 
     def test_compatibility_rejects_mutation_of_legacy_entrypoint(self) -> None:
         """Legacy compatibility paths still reject an entrypoint digest mutation."""

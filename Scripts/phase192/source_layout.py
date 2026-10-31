@@ -236,27 +236,15 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         module_name = getattr(loaded_module, "__name__", None)
         if isinstance(module_name, str):
             logical_aliases.add(module_name)
-        if not canonical or not any(name in canonical for name in logical_aliases):
+        if not canonical:
             return False
-        if any(
-            alias not in canonical
-            and (canonical_name == alias or canonical_name.endswith("." + alias))
-            for canonical_name in canonical
-            for alias in logical_aliases
+        if target_scripts_prefix is not None and not any(
+            name == target_scripts_prefix or name.startswith(target_scripts_prefix + ".")
+            for name in canonical
         ):
             return False
         if loaded_name in canonical:
             return False
-        parent_name = loaded_name.rsplit(".", 1)[0] if "." in loaded_name else None
-        parent_module = sys.modules.get(parent_name) if parent_name else None
-        if parent_module is not None:
-            parent_paths = module_paths(parent_module)
-            parent_canonical = canonical_module_names(parent_paths)
-            parent_aliases = initial_module_aliases.get(id(parent_module), ())
-            if parent_canonical and any(
-                name in parent_canonical for name in (*parent_aliases, getattr(parent_module, "__name__", ""))
-            ) and parent_name not in parent_canonical:
-                return False
         return True
 
     def has_duplicate_namespace_paths(loaded_name: str, loaded_module: ModuleType) -> bool:
