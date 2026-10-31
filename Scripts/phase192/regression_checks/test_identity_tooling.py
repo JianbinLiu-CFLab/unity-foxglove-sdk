@@ -879,6 +879,28 @@ class IdentityToolingTests(unittest.TestCase):
         )
         self.assertTrue(hasattr(loaded, "_phase192_template_name"))
 
+    def test_template_registry_facade_loads_in_clean_process(self) -> None:
+        """The identity loader works without a preloaded compare package."""
+        repository = compare_identity_surfaces.REPOSITORY_ROOT
+        script = """
+from pathlib import Path
+from Scripts.phase192 import source_layout
+
+facade = Path.cwd() / "Scripts/phase192/compare_identity_surfaces/template_registry.py"
+loaded = source_layout.load_fresh_module(
+    "Scripts.phase192.compare_identity_surfaces.template_registry",
+    facade,
+)
+assert hasattr(loaded, "_phase192_template_name")
+"""
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", script],
+            cwd=repository,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_reviewed_validator_isolation_transition_requires_exact_cleanup(self) -> None:
         """Only the reviewed eight-module cleanup insertion is compatibility-waived."""
         cleanup = "facade::7cdf800c9922e9368a642e72b34a53b8fa0049b842fda84b2ca8041537599915"

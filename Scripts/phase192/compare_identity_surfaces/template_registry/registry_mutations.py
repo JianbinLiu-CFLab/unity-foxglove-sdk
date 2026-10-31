@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from compare_identity_surfaces.foundation import *
+from Scripts.phase192.compare_identity_surfaces.foundation import *
 from .closure_mutations import _phase192_validate_closure_mutations
 from .critical_bindings import _phase192_critical_bindings_are_immutable
 

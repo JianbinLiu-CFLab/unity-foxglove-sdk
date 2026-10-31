@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from compare_identity_surfaces.foundation import *
+from Scripts.phase192.compare_identity_surfaces.foundation import *
 from .registry_mutations import _phase192_validate_template_registry_mutations
 
 def _phase192_template_name(name: str) -> bool:
