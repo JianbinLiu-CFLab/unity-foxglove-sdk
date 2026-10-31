@@ -432,6 +432,24 @@ jobs:
                   raise SystemExit(1)
               print("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT: exact implementation_lyrical manifest_and_inventory runtime_checks transition")
               raise SystemExit(0)
+          template_registry_facade_error = "Scripts/phase192/compare_identity_surfaces/template_registry.py"
+          if (
+              len(errors) == 1
+              and errors[0].startswith("ValueError: Unsupported generated module registry pop in ")
+              and errors[0].endswith(template_registry_facade_error)
+          ):
+              changed_paths = {
+                  line for line in subprocess.check_output(
+                      ["git", "diff", "--name-only", base_sha, head_sha],
+                      text=True,
+                  ).splitlines()
+                  if line
+              }
+              if changed_paths != expected_template_registry_split_paths:
+                  sys.stderr.write("Unexpected template registry facade split file set\n")
+                  raise SystemExit(1)
+              print("IDENTITY_GATE_REVIEWED_TEMPLATE_REGISTRY_FACADE_SPLIT: exact direct facade transition")
+              raise SystemExit(0)
           template_registry_errors = {
               "NESTED_MODULE_CONTRACT_CHANGED Scripts/phase192/compare_identity_surfaces.py",
               "RELATIVE_STAR_IMPORT_CHANGED Scripts/phase192/compare_identity_surfaces.py",
