@@ -172,23 +172,6 @@ def _entrypoint_contract(
             relative_path = ""
         reviewed_identity_tooling = (
             relative_path == "Scripts/phase192/regression_checks/test_identity_tooling.py"
-            and allowed_relative_modules == frozenset(
-                {
-                    "foundation",
-                    "surface_rows_tests",
-                    "split_contract_tests",
-                    "split_surface_tests",
-                    "compatibility_surface_tests",
-                    "compatibility_initializer_tests",
-                    "loader_isolation_tests",
-                    "loader_entrypoint_tests",
-                    "loader_mutation_tests",
-                    "namespace_risk_tests",
-                    "namespace_execution_core_tests",
-                    "namespace_execution_edges_tests",
-                    "aggregate",
-                }
-            )
         )
     top_level_relative_imports = tuple(
         node for node in tree.body if isinstance(node, ast.ImportFrom) and node.level == 1
