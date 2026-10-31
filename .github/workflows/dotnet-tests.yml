@@ -344,11 +344,13 @@ jobs:
           }
           expected_identity_tooling_split_paths = {
               ".github/workflows/dotnet-tests.yml",
+              "Scripts/phase192/compare_identity_surfaces/entrypoint_contracts.py",
               "Scripts/phase192/compare_identity_surfaces/section_validation.py",
               "Scripts/phase192/compare_identity_surfaces/surface_compare.py",
               "Scripts/phase192/regression_checks/test_freeze_baseline.py",
               "Scripts/phase192/regression_checks/test_identity_tooling.py",
               "Scripts/phase192/regression_checks/test_identity_tooling/__init__.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/__main__.py",
               "Scripts/phase192/regression_checks/test_identity_tooling/aggregate.py",
               "Scripts/phase192/regression_checks/test_identity_tooling/compatibility_initializer_tests.py",
               "Scripts/phase192/regression_checks/test_identity_tooling/compatibility_surface_tests.py",
