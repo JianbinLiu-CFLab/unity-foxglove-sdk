@@ -56,3 +56,13 @@ class _Phase192FacadeModule(_phase192_types.ModuleType):
 _phase192_module = _phase192_sys.modules.get(__name__)
 if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192FacadeModule
+
+__all__ = [
+    "_phase192_template_name",
+    "_phase192_template_call_is_safe",
+    "_phase192_template_validate_calls",
+    "_phase192_template_validate_imports",
+    "_phase192_template_validate_class",
+    "_phase192_template_validate_facade",
+    "_phase192_validate_template_registry_mutations",
+]

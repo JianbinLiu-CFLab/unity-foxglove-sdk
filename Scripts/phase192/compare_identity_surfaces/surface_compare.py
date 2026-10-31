@@ -52,6 +52,27 @@ def _surface(
                 reject_conditional=reject_conditional,
                 repository_root=root,
             )
+            if nested_facade is not None:
+                declared = next(
+                    (
+                        statement.value
+                        for statement in section_tree.body
+                        if isinstance(statement, ast.Assign)
+                        and any(
+                            isinstance(target, ast.Name) and target.id == "__all__"
+                            for target in statement.targets
+                        )
+                    ),
+                    None,
+                )
+                if isinstance(declared, (ast.List, ast.Tuple)):
+                    allowed = {
+                        element.value
+                        for element in declared.elts
+                        if isinstance(element, ast.Constant)
+                        and isinstance(element.value, str)
+                    }
+                    exports = frozenset(name for name in exports if name in allowed)
         else:
             exports = _section_exports(
                 section_source,
