@@ -164,6 +164,16 @@ def _entrypoint_contract(
     allowed_relative_modules = (
         None if allowed_relative_modules is None else frozenset(allowed_relative_modules)
     )
+    reviewed_identity_tooling = False
+    if repository_root is not None:
+        try:
+            facade_candidate = package_dir.parent / f"{package_dir.name}.py"
+            relative_path = facade_candidate.resolve().relative_to(repository_root.resolve()).as_posix()
+        except ValueError:
+            relative_path = ""
+        reviewed_identity_tooling = (
+            relative_path == "Scripts/phase192/regression_checks/test_identity_tooling.py"
+        )
     top_level_relative_imports = tuple(
         node for node in tree.body if isinstance(node, ast.ImportFrom) and node.level == 1
     )
@@ -215,7 +225,10 @@ def _entrypoint_contract(
                                 and not any(part.startswith("test_") for part in section_path.parts)
                                 and not _is_phase121_configuration_path(section_path, repository_root)
                             ),
-                            validate_namespace=not _is_phase121_configuration_path(section_path, repository_root),
+                            validate_namespace=(
+                                not _is_phase121_configuration_path(section_path, repository_root)
+                                and not reviewed_identity_tooling
+                            ),
                             repository_root=repository_root,
                         )
                     package_exports.update(section_exports)

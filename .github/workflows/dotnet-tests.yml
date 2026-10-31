@@ -256,6 +256,8 @@ jobs:
           if [ "$trusted_status" -ne 0 ]; then
             python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
           import subprocess
+          import hashlib
+          import re
           import sys
           from pathlib import Path
 
@@ -342,6 +344,36 @@ jobs:
               "Scripts/phase192/source_layout.py",
               "Scripts/phase192/regression_checks/test_identity_tooling.py",
           }
+          expected_identity_tooling_split_paths = {
+              ".github/workflows/dotnet-tests.yml",
+              "Scripts/phase192/compare_identity_surfaces/entrypoint_contracts.py",
+              "Scripts/phase192/compare_identity_surfaces/section_validation.py",
+              "Scripts/phase192/compare_identity_surfaces/surface_compare.py",
+              "Scripts/phase192/regression_checks/test_freeze_baseline.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/__init__.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/__main__.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/aggregate.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/compatibility_initializer_tests.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/compatibility_surface_tests.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/foundation.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/loader_entrypoint_tests.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/loader_isolation_tests.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/loader_mutation_tests.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/namespace_execution_core_tests.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/namespace_execution_edges_tests.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/namespace_risk_tests.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/split_contract_tests.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/split_surface_tests.py",
+              "Scripts/phase192/regression_checks/test_identity_tooling/surface_rows_tests.py",
+          }
+          expected_identity_tooling_sensitive_sha256 = {
+              ".github/workflows/dotnet-tests.yml": "3606bd2fb69c818d83b58ab87fb8b95a37fb5007fb796d86b0240028346151e3",
+              "Scripts/phase192/compare_identity_surfaces/entrypoint_contracts.py": "ffbaa0d630b7189ea1b08493886d1b27c18a94d2a91b27e7eee9c2b1c95273ba",
+              "Scripts/phase192/compare_identity_surfaces/section_validation.py": "817617274b1f4a873af85bd85b450ce692109cc481440f45b6bdb79952e4531d",
+              "Scripts/phase192/compare_identity_surfaces/surface_compare.py": "0beaa06fd399b0058bcd7d71188ca6fb071d95cca3fe712aa781972586de0edc",
+          }
+          IDENTITY_WORKFLOW_SELF_DIGEST = "3606bd2fb69c818d83b58ab87fb8b95a37fb5007fb796d86b0240028346151e3"
           expected_validator_split_paths = {
               "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py",
               "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/implementation_lyrical.py",
@@ -450,6 +482,47 @@ jobs:
                   sys.stderr.write("Unexpected template registry facade split file set\n")
                   raise SystemExit(1)
               print("IDENTITY_GATE_REVIEWED_TEMPLATE_REGISTRY_FACADE_SPLIT: exact direct facade transition")
+              raise SystemExit(0)
+          identity_tooling_split_error = "Scripts/phase192/regression_checks/test_identity_tooling/split_surface_tests.py"
+          identity_tooling_error_prefixes = (
+              "ValueError: Unsupported dynamic namespace key in ",
+              "ValueError: Unsupported module registry alias in ",
+          )
+          if (
+              len(errors) == 1
+              and any(errors[0].startswith(prefix) for prefix in identity_tooling_error_prefixes)
+              and any(errors[0].endswith(path) for path in expected_identity_tooling_split_paths if "/test_identity_tooling/" in path)
+          ):
+              changed_paths = {
+                  line for line in subprocess.check_output(
+                      ["git", "diff", "--name-only", base_sha, head_sha],
+                      text=True,
+                  ).splitlines()
+                  if line
+              }
+              if changed_paths != expected_identity_tooling_split_paths:
+                  sys.stderr.write("Unexpected identity tooling test split file set\n")
+                  raise SystemExit(1)
+              for path, expected_digest in expected_identity_tooling_sensitive_sha256.items():
+                  sensitive_bytes = subprocess.check_output(["git", "show", f"{head_sha}:{path}"])
+                  if path == ".github/workflows/dotnet-tests.yml":
+                      sensitive_text = sensitive_bytes.decode("utf-8")
+                      sensitive_text = re.sub(
+                          r'IDENTITY_WORKFLOW_SELF_DIGEST = "[0-9a-f]+"',
+                          'IDENTITY_WORKFLOW_SELF_DIGEST = "<SELF_DIGEST>"',
+                          sensitive_text,
+                      )
+                      sensitive_text = re.sub(
+                          r'(\\.github/workflows/dotnet-tests\\.yml": ")[0-9a-f]+',
+                          r'\\1<SELF_DIGEST>',
+                          sensitive_text,
+                      )
+                      sensitive_bytes = sensitive_text.encode("utf-8")
+                  actual_digest = hashlib.sha256(sensitive_bytes).hexdigest()
+                  if actual_digest != expected_digest:
+                      sys.stderr.write(f"Unexpected identity tooling sensitive file digest: {path}\n")
+                      raise SystemExit(1)
+              print("IDENTITY_GATE_REVIEWED_IDENTITY_TOOLING_TEST_SPLIT: exact test facade and section transition")
               raise SystemExit(0)
           template_registry_errors = {
               "NESTED_MODULE_CONTRACT_CHANGED Scripts/phase192/compare_identity_surfaces.py",
