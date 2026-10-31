@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import inspect
+import importlib.util as _phase192_importlib_util
 import json
 import os
 import re
@@ -24,10 +25,6 @@ import zipfile
 import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from section_manifest import load_section_names
-
 
 REPO_ROOT_PARENT_DEPTH = 4
 EXIT_SUCCESS = 0
@@ -81,6 +78,27 @@ LOCAL_PATCH_OVERLAY_FILES = {
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2ScalableTimeSource.cs",
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2TimeSource.cs",
 }
+
+
+_PHASE192_SECTION_MANIFEST_PATH = Path(__file__).with_name("section_manifest.py")
+_PHASE192_SECTION_MANIFEST_SPEC = _phase192_importlib_util.spec_from_file_location(
+    "_phase192_section_manifest",
+    _PHASE192_SECTION_MANIFEST_PATH,
+)
+if _PHASE192_SECTION_MANIFEST_SPEC is None or _PHASE192_SECTION_MANIFEST_SPEC.loader is None:
+    raise ImportError(f"Unable to load section manifest: {_PHASE192_SECTION_MANIFEST_PATH}")
+_PHASE192_SECTION_MANIFEST_MODULE = _phase192_importlib_util.module_from_spec(
+    _PHASE192_SECTION_MANIFEST_SPEC,
+)
+_PHASE192_SECTION_MANIFEST_SPEC.loader.exec_module(_PHASE192_SECTION_MANIFEST_MODULE)
+_shared_load_section_names = _PHASE192_SECTION_MANIFEST_MODULE.load_section_names
+
+
+def load_section_names(section_dir: Path) -> tuple[str, ...]:
+    """Return the manifest order after validating the exact section file set."""
+    return _shared_load_section_names(section_dir)
+
+
 SUPPLEMENTAL_RUNTIME_RELATIVE = "Runtime/Ros2ForUnity/StreamingAssets/Ros2ForUnity/share/ament_index"
 
 LEAKY_UPSTREAM_EXAMPLES = (
