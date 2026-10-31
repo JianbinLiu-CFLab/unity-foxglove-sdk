@@ -135,7 +135,7 @@ class SplitSurfaceTests(IdentityToolingBase):
         """The split foundation preserves the legacy TypeAlias helper value."""
         self.assertIs(
             compare_identity_surfaces._TYPE_ALIAS_TYPE,
-            getattr(ast, "TypeAlias", None),
+            ast.TypeAlias if hasattr(ast, "TypeAlias") else None,
         )
 
     def test_identity_namespace_facade_reexports_namespace_risk_constants(self) -> None:
@@ -144,14 +144,21 @@ class SplitSurfaceTests(IdentityToolingBase):
             "Scripts.phase192.identity_namespace_analysis",
             fromlist=["_NAMESPACE_RISK_NAMES"],
         )
-        for name in (
-            "_NAMESPACE_RISK_NAMES",
-            "_NAMESPACE_RISK_ATTRIBUTES",
-            "_NAMESPACE_RISK_MODULE_ATTRIBUTES",
-        ):
-            with self.subTest(name=name):
-                self.assertTrue(hasattr(compare_identity_surfaces, name))
-                self.assertEqual(getattr(namespace, name), getattr(compare_identity_surfaces, name))
+        with self.subTest(name="_NAMESPACE_RISK_NAMES"):
+            self.assertEqual(
+                namespace._NAMESPACE_RISK_NAMES,
+                compare_identity_surfaces._NAMESPACE_RISK_NAMES,
+            )
+        with self.subTest(name="_NAMESPACE_RISK_ATTRIBUTES"):
+            self.assertEqual(
+                namespace._NAMESPACE_RISK_ATTRIBUTES,
+                compare_identity_surfaces._NAMESPACE_RISK_ATTRIBUTES,
+            )
+        with self.subTest(name="_NAMESPACE_RISK_MODULE_ATTRIBUTES"):
+            self.assertEqual(
+                namespace._NAMESPACE_RISK_MODULE_ATTRIBUTES,
+                compare_identity_surfaces._NAMESPACE_RISK_MODULE_ATTRIBUTES,
+            )
 
     def test_namespace_analysis_helpers_stay_below_source_split_threshold(self) -> None:
         """Namespace analysis implementation remains split into maintainable modules."""
@@ -500,7 +507,7 @@ assert hasattr(loaded, "_phase192_template_name")
                 self.assertEqual(("B",) * 8, second.VALUE)
                 for name in names[1:]:
                     module = sys.modules[name]
-                    self.assertIn(str(checkouts[1][0]), str(getattr(module, "__file__", "")))
+                    self.assertIn(str(checkouts[1][0]), str(module.__file__))
             finally:
                 for name in tuple(sys.modules):
                     if name == "Scripts" or name.startswith("Scripts."):
