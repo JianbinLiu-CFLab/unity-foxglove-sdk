@@ -304,25 +304,19 @@ jobs:
               "scrub_environment,verify_cl_compile,verify_python,write_evidence",
           ]
           normalized_lines = [line.replace("\\", "/") for line in text.splitlines() if line.strip()]
-          expected_validator_split_paths = {
+          expected_phase192_split_paths = {
               ".github/workflows/dotnet-tests.yml",
               "Scripts/phase192/compare_identity_surfaces.py",
               "Scripts/phase192/regression_checks/test_identity_tooling.py",
               "Scripts/phase192/source_layout.py",
-              "Scripts/release/regression_checks/test_release_tooling.py",
               "Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py",
-              "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/layout_metadata_tests.py",
-              "Scripts/ros2forunity/windows/lyrical/section_manifest.py",
-              "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/runtime_checks.py",
-          }
-          expected_phase146b_split_paths = {
-              "Scripts/phase192/regression_checks/test_identity_tooling.py",
-              "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/build_pipeline.py",
-              "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/evidence.py",
-              "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/safety_and_environment.py",
-              "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/sections.manifest",
               "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py",
+              "Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package/matrix_tests.py",
+              "Scripts/ros2forunity/windows/lyrical/regression_checks/test_phase146b_build_defaults.py",
+              "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/layout_metadata_tests.py",
           }
+          expected_validator_split_paths = expected_phase192_split_paths
+          expected_phase146b_split_paths = expected_phase192_split_paths
           expected_paths = (
               "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
               "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",

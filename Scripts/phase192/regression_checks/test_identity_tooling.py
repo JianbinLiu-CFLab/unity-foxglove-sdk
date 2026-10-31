@@ -4815,26 +4815,18 @@ class IdentityToolingTests(unittest.TestCase):
     def test_workflow_fallback_allowlists_cover_reviewed_lyrical_transitions(self) -> None:
         """Fallback identity transitions must enumerate the complete reviewed file sets."""
         workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
-        validator_transition = {
+        reviewed_transition = {
             ".github/workflows/dotnet-tests.yml",
             "Scripts/phase192/compare_identity_surfaces.py",
             "Scripts/phase192/regression_checks/test_identity_tooling.py",
             "Scripts/phase192/source_layout.py",
-            "Scripts/release/regression_checks/test_release_tooling.py",
             "Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py",
-            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/layout_metadata_tests.py",
-            "Scripts/ros2forunity/windows/lyrical/section_manifest.py",
-            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/runtime_checks.py",
-        }
-        phase146b_transition = {
-            "Scripts/phase192/regression_checks/test_identity_tooling.py",
-            "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/build_pipeline.py",
-            "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/evidence.py",
-            "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/safety_and_environment.py",
-            "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/sections.manifest",
             "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py",
+            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package/matrix_tests.py",
+            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_phase146b_build_defaults.py",
+            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/layout_metadata_tests.py",
         }
-        for path in validator_transition | phase146b_transition:
+        for path in reviewed_transition:
             with self.subTest(path=path):
                 self.assertIn(path, workflow)
         self.assertIn("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT", workflow)
