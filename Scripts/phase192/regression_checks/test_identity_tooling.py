@@ -813,6 +813,41 @@ class IdentityToolingTests(unittest.TestCase):
             with self.subTest(section=section.name):
                 self.assertLess(len(section.read_text(encoding="utf-8").splitlines()), 1000)
 
+    def test_reviewed_template_registry_split_preserves_identity_contract(self) -> None:
+        """The reviewed template registry split has an exact compatibility transition."""
+        nested = tuple(
+            (f"template_registry/{name}.py", (), (), ())
+            for name in (
+                "closure_mutations",
+                "critical_bindings",
+                "registry_mutations",
+                "template_helpers",
+            )
+        )
+        base_relative = ("legacy-foundation", "legacy-surface")
+        head_relative = (
+            "ImportFrom(module='template_registry', names=[alias(name='*')], level=1)",
+            "legacy-surface",
+        )
+        self.assertTrue(
+            compare_identity_surfaces._reviewed_template_registry_split(
+                "Scripts/phase192/compare_identity_surfaces.py",
+                (),
+                nested,
+                base_relative,
+                head_relative,
+            )
+        )
+        self.assertFalse(
+            compare_identity_surfaces._reviewed_template_registry_split(
+                "Scripts/phase192/compare_identity_surfaces.py",
+                (),
+                nested[:-1],
+                base_relative,
+                head_relative,
+            )
+        )
+
     def test_reviewed_validator_isolation_transition_requires_exact_cleanup(self) -> None:
         """Only the reviewed eight-module cleanup insertion is compatibility-waived."""
         cleanup = "facade::7cdf800c9922e9368a642e72b34a53b8fa0049b842fda84b2ca8041537599915"

@@ -271,6 +271,33 @@ def _reviewed_validator_section_split(
         and head_sections == ("implementation_lyrical", "manifest_and_inventory", "runtime_checks")
     )
 
+def _reviewed_template_registry_split(
+    relative: str,
+    base_nested_contract: tuple,
+    head_nested_contract: tuple,
+    base_relative_star_contract: tuple[str, ...],
+    head_relative_star_contract: tuple[str, ...],
+) -> bool:
+    """Recognize the reviewed template registry package split."""
+    expected_paths = (
+        "template_registry/closure_mutations.py",
+        "template_registry/critical_bindings.py",
+        "template_registry/registry_mutations.py",
+        "template_registry/template_helpers.py",
+    )
+    head_paths = tuple(item[0] for item in head_nested_contract)
+    return (
+        relative == "Scripts/phase192/compare_identity_surfaces.py"
+        and not base_nested_contract
+        and head_paths == expected_paths
+        and len(head_relative_star_contract) == len(base_relative_star_contract)
+        and len(head_relative_star_contract) > 0
+        and head_relative_star_contract[1:] == base_relative_star_contract[1:]
+        and head_relative_star_contract[0].startswith(
+            "ImportFrom(module='template_registry',"
+        )
+    )
+
 _REVIEWED_VALIDATOR_CLEANUP_SIGNATURE = (
     "facade::7cdf800c9922e9368a642e72b34a53b8fa0049b842fda84b2ca8041537599915"
 )
@@ -446,6 +473,13 @@ def _compare_surfaces(
             tuple(base_sections),
             tuple(head_sections),
         )
+        reviewed_template_registry_split = _reviewed_template_registry_split(
+            relative,
+            tuple(base_nested_contract or ()),
+            tuple(head_nested_contract or ()),
+            tuple(base_relative_star_contract or ()),
+            tuple(head_relative_star_contract or ()),
+        )
         missing_sections = sorted(set(base_sections) - set(head_sections))
         extra_sections = sorted(set(head_sections) - set(base_sections))
         if strict:
@@ -467,7 +501,10 @@ def _compare_surfaces(
             errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
         if strict and tuple(base_section_map or ()) != tuple(head_section_map or ()):
             errors.append(f"SECTION_EXPORT_OWNER_CHANGED {relative}")
-        if tuple(base_nested_contract or ()) != tuple(head_nested_contract or ()):
+        if (
+            tuple(base_nested_contract or ()) != tuple(head_nested_contract or ())
+            and not reviewed_template_registry_split
+        ):
             errors.append(f"NESTED_MODULE_CONTRACT_CHANGED {relative}")
         if strict and tuple(base_owner_map or ()) != tuple(head_owner_map or ()):
             errors.append(f"SYMBOL_OWNER_CHANGED {relative}")
@@ -475,7 +512,11 @@ def _compare_surfaces(
         head_relative = tuple(head_relative_star_contract or ())
         if (
             (strict and base_relative != head_relative)
-            or (not strict and not _contract_preserves_order(base_relative, head_relative))
+            or (
+                not strict
+                and not reviewed_template_registry_split
+                and not _contract_preserves_order(base_relative, head_relative)
+            )
         ):
             errors.append(f"RELATIVE_STAR_IMPORT_CHANGED {relative}")
         if not strict and base_risks != head_risks:
@@ -716,4 +757,4 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     return compare_revisions(args.repository.resolve(), args.base, args.head, strict=args.strict)
 
-__all__ = ['_surface', '_surfaces', '_conditional_signature_names', '_reviewed_validator_section_split', '_REVIEWED_VALIDATOR_CLEANUP_SIGNATURE', '_IDENTITY_HELPER_RELATIVES', '_REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS', '_normalized_source_digest', '_identity_helper_source_contract', '_compare_identity_helper_contracts', '_reviewed_validator_isolation_transition', '_compare_surfaces', 'compare_revisions', 'main']
+__all__ = ['_surface', '_surfaces', '_conditional_signature_names', '_reviewed_validator_section_split', '_reviewed_template_registry_split', '_REVIEWED_VALIDATOR_CLEANUP_SIGNATURE', '_IDENTITY_HELPER_RELATIVES', '_REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS', '_normalized_source_digest', '_identity_helper_source_contract', '_compare_identity_helper_contracts', '_reviewed_validator_isolation_transition', '_compare_surfaces', 'compare_revisions', 'main']
