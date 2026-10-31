@@ -331,7 +331,6 @@ jobs:
           }
           expected_template_registry_split_paths = {
               ".github/workflows/dotnet-tests.yml",
-              "Scripts/phase192/compare_identity_surfaces.py",
               "Scripts/phase192/compare_identity_surfaces/surface_compare.py",
               "Scripts/phase192/compare_identity_surfaces/template_registry.py",
               "Scripts/phase192/compare_identity_surfaces/template_registry/__init__.py",
