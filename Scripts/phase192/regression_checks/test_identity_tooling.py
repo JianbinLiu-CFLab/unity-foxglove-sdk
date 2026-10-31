@@ -720,6 +720,22 @@ class IdentityToolingTests(unittest.TestCase):
             {entry[0] for entry in surface[-1]},
         )
 
+    def test_identity_foundation_imports_without_ast_trystar(self) -> None:
+        """The identity foundation keeps Python 3.10 AST compatibility."""
+        probe = (
+            "import ast; "
+            "delattr(ast, 'TryStar'); "
+            "import Scripts.phase192.compare_identity_surfaces.foundation"
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=compare_identity_surfaces.REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
     def test_identity_namespace_facade_reexports_namespace_risk_constants(self) -> None:
         """The identity facade keeps the namespace-risk compatibility names."""
         namespace = __import__(

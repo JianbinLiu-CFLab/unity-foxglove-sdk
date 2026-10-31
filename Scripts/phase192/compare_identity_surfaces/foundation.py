@@ -21,7 +21,7 @@ from typing import Iterator, Mapping
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
-_TRY_TYPES = (ast.Try, ast.TryStar)
+_TRY_TYPES = (ast.Try, getattr(ast, "TryStar", ast.Try))
 _TYPE_ALIAS_TYPE = None
 _SECTION_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
