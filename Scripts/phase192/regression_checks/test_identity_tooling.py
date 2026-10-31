@@ -663,7 +663,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(82, len(surfaces))
+        self.assertEqual(83, len(surfaces))
         jazzy = surfaces[
             "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py"
         ]
@@ -718,6 +718,51 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertIn(
             "parts/il2cpp_logging.py",
             {entry[0] for entry in surface[-1]},
+        )
+
+    def test_identity_foundation_imports_without_ast_trystar(self) -> None:
+        """The identity foundation keeps Python 3.10 AST compatibility."""
+        probe = (
+            "import ast; "
+            "hasattr(ast, 'TryStar') and delattr(ast, 'TryStar'); "
+            "import Scripts.phase192.compare_identity_surfaces.foundation"
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=compare_identity_surfaces.REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_identity_package_imports_from_external_cwd_with_legacy_paths(self) -> None:
+        """Legacy PYTHONPATH imports remain valid outside the repository root."""
+        repository = compare_identity_surfaces.REPOSITORY_ROOT
+        cases = (
+            (repository / "Scripts" / "phase192", "import compare_identity_surfaces"),
+            (repository / "Scripts", "import phase192.compare_identity_surfaces"),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            for python_path, script in cases:
+                with self.subTest(python_path=python_path):
+                    environment = os.environ.copy()
+                    environment["PYTHONPATH"] = str(python_path)
+                    completed = subprocess.run(
+                        [sys.executable, "-c", script],
+                        cwd=temporary,
+                        env=environment,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_identity_foundation_preserves_type_alias_helper(self) -> None:
+        """The split foundation preserves the legacy TypeAlias helper value."""
+        self.assertIs(
+            compare_identity_surfaces._TYPE_ALIAS_TYPE,
+            getattr(ast, "TypeAlias", None),
         )
 
     def test_identity_namespace_facade_reexports_namespace_risk_constants(self) -> None:
@@ -1166,7 +1211,8 @@ class IdentityToolingTests(unittest.TestCase):
             relative,
         )
         self.assertIn("Scripts/release/regression_checks/test_release_tooling.py", relative)
-        self.assertEqual(82, len(relative))
+        self.assertIn("Scripts/phase192/compare_identity_surfaces.py", relative)
+        self.assertEqual(83, len(relative))
 
     def test_identity_surface_recognizes_manifest_backed_decomposed_facade(self) -> None:
         """A Decomposed/<facade-stem> manifest participates in identity checks."""
