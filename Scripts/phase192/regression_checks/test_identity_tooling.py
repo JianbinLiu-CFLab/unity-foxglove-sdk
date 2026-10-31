@@ -724,7 +724,7 @@ class IdentityToolingTests(unittest.TestCase):
         """The identity foundation keeps Python 3.10 AST compatibility."""
         probe = (
             "import ast; "
-            "delattr(ast, 'TryStar'); "
+            "hasattr(ast, 'TryStar') and delattr(ast, 'TryStar'); "
             "import Scripts.phase192.compare_identity_surfaces.foundation"
         )
         completed = subprocess.run(
@@ -735,6 +735,35 @@ class IdentityToolingTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_identity_package_imports_from_external_cwd_with_legacy_paths(self) -> None:
+        """Legacy PYTHONPATH imports remain valid outside the repository root."""
+        repository = compare_identity_surfaces.REPOSITORY_ROOT
+        cases = (
+            (repository / "Scripts" / "phase192", "import compare_identity_surfaces"),
+            (repository / "Scripts", "import phase192.compare_identity_surfaces"),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            for python_path, script in cases:
+                with self.subTest(python_path=python_path):
+                    environment = os.environ.copy()
+                    environment["PYTHONPATH"] = str(python_path)
+                    completed = subprocess.run(
+                        [sys.executable, "-c", script],
+                        cwd=temporary,
+                        env=environment,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_identity_foundation_preserves_type_alias_helper(self) -> None:
+        """The split foundation preserves the legacy TypeAlias helper value."""
+        self.assertIs(
+            compare_identity_surfaces._TYPE_ALIAS_TYPE,
+            getattr(ast, "TypeAlias", None),
+        )
 
     def test_identity_namespace_facade_reexports_namespace_risk_constants(self) -> None:
         """The identity facade keeps the namespace-risk compatibility names."""

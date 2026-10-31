@@ -12,6 +12,9 @@ __file__ = str(_PHASE192_FACADE_FILE)
 _PHASE192_PARENT = _PHASE192_FACADE_FILE.parent
 if str(_PHASE192_PARENT) not in _phase192_sys.path:
     _phase192_sys.path.insert(0, str(_PHASE192_PARENT))
+_PHASE192_REPOSITORY_ROOT = _PHASE192_FACADE_FILE.resolve().parents[2]
+if str(_PHASE192_REPOSITORY_ROOT) not in _phase192_sys.path:
+    _phase192_sys.path.insert(0, str(_PHASE192_REPOSITORY_ROOT))
 
 from . import foundation as _phase192_section_0
 from . import template_registry as _phase192_section_1
@@ -68,5 +71,5 @@ _phase192_module = _phase192_sys.modules.get(__name__)
 if _phase192_module is not None:
     _phase192_module.__class__ = _Phase192PackageModule
 
-del _phase192_sys, _phase192_types, _Phase192Path, _PHASE192_FACADE_FILE, _PHASE192_PARENT
+del _phase192_sys, _phase192_types, _Phase192Path, _PHASE192_FACADE_FILE, _PHASE192_PARENT, _PHASE192_REPOSITORY_ROOT
 del _phase192_module, _phase192_section, _phase192_name
