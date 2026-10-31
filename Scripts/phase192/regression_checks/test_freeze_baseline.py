@@ -9,11 +9,33 @@ import stat
 from pathlib import Path
 from unittest import mock
 
-from Scripts.phase192 import freeze_baseline, task0_entry
+from Scripts.phase192 import freeze_baseline, identity_contracts, task0_entry
 
 
 class FreezeBaselineTests(unittest.TestCase):
     """Verify Task 0 baseline inventory helpers."""
+    def test_identity_tooling_sections_stay_below_source_split_threshold(self) -> None:
+        """Identity tooling regression sections remain below the split threshold."""
+        package = freeze_baseline.REPOSITORY_ROOT / "Scripts/phase192/regression_checks/test_identity_tooling"
+        self.assertTrue(package.is_dir())
+        sections = sorted(path for path in package.glob("*.py") if path.name != "__init__.py")
+        self.assertGreater(len(sections), 1)
+        for section in sections:
+            with self.subTest(section=section.name):
+                self.assertLess(len(section.read_text(encoding="utf-8").splitlines()), 1000)
+
+    def test_identity_tooling_discovery_preserves_test_names(self) -> None:
+        """The decomposed facade discovers the original 334 test names once."""
+        relative = "Scripts/phase192/regression_checks/test_identity_tooling.py"
+        source = freeze_baseline.REPOSITORY_ROOT / relative
+        rows = identity_contracts.python_test_rows(
+            relative,
+            source.read_text(encoding="utf-8"),
+            freeze_baseline.REPOSITORY_ROOT,
+        )
+        self.assertEqual(334, len(rows))
+        self.assertEqual({"IdentityToolingTests"}, {row[1].split(".")[-2] for row in rows})
+
     def test_measured_lane_result_is_fail_closed(self) -> None:
         """Measured lane results fail closed for missing and failed evidence."""
         with tempfile.TemporaryDirectory() as temp:
