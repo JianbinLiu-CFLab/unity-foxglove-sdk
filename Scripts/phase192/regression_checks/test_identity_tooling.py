@@ -663,7 +663,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(82, len(surfaces))
+        self.assertEqual(83, len(surfaces))
         jazzy = surfaces[
             "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py"
         ]
@@ -1166,7 +1166,8 @@ class IdentityToolingTests(unittest.TestCase):
             relative,
         )
         self.assertIn("Scripts/release/regression_checks/test_release_tooling.py", relative)
-        self.assertEqual(82, len(relative))
+        self.assertIn("Scripts/phase192/compare_identity_surfaces.py", relative)
+        self.assertEqual(83, len(relative))
 
     def test_identity_surface_recognizes_manifest_backed_decomposed_facade(self) -> None:
         """A Decomposed/<facade-stem> manifest participates in identity checks."""
