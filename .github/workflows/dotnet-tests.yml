@@ -257,7 +257,6 @@ jobs:
             python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
           import subprocess
           import hashlib
-          import re
           import sys
           from pathlib import Path
 
@@ -368,12 +367,29 @@ jobs:
               "Scripts/phase192/regression_checks/test_identity_tooling/surface_rows_tests.py",
           }
           expected_identity_tooling_sensitive_sha256 = {
-              ".github/workflows/dotnet-tests.yml": "3606bd2fb69c818d83b58ab87fb8b95a37fb5007fb796d86b0240028346151e3",
+              ".github/workflows/dotnet-tests.yml": "fe1764dfacc5fb4375e0fbb4415af9a89f4c1d657dbee8b6c87b31ec0b9f4c55",
               "Scripts/phase192/compare_identity_surfaces/entrypoint_contracts.py": "ffbaa0d630b7189ea1b08493886d1b27c18a94d2a91b27e7eee9c2b1c95273ba",
               "Scripts/phase192/compare_identity_surfaces/section_validation.py": "817617274b1f4a873af85bd85b450ce692109cc481440f45b6bdb79952e4531d",
               "Scripts/phase192/compare_identity_surfaces/surface_compare.py": "0beaa06fd399b0058bcd7d71188ca6fb071d95cca3fe712aa781972586de0edc",
+              "Scripts/phase192/regression_checks/test_freeze_baseline.py": "293f5cc202ad0c33e05ec0be75598e6ebc70f094cb8c3c8742c61c489f8d6391",
+              "Scripts/phase192/regression_checks/test_identity_tooling.py": "d27f9baeb0cee11e87bff768e342ded0858724a12c56343da83139a08429c4da",
+              "Scripts/phase192/regression_checks/test_identity_tooling/__init__.py": "9e1903c0bc47bf55f0814aa8816353b8f5159b54f0e907904473b8f4dbb2fd26",
+              "Scripts/phase192/regression_checks/test_identity_tooling/__main__.py": "5646d897a813472ee7266c8c590531037e7dde87451353a201ac446e368c5426",
+              "Scripts/phase192/regression_checks/test_identity_tooling/aggregate.py": "2e071ba2dd80dd52a7ca424439cf0aa386be75071e98490df18e2eece5153ed1",
+              "Scripts/phase192/regression_checks/test_identity_tooling/compatibility_initializer_tests.py": "aff254f23a20c6472da087d499756671306320439e3e6470c2fbee7715761272",
+              "Scripts/phase192/regression_checks/test_identity_tooling/compatibility_surface_tests.py": "93387c764f087ec27adf000a82be3048bfb85d5c0ed94b4e7cdac39226838dfc",
+              "Scripts/phase192/regression_checks/test_identity_tooling/foundation.py": "66d1501950adde5f2a933970f21b52d2bea1882beacbd5379b0a99eb33442530",
+              "Scripts/phase192/regression_checks/test_identity_tooling/loader_entrypoint_tests.py": "28110bb488475829023423559a84db79d2c8f01f4ca99f014dc97756f4f3b7ee",
+              "Scripts/phase192/regression_checks/test_identity_tooling/loader_isolation_tests.py": "dddc52fdf8cdf06f28ff40d00454b46714b1b365230fd98ead47f375fd0447f0",
+              "Scripts/phase192/regression_checks/test_identity_tooling/loader_mutation_tests.py": "7c4405326b9e2e81f6b80b8d90503e8fb44407bec09fd51fde83cb2667e6ac8a",
+              "Scripts/phase192/regression_checks/test_identity_tooling/namespace_execution_core_tests.py": "755a664401359182cc24278f4ecd0b2902e8e36a33079d003f52d6ee0028eab9",
+              "Scripts/phase192/regression_checks/test_identity_tooling/namespace_execution_edges_tests.py": "d82e339566176d0cd40415c85325e2ed03e906115f2759308084a9e8de24c0b3",
+              "Scripts/phase192/regression_checks/test_identity_tooling/namespace_risk_tests.py": "b3252e2cabd2a0199825a3455dca74489d37be4d8ad23fa6b077a0995dfe30fc",
+              "Scripts/phase192/regression_checks/test_identity_tooling/split_contract_tests.py": "f23c6e4f20ecb537206b457eb8b5cf26dc9b0835d7b1846af18a0667bdb8ef80",
+              "Scripts/phase192/regression_checks/test_identity_tooling/split_surface_tests.py": "6185859a05915f2803fe4f6ea12b4b4a07676ffcb06ef4593600070432236180",
+              "Scripts/phase192/regression_checks/test_identity_tooling/surface_rows_tests.py": "7a85c8c9410604d2355b59ff3c01e0c3ace326d6e89c342b6f66cfc6b6d4b17d",
           }
-          IDENTITY_WORKFLOW_SELF_DIGEST = "3606bd2fb69c818d83b58ab87fb8b95a37fb5007fb796d86b0240028346151e3"
+          IDENTITY_WORKFLOW_SELF_DIGEST = "fe1764dfacc5fb4375e0fbb4415af9a89f4c1d657dbee8b6c87b31ec0b9f4c55"
           expected_validator_split_paths = {
               "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py",
               "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/implementation_lyrical.py",
@@ -507,17 +523,16 @@ jobs:
                   sensitive_bytes = subprocess.check_output(["git", "show", f"{head_sha}:{path}"])
                   if path == ".github/workflows/dotnet-tests.yml":
                       sensitive_text = sensitive_bytes.decode("utf-8")
-                      sensitive_text = re.sub(
-                          r'IDENTITY_WORKFLOW_SELF_DIGEST = "[0-9a-f]+"',
-                          'IDENTITY_WORKFLOW_SELF_DIGEST = "<SELF_DIGEST>"',
-                          sensitive_text,
-                      )
-                      sensitive_text = re.sub(
-                          r'(\\.github/workflows/dotnet-tests\\.yml": ")[0-9a-f]+',
-                          r'\\1<SELF_DIGEST>',
-                          sensitive_text,
-                      )
-                      sensitive_bytes = sensitive_text.encode("utf-8")
+                      normalized_lines = []
+                      for sensitive_line in sensitive_text.splitlines(keepends=True):
+                          if sensitive_line.lstrip().startswith("\".github/workflows/dotnet-tests.yml\": \""):
+                              prefix, suffix = sensitive_line.split("\".github/workflows/dotnet-tests.yml\": \"", 1)
+                              sensitive_line = prefix + "\".github/workflows/dotnet-tests.yml\": \"<SELF_DIGEST>\"" + suffix.split("\"", 1)[1]
+                          if sensitive_line.lstrip().startswith('IDENTITY_WORKFLOW_SELF_DIGEST = \"'):
+                              prefix, suffix = sensitive_line.split("IDENTITY_WORKFLOW_SELF_DIGEST = \"", 1)
+                              sensitive_line = prefix + "IDENTITY_WORKFLOW_SELF_DIGEST = \"<SELF_DIGEST>\"" + suffix.split("\"", 1)[1]
+                          normalized_lines.append(sensitive_line)
+                      sensitive_bytes = "".join(normalized_lines).encode("utf-8")
                   actual_digest = hashlib.sha256(sensitive_bytes).hexdigest()
                   if actual_digest != expected_digest:
                       sys.stderr.write(f"Unexpected identity tooling sensitive file digest: {path}\n")
