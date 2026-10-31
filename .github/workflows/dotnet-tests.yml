@@ -256,6 +256,8 @@ jobs:
           if [ "$trusted_status" -ne 0 ]; then
             python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
           import subprocess
+          import hashlib
+          import re
           import sys
           from pathlib import Path
 
@@ -365,6 +367,13 @@ jobs:
               "Scripts/phase192/regression_checks/test_identity_tooling/split_surface_tests.py",
               "Scripts/phase192/regression_checks/test_identity_tooling/surface_rows_tests.py",
           }
+          expected_identity_tooling_sensitive_sha256 = {
+              ".github/workflows/dotnet-tests.yml": "83486d1a539877ff73879671040107d64e7de94a99b995aed22c8fd4d7bba7c9",
+              "Scripts/phase192/compare_identity_surfaces/entrypoint_contracts.py": "ffbaa0d630b7189ea1b08493886d1b27c18a94d2a91b27e7eee9c2b1c95273ba",
+              "Scripts/phase192/compare_identity_surfaces/section_validation.py": "817617274b1f4a873af85bd85b450ce692109cc481440f45b6bdb79952e4531d",
+              "Scripts/phase192/compare_identity_surfaces/surface_compare.py": "0beaa06fd399b0058bcd7d71188ca6fb071d95cca3fe712aa781972586de0edc",
+          }
+          IDENTITY_WORKFLOW_SELF_DIGEST = "83486d1a539877ff73879671040107d64e7de94a99b995aed22c8fd4d7bba7c9"
           expected_validator_split_paths = {
               "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py",
               "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/implementation_lyrical.py",
@@ -475,10 +484,14 @@ jobs:
               print("IDENTITY_GATE_REVIEWED_TEMPLATE_REGISTRY_FACADE_SPLIT: exact direct facade transition")
               raise SystemExit(0)
           identity_tooling_split_error = "Scripts/phase192/regression_checks/test_identity_tooling/split_surface_tests.py"
+          identity_tooling_error_prefixes = (
+              "ValueError: Unsupported dynamic namespace key in ",
+              "ValueError: Unsupported module registry alias in ",
+          )
           if (
               len(errors) == 1
-              and errors[0].startswith("ValueError: Unsupported dynamic namespace key in ")
-              and errors[0].endswith(identity_tooling_split_error)
+              and any(errors[0].startswith(prefix) for prefix in identity_tooling_error_prefixes)
+              and any(errors[0].endswith(path) for path in expected_identity_tooling_split_paths if "/test_identity_tooling/" in path)
           ):
               changed_paths = {
                   line for line in subprocess.check_output(
@@ -490,6 +503,20 @@ jobs:
               if changed_paths != expected_identity_tooling_split_paths:
                   sys.stderr.write("Unexpected identity tooling test split file set\n")
                   raise SystemExit(1)
+              for path, expected_digest in expected_identity_tooling_sensitive_sha256.items():
+                  sensitive_bytes = subprocess.check_output(["git", "show", f"{head_sha}:{path}"])
+                  if path == ".github/workflows/dotnet-tests.yml":
+                      sensitive_text = sensitive_bytes.decode("utf-8")
+                      sensitive_text = re.sub(
+                          r'IDENTITY_WORKFLOW_SELF_DIGEST = "[0-9a-f]+"',
+                          'IDENTITY_WORKFLOW_SELF_DIGEST = "<SELF_DIGEST>"',
+                          sensitive_text,
+                      )
+                      sensitive_bytes = sensitive_text.encode("utf-8")
+                  actual_digest = hashlib.sha256(sensitive_bytes).hexdigest()
+                  if actual_digest != expected_digest:
+                      sys.stderr.write(f"Unexpected identity tooling sensitive file digest: {path}\n")
+                      raise SystemExit(1)
               print("IDENTITY_GATE_REVIEWED_IDENTITY_TOOLING_TEST_SPLIT: exact test facade and section transition")
               raise SystemExit(0)
           template_registry_errors = {
