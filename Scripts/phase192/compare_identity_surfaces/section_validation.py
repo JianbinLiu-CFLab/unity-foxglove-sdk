@@ -466,6 +466,22 @@ def _validate_compatibility_new_sections(
         new_names = frozenset(path.stem for path in head_sections) - old_names
         reviewed_identity_tooling_split = (
             relative == "Scripts/phase192/regression_checks/test_identity_tooling.py"
+            and {path.stem for path in head_sections}
+            == {
+                "foundation",
+                "surface_rows_tests",
+                "split_contract_tests",
+                "split_surface_tests",
+                "compatibility_surface_tests",
+                "compatibility_initializer_tests",
+                "loader_isolation_tests",
+                "loader_entrypoint_tests",
+                "loader_mutation_tests",
+                "namespace_risk_tests",
+                "namespace_execution_core_tests",
+                "namespace_execution_edges_tests",
+                "aggregate",
+            }
         )
         if relative not in base_surfaces:
             initializer = head_initializer if head_initializer.is_file() else manifest_path
