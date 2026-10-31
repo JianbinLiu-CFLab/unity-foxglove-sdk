@@ -257,7 +257,6 @@ jobs:
             python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
           import subprocess
           import hashlib
-          import re
           import sys
           from pathlib import Path
 
@@ -368,12 +367,12 @@ jobs:
               "Scripts/phase192/regression_checks/test_identity_tooling/surface_rows_tests.py",
           }
           expected_identity_tooling_sensitive_sha256 = {
-              ".github/workflows/dotnet-tests.yml": "3606bd2fb69c818d83b58ab87fb8b95a37fb5007fb796d86b0240028346151e3",
+              ".github/workflows/dotnet-tests.yml": "1a824a27c91da23debb66b2fc396024d1a922f6986897001cf3ed7dafafb036d",
               "Scripts/phase192/compare_identity_surfaces/entrypoint_contracts.py": "ffbaa0d630b7189ea1b08493886d1b27c18a94d2a91b27e7eee9c2b1c95273ba",
               "Scripts/phase192/compare_identity_surfaces/section_validation.py": "817617274b1f4a873af85bd85b450ce692109cc481440f45b6bdb79952e4531d",
               "Scripts/phase192/compare_identity_surfaces/surface_compare.py": "0beaa06fd399b0058bcd7d71188ca6fb071d95cca3fe712aa781972586de0edc",
           }
-          IDENTITY_WORKFLOW_SELF_DIGEST = "3606bd2fb69c818d83b58ab87fb8b95a37fb5007fb796d86b0240028346151e3"
+          IDENTITY_WORKFLOW_SELF_DIGEST = "1a824a27c91da23debb66b2fc396024d1a922f6986897001cf3ed7dafafb036d"
           expected_validator_split_paths = {
               "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py",
               "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/implementation_lyrical.py",
@@ -507,16 +506,16 @@ jobs:
                   sensitive_bytes = subprocess.check_output(["git", "show", f"{head_sha}:{path}"])
                   if path == ".github/workflows/dotnet-tests.yml":
                       sensitive_text = sensitive_bytes.decode("utf-8")
-                      sensitive_text = re.sub(
-                          r'IDENTITY_WORKFLOW_SELF_DIGEST = "[0-9a-f]+"',
-                          'IDENTITY_WORKFLOW_SELF_DIGEST = "<SELF_DIGEST>"',
-                          sensitive_text,
-                      )
-                      sensitive_text = re.sub(
-                          r'(\\.github/workflows/dotnet-tests\\.yml": ")[0-9a-f]+',
-                          r'\\1<SELF_DIGEST>',
-                          sensitive_text,
-                      )
+                      normalized_lines = []
+                      for sensitive_line in sensitive_text.splitlines(keepends=True):
+                          if sensitive_line.lstrip().startswith('".github/workflows/dotnet-tests.yml": "'):
+                              prefix, suffix = sensitive_line.split('".github/workflows/dotnet-tests.yml": "', 1)
+                              sensitive_line = prefix + '".github/workflows/dotnet-tests.yml": "<SELF_DIGEST>"' + suffix.split('"', 1)[1]
+                          if sensitive_line.lstrip().startswith('IDENTITY_WORKFLOW_SELF_DIGEST = "'):
+                              prefix, suffix = sensitive_line.split('IDENTITY_WORKFLOW_SELF_DIGEST = "', 1)
+                              sensitive_line = prefix + 'IDENTITY_WORKFLOW_SELF_DIGEST = "<SELF_DIGEST>"' + suffix.split('"', 1)[1]
+                          normalized_lines.append(sensitive_line)
+                      sensitive_text = ''.join(normalized_lines)
                       sensitive_bytes = sensitive_text.encode("utf-8")
                   actual_digest = hashlib.sha256(sensitive_bytes).hexdigest()
                   if actual_digest != expected_digest:
