@@ -663,7 +663,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(83, len(surfaces))
+        self.assertEqual(84, len(surfaces))
         jazzy = surfaces[
             "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py"
         ]
@@ -707,6 +707,13 @@ class IdentityToolingTests(unittest.TestCase):
                 "unity_batch_compile_gate_tests",
             ),
             release_tooling[1],
+        )
+        template_registry = surfaces[
+            "Scripts/phase192/compare_identity_surfaces/template_registry.py"
+        ]
+        self.assertEqual(
+            ("template_helpers", "closure_mutations", "critical_bindings", "registry_mutations"),
+            template_registry[1],
         )
 
     def test_identity_surface_includes_nested_split_modules(self) -> None:
@@ -789,6 +796,22 @@ class IdentityToolingTests(unittest.TestCase):
             with self.subTest(relative=relative):
                 lines = (compare_identity_surfaces.REPOSITORY_ROOT / relative).read_text(encoding="utf-8").splitlines()
                 self.assertLess(len(lines), 1000)
+
+    def test_template_registry_facade_sections_stay_below_source_split_threshold(self) -> None:
+        """Template registry validation is split into maintainable sections."""
+        repository = compare_identity_surfaces.REPOSITORY_ROOT
+        facade = repository / "Scripts/phase192/compare_identity_surfaces/template_registry.py"
+        self.assertLess(len(facade.read_text(encoding="utf-8").splitlines()), 1000)
+        package = facade.with_suffix("")
+        sections = tuple(
+            path
+            for path in package.glob("*.py")
+            if path.name != "__init__.py"
+        )
+        self.assertGreaterEqual(len(sections), 2)
+        for section in sections:
+            with self.subTest(section=section.name):
+                self.assertLess(len(section.read_text(encoding="utf-8").splitlines()), 1000)
 
     def test_reviewed_validator_isolation_transition_requires_exact_cleanup(self) -> None:
         """Only the reviewed eight-module cleanup insertion is compatibility-waived."""
@@ -1212,7 +1235,7 @@ class IdentityToolingTests(unittest.TestCase):
         )
         self.assertIn("Scripts/release/regression_checks/test_release_tooling.py", relative)
         self.assertIn("Scripts/phase192/compare_identity_surfaces.py", relative)
-        self.assertEqual(83, len(relative))
+        self.assertEqual(84, len(relative))
 
     def test_identity_surface_recognizes_manifest_backed_decomposed_facade(self) -> None:
         """A Decomposed/<facade-stem> manifest participates in identity checks."""
