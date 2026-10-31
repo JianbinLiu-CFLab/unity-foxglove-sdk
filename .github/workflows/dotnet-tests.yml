@@ -290,16 +290,34 @@ jobs:
               "inventory_category_counts_match,published_runtime_is_not_prototype",
           ]
           phase146b_validator_path = "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build.py"
+          phase146b_validator_error_prefix = f"MISSING_SYMBOLS {phase146b_validator_path}:"
+          phase146b_expected_missing_symbols = (
+              "capture_cmd_environment",
+              "capture_ros2_environment",
+              "classify_output",
+              "clean_colcon_outputs",
+              "copy_lyrical_pixi_runtime_closure",
+              "deploy_asset_from_successful_colcon",
+              "ensure_r2fu_checkout",
+              "find_vswhere",
+              "has_complete_asset",
+              "is_contaminating_python_path",
+              "kill_process_tree_windows",
+              "patch_ros2cs_lyrical_windows_standalone",
+              "record_where_diagnostics",
+              "reject_cmd_shell_unsafe_path",
+              "resolve_cmake_generator",
+              "resolve_vs_dev_cmd",
+              "run_direct_colcon_build",
+              "run_lyrical_dependency_import",
+              "run_upstream_build",
+              "scrub_environment",
+              "verify_cl_compile",
+              "verify_python",
+              "write_evidence",
+          )
           phase146b_validator_errors = [
-              f"MISSING_SYMBOLS {phase146b_validator_path}: "
-              "capture_cmd_environment,capture_ros2_environment,classify_output,"
-              "clean_colcon_outputs,copy_lyrical_pixi_runtime_closure,"
-              "deploy_asset_from_successful_colcon,ensure_r2fu_checkout,find_vswhere,"
-              "has_complete_asset,is_contaminating_python_path,kill_process_tree_windows,"
-              "patch_ros2cs_lyrical_windows_standalone,record_where_diagnostics,"
-              "reject_cmd_shell_unsafe_path,resolve_cmake_generator,resolve_vs_dev_cmd,"
-              "run_direct_colcon_build,run_lyrical_dependency_import,run_upstream_build,"
-              "scrub_environment,verify_cl_compile,verify_python,write_evidence",
+              f"{phase146b_validator_error_prefix}{','.join(phase146b_expected_missing_symbols)}"
           ]
           normalized_lines = [line.replace("\\", "/") for line in text.splitlines() if line.strip()]
           expected_phase192_split_paths = {
@@ -311,7 +329,12 @@ jobs:
               "Scripts/ros2forunity/windows/lyrical/regression_checks/test_phase146b_build_defaults.py",
               "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/layout_metadata_tests.py",
           }
-          expected_validator_split_paths = expected_phase192_split_paths
+          expected_validator_split_paths = {
+              "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/implementation_lyrical.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/manifest_and_inventory.py",
+              "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/runtime_checks.py",
+          }
           expected_phase146b_split_paths = expected_phase192_split_paths
           expected_paths = (
               "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
@@ -397,7 +420,11 @@ jobs:
                   raise SystemExit(1)
               print("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT: exact implementation_lyrical manifest_and_inventory runtime_checks transition")
               raise SystemExit(0)
-          if normalized_lines == phase146b_validator_errors:
+          if len(normalized_lines) == 1 and normalized_lines[0].startswith(phase146b_validator_error_prefix):
+              actual_missing_symbols = normalized_lines[0][len(phase146b_validator_error_prefix):].strip().split(",")
+              if actual_missing_symbols != list(phase146b_expected_missing_symbols):
+                  sys.stderr.write("Unexpected Phase146B missing-symbol set\n")
+                  raise SystemExit(1)
               changed_paths = {
                   line for line in subprocess.check_output(
                       ["git", "diff", "--name-only", base_sha, head_sha],

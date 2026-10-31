@@ -4838,9 +4838,25 @@ class IdentityToolingTests(unittest.TestCase):
         self.assertNotIn(".github/workflows/dotnet-tests.yml", package_block)
         self.assertNotIn("Scripts/phase192/compare_identity_surfaces.py", package_block)
         self.assertIn("phase146b_validator_errors = [", workflow)
-        self.assertIn("capture_cmd_environment,capture_ros2_environment,classify_output", workflow)
-        self.assertIn("if normalized_lines == phase146b_validator_errors:", workflow)
-        self.assertNotIn("startswith(phase146b_validator_error_prefix)", workflow)
+        self.assertIn('"capture_cmd_environment",', workflow)
+        self.assertIn('"capture_ros2_environment",', workflow)
+        self.assertIn('"classify_output",', workflow)
+        self.assertIn("phase146b_expected_missing_symbols = (", workflow)
+        self.assertIn(
+            "actual_missing_symbols != list(phase146b_expected_missing_symbols)",
+            workflow,
+        )
+        self.assertNotIn("expected_validator_split_paths = expected_phase192_split_paths", workflow)
+        validator_block = workflow.split("expected_validator_split_paths = {", 1)[1].split("}", 1)[0]
+        for path in (
+            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py",
+            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/implementation_lyrical.py",
+            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/manifest_and_inventory.py",
+            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/runtime_checks.py",
+        ):
+            self.assertIn(path, validator_block)
+        self.assertNotIn(".github/workflows/dotnet-tests.yml", validator_block)
+        self.assertNotIn("Scripts/phase192/compare_identity_surfaces.py", validator_block)
 
     def test_compatibility_rejects_mutation_of_legacy_entrypoint(self) -> None:
         """Legacy compatibility paths still reject an entrypoint digest mutation."""
