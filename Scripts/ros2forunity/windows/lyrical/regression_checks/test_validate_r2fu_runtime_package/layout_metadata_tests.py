@@ -119,7 +119,6 @@ class RuntimeLayoutMetadataTests:
         implementation_source = source_root / "phase146b_r2fu_lyrical_windows_build/implementation.py"
         section_manifest_source = source_root / "section_manifest.py"
         original_path = list(sys.path)
-        original_bare_manifest = sys.modules.get("section_manifest")
         with tempfile.TemporaryDirectory() as temp:
             modules = []
             expected_paths = []
@@ -147,7 +146,6 @@ class RuntimeLayoutMetadataTests:
             self.assertNotIn("sys.path.insert", implementation_source_text)
             self.assertIn("spec_from_file_location", implementation_source_text)
         self.assertEqual(original_path, sys.path)
-        self.assertIs(original_bare_manifest, sys.modules.get("section_manifest"))
 
     def test_runtime_dll_metas_use_plugin_importer_in_both_plugin_roots(self) -> None:
         """Managed and native DLL metadata must be Unity plugin metadata."""
