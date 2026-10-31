@@ -867,6 +867,18 @@ class IdentityToolingTests(unittest.TestCase):
             )
         )
 
+    def test_template_registry_facade_loads_via_fresh_module(self) -> None:
+        """The nested facade remains loadable through the identity loader."""
+        facade = (
+            compare_identity_surfaces.REPOSITORY_ROOT
+            / "Scripts/phase192/compare_identity_surfaces/template_registry.py"
+        )
+        loaded = source_layout.load_fresh_module(
+            "Scripts.phase192.compare_identity_surfaces.template_registry",
+            facade,
+        )
+        self.assertTrue(hasattr(loaded, "_phase192_template_name"))
+
     def test_reviewed_validator_isolation_transition_requires_exact_cleanup(self) -> None:
         """Only the reviewed eight-module cleanup insertion is compatibility-waived."""
         cleanup = "facade::7cdf800c9922e9368a642e72b34a53b8fa0049b842fda84b2ca8041537599915"

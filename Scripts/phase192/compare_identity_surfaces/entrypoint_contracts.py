@@ -198,8 +198,15 @@ def _entrypoint_contract(
                 if section_path.is_file():
                     section_tree = _parse_source(section_path.read_text(encoding="utf-8"), section_path)
                     package_exports.update(stable_exports(section_path))
-                    package_exports.update(
-                        _section_exports(
+                    if _section_package_for_facade(section_path) is not None:
+                        section_exports = _symbols(
+                            section_path.read_text(encoding="utf-8"),
+                            str(section_path),
+                            reject_conditional=reject_conditional,
+                            repository_root=repository_root,
+                        )
+                    else:
+                        section_exports = _section_exports(
                             section_path.read_text(encoding="utf-8"),
                             str(section_path),
                             reject_conditional=reject_conditional,
@@ -211,7 +218,7 @@ def _entrypoint_contract(
                             validate_namespace=not _is_phase121_configuration_path(section_path, repository_root),
                             repository_root=repository_root,
                         )
-                    )
+                    package_exports.update(section_exports)
 
     relative_imports = top_level_relative_imports
     unittest_entrypoint = _is_unittest_module_entrypoint(tree)

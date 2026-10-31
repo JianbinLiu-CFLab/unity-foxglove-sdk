@@ -114,6 +114,9 @@ def _phase192_validate_template_registry_mutations(
         relative_path = Path(path).resolve().relative_to(Path(repository_root).resolve()).as_posix()
     except (TypeError, ValueError):
         relative_path = None
+    template_registry_facade_path = (
+        relative_path == "Scripts/phase192/compare_identity_surfaces/template_registry.py"
+    )
     loader_path = relative_path == "Scripts/package/validate_source_generator_dll.py"
     if loader_path:
         loader_type_imports = [
@@ -545,6 +548,14 @@ def _phase192_validate_template_registry_mutations(
                         and target.slice.value in allowed_module_keys
                         and isinstance(statement.value, ast.Name)
                         and statement.value.id in {"_phase192_self", "_phase192_canonical_self"}
+                    ) and not (
+                        template_registry_facade_path
+                        and isinstance(target, ast.Subscript)
+                        and modules_value(target.value)
+                        and isinstance(target.slice, ast.Name)
+                        and target.slice.id == "__name__"
+                        and isinstance(statement.value, ast.Name)
+                        and statement.value.id == "_phase192_self"
                     ) and not dynamic_restore:
                         raise ValueError(f"Unsupported generated module registry mutation in {path}")
         if isinstance(statement, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
@@ -578,6 +589,14 @@ def _phase192_validate_template_registry_mutations(
                 and isinstance(node.args[0], ast.Constant)
                 and isinstance(node.args[0].value, str)
                 and node.args[0].value in allowed_module_keys
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value is None
+                and not node.keywords
+            ) and not (
+                template_registry_facade_path
+                and len(node.args) == 2
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "__name__"
                 and isinstance(node.args[1], ast.Constant)
                 and node.args[1].value is None
                 and not node.keywords

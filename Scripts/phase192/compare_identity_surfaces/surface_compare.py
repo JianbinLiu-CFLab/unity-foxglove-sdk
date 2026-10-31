@@ -44,7 +44,8 @@ def _surface(
                 frozenset(path.stem for path in sections),
             )
         )
-        if manifest_package:
+        nested_facade = _section_package_for_facade(section)
+        if manifest_package or nested_facade is not None:
             exports = _symbols(
                 section_source,
                 str(section),
