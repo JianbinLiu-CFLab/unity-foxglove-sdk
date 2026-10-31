@@ -60,6 +60,28 @@ class RuntimeLayoutMetadataTests:
                     )
                     self.assertFalse(manifest_result.ok)
 
+    def test_phase146b_loader_rejects_empty_or_comment_only_manifest(self) -> None:
+        """The Phase146B loader fails closed before executing an empty package."""
+        implementation_path = (
+            ROOT
+            / "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py"
+        )
+        spec = importlib.util.spec_from_file_location(
+            "phase146b_r2fu_lyrical_windows_build.implementation_test",
+            implementation_path,
+        )
+        module = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temp:
+            section_dir = Path(temp)
+            for manifest in ("", "# generated sections\n"):
+                with self.subTest(manifest=manifest):
+                    (section_dir / "sections.manifest").write_text(manifest, encoding="utf-8")
+                    with self.assertRaises((FileNotFoundError, ValueError)):
+                        module._load_source_sections(section_dir, {})
+
     def test_runtime_dll_metas_use_plugin_importer_in_both_plugin_roots(self) -> None:
         """Managed and native DLL metadata must be Unity plugin metadata."""
         metas = list((self.validator.RUNTIME_ROOT / "Plugins").glob("*.dll.meta"))

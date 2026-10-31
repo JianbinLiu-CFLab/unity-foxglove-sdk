@@ -66,6 +66,13 @@ class Phase146BBuildDefaultsTests(unittest.TestCase):
                         Path("C:/Tools/unsafe" + character + "path/VsDevCmd.bat"),
                     )
 
+    def test_unknown_tool_uses_stable_phase146b_error(self) -> None:
+        """Trusted tool resolution reports the defined Phase146B error type."""
+        module = load_build_module()
+        with self.assertRaises(module.Phase146BError) as context:
+            module.resolve_tool("phase146b-missing-tool", {"PATH": ""})
+        self.assertEqual("BLOCKED_UNKNOWN_TOOLCHAIN", context.exception.verdict)
+
     def test_run_command_timeout_is_defaulted_and_independent_of_newlines(self) -> None:
         """A child stalled after partial output cannot block the wall-clock deadline."""
         module = load_build_module()
