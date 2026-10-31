@@ -368,12 +368,12 @@ jobs:
               "Scripts/phase192/regression_checks/test_identity_tooling/surface_rows_tests.py",
           }
           expected_identity_tooling_sensitive_sha256 = {
-              ".github/workflows/dotnet-tests.yml": "83486d1a539877ff73879671040107d64e7de94a99b995aed22c8fd4d7bba7c9",
+              ".github/workflows/dotnet-tests.yml": "3606bd2fb69c818d83b58ab87fb8b95a37fb5007fb796d86b0240028346151e3",
               "Scripts/phase192/compare_identity_surfaces/entrypoint_contracts.py": "ffbaa0d630b7189ea1b08493886d1b27c18a94d2a91b27e7eee9c2b1c95273ba",
               "Scripts/phase192/compare_identity_surfaces/section_validation.py": "817617274b1f4a873af85bd85b450ce692109cc481440f45b6bdb79952e4531d",
               "Scripts/phase192/compare_identity_surfaces/surface_compare.py": "0beaa06fd399b0058bcd7d71188ca6fb071d95cca3fe712aa781972586de0edc",
           }
-          IDENTITY_WORKFLOW_SELF_DIGEST = "83486d1a539877ff73879671040107d64e7de94a99b995aed22c8fd4d7bba7c9"
+          IDENTITY_WORKFLOW_SELF_DIGEST = "3606bd2fb69c818d83b58ab87fb8b95a37fb5007fb796d86b0240028346151e3"
           expected_validator_split_paths = {
               "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py",
               "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/implementation_lyrical.py",
@@ -510,6 +510,11 @@ jobs:
                       sensitive_text = re.sub(
                           r'IDENTITY_WORKFLOW_SELF_DIGEST = "[0-9a-f]+"',
                           'IDENTITY_WORKFLOW_SELF_DIGEST = "<SELF_DIGEST>"',
+                          sensitive_text,
+                      )
+                      sensitive_text = re.sub(
+                          r'(\\.github/workflows/dotnet-tests\\.yml": ")[0-9a-f]+',
+                          r'\\1<SELF_DIGEST>',
                           sensitive_text,
                       )
                       sensitive_bytes = sensitive_text.encode("utf-8")
