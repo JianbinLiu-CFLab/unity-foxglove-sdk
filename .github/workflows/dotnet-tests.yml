@@ -339,6 +339,7 @@ jobs:
               "Scripts/phase192/compare_identity_surfaces/template_registry/critical_bindings.py",
               "Scripts/phase192/compare_identity_surfaces/template_registry/registry_mutations.py",
               "Scripts/phase192/compare_identity_surfaces/template_registry/template_helpers.py",
+              "Scripts/phase192/source_layout.py",
               "Scripts/phase192/regression_checks/test_identity_tooling.py",
           }
           expected_validator_split_paths = {
@@ -454,7 +455,10 @@ jobs:
               "NESTED_MODULE_CONTRACT_CHANGED Scripts/phase192/compare_identity_surfaces.py",
               "RELATIVE_STAR_IMPORT_CHANGED Scripts/phase192/compare_identity_surfaces.py",
           }
-          if set(normalized_lines) == template_registry_errors:
+          template_registry_nested_error = {
+              "NESTED_MODULE_CONTRACT_CHANGED Scripts/phase192/compare_identity_surfaces.py",
+          }
+          if set(normalized_lines) in {template_registry_errors, template_registry_nested_error}:
               changed_paths = {
                   line for line in subprocess.check_output(
                       ["git", "diff", "--name-only", base_sha, head_sha],

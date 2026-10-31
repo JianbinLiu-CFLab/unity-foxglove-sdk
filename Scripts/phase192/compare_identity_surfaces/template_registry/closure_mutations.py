@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from Scripts.phase192.compare_identity_surfaces.foundation import *
+from compare_identity_surfaces.foundation import *
 
 def _phase192_validate_closure_mutations(tree: ast.Module, path: str) -> None:
         """Reject protected-object mutations hidden behind facade methods or aliases."""

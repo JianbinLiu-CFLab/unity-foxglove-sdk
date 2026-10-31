@@ -5,15 +5,16 @@ import sys as _phase192_sys
 import types as _phase192_types
 
 if __package__:
+    from pathlib import Path as _Phase192Path
+
+    _phase192_parent = _Phase192Path(__file__).resolve().parent
+    if str(_phase192_parent) not in _phase192_sys.path:
+        _phase192_sys.path.insert(0, str(_phase192_parent))
     _phase192_self = _phase192_sys.modules.get(__name__)
     if _phase192_self is not None:
         _phase192_sys.modules.pop(__name__, None)
-    try:
-        from .template_registry import *
-        _phase192_package_module = _phase192_sys.modules.get(__package__ + ".template_registry")
-    finally:
-        if _phase192_self is not None:
-            _phase192_sys.modules[__name__] = _phase192_self
+    from template_registry import *
+    _phase192_package_module = _phase192_sys.modules.get("template_registry")
 else:
     from pathlib import Path as _Phase192Path
 
