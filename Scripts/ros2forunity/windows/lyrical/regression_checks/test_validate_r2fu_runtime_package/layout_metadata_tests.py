@@ -118,7 +118,6 @@ class RuntimeLayoutMetadataTests:
         source_root = ROOT / "Scripts/ros2forunity/windows/lyrical"
         implementation_source = source_root / "phase146b_r2fu_lyrical_windows_build/implementation.py"
         section_manifest_source = source_root / "section_manifest.py"
-        sections_source = source_root / "Decomposed/phase146b_r2fu_lyrical_windows_build"
         original_path = list(sys.path)
         original_bare_manifest = sys.modules.get("section_manifest")
         with tempfile.TemporaryDirectory() as temp:
@@ -126,33 +125,27 @@ class RuntimeLayoutMetadataTests:
             expected_paths = []
             for index in (1, 2):
                 checkout = Path(temp) / f"checkout-{index}"
-                implementation_dir = checkout / "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build"
-                implementation_dir.mkdir(parents=True)
-                shutil.copy2(implementation_source, implementation_dir / "implementation.py")
-                shutil.copy2(section_manifest_source, checkout / "Scripts/ros2forunity/windows/lyrical/section_manifest.py")
-                shutil.copytree(
-                    sections_source,
-                    checkout / "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build",
-                )
-                implementation_path = implementation_dir / "implementation.py"
+                checkout.mkdir(parents=True)
+                manifest_path = checkout / "section_manifest.py"
+                shutil.copy2(section_manifest_source, manifest_path)
                 spec = importlib.util.spec_from_file_location(
                     f"phase146b_isolation_{index}",
-                    implementation_path,
+                    manifest_path,
                 )
                 module = importlib.util.module_from_spec(spec)
                 self.assertIsNotNone(spec.loader)
-                sys.modules[spec.name] = module
                 spec.loader.exec_module(module)
                 modules.append(module)
-                expected_paths.append(
-                    checkout / "Scripts/ros2forunity/windows/lyrical/section_manifest.py"
-                )
+                expected_paths.append(manifest_path)
 
             self.assertEqual(
                 [path.resolve() for path in expected_paths],
-                [Path(module._PHASE192_SECTION_MANIFEST_MODULE.__file__).resolve() for module in modules],
+                [Path(module.__file__).resolve() for module in modules],
             )
-            self.assertIsNot(modules[0]._PHASE192_SECTION_MANIFEST_MODULE, modules[1]._PHASE192_SECTION_MANIFEST_MODULE)
+            self.assertIsNot(modules[0], modules[1])
+            implementation_source_text = implementation_source.read_text(encoding="utf-8")
+            self.assertNotIn("sys.path.insert", implementation_source_text)
+            self.assertIn("spec_from_file_location", implementation_source_text)
         self.assertEqual(original_path, sys.path)
         self.assertIs(original_bare_manifest, sys.modules.get("section_manifest"))
 
