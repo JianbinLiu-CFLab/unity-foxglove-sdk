@@ -265,8 +265,6 @@ jobs:
           lyrical_package_validator_path = "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py"
           lyrical_package_validator_error = f"ValueError: Unsupported generated module registry pop in {lyrical_package_validator_path}"
           expected_lyrical_package_paths = {
-              ".github/workflows/dotnet-tests.yml",
-              "Scripts/phase192/compare_identity_surfaces.py",
               "Scripts/phase192/regression_checks/test_identity_tooling.py",
               lyrical_package_validator_path,
               "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/__init__.py",
@@ -347,7 +345,14 @@ jobs:
                   ).splitlines()
                   if line
               }
-              if changed_paths != expected_lyrical_package_paths:
+              sensitive_transition_paths = {
+                  ".github/workflows/dotnet-tests.yml",
+                  "Scripts/phase192/compare_identity_surfaces.py",
+              }
+              if (
+                  changed_paths & sensitive_transition_paths
+                  or changed_paths != expected_lyrical_package_paths
+              ):
                   sys.stderr.write("Unexpected Lyrical validator split file set\n")
                   raise SystemExit(1)
               lyrical_source = subprocess.check_output(

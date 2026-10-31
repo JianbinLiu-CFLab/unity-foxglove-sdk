@@ -4834,6 +4834,9 @@ class IdentityToolingTests(unittest.TestCase):
         expected_block = workflow.split("expected_phase192_split_paths = {", 1)[1].split("}", 1)[0]
         self.assertNotIn(".github/workflows/dotnet-tests.yml", expected_block)
         self.assertNotIn("Scripts/phase192/compare_identity_surfaces.py", expected_block)
+        package_block = workflow.split("expected_lyrical_package_paths = {", 1)[1].split("}", 1)[0]
+        self.assertNotIn(".github/workflows/dotnet-tests.yml", package_block)
+        self.assertNotIn("Scripts/phase192/compare_identity_surfaces.py", package_block)
         self.assertIn("phase146b_validator_errors = [", workflow)
         self.assertIn("capture_cmd_environment,capture_ros2_environment,classify_output", workflow)
         self.assertIn("if normalized_lines == phase146b_validator_errors:", workflow)
