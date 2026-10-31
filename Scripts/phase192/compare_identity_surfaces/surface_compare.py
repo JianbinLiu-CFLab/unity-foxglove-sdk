@@ -289,7 +289,8 @@ def _reviewed_template_registry_split(
     return (
         relative == "Scripts/phase192/compare_identity_surfaces.py"
         and not base_nested_contract
-        and head_paths == expected_paths
+        and set(head_paths) == set(expected_paths)
+        and len(head_paths) == len(expected_paths)
         and len(head_relative_star_contract) == len(base_relative_star_contract)
         and len(head_relative_star_contract) > 0
         and head_relative_star_contract[1:] == base_relative_star_contract[1:]
