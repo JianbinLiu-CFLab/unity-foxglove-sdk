@@ -158,6 +158,12 @@ def python_test_rows(
 
     module_name = _module_name_for_path(path)
     source_path = root / Path(path)
+    package_dir = source_path.parent
+    if (
+        (package_dir / "__init__.py").is_file()
+        and (package_dir.parent / f"{package_dir.name}.py").is_file()
+    ):
+        return []
     suite = source_layout.load_test_suite(module_name, source_path, root)
 
     rows: list[list[str]] = []
