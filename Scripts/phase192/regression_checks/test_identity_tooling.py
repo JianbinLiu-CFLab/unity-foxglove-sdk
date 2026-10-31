@@ -565,6 +565,30 @@ class IdentityToolingTests(unittest.TestCase):
                 ]],
             )
 
+    def test_release_tooling_identity_rows_load_facade_without_section_recursion(self) -> None:
+        """Release tooling identity inventory loads the facade and skips nested sections."""
+        root = compare_identity_surfaces.REPOSITORY_ROOT
+        facade = root / "Scripts/release/regression_checks/test_release_tooling.py"
+        rows = identity_contracts.python_test_rows(
+            facade.relative_to(root).as_posix(),
+            facade.read_text(encoding="utf-8"),
+            root,
+        )
+        self.assertEqual(202, len(rows))
+        package = facade.with_suffix("")
+        for section in sorted(package.glob("*.py")):
+            if section.name == "__init__.py":
+                continue
+            with self.subTest(section=section.name):
+                self.assertEqual(
+                    [],
+                    identity_contracts.python_test_rows(
+                        section.relative_to(root).as_posix(),
+                        section.read_text(encoding="utf-8"),
+                        root,
+                    ),
+                )
+
     def test_real_surface_mutation_noop_is_not_red(self) -> None:
         """A no-op extractor mutation cannot pass because unrelated rows differ."""
         with tempfile.TemporaryDirectory() as temp:
