@@ -1012,6 +1012,10 @@ class IdentityToolingTests(unittest.TestCase):
             )
             alias_module = types.ModuleType("Scripts.shared.implementation")
             alias_module.__file__ = str(shared / "implementation.py")
+            alias_only_module = types.ModuleType("tool_alias.implementation")
+            alias_only_module.__file__ = str(shared / "implementation.py")
+            suffix_alias_module = types.ModuleType("shared.implementation")
+            suffix_alias_module.__file__ = str(shared / "implementation.py")
             names = (
                 "facade",
                 "Scripts",
@@ -1019,16 +1023,19 @@ class IdentityToolingTests(unittest.TestCase):
                 "Scripts.shared",
                 "Scripts.shared.implementation",
                 "tool_alias.implementation",
+                "shared.implementation",
             )
             saved_modules = dict(sys.modules)
             for name in names:
                 sys.modules.pop(name, None)
-            sys.modules["tool_alias.implementation"] = alias_module
+            sys.modules["tool_alias.implementation"] = alias_only_module
+            sys.modules["shared.implementation"] = suffix_alias_module
             try:
                 loaded = source_layout.load_fresh_module("facade", facade)
                 self.assertEqual("fresh", loaded.VALUE)
                 self.assertIsNot(alias_module, sys.modules.get("Scripts.tool.implementation"))
                 self.assertNotIn("tool_alias.implementation", sys.modules)
+                self.assertNotIn("shared.implementation", sys.modules)
             finally:
                 for name in tuple(sys.modules):
                     if name not in saved_modules:
@@ -4423,17 +4430,40 @@ class IdentityToolingTests(unittest.TestCase):
                 frozenset(),
             )
         }
-        for mutation in (
-            "main = lambda: 0\n",
-            "_phase192_section_0.run_checks = lambda *args, **kwargs: []\n",
-            "_phase192_section_0.main = None\n",
-        ):
+        mutations = (
+            ("public", source + "\nmain = lambda: 0\n"),
+            (
+                "section_export",
+                source + "\n_phase192_section_0.run_checks = lambda *args, **kwargs: []\n",
+            ),
+            ("section_public", source + "\n_phase192_section_0.main = None\n"),
+            ("export_names", source + "\n_PHASE192_EXPORT_NAMES = set()\n"),
+            ("section_modules", source + "\n_PHASE192_SECTION_MODULES = ()\n"),
+            ("section_binding", source + "\n_phase192_section_0 = None\n"),
+            (
+                "configuration_rhs",
+                source + '\n_phase192_section_0.ROOT = Path("/tmp/untrusted")\n',
+            ),
+            (
+                "module_class_rhs",
+                source + "\n_phase192_module.__class__ = _phase192_types.ModuleType\n",
+            ),
+            (
+                "section_sync_rhs",
+                source.replace(
+                    "_phase192_section.__dict__[_phase192_name] = globals()[_phase192_name]",
+                    "_phase192_section.__dict__[_phase192_name] = None",
+                    1,
+                ),
+            ),
+        )
+        for mutation, mutated_source in mutations:
             with self.subTest(mutation=mutation):
                 head_surface = {
                     relative: (
                         frozenset({"main", "run_checks"}),
                         ("implementation_lyrical", "manifest_and_inventory", "runtime_checks"),
-                        source + "\n" + mutation,
+                        mutated_source,
                         frozenset(),
                     )
                 }
@@ -4781,6 +4811,34 @@ class IdentityToolingTests(unittest.TestCase):
         """The compatibility gate must not overwrite the trusted base checker."""
         workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
         self.assertNotIn('cp Scripts/phase192/compare_identity_surfaces.py "$base_checker"', workflow)
+
+    def test_workflow_fallback_allowlists_cover_reviewed_lyrical_transitions(self) -> None:
+        """Fallback identity transitions must enumerate the complete reviewed file sets."""
+        workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
+        validator_transition = {
+            ".github/workflows/dotnet-tests.yml",
+            "Scripts/phase192/compare_identity_surfaces.py",
+            "Scripts/phase192/regression_checks/test_identity_tooling.py",
+            "Scripts/phase192/source_layout.py",
+            "Scripts/release/regression_checks/test_release_tooling.py",
+            "Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py",
+            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/layout_metadata_tests.py",
+            "Scripts/ros2forunity/windows/lyrical/section_manifest.py",
+            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/runtime_checks.py",
+        }
+        phase146b_transition = {
+            "Scripts/phase192/regression_checks/test_identity_tooling.py",
+            "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/build_pipeline.py",
+            "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/evidence.py",
+            "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/safety_and_environment.py",
+            "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build/sections.manifest",
+            "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py",
+        }
+        for path in validator_transition | phase146b_transition:
+            with self.subTest(path=path):
+                self.assertIn(path, workflow)
+        self.assertIn("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT", workflow)
+        self.assertIn("IDENTITY_GATE_REVIEWED_PHASE146B_BUILD_FACADE_SPLIT", workflow)
 
     def test_compatibility_rejects_mutation_of_legacy_entrypoint(self) -> None:
         """Legacy compatibility paths still reject an entrypoint digest mutation."""
