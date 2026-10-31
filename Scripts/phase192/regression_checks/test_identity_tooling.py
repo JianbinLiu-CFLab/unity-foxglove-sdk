@@ -838,6 +838,25 @@ class IdentityToolingTests(unittest.TestCase):
                 head_relative,
             )
         )
+        self.assertTrue(
+            compare_identity_surfaces._reviewed_template_registry_split(
+                "Scripts/phase192/compare_identity_surfaces.py",
+                (),
+                nested,
+                (
+                    "ImportFrom(module='foundation', names=[alias(name='a')], level=1)",
+                    "legacy-middle",
+                    "ImportFrom(module='foundation', names=[alias(name='b')], level=1)",
+                    "legacy-surface",
+                ),
+                (
+                    "ImportFrom(module='template_registry', names=[alias(name='*')], level=1)",
+                    "ImportFrom(module='foundation', names=[alias(name='a')], level=1)",
+                    "legacy-middle",
+                    "legacy-surface",
+                ),
+            )
+        )
         self.assertFalse(
             compare_identity_surfaces._reviewed_template_registry_split(
                 "Scripts/phase192/compare_identity_surfaces.py",

@@ -286,6 +286,17 @@ def _reviewed_template_registry_split(
         "template_registry/template_helpers.py",
     )
     head_paths = tuple(item[0] for item in head_nested_contract)
+    head_tail = head_relative_star_contract[1:] if head_relative_star_contract else ()
+    relative_contract_matches = head_tail == base_relative_star_contract[1:]
+    if not relative_contract_matches and len(base_relative_star_contract) == len(head_tail) + 1:
+        relative_contract_matches = any(
+            base_relative_star_contract[:index] + base_relative_star_contract[index + 1:]
+            == head_tail
+            and base_relative_star_contract[index].startswith(
+                "ImportFrom(module='foundation',"
+            )
+            for index in range(len(base_relative_star_contract))
+        )
     return (
         relative == "Scripts/phase192/compare_identity_surfaces.py"
         and not base_nested_contract
@@ -293,7 +304,7 @@ def _reviewed_template_registry_split(
         and len(head_paths) == len(expected_paths)
         and len(head_relative_star_contract) == len(base_relative_star_contract)
         and len(head_relative_star_contract) > 0
-        and head_relative_star_contract[1:] == base_relative_star_contract[1:]
+        and relative_contract_matches
         and head_relative_star_contract[0].startswith(
             "ImportFrom(module='template_registry',"
         )
