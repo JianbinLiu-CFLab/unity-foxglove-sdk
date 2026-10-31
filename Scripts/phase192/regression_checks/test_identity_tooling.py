@@ -992,38 +992,34 @@ class IdentityToolingTests(unittest.TestCase):
             root = Path(temp)
             scripts = root / "Scripts"
             tool = scripts / "tool"
-            shared = scripts / "shared"
             tool.mkdir(parents=True)
-            shared.mkdir(parents=True)
             (scripts / "__init__.py").write_text("", encoding="utf-8")
             (tool / "__init__.py").write_text(
-                "from Scripts.shared.implementation import VALUE\n",
+                "from Scripts.tool.implementation import VALUE\n",
                 encoding="utf-8",
             )
-            (shared / "__init__.py").write_text("", encoding="utf-8")
-            (shared / "implementation.py").write_text(
+            (tool / "implementation.py").write_text(
                 "VALUE = 'fresh'\n",
                 encoding="utf-8",
             )
             facade = tool / "facade.py"
             facade.write_text(
-                "from Scripts.shared.implementation import VALUE\n",
+                "from Scripts.tool.implementation import VALUE\n",
                 encoding="utf-8",
             )
-            alias_module = types.ModuleType("Scripts.shared.implementation")
-            alias_module.__file__ = str(shared / "implementation.py")
+            alias_module = types.ModuleType("Scripts.tool.implementation")
+            alias_module.__file__ = str(tool / "implementation.py")
             alias_only_module = types.ModuleType("tool_alias.implementation")
-            alias_only_module.__file__ = str(shared / "implementation.py")
-            suffix_alias_module = types.ModuleType("shared.implementation")
-            suffix_alias_module.__file__ = str(shared / "implementation.py")
+            alias_only_module.__file__ = str(tool / "implementation.py")
+            suffix_alias_module = types.ModuleType("implementation")
+            suffix_alias_module.__file__ = str(tool / "implementation.py")
             names = (
                 "facade",
                 "Scripts",
                 "Scripts.tool",
-                "Scripts.shared",
-                "Scripts.shared.implementation",
+                "Scripts.tool.implementation",
                 "tool_alias.implementation",
-                "shared.implementation",
+                "implementation",
             )
             saved_modules = dict(sys.modules)
             for name in names:
@@ -1035,12 +1031,36 @@ class IdentityToolingTests(unittest.TestCase):
                 self.assertEqual("fresh", loaded.VALUE)
                 self.assertIsNot(alias_module, sys.modules.get("Scripts.tool.implementation"))
                 self.assertNotIn("tool_alias.implementation", sys.modules)
-                self.assertNotIn("shared.implementation", sys.modules)
+                self.assertNotIn("implementation", sys.modules)
             finally:
                 for name in tuple(sys.modules):
                     if name not in saved_modules:
                         sys.modules.pop(name, None)
                 sys.modules.update(saved_modules)
+
+    def test_load_fresh_module_preserves_unrelated_repo_source_aliases(self) -> None:
+        """Fresh loads must not evict an unrelated repo package used by later tests."""
+        repository = compare_identity_surfaces.REPOSITORY_ROOT
+        ambient_name = "ambient_ros2_alias.foundation"
+        ambient = types.ModuleType(ambient_name)
+        ambient.__file__ = str(
+            repository / "Scripts/smoke/ros2/_ros2_windows_env/foundation.py"
+        )
+        saved_ambient = sys.modules.get(ambient_name)
+        sys.modules[ambient_name] = ambient
+        try:
+            with tempfile.TemporaryDirectory(dir=repository / "Scripts") as temp:
+                facade = Path(temp) / "tool_facade.py"
+                facade.write_text("VALUE = 'fresh'\n", encoding="utf-8")
+                loaded = source_layout.load_fresh_module("tool_facade", facade)
+                self.assertEqual("fresh", loaded.VALUE)
+                self.assertIs(ambient, sys.modules.get(ambient_name))
+                sys.modules.pop("tool_facade", None)
+        finally:
+            if saved_ambient is None:
+                sys.modules.pop(ambient_name, None)
+            else:
+                sys.modules[ambient_name] = saved_ambient
 
     def test_phase163_37_harness_guard_reads_composed_csharp_source(self) -> None:
         """Phase163-37 must inspect the facade and its split TestSources sections."""

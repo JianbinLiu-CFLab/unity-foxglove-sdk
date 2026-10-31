@@ -238,6 +238,11 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
             logical_aliases.add(module_name)
         if not canonical:
             return False
+        if target_scripts_prefix is not None and not any(
+            name == target_scripts_prefix or name.startswith(target_scripts_prefix + ".")
+            for name in canonical
+        ):
+            return False
         if loaded_name in canonical:
             return False
         return True
