@@ -4816,8 +4816,6 @@ class IdentityToolingTests(unittest.TestCase):
         """Fallback identity transitions must enumerate the complete reviewed file sets."""
         workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
         reviewed_transition = {
-            ".github/workflows/dotnet-tests.yml",
-            "Scripts/phase192/compare_identity_surfaces.py",
             "Scripts/phase192/regression_checks/test_identity_tooling.py",
             "Scripts/phase192/source_layout.py",
             "Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py",
@@ -4831,6 +4829,11 @@ class IdentityToolingTests(unittest.TestCase):
                 self.assertIn(path, workflow)
         self.assertIn("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT", workflow)
         self.assertIn("IDENTITY_GATE_REVIEWED_PHASE146B_BUILD_FACADE_SPLIT", workflow)
+        self.assertIn("sensitive_transition_paths = {", workflow)
+        self.assertIn("changed_paths & sensitive_transition_paths", workflow)
+        expected_block = workflow.split("expected_phase192_split_paths = {", 1)[1].split("}", 1)[0]
+        self.assertNotIn(".github/workflows/dotnet-tests.yml", expected_block)
+        self.assertNotIn("Scripts/phase192/compare_identity_surfaces.py", expected_block)
         self.assertIn("phase146b_validator_errors = [", workflow)
         self.assertIn("capture_cmd_environment,capture_ros2_environment,classify_output", workflow)
         self.assertIn("if normalized_lines == phase146b_validator_errors:", workflow)
