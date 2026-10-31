@@ -167,7 +167,8 @@ def _entrypoint_contract(
     reviewed_identity_tooling = False
     if repository_root is not None:
         try:
-            relative_path = path.resolve().relative_to(repository_root.resolve()).as_posix()
+            facade_candidate = package_dir.parent / f"{package_dir.name}.py"
+            relative_path = facade_candidate.resolve().relative_to(repository_root.resolve()).as_posix()
         except ValueError:
             relative_path = ""
         reviewed_identity_tooling = (
