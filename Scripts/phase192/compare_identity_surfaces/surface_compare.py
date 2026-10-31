@@ -594,6 +594,7 @@ def _compare_surfaces(
             }
             if (
                 not reviewed_validator_isolation
+                and not reviewed_template_registry_split
                 and (not preserves_order or added_existing_bindings)
             ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
