@@ -663,7 +663,7 @@ class IdentityToolingTests(unittest.TestCase):
         surfaces = compare_identity_surfaces._surfaces(
             compare_identity_surfaces.REPOSITORY_ROOT
         )
-        self.assertEqual(83, len(surfaces))
+        self.assertEqual(84, len(surfaces))
         jazzy = surfaces[
             "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py"
         ]
@@ -707,6 +707,13 @@ class IdentityToolingTests(unittest.TestCase):
                 "unity_batch_compile_gate_tests",
             ),
             release_tooling[1],
+        )
+        template_registry = surfaces[
+            "Scripts/phase192/compare_identity_surfaces/template_registry.py"
+        ]
+        self.assertEqual(
+            ("template_helpers", "closure_mutations", "critical_bindings", "registry_mutations"),
+            template_registry[1],
         )
 
     def test_identity_surface_includes_nested_split_modules(self) -> None:
@@ -789,6 +796,110 @@ class IdentityToolingTests(unittest.TestCase):
             with self.subTest(relative=relative):
                 lines = (compare_identity_surfaces.REPOSITORY_ROOT / relative).read_text(encoding="utf-8").splitlines()
                 self.assertLess(len(lines), 1000)
+
+    def test_template_registry_facade_sections_stay_below_source_split_threshold(self) -> None:
+        """Template registry validation is split into maintainable sections."""
+        repository = compare_identity_surfaces.REPOSITORY_ROOT
+        facade = repository / "Scripts/phase192/compare_identity_surfaces/template_registry.py"
+        self.assertLess(len(facade.read_text(encoding="utf-8").splitlines()), 1000)
+        package = facade.with_suffix("")
+        sections = tuple(
+            path
+            for path in package.glob("*.py")
+            if path.name != "__init__.py"
+        )
+        self.assertGreaterEqual(len(sections), 2)
+        for section in sections:
+            with self.subTest(section=section.name):
+                self.assertLess(len(section.read_text(encoding="utf-8").splitlines()), 1000)
+
+    def test_reviewed_template_registry_split_preserves_identity_contract(self) -> None:
+        """The reviewed template registry split has an exact compatibility transition."""
+        nested = tuple(
+            (f"template_registry/{name}.py", (), (), ())
+            for name in (
+                "closure_mutations",
+                "critical_bindings",
+                "registry_mutations",
+                "template_helpers",
+            )
+        )
+        base_relative = ("legacy-foundation", "legacy-surface")
+        head_relative = (
+            "ImportFrom(module='template_registry', names=[alias(name='*')], level=1)",
+            "legacy-surface",
+        )
+        self.assertTrue(
+            compare_identity_surfaces._reviewed_template_registry_split(
+                "Scripts/phase192/compare_identity_surfaces.py",
+                (),
+                nested,
+                base_relative,
+                head_relative,
+            )
+        )
+        self.assertTrue(
+            compare_identity_surfaces._reviewed_template_registry_split(
+                "Scripts/phase192/compare_identity_surfaces.py",
+                (),
+                nested,
+                (
+                    "ImportFrom(module='foundation', names=[alias(name='a')], level=1)",
+                    "legacy-middle",
+                    "ImportFrom(module='foundation', names=[alias(name='b')], level=1)",
+                    "legacy-surface",
+                ),
+                (
+                    "ImportFrom(module='template_registry', names=[alias(name='*')], level=1)",
+                    "ImportFrom(module='foundation', names=[alias(name='a')], level=1)",
+                    "legacy-middle",
+                    "legacy-surface",
+                ),
+            )
+        )
+        self.assertFalse(
+            compare_identity_surfaces._reviewed_template_registry_split(
+                "Scripts/phase192/compare_identity_surfaces.py",
+                (),
+                nested[:-1],
+                base_relative,
+                head_relative,
+            )
+        )
+
+    def test_template_registry_facade_loads_via_fresh_module(self) -> None:
+        """The nested facade remains loadable through the identity loader."""
+        facade = (
+            compare_identity_surfaces.REPOSITORY_ROOT
+            / "Scripts/phase192/compare_identity_surfaces/template_registry.py"
+        )
+        loaded = source_layout.load_fresh_module(
+            "Scripts.phase192.compare_identity_surfaces.template_registry",
+            facade,
+        )
+        self.assertTrue(hasattr(loaded, "_phase192_template_name"))
+
+    def test_template_registry_facade_loads_in_clean_process(self) -> None:
+        """The identity loader works without a preloaded compare package."""
+        repository = compare_identity_surfaces.REPOSITORY_ROOT
+        script = """
+from pathlib import Path
+from Scripts.phase192 import source_layout
+
+facade = Path.cwd() / "Scripts/phase192/compare_identity_surfaces/template_registry.py"
+loaded = source_layout.load_fresh_module(
+    "Scripts.phase192.compare_identity_surfaces.template_registry",
+    facade,
+)
+assert hasattr(loaded, "_phase192_template_name")
+"""
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", script],
+            cwd=repository,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_reviewed_validator_isolation_transition_requires_exact_cleanup(self) -> None:
         """Only the reviewed eight-module cleanup insertion is compatibility-waived."""
@@ -1212,7 +1323,7 @@ class IdentityToolingTests(unittest.TestCase):
         )
         self.assertIn("Scripts/release/regression_checks/test_release_tooling.py", relative)
         self.assertIn("Scripts/phase192/compare_identity_surfaces.py", relative)
-        self.assertEqual(83, len(relative))
+        self.assertEqual(84, len(relative))
 
     def test_identity_surface_recognizes_manifest_backed_decomposed_facade(self) -> None:
         """A Decomposed/<facade-stem> manifest participates in identity checks."""

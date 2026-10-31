@@ -283,6 +283,17 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         if str(source_root) != facade_parent:
             sys.path.insert(1, str(source_root))
         for loaded_name, loaded_module in tuple(sys.modules.items()):
+            if (
+                target_scripts_prefix is not None
+                and module_name.startswith(target_scripts_prefix + ".")
+                and (
+                    loaded_name == target_scripts_prefix
+                    or loaded_name.startswith(target_scripts_prefix + ".")
+                )
+            ):
+                saved_modules[loaded_name] = loaded_module
+                sys.modules.pop(loaded_name, None)
+                continue
             remove = should_remove(loaded_name, loaded_module)
             if remove:
                 saved_modules[loaded_name] = loaded_module
