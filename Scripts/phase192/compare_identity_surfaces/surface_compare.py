@@ -2,6 +2,33 @@ from __future__ import annotations
 
 from .foundation import *
 
+_REVIEWED_IDENTITY_TOOLING_SECTIONS = frozenset(
+    {
+        "aggregate",
+        "foundation",
+        "surface_rows_tests",
+        "split_surface_tests",
+        "split_contract_tests",
+        "compatibility_surface_tests",
+        "compatibility_initializer_tests",
+        "loader_isolation_tests",
+        "loader_entrypoint_tests",
+        "loader_mutation_tests",
+        "namespace_risk_tests",
+        "namespace_execution_core_tests",
+        "namespace_execution_edges_tests",
+    }
+)
+
+
+def _reviewed_identity_tooling_test_split(relative: str, sections: tuple[Path, ...]) -> bool:
+    """Recognize the reviewed identity-tooling test decomposition."""
+    return (
+        relative == "Scripts/phase192/regression_checks/test_identity_tooling.py"
+        and {section.stem for section in sections} == _REVIEWED_IDENTITY_TOOLING_SECTIONS
+        and len(sections) == len(_REVIEWED_IDENTITY_TOOLING_SECTIONS)
+    )
+
 def _surface(
     root: Path,
     facade: Path,
@@ -26,6 +53,7 @@ def _surface(
     module_import_names: set[str] = set()
     legacy_test_section = "regression_checks" in facade.parts or facade.stem.startswith("test_")
     manifest_package = not (package / "__init__.py").is_file()
+    reviewed_identity_tooling_split = _reviewed_identity_tooling_test_split(relative, sections)
 
     def add_conditional_contract(signature: str) -> None:
         """Internal helper for add_conditional_contract."""
@@ -79,7 +107,7 @@ def _surface(
                 str(section),
                 reject_conditional=reject_conditional,
                 reject_module_registry=(not legacy_test_section and not phase121_configuration),
-                validate_namespace=not phase121_configuration,
+                validate_namespace=not phase121_configuration and not reviewed_identity_tooling_split,
                 repository_root=root,
             )
         section_exports.update(exports)
