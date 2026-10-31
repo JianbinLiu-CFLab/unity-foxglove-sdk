@@ -13,6 +13,7 @@ __ALLOWED_DECOMPOSED_SOURCE_PART_PATHS = frozenset(
         "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Limits.cs",
         "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.Scenarios.cs",
         "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/Decomposed/U2R2ProtocolAuthorityTests/U2R2ProtocolAuthorityTests.TestHelpers.cs",
+        "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolLimits/ResourceAccounting.cs",
     }
 )
 
