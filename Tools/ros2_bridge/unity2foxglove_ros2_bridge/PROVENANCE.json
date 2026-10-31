@@ -60,6 +60,21 @@
   },
   "decomposedSources": [
     {
+      "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs",
+      "sourceRevision": "53f8ae633910a0e03ac1fa64b0bdce6569373ab0",
+      "originalSha256": "c4d30a3e4051fc0cebbea33314a8c5d2a435f6ebf507a7f66bbe2ce8715397ee",
+      "parts": [
+        {
+          "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed/U2R2ProtocolLimits/ResourceAccounting.cs",
+          "sha256": "7232acc2f329b80fb23f190f1b4752438853f768f8c718c4324892e5f6c30171",
+          "movedRange": {
+            "startLine": 270,
+            "endLine": 599
+          }
+        }
+      ]
+    },
+    {
       "originalPath": "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Protocol/U2R2ProtocolAuthorityTests.cs",
       "sourceRevision": "4a7bd01fd92df0f99c8639535a5c6116abe07898",
       "originalSha256": "9cf22c0d0903000816095fa7bd54e35edc6d933156e8be315b4db10601853133",
@@ -294,7 +309,7 @@
     },
     {
       "path": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs",
-      "sha256": "c4d30a3e4051fc0cebbea33314a8c5d2a435f6ebf507a7f66bbe2ce8715397ee",
+      "sha256": "66b64a1531ac580352122c6b9cbb866ad61a8394c6600d349969674a8b32c671",
       "classification": "original",
       "influence": "Original immutable C# protocol limit snapshot.",
       "introducedIn": "3f1b47e973713bf77fe149d04472f4a8ecbe8b71"
