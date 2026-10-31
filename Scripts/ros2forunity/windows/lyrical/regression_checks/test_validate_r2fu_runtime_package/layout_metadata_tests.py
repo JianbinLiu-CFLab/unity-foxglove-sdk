@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 
 from .foundation import *
 
@@ -111,6 +112,45 @@ class RuntimeLayoutMetadataTests:
             )
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("PHASE146B_EXTERNAL_FILE_LOAD_OK", result.stdout)
+
+    def test_phase146b_loader_isolated_across_file_path_checkouts(self) -> None:
+        """Each file-path checkout must load its own section manifest module."""
+        source_root = ROOT / "Scripts/ros2forunity/windows/lyrical"
+        implementation_source = source_root / "phase146b_r2fu_lyrical_windows_build/implementation.py"
+        section_manifest_source = source_root / "section_manifest.py"
+        sections_source = source_root / "Decomposed/phase146b_r2fu_lyrical_windows_build"
+        with tempfile.TemporaryDirectory() as temp:
+            modules = []
+            expected_paths = []
+            for index in (1, 2):
+                checkout = Path(temp) / f"checkout-{index}"
+                implementation_dir = checkout / "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build"
+                implementation_dir.mkdir(parents=True)
+                shutil.copy2(implementation_source, implementation_dir / "implementation.py")
+                shutil.copy2(section_manifest_source, checkout / "Scripts/ros2forunity/windows/lyrical/section_manifest.py")
+                shutil.copytree(
+                    sections_source,
+                    checkout / "Scripts/ros2forunity/windows/lyrical/Decomposed/phase146b_r2fu_lyrical_windows_build",
+                )
+                implementation_path = implementation_dir / "implementation.py"
+                spec = importlib.util.spec_from_file_location(
+                    f"phase146b_isolation_{index}",
+                    implementation_path,
+                )
+                module = importlib.util.module_from_spec(spec)
+                self.assertIsNotNone(spec.loader)
+                sys.modules[spec.name] = module
+                spec.loader.exec_module(module)
+                modules.append(module)
+                expected_paths.append(
+                    checkout / "Scripts/ros2forunity/windows/lyrical/section_manifest.py"
+                )
+
+            self.assertEqual(
+                [path.resolve() for path in expected_paths],
+                [Path(module._PHASE192_SECTION_MANIFEST_MODULE.__file__).resolve() for module in modules],
+            )
+            self.assertIsNot(modules[0]._PHASE192_SECTION_MANIFEST_MODULE, modules[1]._PHASE192_SECTION_MANIFEST_MODULE)
 
     def test_runtime_dll_metas_use_plugin_importer_in_both_plugin_roots(self) -> None:
         """Managed and native DLL metadata must be Unity plugin metadata."""

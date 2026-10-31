@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import importlib.util as _phase192_importlib_util
 import os
 import pathlib
 import queue
@@ -29,8 +30,19 @@ import time
 from dataclasses import dataclass
 from typing import Iterable
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from section_manifest import load_section_names as _phase192_load_section_names
+
+_PHASE192_SECTION_MANIFEST_PATH = pathlib.Path(__file__).resolve().parents[1] / "section_manifest.py"
+_PHASE192_SECTION_MANIFEST_SPEC = _phase192_importlib_util.spec_from_file_location(
+    "_phase192_section_manifest",
+    _PHASE192_SECTION_MANIFEST_PATH,
+)
+if _PHASE192_SECTION_MANIFEST_SPEC is None or _PHASE192_SECTION_MANIFEST_SPEC.loader is None:
+    raise ImportError(f"Unable to load section manifest: {_PHASE192_SECTION_MANIFEST_PATH}")
+_PHASE192_SECTION_MANIFEST_MODULE = _phase192_importlib_util.module_from_spec(
+    _PHASE192_SECTION_MANIFEST_SPEC,
+)
+_PHASE192_SECTION_MANIFEST_SPEC.loader.exec_module(_PHASE192_SECTION_MANIFEST_MODULE)
+_phase192_load_section_names = _PHASE192_SECTION_MANIFEST_MODULE.load_section_names
 
 
 R2FU_REPO_URL = "https://github.com/RobotecAI/ros2-for-unity.git"

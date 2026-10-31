@@ -44,6 +44,15 @@ class RuntimePackageExtractionTests(
         self.assertIn("_shared_load_section_names = _PHASE192_SECTION_MANIFEST_MODULE.load_section_names", source)
         self.assertIn("return _shared_load_section_names(section_dir)", source)
         self.assertIn("section_names = load_section_names(section_dir)", source)
+        self.assertEqual(
+            BUILDER_PATH.with_name("section_manifest.py").resolve(),
+            Path(self.builder._PHASE192_SECTION_MANIFEST_MODULE.__file__).resolve(),
+        )
+        section_dir = BUILDER_PATH.with_name("Decomposed") / BUILDER_PATH.stem
+        self.assertEqual(
+            self.builder._shared_load_section_names(section_dir),
+            self.builder.load_section_names(section_dir),
+        )
 
     def test_builder_loads_by_file_path_outside_repository_cwd(self) -> None:
         """The builder resolves the shared loader from its own source path."""
