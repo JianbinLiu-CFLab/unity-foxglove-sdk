@@ -176,7 +176,7 @@ class IdentityGateHardeningTests(unittest.TestCase):
         self.assertNotIn("IDENTITY_GATE_REVIEWED_VALIDATION_DIRECTORY_MIGRATION", workflow)
         self.assertIn("reviewed_current_layout_paths = {", workflow)
         self.assertIn("IDENTITY_GATE_REVIEWED_CURRENT_LAYOUT_TRANSITION", workflow)
-        expected_workflow_digest = "__WORKFLOW_DIGEST__"
+        expected_workflow_digest = "7aa8fdcbab41c49c534423b8e58115032efcffe904430be6fcd79277962b29f3"
         actual_workflow_digest = hashlib.sha256(
             (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_bytes()
         ).hexdigest()
@@ -211,3 +211,4 @@ class IdentityGateHardeningTests(unittest.TestCase):
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main(module=__name__))
+
