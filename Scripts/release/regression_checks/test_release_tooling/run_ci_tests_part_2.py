@@ -91,7 +91,7 @@ class _RunCiTestsPart2:
             "Scripts.phase192.regression_checks.test_identity_tooling",
             "Scripts.phase192.regression_checks.test_freeze_baseline",
             "Scripts.phase192.regression_checks.test_u2r2_protocol_limits",
-    "Scripts.phase192.regression_checks.test_identity_gate_hardening",
+            "Scripts.phase192.regression_checks.test_identity_gate_hardening",
             "Scripts.performance.regression_checks.test_phase188_replay",
             "Scripts.smoke.replay.regression_checks.test_phase188_deterministic_replay_acceptance",
         )
@@ -514,3 +514,4 @@ printf '%s' "$required"
         self.assertEqual("partial stderr\n", result.stderr)
 
 __all__ = ["_RunCiTestsPart2"]
+
