@@ -98,6 +98,52 @@ class IdentityGateHardeningTests(unittest.TestCase):
             normalized,
         )
 
+    def test_current_layout_does_not_trigger_directory_migration_normalization(self) -> None:
+        """A post-migration base must keep its current surface keys."""
+        current = {
+            "Scripts/validation/source_decomposition/source_layout.py": ("surface",)
+        }
+        self.assertFalse(
+            compare_identity_surfaces._directory_migration_is_active(
+                current,
+                current,
+                strict=False,
+            )
+        )
+        legacy = {"Scripts/phase192/source_layout.py": ("surface",)}
+        self.assertTrue(
+            compare_identity_surfaces._directory_migration_is_active(
+                legacy,
+                current,
+                strict=False,
+            )
+        )
+
+    def test_template_registry_facade_transition_requires_reviewed_digest(self) -> None:
+        """The facade compatibility transition is bound to its reviewed source digest."""
+        relative = compare_identity_surfaces._REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE
+        digest = compare_identity_surfaces._REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST
+        self.assertTrue(
+            compare_identity_surfaces._reviewed_template_registry_facade_transition(
+                relative,
+                {relative: digest},
+            )
+        )
+        self.assertFalse(
+            compare_identity_surfaces._reviewed_template_registry_facade_transition(
+                relative,
+                {relative: "0" * 64},
+            )
+        )
+
+    def test_workflow_uses_exact_current_layout_transition(self) -> None:
+        """The current-layout fallback must not be a broad migration waiver."""
+        workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
+        self.assertNotIn("migration_paths_changed", workflow)
+        self.assertNotIn("IDENTITY_GATE_REVIEWED_VALIDATION_DIRECTORY_MIGRATION", workflow)
+        self.assertIn("reviewed_current_layout_paths = {", workflow)
+        self.assertIn("IDENTITY_GATE_REVIEWED_CURRENT_LAYOUT_TRANSITION", workflow)
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main(module=__name__))
