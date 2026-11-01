@@ -272,68 +272,11 @@ jobs:
             python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
           import subprocess
           import sys
-          import hashlib
           from pathlib import Path
 
           text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
           base_sha, head_sha = sys.argv[2:]
           errors = [line.replace("\\", "/") for line in text.splitlines() if line.startswith("ValueError: ")]
-          current_layout_errors = [
-              "REMOVED_FACADE Scripts/validation/source_decomposition/compare_identity_surfaces.py",
-              "REMOVED_FACADE Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py",
-              "REMOVED_FACADE Scripts/validation/source_decomposition/identity_contracts.py",
-              "REMOVED_FACADE Scripts/validation/source_decomposition/regression_checks/test_identity_tooling.py",
-          ]
-          changed_paths = {
-              line
-              for line in subprocess.check_output(
-                  ["git", "diff", "--name-only", base_sha, head_sha],
-                  text=True,
-              ).splitlines()
-              if line
-          }
-          reviewed_current_layout_paths = {
-              ".github/workflows/dotnet-tests.yml",
-              "Scripts/phase192/__init__.py",
-              "Scripts/phase192/identity_contracts/__init__.py",
-              "Scripts/phase192/identity_contracts/__main__.py",
-              "Scripts/phase192/source_layout.py",
-              "Scripts/validation/source_decomposition/compare_identity_surfaces/surface_compare.py",
-              "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py",
-              "Scripts/validation/source_decomposition/regression_checks/test_identity_gate_hardening.py",
-              "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling/split_surface_tests.py",
-              "Scripts/validation/source_decomposition/template_registry_compat.py",
-          }
-          reviewed_current_layout_file_digests = {
-              "Scripts/phase192/__init__.py": "2b2aa2a45cea4129aca2fd265ce4c1718382ac60c8cd9242f4852972c55e0d36",
-              "Scripts/phase192/identity_contracts/__init__.py": "4ad15d699105456a98b5946d3df62dce88e1c81b125da3071150ac48c7f2b741",
-              "Scripts/phase192/identity_contracts/__main__.py": "33cbf7fc898c6325385fae9a273a269ce77ce24f41a1b68139f4a4feea80333f",
-              "Scripts/phase192/source_layout.py": "28a3a7bdfd71f3dde6d3183c83d0a2d5166b87537ad446205258000fd18f6289",
-              "Scripts/validation/source_decomposition/compare_identity_surfaces/surface_compare.py": "7a1489e8b908dde5229bdfbc33e0df565f86ed8a2cd34672619c1070de3929d3",
-              "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py": "6f49148741be02cae8bbb72a2dadb5faa3f45de562d0a523c9ba55d07c732282",
-              "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling/split_surface_tests.py": "9426489d97bab6c99a9a8d59b13221f7f053e1a4d5af79b70bec1ffd4ebfb6eb",
-              "Scripts/validation/source_decomposition/template_registry_compat.py": "4e46c405bfa4aadd43d4eff6c18a8e33caaa0cc0053c021cb0c1b5cba5c0f1fe",
-          }
-          def head_blob_digest(path):
-              """Hash a reviewed transition file from the immutable head commit."""
-              return hashlib.sha256(
-                  subprocess.check_output(
-                      ["git", "show", f"{head_sha}:{path}"],
-                  )
-              ).hexdigest()
-          normalized_lines = [line.replace("\\", "/") for line in text.splitlines() if line.strip()]
-          if normalized_lines == current_layout_errors:
-              if (
-                  changed_paths != reviewed_current_layout_paths
-                  or any(
-                      head_blob_digest(path) != digest
-                      for path, digest in reviewed_current_layout_file_digests.items()
-                  )
-              ):
-                  sys.stderr.write("Unexpected current-layout identity transition file set\n")
-                  raise SystemExit(1)
-              print("IDENTITY_GATE_REVIEWED_CURRENT_LAYOUT_TRANSITION")
-              raise SystemExit(0)
           lyrical_package_validator_path = "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py"
           lyrical_package_validator_error = f"ValueError: Unsupported generated module registry pop in {lyrical_package_validator_path}"
           expected_lyrical_package_paths = {

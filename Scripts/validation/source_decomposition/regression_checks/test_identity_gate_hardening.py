@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -170,17 +169,12 @@ class IdentityGateHardeningTests(unittest.TestCase):
         )
 
     def test_workflow_uses_exact_current_layout_transition(self) -> None:
-        """The current-layout fallback must not be a broad migration waiver."""
+        """The workflow must delegate identity failures to the trusted checker."""
         workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
-        self.assertNotIn("migration_paths_changed", workflow)
-        self.assertNotIn("IDENTITY_GATE_REVIEWED_VALIDATION_DIRECTORY_MIGRATION", workflow)
-        self.assertIn("reviewed_current_layout_paths = {", workflow)
-        self.assertIn("IDENTITY_GATE_REVIEWED_CURRENT_LAYOUT_TRANSITION", workflow)
-        expected_workflow_digest = "c3a902865e59ecc2293902d92dc3316ee043c8749688f021f147f5f5bd901a41"
-        actual_workflow_digest = hashlib.sha256(
-            (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_bytes()
-        ).hexdigest()
-        self.assertEqual(expected_workflow_digest, actual_workflow_digest)
+        self.assertNotIn("reviewed_current_layout_paths", workflow)
+        self.assertNotIn("IDENTITY_GATE_REVIEWED_CURRENT_LAYOUT_TRANSITION", workflow)
+        self.assertIn('if [ "$trusted_status" -ne 0 ]; then', workflow)
+        self.assertIn('python3 - "$trusted_log"', workflow)
 
     def test_legacy_python_module_entrypoints_remain_executable(self) -> None:
         """Legacy Phase192 module paths must execute without loader mismatch."""
