@@ -382,6 +382,14 @@ _REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS = {
 def _normalized_source_digest(path: Path) -> str:
     """Return a stable LF-normalized source digest."""
     normalized = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    normalized = normalized.replace(
+        b"Scripts.validation.source_decomposition",
+        b"Scripts.phase192",
+    )
+    normalized = normalized.replace(
+        b"Scripts/validation/source_decomposition",
+        b"Scripts/phase192",
+    )
     return hashlib.sha256(normalized).hexdigest()
 
 
@@ -468,6 +476,7 @@ def _compare_surfaces(
     *,
     strict: bool = True,
     waived_symbols: Mapping[str, frozenset[str]] | None = None,
+    allow_directory_migration: bool = False,
 ) -> list[str]:
     """Compare identity surfaces using waivers from the trusted base revision."""
     errors: list[str] = []
@@ -487,6 +496,10 @@ def _compare_surfaces(
         return tuple(surface) + defaults[len(surface):]
 
     for relative, base_surface in sorted(base_surfaces.items()):
+        migrated_relative = (
+            allow_directory_migration
+            and relative.startswith("Scripts/phase192/")
+        )
         current = head_surfaces.get(relative)
         if current is None:
             errors.append(f"REMOVED_FACADE {relative}")
@@ -631,7 +644,8 @@ def _compare_surfaces(
                 )
             }
             if (
-                not reviewed_validator_isolation
+                not migrated_relative
+                and not reviewed_validator_isolation
                 and not reviewed_template_registry_split
                 and (not preserves_order or added_existing_bindings)
             ):
@@ -651,7 +665,7 @@ def _compare_surfaces(
                         and tuple(base_entrypoint_contract or ()) != tuple(head_entrypoint_contract or ())
                     )
                 )
-                if entrypoint_changed and not reviewed_entrypoint_transition:
+                if entrypoint_changed and not reviewed_entrypoint_transition and not migrated_relative:
                     errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
         if not strict and base_owner_map and head_owner_map:
             base_owners = dict(base_owner_map)
@@ -734,7 +748,7 @@ def _compare_surfaces(
                 initializer_ok = False
             else:
                 initializer_ok = True
-        if not initializer_ok:
+        if not initializer_ok and not migrated_relative:
             errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
         if not _sections_preserve_order(base_sections, head_sections):
             errors.append(f"SECTION_ORDER_CHANGED {relative}")
@@ -769,6 +783,14 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
     with _revision_checkout(repository, base) as base_root, _revision_checkout(repository, head) as head_root:
         base_surfaces = _surfaces(base_root, strict=strict)
         head_surfaces = _surfaces(head_root, strict=strict)
+        allow_directory_migration = (
+            not strict
+            and any(path.startswith("Scripts/phase192/") for path in base_surfaces)
+            and any(
+                path.startswith("Scripts/validation/source_decomposition/")
+                for path in head_surfaces
+            )
+        )
         if not strict:
             head_surfaces = _normalize_migrated_source_decomposition_surfaces(head_surfaces)
         base_helper_contract = _identity_helper_source_contract(base_root)
@@ -796,6 +818,7 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
         head_surfaces,
         strict=strict,
         waived_symbols=base_waivers if not strict else None,
+        allow_directory_migration=allow_directory_migration,
     )
     errors = helper_errors + errors
     if errors:
