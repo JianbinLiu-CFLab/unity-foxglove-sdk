@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -180,6 +182,50 @@ class IdentityGateHardeningTests(unittest.TestCase):
         self.assertIn('if [ "$trusted_status" -ne 0 ]; then', workflow)
         self.assertIn('cat "$trusted_log"', workflow)
         self.assertIn('exit "$trusted_status"', workflow)
+
+    def test_workflow_propagates_a_trusted_checker_failure(self) -> None:
+        """A non-zero trusted checker result exits before any head-side gate runs."""
+        if sys.platform == "win32":
+            self.skipTest("the workflow shell is executed in the hosted Linux lane")
+        bash = shutil.which("bash")
+        if bash is None:
+            self.skipTest("bash is required to execute the workflow shell")
+        workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
+        lines = workflow.splitlines()
+        start = next(
+            index
+            for index, line in enumerate(lines)
+            if line.strip() == 'trusted_log="$RUNNER_TEMP/phase192-trusted-base.log"'
+        )
+        end = next(
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].strip() == "# Run the checked-in head checker as a second gate so newly supported"
+        )
+        script = "\n".join(
+            line[10:] if line.startswith("          ") else line
+            for line in lines[start:end]
+        )
+        command_start = script.index("set +e\n")
+        command_end = script.index("trusted_status=$?\n", command_start)
+        replacement = (
+            "set +e\n"
+            "python3 -c 'import sys; print(\"TRUSTED_FAILURE\"); sys.exit(17)' "
+            ">\"$trusted_log\" 2>&1\n"
+        )
+        script = script[:command_start] + replacement + script[command_end:]
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = os.environ.copy()
+            environment["RUNNER_TEMP"] = temporary
+            result = subprocess.run(
+                [bash, "-c", script],
+                capture_output=True,
+                text=True,
+                env=environment,
+                check=False,
+            )
+        self.assertEqual(17, result.returncode, result.stdout + result.stderr)
+        self.assertIn("TRUSTED_FAILURE", result.stdout)
 
     def test_legacy_python_module_entrypoints_remain_executable(self) -> None:
         """Legacy Phase192 module paths must execute without loader mismatch."""
