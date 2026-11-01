@@ -805,5 +805,3 @@ jobs:
             exit 1
           fi
           echo "Validation aggregate passed."
-
-
