@@ -227,6 +227,27 @@ class IdentityGateHardeningTests(unittest.TestCase):
         self.assertEqual(17, result.returncode, result.stdout + result.stderr)
         self.assertIn("TRUSTED_FAILURE", result.stdout)
 
+    def test_phase146b_migration_is_checker_first_and_current_baseline_is_split(self) -> None:
+        """The completed Phase146B split is documented as fail-closed for future migrations."""
+        documentation = (
+            _REPOSITORY_ROOT / "Scripts/validation/source_decomposition/README.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Phase146B", documentation)
+        self.assertIn("trusted base", documentation)
+        self.assertIn("fails closed", documentation)
+        self.assertTrue(
+            (
+                _REPOSITORY_ROOT
+                / "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build.py"
+            ).is_file()
+        )
+        self.assertTrue(
+            (
+                _REPOSITORY_ROOT
+                / "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py"
+            ).is_file()
+        )
+
     def test_legacy_python_module_entrypoints_remain_executable(self) -> None:
         """Legacy Phase192 module paths must execute without loader mismatch."""
         commands = (
