@@ -37,10 +37,10 @@ dotnet build Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLog
 ### Python identity compatibility
 
 - Compatibility mode preserves declared public names while allowing private helper renames and unused-import cleanup.
-- A public-name removal requires a prior entry in `Scripts/phase192/identity_waivers.json`; the compatibility check reads waiver authority from the base revision only.
+- A public-name removal requires a prior entry in `Scripts/validation/source_decomposition/identity_waivers.json`; the compatibility check reads waiver authority from the base revision only.
 - A waiver for a facade that is absent from the base revision is invalid. A stale symbol entry for an existing facade is inert, so the removal and later waiver cleanup can both merge.
 - Strict mode rejects any surface removal and ignores compatibility waivers.
-- Run `python -B Scripts/phase192/compare_identity_surfaces.py --base <base> --head <head> --repository . --compatibility` to reproduce the compatibility check locally.
+- Run `python -B Scripts/validation/source_decomposition/compare_identity_surfaces.py --base <base> --head <head> --repository . --compatibility` to reproduce the compatibility check locally.
 
 ### Unity compile gate
 

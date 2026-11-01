@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
-from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
+from Scripts.validation.source_decomposition.source_layout import load_fresh_module as __load_fresh_module
 ROOT = Path(__file__).resolve().parents[4]
 SMOKE_PATH = ROOT / "Scripts" / "smoke" / "ros2" / "phase179_foxrun_ros2_inbound_acceptance.py"
 def load_smoke_module():
