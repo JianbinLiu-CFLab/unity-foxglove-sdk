@@ -347,7 +347,7 @@ assert hasattr(loaded, "_phase192_template_name")
                         continue
                     path.write_text("VALUE = 1\n", encoding="utf-8")
             base_analysis = subprocess.check_output(
-                ["git", "show", "origin/main:Scripts/validation/source_decomposition/identity_namespace_analysis.py"],
+                ["git", "show", "origin/main:Scripts/phase192/identity_namespace_analysis.py"],
                 cwd=compare_identity_surfaces.REPOSITORY_ROOT,
             )
             head_analysis = (
@@ -401,6 +401,7 @@ assert hasattr(loaded, "_phase192_template_name")
                 package = checkout / "Scripts/validation/source_decomposition"
                 package.mkdir(parents=True)
                 (checkout / "Scripts/__init__.py").write_text("\n", encoding="utf-8")
+                (checkout / "Scripts/validation/__init__.py").write_text("\n", encoding="utf-8")
                 (package / "__init__.py").write_text("\n", encoding="utf-8")
                 (package / "identity_surface_conditions.py").write_text(
                     f"MARKER = {marker!r}\n", encoding="utf-8"
@@ -496,6 +497,7 @@ assert hasattr(loaded, "_phase192_template_name")
                 "Scripts.smoke.foxrun",
                 "Scripts.unity_build",
                 "Scripts.ros2forunity",
+                "Scripts.validation",
                 "Scripts.validation.source_decomposition",
             ]
             saved_modules = dict(sys.modules)
