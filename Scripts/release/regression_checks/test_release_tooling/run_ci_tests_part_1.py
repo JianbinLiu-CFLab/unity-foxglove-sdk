@@ -325,7 +325,7 @@ class _RunCiTestsPart1:
         joined = "\n".join(workflow.splitlines()[start : start + 30])
         self.assertIn("github.event.pull_request.base.sha", joined)
         self.assertIn("github.event.pull_request.head.sha", joined)
-        self.assertIn("Scripts/phase192/compare_identity_surfaces.py", joined)
+        self.assertIn("Scripts/validation/source_decomposition/compare_identity_surfaces.py", joined)
         self.assertIn("--compatibility", joined)
         self.assertIn("git archive", joined)
         self.assertIn("IDENTITY_GATE_BOOTSTRAP_REQUIRED", joined)
@@ -335,7 +335,7 @@ class _RunCiTestsPart1:
         self.assertIn("PYTHONPATH", joined)
         self.assertIn("$RUNNER_TEMP", joined)
         self.assertIn("--repository .", joined)
-        self.assertNotIn("python3 Scripts/phase192/compare_identity_surfaces.py", joined)
+        self.assertNotIn("python3 Scripts/validation/source_decomposition/compare_identity_surfaces.py", joined)
         self.assertNotIn("--strict", joined)
 
     def test_dotnet_workflow_cannot_waive_validator_initializer_changes(self) -> None:
@@ -346,7 +346,7 @@ class _RunCiTestsPart1:
         fallback = workflow[start:end]
         self.assertNotIn("PACKAGE_INITIALIZER_CHANGED", fallback)
         self.assertIn(
-            "python3 Scripts/phase192/compare_identity_surfaces.py \\",
+            "python3 Scripts/validation/source_decomposition/compare_identity_surfaces.py \\",
             workflow,
         )
 

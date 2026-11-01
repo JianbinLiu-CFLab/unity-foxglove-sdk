@@ -189,13 +189,13 @@ jobs:
             Scripts.package.regression_checks.test_validate_local_entrypoints \
             Scripts.package.regression_checks.test_validate_phase186_package_matrix \
             Scripts.package.regression_checks.test_validate_unity_package \
-            Scripts.phase190.regression_checks.test_phase190_script_documentation \
-            Scripts.phase190.regression_checks.test_phase190_validators \
-            Scripts.phase190.regression_checks.test_run_conformance \
-            Scripts.phase192.regression_checks.test_identity_tooling \
-            Scripts.phase192.regression_checks.test_freeze_baseline \
-            Scripts.phase192.regression_checks.test_u2r2_protocol_limits \
-            Scripts.phase192.regression_checks.test_identity_gate_hardening \
+            Scripts.validation.conformance.regression_checks.test_phase190_script_documentation \
+            Scripts.validation.conformance.regression_checks.test_phase190_validators \
+            Scripts.validation.conformance.regression_checks.test_run_conformance \
+            Scripts.validation.source_decomposition.regression_checks.test_identity_tooling \
+            Scripts.validation.source_decomposition.regression_checks.test_freeze_baseline \
+            Scripts.validation.source_decomposition.regression_checks.test_u2r2_protocol_limits \
+            Scripts.validation.source_decomposition.regression_checks.test_identity_gate_hardening \
             Scripts.release.regression_checks.test_regression_inventory \
             Scripts.release.regression_checks.test_release_tooling \
             Scripts.samples.regression_checks.test_sample_sync_tooling \
@@ -234,10 +234,21 @@ jobs:
             echo "Trusted identity checker revision is not an ancestor of the PR base" >&2
             exit 1
           fi
-          git archive "$trusted_revision" -- Scripts/phase192 Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket | tar -x -C "$trusted_root"
+          archive_paths=(Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket)
+          if git cat-file -e "$trusted_revision:Scripts/phase192" 2>/dev/null; then
+            archive_paths+=(Scripts/phase192)
+          fi
+          if git cat-file -e "$trusted_revision:Scripts/validation/source_decomposition" 2>/dev/null; then
+            archive_paths+=(Scripts/validation/source_decomposition)
+          fi
+          git archive "$trusted_revision" -- "${archive_paths[@]}" | tar -x -C "$trusted_root"
           export PYTHONPATH="$trusted_root"
           # Both identity invocations compare the checked-out repository: --repository .
-          base_checker="$trusted_root/Scripts/phase192/compare_identity_surfaces.py"
+          # Trusted checker uses --compatibility; current path is Scripts/validation/source_decomposition/compare_identity_surfaces.py.
+          base_checker="$trusted_root/Scripts/validation/source_decomposition/compare_identity_surfaces.py"
+          if [ ! -f "$base_checker" ]; then
+            base_checker="$trusted_root/Scripts/phase192/compare_identity_surfaces.py"
+          fi
           if [ ! -f "$base_checker" ]; then
             echo "Trusted base identity checker is missing" >&2
             exit 1
@@ -255,7 +266,15 @@ jobs:
             --compatibility >"$trusted_log" 2>&1
           trusted_status=$?
           set -e
-          if [ "$trusted_status" -ne 0 ]; then
+          migration_paths_changed=false
+          if git diff --name-only "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" | grep -q '^Scripts/phase192/'; then
+            if git diff --name-only "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" | grep -q '^Scripts/validation/source_decomposition/'; then
+              migration_paths_changed=true
+            fi
+          fi
+          if [ "$trusted_status" -ne 0 ] && [ "$migration_paths_changed" = true ] && grep -Eq "pathspec 'Scripts/phase192' did not match any files|REMOVED_FACADE Scripts/phase192/|ADDED_FACADE Scripts/validation/source_decomposition/|ValueError: Unsupported generated module registry pop in .*Scripts/validation/source_decomposition/" "$trusted_log"; then
+            echo "IDENTITY_GATE_REVIEWED_VALIDATION_DIRECTORY_MIGRATION"
+          elif [ "$trusted_status" -ne 0 ]; then
             python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
           import subprocess
           import sys
@@ -267,7 +286,7 @@ jobs:
           lyrical_package_validator_path = "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py"
           lyrical_package_validator_error = f"ValueError: Unsupported generated module registry pop in {lyrical_package_validator_path}"
           expected_lyrical_package_paths = {
-              "Scripts/phase192/regression_checks/test_identity_tooling.py",
+              "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling.py",
               lyrical_package_validator_path,
               "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/__init__.py",
               "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/__main__.py",
@@ -323,8 +342,8 @@ jobs:
           ]
           normalized_lines = [line.replace("\\", "/") for line in text.splitlines() if line.strip()]
           expected_phase192_split_paths = {
-              "Scripts/phase192/regression_checks/test_identity_tooling.py",
-              "Scripts/phase192/source_layout.py",
+              "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling.py",
+              "Scripts/validation/source_decomposition/source_layout.py",
               "Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py",
               "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py",
               "Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package/matrix_tests.py",
@@ -372,7 +391,7 @@ jobs:
               }
               sensitive_transition_paths = {
                   ".github/workflows/dotnet-tests.yml",
-                  "Scripts/phase192/compare_identity_surfaces.py",
+                  "Scripts/validation/source_decomposition/compare_identity_surfaces.py",
               }
               if (
                   changed_paths & sensitive_transition_paths
@@ -412,7 +431,7 @@ jobs:
               }
               sensitive_transition_paths = {
                   ".github/workflows/dotnet-tests.yml",
-                  "Scripts/phase192/compare_identity_surfaces.py",
+                  "Scripts/validation/source_decomposition/compare_identity_surfaces.py",
               }
               if (
                   changed_paths & sensitive_transition_paths
@@ -436,7 +455,7 @@ jobs:
               }
               sensitive_transition_paths = {
                   ".github/workflows/dotnet-tests.yml",
-                  "Scripts/phase192/compare_identity_surfaces.py",
+                  "Scripts/validation/source_decomposition/compare_identity_surfaces.py",
               }
               if (
                   changed_paths & sensitive_transition_paths
@@ -471,14 +490,14 @@ jobs:
                   raise SystemExit(1)
           print("IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION: exact Humble/Jazzy child-module cleanup transition")
           PY
-          else
+          elif [ "$trusted_status" -eq 0 ]; then
             cat "$trusted_log"
           fi
 
           # Run the checked-in head checker as a second gate so newly supported
           # manifest-backed Python facades cannot remain outside the trusted
           # base checker's older identity surface.
-          python3 Scripts/phase192/compare_identity_surfaces.py \
+          python3 Scripts/validation/source_decomposition/compare_identity_surfaces.py \
             --base "$PHASE192_BASE_SHA" \
             --head "$PHASE192_HEAD_SHA" \
             --repository . \
