@@ -438,7 +438,8 @@ def _validate_compatibility_new_sections(
     base_section_modules = _section_modules_for_root(base_root)
     head_section_modules = _section_modules_for_root(head_root)
     for relative in sorted(head_surfaces):
-        head_facade = head_root / relative
+        head_relative = _current_source_decomposition_relative(relative)
+        head_facade = head_root / head_relative
         head_package = _section_package_for_facade(head_facade)
         if head_package is None:
             raise ValueError(f"Missing source section package for {head_facade}")
@@ -464,7 +465,7 @@ def _validate_compatibility_new_sections(
         )
         old_names = frozenset(path.stem for path in base_sections)
         new_names = frozenset(path.stem for path in head_sections) - old_names
-        reviewed_identity_tooling_split = _reviewed_identity_tooling_test_split(relative, head_sections)
+        reviewed_identity_tooling_split = _reviewed_identity_tooling_test_split(head_relative, head_sections)
         if relative not in base_surfaces:
             initializer = head_initializer if head_initializer.is_file() else manifest_path
             initializer_source = head_initializer_source
