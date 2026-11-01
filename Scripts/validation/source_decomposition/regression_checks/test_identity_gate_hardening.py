@@ -168,13 +168,18 @@ class IdentityGateHardeningTests(unittest.TestCase):
             )
         )
 
-    def test_workflow_uses_exact_current_layout_transition(self) -> None:
-        """The workflow must delegate identity failures to the trusted checker."""
+    def test_workflow_fails_closed_on_trusted_identity_errors(self) -> None:
+        """The workflow must not interpret trusted checker failures itself."""
         workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
         self.assertNotIn("reviewed_current_layout_paths", workflow)
         self.assertNotIn("IDENTITY_GATE_REVIEWED_CURRENT_LAYOUT_TRANSITION", workflow)
+        self.assertNotIn("expected_paths = (", workflow)
+        self.assertNotIn("cleanup_lines = [", workflow)
+        self.assertNotIn("IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION", workflow)
+        self.assertNotIn('python3 - "$trusted_log"', workflow)
         self.assertIn('if [ "$trusted_status" -ne 0 ]; then', workflow)
-        self.assertIn('python3 - "$trusted_log"', workflow)
+        self.assertIn('cat "$trusted_log"', workflow)
+        self.assertIn('exit "$trusted_status"', workflow)
 
     def test_legacy_python_module_entrypoints_remain_executable(self) -> None:
         """Legacy Phase192 module paths must execute without loader mismatch."""
