@@ -15,7 +15,7 @@ import sys
 import tempfile
 import typing
 import unittest
-from Scripts.validation.source_decomposition.source_layout import load_fresh_module as __load_fresh_module
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 PROTOCOL_PATH = (
     ROOT

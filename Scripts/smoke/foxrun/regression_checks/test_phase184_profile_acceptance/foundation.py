@@ -19,7 +19,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
-from Scripts.validation.source_decomposition.source_layout import load_fresh_module as __load_fresh_module, read_split_source
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module, read_split_source
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 MODULE_PATH = ROOT / "Scripts" / "smoke" / "foxrun" / "phase184_profile_acceptance.py"
 TEST_ROOT = ROOT / "build" / "phase184" / "test-orchestrator"

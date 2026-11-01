@@ -27,7 +27,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from Scripts.validation.source_decomposition.source_layout import read_split_source
+from Scripts.phase192.source_layout import read_split_source
 
 
 ROOT = Path(__file__).resolve().parents[4]

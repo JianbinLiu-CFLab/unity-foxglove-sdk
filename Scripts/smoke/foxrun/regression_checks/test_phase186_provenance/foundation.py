@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from Scripts.validation.source_decomposition.source_layout import load_fresh_module as __load_fresh_module
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 MODULE_PATH = ROOT / "Scripts/smoke/foxrun/phase186_provenance.py"

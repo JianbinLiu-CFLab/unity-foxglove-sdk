@@ -18,7 +18,7 @@ import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
-from Scripts.validation.source_decomposition.source_layout import load_fresh_module as __load_fresh_module
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 from Scripts.test_support.phase181_scratch import temporary_directory
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 PEER_PATH = ROOT / "Scripts" / "smoke" / "ros2" / "phase181_custom_ros2_peer.py"

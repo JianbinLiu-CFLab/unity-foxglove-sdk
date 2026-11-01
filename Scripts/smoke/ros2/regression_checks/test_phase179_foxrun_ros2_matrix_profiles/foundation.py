@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
-from Scripts.validation.source_decomposition.source_layout import load_fresh_module as __load_fresh_module
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 
 ROOT = Path(__file__).resolve().parents[5]
 PROFILE_PATH = ROOT / "Scripts" / "smoke" / "ros2" / "phase179_foxrun_ros2_matrix_profiles.py"

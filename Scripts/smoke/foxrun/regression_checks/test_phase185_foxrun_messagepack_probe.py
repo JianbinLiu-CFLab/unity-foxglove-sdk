@@ -12,7 +12,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from Scripts.validation.source_decomposition.source_layout import load_fresh_module as __load_fresh_module
+from Scripts.phase192.source_layout import load_fresh_module as __load_fresh_module
 
 
 ROOT = Path(__file__).resolve().parents[4]
