@@ -346,8 +346,13 @@ assert hasattr(loaded, "_phase192_template_name")
                     if relative == "Scripts/validation/source_decomposition/identity_namespace_scanner.py":
                         continue
                     path.write_text("VALUE = 1\n", encoding="utf-8")
+            base_revision = os.environ.get("PHASE192_BASE_SHA", "HEAD")
             base_analysis = subprocess.check_output(
-                ["git", "show", "origin/main:Scripts/phase192/identity_namespace_analysis.py"],
+                [
+                    "git",
+                    "show",
+                    f"{base_revision}:Scripts/validation/source_decomposition/identity_namespace_analysis.py",
+                ],
                 cwd=compare_identity_surfaces.REPOSITORY_ROOT,
             )
             head_analysis = (
