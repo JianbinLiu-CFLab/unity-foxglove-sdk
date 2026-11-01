@@ -248,6 +248,33 @@ class IdentityGateHardeningTests(unittest.TestCase):
             ).is_file()
         )
 
+    def test_phase146b_baseline_identity_contract_covers_facade_and_section(self) -> None:
+        """The Phase146B facade and implementation section have a checked identity contract."""
+        relative = (
+            "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build.py"
+        )
+        facade = _REPOSITORY_ROOT / relative
+        surface = compare_identity_surfaces._surface(
+            _REPOSITORY_ROOT,
+            facade,
+            reject_conditional=False,
+        )
+        self.assertEqual(
+            ("safety_and_environment", "build_pipeline", "evidence"),
+            surface[1],
+        )
+        self.assertIn("run_upstream_build", surface[0])
+        self.assertIn("write_evidence", surface[0])
+        self.assertTrue(surface[4])
+        self.assertEqual(
+            [],
+            compare_identity_surfaces._compare_surfaces(
+                {relative: surface},
+                {relative: surface},
+                strict=True,
+            ),
+        )
+
     def test_legacy_python_module_entrypoints_remain_executable(self) -> None:
         """Legacy Phase192 module paths must execute without loader mismatch."""
         commands = (
