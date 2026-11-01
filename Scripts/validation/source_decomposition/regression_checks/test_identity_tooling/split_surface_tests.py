@@ -347,7 +347,7 @@ assert hasattr(loaded, "_phase192_template_name")
                         continue
                     path.write_text("VALUE = 1\n", encoding="utf-8")
             base_analysis = subprocess.check_output(
-                ["git", "show", "origin/main:Scripts/phase192/identity_namespace_analysis.py"],
+                ["git", "show", "origin/main:Scripts/validation/source_decomposition/identity_namespace_analysis.py"],
                 cwd=compare_identity_surfaces.REPOSITORY_ROOT,
             )
             head_analysis = (
