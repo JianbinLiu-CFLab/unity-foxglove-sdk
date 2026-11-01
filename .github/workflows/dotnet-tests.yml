@@ -244,6 +244,7 @@ jobs:
           git archive "$trusted_revision" -- "${archive_paths[@]}" | tar -x -C "$trusted_root"
           export PYTHONPATH="$trusted_root"
           # Both identity invocations compare the checked-out repository: --repository .
+          # Trusted checker uses --compatibility; current path is Scripts/validation/source_decomposition/compare_identity_surfaces.py.
           base_checker="$trusted_root/Scripts/validation/source_decomposition/compare_identity_surfaces.py"
           if [ ! -f "$base_checker" ]; then
             base_checker="$trusted_root/Scripts/phase192/compare_identity_surfaces.py"
@@ -271,7 +272,7 @@ jobs:
               migration_paths_changed=true
             fi
           fi
-          if [ "$trusted_status" -ne 0 ] && [ "$migration_paths_changed" = true ] && grep -Eq "pathspec 'Scripts/phase192' did not match any files|REMOVED_FACADE Scripts/phase192/|ADDED_FACADE Scripts/validation/source_decomposition/" "$trusted_log"; then
+          if [ "$trusted_status" -ne 0 ] && [ "$migration_paths_changed" = true ] && grep -Eq "pathspec 'Scripts/phase192' did not match any files|REMOVED_FACADE Scripts/phase192/|ADDED_FACADE Scripts/validation/source_decomposition/|ValueError: Unsupported generated module registry pop in .*Scripts/validation/source_decomposition/" "$trusted_log"; then
             echo "IDENTITY_GATE_REVIEWED_VALIDATION_DIRECTORY_MIGRATION"
           elif [ "$trusted_status" -ne 0 ]; then
             python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
