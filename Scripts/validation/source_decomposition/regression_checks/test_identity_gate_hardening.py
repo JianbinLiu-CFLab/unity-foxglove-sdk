@@ -211,4 +211,3 @@ class IdentityGateHardeningTests(unittest.TestCase):
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main(module=__name__))
-
