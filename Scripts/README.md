@@ -13,6 +13,9 @@ Directory layout:
 
 ```text
 Scripts/
+  validation/   Repository-wide validation and regression gates
+    conformance/          Claim, adjudication, and managed conformance validation
+    source_decomposition/ Identity surfaces, source-layout, and decomposition gates
   smoke/        Runnable smoke probes, protocol clients, and live-tool helpers
     assets/     Asset fetch probes
     mcap/       MCAP generation and inspection probes
