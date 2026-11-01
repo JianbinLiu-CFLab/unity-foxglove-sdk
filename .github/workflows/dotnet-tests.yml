@@ -266,15 +266,7 @@ jobs:
             --compatibility >"$trusted_log" 2>&1
           trusted_status=$?
           set -e
-          migration_paths_changed=false
-          if git diff --name-only "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" | grep -q '^Scripts/phase192/'; then
-            if git diff --name-only "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" | grep -q '^Scripts/validation/source_decomposition/'; then
-              migration_paths_changed=true
-            fi
-          fi
-          if [ "$trusted_status" -ne 0 ] && [ "$migration_paths_changed" = true ] && grep -Eq "pathspec 'Scripts/phase192' did not match any files|REMOVED_FACADE Scripts/phase192/|ADDED_FACADE Scripts/validation/source_decomposition/|ValueError: Unsupported generated module registry pop in .*Scripts/validation/source_decomposition/" "$trusted_log"; then
-            echo "IDENTITY_GATE_REVIEWED_VALIDATION_DIRECTORY_MIGRATION"
-          elif [ "$trusted_status" -ne 0 ]; then
+          if [ "$trusted_status" -ne 0 ]; then
             python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
           import subprocess
           import sys
@@ -283,6 +275,35 @@ jobs:
           text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
           base_sha, head_sha = sys.argv[2:]
           errors = [line.replace("\\", "/") for line in text.splitlines() if line.startswith("ValueError: ")]
+          current_layout_errors = [
+              "REMOVED_FACADE Scripts/validation/source_decomposition/compare_identity_surfaces.py",
+              "REMOVED_FACADE Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py",
+              "REMOVED_FACADE Scripts/validation/source_decomposition/identity_contracts.py",
+              "REMOVED_FACADE Scripts/validation/source_decomposition/regression_checks/test_identity_tooling.py",
+          ]
+          changed_paths = {
+              line
+              for line in subprocess.check_output(
+                  ["git", "diff", "--name-only", base_sha, head_sha],
+                  text=True,
+              ).splitlines()
+              if line
+          }
+          reviewed_current_layout_paths = {
+              ".github/workflows/dotnet-tests.yml",
+              "Scripts/validation/source_decomposition/compare_identity_surfaces/surface_compare.py",
+              "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py",
+              "Scripts/validation/source_decomposition/regression_checks/test_identity_gate_hardening.py",
+              "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling/split_surface_tests.py",
+              "Scripts/validation/source_decomposition/template_registry_compat.py",
+          }
+          normalized_lines = [line.replace("\\", "/") for line in text.splitlines() if line.strip()]
+          if normalized_lines == current_layout_errors:
+              if changed_paths != reviewed_current_layout_paths:
+                  sys.stderr.write("Unexpected current-layout identity transition file set\n")
+                  raise SystemExit(1)
+              print("IDENTITY_GATE_REVIEWED_CURRENT_LAYOUT_TRANSITION")
+              raise SystemExit(0)
           lyrical_package_validator_path = "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py"
           lyrical_package_validator_error = f"ValueError: Unsupported generated module registry pop in {lyrical_package_validator_path}"
           expected_lyrical_package_paths = {
