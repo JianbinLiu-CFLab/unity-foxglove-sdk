@@ -514,4 +514,3 @@ printf '%s' "$required"
         self.assertEqual("partial stderr\n", result.stderr)
 
 __all__ = ["_RunCiTestsPart2"]
-
