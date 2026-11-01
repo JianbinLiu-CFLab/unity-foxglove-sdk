@@ -339,12 +339,21 @@ class _RunCiTestsPart1:
         self.assertNotIn("--strict", joined)
 
     def test_dotnet_workflow_cannot_waive_validator_initializer_changes(self) -> None:
-        """The trusted-base compatibility fallback must not accept facade rebindings."""
+        """The trusted-base identity result must fail the workflow without a parser waiver."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
-        start = workflow.index("          lyrical_validator_errors = [")
-        end = workflow.index("          normalized_lines =", start)
-        fallback = workflow[start:end]
-        self.assertNotIn("PACKAGE_INITIALIZER_CHANGED", fallback)
+        start = active_workflow_line_index(
+            workflow,
+            "- name: Run Phase192 base-head identity equivalence gate",
+        )
+        gate = "\n".join(workflow.splitlines()[start:])
+        self.assertNotIn("lyrical_validator_errors = [", gate)
+        self.assertNotIn("expected_paths = (", gate)
+        self.assertNotIn("cleanup_lines = [", gate)
+        self.assertNotIn("IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION", gate)
+        self.assertNotIn('python3 - "$trusted_log"', gate)
+        self.assertIn('if [ "$trusted_status" -ne 0 ]; then', gate)
+        self.assertIn('cat "$trusted_log"', gate)
+        self.assertIn('exit "$trusted_status"', gate)
         self.assertIn(
             "python3 Scripts/validation/source_decomposition/compare_identity_surfaces.py \\",
             workflow,

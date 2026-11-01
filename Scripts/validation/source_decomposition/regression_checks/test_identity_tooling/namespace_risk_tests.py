@@ -341,51 +341,24 @@ class NamespaceRiskTests(IdentityToolingBase):
         workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
         self.assertNotIn('cp Scripts/validation/source_decomposition/compare_identity_surfaces.py "$base_checker"', workflow)
 
-    def test_workflow_fallback_allowlists_cover_reviewed_lyrical_transitions(self) -> None:
-        """Fallback identity transitions must enumerate the complete reviewed file sets."""
+    def test_workflow_does_not_embed_identity_fallback_parsers(self) -> None:
+        """Identity waivers must live in the trusted checker, not in the PR workflow."""
         workflow = Path('.github/workflows/dotnet-tests.yml').read_text(encoding='utf-8')
-        reviewed_transition = {
-            "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling.py",
-            "Scripts/validation/source_decomposition/source_layout.py",
-            "Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py",
-            "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py",
-            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_build_r2fu_runtime_package/matrix_tests.py",
-            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_phase146b_build_defaults.py",
-            "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package/layout_metadata_tests.py",
-        }
-        for path in reviewed_transition:
-            with self.subTest(path=path):
-                self.assertIn(path, workflow)
-        self.assertIn("IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT", workflow)
-        self.assertIn("IDENTITY_GATE_REVIEWED_PHASE146B_BUILD_FACADE_SPLIT", workflow)
-        self.assertIn("sensitive_transition_paths = {", workflow)
-        self.assertIn("changed_paths & sensitive_transition_paths", workflow)
-        expected_block = workflow.split("expected_phase192_split_paths = {", 1)[1].split("}", 1)[0]
-        self.assertNotIn(".github/workflows/dotnet-tests.yml", expected_block)
-        self.assertNotIn("Scripts/validation/source_decomposition/compare_identity_surfaces.py", expected_block)
-        package_block = workflow.split("expected_lyrical_package_paths = {", 1)[1].split("}", 1)[0]
-        self.assertNotIn(".github/workflows/dotnet-tests.yml", package_block)
-        self.assertNotIn("Scripts/validation/source_decomposition/compare_identity_surfaces.py", package_block)
-        self.assertIn("phase146b_validator_errors = [", workflow)
-        self.assertIn('"capture_cmd_environment",', workflow)
-        self.assertIn('"capture_ros2_environment",', workflow)
-        self.assertIn('"classify_output",', workflow)
-        self.assertIn("phase146b_expected_missing_symbols = (", workflow)
-        self.assertIn(
-            "actual_missing_symbols != list(phase146b_expected_missing_symbols)",
-            workflow,
-        )
-        self.assertNotIn("expected_validator_split_paths = expected_phase192_split_paths", workflow)
-        validator_block = workflow.split("expected_validator_split_paths = {", 1)[1].split("}", 1)[0]
-        for path in (
-            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/__init__.py",
-            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/implementation_lyrical.py",
-            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/manifest_and_inventory.py",
-            "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package/runtime_checks.py",
+        for marker in (
+            "expected_phase192_split_paths",
+            "expected_lyrical_package_paths",
+            "expected_validator_split_paths",
+            "phase146b_validator_errors",
+            "IDENTITY_GATE_REVIEWED_LYRICAL_VALIDATOR_SECTION_SPLIT",
+            "IDENTITY_GATE_REVIEWED_PHASE146B_BUILD_FACADE_SPLIT",
+            "IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION",
+            'python3 - "$trusted_log"',
         ):
-            self.assertIn(path, validator_block)
-        self.assertNotIn(".github/workflows/dotnet-tests.yml", validator_block)
-        self.assertNotIn("Scripts/validation/source_decomposition/compare_identity_surfaces.py", validator_block)
+            with self.subTest(marker=marker):
+                self.assertNotIn(marker, workflow)
+        self.assertIn('PYTHONPATH="$trusted_root" python3 "$base_checker"', workflow)
+        self.assertIn('if [ "$trusted_status" -ne 0 ]; then', workflow)
+        self.assertIn('exit "$trusted_status"', workflow)
 
     def test_compatibility_rejects_mutation_of_legacy_entrypoint(self) -> None:
         """Legacy compatibility paths still reject an entrypoint digest mutation."""
