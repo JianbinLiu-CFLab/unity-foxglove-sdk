@@ -171,9 +171,9 @@ def _entrypoint_contract(
             relative_path = facade_candidate.resolve().relative_to(repository_root.resolve()).as_posix()
         except ValueError:
             relative_path = ""
-        reviewed_identity_tooling = (
-            relative_path == "Scripts/phase192/regression_checks/test_identity_tooling.py"
-        )
+        if relative_path == "Scripts/phase192/regression_checks/test_identity_tooling.py":
+            sections = _section_modules_for_root(repository_root)(package_dir)
+            reviewed_identity_tooling = _reviewed_identity_tooling_test_split(relative_path, sections)
     top_level_relative_imports = tuple(
         node for node in tree.body if isinstance(node, ast.ImportFrom) and node.level == 1
     )

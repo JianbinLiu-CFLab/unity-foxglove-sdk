@@ -26,18 +26,20 @@ class IdentityToolingBase(unittest.TestCase):
     """Shared base for decomposed identity tooling regression tests."""
 
 
-_phase192_load_tests_used = False
+def _phase192_recursive_package_discovery() -> bool:
+    """Return whether unittest is loading the duplicate package path during discovery."""
+    try:
+        caller = sys._getframe(3)
+    except ValueError:
+        return False
+    return caller.f_code.co_name == "_find_test_path" and caller.f_locals.get("module") is not None
 
 
 def load_tests(loader, tests, pattern):
-    """Collect split identity tooling tests once during discovery."""
-    global _phase192_load_tests_used
-    if pattern is None:
+    """Suppress only the duplicate package discovery within one loader traversal."""
+    if pattern is None or not _phase192_recursive_package_discovery():
         return tests
-    if _phase192_load_tests_used:
-        return loader.suiteClass()
-    _phase192_load_tests_used = True
-    return tests
+    return loader.suiteClass()
 
 
 __all__ = [

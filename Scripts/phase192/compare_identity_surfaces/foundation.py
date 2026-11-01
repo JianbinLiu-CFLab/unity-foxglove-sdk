@@ -2,6 +2,32 @@
 
 from __future__ import annotations
 
+_REVIEWED_IDENTITY_TOOLING_SECTIONS = frozenset(
+    {
+        "aggregate",
+        "foundation",
+        "surface_rows_tests",
+        "split_surface_tests",
+        "split_contract_tests",
+        "compatibility_surface_tests",
+        "compatibility_initializer_tests",
+        "loader_isolation_tests",
+        "loader_entrypoint_tests",
+        "loader_mutation_tests",
+        "namespace_risk_tests",
+        "namespace_execution_core_tests",
+        "namespace_execution_edges_tests",
+    }
+)
+
+def _reviewed_identity_tooling_test_split(relative: str, sections: tuple[Path, ...]) -> bool:
+    """Recognize only the exact reviewed identity-tooling decomposition."""
+    return (
+        relative == "Scripts/phase192/regression_checks/test_identity_tooling.py"
+        and {section.stem for section in sections} == _REVIEWED_IDENTITY_TOOLING_SECTIONS
+        and len(sections) == len(_REVIEWED_IDENTITY_TOOLING_SECTIONS)
+    )
+
 import argparse
 import ast
 import copy
@@ -346,4 +372,4 @@ _PHASE192_TEMPLATE_METHODS = frozenset({
     "__class__", "__delattr__", "__dict__", "__setattr__", "add", "get", "insert", "main", "pop", "resolve", "startswith",
 })
 
-__all__ = ['argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS']
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS']
