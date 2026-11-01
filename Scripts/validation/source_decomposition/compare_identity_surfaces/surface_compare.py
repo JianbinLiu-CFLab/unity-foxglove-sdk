@@ -372,21 +372,34 @@ def _directory_migration_is_active(
     strict: bool,
 ) -> bool:
     """Return whether the compared revisions cross the legacy directory boundary."""
-    return (
-        not strict
-        and any(path.startswith("Scripts/phase192/") for path in base_surfaces)
-        and any(
-            path.startswith("Scripts/validation/source_decomposition/")
-            for path in head_surfaces
-        )
-    )
+    if strict:
+        return False
+    legacy_prefix = "Scripts/phase192/"
+    current_prefix = "Scripts/validation/source_decomposition/"
+    legacy_relative = {
+        path[len(legacy_prefix):]
+        for path in base_surfaces
+        if path.startswith(legacy_prefix)
+    }
+    current_relative = {
+        path[len(current_prefix):]
+        for path in head_surfaces
+        if path.startswith(current_prefix)
+    }
+    return bool(legacy_relative) and legacy_relative == current_relative
 
 
 _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE = (
     "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py"
 )
+_REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE = (
+    "Scripts/validation/source_decomposition/compare_identity_surfaces.py"
+)
 _REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST = (
     "1e77da31a47e38d92709a9c4fb58a4b79921209cc3e9b2f29bc066f529b187fd"
+)
+_REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_DIGEST = (
+    "a268f53d880faeae3f88c265c50df5d2a783bcf0a2eeb6ef393cc103a0326123"
 )
 
 
@@ -395,16 +408,19 @@ def _reviewed_template_registry_facade_transition(
     source_digests: Mapping[str, str] | None,
 ) -> bool:
     """Recognize the exact reviewed template-registry facade loader transition."""
-    return (
-        source_digests is not None
-        and source_digests.get(_REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE)
-        == _REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST
-        and relative
-        in {
-            _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE,
-            "Scripts/validation/source_decomposition/compare_identity_surfaces.py",
-        }
-    )
+    if source_digests is None:
+        return False
+    if relative == _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE:
+        return (
+            source_digests.get(_REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE)
+            == _REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST
+        )
+    if relative == _REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE:
+        return (
+            source_digests.get(_REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE)
+            == _REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_DIGEST
+        )
+    return False
 
 _REVIEWED_VALIDATOR_CLEANUP_SIGNATURE = (
     "facade::7cdf800c9922e9368a642e72b34a53b8fa0049b842fda84b2ca8041537599915"
@@ -847,11 +863,15 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
         base_helper_contract = _identity_helper_source_contract(base_root)
         head_helper_contract = _identity_helper_source_contract(head_root)
         reviewed_source_digests: dict[str, str] = {}
-        reviewed_facade_path = head_root / _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE
-        if reviewed_facade_path.is_file():
-            reviewed_source_digests[_REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE] = (
-                _normalized_source_digest(reviewed_facade_path)
-            )
+        for reviewed_relative in (
+            _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE,
+            _REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE,
+        ):
+            reviewed_facade_path = head_root / reviewed_relative
+            if reviewed_facade_path.is_file():
+                reviewed_source_digests[reviewed_relative] = _normalized_source_digest(
+                    reviewed_facade_path
+                )
         helper_errors = _compare_identity_helper_contracts(
             base_helper_contract,
             head_helper_contract,
@@ -913,4 +933,4 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     return compare_revisions(args.repository.resolve(), args.base, args.head, strict=args.strict)
 
-__all__ = ['_surface', '_surfaces', '_conditional_signature_names', '_reviewed_validator_section_split', '_reviewed_template_registry_split', '_normalize_migrated_source_decomposition_surfaces', '_directory_migration_is_active', '_reviewed_template_registry_facade_transition', '_REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE', '_REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST', '_REVIEWED_VALIDATOR_CLEANUP_SIGNATURE', '_IDENTITY_HELPER_RELATIVES', '_REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS', '_normalized_source_digest', '_identity_helper_source_contract', '_compare_identity_helper_contracts', '_reviewed_validator_isolation_transition', '_compare_surfaces', 'compare_revisions', 'main']
+__all__ = ['_surface', '_surfaces', '_conditional_signature_names', '_reviewed_validator_section_split', '_reviewed_template_registry_split', '_normalize_migrated_source_decomposition_surfaces', '_directory_migration_is_active', '_reviewed_template_registry_facade_transition', '_REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE', '_REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE', '_REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST', '_REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_DIGEST', '_REVIEWED_VALIDATOR_CLEANUP_SIGNATURE', '_IDENTITY_HELPER_RELATIVES', '_REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS', '_normalized_source_digest', '_identity_helper_source_contract', '_compare_identity_helper_contracts', '_reviewed_validator_isolation_transition', '_compare_surfaces', 'compare_revisions', 'main']

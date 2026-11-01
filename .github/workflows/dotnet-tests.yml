@@ -182,6 +182,8 @@ jobs:
 
       - name: Run complete Python regression inventory
         if: always()
+        env:
+          PHASE192_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           python3 -B Scripts/release/regression_inventory.py
           python3 -B -m unittest \
@@ -270,6 +272,7 @@ jobs:
             python3 - "$trusted_log" "$PHASE192_BASE_SHA" "$PHASE192_HEAD_SHA" <<'PY'
           import subprocess
           import sys
+          import hashlib
           from pathlib import Path
 
           text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
@@ -297,9 +300,28 @@ jobs:
               "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling/split_surface_tests.py",
               "Scripts/validation/source_decomposition/template_registry_compat.py",
           }
+          reviewed_current_layout_file_digests = {
+              "Scripts/validation/source_decomposition/compare_identity_surfaces/surface_compare.py": "7a1489e8b908dde5229bdfbc33e0df565f86ed8a2cd34672619c1070de3929d3",
+              "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py": "aec79a7f0acfbb4822a15dba5c4c0c4a499b572e542b5210920314816a8c5706",
+              "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling/split_surface_tests.py": "9426489d97bab6c99a9a8d59b13221f7f053e1a4d5af79b70bec1ffd4ebfb6eb",
+              "Scripts/validation/source_decomposition/template_registry_compat.py": "4e46c405bfa4aadd43d4eff6c18a8e33caaa0cc0053c021cb0c1b5cba5c0f1fe",
+          }
+          def head_blob_digest(path):
+              """Hash a reviewed transition file from the immutable head commit."""
+              return hashlib.sha256(
+                  subprocess.check_output(
+                      ["git", "show", f"{head_sha}:{path}"],
+                  )
+              ).hexdigest()
           normalized_lines = [line.replace("\\", "/") for line in text.splitlines() if line.strip()]
           if normalized_lines == current_layout_errors:
-              if changed_paths != reviewed_current_layout_paths:
+              if (
+                  changed_paths != reviewed_current_layout_paths
+                  or any(
+                      head_blob_digest(path) != digest
+                      for path, digest in reviewed_current_layout_file_digests.items()
+                  )
+              ):
                   sys.stderr.write("Unexpected current-layout identity transition file set\n")
                   raise SystemExit(1)
               print("IDENTITY_GATE_REVIEWED_CURRENT_LAYOUT_TRANSITION")

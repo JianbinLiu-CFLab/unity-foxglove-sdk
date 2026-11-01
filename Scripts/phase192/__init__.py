@@ -12,13 +12,11 @@ _IMPLEMENTATION = _import_module("Scripts.validation.source_decomposition")
 for _name in (
     "compare_identity_surfaces",
     "freeze_baseline",
-    "identity_contracts",
     "identity_initializer_contracts",
     "identity_namespace_analysis",
     "identity_namespace_scanner",
     "identity_surface_conditions",
     "sensitivity_proof",
-    "source_layout",
     "task0_entry",
 ):
     _sys.modules[f"{__name__}.{_name}"] = _import_module(
