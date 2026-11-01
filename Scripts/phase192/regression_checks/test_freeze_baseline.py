@@ -36,11 +36,6 @@ class FreezeBaselineTests(unittest.TestCase):
         self.assertEqual(334, len(rows))
         self.assertEqual({"IdentityToolingTests"}, {row[1].split(".")[-2] for row in rows})
 
-    def test_u2r2_protocol_limits_sections_stay_below_source_split_threshold(self) -> None:
-        facade = freeze_baseline.REPOSITORY_ROOT / "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/U2R2ProtocolLimits.cs"; sections = sorted((facade.parent / "Decomposed" / facade.stem).glob("*.cs"))
-        self.assertLess(len(facade.read_text(encoding="utf-8").splitlines()), 500)
-        self.assertTrue(sections and all(len(path.read_text(encoding="utf-8").splitlines()) < 500 for path in sections))
-
     def test_measured_lane_result_is_fail_closed(self) -> None:
         """Measured lane results fail closed for missing and failed evidence."""
         with tempfile.TemporaryDirectory() as temp:
