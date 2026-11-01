@@ -209,6 +209,7 @@ PACKAGE_LANE_REGRESSION_MODULES = (
     "Scripts.phase190.regression_checks.test_run_conformance",
     "Scripts.phase192.regression_checks.test_identity_tooling",
     "Scripts.phase192.regression_checks.test_freeze_baseline",
+    "Scripts.phase192.regression_checks.test_u2r2_protocol_limits",
     "Scripts.performance.regression_checks.test_phase188_replay",
     "Scripts.smoke.replay.regression_checks.test_phase188_deterministic_replay_acceptance",
 )
