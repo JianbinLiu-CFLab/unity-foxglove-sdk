@@ -294,6 +294,10 @@ jobs:
           }
           reviewed_current_layout_paths = {
               ".github/workflows/dotnet-tests.yml",
+              "Scripts/phase192/__init__.py",
+              "Scripts/phase192/identity_contracts/__init__.py",
+              "Scripts/phase192/identity_contracts/__main__.py",
+              "Scripts/phase192/source_layout.py",
               "Scripts/validation/source_decomposition/compare_identity_surfaces/surface_compare.py",
               "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py",
               "Scripts/validation/source_decomposition/regression_checks/test_identity_gate_hardening.py",
@@ -301,6 +305,10 @@ jobs:
               "Scripts/validation/source_decomposition/template_registry_compat.py",
           }
           reviewed_current_layout_file_digests = {
+              "Scripts/phase192/__init__.py": "2b2aa2a45cea4129aca2fd265ce4c1718382ac60c8cd9242f4852972c55e0d36",
+              "Scripts/phase192/identity_contracts/__init__.py": "4ad15d699105456a98b5946d3df62dce88e1c81b125da3071150ac48c7f2b741",
+              "Scripts/phase192/identity_contracts/__main__.py": "33cbf7fc898c6325385fae9a273a269ce77ce24f41a1b68139f4a4feea80333f",
+              "Scripts/phase192/source_layout.py": "28a3a7bdfd71f3dde6d3183c83d0a2d5166b87537ad446205258000fd18f6289",
               "Scripts/validation/source_decomposition/compare_identity_surfaces/surface_compare.py": "7a1489e8b908dde5229bdfbc33e0df565f86ed8a2cd34672619c1070de3929d3",
               "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py": "aec79a7f0acfbb4822a15dba5c4c0c4a499b572e542b5210920314816a8c5706",
               "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling/split_surface_tests.py": "9426489d97bab6c99a9a8d59b13221f7f053e1a4d5af79b70bec1ffd4ebfb6eb",
