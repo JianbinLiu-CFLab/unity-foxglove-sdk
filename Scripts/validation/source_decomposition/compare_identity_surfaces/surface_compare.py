@@ -846,11 +846,12 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
             head_surfaces = _normalize_migrated_source_decomposition_surfaces(head_surfaces)
         base_helper_contract = _identity_helper_source_contract(base_root)
         head_helper_contract = _identity_helper_source_contract(head_root)
-        reviewed_source_digests = {
-            _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE: _normalized_source_digest(
-                head_root / _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE
+        reviewed_source_digests: dict[str, str] = {}
+        reviewed_facade_path = head_root / _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE
+        if reviewed_facade_path.is_file():
+            reviewed_source_digests[_REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE] = (
+                _normalized_source_digest(reviewed_facade_path)
             )
-        }
         helper_errors = _compare_identity_helper_contracts(
             base_helper_contract,
             head_helper_contract,
