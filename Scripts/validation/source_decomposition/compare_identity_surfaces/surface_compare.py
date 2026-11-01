@@ -386,7 +386,7 @@ _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE = (
     "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py"
 )
 _REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST = (
-    "a09566701f4369d7cc58bcaef4ae3270e61e7a8d1dd3913234afb900c4ef5fcf"
+    "33d1283ecdd7c1ec75c28d7be387b9a2edcaf64a61855bb159f0bd9dd89ffcd8"
 )
 
 

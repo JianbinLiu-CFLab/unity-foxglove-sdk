@@ -12,7 +12,7 @@ _phase192_validate_template_registry_mutations = None
 if False:
     from .template_registry import *
 
-from Scripts.validation.source_decomposition.template_registry_compat import (
+from template_registry_compat import (
     _phase192_install_template_registry_facade,
 )
 
@@ -27,3 +27,4 @@ __all__ = [
     "_phase192_template_validate_facade",
     "_phase192_validate_template_registry_mutations",
 ]
+

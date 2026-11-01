@@ -17,6 +17,9 @@ def _phase192_install_template_registry_facade(module_name: str) -> None:
     parent = str(_Phase192Path(facade_path).resolve().parent)
     if parent not in _phase192_sys.path:
         _phase192_sys.path.insert(0, parent)
+    repository_root = str(_Phase192Path(facade_path).resolve().parents[4])
+    if repository_root not in _phase192_sys.path:
+        _phase192_sys.path.insert(0, repository_root)
     _phase192_sys.modules.pop(module_name, None)
     previous_module = _phase192_sys.modules.pop("template_registry", None)
     try:

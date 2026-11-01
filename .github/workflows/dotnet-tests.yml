@@ -295,7 +295,7 @@ jobs:
               "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py",
               "Scripts/validation/source_decomposition/regression_checks/test_identity_gate_hardening.py",
               "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling/split_surface_tests.py",
-              "Scripts/validation/source_decomposition/template_registry_compat.py",
+              "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry_compat.py",
           }
           normalized_lines = [line.replace("\\", "/") for line in text.splitlines() if line.strip()]
           if normalized_lines == current_layout_errors:
@@ -805,3 +805,4 @@ jobs:
             exit 1
           fi
           echo "Validation aggregate passed."
+
