@@ -11,6 +11,7 @@ from pathlib import Path
 from Scripts.validation.source_decomposition import compare_identity_surfaces
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+_PHASE192_TRUSTED_BASE_SHA = "d83d9a897041b432c8eea220e48ba29c0be62258"
 _REVIEWED_SECTIONS = (
     "aggregate",
     "foundation",
@@ -254,25 +255,43 @@ class IdentityGateHardeningTests(unittest.TestCase):
             "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build.py"
         )
         facade = _REPOSITORY_ROOT / relative
-        surface = compare_identity_surfaces._surface(
+        surface = compare_identity_surfaces._surface(_REPOSITORY_ROOT, facade, reject_conditional=False)
+        with compare_identity_surfaces._revision_checkout(
             _REPOSITORY_ROOT,
-            facade,
-            reject_conditional=False,
-        )
+            _PHASE192_TRUSTED_BASE_SHA,
+        ) as trusted_root:
+            trusted_surface = compare_identity_surfaces._surface(
+                trusted_root,
+                trusted_root / relative,
+                reject_conditional=False,
+            )
         self.assertEqual(
             ("safety_and_environment", "build_pipeline", "evidence"),
-            surface[1],
+            trusted_surface[1],
         )
-        self.assertIn("run_upstream_build", surface[0])
-        self.assertIn("write_evidence", surface[0])
-        self.assertTrue(surface[4])
+        self.assertEqual(trusted_surface[1], surface[1])
+        self.assertEqual(trusted_surface[0], surface[0])
+        self.assertEqual(trusted_surface[4], surface[4])
+        self.assertIn("run_upstream_build", trusted_surface[0])
+        self.assertIn("write_evidence", trusted_surface[0])
+        self.assertTrue(trusted_surface[4])
         self.assertEqual(
             [],
             compare_identity_surfaces._compare_surfaces(
-                {relative: surface},
+                {relative: trusted_surface},
                 {relative: surface},
                 strict=True,
             ),
+        )
+        mutated = list(surface)
+        mutated[0] = frozenset(set(surface[0]) | {"UNREVIEWED_EXPORT"})
+        mutation_errors = compare_identity_surfaces._compare_surfaces(
+            {relative: trusted_surface},
+            {relative: tuple(mutated)},
+            strict=True,
+        )
+        self.assertTrue(
+            any(error.startswith(f"EXTRA_SYMBOLS {relative}") for error in mutation_errors)
         )
 
     def test_legacy_python_module_entrypoints_remain_executable(self) -> None:
