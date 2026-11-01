@@ -310,7 +310,7 @@ jobs:
               "Scripts/phase192/identity_contracts/__main__.py": "33cbf7fc898c6325385fae9a273a269ce77ce24f41a1b68139f4a4feea80333f",
               "Scripts/phase192/source_layout.py": "28a3a7bdfd71f3dde6d3183c83d0a2d5166b87537ad446205258000fd18f6289",
               "Scripts/validation/source_decomposition/compare_identity_surfaces/surface_compare.py": "7a1489e8b908dde5229bdfbc33e0df565f86ed8a2cd34672619c1070de3929d3",
-              "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py": "aec79a7f0acfbb4822a15dba5c4c0c4a499b572e542b5210920314816a8c5706",
+              "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py": "6f49148741be02cae8bbb72a2dadb5faa3f45de562d0a523c9ba55d07c732282",
               "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling/split_surface_tests.py": "9426489d97bab6c99a9a8d59b13221f7f053e1a4d5af79b70bec1ffd4ebfb6eb",
               "Scripts/validation/source_decomposition/template_registry_compat.py": "4e46c405bfa4aadd43d4eff6c18a8e33caaa0cc0053c021cb0c1b5cba5c0f1fe",
           }
