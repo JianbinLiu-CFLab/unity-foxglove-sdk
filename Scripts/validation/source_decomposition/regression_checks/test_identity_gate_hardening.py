@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
-import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 from Scripts.validation.source_decomposition import compare_identity_surfaces
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+_PHASE192_TRUSTED_BASE_SHA = "d83d9a897041b432c8eea220e48ba29c0be62258"
 _REVIEWED_SECTIONS = (
     "aggregate",
     "foundation",
@@ -169,18 +171,128 @@ class IdentityGateHardeningTests(unittest.TestCase):
             )
         )
 
-    def test_workflow_uses_exact_current_layout_transition(self) -> None:
-        """The current-layout fallback must not be a broad migration waiver."""
+    def test_workflow_fails_closed_on_trusted_identity_errors(self) -> None:
+        """The workflow must not interpret trusted checker failures itself."""
         workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
-        self.assertNotIn("migration_paths_changed", workflow)
-        self.assertNotIn("IDENTITY_GATE_REVIEWED_VALIDATION_DIRECTORY_MIGRATION", workflow)
-        self.assertIn("reviewed_current_layout_paths = {", workflow)
-        self.assertIn("IDENTITY_GATE_REVIEWED_CURRENT_LAYOUT_TRANSITION", workflow)
-        expected_workflow_digest = "c3a902865e59ecc2293902d92dc3316ee043c8749688f021f147f5f5bd901a41"
-        actual_workflow_digest = hashlib.sha256(
-            (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_bytes()
-        ).hexdigest()
-        self.assertEqual(expected_workflow_digest, actual_workflow_digest)
+        self.assertNotIn("reviewed_current_layout_paths", workflow)
+        self.assertNotIn("IDENTITY_GATE_REVIEWED_CURRENT_LAYOUT_TRANSITION", workflow)
+        self.assertNotIn("expected_paths = (", workflow)
+        self.assertNotIn("cleanup_lines = [", workflow)
+        self.assertNotIn("IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION", workflow)
+        self.assertNotIn('python3 - "$trusted_log"', workflow)
+        self.assertIn('if [ "$trusted_status" -ne 0 ]; then', workflow)
+        self.assertIn('cat "$trusted_log"', workflow)
+        self.assertIn('exit "$trusted_status"', workflow)
+
+    def test_workflow_propagates_a_trusted_checker_failure(self) -> None:
+        """A non-zero trusted checker result exits before any head-side gate runs."""
+        if sys.platform == "win32":
+            self.skipTest("the workflow shell is executed in the hosted Linux lane")
+        bash = shutil.which("bash")
+        if bash is None:
+            self.skipTest("bash is required to execute the workflow shell")
+        workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
+        lines = workflow.splitlines()
+        start = next(
+            index
+            for index, line in enumerate(lines)
+            if line.strip() == 'trusted_log="$RUNNER_TEMP/phase192-trusted-base.log"'
+        )
+        end = next(
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].strip() == "# Run the checked-in head checker as a second gate so newly supported"
+        )
+        script = "\n".join(
+            line[10:] if line.startswith("          ") else line
+            for line in lines[start:end]
+        )
+        command_start = script.index("set +e\n")
+        command_end = script.index("trusted_status=$?\n", command_start)
+        replacement = (
+            "set +e\n"
+            "python3 -c 'import sys; print(\"TRUSTED_FAILURE\"); sys.exit(17)' "
+            ">\"$trusted_log\" 2>&1\n"
+        )
+        script = script[:command_start] + replacement + script[command_end:]
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = os.environ.copy()
+            environment["RUNNER_TEMP"] = temporary
+            result = subprocess.run(
+                [bash, "-c", script],
+                capture_output=True,
+                text=True,
+                env=environment,
+                check=False,
+            )
+        self.assertEqual(17, result.returncode, result.stdout + result.stderr)
+        self.assertIn("TRUSTED_FAILURE", result.stdout)
+
+    def test_phase146b_migration_is_checker_first_and_current_baseline_is_split(self) -> None:
+        """The completed Phase146B split is documented as fail-closed for future migrations."""
+        documentation = (
+            _REPOSITORY_ROOT / "Scripts/validation/source_decomposition/README.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Phase146B", documentation)
+        self.assertIn("trusted base", documentation)
+        self.assertIn("fails closed", documentation)
+        self.assertTrue(
+            (
+                _REPOSITORY_ROOT
+                / "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build.py"
+            ).is_file()
+        )
+        self.assertTrue(
+            (
+                _REPOSITORY_ROOT
+                / "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build/implementation.py"
+            ).is_file()
+        )
+
+    def test_phase146b_baseline_identity_contract_covers_facade_and_section(self) -> None:
+        """The Phase146B facade and implementation section have a checked identity contract."""
+        relative = (
+            "Scripts/ros2forunity/windows/lyrical/phase146b_r2fu_lyrical_windows_build.py"
+        )
+        facade = _REPOSITORY_ROOT / relative
+        surface = compare_identity_surfaces._surface(_REPOSITORY_ROOT, facade, reject_conditional=False)
+        with compare_identity_surfaces._revision_checkout(
+            _REPOSITORY_ROOT,
+            _PHASE192_TRUSTED_BASE_SHA,
+        ) as trusted_root:
+            trusted_surface = compare_identity_surfaces._surface(
+                trusted_root,
+                trusted_root / relative,
+                reject_conditional=False,
+            )
+        self.assertEqual(
+            ("safety_and_environment", "build_pipeline", "evidence"),
+            trusted_surface[1],
+        )
+        self.assertEqual(trusted_surface[1], surface[1])
+        self.assertEqual(trusted_surface[0], surface[0])
+        self.assertEqual(trusted_surface[4], surface[4])
+        self.assertIn("run_upstream_build", trusted_surface[0])
+        self.assertIn("write_evidence", trusted_surface[0])
+        self.assertTrue(trusted_surface[4])
+        self.assertEqual(
+            [],
+            compare_identity_surfaces._compare_surfaces(
+                {relative: trusted_surface},
+                {relative: surface},
+                strict=True,
+            ),
+        )
+        mutated = list(surface)
+        mutated[0] = frozenset(set(surface[0]) | {"UNREVIEWED_EXPORT"})
+        mutation_errors = compare_identity_surfaces._compare_surfaces(
+            {relative: trusted_surface},
+            {relative: tuple(mutated)},
+            strict=True,
+        )
+        self.assertTrue(
+            any(error.startswith(f"EXTRA_SYMBOLS {relative}") for error in mutation_errors)
+        )
 
     def test_legacy_python_module_entrypoints_remain_executable(self) -> None:
         """Legacy Phase192 module paths must execute without loader mismatch."""
