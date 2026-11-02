@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+## 1.9.7 - 2026-11-02
+
 ### Added
 
 - FoxRun source generation now supports publish, subscribe, and full-duplex

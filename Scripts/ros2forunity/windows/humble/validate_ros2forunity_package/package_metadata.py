@@ -28,7 +28,7 @@ def check_package_metadata(results: list[CheckResult]) -> None:
     add(
         results,
         "package depends only on core SDK package",
-        dependencies == {"dev.unity2foxglove.sdk": "1.9.6"},
+        dependencies == {"dev.unity2foxglove.sdk": "1.9.7"},
         f"dependencies={dependencies!r}",
     )
 
