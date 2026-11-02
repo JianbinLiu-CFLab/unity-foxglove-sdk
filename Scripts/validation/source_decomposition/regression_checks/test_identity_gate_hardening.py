@@ -298,20 +298,32 @@ class IdentityGateHardeningTests(unittest.TestCase):
                 check=True,
             )
 
-            def snapshot(source_revision: str, *, semantic: bool = False, normalize: bool = False) -> str:
+            def snapshot(
+                source_revision: str,
+                *,
+                semantic: bool = False,
+                normalize: bool = False,
+                mixed: bool = False,
+            ) -> str:
+                """Create a temporary Git snapshot with optional layout normalization."""
                 subprocess.run(
                     ["git", "rm", "-r", "-q", "--ignore-unmatch", "."],
                     cwd=compatibility_repo,
                     check=False,
                 )
                 subprocess.run(["git", "clean", "-fdx", "-q"], cwd=compatibility_repo, check=True)
-                source_path = (
-                    "Scripts/phase192"
+                source_paths = (
+                    ["Scripts/phase192"]
                     if source_revision == base_revision
-                    else "Scripts/validation/source_decomposition"
+                    else ["Scripts/validation/source_decomposition"]
                 )
+                if mixed:
+                    source_paths = [
+                        "Scripts/phase192",
+                        "Scripts/validation/source_decomposition",
+                    ]
                 source_archive = subprocess.run(
-                    ["git", "archive", source_revision, "--", source_path],
+                    ["git", "archive", source_revision, "--", *source_paths],
                     cwd=_REPOSITORY_ROOT if source_revision == base_revision else compatibility_repo,
                     capture_output=True,
                     check=False,
@@ -330,6 +342,8 @@ class IdentityGateHardeningTests(unittest.TestCase):
                     canonical.parent.mkdir(parents=True, exist_ok=True)
                     legacy.rename(canonical)
                 if normalize:
+                    if legacy.exists():
+                        shutil.rmtree(legacy)
                     legacy.parent.mkdir(parents=True, exist_ok=True)
                     canonical.rename(legacy)
                 subprocess.run(["git", "-c", "core.longpaths=true", "add", "-A"], cwd=compatibility_repo, check=True)
@@ -389,6 +403,37 @@ class IdentityGateHardeningTests(unittest.TestCase):
             )
         self.assertEqual(0, normalized.returncode, normalized.stdout + normalized.stderr)
         self.assertIn("IDENTITY_COMPATIBLE", normalized.stdout)
+
+        mixed_snapshot = snapshot(semantic_snapshot, mixed=True)
+        normalized_mixed_snapshot = snapshot(mixed_snapshot, normalize=True, mixed=True)
+        normalized_paths = subprocess.check_output(
+            ["git", "ls-tree", "-r", "--name-only", normalized_mixed_snapshot, "--", "Scripts/phase192"],
+            cwd=compatibility_repo,
+            text=True,
+        ).splitlines()
+        self.assertIn("Scripts/phase192/source_layout.py", normalized_paths)
+        self.assertFalse(any(path.startswith("Scripts/phase192/source_decomposition/") for path in normalized_paths))
+        normalized_mixed = subprocess.run(
+            [
+                sys.executable,
+                "-B",
+                str(checker),
+                "--base",
+                base_snapshot,
+                "--head",
+                normalized_mixed_snapshot,
+                "--repository",
+                str(compatibility_repo),
+                "--compatibility",
+            ],
+            cwd=compatibility_repo,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, normalized_mixed.returncode, normalized_mixed.stdout + normalized_mixed.stderr)
+        self.assertIn("IDENTITY_COMPATIBLE", normalized_mixed.stdout)
 
     def test_workflow_fails_closed_on_trusted_identity_errors(self) -> None:
         """The workflow must not interpret trusted checker failures itself."""
