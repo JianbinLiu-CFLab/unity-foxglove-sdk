@@ -322,7 +322,13 @@ class _RunCiTestsPart1:
             workflow,
             "- name: Run source-decomposition base-head identity equivalence gate",
         )
-        joined = "\n".join(workflow.splitlines()[start : start + 30])
+        lines = workflow.splitlines()
+        end = next(
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].strip() == "# Run the checked-in head checker as a second gate so newly supported"
+        )
+        joined = "\n".join(lines[start:end])
         self.assertIn("github.event.pull_request.base.sha", joined)
         self.assertIn("github.event.pull_request.head.sha", joined)
         self.assertIn("Scripts/validation/source_decomposition/compare_identity_surfaces.py", joined)
