@@ -171,6 +171,83 @@ class IdentityGateHardeningTests(unittest.TestCase):
             )
         )
 
+    def test_workflow_selects_checker_path_from_immutable_trusted_revision(self) -> None:
+        """The bootstrap and current layouts select their checker from trusted history."""
+        workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            'if git cat-file -e "$trusted_revision:Scripts/validation/source_decomposition/compare_identity_surfaces.py"',
+            workflow,
+        )
+        self.assertIn(
+            'elif git cat-file -e "$trusted_revision:Scripts/phase192/compare_identity_surfaces.py"',
+            workflow,
+        )
+        self.assertIn('archive_paths+=(Scripts/validation/source_decomposition)', workflow)
+        self.assertIn('archive_paths+=(Scripts/phase192)', workflow)
+        self.assertIn(
+            'checker_relative="Scripts/validation/source_decomposition/compare_identity_surfaces.py"',
+            workflow,
+        )
+        self.assertIn(
+            'checker_relative="Scripts/phase192/compare_identity_surfaces.py"',
+            workflow,
+        )
+        self.assertIn('SOURCE_DECOMPOSITION_BASE_SHA" = "9b3754bd21631e4c1a8717f9a133c1063ab56d33', workflow)
+        self.assertIn('trusted_revision="ab1487e654ce11b5e217329552751a058a250ef7"', workflow)
+
+    @unittest.skipUnless(sys.platform != "win32" and shutil.which("tar"), "hosted Linux tar is required")
+    def test_legacy_and_current_checkers_accept_compatibility_help(self) -> None:
+        """Both the historical bootstrap checker and current checker expose compatibility mode."""
+        current = _REPOSITORY_ROOT / "Scripts/validation/source_decomposition/compare_identity_surfaces.py"
+        current_result = subprocess.run(
+            [sys.executable, "-B", str(current), "--help"],
+            cwd=_REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, current_result.returncode, current_result.stderr)
+        self.assertIn("--compatibility", current_result.stdout)
+
+        legacy_revision = "ab1487e654ce11b5e217329552751a058a250ef7"
+        archive = subprocess.run(
+            [
+                "git",
+                "archive",
+                legacy_revision,
+                "--",
+                "Scripts/smoke/foxrun",
+                "Scripts/smoke/ros2",
+                "Scripts/smoke/websocket",
+                "Scripts/phase192",
+            ],
+            cwd=_REPOSITORY_ROOT,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, archive.returncode, archive.stderr.decode(errors="replace"))
+        with tempfile.TemporaryDirectory() as temporary:
+            extract = subprocess.run(
+                [shutil.which("tar"), "-x", "-C", temporary],
+                input=archive.stdout,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, extract.returncode, extract.stderr.decode(errors="replace"))
+            legacy = Path(temporary) / "Scripts/phase192/compare_identity_surfaces.py"
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = temporary
+            legacy_result = subprocess.run(
+                [sys.executable, "-B", str(legacy), "--help"],
+                cwd=temporary,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(0, legacy_result.returncode, legacy_result.stderr)
+        self.assertIn("--compatibility", legacy_result.stdout)
+
     def test_workflow_fails_closed_on_trusted_identity_errors(self) -> None:
         """The workflow must not interpret trusted checker failures itself."""
         workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
@@ -294,8 +371,8 @@ class IdentityGateHardeningTests(unittest.TestCase):
             any(error.startswith(f"EXTRA_SYMBOLS {relative}") for error in mutation_errors)
         )
 
-    def test_legacy_python_module_entrypoints_remain_executable(self) -> None:
-        """Legacy Phase192 module paths must execute without loader mismatch."""
+    def test_semantic_python_module_entrypoints_remain_executable(self) -> None:
+        """Semantic source-decomposition module paths execute without loader mismatch."""
         commands = (
             [sys.executable, "-B", "-m", "Scripts.validation.source_decomposition.source_layout"],
             [sys.executable, "-B", "-m", "Scripts.validation.source_decomposition.identity_contracts", "--help"],

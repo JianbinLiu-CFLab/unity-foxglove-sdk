@@ -15,3 +15,14 @@ Reviewed decomposition transitions belong in the checker shipped by a trusted ba
 The Phase146B build-orchestrator split is already part of the current baseline. Future Phase146B changes must follow the checker-first process and must not restore a workflow fallback parser.
 
 The directory name describes the responsibility of this tooling; historical `phase192` references remain only where they identify fixtures, evidence, or test scenarios.
+
+## Entry-point migration
+
+External callers must use the semantic validation modules after the directory cleanup:
+
+| Removed entry point | Replacement |
+| --- | --- |
+| `Scripts.phase190` | `Scripts.validation.conformance` |
+| `Scripts.phase192` | `Scripts.validation.source_decomposition` |
+
+The old package directories are intentionally not retained as compatibility shims.

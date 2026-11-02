@@ -236,16 +236,25 @@ jobs:
             echo "Trusted identity checker revision is not an ancestor of the PR base" >&2
             exit 1
           fi
-          if ! git cat-file -e "$trusted_revision:Scripts/validation/source_decomposition" 2>/dev/null; then
+          archive_paths=(Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket)
+          checker_relative=""
+          if git cat-file -e "$trusted_revision:Scripts/validation/source_decomposition/compare_identity_surfaces.py" 2>/dev/null; then
+            archive_paths+=(Scripts/validation/source_decomposition)
+            checker_relative="Scripts/validation/source_decomposition/compare_identity_surfaces.py"
+          elif git cat-file -e "$trusted_revision:Scripts/phase192/compare_identity_surfaces.py" 2>/dev/null; then
+            archive_paths+=(Scripts/phase192)
+            checker_relative="Scripts/phase192/compare_identity_surfaces.py"
+            echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: using legacy source-decomposition checker path"
+          else
             echo "Trusted source-decomposition checker is missing" >&2
             exit 1
           fi
-          archive_paths=(Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket Scripts/validation/source_decomposition)
+          # The selected trusted checker must support --compatibility in either layout.
           git archive "$trusted_revision" -- "${archive_paths[@]}" | tar -x -C "$trusted_root"
           export PYTHONPATH="$trusted_root"
           # Both identity invocations compare the checked-out repository: --repository .
-          # Trusted checker uses --compatibility from the semantic validation path.
-          base_checker="$trusted_root/Scripts/validation/source_decomposition/compare_identity_surfaces.py"
+          # The trusted checker path is selected only from the immutable base revision.
+          base_checker="$trusted_root/$checker_relative"
           if [ ! -f "$base_checker" ]; then
             echo "Trusted base identity checker is missing" >&2
             exit 1
