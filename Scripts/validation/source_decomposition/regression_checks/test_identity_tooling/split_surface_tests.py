@@ -109,12 +109,12 @@ class SplitSurfaceTests(IdentityToolingBase):
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
-    def test_identity_package_imports_from_external_cwd_with_legacy_paths(self) -> None:
-        """Legacy PYTHONPATH imports remain valid outside the repository root."""
+    def test_identity_package_imports_from_external_cwd_with_semantic_paths(self) -> None:
+        """Semantic PYTHONPATH imports remain valid outside the repository root."""
         repository = compare_identity_surfaces.REPOSITORY_ROOT
         cases = (
-            (repository / "Scripts" / "phase192", "import compare_identity_surfaces"),
-            (repository / "Scripts", "import phase192.compare_identity_surfaces"),
+            (repository / "Scripts" / "validation" / "source_decomposition", "import compare_identity_surfaces"),
+            (repository, "import Scripts.validation.source_decomposition.compare_identity_surfaces"),
         )
         with tempfile.TemporaryDirectory() as temporary:
             for python_path, script in cases:
@@ -346,7 +346,7 @@ assert hasattr(loaded, "_phase192_template_name")
                     if relative == "Scripts/validation/source_decomposition/identity_namespace_scanner.py":
                         continue
                     path.write_text("VALUE = 1\n", encoding="utf-8")
-            base_revision = os.environ.get("PHASE192_BASE_SHA", "HEAD")
+            base_revision = os.environ.get("SOURCE_DECOMPOSITION_BASE_SHA", "HEAD")
             base_analysis = subprocess.check_output(
                 [
                     "git",
