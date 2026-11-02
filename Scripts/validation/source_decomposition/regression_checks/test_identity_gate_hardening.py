@@ -248,6 +248,143 @@ class IdentityGateHardeningTests(unittest.TestCase):
         self.assertEqual(0, legacy_result.returncode, legacy_result.stderr)
         self.assertIn("--compatibility", legacy_result.stdout)
 
+    @unittest.skipUnless(sys.platform != "win32" and shutil.which("tar"), "hosted Linux tar is required")
+    def test_legacy_checker_handles_semantic_head_after_workflow_normalization(self) -> None:
+        """The legacy trusted checker runs after semantic-head paths are normalized in a temp Git repo."""
+        legacy_revision = "ab1487e654ce11b5e217329552751a058a250ef7"
+        base_revision = "9b3754bd21631e4c1a8717f9a133c1063ab56d33"
+        build_root = _REPOSITORY_ROOT / "build" / "identity-gate-regression"
+        build_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=build_root) as temporary:
+            trusted_root = Path(temporary) / "trusted"
+            trusted_root.mkdir()
+            archive = subprocess.run(
+                [
+                    "git",
+                    "archive",
+                    legacy_revision,
+                    "--",
+                    "Scripts/smoke/foxrun",
+                    "Scripts/smoke/ros2",
+                    "Scripts/smoke/websocket",
+                    "Scripts/phase192",
+                ],
+                cwd=_REPOSITORY_ROOT,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, archive.returncode, archive.stderr.decode(errors="replace"))
+            extract = subprocess.run(
+                [shutil.which("tar"), "-x", "-C", str(trusted_root)],
+                input=archive.stdout,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, extract.returncode, extract.stderr.decode(errors="replace"))
+            checker = trusted_root / "Scripts/phase192/compare_identity_surfaces.py"
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(trusted_root)
+            compatibility_repo = Path(temporary) / "compat-repository"
+            compatibility_repo.mkdir()
+            subprocess.run(["git", "init", "-q"], cwd=compatibility_repo, check=True)
+            subprocess.run(
+                ["git", "config", "user.name", "identity-gate-test"],
+                cwd=compatibility_repo,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "identity-gate-test@example.invalid"],
+                cwd=compatibility_repo,
+                check=True,
+            )
+
+            def snapshot(source_revision: str, *, semantic: bool = False, normalize: bool = False) -> str:
+                subprocess.run(
+                    ["git", "rm", "-r", "-q", "--ignore-unmatch", "."],
+                    cwd=compatibility_repo,
+                    check=False,
+                )
+                subprocess.run(["git", "clean", "-fdx", "-q"], cwd=compatibility_repo, check=True)
+                source_archive = subprocess.run(
+                    ["git", "archive", source_revision, "--", "Scripts"],
+                    cwd=_REPOSITORY_ROOT if source_revision == base_revision else compatibility_repo,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(0, source_archive.returncode, source_archive.stderr.decode(errors="replace"))
+                extracted = subprocess.run(
+                    [shutil.which("tar"), "-x", "-C", str(compatibility_repo)],
+                    input=source_archive.stdout,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(0, extracted.returncode, extracted.stderr.decode(errors="replace"))
+                legacy = compatibility_repo / "Scripts/phase192"
+                canonical = compatibility_repo / "Scripts/validation/source_decomposition"
+                if semantic:
+                    canonical.parent.mkdir(parents=True, exist_ok=True)
+                    legacy.rename(canonical)
+                if normalize:
+                    legacy.parent.mkdir(parents=True, exist_ok=True)
+                    canonical.rename(legacy)
+                subprocess.run(["git", "add", "-A"], cwd=compatibility_repo, check=True)
+                subprocess.run(
+                    ["git", "commit", "-q", "-m", "compatibility snapshot"],
+                    cwd=compatibility_repo,
+                    check=True,
+                )
+                return subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=compatibility_repo,
+                    text=True,
+                ).strip()
+
+            base_snapshot = snapshot(base_revision, semantic=False)
+            semantic_snapshot = snapshot(base_revision, semantic=True)
+            direct = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(checker),
+                    "--base",
+                    base_snapshot,
+                    "--head",
+                    semantic_snapshot,
+                    "--repository",
+                    str(compatibility_repo),
+                    "--compatibility",
+                ],
+                cwd=compatibility_repo,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(0, direct.returncode)
+            self.assertIn("pathspec 'Scripts/phase192'", direct.stdout + direct.stderr)
+            normalized_snapshot = snapshot(semantic_snapshot, normalize=True)
+            normalized = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(checker),
+                    "--base",
+                    base_snapshot,
+                    "--head",
+                    normalized_snapshot,
+                    "--repository",
+                    str(compatibility_repo),
+                    "--compatibility",
+                ],
+                cwd=compatibility_repo,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(0, normalized.returncode, normalized.stdout + normalized.stderr)
+        self.assertIn("IDENTITY_COMPATIBLE", normalized.stdout)
+
     def test_workflow_fails_closed_on_trusted_identity_errors(self) -> None:
         """The workflow must not interpret trusted checker failures itself."""
         workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
