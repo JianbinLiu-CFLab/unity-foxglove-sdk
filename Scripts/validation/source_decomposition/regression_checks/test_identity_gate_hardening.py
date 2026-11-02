@@ -305,8 +305,13 @@ class IdentityGateHardeningTests(unittest.TestCase):
                     check=False,
                 )
                 subprocess.run(["git", "clean", "-fdx", "-q"], cwd=compatibility_repo, check=True)
+                source_path = (
+                    "Scripts/phase192"
+                    if source_revision == base_revision
+                    else "Scripts/validation/source_decomposition"
+                )
                 source_archive = subprocess.run(
-                    ["git", "archive", source_revision, "--", "Scripts"],
+                    ["git", "archive", source_revision, "--", source_path],
                     cwd=_REPOSITORY_ROOT if source_revision == base_revision else compatibility_repo,
                     capture_output=True,
                     check=False,
@@ -327,7 +332,7 @@ class IdentityGateHardeningTests(unittest.TestCase):
                 if normalize:
                     legacy.parent.mkdir(parents=True, exist_ok=True)
                     canonical.rename(legacy)
-                subprocess.run(["git", "add", "-A"], cwd=compatibility_repo, check=True)
+                subprocess.run(["git", "-c", "core.longpaths=true", "add", "-A"], cwd=compatibility_repo, check=True)
                 subprocess.run(
                     ["git", "commit", "-q", "-m", "compatibility snapshot"],
                     cwd=compatibility_repo,
