@@ -238,6 +238,7 @@ jobs:
           fi
           archive_paths=(Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket)
           checker_relative=""
+          # The selected checker is invoked later with --compatibility.
           if git cat-file -e "$trusted_revision:Scripts/validation/source_decomposition/compare_identity_surfaces.py" 2>/dev/null; then
             archive_paths+=(Scripts/validation/source_decomposition)
             checker_relative="Scripts/validation/source_decomposition/compare_identity_surfaces.py"
