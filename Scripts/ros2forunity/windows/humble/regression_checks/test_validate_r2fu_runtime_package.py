@@ -15,7 +15,7 @@ import sys
 import tempfile
 import unittest
 
-from Scripts.phase192.source_layout import read_split_csharp_source
+from Scripts.validation.source_decomposition.source_layout import read_split_csharp_source
 from pathlib import Path
 from unittest import mock
 
@@ -117,7 +117,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
                 0,
                 str(ROOT / "Scripts" / "ros2forunity" / "windows" / "lyrical"),
             )
-            from Scripts.phase192.source_layout import load_fresh_module
+            from Scripts.validation.source_decomposition.source_layout import load_fresh_module
 
             validator = load_fresh_module(
                 "validate_ros2forunity_package",

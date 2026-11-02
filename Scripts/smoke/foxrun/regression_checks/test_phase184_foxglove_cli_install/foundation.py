@@ -24,7 +24,7 @@ import types
 import unittest
 import urllib.request
 from unittest import mock
-from Scripts.phase192.source_layout import read_split_source
+from Scripts.validation.source_decomposition.source_layout import read_split_source
 from Scripts.smoke.foxrun import phase184_foxglove_desktop_live_protocol as protocol
 try:
     from Scripts.smoke.foxrun import phase184_foxglove_cli_install as installer

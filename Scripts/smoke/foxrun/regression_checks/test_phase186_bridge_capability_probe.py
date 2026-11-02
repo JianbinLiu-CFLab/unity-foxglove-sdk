@@ -9,7 +9,7 @@ import pathlib
 import sys
 import unittest
 
-from Scripts.phase192.source_layout import read_split_source
+from Scripts.validation.source_decomposition.source_layout import read_split_source
 
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parents[1]

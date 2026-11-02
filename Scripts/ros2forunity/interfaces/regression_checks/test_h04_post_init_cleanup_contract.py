@@ -1,7 +1,7 @@
 from pathlib import Path
 import unittest
 
-from Scripts.phase192.source_layout import read_split_csharp_source
+from Scripts.validation.source_decomposition.source_layout import read_split_csharp_source
 
 ROOT = Path(__file__).resolve().parents[4]
 FILES = [

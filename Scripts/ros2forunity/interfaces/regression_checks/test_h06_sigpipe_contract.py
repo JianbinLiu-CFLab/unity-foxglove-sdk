@@ -1,6 +1,6 @@
 from pathlib import Path
 import unittest
-from Scripts.phase192.source_layout import read_included_source
+from Scripts.validation.source_decomposition.source_layout import read_included_source
 ROOT = Path(__file__).resolve().parents[4]
 SRC = ROOT / 'Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp'
 
