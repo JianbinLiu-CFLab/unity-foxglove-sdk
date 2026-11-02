@@ -53,7 +53,7 @@ PACKAGE_MATRIX_SPECS = (
         "sdk",
         "Packages/dev.unity2foxglove.sdk",
         "dev.unity2foxglove.sdk",
-        "1.9.6",
+        "1.9.7",
         {
             "com.unity.nuget.newtonsoft-json": "3.2.1",
             "com.unity.burst": "1.8.18",
@@ -66,21 +66,21 @@ PACKAGE_MATRIX_SPECS = (
         "Packages/dev.unity2foxglove.ros2forunity",
         "dev.unity2foxglove.ros2forunity",
         "0.1.0-preview.1",
-        {"dev.unity2foxglove.sdk": "1.9.6"},
+        {"dev.unity2foxglove.sdk": "1.9.7"},
     ),
     (
         "bridge",
         "Packages/dev.unity2foxglove.ros2bridge",
         "dev.unity2foxglove.ros2bridge",
         "0.1.0-preview.1",
-        {"dev.unity2foxglove.sdk": "1.9.6"},
+        {"dev.unity2foxglove.sdk": "1.9.7"},
     ),
     (
         "remote_gateway",
         "Packages/dev.unity2foxglove.remotegateway.win64",
         "dev.unity2foxglove.remotegateway.win64",
         "0.1.0-preview.1",
-        {"dev.unity2foxglove.sdk": "1.9.6"},
+        {"dev.unity2foxglove.sdk": "1.9.7"},
     ),
 )
 

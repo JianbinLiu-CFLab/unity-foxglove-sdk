@@ -205,7 +205,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var adapterPackage = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.ros2forunity");
             var adapterPackageJson = File.ReadAllText(Path.Combine(adapterPackage, "package.json"));
-            Assert(adapterPackageJson.Contains("\"dev.unity2foxglove.sdk\": \"1.9.6\""),
+            Assert(adapterPackageJson.Contains("\"dev.unity2foxglove.sdk\": \"1.9.7\""),
                 "R2FU adapter package declares its SDK package dependency");
 
             var nativeAsmdef = File.ReadAllText(Path.Combine(adapterPackage, "Runtime", "Native",
@@ -222,8 +222,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "Sensors asmdef has contributor-facing root namespace");
 
             var citation = File.ReadAllText(Path.Combine(repoRoot, "CITATION.cff"));
-            Assert(citation.Contains("version: \"1.9.6\"")
-                   && citation.Contains("date-released: \"2026-07-06\""),
+            Assert(citation.Contains("version: \"1.9.7\"")
+                   && citation.Contains("date-released: \"2026-11-02\""),
                 "CITATION.cff carries exact release metadata");
         }
 

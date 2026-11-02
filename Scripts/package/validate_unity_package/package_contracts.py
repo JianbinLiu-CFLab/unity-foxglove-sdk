@@ -6,20 +6,20 @@ from .foundation import *
 def _package_matrix_specs() -> tuple[tuple[str, str, Path, str, dict[str, str]], ...]:
     """Resolve package roots from patchable module globals."""
     return (
-        ("sdk", "dev.unity2foxglove.sdk", PACKAGE, "1.9.6", {
+        ("sdk", "dev.unity2foxglove.sdk", PACKAGE, "1.9.7", {
             "com.unity.nuget.newtonsoft-json": "3.2.1",
             "com.unity.burst": "1.8.18",
             "com.unity.collections": "2.5.5",
             "com.unity.mathematics": "1.3.2",
         }),
         ("r2fu", "dev.unity2foxglove.ros2forunity", ROS2_FOR_UNITY_PACKAGE, "0.1.0-preview.1", {
-            "dev.unity2foxglove.sdk": "1.9.6",
+            "dev.unity2foxglove.sdk": "1.9.7",
         }),
         ("bridge", "dev.unity2foxglove.ros2bridge", ROS2_BRIDGE_PACKAGE, "0.1.0-preview.1", {
-            "dev.unity2foxglove.sdk": "1.9.6",
+            "dev.unity2foxglove.sdk": "1.9.7",
         }),
         ("remote_gateway", "dev.unity2foxglove.remotegateway.win64", REMOTE_GATEWAY_PACKAGE, "0.1.0-preview.1", {
-            "dev.unity2foxglove.sdk": "1.9.6",
+            "dev.unity2foxglove.sdk": "1.9.7",
         }),
     )
 

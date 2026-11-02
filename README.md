@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-6000.0%2B-black?logo=unity)](https://unity.com/)
 [![.NET tests](https://img.shields.io/badge/.NET%20tests-10.0-purple?logo=dotnet)](https://dotnet.microsoft.com/)
-[![Release](https://img.shields.io/badge/release-v1.9.6-green)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/releases)
+[![Release](https://img.shields.io/badge/release-v1.9.7-green)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/releases)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20112833.svg)](https://doi.org/10.5281/zenodo.20112833)
 [![Tests](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml)
 [![Docs Check](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/docs-check.yml)
@@ -200,11 +200,11 @@ Windows Firewall can block Fast DDS discovery traffic. Configure an inbound allo
 | Understand subsystem boundaries | [Architecture patterns](docs/architecture-patterns.md) |
 | See completed and remaining work | [Roadmap](ROADMAP.md) |
 
-Release and compliance: [v1.9.6 release notes](docs/releases/RELEASE_NOTES_v1.9.6.md) · [Changelog](CHANGELOG.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+Release and compliance: [v1.9.7 release notes](docs/releases/RELEASE_NOTES_v1.9.7.md) · [Changelog](CHANGELOG.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## Support Boundaries
 
-- Core WebSocket/MCAP: Windows is verified for v1.9.6; macOS and Linux are intended targets but are not yet certified for this release.
+- Core WebSocket/MCAP: Windows is verified for v1.9.7; macOS and Linux are intended targets but are not yet certified for this release.
 - WebGL is unsupported because the in-process server requires socket APIs unavailable on WebGL.
 - Replay reproduces recorded scene state; it does not rewind physics, random state, external services, or arbitrary user scripts.
 - The local token gate and development certificates are not a production identity/authorization system.

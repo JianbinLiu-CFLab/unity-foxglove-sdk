@@ -6,7 +6,7 @@
   "description": "Optional ROS 2 Bridge transport Provider for Unity2Foxglove. Owns U2R2, CDR codecs, ROS schema adapters, diagnostics, and Bridge tooling.",
   "unity": "6000.0",
   "dependencies": {
-    "dev.unity2foxglove.sdk": "1.9.6"
+    "dev.unity2foxglove.sdk": "1.9.7"
   },
   "samples": [
     {

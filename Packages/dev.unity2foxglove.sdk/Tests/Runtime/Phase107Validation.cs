@@ -73,7 +73,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "107-A5: optional package license is Apache-2.0");
             Check(packageJson["dependencies"] is JObject dependencies
                   && dependencies.Count == 1
-                  && (string)dependencies["dev.unity2foxglove.sdk"] == "1.9.6",
+                  && (string)dependencies["dev.unity2foxglove.sdk"] == "1.9.7",
                 "107-A6: optional package depends only on the core SDK package");
 
             var requiredFiles = new[]

@@ -24,8 +24,8 @@ class BridgeSampleSyncTests:
         sources = [
             ROOT / "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs",
             ROOT / "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs",
-            ROOT / "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs",
-            ROOT / "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs",
+            ROOT / "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.7/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs",
+            ROOT / "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.7/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs",
         ]
         for source_path in sources:
             source = source_path.read_text(encoding="utf-8")

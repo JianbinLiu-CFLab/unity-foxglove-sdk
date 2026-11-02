@@ -42,7 +42,7 @@ class Phase186CrossPackageBoundaryTests:
                 json.dumps(
                     {
                         "name": "dev.unity2foxglove.sdk",
-                        "version": "1.9.6",
+                        "version": "1.9.7",
                         "dependencies": {
                             "com.unity.nuget.newtonsoft-json": "3.2.1",
                             "com.unity.burst": "1.8.18",
@@ -58,7 +58,7 @@ class Phase186CrossPackageBoundaryTests:
                     {
                         "name": "dev.unity2foxglove.ros2forunity",
                         "version": "0.1.0-preview.1",
-                        "dependencies": {"dev.unity2foxglove.sdk": "1.9.6"},
+                        "dependencies": {"dev.unity2foxglove.sdk": "1.9.7"},
                     }
                 ),
                 encoding="utf-8",
@@ -68,7 +68,7 @@ class Phase186CrossPackageBoundaryTests:
                     {
                         "name": "dev.unity2foxglove.ros2bridge",
                         "version": "0.1.0-preview.1",
-                        "dependencies": {"dev.unity2foxglove.sdk": "1.9.6"},
+                        "dependencies": {"dev.unity2foxglove.sdk": "1.9.7"},
                     }
                 ),
                 encoding="utf-8",
@@ -78,7 +78,7 @@ class Phase186CrossPackageBoundaryTests:
                     {
                         "name": "dev.unity2foxglove.remotegateway.win64",
                         "version": "0.1.0-preview.1",
-                        "dependencies": {"dev.unity2foxglove.sdk": "1.9.6"},
+                        "dependencies": {"dev.unity2foxglove.sdk": "1.9.7"},
                     }
                 ),
                 encoding="utf-8",
