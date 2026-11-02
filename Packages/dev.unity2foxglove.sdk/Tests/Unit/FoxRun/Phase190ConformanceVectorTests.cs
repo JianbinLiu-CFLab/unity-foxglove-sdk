@@ -154,8 +154,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void EvidenceToolingVector()
         {
-            var path = FindRepoFile("Scripts", "phase190", "validate_adjudication.py");
-            Assert.True(File.Exists(path), "Phase190 evidence validator is missing.");
+            var path = FindRepoFile("Scripts", "validation", "conformance", "validate_adjudication.py");
+            Assert.True(File.Exists(path), "Conformance adjudication validator is missing.");
             var source = File.ReadAllText(path);
             Assert.Contains("ADJUDICATION_VALID", source, StringComparison.Ordinal);
         }
