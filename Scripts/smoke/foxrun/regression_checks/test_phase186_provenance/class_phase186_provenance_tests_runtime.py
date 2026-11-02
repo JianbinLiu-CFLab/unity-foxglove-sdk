@@ -55,7 +55,7 @@ class _Phase186ProvenanceTests_runtime:
             )
             canonical = (
                 repository
-                / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/"
+                / "Packages/dev.unity2foxglove.sdk/Tests/Unit/SdkRosBoundaryValidation/"
                 "Fixtures/pre_move_sdk_ros_inventory.json"
             )
             canonical.parent.mkdir(parents=True)

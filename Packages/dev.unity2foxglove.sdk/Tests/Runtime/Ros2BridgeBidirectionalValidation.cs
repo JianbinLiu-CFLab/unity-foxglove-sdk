@@ -21,9 +21,9 @@ namespace Unity.FoxgloveSDK.Tests
         private const string ProtocolFixture =
             "Tools/ros2_bridge/unity2foxglove_ros2_bridge/test/fixtures/u2r2_protocol_vectors.json";
         private const string PreMoveFixture =
-            "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Phase186/Fixtures/pre_move_bridge_and_mcap_vectors.json";
+            "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Ros2BridgeRuntimeValidation/Fixtures/pre_move_bridge_and_mcap_vectors.json";
         private const string InventoryFixture =
-            "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/Fixtures/pre_move_sdk_ros_inventory.json";
+            "Packages/dev.unity2foxglove.sdk/Tests/Unit/SdkRosBoundaryValidation/Fixtures/pre_move_sdk_ros_inventory.json";
         private const string Provenance =
             "Tools/ros2_bridge/unity2foxglove_ros2_bridge/PROVENANCE.json";
         private const string CanonicalType =

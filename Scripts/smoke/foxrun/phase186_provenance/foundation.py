@@ -52,7 +52,7 @@ _LEDGER_RELATIVE = (
     "Tools/ros2_bridge/unity2foxglove_ros2_bridge/PROVENANCE.json"
 )
 _INVENTORY_RELATIVE = (
-    "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/Fixtures/"
+    "Packages/dev.unity2foxglove.sdk/Tests/Unit/SdkRosBoundaryValidation/Fixtures/"
     "pre_move_sdk_ros_inventory.json"
 )
 _FIXTURE_RELATIVE = (

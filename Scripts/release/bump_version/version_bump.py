@@ -270,7 +270,7 @@ class VersionBump:
             self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Architecture/UnityDemoSamplesAssetsTests.cs",
             self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/EditorSchemaAndSampleReviewTests.cs",
             self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/WorkstreamFClosureTests.cs",
-            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/RosFreeCoreProductionBoundaryTests.cs",
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/SdkRosBoundaryValidation/RosFreeCoreProductionBoundaryTests.cs",
             self.root / "Scripts/samples/regression_checks/test_sample_sync_tooling/bridge_sample_tests.py",
         )
         del old_version
