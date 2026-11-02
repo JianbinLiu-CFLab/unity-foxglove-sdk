@@ -264,12 +264,40 @@ jobs:
             echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: trusted base checker lacks --compatibility" >&2
             exit 1
           fi
+          trusted_compare_base="$SOURCE_DECOMPOSITION_BASE_SHA"
+          trusted_compare_head="$SOURCE_DECOMPOSITION_HEAD_SHA"
+          trusted_compare_repository="."
+          if [ "$checker_relative" = "Scripts/phase192/compare_identity_surfaces.py" ]; then
+            # The historical checker archives Scripts/phase192. Normalize only the
+            # semantic head in a temporary Git repository before invoking it.
+            compat_root="$RUNNER_TEMP/source-decomposition-legacy-compat"
+            mkdir -p "$compat_root"
+            git init -q "$compat_root"
+            git -C "$compat_root" config user.name "source-decomposition-identity-gate"
+            git -C "$compat_root" config user.email "source-decomposition-identity-gate@example.invalid"
+            git archive "$SOURCE_DECOMPOSITION_BASE_SHA" | tar -x -C "$compat_root"
+            git -C "$compat_root" add -A
+            git -C "$compat_root" commit -q -m "trusted base compatibility snapshot"
+            trusted_compare_base="$(git -C "$compat_root" rev-parse HEAD)"
+            git -C "$compat_root" rm -r -q --ignore-unmatch .
+            git -C "$compat_root" clean -fdx
+            git archive "$SOURCE_DECOMPOSITION_HEAD_SHA" | tar -x -C "$compat_root"
+            if [ -d "$compat_root/Scripts/validation/source_decomposition" ]; then
+              mkdir -p "$compat_root/Scripts"
+              mv "$compat_root/Scripts/validation/source_decomposition" "$compat_root/Scripts/phase192"
+            fi
+            git -C "$compat_root" add -A
+            git -C "$compat_root" commit -q -m "semantic head compatibility snapshot"
+            trusted_compare_head="$(git -C "$compat_root" rev-parse HEAD)"
+            trusted_compare_repository="$compat_root"
+            echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: normalized semantic head for legacy checker"
+          fi
           trusted_log="$RUNNER_TEMP/source-decomposition-trusted-base.log"
           set +e
           PYTHONPATH="$trusted_root" python3 "$base_checker" \
-            --base "$SOURCE_DECOMPOSITION_BASE_SHA" \
-            --head "$SOURCE_DECOMPOSITION_HEAD_SHA" \
-            --repository . \
+            --base "$trusted_compare_base" \
+            --head "$trusted_compare_head" \
+            --repository "$trusted_compare_repository" \
             --compatibility >"$trusted_log" 2>&1
           trusted_status=$?
           set -e
