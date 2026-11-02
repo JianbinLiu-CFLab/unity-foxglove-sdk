@@ -275,6 +275,43 @@ def check_dependent_package_versions(results: list[CheckResult], sdk_data: dict)
     )
 
 
+def check_consumer_lockfile_sdk_version(results: list[CheckResult], sdk_data: dict) -> None:
+    """Ensure the Unity consumer lockfile pins both local adapters to the SDK version."""
+    sdk_version = sdk_data.get("version")
+    if not isinstance(sdk_version, str) or VERSION_RE.match(sdk_version) is None:
+        add(results, "consumer lockfile SDK version pins", False, f"invalid SDK version={sdk_version!r}")
+        return
+
+    try:
+        lock_data = json.loads(CONSUMER_PACKAGES_LOCK.read_text(encoding="utf-8"))
+    except Exception as exc:
+        add(results, "consumer lockfile SDK version pins", False, f"{rel(CONSUMER_PACKAGES_LOCK)}: {exc}")
+        return
+    dependencies = lock_data.get("dependencies") if isinstance(lock_data, dict) else None
+    if not isinstance(dependencies, dict):
+        add(results, "consumer lockfile SDK version pins", False, "dependencies is not an object")
+        return
+
+    expected_packages = (
+        "dev.unity2foxglove.ros2bridge",
+        "dev.unity2foxglove.ros2forunity",
+    )
+    offenders: list[str] = []
+    for package_name in expected_packages:
+        package_data = dependencies.get(package_name)
+        package_dependencies = package_data.get("dependencies") if isinstance(package_data, dict) else None
+        actual = package_dependencies.get("dev.unity2foxglove.sdk") if isinstance(package_dependencies, dict) else None
+        if actual != sdk_version:
+            offenders.append(f"{package_name}={actual!r}")
+
+    add(
+        results,
+        "consumer lockfile SDK version pins",
+        not offenders,
+        f"expected {sdk_version!r}; " + ("all local adapter pins match" if not offenders else ", ".join(offenders)),
+    )
+
+
 def check_optional_package_boundaries(results: list[CheckResult]) -> None:
     """Validate optional package release boundaries that public package checks can see."""
     notice_path = REMOTE_GATEWAY_PACKAGE / "THIRD_PARTY_NOTICES.md"
@@ -360,6 +397,7 @@ def check_optional_package_boundaries(results: list[CheckResult]) -> None:
 __all__ = [
     '_package_matrix_specs',
     'check_consumer_local_bindings',
+    'check_consumer_lockfile_sdk_version',
     'check_dependent_package_versions',
     'check_optional_package_boundaries',
     'check_package_identity',

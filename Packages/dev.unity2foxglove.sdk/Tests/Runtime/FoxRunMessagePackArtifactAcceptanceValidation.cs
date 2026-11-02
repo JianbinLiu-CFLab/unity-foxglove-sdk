@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             const string importedRoot =
-                "build/phase185/imported-full-demo/Assets/Samples/Unity2Foxglove SDK/1.9.6/Full Demo Visualization/Scripts";
+                "build/phase185/imported-full-demo/Assets/Samples/Unity2Foxglove SDK/1.9.7/Full Demo Visualization/Scripts";
             Check(
                 FileBytesEqual(packageSource, importedRoot + "/TestLog.MessagePack.cs")
                 && FileBytesEqual(packageMeta, importedRoot + "/TestLog.MessagePack.cs.meta"),

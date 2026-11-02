@@ -558,7 +558,7 @@ class SurfaceRowsTests(IdentityToolingBase):
             facade.read_text(encoding="utf-8"),
             root,
         )
-        self.assertEqual(205, len(rows))
+        self.assertEqual(206, len(rows))
         package = facade.with_suffix("")
         for section in sorted(package.glob("*.py")):
             if section.name == "__init__.py":

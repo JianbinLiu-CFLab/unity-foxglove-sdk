@@ -25,6 +25,7 @@ def main() -> int:
     if data:
         check_package_identity(results, data)
         check_dependent_package_versions(results, data)
+        check_consumer_lockfile_sdk_version(results, data)
     check_ros2_bridge_package(results)
     check_optional_package_boundaries(results)
     check_required_files(results)

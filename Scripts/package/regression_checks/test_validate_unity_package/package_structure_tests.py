@@ -164,6 +164,34 @@ class PackageStructureTests:
 
         self.assertTrue(results[-1].ok)
 
+    def test_consumer_lockfile_sdk_pins_must_match_current_sdk(self) -> None:
+        """The Unity consumer lockfile must resolve both local adapters to the SDK version."""
+        with tempfile.TemporaryDirectory() as temp:
+            lockfile = Path(temp) / "packages-lock.json"
+            lockfile.write_text(
+                json.dumps(
+                    {
+                        "dependencies": {
+                            "dev.unity2foxglove.ros2bridge": {
+                                "dependencies": {"dev.unity2foxglove.sdk": "1.9.6"}
+                            },
+                            "dev.unity2foxglove.ros2forunity": {
+                                "dependencies": {"dev.unity2foxglove.sdk": "1.9.6"}
+                            },
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(self.validator, "CONSUMER_PACKAGES_LOCK", lockfile):
+                results = []
+                self.validator.check_consumer_lockfile_sdk_version(results, {"version": "1.9.7"})
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("1.9.6", results[-1].detail)
+        self.assertIn("1.9.7", results[-1].detail)
+
     def test_package_matrix_gate_authenticates_all_four_package_manifests(self) -> None:
         """The standalone validator must reject drift outside the SDK manifest."""
         manifests = {

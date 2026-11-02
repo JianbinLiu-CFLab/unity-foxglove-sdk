@@ -220,7 +220,7 @@
       "depth": 0,
       "source": "local",
       "dependencies": {
-        "dev.unity2foxglove.sdk": "1.9.6"
+        "dev.unity2foxglove.sdk": "1.9.7"
       }
     },
     "dev.unity2foxglove.ros2forunity": {
@@ -228,7 +228,7 @@
       "depth": 0,
       "source": "local",
       "dependencies": {
-        "dev.unity2foxglove.sdk": "1.9.6"
+        "dev.unity2foxglove.sdk": "1.9.7"
       }
     },
     "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64": {
