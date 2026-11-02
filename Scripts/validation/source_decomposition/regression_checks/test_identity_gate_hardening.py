@@ -304,6 +304,7 @@ class IdentityGateHardeningTests(unittest.TestCase):
                 semantic: bool = False,
                 normalize: bool = False,
                 mixed: bool = False,
+                archive_mixed: bool = False,
             ) -> str:
                 """Create a temporary Git snapshot with optional mixed-layout normalization."""
                 subprocess.run(
@@ -312,18 +313,29 @@ class IdentityGateHardeningTests(unittest.TestCase):
                     check=False,
                 )
                 subprocess.run(["git", "clean", "-fdx", "-q"], cwd=compatibility_repo, check=True)
-                source_path = (
-                    "Scripts/phase192"
+                source_paths = (
+                    ["Scripts/phase192"]
                     if source_revision == base_revision
-                    else "Scripts/validation/source_decomposition"
+                    else ["Scripts/validation/source_decomposition"]
                 )
+                if archive_mixed:
+                    source_paths = [
+                        "Scripts/phase192",
+                        "Scripts/validation/source_decomposition",
+                    ]
                 source_archive = subprocess.run(
-                    ["git", "archive", source_revision, "--", source_path],
+                    ["git", "archive", source_revision, "--", *source_paths],
                     cwd=_REPOSITORY_ROOT if source_revision == base_revision else compatibility_repo,
                     capture_output=True,
                     check=False,
                 )
                 self.assertEqual(0, source_archive.returncode, source_archive.stderr.decode(errors="replace"))
+                if archive_mixed:
+                    self.assertIn(b"Scripts/phase192/source_layout.py", source_archive.stdout)
+                    self.assertIn(
+                        b"Scripts/validation/source_decomposition/source_layout.py",
+                        source_archive.stdout,
+                    )
                 extracted = subprocess.run(
                     [shutil.which("tar"), "-x", "-C", str(compatibility_repo)],
                     input=source_archive.stdout,
@@ -338,7 +350,8 @@ class IdentityGateHardeningTests(unittest.TestCase):
                     legacy.rename(canonical)
                 if mixed:
                     self.assertTrue(canonical.is_dir())
-                    shutil.copytree(canonical, legacy)
+                    if not legacy.exists():
+                        shutil.copytree(canonical, legacy)
                     self.assertTrue(legacy.is_dir())
                     self.assertTrue(canonical.is_dir())
                 if normalize:
@@ -408,7 +421,7 @@ class IdentityGateHardeningTests(unittest.TestCase):
             self.assertEqual(0, normalized.returncode, normalized.stdout + normalized.stderr)
             self.assertIn("IDENTITY_COMPATIBLE", normalized.stdout)
             mixed_snapshot = snapshot(semantic_snapshot, mixed=True)
-            normalized_mixed_snapshot = snapshot(mixed_snapshot, normalize=True)
+            normalized_mixed_snapshot = snapshot(mixed_snapshot, normalize=True, archive_mixed=True)
             normalized_paths = subprocess.check_output(
                 [
                     "git",
