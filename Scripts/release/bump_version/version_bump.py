@@ -232,29 +232,72 @@ class VersionBump:
                 raise ValueError(f"Expected one package-matrix version set in {self.rel(path)}, found 0.")
             self.write_if_changed(path, updated, f"update package-matrix SDK version to {self.version}")
 
+    def update_packages_lock(self) -> None:
+        """Synchronize local Unity consumer SDK dependency pins in packages-lock.json."""
+        path = self.root / "Unity2Foxglove/Packages/packages-lock.json"
+        try:
+            data = json.loads(self.read(path))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Cannot parse {self.rel(path)}: {exc}") from exc
+        dependencies = data.get("dependencies") if isinstance(data, dict) else None
+        if not isinstance(dependencies, dict):
+            raise ValueError(f"Expected dependencies object in {self.rel(path)}")
+
+        package_names = (
+            "dev.unity2foxglove.ros2bridge",
+            "dev.unity2foxglove.ros2forunity",
+        )
+        for package_name in package_names:
+            package_data = dependencies.get(package_name)
+            package_dependencies = package_data.get("dependencies") if isinstance(package_data, dict) else None
+            if not isinstance(package_dependencies, dict) or "dev.unity2foxglove.sdk" not in package_dependencies:
+                raise ValueError(
+                    f"Expected {package_name} SDK dependency in {self.rel(path)}"
+                )
+            package_dependencies["dev.unity2foxglove.sdk"] = self.version
+
+        updated = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+        self.write_if_changed(path, updated, f"update Unity consumer lockfile SDK dependencies to {self.version}")
+
     def update_imported_sample_paths(self, old_version: str) -> None:
         """Update maintained Unity sample references to the released version path."""
         paths = (
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138Validation.cs",
             self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138HValidation.cs",
             self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138IValidation.cs",
             self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138MValidation.cs",
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs",
             self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Architecture/UnityDemoSamplesAssetsTests.cs",
             self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/EditorSchemaAndSampleReviewTests.cs",
             self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/WorkstreamFClosureTests.cs",
             self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/RosFreeCoreProductionBoundaryTests.cs",
             self.root / "Scripts/samples/regression_checks/test_sample_sync_tooling/bridge_sample_tests.py",
         )
-        old_prefix = f"Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/{old_version}/Virtual LiDAR Maze Demo"
-        new_prefix = f"Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/{self.version}/Virtual LiDAR Maze Demo"
+        del old_version
+        maze_path_pattern = re.compile(
+            r"(Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/)"
+            r"\d+\.\d+\.\d+"
+            r"(/Virtual LiDAR Maze Demo)"
+        )
+        maze_segments_pattern = re.compile(
+            r'("Unity2Foxglove SDK",\s*")\d+\.\d+\.\d+('
+            r'"\s*,\s*"Virtual LiDAR Maze Demo")'
+        )
+        full_demo_path_pattern = re.compile(
+            r"(build/phase185/imported-full-demo/Assets/Samples/Unity2Foxglove SDK/)"
+            r"\d+\.\d+\.\d+"
+            r"(/Full Demo Visualization/Scripts)"
+        )
         for path in paths:
             if not path.is_file():
                 continue
             text = self.read(path)
-            if old_prefix not in text:
-                continue
+            updated = maze_path_pattern.sub(rf"\g<1>{self.version}\g<2>", text)
+            updated = maze_segments_pattern.sub(rf"\g<1>{self.version}\g<2>", updated)
+            updated = full_demo_path_pattern.sub(rf"\g<1>{self.version}\g<2>", updated)
             self.write_if_changed(
                 path,
-                text.replace(old_prefix, new_prefix),
+                updated,
                 f"update imported sample path to {self.version}",
             )
 
@@ -466,6 +509,7 @@ class VersionBump:
             self.update_phase16_assertions()
             self.update_core_sdk_dependency_assertions()
             self.update_package_matrix_assertions(old_version)
+            self.update_packages_lock()
             self.update_imported_sample_paths(old_version)
             self.update_readme(old_version)
             self.update_package_readme(old_version)

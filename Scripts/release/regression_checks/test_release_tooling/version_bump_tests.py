@@ -314,6 +314,16 @@ class VersionBumpTests(unittest.TestCase):
                 '"Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.2.3/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs"\n',
                 encoding="utf-8",
             )
+            phase138_fallback = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138Validation.cs"
+            phase138_fallback.write_text(
+                'Path.Combine("Unity2Foxglove SDK", "1.2.3", "Virtual LiDAR Maze Demo");\n',
+                encoding="utf-8",
+            )
+            phase185_evidence = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs"
+            phase185_evidence.write_text(
+                '"build/phase185/imported-full-demo/Assets/Samples/Unity2Foxglove SDK/1.2.3/Full Demo Visualization/Scripts"\n',
+                encoding="utf-8",
+            )
 
             bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
             bump.update_package_matrix_assertions("1.2.3")
@@ -324,6 +334,60 @@ class VersionBumpTests(unittest.TestCase):
                 self.assertNotIn("1.2.3", text)
                 self.assertEqual(2, text.count("9.9.9"))
             self.assertIn("Unity2Foxglove SDK/9.9.9/Virtual LiDAR Maze Demo", sample_path.read_text(encoding="utf-8"))
+            self.assertIn('"9.9.9"', phase138_fallback.read_text(encoding="utf-8"))
+            self.assertIn(
+                "Unity2Foxglove SDK/9.9.9/Full Demo Visualization/Scripts",
+                phase185_evidence.read_text(encoding="utf-8"),
+            )
+
+    def test_update_packages_lock_syncs_only_ros2_sdk_dependency_pins(self) -> None:
+        """The release helper should update only the two local SDK lockfile pins."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            lock_path = root / "Unity2Foxglove/Packages/packages-lock.json"
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            lock_path.write_text(
+                json.dumps(
+                    {
+                        "dependencies": {
+                            "dev.unity2foxglove.ros2bridge": {
+                                "version": "file:../../Packages/dev.unity2foxglove.ros2bridge",
+                                "dependencies": {"dev.unity2foxglove.sdk": "1.9.6"},
+                            },
+                            "dev.unity2foxglove.ros2forunity": {
+                                "version": "file:../../Packages/dev.unity2foxglove.ros2forunity",
+                                "dependencies": {"dev.unity2foxglove.sdk": "1.9.6"},
+                            },
+                            "com.unity.collections": {
+                                "version": "2.6.5",
+                                "dependencies": {"com.unity.mathematics": "1.3.2"},
+                            },
+                        }
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            bump = self.bump_module.VersionBump(root, "1.9.7", "2026-06-08", False)
+            bump.update_packages_lock()
+
+            data = json.loads(lock_path.read_text(encoding="utf-8"))
+            dependencies = data["dependencies"]
+            self.assertEqual(
+                "1.9.7",
+                dependencies["dev.unity2foxglove.ros2bridge"]["dependencies"]["dev.unity2foxglove.sdk"],
+            )
+            self.assertEqual(
+                "1.9.7",
+                dependencies["dev.unity2foxglove.ros2forunity"]["dependencies"]["dev.unity2foxglove.sdk"],
+            )
+            self.assertEqual("2.6.5", dependencies["com.unity.collections"]["version"])
+            self.assertEqual(
+                {"com.unity.mathematics": "1.3.2"},
+                dependencies["com.unity.collections"]["dependencies"],
+            )
 
     def test_update_changelog_inserts_at_version_heading_not_first_rule(self) -> None:
         """Horizontal rules before version history must not receive new entries."""
