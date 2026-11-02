@@ -317,8 +317,8 @@ namespace Unity.FoxgloveSDK.Components
             {
                 TestSources.Text("Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs"),
                 TestSources.Text("Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs"),
-                TestSources.Text("Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs"),
-                TestSources.Text("Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.6/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs")
+                TestSources.Text("Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.7/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs"),
+                TestSources.Text("Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.7/Virtual LiDAR Maze Demo/Editor/Phase138MazeDemoSceneBuilder.cs")
             };
 
             foreach (var source in sources)

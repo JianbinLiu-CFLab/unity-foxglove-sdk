@@ -308,14 +308,22 @@ class VersionBumpTests(unittest.TestCase):
                     'dependencies = {"dev.unity2foxglove.sdk": "1.2.3"}\n',
                     encoding="utf-8",
                 )
+            sample_path = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138HValidation.cs"
+            sample_path.parent.mkdir(parents=True, exist_ok=True)
+            sample_path.write_text(
+                '"Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.2.3/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs"\n',
+                encoding="utf-8",
+            )
 
             bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
             bump.update_package_matrix_assertions("1.2.3")
+            bump.update_imported_sample_paths("1.2.3")
 
             for path in paths:
                 text = path.read_text(encoding="utf-8")
                 self.assertNotIn("1.2.3", text)
                 self.assertEqual(2, text.count("9.9.9"))
+            self.assertIn("Unity2Foxglove SDK/9.9.9/Virtual LiDAR Maze Demo", sample_path.read_text(encoding="utf-8"))
 
     def test_update_changelog_inserts_at_version_heading_not_first_rule(self) -> None:
         """Horizontal rules before version history must not receive new entries."""

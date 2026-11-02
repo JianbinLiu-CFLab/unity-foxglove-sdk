@@ -232,6 +232,32 @@ class VersionBump:
                 raise ValueError(f"Expected one package-matrix version set in {self.rel(path)}, found 0.")
             self.write_if_changed(path, updated, f"update package-matrix SDK version to {self.version}")
 
+    def update_imported_sample_paths(self, old_version: str) -> None:
+        """Update maintained Unity sample references to the released version path."""
+        paths = (
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138HValidation.cs",
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138IValidation.cs",
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138MValidation.cs",
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Architecture/UnityDemoSamplesAssetsTests.cs",
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/EditorSchemaAndSampleReviewTests.cs",
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/WorkstreamFClosureTests.cs",
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/RosFreeCoreProductionBoundaryTests.cs",
+            self.root / "Scripts/samples/regression_checks/test_sample_sync_tooling/bridge_sample_tests.py",
+        )
+        old_prefix = f"Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/{old_version}/Virtual LiDAR Maze Demo"
+        new_prefix = f"Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/{self.version}/Virtual LiDAR Maze Demo"
+        for path in paths:
+            if not path.is_file():
+                continue
+            text = self.read(path)
+            if old_prefix not in text:
+                continue
+            self.write_if_changed(
+                path,
+                text.replace(old_prefix, new_prefix),
+                f"update imported sample path to {self.version}",
+            )
+
     # README exposes only the current release; historical notes remain in docs/releases.
     KEEP_RELEASE_NOTES = 1
 
@@ -440,6 +466,7 @@ class VersionBump:
             self.update_phase16_assertions()
             self.update_core_sdk_dependency_assertions()
             self.update_package_matrix_assertions(old_version)
+            self.update_imported_sample_paths(old_version)
             self.update_readme(old_version)
             self.update_package_readme(old_version)
             self.update_citation()
