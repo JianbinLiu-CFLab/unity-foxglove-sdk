@@ -141,11 +141,11 @@ class PackageStructureTests:
 
             self.validator.REMOTE_GATEWAY_PACKAGE = gateway
             results = []
-            self.validator.check_dependent_package_versions(results, {"version": "1.9.6"})
+            self.validator.check_dependent_package_versions(results, {"version": "1.9.7"})
 
         self.assertFalse(results[-1].ok)
         self.assertIn("1.9.5", results[-1].detail)
-        self.assertIn("1.9.6", results[-1].detail)
+        self.assertIn("1.9.7", results[-1].detail)
 
     def test_dependent_package_version_pin_accepts_current_sdk(self) -> None:
         """The remote gateway package can be validated independently of install order."""
@@ -154,13 +154,13 @@ class PackageStructureTests:
             gateway = root / "Packages" / "dev.unity2foxglove.remotegateway.win64"
             gateway.mkdir(parents=True)
             (gateway / "package.json").write_text(
-                '{"dependencies":{"dev.unity2foxglove.sdk":"1.9.6"}}',
+                '{"dependencies":{"dev.unity2foxglove.sdk":"1.9.7"}}',
                 encoding="utf-8",
             )
 
             self.validator.REMOTE_GATEWAY_PACKAGE = gateway
             results = []
-            self.validator.check_dependent_package_versions(results, {"version": "1.9.6"})
+            self.validator.check_dependent_package_versions(results, {"version": "1.9.7"})
 
         self.assertTrue(results[-1].ok)
 
@@ -169,7 +169,7 @@ class PackageStructureTests:
         manifests = {
             "sdk": (
                 "dev.unity2foxglove.sdk",
-                "1.9.6",
+                "1.9.7",
                 {
                     "com.unity.nuget.newtonsoft-json": "3.2.1",
                     "com.unity.burst": "1.8.18",
@@ -180,17 +180,17 @@ class PackageStructureTests:
             "r2fu": (
                 "dev.unity2foxglove.ros2forunity",
                 "0.1.0-preview.1",
-                {"dev.unity2foxglove.sdk": "1.9.6"},
+                {"dev.unity2foxglove.sdk": "1.9.7"},
             ),
             "bridge": (
                 "dev.unity2foxglove.ros2bridge",
                 "0.1.0-preview.1",
-                {"dev.unity2foxglove.sdk": "1.9.6"},
+                {"dev.unity2foxglove.sdk": "1.9.7"},
             ),
             "remote_gateway": (
                 "dev.unity2foxglove.remotegateway.win64",
                 "0.1.0-preview.1",
-                {"dev.unity2foxglove.sdk": "1.9.6"},
+                {"dev.unity2foxglove.sdk": "1.9.7"},
             ),
         }
         relatives = {
@@ -253,7 +253,7 @@ class PackageStructureTests:
             (package / "package.json").write_text(
                 '{"name":"dev.unity2foxglove.ros2bridge",'
                 '"version":"0.1.0-preview.1",'
-                '"dependencies":{"dev.unity2foxglove.sdk":"1.9.6"},'
+                '"dependencies":{"dev.unity2foxglove.sdk":"1.9.7"},'
                 '"samples":[{"displayName":"ROS2 Bridge Sample",'
                 '"path":"Samples~/Ros2BridgeSample"}]}',
                 encoding="utf-8",

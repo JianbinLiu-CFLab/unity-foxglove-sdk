@@ -12,7 +12,7 @@ class Phase186PackageManifestTests:
         expected_packages = {
             "sdk": (
                 "dev.unity2foxglove.sdk",
-                "1.9.6",
+                "1.9.7",
                 {
                     "com.unity.nuget.newtonsoft-json": "3.2.1",
                     "com.unity.burst": "1.8.18",
@@ -23,17 +23,17 @@ class Phase186PackageManifestTests:
             "r2fu": (
                 "dev.unity2foxglove.ros2forunity",
                 "0.1.0-preview.1",
-                {"dev.unity2foxglove.sdk": "1.9.6"},
+                {"dev.unity2foxglove.sdk": "1.9.7"},
             ),
             "bridge": (
                 "dev.unity2foxglove.ros2bridge",
                 "0.1.0-preview.1",
-                {"dev.unity2foxglove.sdk": "1.9.6"},
+                {"dev.unity2foxglove.sdk": "1.9.7"},
             ),
             "remote_gateway": (
                 "dev.unity2foxglove.remotegateway.win64",
                 "0.1.0-preview.1",
-                {"dev.unity2foxglove.sdk": "1.9.6"},
+                {"dev.unity2foxglove.sdk": "1.9.7"},
             ),
         }
 

@@ -216,9 +216,14 @@ class VersionBump:
         paths = (
             self.root / "Scripts/package/validate_unity_package/package_contracts.py",
             self.root / "Scripts/package/validate_phase186_package_matrix.py",
+            self.root / "Scripts/package/regression_checks/test_validate_unity_package/package_structure_tests.py",
+            self.root / "Scripts/package/regression_checks/test_validate_phase186_package_matrix/package_manifest_tests.py",
+            self.root / "Scripts/package/regression_checks/test_validate_phase186_package_matrix/cross_package_boundary_tests.py",
         )
         pattern = re.compile(rf"(?<![0-9.]){re.escape(old_version)}(?![0-9.])")
         for path in paths:
+            if not path.is_file():
+                continue
             text = self.read(path)
             updated, count = pattern.subn(self.version, text)
             if count == 0:
