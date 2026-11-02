@@ -1,6 +1,6 @@
 # Source Decomposition Validation
 
-Repository-wide identity and source-layout validation for the completed Phase192 decomposition.
+Repository-wide identity and source-layout validation for the maintained source decomposition.
 
 - `compare_identity_surfaces.py` compares public identity surfaces across revisions.
 - `freeze_baseline.py` records the Task 0 inventory and identity baseline.

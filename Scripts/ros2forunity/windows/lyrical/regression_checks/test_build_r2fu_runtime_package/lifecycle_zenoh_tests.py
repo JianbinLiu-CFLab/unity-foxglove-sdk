@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .foundation import *
-from Scripts.phase192.source_layout import read_split_csharp_source
+from Scripts.validation.source_decomposition.source_layout import read_split_csharp_source
 
 
 class LyricalLifecycleZenohTests:

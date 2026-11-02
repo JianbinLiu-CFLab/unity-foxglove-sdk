@@ -183,7 +183,7 @@ jobs:
       - name: Run complete Python regression inventory
         if: always()
         env:
-          PHASE192_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SOURCE_DECOMPOSITION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           python3 -B Scripts/release/regression_inventory.py
           python3 -B -m unittest \
@@ -217,40 +217,35 @@ jobs:
       - name: Run Workstream F native cleanup regression
         if: always()
         run: python3 -B -m unittest Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup
-      - name: Run Phase192 base-head identity equivalence gate
+      - name: Run source-decomposition base-head identity equivalence gate
         if: always()
         env:
-          PHASE192_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          PHASE192_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SOURCE_DECOMPOSITION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SOURCE_DECOMPOSITION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          trusted_root="$RUNNER_TEMP/phase192-trusted-base"
+          trusted_root="$RUNNER_TEMP/source-decomposition-trusted-base"
           mkdir -p "$trusted_root"
-          trusted_revision="$PHASE192_BASE_SHA"
-          if [ "$PHASE192_BASE_SHA" = "9b3754bd21631e4c1a8717f9a133c1063ab56d33" ]; then
+          trusted_revision="$SOURCE_DECOMPOSITION_BASE_SHA"
+          if [ "$SOURCE_DECOMPOSITION_BASE_SHA" = "9b3754bd21631e4c1a8717f9a133c1063ab56d33" ]; then
             # Bootstrap the merged #542 checker regression from its reviewed predecessor once.
             trusted_revision="ab1487e654ce11b5e217329552751a058a250ef7"
             echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: using reviewed pre-#542 checker"
           fi
-          if ! git merge-base --is-ancestor "$trusted_revision" "$PHASE192_BASE_SHA"; then
+          if ! git merge-base --is-ancestor "$trusted_revision" "$SOURCE_DECOMPOSITION_BASE_SHA"; then
             echo "Trusted identity checker revision is not an ancestor of the PR base" >&2
             exit 1
           fi
-          archive_paths=(Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket)
-          if git cat-file -e "$trusted_revision:Scripts/phase192" 2>/dev/null; then
-            archive_paths+=(Scripts/phase192)
+          if ! git cat-file -e "$trusted_revision:Scripts/validation/source_decomposition" 2>/dev/null; then
+            echo "Trusted source-decomposition checker is missing" >&2
+            exit 1
           fi
-          if git cat-file -e "$trusted_revision:Scripts/validation/source_decomposition" 2>/dev/null; then
-            archive_paths+=(Scripts/validation/source_decomposition)
-          fi
+          archive_paths=(Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket Scripts/validation/source_decomposition)
           git archive "$trusted_revision" -- "${archive_paths[@]}" | tar -x -C "$trusted_root"
           export PYTHONPATH="$trusted_root"
           # Both identity invocations compare the checked-out repository: --repository .
-          # Trusted checker uses --compatibility; current path is Scripts/validation/source_decomposition/compare_identity_surfaces.py.
+          # Trusted checker uses --compatibility from the semantic validation path.
           base_checker="$trusted_root/Scripts/validation/source_decomposition/compare_identity_surfaces.py"
-          if [ ! -f "$base_checker" ]; then
-            base_checker="$trusted_root/Scripts/phase192/compare_identity_surfaces.py"
-          fi
           if [ ! -f "$base_checker" ]; then
             echo "Trusted base identity checker is missing" >&2
             exit 1
@@ -259,11 +254,11 @@ jobs:
             echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: trusted base checker lacks --compatibility" >&2
             exit 1
           fi
-          trusted_log="$RUNNER_TEMP/phase192-trusted-base.log"
+          trusted_log="$RUNNER_TEMP/source-decomposition-trusted-base.log"
           set +e
           PYTHONPATH="$trusted_root" python3 "$base_checker" \
-            --base "$PHASE192_BASE_SHA" \
-            --head "$PHASE192_HEAD_SHA" \
+            --base "$SOURCE_DECOMPOSITION_BASE_SHA" \
+            --head "$SOURCE_DECOMPOSITION_HEAD_SHA" \
             --repository . \
             --compatibility >"$trusted_log" 2>&1
           trusted_status=$?
@@ -278,8 +273,8 @@ jobs:
           # manifest-backed Python facades cannot remain outside the trusted
           # base checker's older identity surface.
           python3 Scripts/validation/source_decomposition/compare_identity_surfaces.py \
-            --base "$PHASE192_BASE_SHA" \
-            --head "$PHASE192_HEAD_SHA" \
+            --base "$SOURCE_DECOMPOSITION_BASE_SHA" \
+            --head "$SOURCE_DECOMPOSITION_HEAD_SHA" \
             --repository . \
             --compatibility
 

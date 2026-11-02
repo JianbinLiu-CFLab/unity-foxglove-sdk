@@ -196,7 +196,7 @@ class IdentityGateHardeningTests(unittest.TestCase):
         start = next(
             index
             for index, line in enumerate(lines)
-            if line.strip() == 'trusted_log="$RUNNER_TEMP/phase192-trusted-base.log"'
+            if line.strip() == 'trusted_log="$RUNNER_TEMP/source-decomposition-trusted-base.log"'
         )
         end = next(
             index
@@ -297,8 +297,8 @@ class IdentityGateHardeningTests(unittest.TestCase):
     def test_legacy_python_module_entrypoints_remain_executable(self) -> None:
         """Legacy Phase192 module paths must execute without loader mismatch."""
         commands = (
-            [sys.executable, "-B", "-m", "Scripts.phase192.source_layout"],
-            [sys.executable, "-B", "-m", "Scripts.phase192.identity_contracts", "--help"],
+            [sys.executable, "-B", "-m", "Scripts.validation.source_decomposition.source_layout"],
+            [sys.executable, "-B", "-m", "Scripts.validation.source_decomposition.identity_contracts", "--help"],
         )
         for command in commands:
             with self.subTest(command=command):
@@ -317,7 +317,7 @@ class IdentityGateHardeningTests(unittest.TestCase):
             _REPOSITORY_ROOT
             / "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling/split_surface_tests.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("PHASE192_BASE_SHA", source)
+        self.assertIn("SOURCE_DECOMPOSITION_BASE_SHA", source)
         self.assertNotIn("origin/main:Scripts/validation/source_decomposition/identity_namespace_analysis.py", source)
 
 

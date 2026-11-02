@@ -304,7 +304,7 @@ class _RunCiTestsPart1:
             "- name: Run Phase181 custom ROS2 acceptance helper regressions",
             "- name: Run complete Python regression inventory",
             "- name: Run Phase186 Bridge tooling and package-composition gate",
-            "- name: Run Phase192 base-head identity equivalence gate",
+            "- name: Run source-decomposition base-head identity equivalence gate",
             "- name: Run official MCAP differential conformance",
             "- name: Validate local entrypoints",
         ):
@@ -320,7 +320,7 @@ class _RunCiTestsPart1:
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
         start = active_workflow_line_index(
             workflow,
-            "- name: Run Phase192 base-head identity equivalence gate",
+            "- name: Run source-decomposition base-head identity equivalence gate",
         )
         joined = "\n".join(workflow.splitlines()[start : start + 30])
         self.assertIn("github.event.pull_request.base.sha", joined)
@@ -343,7 +343,7 @@ class _RunCiTestsPart1:
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
         start = active_workflow_line_index(
             workflow,
-            "- name: Run Phase192 base-head identity equivalence gate",
+            "- name: Run source-decomposition base-head identity equivalence gate",
         )
         gate = "\n".join(workflow.splitlines()[start:])
         self.assertNotIn("lyrical_validator_errors = [", gate)

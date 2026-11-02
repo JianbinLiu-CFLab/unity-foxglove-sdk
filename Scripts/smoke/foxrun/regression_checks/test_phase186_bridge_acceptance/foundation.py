@@ -22,7 +22,7 @@ from unittest import mock
 from Scripts.smoke.foxrun import phase186_bridge_acceptance as acceptance
 from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
 from Scripts.smoke.foxrun import phase186_bridge_project as bridge_project
-from Scripts.phase192.compare_identity_surfaces import (
+from Scripts.validation.source_decomposition.compare_identity_surfaces import (
     _entrypoint_contract,
     _section_modules_for_root,
 )

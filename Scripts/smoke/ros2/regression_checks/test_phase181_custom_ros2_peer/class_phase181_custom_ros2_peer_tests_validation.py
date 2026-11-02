@@ -1,6 +1,6 @@
 from __future__ import annotations
 from .class_phase181_custom_ros2_peer_tests_fixtures import *
-from Scripts.phase192.source_layout import read_split_source
+from Scripts.validation.source_decomposition.source_layout import read_split_source
 _PHASE192_FACADE_FILE = __import__("pathlib").Path(__file__).resolve().parents[1] / "test_phase181_custom_ros2_peer.py"
 __file__ = str(_PHASE192_FACADE_FILE)
 del _PHASE192_FACADE_FILE
