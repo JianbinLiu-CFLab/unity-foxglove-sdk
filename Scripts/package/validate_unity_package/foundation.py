@@ -40,6 +40,7 @@ ROS2_BRIDGE_PACKAGE = (
     ROOT / "Packages" / "dev.unity2foxglove.ros2bridge"
 )
 REMOTE_GATEWAY_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.remotegateway.win64"
+CONSUMER_PACKAGES_LOCK = ROOT / "Unity2Foxglove" / "Packages" / "packages-lock.json"
 ROS2_RUNTIME_PACKAGES = (
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
@@ -276,6 +277,7 @@ def load_package_json(results: list[CheckResult]) -> dict:
 __all__ = [
     'CONSUMER_LOCAL_DEPENDENCIES',
     'CONSUMER_LOCAL_DEPENDENCY_PREFIXES',
+    'CONSUMER_PACKAGES_LOCK',
     'CheckResult',
     'DOCS',
     'EMPTY_RESULT_NAME_WIDTH',
