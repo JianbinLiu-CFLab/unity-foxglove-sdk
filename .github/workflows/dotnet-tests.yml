@@ -283,7 +283,9 @@ jobs:
             git -C "$compat_root" clean -fdx
             git archive "$SOURCE_DECOMPOSITION_HEAD_SHA" | tar -x -C "$compat_root"
             if [ -d "$compat_root/Scripts/validation/source_decomposition" ]; then
-              mkdir -p "$compat_root/Scripts"
+              if [ -e "$compat_root/Scripts/phase192" ]; then
+                rm -rf "$compat_root/Scripts/phase192"
+              fi
               mv "$compat_root/Scripts/validation/source_decomposition" "$compat_root/Scripts/phase192"
             fi
             git -C "$compat_root" add -A
