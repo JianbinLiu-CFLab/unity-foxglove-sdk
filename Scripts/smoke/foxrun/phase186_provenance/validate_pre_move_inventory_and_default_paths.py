@@ -219,7 +219,7 @@ def _default_paths(repository: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path
         / "dev.unity2foxglove.sdk"
         / "Tests"
         / "Unit"
-        / "Phase186"
+        / "SdkRosBoundaryValidation"
         / "Fixtures"
         / "pre_move_sdk_ros_inventory.json",
     )

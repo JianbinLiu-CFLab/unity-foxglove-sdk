@@ -343,7 +343,7 @@
       "introducedIn": "c66a694a1e2a1a229598837a5d593d71e93b2c86"
     },
     {
-      "path": "Packages/dev.unity2foxglove.sdk/Tests/Unit/Phase186/Fixtures/pre_move_sdk_ros_inventory.json",
+      "path": "Packages/dev.unity2foxglove.sdk/Tests/Unit/SdkRosBoundaryValidation/Fixtures/pre_move_sdk_ros_inventory.json",
       "sha256": "cc9e3859f323595610ba2e8a59eb4166e50de02a5edf028fe3618e76079dcbd7",
       "classification": "original",
       "influence": "Original immutable Git-tree inventory of the pre-extraction SDK ROS ownership surface."
@@ -374,7 +374,7 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/foundation.py",
-      "sha256": "59c806fb67e88a121743d8b5c8eaeced6f2ccc98cf0ad5445a68aae952f20e5e",
+      "sha256": "ae3ed86668b7bca695f74035d473ff7dad712a174442abe6843140430e342cab",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
@@ -392,7 +392,7 @@
     },
     {
       "path": "Scripts/smoke/foxrun/phase186_provenance/validate_pre_move_inventory_and_default_paths.py",
-      "sha256": "4c064528274701c8c005afebf9ea6f6ed5bae618e1d4237f5b7c18230c19e92d",
+      "sha256": "410aa6ef5485cc0e30e3afce77a861ecd5658d0cdcb3324163ca9259e72bae29",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator implementation."
     },
@@ -428,7 +428,7 @@
     },
     {
       "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/class_phase186_provenance_tests_runtime.py",
-      "sha256": "ac60e8831c7338fa34de96b187fb10b63a587dd9a19fa796371305a32b4335a9",
+      "sha256": "2736c680687e7bc6c3bc8a7f6d732fed1305bf77acece778b377123677108ccf",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator regression coverage."
     },
@@ -446,7 +446,7 @@
     },
     {
       "path": "Scripts/smoke/foxrun/regression_checks/test_phase186_provenance/foundation.py",
-      "sha256": "5afe2f2ecd855fd3483850efcf6d6487c9eca8c5b8423ffabb068493de73e045",
+      "sha256": "db77366428fef831a6871f0be42c2fefbc2a30a4000c46f03b1057c45939b632",
       "classification": "original",
       "influence": "Original decomposed Phase186 provenance validator regression coverage."
     },

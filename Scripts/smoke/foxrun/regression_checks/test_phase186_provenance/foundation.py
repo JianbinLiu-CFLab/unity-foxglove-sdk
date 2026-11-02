@@ -32,7 +32,7 @@ INVENTORY_PATH = (
     / "dev.unity2foxglove.sdk"
     / "Tests"
     / "Unit"
-    / "Phase186"
+    / "SdkRosBoundaryValidation"
     / "Fixtures"
     / "pre_move_sdk_ros_inventory.json"
 )
