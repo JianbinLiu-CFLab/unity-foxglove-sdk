@@ -104,26 +104,40 @@ class VersionBump:
 
     def update_phase16_assertions(self) -> None:
         """Update release metadata assertions used by the runtime package validator."""
-        path = self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase16Validation.cs"
-        text = self.read(path)
+        adapter_pattern = r'(\\\"dev\.unity2foxglove\.sdk\\\": \\\")([0-9]+\.[0-9]+\.[0-9]+)(\\\")'
+        phase16_paths = (
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase16Validation.cs",
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Decomposed/Phase16Validation/IsPythonDocstringLine.cs",
+        )
+        matches = []
+        for path in phase16_paths:
+            if not path.is_file():
+                continue
+            text = self.read(path)
+            if re.search(adapter_pattern, text) and re.search(r'(version: \\")([0-9]+\.[0-9]+\.[0-9]+)(\\")', text):
+                matches.append((path, text))
+        if len(matches) != SINGLE_REPLACEMENT:
+            raise ValueError("Expected one Phase16 release assertion file, found " + str(len(matches)) + ".")
+
+        path, text = matches[0]
         text = self.sub_exactly_once(
             path,
             text,
-            r'(\\\"dev\.unity2foxglove\.sdk\\\": \\\")(\d+\.\d+\.\d+)(\\\")',
+            adapter_pattern,
             rf"\g<1>{self.version}\g<3>",
             "Phase16 ROS2 adapter dependency assertion",
         )
         text = self.sub_exactly_once(
             path,
             text,
-            r'(version: \\\")(\d+\.\d+\.\d+)(\\\")',
+            r'(version: \\")([0-9]+\.[0-9]+\.[0-9]+)(\\")',
             rf"\g<1>{self.version}\g<3>",
             "Phase16 CITATION version assertion",
         )
         text = self.sub_exactly_once(
             path,
             text,
-            r'(date-released: \\\")(\d{4}-\d{2}-\d{2})(\\\")',
+            r'(date-released: \\")([0-9]{4}-[0-9]{2}-[0-9]{2})(\\")',
             rf"\g<1>{self.release_date}\g<3>",
             "Phase16 CITATION release date assertion",
         )
@@ -162,20 +176,56 @@ class VersionBump:
         )
 
         literal_assertion_paths = [
-            self.root / "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
-            self.root / "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
-            self.root / "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py",
+            (
+                self.root / "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
+                self.root / "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package/package_metadata.py",
+            ),
+            (
+                self.root / "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
+                self.root / "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package/package_metadata.py",
+            ),
+            (
+                self.root / "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py",
+                self.root / "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/package_metadata.py",
+            ),
         ]
-        for path in literal_assertion_paths:
-            text = self.read(path)
+        literal_pattern = r'("dev\.unity2foxglove\.sdk": ")([0-9]+\.[0-9]+\.[0-9]+)(")'
+        for candidates in literal_assertion_paths:
+            matches = []
+            for path in candidates:
+                if not path.is_file():
+                    continue
+                text = self.read(path)
+                if re.search(literal_pattern, text):
+                    matches.append((path, text))
+            if len(matches) != SINGLE_REPLACEMENT:
+                raise ValueError("Expected one ROS2 For Unity package metadata file, found " + str(len(matches)) + ".")
+
+            path, text = matches[0]
             text = self.sub_exactly_once(
                 path,
                 text,
-                r'("dev\.unity2foxglove\.sdk": ")(\d+\.\d+\.\d+)(")',
+                literal_pattern,
                 rf"\g<1>{self.version}\g<3>",
                 "core SDK dependency literal assertion",
             )
             self.write_if_changed(path, text, f"update core SDK dependency literal to {self.version}")
+
+    def update_package_matrix_assertions(self, old_version: str) -> None:
+        """Update package-matrix validators that pin the current SDK release."""
+        paths = (
+            self.root / "Scripts/package/validate_unity_package/package_contracts.py",
+            self.root / "Scripts/package/validate_phase186_package_matrix.py",
+        )
+        pattern = re.compile(rf"(?<![0-9.]){re.escape(old_version)}(?![0-9.])")
+        for path in paths:
+            text = self.read(path)
+            updated, count = pattern.subn(self.version, text)
+            if count == 0:
+                if re.search(rf"(?<![0-9.]){re.escape(self.version)}(?![0-9.])", text):
+                    continue
+                raise ValueError(f"Expected one package-matrix version set in {self.rel(path)}, found 0.")
+            self.write_if_changed(path, updated, f"update package-matrix SDK version to {self.version}")
 
     # README exposes only the current release; historical notes remain in docs/releases.
     KEEP_RELEASE_NOTES = 1
@@ -384,6 +434,7 @@ class VersionBump:
             self.update_adapter_dependency()
             self.update_phase16_assertions()
             self.update_core_sdk_dependency_assertions()
+            self.update_package_matrix_assertions(old_version)
             self.update_readme(old_version)
             self.update_package_readme(old_version)
             self.update_citation()

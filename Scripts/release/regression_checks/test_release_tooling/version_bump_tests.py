@@ -192,6 +192,27 @@ class VersionBumpTests(unittest.TestCase):
             self.assertNotIn("1.2.3", text)
             self.assertNotIn("2026-01-02", text)
 
+    def test_update_phase16_assertions_uses_decomposed_contract(self) -> None:
+        """Runtime release metadata may live in the decomposed Phase16 section."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Decomposed/Phase16Validation/IsPythonDocstringLine.cs"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                r'Assert(adapterPackageJson.Contains("\"dev.unity2foxglove.sdk\": \"1.2.3\""));' + "\n"
+                r'Assert(citation.Contains("version: \"1.2.3\"")' + "\n"
+                r'       && citation.Contains("date-released: \"2026-01-02\""));' + "\n",
+                encoding="utf-8",
+            )
+
+            bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
+            bump.update_phase16_assertions()
+
+            text = path.read_text(encoding="utf-8")
+            self.assertIn(r'\"dev.unity2foxglove.sdk\": \"9.9.9\"', text)
+            self.assertIn(r'version: \"9.9.9\"', text)
+            self.assertIn(r'date-released: \"2026-06-08\"', text)
+
     def test_update_core_sdk_dependency_assertions_syncs_validators(self) -> None:
         """Runtime and script validators should assert the released SDK version."""
         with tempfile.TemporaryDirectory() as temp:
@@ -231,6 +252,70 @@ class VersionBumpTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
                 self.assertIn("9.9.9", text)
                 self.assertNotIn("1.2.3", text)
+
+    def test_update_core_sdk_dependency_assertions_uses_decomposed_validators(self) -> None:
+        """Release metadata may live in decomposed validator sections."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bracket_paths = [
+                root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase107Validation.cs",
+                root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase108Validation.cs",
+            ]
+            escaped_literal_path = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_29Validation.cs"
+            literal_paths = [
+                root / "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package/package_metadata.py",
+                root / "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package/package_metadata.py",
+                root / "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/package_metadata.py",
+            ]
+            for path in bracket_paths:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    'dependencies["dev.unity2foxglove.sdk"] == "1.2.3"\n',
+                    encoding="utf-8",
+                )
+            escaped_literal_path.parent.mkdir(parents=True, exist_ok=True)
+            escaped_literal_path.write_text(
+                'Check(packageJson.Contains("\\"dev.unity2foxglove.sdk\\": \\"1.2.3\\""));\n',
+                encoding="utf-8",
+            )
+            for path in literal_paths:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    'dependencies == {"dev.unity2foxglove.sdk": "1.2.3"}\n',
+                    encoding="utf-8",
+                )
+
+            bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
+            bump.update_core_sdk_dependency_assertions()
+
+            for path in [*bracket_paths, escaped_literal_path, *literal_paths]:
+                text = path.read_text(encoding="utf-8")
+                self.assertIn("9.9.9", text)
+                self.assertNotIn("1.2.3", text)
+
+    def test_update_package_matrix_assertions_syncs_current_release_paths(self) -> None:
+        """Package matrix validators should follow the released SDK version."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            paths = [
+                root / "Scripts/package/validate_unity_package/package_contracts.py",
+                root / "Scripts/package/validate_phase186_package_matrix.py",
+            ]
+            for path in paths:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    'expected = "1.2.3"\n'
+                    'dependencies = {"dev.unity2foxglove.sdk": "1.2.3"}\n',
+                    encoding="utf-8",
+                )
+
+            bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
+            bump.update_package_matrix_assertions("1.2.3")
+
+            for path in paths:
+                text = path.read_text(encoding="utf-8")
+                self.assertNotIn("1.2.3", text)
+                self.assertEqual(2, text.count("9.9.9"))
 
     def test_update_changelog_inserts_at_version_heading_not_first_rule(self) -> None:
         """Horizontal rules before version history must not receive new entries."""
