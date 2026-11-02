@@ -171,6 +171,296 @@ class IdentityGateHardeningTests(unittest.TestCase):
             )
         )
 
+    def test_workflow_selects_checker_path_from_immutable_trusted_revision(self) -> None:
+        """The bootstrap and current layouts select their checker from trusted history."""
+        workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            'if git cat-file -e "$trusted_revision:Scripts/validation/source_decomposition/compare_identity_surfaces.py"',
+            workflow,
+        )
+        self.assertIn(
+            'elif git cat-file -e "$trusted_revision:Scripts/phase192/compare_identity_surfaces.py"',
+            workflow,
+        )
+        self.assertIn('archive_paths+=(Scripts/validation/source_decomposition)', workflow)
+        self.assertIn('archive_paths+=(Scripts/phase192)', workflow)
+        self.assertIn(
+            'checker_relative="Scripts/validation/source_decomposition/compare_identity_surfaces.py"',
+            workflow,
+        )
+        self.assertIn(
+            'checker_relative="Scripts/phase192/compare_identity_surfaces.py"',
+            workflow,
+        )
+        self.assertIn('SOURCE_DECOMPOSITION_BASE_SHA" = "9b3754bd21631e4c1a8717f9a133c1063ab56d33', workflow)
+        self.assertIn('trusted_revision="ab1487e654ce11b5e217329552751a058a250ef7"', workflow)
+
+    @unittest.skipUnless(sys.platform != "win32" and shutil.which("tar"), "hosted Linux tar is required")
+    def test_legacy_and_current_checkers_accept_compatibility_help(self) -> None:
+        """Both the historical bootstrap checker and current checker expose compatibility mode."""
+        current = _REPOSITORY_ROOT / "Scripts/validation/source_decomposition/compare_identity_surfaces.py"
+        current_result = subprocess.run(
+            [sys.executable, "-B", str(current), "--help"],
+            cwd=_REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, current_result.returncode, current_result.stderr)
+        self.assertIn("--compatibility", current_result.stdout)
+
+        legacy_revision = "ab1487e654ce11b5e217329552751a058a250ef7"
+        archive = subprocess.run(
+            [
+                "git",
+                "archive",
+                legacy_revision,
+                "--",
+                "Scripts/smoke/foxrun",
+                "Scripts/smoke/ros2",
+                "Scripts/smoke/websocket",
+                "Scripts/phase192",
+            ],
+            cwd=_REPOSITORY_ROOT,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, archive.returncode, archive.stderr.decode(errors="replace"))
+        with tempfile.TemporaryDirectory() as temporary:
+            extract = subprocess.run(
+                [shutil.which("tar"), "-x", "-C", temporary],
+                input=archive.stdout,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, extract.returncode, extract.stderr.decode(errors="replace"))
+            legacy = Path(temporary) / "Scripts/phase192/compare_identity_surfaces.py"
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = temporary
+            legacy_result = subprocess.run(
+                [sys.executable, "-B", str(legacy), "--help"],
+                cwd=temporary,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(0, legacy_result.returncode, legacy_result.stderr)
+        self.assertIn("--compatibility", legacy_result.stdout)
+
+    @unittest.skipUnless(sys.platform != "win32" and shutil.which("tar"), "hosted Linux tar is required")
+    def test_legacy_checker_handles_semantic_head_after_workflow_normalization(self) -> None:
+        """The legacy trusted checker handles semantic and mixed heads after path normalization."""
+        legacy_revision = "ab1487e654ce11b5e217329552751a058a250ef7"
+        base_revision = "9b3754bd21631e4c1a8717f9a133c1063ab56d33"
+        build_root = _REPOSITORY_ROOT / "build" / "identity-gate-regression"
+        build_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=build_root) as temporary:
+            trusted_root = Path(temporary) / "trusted"
+            trusted_root.mkdir()
+            archive = subprocess.run(
+                [
+                    "git",
+                    "archive",
+                    legacy_revision,
+                    "--",
+                    "Scripts/smoke/foxrun",
+                    "Scripts/smoke/ros2",
+                    "Scripts/smoke/websocket",
+                    "Scripts/phase192",
+                ],
+                cwd=_REPOSITORY_ROOT,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, archive.returncode, archive.stderr.decode(errors="replace"))
+            extract = subprocess.run(
+                [shutil.which("tar"), "-x", "-C", str(trusted_root)],
+                input=archive.stdout,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, extract.returncode, extract.stderr.decode(errors="replace"))
+            checker = trusted_root / "Scripts/phase192/compare_identity_surfaces.py"
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(trusted_root)
+            compatibility_repo = Path(temporary) / "compat-repository"
+            compatibility_repo.mkdir()
+            subprocess.run(["git", "init", "-q"], cwd=compatibility_repo, check=True)
+            subprocess.run(
+                ["git", "config", "user.name", "identity-gate-test"],
+                cwd=compatibility_repo,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "identity-gate-test@example.invalid"],
+                cwd=compatibility_repo,
+                check=True,
+            )
+
+            def snapshot(
+                source_revision: str,
+                *,
+                semantic: bool = False,
+                normalize: bool = False,
+                mixed: bool = False,
+                archive_mixed: bool = False,
+            ) -> str:
+                """Create a temporary Git snapshot with optional mixed-layout normalization."""
+                subprocess.run(
+                    ["git", "rm", "-r", "-q", "--ignore-unmatch", "."],
+                    cwd=compatibility_repo,
+                    check=False,
+                )
+                subprocess.run(["git", "clean", "-fdx", "-q"], cwd=compatibility_repo, check=True)
+                source_paths = (
+                    ["Scripts/phase192"]
+                    if source_revision == base_revision
+                    else ["Scripts/validation/source_decomposition"]
+                )
+                if archive_mixed:
+                    source_paths = [
+                        "Scripts/phase192",
+                        "Scripts/validation/source_decomposition",
+                    ]
+                source_archive = subprocess.run(
+                    ["git", "archive", source_revision, "--", *source_paths],
+                    cwd=_REPOSITORY_ROOT if source_revision == base_revision else compatibility_repo,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(0, source_archive.returncode, source_archive.stderr.decode(errors="replace"))
+                if archive_mixed:
+                    self.assertIn(b"Scripts/phase192/source_layout.py", source_archive.stdout)
+                    self.assertIn(
+                        b"Scripts/validation/source_decomposition/source_layout.py",
+                        source_archive.stdout,
+                    )
+                extracted = subprocess.run(
+                    [shutil.which("tar"), "-x", "-C", str(compatibility_repo)],
+                    input=source_archive.stdout,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(0, extracted.returncode, extracted.stderr.decode(errors="replace"))
+                legacy = compatibility_repo / "Scripts/phase192"
+                canonical = compatibility_repo / "Scripts/validation/source_decomposition"
+                if semantic:
+                    canonical.parent.mkdir(parents=True, exist_ok=True)
+                    legacy.rename(canonical)
+                if mixed:
+                    self.assertTrue(canonical.is_dir())
+                    if not legacy.exists():
+                        shutil.copytree(canonical, legacy)
+                    self.assertTrue(legacy.is_dir())
+                    self.assertTrue(canonical.is_dir())
+                if normalize:
+                    if legacy.exists():
+                        shutil.rmtree(legacy)
+                    legacy.parent.mkdir(parents=True, exist_ok=True)
+                    canonical.rename(legacy)
+                subprocess.run(
+                    ["git", "-c", "core.longpaths=true", "add", "-A"],
+                    cwd=compatibility_repo,
+                    check=True,
+                )
+                subprocess.run(
+                    ["git", "commit", "-q", "-m", "compatibility snapshot"],
+                    cwd=compatibility_repo,
+                    check=True,
+                )
+                return subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=compatibility_repo,
+                    text=True,
+                ).strip()
+
+            base_snapshot = snapshot(base_revision)
+            semantic_snapshot = snapshot(base_revision, semantic=True)
+            direct = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(checker),
+                    "--base",
+                    base_snapshot,
+                    "--head",
+                    semantic_snapshot,
+                    "--repository",
+                    str(compatibility_repo),
+                    "--compatibility",
+                ],
+                cwd=compatibility_repo,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(0, direct.returncode)
+            self.assertIn("pathspec 'Scripts/phase192'", direct.stdout + direct.stderr)
+            normalized_snapshot = snapshot(semantic_snapshot, normalize=True)
+            normalized = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(checker),
+                    "--base",
+                    base_snapshot,
+                    "--head",
+                    normalized_snapshot,
+                    "--repository",
+                    str(compatibility_repo),
+                    "--compatibility",
+                ],
+                cwd=compatibility_repo,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, normalized.returncode, normalized.stdout + normalized.stderr)
+            self.assertIn("IDENTITY_COMPATIBLE", normalized.stdout)
+            mixed_snapshot = snapshot(semantic_snapshot, mixed=True)
+            normalized_mixed_snapshot = snapshot(mixed_snapshot, normalize=True, archive_mixed=True)
+            normalized_paths = subprocess.check_output(
+                [
+                    "git",
+                    "ls-tree",
+                    "-r",
+                    "--name-only",
+                    normalized_mixed_snapshot,
+                    "--",
+                    "Scripts/phase192",
+                ],
+                cwd=compatibility_repo,
+                text=True,
+            ).splitlines()
+            self.assertIn("Scripts/phase192/source_layout.py", normalized_paths)
+            self.assertFalse(
+                any(path.startswith("Scripts/phase192/source_decomposition/") for path in normalized_paths)
+            )
+            normalized_mixed = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(checker),
+                    "--base",
+                    base_snapshot,
+                    "--head",
+                    normalized_mixed_snapshot,
+                    "--repository",
+                    str(compatibility_repo),
+                    "--compatibility",
+                ],
+                cwd=compatibility_repo,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, normalized_mixed.returncode, normalized_mixed.stdout + normalized_mixed.stderr)
+            self.assertIn("IDENTITY_COMPATIBLE", normalized_mixed.stdout)
+
     def test_workflow_fails_closed_on_trusted_identity_errors(self) -> None:
         """The workflow must not interpret trusted checker failures itself."""
         workflow = (_REPOSITORY_ROOT / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
@@ -294,8 +584,8 @@ class IdentityGateHardeningTests(unittest.TestCase):
             any(error.startswith(f"EXTRA_SYMBOLS {relative}") for error in mutation_errors)
         )
 
-    def test_legacy_python_module_entrypoints_remain_executable(self) -> None:
-        """Legacy Phase192 module paths must execute without loader mismatch."""
+    def test_semantic_python_module_entrypoints_remain_executable(self) -> None:
+        """Semantic source-decomposition module paths execute without loader mismatch."""
         commands = (
             [sys.executable, "-B", "-m", "Scripts.validation.source_decomposition.source_layout"],
             [sys.executable, "-B", "-m", "Scripts.validation.source_decomposition.identity_contracts", "--help"],
