@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
     internal readonly struct TopicContract : IEquatable<TopicContract>
     {
         public TopicContract(string topic, string schemaName, string encoding, string ownerKind)
-            : this(topic, schemaName, encoding, ownerKind, TopicContractScope.Live)
+            : this(topic, schemaName, encoding, ownerKind, string.Empty, string.Empty, string.Empty, TopicContractScope.Live)
         {
         }
 
@@ -37,11 +37,38 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
             string encoding,
             string ownerKind,
             TopicContractScope scope)
+            : this(topic, schemaName, encoding, ownerKind, string.Empty, string.Empty, string.Empty, scope)
+        {
+        }
+
+        public TopicContract(
+            string topic,
+            string schemaName,
+            string encoding,
+            string ownerKind,
+            string shapeIdentity,
+            TopicContractScope scope = TopicContractScope.Live)
+            : this(topic, schemaName, encoding, ownerKind, shapeIdentity, string.Empty, string.Empty, scope)
+        {
+        }
+
+        public TopicContract(
+            string topic,
+            string schemaName,
+            string encoding,
+            string ownerKind,
+            string shapeIdentity,
+            string schemaEncoding,
+            string schemaFingerprint,
+            TopicContractScope scope)
         {
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
             Encoding = encoding ?? string.Empty;
             OwnerKind = ownerKind ?? string.Empty;
+            ShapeIdentity = shapeIdentity ?? string.Empty;
+            SchemaEncoding = schemaEncoding ?? string.Empty;
+            SchemaFingerprint = schemaFingerprint ?? string.Empty;
             Scope = scope;
         }
 
@@ -49,6 +76,9 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public string SchemaName { get; }
         public string Encoding { get; }
         public string OwnerKind { get; }
+        public string ShapeIdentity { get; }
+        public string SchemaEncoding { get; }
+        public string SchemaFingerprint { get; }
         public TopicContractScope Scope { get; }
 
         public bool Equals(TopicContract other)
@@ -56,19 +86,33 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
                && string.Equals(SchemaName, other.SchemaName, StringComparison.Ordinal)
                && string.Equals(Encoding, other.Encoding, StringComparison.Ordinal)
                && string.Equals(OwnerKind, other.OwnerKind, StringComparison.Ordinal)
+               && string.Equals(ShapeIdentity, other.ShapeIdentity, StringComparison.Ordinal)
+               && string.Equals(SchemaEncoding, other.SchemaEncoding, StringComparison.Ordinal)
+               && string.Equals(SchemaFingerprint, other.SchemaFingerprint, StringComparison.Ordinal)
                && Scope == other.Scope;
 
         public bool HasSameWireContract(TopicContract other)
             => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
                && string.Equals(SchemaName, other.SchemaName, StringComparison.Ordinal)
                && string.Equals(Encoding, other.Encoding, StringComparison.Ordinal)
+               && string.Equals(ShapeIdentity, other.ShapeIdentity, StringComparison.Ordinal)
+               && string.Equals(SchemaEncoding, other.SchemaEncoding, StringComparison.Ordinal)
+               && string.Equals(SchemaFingerprint, other.SchemaFingerprint, StringComparison.Ordinal)
                && Scope == other.Scope;
 
         public override bool Equals(object obj)
             => obj is TopicContract other && Equals(other);
 
         public override int GetHashCode()
-            => HashCode.Combine(Topic, SchemaName, Encoding, OwnerKind, Scope);
+            => HashCode.Combine(
+                Topic,
+                SchemaName,
+                Encoding,
+                OwnerKind,
+                ShapeIdentity,
+                SchemaEncoding,
+                SchemaFingerprint,
+                Scope);
     }
 
     internal readonly struct TopicContractConflict
@@ -161,8 +205,14 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
                 existing.SchemaName,
                 existing.Encoding,
                 existing.OwnerKind,
+                existing.ShapeIdentity,
+                existing.SchemaEncoding,
+                existing.SchemaFingerprint,
                 incoming.SchemaName,
                 incoming.Encoding,
-                incoming.OwnerKind);
+                incoming.OwnerKind,
+                incoming.ShapeIdentity,
+                incoming.SchemaEncoding,
+                incoming.SchemaFingerprint);
     }
 }

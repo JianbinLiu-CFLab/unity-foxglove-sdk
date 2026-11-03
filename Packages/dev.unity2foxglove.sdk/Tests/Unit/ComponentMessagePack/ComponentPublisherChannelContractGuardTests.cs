@@ -63,6 +63,49 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
         }
 
         [Fact]
+        public void MessagePackShapeIdentityIsPartOfTheWireContract()
+        {
+            var ledger = new TopicContractLedger();
+            ledger.Register(new TopicContract("/telemetry", "", "msgpack", "component", "shape-a"));
+
+            var result = ledger.Register(
+                new TopicContract("/telemetry", "", "msgpack", "component", "shape-b"));
+
+            Assert.True(result.IsConflict);
+            Assert.True(result.ShouldWarn);
+            Assert.Equal(1, ledger.ConflictCount);
+        }
+
+        [Fact]
+        public void RecordingSchemaDescriptorIsPartOfTheWireContract()
+        {
+            var ledger = new TopicContractLedger();
+            ledger.Register(new TopicContract(
+                "/recording",
+                "schema",
+                "protobuf",
+                "FoxRun",
+                "",
+                "cdr",
+                "hash-a",
+                TopicContractScope.Recording));
+
+            var result = ledger.Register(new TopicContract(
+                "/recording",
+                "schema",
+                "protobuf",
+                "FoxRun",
+                "",
+                "cdr",
+                "hash-b",
+                TopicContractScope.Recording));
+
+            Assert.True(result.IsConflict);
+            Assert.True(result.ShouldWarn);
+            Assert.Equal(1, ledger.ConflictCount);
+        }
+
+        [Fact]
         public void RecordingAndLiveContractsUseSeparateScopes()
         {
             var ledger = new TopicContractLedger();

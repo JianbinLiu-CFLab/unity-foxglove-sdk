@@ -263,7 +263,8 @@ namespace Unity.FoxgloveSDK.Components
                     StopCertificateDistributor,
                     UnregisterTopicContractService,
                     () => DetachTransportForwarders(cleanupSession),
-                    () => DetachRuntimeForwarders(_runtime?.Session));
+                    () => DetachRuntimeForwarders(_runtime?.Session),
+                    ClearTopicContractLedger);
                 firstFailure ??= earlyFailure;
                 if (!FoxgloveManagerTeardownState.ShouldRunStopServer(
                         IsRunning,

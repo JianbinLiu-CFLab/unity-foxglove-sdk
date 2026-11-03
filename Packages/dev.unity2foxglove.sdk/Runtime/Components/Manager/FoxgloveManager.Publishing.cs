@@ -478,7 +478,12 @@ namespace Unity.FoxgloveSDK.Components
                 ComponentShapeIdentity = key.shapeIdentity
             });
             _connectionState.NextChannelId++;
-            RecordTopicContract(topic, EmptySchemaName, encoding, ownerKind);
+            RecordTopicContract(
+                topic,
+                componentLogicalSchemaName ?? EmptySchemaName,
+                encoding,
+                ownerKind,
+                componentShapeIdentity);
             _channelCache[key] = id;
             return id;
         }
