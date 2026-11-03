@@ -4,6 +4,8 @@
 // Module: Runtime/Components/Manager
 // Purpose: Generated FoxRun MessagePack live and recording-only publication.
 
+using Unity.FoxgloveSDK.Components.Publishing.Session;
+
 namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxgloveManager
