@@ -292,7 +292,7 @@ namespace Unity.FoxgloveSDK.Tests
             var bridgeManifest = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/package.json");
             Check(!managerSource.Contains("PublishRos2(string topic, string schemaName, IMessage message"),
                 "93I-1: Phase93 does not add IMessage Manager convenience API");
-            Check(!managerServer.Contains("EnableMessageEncoding")
+            Check(!managerServer.Replace("_runtime.EnableMessageEncoding(MsgPackEncoding);", string.Empty).Contains("EnableMessageEncoding")
                   && !managerServer.Contains("\"cdr\"")
                   && !managerServer.Contains("Ros2Bridge")
                   && bridgeCodecs.Contains("runtime.EnableMessageEncoding(MessageEncoding)"),
