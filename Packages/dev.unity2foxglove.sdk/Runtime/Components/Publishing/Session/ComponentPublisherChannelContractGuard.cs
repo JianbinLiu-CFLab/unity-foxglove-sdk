@@ -18,12 +18,14 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public int Count => _claims.Count;
     }
 
+    /// <summary>Session scope in which a topic contract claim is active.</summary>
     public enum TopicContractScope
     {
         Live,
         Recording
     }
 
+    /// <summary>Observable wire identity and ownership metadata for a topic claim.</summary>
     public readonly struct TopicContract : IEquatable<TopicContract>
     {
         public TopicContract(string topic, string schemaName, string encoding, string ownerKind)
@@ -115,6 +117,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
                 Scope);
     }
 
+    /// <summary>Pair of topic claims whose wire identities conflict.</summary>
     public readonly struct TopicContractConflict
     {
         public TopicContractConflict(TopicContract existing, TopicContract incoming)
@@ -127,6 +130,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public TopicContract Incoming { get; }
     }
 
+    /// <summary>Result of registering a topic contract claim.</summary>
     public readonly struct TopicContractRegistration
     {
         public TopicContractRegistration(
@@ -150,6 +154,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public bool ShouldWarn { get; }
     }
 
+    /// <summary>Tracks topic contract claims and deduplicated conflicts for a session.</summary>
     public sealed class TopicContractLedger
     {
         private const char KeySeparator = '\u001f';
