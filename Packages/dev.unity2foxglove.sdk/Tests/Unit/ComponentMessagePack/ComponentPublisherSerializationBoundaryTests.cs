@@ -59,6 +59,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
 
             Assert.Contains("TopicContractServiceName", contracts);
             Assert.Contains("RegisterTopicContractService", contracts);
+            Assert.Contains("TopicContractItemSchema", contracts);
+            Assert.Contains("\\\"scope\\\":{\\\"type\\\":\\\"string\\\",\\\"enum\\\":[\\\"Live\\\",\\\"Recording\\\"]}", contracts);
             Assert.Contains("RecordTopicContract", publishing);
             Assert.Contains(
                 "RecordTopicContract(\n                topic,\n                key.schemaName,",
