@@ -57,6 +57,22 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void TopicContractSessionStateHelperClearsClaimsAndConflicts()
+        {
+            var manager = new FoxgloveManager();
+            manager.RecordTopicContract("/stale", "schema.one", "json", "component");
+            manager.RecordTopicContract("/stale", "schema.two", "json", "component");
+
+            manager.ClearTopicContractSessionState();
+
+            var cleared = (JObject)manager.HandleTopicContractRequest(new JObject());
+            Assert.Equal(0, (int)cleared["claimCount"]);
+            Assert.Equal(0, (int)cleared["conflictCount"]);
+            Assert.Equal(0, (int)cleared["totalClaimCount"]);
+            Assert.Equal(0, (int)cleared["totalConflictCount"]);
+        }
+
+        [Fact]
         public void TopicContractDiagnosticsCountsFilteredResults()
         {
             var manager = new FoxgloveManager();

@@ -195,7 +195,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 source,
                 "private void StopServer(bool restoreLivePublishers)");
             var earlyPath = method.IndexOf("if (!IsRunning)", StringComparison.Ordinal);
-            var clear = method.IndexOf("ClearTopicContractLedger);", earlyPath, StringComparison.Ordinal);
+            var clear = method.IndexOf("ClearTopicContractSessionState);", earlyPath, StringComparison.Ordinal);
 
             Assert.True(earlyPath >= 0);
             Assert.True(clear > earlyPath);

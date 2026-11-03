@@ -76,11 +76,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("ComputeSchemaFingerprint(schema)", rawRecording);
             Assert.Contains("TopicContractScope.Recording", rawRecording);
             Assert.Contains("requestedTopic", contracts);
-            Assert.Contains("ClearTopicContractLedger();", server);
-            Assert.Contains("ClearTopicContractLedger);", server);
+            Assert.Contains("ClearTopicContractSessionState();", server);
+            Assert.Contains("ClearTopicContractSessionState);", server);
             var stoppedPathIndex = server.IndexOf("if (!IsRunning)", StringComparison.Ordinal);
             var stoppedPathClearIndex = server.IndexOf(
-                "ClearTopicContractLedger);",
+                "ClearTopicContractSessionState);",
                 stoppedPathIndex,
                 StringComparison.Ordinal);
             Assert.True(stoppedPathIndex >= 0 && stoppedPathClearIndex > stoppedPathIndex);
@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("PublishProtoFromFoxRun", foxRun);
             Assert.Contains("RegisterTopicContractService();", server);
             Assert.Contains("UnregisterTopicContractService", server);
-            Assert.Contains("ClearTopicContractLedger();", server);
+            Assert.Contains("ClearTopicContractSessionState();", server);
         }
     }
 }

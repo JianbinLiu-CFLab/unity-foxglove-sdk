@@ -308,6 +308,9 @@ namespace Unity.FoxgloveSDK.Components
             };
 
         internal void ClearTopicContractLedger()
+            => ClearTopicContractSessionState();
+
+        internal void ClearTopicContractSessionState()
             => _topicContractLedger.Clear();
 
         private static JObject ToTopicContractJson(TopicContract contract)
