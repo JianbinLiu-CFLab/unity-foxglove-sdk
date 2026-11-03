@@ -539,6 +539,10 @@ def main() -> int:
                     *PACKAGE_LANE_REGRESSION_MODULES,
                 ],
             ),
+            (
+                "maintained-name-path-guard",
+                [sys.executable, "Scripts/release/maintained_name_path_guard.py"],
+            ),
             ("validate_unity_package.py", [sys.executable, "Scripts/package/validate_unity_package.py"]),
             ("validate_local_entrypoints.py", [sys.executable, "Scripts/package/validate_local_entrypoints.py"]),
             ("sync_full_demo.py", [sys.executable, "Scripts/samples/sync_full_demo.py", "--mode", "validate"]),
@@ -567,6 +571,9 @@ def main() -> int:
         ]
         results["maintained-python-regressions"] = package_results[
             "maintained-python-regressions"
+        ]
+        results["maintained-name-path-guard"] = package_results[
+            "maintained-name-path-guard"
         ]
         results["validate-package"] = package_results["validate_unity_package.py"]
         results["validate-entrypoints"] = package_results["validate_local_entrypoints.py"]
