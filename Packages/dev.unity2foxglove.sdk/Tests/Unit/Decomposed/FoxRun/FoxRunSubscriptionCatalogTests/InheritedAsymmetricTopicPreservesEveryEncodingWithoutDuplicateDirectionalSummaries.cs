@@ -349,6 +349,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var contractProperties = (JObject)schema["properties"]!["contracts"]!["items"]!["properties"]!;
             var fieldProperties = (JObject)contractProperties["fields"]!["items"]!["properties"]!;
 
+            Assert.Empty(schema.Descendants().OfType<JProperty>().Where(property => property.Name == "oneOf"));
             Assert.True(AllowsNull(contractProperties["publishTransportIds"]),
                 "publishTransportIds schema must accept the null emitted for inherited publish destinations");
             Assert.True(AllowsNull(contractProperties["subscribeTransportId"]),
