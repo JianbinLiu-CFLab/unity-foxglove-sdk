@@ -161,29 +161,43 @@ namespace Unity.FoxgloveSDK.Components
             var requestedTopic = (request as JObject)?.Value<string>("topic");
             var claims = new JArray();
             var conflicts = new JArray();
-            var totalClaimCount = 0;
-            var totalConflictCount = 0;
+            var totalClaimCount = CountMatchingClaims(requestedTopic);
+            var totalConflictCount = CountMatchingConflicts(requestedTopic);
             var responseTruncated = false;
-            var responseItemTooLarge = false;
+            var budget = CreateTopicContractResponse(
+                TopicContractMaxResults,
+                TopicContractMaxResults,
+                totalClaimCount,
+                totalConflictCount,
+                false,
+                new JArray(),
+                new JArray());
+            var responseBytes = Encoding.UTF8.GetByteCount(
+                budget.ToString(Newtonsoft.Json.Formatting.None));
+            var claimBytes = 0;
+            var conflictBytes = 0;
+
             foreach (var claim in _topicContractLedger.Claims.Values)
             {
                 if (!string.IsNullOrEmpty(requestedTopic)
                     && !string.Equals(requestedTopic, claim.Topic, StringComparison.Ordinal))
                     continue;
-                totalClaimCount++;
                 if (claims.Count >= TopicContractMaxResults)
                 {
                     responseTruncated = true;
                     continue;
                 }
                 var projection = ToTopicContractJson(claim);
-                claims.Add(projection);
-                if (!FitsTopicContractResponse(claims, conflicts, totalClaimCount, 0))
+                var itemBytes = Encoding.UTF8.GetByteCount(
+                    projection.ToString(Newtonsoft.Json.Formatting.None));
+                var delta = itemBytes + (claims.Count == 0 ? 0 : 1);
+                if (responseBytes + claimBytes + conflictBytes + delta > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
                 {
-                    claims.RemoveAt(claims.Count - 1);
                     responseTruncated = true;
-                    responseItemTooLarge |= claims.Count == 0 && conflicts.Count == 0;
+                    continue;
                 }
+                claims.Add(projection);
+                claimBytes += delta;
             }
 
             foreach (var conflict in _topicContractLedger.Conflicts)
@@ -191,76 +205,101 @@ namespace Unity.FoxgloveSDK.Components
                 if (!string.IsNullOrEmpty(requestedTopic)
                     && !string.Equals(requestedTopic, conflict.Existing.Topic, StringComparison.Ordinal))
                     continue;
-                totalConflictCount++;
                 if (conflicts.Count >= TopicContractMaxResults)
                 {
                     responseTruncated = true;
                     continue;
                 }
-                conflicts.Add(new JObject
+                var projection = new JObject
                 {
                     ["existing"] = ToTopicContractJson(conflict.Existing),
                     ["incoming"] = ToTopicContractJson(conflict.Incoming)
-                });
-                if (!FitsTopicContractResponse(claims, conflicts, totalClaimCount, totalConflictCount))
+                };
+                var itemBytes = Encoding.UTF8.GetByteCount(
+                    projection.ToString(Newtonsoft.Json.Formatting.None));
+                var delta = itemBytes + (conflicts.Count == 0 ? 0 : 1);
+                if (responseBytes + claimBytes + conflictBytes + delta > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
                 {
-                    conflicts.RemoveAt(conflicts.Count - 1);
                     responseTruncated = true;
-                    responseItemTooLarge |= claims.Count == 0 && conflicts.Count == 0;
+                    continue;
                 }
+                conflicts.Add(projection);
+                conflictBytes += delta;
             }
 
-            var response = new JObject
+            var response = CreateTopicContractResponse(
+                claims.Count,
+                conflicts.Count,
+                totalClaimCount,
+                totalConflictCount,
+                responseTruncated,
+                claims,
+                conflicts);
+            if (Encoding.UTF8.GetByteCount(response.ToString(Newtonsoft.Json.Formatting.None))
+                > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
+                return CreateTopicContractErrorResponse(totalClaimCount, totalConflictCount);
+            return response;
+        }
+
+        private int CountMatchingClaims(string requestedTopic)
+        {
+            var count = 0;
+            foreach (var claim in _topicContractLedger.Claims.Values)
+            {
+                if (string.IsNullOrEmpty(requestedTopic)
+                    || string.Equals(requestedTopic, claim.Topic, StringComparison.Ordinal))
+                    count++;
+            }
+            return count;
+        }
+
+        private int CountMatchingConflicts(string requestedTopic)
+        {
+            var count = 0;
+            foreach (var conflict in _topicContractLedger.Conflicts)
+            {
+                if (string.IsNullOrEmpty(requestedTopic)
+                    || string.Equals(requestedTopic, conflict.Existing.Topic, StringComparison.Ordinal))
+                    count++;
+            }
+            return count;
+        }
+
+        private static JObject CreateTopicContractResponse(
+            int claimCount,
+            int conflictCount,
+            int totalClaimCount,
+            int totalConflictCount,
+            bool responseTruncated,
+            JArray claims,
+            JArray conflicts)
+            => new JObject
             {
                 ["contractVersion"] = 1,
-                ["claimCount"] = claims.Count,
-                ["conflictCount"] = conflicts.Count,
+                ["claimCount"] = claimCount,
+                ["conflictCount"] = conflictCount,
                 ["totalClaimCount"] = totalClaimCount,
                 ["totalConflictCount"] = totalConflictCount,
                 ["responseTruncated"] = responseTruncated,
                 ["claims"] = claims,
                 ["conflicts"] = conflicts
             };
-            if (responseItemTooLarge
-                || Encoding.UTF8.GetByteCount(response.ToString(Newtonsoft.Json.Formatting.None))
-                    > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
-            {
-                return new JObject
-                {
-                    ["contractVersion"] = 1,
-                    ["claimCount"] = 0,
-                    ["conflictCount"] = 0,
-                    ["totalClaimCount"] = totalClaimCount,
-                    ["totalConflictCount"] = totalConflictCount,
-                    ["responseTruncated"] = true,
-                    ["error"] = "response_limit_exceeded",
-                    ["claims"] = new JArray(),
-                    ["conflicts"] = new JArray()
-                };
-            }
-            return response;
-        }
 
-        private static bool FitsTopicContractResponse(
-            JArray claims,
-            JArray conflicts,
+        private static JObject CreateTopicContractErrorResponse(
             int totalClaimCount,
             int totalConflictCount)
-        {
-            var response = new JObject
+            => new JObject
             {
                 ["contractVersion"] = 1,
-                ["claimCount"] = claims.Count,
-                ["conflictCount"] = conflicts.Count,
+                ["claimCount"] = 0,
+                ["conflictCount"] = 0,
                 ["totalClaimCount"] = totalClaimCount,
                 ["totalConflictCount"] = totalConflictCount,
-                ["responseTruncated"] = false,
-                ["claims"] = claims,
-                ["conflicts"] = conflicts
+                ["responseTruncated"] = true,
+                ["error"] = "response_limit_exceeded",
+                ["claims"] = new JArray(),
+                ["conflicts"] = new JArray()
             };
-            return Encoding.UTF8.GetByteCount(response.ToString(Newtonsoft.Json.Formatting.None))
-                   <= ComponentPublisherContractCatalogLimits.MaxResponseBytes;
-        }
 
         internal void ClearTopicContractLedger()
             => _topicContractLedger.Clear();

@@ -88,7 +88,29 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
-        public void TopicContractDiagnosticsRejectsOversizedResponses()
+        public void TopicContractDiagnosticsTruncatesByResponseBytes()
+        {
+            var manager = new FoxgloveManager();
+            for (var index = 0; index < FoxgloveManager.TopicContractMaxResults; index++)
+            {
+                manager.RecordTopicContract(
+                    "/sensors/camera/front/compressed-" + index,
+                    new string('s', 100),
+                    "msgpack",
+                    "component",
+                    new string('h', 100));
+            }
+
+            var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+
+            Assert.True((bool)response["responseTruncated"]);
+            Assert.InRange((int)response["claimCount"], 1, FoxgloveManager.TopicContractMaxResults - 1);
+            Assert.Null(response["error"]);
+            Assert.Equal(FoxgloveManager.TopicContractMaxResults, (int)response["totalClaimCount"]);
+        }
+
+        [Fact]
+        public void TopicContractDiagnosticsSkipsOversizedEntryAndReturnsRemainingResults()
         {
             var manager = new FoxgloveManager();
             manager.RecordTopicContract(
@@ -96,12 +118,15 @@ namespace Unity.FoxgloveSDK.Tests.Manager
                 new string('x', ComponentPublisherContractCatalogLimits.MaxResponseBytes),
                 "json",
                 "component");
+            manager.RecordTopicContract("/small", "schema", "json", "component");
 
             var response = (JObject)manager.HandleTopicContractRequest(new JObject());
 
-            Assert.Equal("response_limit_exceeded", (string)response["error"]);
             Assert.True((bool)response["responseTruncated"]);
-            Assert.Empty((JArray)response["claims"]);
+            Assert.Null(response["error"]);
+            Assert.Equal(1, (int)response["claimCount"]);
+            Assert.Equal(2, (int)response["totalClaimCount"]);
+            Assert.Equal("/small", (string)((JArray)response["claims"])[0]["topic"]);
         }
 
         [Fact]
