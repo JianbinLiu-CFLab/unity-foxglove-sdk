@@ -83,10 +83,7 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             var response = (JObject)manager.HandleTopicContractRequest(new JObject());
 
             Assert.True((bool)response["responseTruncated"]);
-            Assert.InRange(
-                (int)response["claimCount"],
-                1,
-                FoxgloveManager.TopicContractMaxResults);
+            Assert.Equal(FoxgloveManager.TopicContractMaxResults, (int)response["claimCount"]);
             Assert.Equal(FoxgloveManager.TopicContractMaxResults + 1, (int)response["totalClaimCount"]);
         }
 

@@ -160,8 +160,11 @@ namespace Unity.FoxgloveSDK.Components
         {
             var requestedTopic = (request as JObject)?.Value<string>("topic");
             var claims = new JArray();
+            var conflicts = new JArray();
             var totalClaimCount = 0;
+            var totalConflictCount = 0;
             var responseTruncated = false;
+            var responseItemTooLarge = false;
             foreach (var claim in _topicContractLedger.Claims.Values)
             {
                 if (!string.IsNullOrEmpty(requestedTopic)
@@ -173,11 +176,16 @@ namespace Unity.FoxgloveSDK.Components
                     responseTruncated = true;
                     continue;
                 }
-                claims.Add(ToTopicContractJson(claim));
+                var projection = ToTopicContractJson(claim);
+                claims.Add(projection);
+                if (!FitsTopicContractResponse(claims, conflicts, totalClaimCount, 0))
+                {
+                    claims.RemoveAt(claims.Count - 1);
+                    responseTruncated = true;
+                    responseItemTooLarge |= claims.Count == 0 && conflicts.Count == 0;
+                }
             }
 
-            var conflicts = new JArray();
-            var totalConflictCount = 0;
             foreach (var conflict in _topicContractLedger.Conflicts)
             {
                 if (!string.IsNullOrEmpty(requestedTopic)
@@ -194,6 +202,12 @@ namespace Unity.FoxgloveSDK.Components
                     ["existing"] = ToTopicContractJson(conflict.Existing),
                     ["incoming"] = ToTopicContractJson(conflict.Incoming)
                 });
+                if (!FitsTopicContractResponse(claims, conflicts, totalClaimCount, totalConflictCount))
+                {
+                    conflicts.RemoveAt(conflicts.Count - 1);
+                    responseTruncated = true;
+                    responseItemTooLarge |= claims.Count == 0 && conflicts.Count == 0;
+                }
             }
 
             var response = new JObject
@@ -207,8 +221,9 @@ namespace Unity.FoxgloveSDK.Components
                 ["claims"] = claims,
                 ["conflicts"] = conflicts
             };
-            if (Encoding.UTF8.GetByteCount(response.ToString(Newtonsoft.Json.Formatting.None))
-                > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
+            if (responseItemTooLarge
+                || Encoding.UTF8.GetByteCount(response.ToString(Newtonsoft.Json.Formatting.None))
+                    > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
             {
                 return new JObject
                 {
@@ -224,6 +239,27 @@ namespace Unity.FoxgloveSDK.Components
                 };
             }
             return response;
+        }
+
+        private static bool FitsTopicContractResponse(
+            JArray claims,
+            JArray conflicts,
+            int totalClaimCount,
+            int totalConflictCount)
+        {
+            var response = new JObject
+            {
+                ["contractVersion"] = 1,
+                ["claimCount"] = claims.Count,
+                ["conflictCount"] = conflicts.Count,
+                ["totalClaimCount"] = totalClaimCount,
+                ["totalConflictCount"] = totalConflictCount,
+                ["responseTruncated"] = false,
+                ["claims"] = claims,
+                ["conflicts"] = conflicts
+            };
+            return Encoding.UTF8.GetByteCount(response.ToString(Newtonsoft.Json.Formatting.None))
+                   <= ComponentPublisherContractCatalogLimits.MaxResponseBytes;
         }
 
         internal void ClearTopicContractLedger()

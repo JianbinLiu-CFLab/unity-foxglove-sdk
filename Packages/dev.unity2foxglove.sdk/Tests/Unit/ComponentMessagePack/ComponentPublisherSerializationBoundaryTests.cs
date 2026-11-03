@@ -60,8 +60,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("TopicContractServiceName", contracts);
             Assert.Contains("RegisterTopicContractService", contracts);
             Assert.Contains("RecordTopicContract", publishing);
-            Assert.Contains("key.schemaName", publishing);
-            Assert.Contains("key.shapeIdentity", publishing);
+            Assert.Contains(
+                "RecordTopicContract(\n                topic,\n                key.schemaName,",
+                publishing);
+            Assert.Contains("                key.shapeIdentity);", publishing);
             Assert.Contains("ComputeSchemaFingerprint(schema)", rawRecording);
             Assert.Contains("TopicContractScope.Recording", rawRecording);
             Assert.Contains("requestedTopic", contracts);
