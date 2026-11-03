@@ -63,6 +63,22 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
         }
 
         [Fact]
+        public void RecordingAndLiveContractsUseSeparateScopes()
+        {
+            var ledger = new TopicContractLedger();
+            ledger.Register(new TopicContract(
+                "/camera", "", "json", "FoxRun", TopicContractScope.Live));
+
+            var recording = ledger.Register(new TopicContract(
+                "/camera", "", "msgpack", "FoxRun", TopicContractScope.Recording));
+
+            Assert.False(recording.IsConflict);
+            Assert.False(recording.ShouldWarn);
+            Assert.Equal(2, ledger.ClaimCount);
+            Assert.Equal(0, ledger.ConflictCount);
+        }
+
+        [Fact]
         public void ConflictingPairIsCountedAndWarnedOnlyOnce()
         {
             var ledger = new TopicContractLedger();

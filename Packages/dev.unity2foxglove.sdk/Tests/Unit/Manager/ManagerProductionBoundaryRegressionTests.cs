@@ -7,9 +7,11 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Components.Publishing;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
@@ -23,6 +25,37 @@ namespace Unity.FoxgloveSDK.Tests.Manager
 {
     public sealed partial class ManagerProductionBoundaryRegressionTests
     {
+        [Fact]
+        public void TopicContractDiagnosticsWarnOnceFilterByTopicAndClearWithLifecycle()
+        {
+            Debug.Reset();
+            var manager = new FoxgloveManager();
+            manager.RecordTopicContract(
+                "/camera", "", "json", "FoxRun", TopicContractScope.Live);
+            manager.RecordTopicContract(
+                "/camera", "", "msgpack", "FoxRun", TopicContractScope.Recording);
+            manager.RecordTopicContract(
+                "/conflict", "schema.one", "json", "component", TopicContractScope.Live);
+            manager.RecordTopicContract(
+                "/conflict", "schema.two", "json", "component", TopicContractScope.Live);
+            manager.RecordTopicContract(
+                "/conflict", "schema.two", "json", "component", TopicContractScope.Live);
+            manager.RecordTopicContract(
+                "/other", "schema.other", "json", "component", TopicContractScope.Live);
+
+            Assert.Equal(1, Debug.WarningCount);
+            var filtered = (JObject)manager.HandleTopicContractRequest(
+                new JObject { ["topic"] = "/conflict" });
+            Assert.Single((JArray)filtered["claims"]);
+            Assert.Single((JArray)filtered["conflicts"]);
+            Assert.Equal(1, (int)filtered["conflictCount"]);
+
+            manager.ClearTopicContractLedger();
+            var cleared = (JObject)manager.HandleTopicContractRequest(new JObject());
+            Assert.Equal(0, (int)cleared["claimCount"]);
+            Assert.Equal(0, (int)cleared["conflictCount"]);
+        }
+
         [Fact]
         public void ManagerCaptureResolvesPublisherWhenManagerLifecycleRunsFirst()
         {

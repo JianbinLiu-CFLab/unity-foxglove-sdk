@@ -18,40 +18,60 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public int Count => _claims.Count;
     }
 
-    public readonly struct TopicContract : IEquatable<TopicContract>
+    internal enum TopicContractScope
+    {
+        Live,
+        Recording
+    }
+
+    internal readonly struct TopicContract : IEquatable<TopicContract>
     {
         public TopicContract(string topic, string schemaName, string encoding, string ownerKind)
+            : this(topic, schemaName, encoding, ownerKind, TopicContractScope.Live)
+        {
+        }
+
+        public TopicContract(
+            string topic,
+            string schemaName,
+            string encoding,
+            string ownerKind,
+            TopicContractScope scope)
         {
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
             Encoding = encoding ?? string.Empty;
             OwnerKind = ownerKind ?? string.Empty;
+            Scope = scope;
         }
 
         public string Topic { get; }
         public string SchemaName { get; }
         public string Encoding { get; }
         public string OwnerKind { get; }
+        public TopicContractScope Scope { get; }
 
         public bool Equals(TopicContract other)
             => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
                && string.Equals(SchemaName, other.SchemaName, StringComparison.Ordinal)
                && string.Equals(Encoding, other.Encoding, StringComparison.Ordinal)
-               && string.Equals(OwnerKind, other.OwnerKind, StringComparison.Ordinal);
+               && string.Equals(OwnerKind, other.OwnerKind, StringComparison.Ordinal)
+               && Scope == other.Scope;
 
         public bool HasSameWireContract(TopicContract other)
             => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
                && string.Equals(SchemaName, other.SchemaName, StringComparison.Ordinal)
-               && string.Equals(Encoding, other.Encoding, StringComparison.Ordinal);
+               && string.Equals(Encoding, other.Encoding, StringComparison.Ordinal)
+               && Scope == other.Scope;
 
         public override bool Equals(object obj)
             => obj is TopicContract other && Equals(other);
 
         public override int GetHashCode()
-            => HashCode.Combine(Topic, SchemaName, Encoding, OwnerKind);
+            => HashCode.Combine(Topic, SchemaName, Encoding, OwnerKind, Scope);
     }
 
-    public readonly struct TopicContractConflict
+    internal readonly struct TopicContractConflict
     {
         public TopicContractConflict(TopicContract existing, TopicContract incoming)
         {
@@ -63,7 +83,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public TopicContract Incoming { get; }
     }
 
-    public readonly struct TopicContractRegistration
+    internal readonly struct TopicContractRegistration
     {
         public TopicContractRegistration(
             TopicContract incoming,
@@ -86,7 +106,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public bool ShouldWarn { get; }
     }
 
-    public sealed class TopicContractLedger
+    internal sealed class TopicContractLedger
     {
         private const char KeySeparator = '\u001f';
         private readonly Dictionary<string, TopicContract> _claims =
@@ -103,9 +123,10 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
 
         public TopicContractRegistration Register(TopicContract incoming)
         {
-            if (!_claims.TryGetValue(incoming.Topic, out var existing))
+            var claimKey = BuildClaimKey(incoming);
+            if (!_claims.TryGetValue(claimKey, out var existing))
             {
-                _claims.Add(incoming.Topic, incoming);
+                _claims.Add(claimKey, incoming);
                 return new TopicContractRegistration(incoming, default, true, false, false);
             }
 
@@ -126,9 +147,16 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
             _conflicts.Clear();
         }
 
+        private static string BuildClaimKey(TopicContract contract)
+            => string.Join(
+                KeySeparator.ToString(),
+                contract.Scope.ToString(),
+                contract.Topic);
+
         private static string BuildConflictKey(TopicContract existing, TopicContract incoming)
             => string.Join(
                 KeySeparator.ToString(),
+                existing.Scope.ToString(),
                 existing.Topic,
                 existing.SchemaName,
                 existing.Encoding,

@@ -39,6 +39,24 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
         }
     }
 
+    public sealed class TopicContractRegistrationScopeTests
+    {
+        [Fact]
+        public void KnownNonManagerRegistrationExitsRemainExplicitGaps()
+        {
+            var bridge = TestSources.Text(
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeMcapCodecs.cs");
+            var replay = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var mirror = TestSources.Text(
+                "Packages/dev.unity2foxglove.remotegateway.win64/Runtime/RemoteGatewayMirrorSink.cs");
+
+            Assert.Contains("RegisterSchemaChannel", bridge);
+            Assert.Contains("RegisterChannel", replay);
+            Assert.Contains("RegisterChannel", mirror);
+        }
+    }
+
     public sealed class TopicContractManagerIntegrationTests
     {
         [Fact]
@@ -60,12 +78,23 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("TopicContractServiceName", contracts);
             Assert.Contains("RegisterTopicContractService", contracts);
             Assert.Contains("RecordTopicContract", publishing);
-            Assert.Contains("RecordTopicContract(topic, schemaName, messageEncoding, \"FoxRun\")", rawRecording);
+            Assert.Contains("RecordTopicContract(topic, schemaName, messageEncoding, \"FoxRun\", TopicContractScope.Recording)", rawRecording);
+            Assert.Contains("requestedTopic", contracts);
+            Assert.Contains("ClearTopicContractLedger();", server);
+            Assert.Contains("if (!_foxRunRawRecordingChannelCache.TryGet(descriptor, out channelId))", rawRecording);
+            var cacheHitIndex = publishing.IndexOf(
+                "if (_channelCache.TryGetValue(key, out var id))",
+                StringComparison.Ordinal);
+            var cacheRecordIndex = publishing.IndexOf(
+                "RecordTopicContract(topic",
+                cacheHitIndex,
+                StringComparison.Ordinal);
+            Assert.True(cacheHitIndex >= 0 && cacheRecordIndex > cacheHitIndex);
             Assert.Contains("PublishProtoFromVirtualImu", imu);
             Assert.Contains("PublishProtoFromFoxRun", foxRun);
             Assert.Contains("RegisterTopicContractService();", server);
             Assert.Contains("UnregisterTopicContractService", server);
-            Assert.Contains("_topicContractLedger.Clear();", server);
+            Assert.Contains("ClearTopicContractLedger();", server);
         }
     }
 }

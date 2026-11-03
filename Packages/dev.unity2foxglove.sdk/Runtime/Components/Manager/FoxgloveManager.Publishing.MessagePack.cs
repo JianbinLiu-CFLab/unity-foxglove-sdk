@@ -81,7 +81,7 @@ namespace Unity.FoxgloveSDK.Components
                 channelId = _foxRunRawRecordingChannelCache.GetOrAdd(
                     descriptor,
                     () => (uint)_connectionState.NextChannelId++);
-                RecordTopicContract(topic, schemaName, messageEncoding, "FoxRun");
+                RecordTopicContract(topic, schemaName, messageEncoding, "FoxRun", TopicContractScope.Recording);
             }
 
             _runtime.RegisterRecordingOnlyChannel(
