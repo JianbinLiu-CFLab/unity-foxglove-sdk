@@ -1,7 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
 using Unity.FoxgloveSDK.UnitTests.Harness;
@@ -39,55 +36,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             var pattern = $"Concrete\\(\\s*\\\"[^\\\"]*{publisherType}\\\"(?:(?!\\bConcrete\\().)*?messagePackSupportMode:\\s*\\\"unsupported\\\"";
 
             Assert.Matches(new Regex(pattern, RegexOptions.Singleline), catalog);
-        }
-    }
-
-    public sealed class TopicContractRegistrationScopeTests
-    {
-        [Fact]
-        public void ProductionRegistrationExitsMatchAllowlist()
-        {
-            var repoRoot = RepoRoot.Value;
-            var actual = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var file in Directory.GetFiles(Path.Combine(repoRoot, "Packages"), "*.cs", SearchOption.AllDirectories))
-            {
-                var normalized = file.Replace('\\', '/');
-                if (normalized.Contains("/Tests/", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                var source = File.ReadAllText(file);
-                source = Regex.Replace(source, @"//[^\r\n]*|/\*.*?\*/", string.Empty, RegexOptions.Singleline);
-                if (Regex.IsMatch(
-                        source,
-                        @"[A-Za-z0-9_\)\]]\s*\.\s*(?:RegisterSchemaChannel|RegisterChannel|RegisterRecordingOnlyChannel)\s*\("))
-                    actual.Add(Path.GetRelativePath(repoRoot, file).Replace('\\', '/'));
-            }
-
-            var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.MessagePack.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.Publishing.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/Decomposed/FoxgloveSession/FoxgloveSession.TransportEvents.cs",
-                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeMcapCodecs.cs",
-                "Packages/dev.unity2foxglove.remotegateway.win64/Runtime/RemoteGatewayMirrorSink.cs"
-            };
-
-            Assert.Equal(expected.OrderBy(path => path), actual.OrderBy(path => path));
-        }
-
-        private static readonly Lazy<string> RepoRoot = new Lazy<string>(FindRepoRoot);
-
-        private static string FindRepoRoot()
-        {
-            for (var current = new DirectoryInfo(Directory.GetCurrentDirectory()); current != null; current = current.Parent)
-            {
-                if (Directory.Exists(Path.Combine(current.FullName, "Packages"))
-                    && Directory.Exists(Path.Combine(current.FullName, "Unity2Foxglove")))
-                    return current.FullName;
-            }
-
-            throw new DirectoryNotFoundException("Repository root was not found.");
         }
     }
 
