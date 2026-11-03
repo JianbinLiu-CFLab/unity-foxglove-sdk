@@ -32,6 +32,26 @@ public sealed partial class RuntimeReviewFindingTests
         }
 
         [Fact]
+        public void CameraReadbackCallbacksCheckDestroyedBeforeUnityObjectState()
+        {
+            foreach (var relativePath in new[]
+                     {
+                         "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs",
+                         "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCompressedVideoCameraPublisher.cs"
+                     })
+            {
+                var publisher = Text(relativePath);
+                var callback = publisher.IndexOf("private void OnReadbackComplete(", StringComparison.Ordinal);
+                Assert.True(callback >= 0, relativePath);
+                var destroyed = publisher.IndexOf("_destroyed", callback, StringComparison.Ordinal);
+                var active = publisher.IndexOf("isActiveAndEnabled", callback, StringComparison.Ordinal);
+
+                Assert.True(destroyed > callback && destroyed < active, relativePath);
+                Assert.Matches(@"^\s*\|\|", publisher.Substring(destroyed + "_destroyed".Length));
+            }
+        }
+
+        [Fact]
         public void SensorGenerationAndConfigurationContractsRemainBoundToRuntimeState()
         {
             var managerClock = Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveSharedSensorClock.cs");

@@ -76,6 +76,36 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
         }
 
         [Fact]
+        public void MessagePackClientAdvertiseIsAcceptedWhenEncodingIsEnabled()
+        {
+            var transport = new ClientPublishTransport();
+            var received = new List<string>();
+            using var session = new FoxgloveSession("session-client-msgpack", transport);
+            session.EnableMessageEncoding("msgpack");
+            session.OnClientMessageWithEncoding += (_, _, _, encoding, _) => received.Add(encoding);
+            transport.Connect(11);
+            var serverInfo = JObject.Parse(transport.SentTexts[0]);
+            Assert.Contains("msgpack", serverInfo["supportedEncodings"]!.Values<string>());
+
+            transport.ReceiveText(11,
+                "{\"op\":\"advertise\",\"channels\":[{\"id\":1,\"topic\":\"/phase185/messagepack/full-duplex\",\"encoding\":\"msgpack\"}]}");
+            transport.ReceiveBinary(11, ClientMessageFrame(1, "msgpack-payload"));
+
+            Assert.Equal(new[] { "msgpack" }, received);
+        }
+
+        [Fact]
+        public void ManagerEnablesMessagePackClientEncodingBeforeRuntimeStarts()
+        {
+            var server = Unity.FoxgloveSDK.UnitTests.Harness.TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var enable = server.IndexOf("_runtime.EnableMessageEncoding(MsgPackEncoding);", StringComparison.Ordinal);
+            var start = server.IndexOf("_runtime.StartWithSessionSetup(", StringComparison.Ordinal);
+
+            Assert.True(enable >= 0 && enable < start);
+        }
+
+        [Fact]
         public void EncodingConfigurationFreezesNewValuesWhenSessionStarts()
         {
             var transport = new ClientPublishTransport();

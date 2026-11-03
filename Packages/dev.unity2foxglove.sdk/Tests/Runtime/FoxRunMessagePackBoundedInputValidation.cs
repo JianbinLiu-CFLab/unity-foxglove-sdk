@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "[\"subscribeTransportId\"] = NullableTypeSchema(\"string\")",
                     "[\"typeShape\"] = NullableTypeSchema(\"object\")",
                     "[\"normalizedSchedule\"] = NullableTypeSchema(\"object\")",
-                    "[\"oneOf\"] = new JArray(",
+                    "[\"anyOf\"] = new JArray(",
                     "TypeSchema(\"null\")"),
                 "185C-6: subscription catalog schema declares null unions for every optional response value");
 

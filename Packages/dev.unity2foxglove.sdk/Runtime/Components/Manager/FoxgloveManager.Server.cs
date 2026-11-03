@@ -63,6 +63,7 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas(_runtime.Schemas);
+                _runtime.EnableMessageEncoding(MsgPackEncoding);
                 RegisterAssetRoots();
                 SetupPlaybackControl();
                 if (!SetupRecording())
@@ -301,7 +302,7 @@ namespace Unity.FoxgloveSDK.Components
                         _channelCache.Clear();
                         _foxRunRecordingChannelCache.Clear();
                         _foxRunRawRecordingChannelCache.Clear();
-                        _topicContractLedger.Clear();
+                        ClearTopicContractLedger();
                     },
                     ClearClientEvents,
                     () => _connectionState.ResetChannelIds(FirstAutoChannelId),

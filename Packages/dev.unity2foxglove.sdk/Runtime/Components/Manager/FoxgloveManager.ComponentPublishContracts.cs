@@ -39,10 +39,11 @@ namespace Unity.FoxgloveSDK.Components
             string topic,
             string schemaName,
             string encoding,
-            string ownerKind)
+            string ownerKind,
+            TopicContractScope scope = TopicContractScope.Live)
         {
             var result = _topicContractLedger.Register(
-                new TopicContract(topic, schemaName, encoding, ownerKind));
+                new TopicContract(topic, schemaName, encoding, ownerKind, scope));
             if (!result.ShouldWarn)
                 return;
 
@@ -58,7 +59,8 @@ namespace Unity.FoxgloveSDK.Components
         private static string DescribeTopicContract(TopicContract contract)
             => "schema=" + BoundTopicContractValue(contract.SchemaName)
                + ", encoding=" + BoundTopicContractValue(contract.Encoding)
-               + ", owner=" + BoundTopicContractValue(contract.OwnerKind);
+               + ", owner=" + BoundTopicContractValue(contract.OwnerKind)
+               + ", scope=" + contract.Scope;
 
         private static string BoundTopicContractValue(string value)
         {
@@ -105,7 +107,7 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private JToken HandleTopicContractRequest(JToken request)
+        internal JToken HandleTopicContractRequest(JToken request)
         {
             var requestedTopic = (request as JObject)?.Value<string>("topic");
             var claims = new JArray();
@@ -140,13 +142,17 @@ namespace Unity.FoxgloveSDK.Components
             };
         }
 
+        internal void ClearTopicContractLedger()
+            => _topicContractLedger.Clear();
+
         private static JObject ToTopicContractJson(TopicContract contract)
             => new JObject
             {
                 ["topic"] = contract.Topic,
                 ["schemaName"] = contract.SchemaName,
                 ["encoding"] = contract.Encoding,
-                ["ownerKind"] = contract.OwnerKind
+                ["ownerKind"] = contract.OwnerKind,
+                ["scope"] = contract.Scope.ToString()
             };
 
         internal bool TryGetActiveComponentPublisherSessionEntry(

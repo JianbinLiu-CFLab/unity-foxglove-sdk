@@ -1,7 +1,7 @@
-using Unity.FoxgloveSDK.UnitTests.Harness;
-using System.Text.RegularExpressions;
 using System;
+using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
 {
@@ -60,12 +60,23 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("TopicContractServiceName", contracts);
             Assert.Contains("RegisterTopicContractService", contracts);
             Assert.Contains("RecordTopicContract", publishing);
-            Assert.Contains("RecordTopicContract(topic, schemaName, messageEncoding, \"FoxRun\")", rawRecording);
+            Assert.Contains("RecordTopicContract(topic, schemaName, messageEncoding, \"FoxRun\", TopicContractScope.Recording)", rawRecording);
+            Assert.Contains("requestedTopic", contracts);
+            Assert.Contains("ClearTopicContractLedger();", server);
+            Assert.Contains("if (!_foxRunRawRecordingChannelCache.TryGet(descriptor, out channelId))", rawRecording);
+            var cacheHitIndex = publishing.IndexOf(
+                "if (_channelCache.TryGetValue(key, out var id))",
+                StringComparison.Ordinal);
+            var cacheRecordIndex = publishing.IndexOf(
+                "RecordTopicContract(topic",
+                cacheHitIndex,
+                StringComparison.Ordinal);
+            Assert.True(cacheHitIndex >= 0 && cacheRecordIndex > cacheHitIndex);
             Assert.Contains("PublishProtoFromVirtualImu", imu);
             Assert.Contains("PublishProtoFromFoxRun", foxRun);
             Assert.Contains("RegisterTopicContractService();", server);
             Assert.Contains("UnregisterTopicContractService", server);
-            Assert.Contains("_topicContractLedger.Clear();", server);
+            Assert.Contains("ClearTopicContractLedger();", server);
         }
     }
 }

@@ -22,9 +22,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
     {
         private static bool AllowsNull(JToken schema)
         {
-            var oneOf = schema?["oneOf"] as JArray;
-            return oneOf != null
-                   && oneOf.Any(option =>
+            var anyOf = schema?["anyOf"] as JArray;
+            return schema?["oneOf"] == null
+                   && anyOf != null
+                   && anyOf.Count(option => !string.Equals(
+                       option?["type"]?.Value<string>(),
+                       "null",
+                       StringComparison.Ordinal)) == 1
+                   && anyOf.Any(option =>
                        string.Equals(
                            option?["type"]?.Value<string>(),
                            "null",

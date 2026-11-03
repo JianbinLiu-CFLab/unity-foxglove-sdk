@@ -43,7 +43,7 @@ namespace Unity.FoxgloveSDK.Editor
                     supportsJson: true,
                     supportsProtobuf: true,
                     "Camera calibration publisher for Unity Camera intrinsics.",
-                     messagePackSupportMode: "unsupported"),
+                    messagePackSupportMode: "unsupported"),
                 Concrete(
                     "Unity.FoxgloveSDK.Components.FoxgloveLaserScanPublisher",
                     "dedicatedPublisher",
@@ -52,7 +52,7 @@ namespace Unity.FoxgloveSDK.Editor
                     supportsJson: true,
                     supportsProtobuf: true,
                     "Laser scan publisher.",
-                     messagePackSupportMode: "unsupported"),
+                    messagePackSupportMode: "unsupported"),
                 Concrete(
                     "Unity.FoxgloveSDK.Components.FoxglovePointCloudPublisher",
                     "dedicatedPublisher",
@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Editor
                     supportsJson: false,
                     supportsProtobuf: true,
                     "Legacy standalone compressed video publisher.",
-                     messagePackSupportMode: "unsupported"),
+                    messagePackSupportMode: "unsupported"),
                 Concrete(
                     "Unity.FoxgloveSDK.Components.FoxgloveCompressedPointCloudPublisher",
                     "dedicatedPublisher",

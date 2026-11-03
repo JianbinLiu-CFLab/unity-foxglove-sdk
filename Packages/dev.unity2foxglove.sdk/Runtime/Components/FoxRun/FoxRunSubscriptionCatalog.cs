@@ -507,7 +507,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             return new JObject
             {
-                ["oneOf"] = new JArray(
+                ["anyOf"] = new JArray(
                     TypeSchema(type),
                     TypeSchema("null"))
             };
@@ -517,7 +517,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             return new JObject
             {
-                ["oneOf"] = new JArray(
+                ["anyOf"] = new JArray(
                     new JObject
                     {
                         ["type"] = "array",
