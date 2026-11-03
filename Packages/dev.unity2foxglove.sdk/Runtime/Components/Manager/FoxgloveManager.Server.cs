@@ -63,6 +63,7 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas(_runtime.Schemas);
+                _runtime.EnableMessageEncoding(MsgPackEncoding);
                 RegisterAssetRoots();
                 SetupPlaybackControl();
                 if (!SetupRecording())
