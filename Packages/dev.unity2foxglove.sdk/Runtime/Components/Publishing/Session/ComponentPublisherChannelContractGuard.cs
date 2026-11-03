@@ -18,13 +18,13 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public int Count => _claims.Count;
     }
 
-    internal enum TopicContractScope
+    public enum TopicContractScope
     {
         Live,
         Recording
     }
 
-    internal readonly struct TopicContract : IEquatable<TopicContract>
+    public readonly struct TopicContract : IEquatable<TopicContract>
     {
         public TopicContract(string topic, string schemaName, string encoding, string ownerKind)
             : this(topic, schemaName, encoding, ownerKind, string.Empty, string.Empty, string.Empty, TopicContractScope.Live)
@@ -115,7 +115,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
                 Scope);
     }
 
-    internal readonly struct TopicContractConflict
+    public readonly struct TopicContractConflict
     {
         public TopicContractConflict(TopicContract existing, TopicContract incoming)
         {
@@ -127,7 +127,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public TopicContract Incoming { get; }
     }
 
-    internal readonly struct TopicContractRegistration
+    public readonly struct TopicContractRegistration
     {
         public TopicContractRegistration(
             TopicContract incoming,
@@ -150,7 +150,7 @@ namespace Unity.FoxgloveSDK.Components.Publishing.Session
         public bool ShouldWarn { get; }
     }
 
-    internal sealed class TopicContractLedger
+    public sealed class TopicContractLedger
     {
         private const char KeySeparator = '\u001f';
         private readonly Dictionary<string, TopicContract> _claims =

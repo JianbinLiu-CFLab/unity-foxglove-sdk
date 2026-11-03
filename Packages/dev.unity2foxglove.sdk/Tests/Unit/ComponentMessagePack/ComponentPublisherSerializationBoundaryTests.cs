@@ -52,6 +52,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             var rawRecording = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.MessagePack.cs");
+            var guard = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/Session/ComponentPublisherChannelContractGuard.cs");
             var imu = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var foxRun = TestSources.Text(
@@ -61,6 +63,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("RegisterTopicContractService", contracts);
             Assert.Contains("TopicContractItemSchema", contracts);
             Assert.Contains("\\\"scope\\\":{\\\"type\\\":\\\"string\\\",\\\"enum\\\":[\\\"Live\\\",\\\"Recording\\\"]}", contracts);
+            Assert.Contains("public enum TopicContractScope", guard);
+            Assert.Contains("public readonly struct TopicContract", guard);
+            Assert.Contains("public readonly struct TopicContractConflict", guard);
+            Assert.Contains("public readonly struct TopicContractRegistration", guard);
+            Assert.Contains("public sealed class TopicContractLedger", guard);
             Assert.Contains("RecordTopicContract", publishing);
             Assert.Contains(
                 "RecordTopicContract(\n                topic,\n                key.schemaName,",

@@ -187,6 +187,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void StopServerEarlyCleanupIncludesTopicContractLedgerClear()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var method = TestSources.ExtractMethod(
+                source,
+                "private void StopServer(bool restoreLivePublishers)");
+            var earlyPath = method.IndexOf("if (!IsRunning)", StringComparison.Ordinal);
+            var clear = method.IndexOf("ClearTopicContractLedger);", earlyPath, StringComparison.Ordinal);
+
+            Assert.True(earlyPath >= 0);
+            Assert.True(clear > earlyPath);
+        }
+
+        [Fact]
         public void RuntimeDisposeRetryReportsTransientFailureAndReleasesReference()
         {
             var attempts = 0;

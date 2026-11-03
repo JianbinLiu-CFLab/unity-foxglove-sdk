@@ -92,7 +92,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && update.Contains("else if (webSocketPublished < webSocketBudget)", StringComparison.Ordinal),
                 "140H2-3B: older WebSocket visualization samples are skipped before latest samples publish");
             Check(MethodContains(virtualImu, "private void PublishWebSocketSample", "ImuMessageBuilder.Serialize")
-                  && MethodContains(virtualImu, "private void PublishWebSocketSample", "_manager.PublishProto(_topic, ImuSchema.SchemaName, bytes, sample.TimestampNs);"),
+                  && MethodContains(virtualImu, "private void PublishWebSocketSample", "_manager.PublishProtoFromVirtualImu(_topic, ImuSchema.SchemaName, bytes, sample.TimestampNs);"),
                 "140H2-3C: WebSocket serialization/publish is isolated in a helper");
         }
 
