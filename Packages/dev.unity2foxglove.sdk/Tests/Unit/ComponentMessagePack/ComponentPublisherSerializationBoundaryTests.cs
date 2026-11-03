@@ -63,11 +63,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("RegisterTopicContractService", contracts);
             Assert.Contains("TopicContractItemSchema", contracts);
             Assert.Contains("\\\"scope\\\":{\\\"type\\\":\\\"string\\\",\\\"enum\\\":[\\\"Live\\\",\\\"Recording\\\"]}", contracts);
-            Assert.Contains("public enum TopicContractScope", guard);
-            Assert.Contains("public readonly struct TopicContract", guard);
-            Assert.Contains("public readonly struct TopicContractConflict", guard);
-            Assert.Contains("public readonly struct TopicContractRegistration", guard);
-            Assert.Contains("public sealed class TopicContractLedger", guard);
+            Assert.Contains("internal enum TopicContractScope", guard);
+            Assert.Contains("internal readonly struct TopicContract", guard);
+            Assert.Contains("internal readonly struct TopicContractConflict", guard);
+            Assert.Contains("internal readonly struct TopicContractRegistration", guard);
+            Assert.Contains("internal sealed class TopicContractLedger", guard);
             Assert.Contains("RecordTopicContract", publishing);
             Assert.Contains(
                 "RecordTopicContract(\n                topic,\n                key.schemaName,",
@@ -76,9 +76,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("ComputeSchemaFingerprint(schema)", rawRecording);
             Assert.Contains("TopicContractScope.Recording", rawRecording);
             Assert.Contains("requestedTopic", contracts);
-            Assert.Contains("ClearTopicContractSessionStateAndCaches();", server);
+            Assert.Contains("ClearPublishingSessionState();", server);
             Assert.Contains(
-                "ClearTopicContractSessionStateAndCaches, \"clear topic contract session state after failed startup\"",
+                "ClearPublishingSessionState, \"clear publishing session state after failed startup\"",
                 server);
             Assert.Contains("if (!_foxRunRawRecordingChannelCache.TryGet(descriptor, out channelId))", rawRecording);
             var cacheHitIndex = publishing.IndexOf(
@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("PublishProtoFromFoxRun", foxRun);
             Assert.Contains("RegisterTopicContractService();", server);
             Assert.Contains("UnregisterTopicContractService", server);
-            Assert.Contains("ClearTopicContractSessionStateAndCaches();", server);
+            Assert.Contains("ClearPublishingSessionState();", server);
         }
     }
 }
