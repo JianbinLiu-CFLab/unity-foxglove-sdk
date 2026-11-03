@@ -14,6 +14,7 @@ using Unity.FoxgloveSDK.Components.Publishing.Session;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
 using UnityEngine;
 
@@ -198,6 +199,27 @@ namespace Unity.FoxgloveSDK.Components
         private Action<uint, uint, string, string, byte[]> _clientMessageForwarder;
         private Action<uint> _clientConnectedForwarder;
         private Action<uint> _clientDisconnectedForwarder;
+        private const int FirstAutoChannelId = 1;
+        private const string MsgPackEncoding = "msgpack";
+        private string _serverName = "manager-boundary";
+        private string _host = "127.0.0.1";
+        private int _port = 8765;
+        private FoxgloveTransportMode _transportMode = FoxgloveTransportMode.WebSocket;
+        private bool _foxgloveOutputEnabled = true;
+        private string _certificatePfxPath = string.Empty;
+        private bool _rootCaDistributorEnabled;
+        private int _rootCaDistributorPort = 8766;
+        private bool _startServerAfterTransportCapture;
+        private readonly WarningDebounceState _warningDebounceState = new WarningDebounceState();
+        private readonly FoxgloveSharedSensorClock _sharedSensorClock = new FoxgloveSharedSensorClock();
+        private readonly Dictionary<(string topic, string schemaName, string encoding, string schemaEncoding), uint> _channelCache
+            = new Dictionary<(string, string, string, string), uint>();
+        private readonly Dictionary<(string topic, string schemaName), uint> _foxRunRecordingChannelCache
+            = new Dictionary<(string, string), uint>();
+        private readonly FoxRunRawRecordingChannelCache _foxRunRawRecordingChannelCache
+            = new FoxRunRawRecordingChannelCache();
+        private static readonly FoxRunRawRecordingChannelDescriptor BoundaryRawRecordingDescriptor
+            = new FoxRunRawRecordingChannelDescriptor("/stale", "json", "schema", string.Empty, string.Empty);
 
         public bool IsRunning { get; set; } = true;
         public ulong NowNs { get; set; } = 1UL;
@@ -355,6 +377,41 @@ namespace Unity.FoxgloveSDK.Components
         internal bool CursorRunningForTest => _replayCursorEndpoint?.IsRunning == true;
         internal void SetTimeForTest(double value) => Time.realtimeSinceStartupAsDouble = value;
 
+        internal Func<bool> BoundarySetupRecording { get; set; } = () => true;
+        internal BoundaryRuntime RuntimeForTest => _runtime;
+
+        internal void SeedChannelCachesForTest()
+        {
+            _channelCache[("/stale", "schema", "json", string.Empty)] = 1U;
+            _foxRunRecordingChannelCache[("/stale", "schema")] = 2U;
+            _foxRunRawRecordingChannelCache.GetOrAdd(BoundaryRawRecordingDescriptor, () => 3U);
+        }
+
+        internal int ChannelCacheCountForTest
+            => _channelCache.Count
+               + _foxRunRecordingChannelCache.Count
+               + (_foxRunRawRecordingChannelCache.TryGet(BoundaryRawRecordingDescriptor, out _) ? 1 : 0);
+
+        private bool BeginFoxRunTransportSessionIfNeeded() => true;
+        private void BeginFoxRunSubscriptionSessionIfNeeded() { }
+        private void EnsureRuntimeCreated() { }
+        private void RegisterAssetRoots() { }
+        private void SetupPlaybackControl() { }
+        private bool SetupRecording() => BoundarySetupRecording();
+        private bool SetupReplay() => true;
+        private void SetupAllowedOrigins() { }
+        private void StartCertificateDistributorIfNeeded() { }
+        private void StopCertificateDistributor() { }
+        private void RegisterFoxRunSubscriptionCatalogService() { }
+        private void UnregisterFoxRunSubscriptionCatalogService() { }
+        private bool PublishPendingRecordingSidecar() => true;
+        private void CleanupPendingRecordingSidecar() { }
+        private void ClearClientEvents() { }
+        private void FlushClientEventRetirementDrops() { }
+        private void RestoreLivePublishers() { }
+        private void RetireClientEventIngress() { }
+        private string ResolveSharedToken() => string.Empty;
+        private string ResolveCertificatePassword() => string.Empty;
         private string ResolveProjectPath(string path) => path;
         private string ResolveRemoteMcapFileServerToken() => string.Empty;
         private string ResolveReplayCursorBridgeToken() => _replayCursorBridgeToken;
@@ -444,6 +501,29 @@ namespace Unity.FoxgloveSDK.Components
         internal event Action<string, byte[]> OnReplayMessage;
         internal event Action<ReplayMessageContext> OnReplayMessageContext;
         internal event Action<ReplayBatchContext> OnReplayBatchCompleted;
+        internal ISchemaRegistry Schemas { get; } = new DefaultSchemaRegistry();
+        internal FoxgloveSession Session => null;
+        internal FoxgloveSession CleanupSession => null;
+        internal bool HasPendingSessionCleanup => false;
+        internal int StartCount { get; private set; }
+        internal Exception StopFailure { get; set; }
+        internal void EnableMessageEncoding(string encoding) { }
+
+        internal void StartWithSessionSetup(
+            string name,
+            string host,
+            int port,
+            Action<FoxgloveSession> beforeTransportStart)
+            => StartCount++;
+
+        internal void Stop()
+        {
+            if (StopFailure != null)
+                throw StopFailure;
+        }
+
+        internal void DisableReplay() { }
+        internal void DisableRecording() { }
         internal bool UnregisterServiceDuringCleanup(uint serviceId) => true;
         internal void SetExternalReplayCursorEnabled(bool enabled) { }
 
