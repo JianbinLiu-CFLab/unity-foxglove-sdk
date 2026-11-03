@@ -60,9 +60,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("TopicContractServiceName", contracts);
             Assert.Contains("RegisterTopicContractService", contracts);
             Assert.Contains("RecordTopicContract", publishing);
-            Assert.Contains("RecordTopicContract(topic, schemaName, messageEncoding, \"FoxRun\", TopicContractScope.Recording)", rawRecording);
+            Assert.Contains(
+                "RecordTopicContract(\n                topic,\n                key.schemaName,",
+                publishing);
+            Assert.Contains("                key.shapeIdentity);", publishing);
+            Assert.Contains("ComputeSchemaFingerprint(schema)", rawRecording);
+            Assert.Contains("TopicContractScope.Recording", rawRecording);
             Assert.Contains("requestedTopic", contracts);
             Assert.Contains("ClearTopicContractLedger();", server);
+            Assert.Contains("ClearTopicContractLedger);", server);
+            var stoppedPathIndex = server.IndexOf("if (!IsRunning)", StringComparison.Ordinal);
+            var stoppedPathClearIndex = server.IndexOf(
+                "ClearTopicContractLedger);",
+                stoppedPathIndex,
+                StringComparison.Ordinal);
+            Assert.True(stoppedPathIndex >= 0 && stoppedPathClearIndex > stoppedPathIndex);
             Assert.Contains("if (!_foxRunRawRecordingChannelCache.TryGet(descriptor, out channelId))", rawRecording);
             var cacheHitIndex = publishing.IndexOf(
                 "if (_channelCache.TryGetValue(key, out var id))",

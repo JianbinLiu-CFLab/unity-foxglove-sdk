@@ -57,6 +57,94 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void TopicContractDiagnosticsCountsFilteredResults()
+        {
+            var manager = new FoxgloveManager();
+            manager.RecordTopicContract("/first", "schema.one", "json", "component");
+            manager.RecordTopicContract("/second", "schema.two", "json", "component");
+            manager.RecordTopicContract("/second", "schema.three", "json", "component");
+
+            var filtered = (JObject)manager.HandleTopicContractRequest(
+                new JObject { ["topic"] = "/second" });
+
+            Assert.Equal(1, (int)filtered["claimCount"]);
+            Assert.Equal(1, (int)filtered["conflictCount"]);
+            Assert.Single((JArray)filtered["claims"]);
+            Assert.Single((JArray)filtered["conflicts"]);
+        }
+
+        [Fact]
+        public void TopicContractDiagnosticsReportsTotalsWhenResultsAreTruncated()
+        {
+            var manager = new FoxgloveManager();
+            for (var index = 0; index <= FoxgloveManager.TopicContractMaxResults; index++)
+                manager.RecordTopicContract("/topic-" + index, "schema", "json", "component");
+
+            var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+
+            Assert.True((bool)response["responseTruncated"]);
+            Assert.Equal(FoxgloveManager.TopicContractMaxResults, (int)response["claimCount"]);
+            Assert.Equal(FoxgloveManager.TopicContractMaxResults + 1, (int)response["totalClaimCount"]);
+        }
+
+        [Fact]
+        public void TopicContractDiagnosticsTruncatesByResponseBytes()
+        {
+            var manager = new FoxgloveManager();
+            for (var index = 0; index < FoxgloveManager.TopicContractMaxResults; index++)
+            {
+                manager.RecordTopicContract(
+                    "/sensors/camera/front/compressed-" + index,
+                    new string('s', 100),
+                    "msgpack",
+                    "component",
+                    new string('h', 100));
+            }
+
+            var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+
+            Assert.True((bool)response["responseTruncated"]);
+            Assert.InRange((int)response["claimCount"], 1, FoxgloveManager.TopicContractMaxResults - 1);
+            Assert.Null(response["error"]);
+            Assert.Equal(FoxgloveManager.TopicContractMaxResults, (int)response["totalClaimCount"]);
+        }
+
+        [Fact]
+        public void TopicContractDiagnosticsPreservesConflictsWhenClaimsUseTheBudget()
+        {
+            var manager = new FoxgloveManager();
+            for (var index = 0; index < FoxgloveManager.TopicContractMaxResults; index++)
+                manager.RecordTopicContract("/claim-" + index, new string('s', 100), "msgpack", "component");
+            manager.RecordTopicContract("/conflict", "schema.one", "json", "component");
+            manager.RecordTopicContract("/conflict", "schema.two", "json", "component");
+
+            var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+
+            Assert.True((int)response["conflictCount"] > 0);
+            Assert.True((int)response["totalConflictCount"] > 0);
+        }
+
+        [Fact]
+        public void TopicContractDiagnosticsSkipsOversizedEntryAndReturnsRemainingResults()
+        {
+            var manager = new FoxgloveManager();
+            manager.RecordTopicContract(
+                "/large",
+                new string('x', ComponentPublisherContractCatalogLimits.MaxResponseBytes),
+                "json",
+                "component");
+            manager.RecordTopicContract("/small", "schema", "json", "component");
+
+            var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+
+            Assert.True((bool)response["responseTruncated"]);
+            Assert.Null(response["error"]);
+            Assert.Equal(1, (int)response["claimCount"]);
+            Assert.Equal(2, (int)response["totalClaimCount"]);
+            Assert.Equal("/small", (string)((JArray)response["claims"])[0]["topic"]);
+        }
+
+        [Fact]
         public void ManagerCaptureResolvesPublisherWhenManagerLifecycleRunsFirst()
         {
             UnityEngine.Object.ResetRegistry();

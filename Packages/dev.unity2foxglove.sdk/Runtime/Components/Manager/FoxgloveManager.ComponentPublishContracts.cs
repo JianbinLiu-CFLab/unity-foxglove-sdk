@@ -1,6 +1,7 @@
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
 using Unity.FoxgloveSDK.Protocol;
@@ -13,10 +14,11 @@ namespace Unity.FoxgloveSDK.Components
         private uint _componentPublishContractsServiceId;
         private const string TopicContractServiceName = "/foxglove/topic-contracts";
         private const string TopicContractServiceType = "unity2foxglove.topic.TopicContracts";
+        internal const int TopicContractMaxResults = 256;
         private const string TopicContractRequestSchema =
             "{\"type\":\"object\",\"properties\":{\"topic\":{\"type\":\"string\"}}}";
         private const string TopicContractResponseSchema =
-            "{\"type\":\"object\",\"properties\":{\"contractVersion\":{\"type\":\"integer\"},\"claimCount\":{\"type\":\"integer\"},\"conflictCount\":{\"type\":\"integer\"},\"claims\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}},\"conflicts\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}}}";
+            "{\"type\":\"object\",\"properties\":{\"contractVersion\":{\"type\":\"integer\"},\"claimCount\":{\"type\":\"integer\"},\"conflictCount\":{\"type\":\"integer\"},\"totalClaimCount\":{\"type\":\"integer\"},\"totalConflictCount\":{\"type\":\"integer\"},\"responseTruncated\":{\"type\":\"boolean\"},\"error\":{\"type\":\"string\"},\"claims\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}},\"conflicts\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}}}";
         private uint _topicContractServiceId;
         private readonly TopicContractLedger _topicContractLedger = new TopicContractLedger();
 
@@ -41,9 +43,53 @@ namespace Unity.FoxgloveSDK.Components
             string encoding,
             string ownerKind,
             TopicContractScope scope = TopicContractScope.Live)
+            => RecordTopicContract(
+                topic,
+                schemaName,
+                encoding,
+                ownerKind,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                scope);
+
+        internal void RecordTopicContract(
+            string topic,
+            string schemaName,
+            string encoding,
+            string ownerKind,
+            string shapeIdentity,
+            TopicContractScope scope = TopicContractScope.Live)
+            => RecordTopicContract(
+                topic,
+                schemaName,
+                encoding,
+                ownerKind,
+                shapeIdentity,
+                string.Empty,
+                string.Empty,
+                scope);
+
+        internal void RecordTopicContract(
+            string topic,
+            string schemaName,
+            string encoding,
+            string ownerKind,
+            string shapeIdentity,
+            string schemaEncoding,
+            string schemaFingerprint,
+            TopicContractScope scope)
         {
             var result = _topicContractLedger.Register(
-                new TopicContract(topic, schemaName, encoding, ownerKind, scope));
+                new TopicContract(
+                    topic,
+                    schemaName,
+                    encoding,
+                    ownerKind,
+                    shapeIdentity,
+                    schemaEncoding,
+                    schemaFingerprint,
+                    scope));
             if (!result.ShouldWarn)
                 return;
 
@@ -60,6 +106,9 @@ namespace Unity.FoxgloveSDK.Components
             => "schema=" + BoundTopicContractValue(contract.SchemaName)
                + ", encoding=" + BoundTopicContractValue(contract.Encoding)
                + ", owner=" + BoundTopicContractValue(contract.OwnerKind)
+               + ", shape=" + BoundTopicContractValue(contract.ShapeIdentity)
+               + ", schemaEncoding=" + BoundTopicContractValue(contract.SchemaEncoding)
+               + ", schemaFingerprint=" + BoundTopicContractValue(contract.SchemaFingerprint)
                + ", scope=" + contract.Scope;
 
         private static string BoundTopicContractValue(string value)
@@ -107,40 +156,154 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Builds a bounded topic-contract response. Entries that exceed the
+        /// remaining byte budget are skipped so later entries can still fit.
+        /// </summary>
         internal JToken HandleTopicContractRequest(JToken request)
         {
             var requestedTopic = (request as JObject)?.Value<string>("topic");
             var claims = new JArray();
-            foreach (var claim in _topicContractLedger.Claims.Values)
-            {
-                if (!string.IsNullOrEmpty(requestedTopic)
-                    && !string.Equals(requestedTopic, claim.Topic, StringComparison.Ordinal))
-                    continue;
-                claims.Add(ToTopicContractJson(claim));
-            }
-
             var conflicts = new JArray();
+            var totalClaimCount = CountMatchingClaims(requestedTopic);
+            var totalConflictCount = CountMatchingConflicts(requestedTopic);
+            var responseTruncated = false;
+            var budget = CreateTopicContractResponse(
+                TopicContractMaxResults,
+                TopicContractMaxResults,
+                totalClaimCount,
+                totalConflictCount,
+                false,
+                new JArray(),
+                new JArray());
+            var responseBytes = Encoding.UTF8.GetByteCount(
+                budget.ToString(Newtonsoft.Json.Formatting.None));
+            var claimBytes = 0;
+            var conflictBytes = 0;
+
             foreach (var conflict in _topicContractLedger.Conflicts)
             {
                 if (!string.IsNullOrEmpty(requestedTopic)
                     && !string.Equals(requestedTopic, conflict.Existing.Topic, StringComparison.Ordinal))
                     continue;
-                conflicts.Add(new JObject
+                if (conflicts.Count >= TopicContractMaxResults)
+                {
+                    responseTruncated = true;
+                    continue;
+                }
+                var projection = new JObject
                 {
                     ["existing"] = ToTopicContractJson(conflict.Existing),
                     ["incoming"] = ToTopicContractJson(conflict.Incoming)
-                });
+                };
+                var itemBytes = Encoding.UTF8.GetByteCount(
+                    projection.ToString(Newtonsoft.Json.Formatting.None));
+                var delta = itemBytes + (conflicts.Count == 0 ? 0 : 1);
+                if (responseBytes + claimBytes + conflictBytes + delta > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
+                {
+                    responseTruncated = true;
+                    continue;
+                }
+                conflicts.Add(projection);
+                conflictBytes += delta;
             }
 
-            return new JObject
+            foreach (var claim in _topicContractLedger.Claims.Values)
+            {
+                if (!string.IsNullOrEmpty(requestedTopic)
+                    && !string.Equals(requestedTopic, claim.Topic, StringComparison.Ordinal))
+                    continue;
+                if (claims.Count >= TopicContractMaxResults)
+                {
+                    responseTruncated = true;
+                    continue;
+                }
+                var projection = ToTopicContractJson(claim);
+                var itemBytes = Encoding.UTF8.GetByteCount(
+                    projection.ToString(Newtonsoft.Json.Formatting.None));
+                var delta = itemBytes + (claims.Count == 0 ? 0 : 1);
+                if (responseBytes + claimBytes + conflictBytes + delta > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
+                {
+                    responseTruncated = true;
+                    continue;
+                }
+                claims.Add(projection);
+                claimBytes += delta;
+            }
+
+            var response = CreateTopicContractResponse(
+                claims.Count,
+                conflicts.Count,
+                totalClaimCount,
+                totalConflictCount,
+                responseTruncated,
+                claims,
+                conflicts);
+            if (Encoding.UTF8.GetByteCount(response.ToString(Newtonsoft.Json.Formatting.None))
+                > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
+                return CreateTopicContractErrorResponse(totalClaimCount, totalConflictCount);
+            return response;
+        }
+
+        private int CountMatchingClaims(string requestedTopic)
+        {
+            var count = 0;
+            foreach (var claim in _topicContractLedger.Claims.Values)
+            {
+                if (string.IsNullOrEmpty(requestedTopic)
+                    || string.Equals(requestedTopic, claim.Topic, StringComparison.Ordinal))
+                    count++;
+            }
+            return count;
+        }
+
+        private int CountMatchingConflicts(string requestedTopic)
+        {
+            var count = 0;
+            foreach (var conflict in _topicContractLedger.Conflicts)
+            {
+                if (string.IsNullOrEmpty(requestedTopic)
+                    || string.Equals(requestedTopic, conflict.Existing.Topic, StringComparison.Ordinal))
+                    count++;
+            }
+            return count;
+        }
+
+        private static JObject CreateTopicContractResponse(
+            int claimCount,
+            int conflictCount,
+            int totalClaimCount,
+            int totalConflictCount,
+            bool responseTruncated,
+            JArray claims,
+            JArray conflicts)
+            => new JObject
             {
                 ["contractVersion"] = 1,
-                ["claimCount"] = _topicContractLedger.ClaimCount,
-                ["conflictCount"] = _topicContractLedger.ConflictCount,
+                ["claimCount"] = claimCount,
+                ["conflictCount"] = conflictCount,
+                ["totalClaimCount"] = totalClaimCount,
+                ["totalConflictCount"] = totalConflictCount,
+                ["responseTruncated"] = responseTruncated,
                 ["claims"] = claims,
                 ["conflicts"] = conflicts
             };
-        }
+
+        private static JObject CreateTopicContractErrorResponse(
+            int totalClaimCount,
+            int totalConflictCount)
+            => new JObject
+            {
+                ["contractVersion"] = 1,
+                ["claimCount"] = 0,
+                ["conflictCount"] = 0,
+                ["totalClaimCount"] = totalClaimCount,
+                ["totalConflictCount"] = totalConflictCount,
+                ["responseTruncated"] = true,
+                ["error"] = "response_limit_exceeded",
+                ["claims"] = new JArray(),
+                ["conflicts"] = new JArray()
+            };
 
         internal void ClearTopicContractLedger()
             => _topicContractLedger.Clear();
@@ -152,6 +315,9 @@ namespace Unity.FoxgloveSDK.Components
                 ["schemaName"] = contract.SchemaName,
                 ["encoding"] = contract.Encoding,
                 ["ownerKind"] = contract.OwnerKind,
+                ["shapeIdentity"] = contract.ShapeIdentity,
+                ["schemaEncoding"] = contract.SchemaEncoding,
+                ["schemaFingerprint"] = contract.SchemaFingerprint,
                 ["scope"] = contract.Scope.ToString()
             };
 

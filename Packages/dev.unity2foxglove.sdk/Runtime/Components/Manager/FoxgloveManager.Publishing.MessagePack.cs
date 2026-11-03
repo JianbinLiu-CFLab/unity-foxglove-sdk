@@ -4,6 +4,9 @@
 // Module: Runtime/Components/Manager
 // Purpose: Generated FoxRun MessagePack live and recording-only publication.
 
+using System;
+using System.Security.Cryptography;
+using System.Text;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
 
 namespace Unity.FoxgloveSDK.Components
@@ -83,7 +86,15 @@ namespace Unity.FoxgloveSDK.Components
                 channelId = _foxRunRawRecordingChannelCache.GetOrAdd(
                     descriptor,
                     () => (uint)_connectionState.NextChannelId++);
-                RecordTopicContract(topic, schemaName, messageEncoding, "FoxRun", TopicContractScope.Recording);
+                RecordTopicContract(
+                    topic,
+                    schemaName,
+                    messageEncoding,
+                    "FoxRun",
+                    string.Empty,
+                    schemaEncoding,
+                    ComputeSchemaFingerprint(schema),
+                    TopicContractScope.Recording);
             }
 
             _runtime.RegisterRecordingOnlyChannel(
@@ -93,6 +104,20 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
             reason = "MCAP recorder or recording filter rejected the FoxRun channel.";
             return false;
+        }
+
+        private static string ComputeSchemaFingerprint(string schema)
+        {
+            if (string.IsNullOrEmpty(schema))
+                return string.Empty;
+
+            using (var sha = SHA256.Create())
+            {
+                return BitConverter.ToString(
+                        sha.ComputeHash(Encoding.UTF8.GetBytes(schema)))
+                    .Replace("-", string.Empty)
+                    .ToLowerInvariant();
+            }
         }
 
         /// <summary>Publish one generated immutable MessagePack payload to MCAP.</summary>
