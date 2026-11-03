@@ -62,6 +62,7 @@ def check_new_paths(
 
 
 def _git_paths(repository: Path, revision: str) -> set[str]:
+    """Return repository-relative paths recorded at a Git revision."""
     result = subprocess.run(
         ["git", "-C", str(repository), "ls-tree", "-r", "--name-only", revision],
         check=False,
@@ -75,6 +76,7 @@ def _git_paths(repository: Path, revision: str) -> set[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the maintained-path naming guard from the command line."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", type=Path, default=REPOSITORY_ROOT)
     parser.add_argument(
