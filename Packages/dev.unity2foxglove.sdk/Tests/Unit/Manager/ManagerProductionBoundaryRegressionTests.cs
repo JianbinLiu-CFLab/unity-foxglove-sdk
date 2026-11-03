@@ -110,6 +110,21 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void TopicContractDiagnosticsPreservesConflictsWhenClaimsUseTheBudget()
+        {
+            var manager = new FoxgloveManager();
+            for (var index = 0; index < FoxgloveManager.TopicContractMaxResults; index++)
+                manager.RecordTopicContract("/claim-" + index, new string('s', 100), "msgpack", "component");
+            manager.RecordTopicContract("/conflict", "schema.one", "json", "component");
+            manager.RecordTopicContract("/conflict", "schema.two", "json", "component");
+
+            var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+
+            Assert.True((int)response["conflictCount"] > 0);
+            Assert.True((int)response["totalConflictCount"] > 0);
+        }
+
+        [Fact]
         public void TopicContractDiagnosticsSkipsOversizedEntryAndReturnsRemainingResults()
         {
             var manager = new FoxgloveManager();

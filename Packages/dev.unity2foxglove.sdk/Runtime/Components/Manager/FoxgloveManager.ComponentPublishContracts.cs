@@ -156,6 +156,10 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Builds a bounded topic-contract response. Entries that exceed the
+        /// remaining byte budget are skipped so later entries can still fit.
+        /// </summary>
         internal JToken HandleTopicContractRequest(JToken request)
         {
             var requestedTopic = (request as JObject)?.Value<string>("topic");
@@ -176,29 +180,6 @@ namespace Unity.FoxgloveSDK.Components
                 budget.ToString(Newtonsoft.Json.Formatting.None));
             var claimBytes = 0;
             var conflictBytes = 0;
-
-            foreach (var claim in _topicContractLedger.Claims.Values)
-            {
-                if (!string.IsNullOrEmpty(requestedTopic)
-                    && !string.Equals(requestedTopic, claim.Topic, StringComparison.Ordinal))
-                    continue;
-                if (claims.Count >= TopicContractMaxResults)
-                {
-                    responseTruncated = true;
-                    continue;
-                }
-                var projection = ToTopicContractJson(claim);
-                var itemBytes = Encoding.UTF8.GetByteCount(
-                    projection.ToString(Newtonsoft.Json.Formatting.None));
-                var delta = itemBytes + (claims.Count == 0 ? 0 : 1);
-                if (responseBytes + claimBytes + conflictBytes + delta > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
-                {
-                    responseTruncated = true;
-                    continue;
-                }
-                claims.Add(projection);
-                claimBytes += delta;
-            }
 
             foreach (var conflict in _topicContractLedger.Conflicts)
             {
@@ -225,6 +206,29 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 conflicts.Add(projection);
                 conflictBytes += delta;
+            }
+
+            foreach (var claim in _topicContractLedger.Claims.Values)
+            {
+                if (!string.IsNullOrEmpty(requestedTopic)
+                    && !string.Equals(requestedTopic, claim.Topic, StringComparison.Ordinal))
+                    continue;
+                if (claims.Count >= TopicContractMaxResults)
+                {
+                    responseTruncated = true;
+                    continue;
+                }
+                var projection = ToTopicContractJson(claim);
+                var itemBytes = Encoding.UTF8.GetByteCount(
+                    projection.ToString(Newtonsoft.Json.Formatting.None));
+                var delta = itemBytes + (claims.Count == 0 ? 0 : 1);
+                if (responseBytes + claimBytes + conflictBytes + delta > ComponentPublisherContractCatalogLimits.MaxResponseBytes)
+                {
+                    responseTruncated = true;
+                    continue;
+                }
+                claims.Add(projection);
+                claimBytes += delta;
             }
 
             var response = CreateTopicContractResponse(
