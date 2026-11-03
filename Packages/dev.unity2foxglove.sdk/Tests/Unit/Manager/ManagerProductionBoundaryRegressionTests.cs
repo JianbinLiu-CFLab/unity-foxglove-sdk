@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.Tests.Manager
     public sealed partial class ManagerProductionBoundaryRegressionTests
     {
         [Fact]
-        public void TopicContractDiagnosticsWarnOnceFilterByTopicAndClearWithLifecycle()
+        public void TopicContractDiagnosticsWarnOnceFilterByTopicAndClearThroughManagerHelper()
         {
             Debug.Reset();
             var manager = new FoxgloveManager();

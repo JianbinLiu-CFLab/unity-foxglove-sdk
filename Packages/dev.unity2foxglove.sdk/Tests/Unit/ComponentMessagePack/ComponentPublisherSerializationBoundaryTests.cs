@@ -1,3 +1,6 @@
+using System.Linq;
+using System.IO;
+using System.Collections.Generic;
 using Unity.FoxgloveSDK.UnitTests.Harness;
 using System.Text.RegularExpressions;
 using System;
@@ -42,18 +45,44 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
     public sealed class TopicContractRegistrationScopeTests
     {
         [Fact]
-        public void KnownNonManagerRegistrationExitsRemainExplicitGaps()
+        public void ProductionRegistrationExitsMatchAllowlist()
         {
-            var bridge = TestSources.Text(
-                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeMcapCodecs.cs");
-            var replay = TestSources.Text(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
-            var mirror = TestSources.Text(
-                "Packages/dev.unity2foxglove.remotegateway.win64/Runtime/RemoteGatewayMirrorSink.cs");
+            var repoRoot = FindRepoRoot();
+            var actual = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in Directory.GetFiles(Path.Combine(repoRoot, "Packages"), "*.cs", SearchOption.AllDirectories))
+            {
+                var normalized = file.Replace('\\', '/');
+                if (normalized.Contains("/Tests/", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var source = File.ReadAllText(file);
+                if (Regex.IsMatch(source, @"\.\s*(?:RegisterSchemaChannel|RegisterChannel)\s*\("))
+                    actual.Add(Path.GetRelativePath(repoRoot, file).Replace('\\', '/'));
+            }
 
-            Assert.Contains("RegisterSchemaChannel", bridge);
-            Assert.Contains("RegisterChannel", replay);
-            Assert.Contains("RegisterChannel", mirror);
+            var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.Publishing.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/Decomposed/FoxgloveSession/FoxgloveSession.SchemaChannels.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/Decomposed/FoxgloveSession/FoxgloveSession.TransportEvents.cs",
+                "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeMcapCodecs.cs",
+                "Packages/dev.unity2foxglove.remotegateway.win64/Runtime/RemoteGatewayMirrorSink.cs"
+            };
+
+            Assert.Equal(expected.OrderBy(path => path), actual.OrderBy(path => path));
+        }
+
+        private static string FindRepoRoot()
+        {
+            for (var current = new DirectoryInfo(Directory.GetCurrentDirectory()); current != null; current = current.Parent)
+            {
+                if (Directory.Exists(Path.Combine(current.FullName, "Packages"))
+                    && Directory.Exists(Path.Combine(current.FullName, "Unity2Foxglove")))
+                    return current.FullName;
+            }
+
+            throw new DirectoryNotFoundException("Repository root was not found.");
         }
     }
 
