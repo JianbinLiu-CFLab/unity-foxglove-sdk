@@ -74,6 +74,40 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void TopicContractDiagnosticsReportsTotalsWhenResultsAreTruncated()
+        {
+            var manager = new FoxgloveManager();
+            for (var index = 0; index <= FoxgloveManager.TopicContractMaxResults; index++)
+                manager.RecordTopicContract("/topic-" + index, "schema", "json", "component");
+
+            var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+
+            Assert.True((bool)response["responseTruncated"]);
+            Assert.InRange(
+                (int)response["claimCount"],
+                1,
+                FoxgloveManager.TopicContractMaxResults);
+            Assert.Equal(FoxgloveManager.TopicContractMaxResults + 1, (int)response["totalClaimCount"]);
+        }
+
+        [Fact]
+        public void TopicContractDiagnosticsRejectsOversizedResponses()
+        {
+            var manager = new FoxgloveManager();
+            manager.RecordTopicContract(
+                "/large",
+                new string('x', ComponentPublisherContractCatalogLimits.MaxResponseBytes),
+                "json",
+                "component");
+
+            var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+
+            Assert.Equal("response_limit_exceeded", (string)response["error"]);
+            Assert.True((bool)response["responseTruncated"]);
+            Assert.Empty((JArray)response["claims"]);
+        }
+
+        [Fact]
         public void ManagerCaptureResolvesPublisherWhenManagerLifecycleRunsFirst()
         {
             UnityEngine.Object.ResetRegistry();

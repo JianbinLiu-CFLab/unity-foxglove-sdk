@@ -14,10 +14,11 @@ namespace Unity.FoxgloveSDK.Components
         private uint _componentPublishContractsServiceId;
         private const string TopicContractServiceName = "/foxglove/topic-contracts";
         private const string TopicContractServiceType = "unity2foxglove.topic.TopicContracts";
+        internal const int TopicContractMaxResults = 256;
         private const string TopicContractRequestSchema =
             "{\"type\":\"object\",\"properties\":{\"topic\":{\"type\":\"string\"}}}";
         private const string TopicContractResponseSchema =
-            "{\"type\":\"object\",\"properties\":{\"contractVersion\":{\"type\":\"integer\"},\"claimCount\":{\"type\":\"integer\"},\"conflictCount\":{\"type\":\"integer\"},\"responseTruncated\":{\"type\":\"boolean\"},\"claims\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}},\"conflicts\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}}}";
+            "{\"type\":\"object\",\"properties\":{\"contractVersion\":{\"type\":\"integer\"},\"claimCount\":{\"type\":\"integer\"},\"conflictCount\":{\"type\":\"integer\"},\"totalClaimCount\":{\"type\":\"integer\"},\"totalConflictCount\":{\"type\":\"integer\"},\"responseTruncated\":{\"type\":\"boolean\"},\"error\":{\"type\":\"string\"},\"claims\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}},\"conflicts\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}}}";
         private uint _topicContractServiceId;
         private readonly TopicContractLedger _topicContractLedger = new TopicContractLedger();
 
@@ -159,13 +160,15 @@ namespace Unity.FoxgloveSDK.Components
         {
             var requestedTopic = (request as JObject)?.Value<string>("topic");
             var claims = new JArray();
+            var totalClaimCount = 0;
             var responseTruncated = false;
             foreach (var claim in _topicContractLedger.Claims.Values)
             {
                 if (!string.IsNullOrEmpty(requestedTopic)
                     && !string.Equals(requestedTopic, claim.Topic, StringComparison.Ordinal))
                     continue;
-                if (claims.Count >= ComponentPublisherContractCatalogLimits.MaxResults)
+                totalClaimCount++;
+                if (claims.Count >= TopicContractMaxResults)
                 {
                     responseTruncated = true;
                     continue;
@@ -174,12 +177,14 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var conflicts = new JArray();
+            var totalConflictCount = 0;
             foreach (var conflict in _topicContractLedger.Conflicts)
             {
                 if (!string.IsNullOrEmpty(requestedTopic)
                     && !string.Equals(requestedTopic, conflict.Existing.Topic, StringComparison.Ordinal))
                     continue;
-                if (conflicts.Count >= ComponentPublisherContractCatalogLimits.MaxResults)
+                totalConflictCount++;
+                if (conflicts.Count >= TopicContractMaxResults)
                 {
                     responseTruncated = true;
                     continue;
@@ -196,6 +201,8 @@ namespace Unity.FoxgloveSDK.Components
                 ["contractVersion"] = 1,
                 ["claimCount"] = claims.Count,
                 ["conflictCount"] = conflicts.Count,
+                ["totalClaimCount"] = totalClaimCount,
+                ["totalConflictCount"] = totalConflictCount,
                 ["responseTruncated"] = responseTruncated,
                 ["claims"] = claims,
                 ["conflicts"] = conflicts
@@ -208,6 +215,8 @@ namespace Unity.FoxgloveSDK.Components
                     ["contractVersion"] = 1,
                     ["claimCount"] = 0,
                     ["conflictCount"] = 0,
+                    ["totalClaimCount"] = totalClaimCount,
+                    ["totalConflictCount"] = totalConflictCount,
                     ["responseTruncated"] = true,
                     ["error"] = "response_limit_exceeded",
                     ["claims"] = new JArray(),
