@@ -50,7 +50,7 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             Assert.Single((JArray)filtered["conflicts"]);
             Assert.Equal(1, (int)filtered["conflictCount"]);
 
-            manager.ClearTopicContractLedger();
+            manager.ClearTopicContractSessionState();
             var cleared = (JObject)manager.HandleTopicContractRequest(new JObject());
             Assert.Equal(0, (int)cleared["claimCount"]);
             Assert.Equal(0, (int)cleared["conflictCount"]);

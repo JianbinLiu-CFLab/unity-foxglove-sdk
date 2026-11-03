@@ -76,14 +76,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("ComputeSchemaFingerprint(schema)", rawRecording);
             Assert.Contains("TopicContractScope.Recording", rawRecording);
             Assert.Contains("requestedTopic", contracts);
-            Assert.Contains("ClearTopicContractSessionState();", server);
-            Assert.Contains("ClearTopicContractSessionState);", server);
-            var stoppedPathIndex = server.IndexOf("if (!IsRunning)", StringComparison.Ordinal);
-            var stoppedPathClearIndex = server.IndexOf(
-                "ClearTopicContractSessionState);",
-                stoppedPathIndex,
-                StringComparison.Ordinal);
-            Assert.True(stoppedPathIndex >= 0 && stoppedPathClearIndex > stoppedPathIndex);
+            Assert.Contains("ClearTopicContractSessionStateAndCaches();", server);
+            Assert.Contains(
+                "ClearTopicContractSessionStateAndCaches, \"clear topic contract session state after failed startup\"",
+                server);
             Assert.Contains("if (!_foxRunRawRecordingChannelCache.TryGet(descriptor, out channelId))", rawRecording);
             var cacheHitIndex = publishing.IndexOf(
                 "if (_channelCache.TryGetValue(key, out var id))",
@@ -97,7 +93,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("PublishProtoFromFoxRun", foxRun);
             Assert.Contains("RegisterTopicContractService();", server);
             Assert.Contains("UnregisterTopicContractService", server);
-            Assert.Contains("ClearTopicContractSessionState();", server);
+            Assert.Contains("ClearTopicContractSessionStateAndCaches();", server);
         }
     }
 }

@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+### Added
+
+- Topic contract diagnostics expose the public `TopicContractScope` and ledger
+  model types for live/recording contract inspection. The topic-contract
+  response schema now declares all claim fields and the `Live`/`Recording`
+  scope enum.
+
 ## 1.9.7 - 2026-11-02
 
 ### Added

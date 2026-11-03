@@ -307,9 +307,6 @@ namespace Unity.FoxgloveSDK.Components
                 ["conflicts"] = new JArray()
             };
 
-        internal void ClearTopicContractLedger()
-            => ClearTopicContractSessionState();
-
         internal void ClearTopicContractSessionState()
             => _topicContractLedger.Clear();
 

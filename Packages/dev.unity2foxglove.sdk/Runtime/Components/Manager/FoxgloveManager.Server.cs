@@ -136,7 +136,7 @@ namespace Unity.FoxgloveSDK.Components
             TryCleanupStartupStep(() => _runtime?.DisableReplay(), "disable replay after failed startup");
             TryCleanupStartupStep(() => _runtime?.DisableRecording(), "disable recording after failed startup");
             TryCleanupStartupStep(ClearActiveComponentPublisherSession, "clear Component publisher session after failed startup");
-            TryCleanupStartupStep(ClearTopicContractSessionState, "clear topic contract session state after failed startup");
+            TryCleanupStartupStep(ClearTopicContractSessionStateAndCaches, "clear topic contract session state after failed startup");
             TryCleanupStartupStep(RestoreLivePublishers, "restore live publishers after failed startup");
             TryCleanupStartupStep(FlushClientEventRetirementDrops, "flush retired client-event diagnostics after failed startup");
         }
@@ -265,7 +265,7 @@ namespace Unity.FoxgloveSDK.Components
                     UnregisterTopicContractService,
                     () => DetachTransportForwarders(cleanupSession),
                     () => DetachRuntimeForwarders(_runtime?.Session),
-                    ClearTopicContractSessionState);
+                    ClearTopicContractSessionStateAndCaches);
                 firstFailure ??= earlyFailure;
                 if (!FoxgloveManagerTeardownState.ShouldRunStopServer(
                         IsRunning,
@@ -301,10 +301,7 @@ namespace Unity.FoxgloveSDK.Components
                     StopCertificateDistributor,
                     () =>
                     {
-                        _channelCache.Clear();
-                        _foxRunRecordingChannelCache.Clear();
-                        _foxRunRawRecordingChannelCache.Clear();
-                        ClearTopicContractSessionState();
+                        ClearTopicContractSessionStateAndCaches();
                     },
                     ClearClientEvents,
                     () => _connectionState.ResetChannelIds(FirstAutoChannelId),
@@ -322,6 +319,14 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             firstFailure?.Throw();
+        }
+
+        private void ClearTopicContractSessionStateAndCaches()
+        {
+            ClearTopicContractSessionState();
+            _channelCache.Clear();
+            _foxRunRecordingChannelCache.Clear();
+            _foxRunRawRecordingChannelCache.Clear();
         }
 
         private static ExceptionDispatchInfo RunStopPreTailCleanup(params Action[] steps)
