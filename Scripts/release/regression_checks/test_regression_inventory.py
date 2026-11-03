@@ -13,6 +13,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from Scripts.release import regression_inventory
+from Scripts.release import maintained_name_path_guard
 
 
 class RegressionInventoryTests(unittest.TestCase):
@@ -21,6 +22,49 @@ class RegressionInventoryTests(unittest.TestCase):
     def test_repository_inventory_is_complete(self):
         """The live repository has no unassigned regression module."""
         regression_inventory.validate_inventory()
+
+    def test_maintained_name_guard_rejects_new_phase_paths(self):
+        """New phase-numbered paths in maintained roots are rejected."""
+        errors = maintained_name_path_guard.check_new_paths(
+            {
+                "Packages/dev.unity2foxglove.sdk/Runtime/phase195/Helper.cs",
+                "Scripts/phase195_tool.py",
+            },
+            baseline_paths=set(),
+            allowlist=set(),
+        )
+        self.assertEqual(
+            [
+                "NEW_PHASE_PATH Packages/dev.unity2foxglove.sdk/Runtime/phase195/Helper.cs",
+                "NEW_PHASE_PATH Scripts/phase195_tool.py",
+            ],
+            errors,
+        )
+
+    def test_maintained_name_guard_allows_existing_and_unscoped_paths(self):
+        """Existing baseline paths and non-maintained roots remain allowed."""
+        errors = maintained_name_path_guard.check_new_paths(
+            {
+                "Scripts/phase181_tool.py",
+                "Packages/dev.unity2foxglove.sdk/Runtime/phase195/Helper.cs",
+                "build/phase195/report.json",
+            },
+            baseline_paths={"Scripts/phase181_tool.py"},
+            allowlist={"Packages/dev.unity2foxglove.sdk/Runtime/phase195/Helper.cs"},
+        )
+        self.assertEqual([], errors)
+
+    def test_maintained_name_guard_allows_reviewed_generated_typesupport_paths(self):
+        """Reviewed ROS typesupport plugin outputs remain allowlisted."""
+        errors = maintained_name_path_guard.check_new_paths(
+            {
+                "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64/"
+                "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/generated_phase181.dll"
+            },
+            baseline_paths=set(),
+            allowlist=set(),
+        )
+        self.assertEqual([], errors)
 
     def test_decomposed_python_regression_surfaces_keep_expected_counts(self):
         """Explicit package loading keeps the four migrated suites complete."""
