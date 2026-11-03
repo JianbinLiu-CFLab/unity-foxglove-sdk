@@ -11,6 +11,15 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const string ComponentPublishContractsServiceName = "/foxglove/component-publish-contracts";
         private uint _componentPublishContractsServiceId;
+        private const string TopicContractServiceName = "/foxglove/topic-contracts";
+        private const string TopicContractServiceType = "unity2foxglove.topic.TopicContracts";
+        private const string TopicContractRequestSchema =
+            "{\"type\":\"object\",\"properties\":{\"topic\":{\"type\":\"string\"}}}";
+        private const string TopicContractResponseSchema =
+            "{\"type\":\"object\",\"properties\":{\"contractVersion\":{\"type\":\"integer\"},\"claimCount\":{\"type\":\"integer\"},\"conflictCount\":{\"type\":\"integer\"},\"claims\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}},\"conflicts\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}}}";
+        private uint _topicContractServiceId;
+        private readonly TopicContractLedger _topicContractLedger = new TopicContractLedger();
+
         private readonly ComponentPublisherSessionLifecycleState<ComponentPublisherSessionSnapshot>
             _componentPublisherSessionState =
                 new ComponentPublisherSessionLifecycleState<ComponentPublisherSessionSnapshot>();
@@ -25,6 +34,120 @@ namespace Unity.FoxgloveSDK.Components
 
         internal void ClearActiveComponentPublisherSession()
             => _componentPublisherSessionState.Clear();
+
+        internal void RecordTopicContract(
+            string topic,
+            string schemaName,
+            string encoding,
+            string ownerKind)
+        {
+            var result = _topicContractLedger.Register(
+                new TopicContract(topic, schemaName, encoding, ownerKind));
+            if (!result.ShouldWarn)
+                return;
+
+            Debug.LogWarning(
+                "[Foxglove] Topic contract conflict for '"
+                + BoundTopicContractValue(topic)
+                + "': existing "
+                + DescribeTopicContract(result.Existing)
+                + "; incoming "
+                + DescribeTopicContract(result.Incoming));
+        }
+
+        private static string DescribeTopicContract(TopicContract contract)
+            => "schema=" + BoundTopicContractValue(contract.SchemaName)
+               + ", encoding=" + BoundTopicContractValue(contract.Encoding)
+               + ", owner=" + BoundTopicContractValue(contract.OwnerKind);
+
+        private static string BoundTopicContractValue(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= 96)
+                return value ?? string.Empty;
+            return value.Substring(0, 96);
+        }
+
+        private void RegisterTopicContractService()
+        {
+            if (_topicContractServiceId != 0)
+                return;
+
+            _topicContractServiceId = RegisterService(
+                new ServiceDescriptor
+                {
+                    Name = TopicContractServiceName,
+                    Type = TopicContractServiceType,
+                    Request = new ServiceSchemaDescriptor
+                    {
+                        Encoding = "json",
+                        SchemaName = "unity2foxglove.topic.TopicContractsRequest",
+                        Schema = TopicContractRequestSchema
+                    },
+                    Response = new ServiceSchemaDescriptor
+                    {
+                        Encoding = "json",
+                        SchemaName = "unity2foxglove.topic.TopicContractsResponse",
+                        Schema = TopicContractResponseSchema
+                    }
+                },
+                HandleTopicContractRequest);
+        }
+
+        private void UnregisterTopicContractService()
+        {
+            if (_topicContractServiceId == 0)
+                return;
+
+            if (_runtime == null
+                || _runtime.UnregisterServiceDuringCleanup(_topicContractServiceId))
+            {
+                _topicContractServiceId = 0;
+            }
+        }
+
+        private JToken HandleTopicContractRequest(JToken request)
+        {
+            var requestedTopic = (request as JObject)?.Value<string>("topic");
+            var claims = new JArray();
+            foreach (var claim in _topicContractLedger.Claims.Values)
+            {
+                if (!string.IsNullOrEmpty(requestedTopic)
+                    && !string.Equals(requestedTopic, claim.Topic, StringComparison.Ordinal))
+                    continue;
+                claims.Add(ToTopicContractJson(claim));
+            }
+
+            var conflicts = new JArray();
+            foreach (var conflict in _topicContractLedger.Conflicts)
+            {
+                if (!string.IsNullOrEmpty(requestedTopic)
+                    && !string.Equals(requestedTopic, conflict.Existing.Topic, StringComparison.Ordinal))
+                    continue;
+                conflicts.Add(new JObject
+                {
+                    ["existing"] = ToTopicContractJson(conflict.Existing),
+                    ["incoming"] = ToTopicContractJson(conflict.Incoming)
+                });
+            }
+
+            return new JObject
+            {
+                ["contractVersion"] = 1,
+                ["claimCount"] = _topicContractLedger.ClaimCount,
+                ["conflictCount"] = _topicContractLedger.ConflictCount,
+                ["claims"] = claims,
+                ["conflicts"] = conflicts
+            };
+        }
+
+        private static JObject ToTopicContractJson(TopicContract contract)
+            => new JObject
+            {
+                ["topic"] = contract.Topic,
+                ["schemaName"] = contract.SchemaName,
+                ["encoding"] = contract.Encoding,
+                ["ownerKind"] = contract.OwnerKind
+            };
 
         internal bool TryGetActiveComponentPublisherSessionEntry(
             object publisher,

@@ -19,6 +19,16 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
     public sealed class FoxRunRos2BridgeQosMapperTests
     {
         [Fact]
+        public void CameraInfoOrdinaryTransportUsesBridgeLogicalType()
+        {
+            var source = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraInfoPublisher.cs");
+
+            Assert.Contains("typeof(SensorCameraInfoFrame).FullName", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("PublishOrdinaryTransport(frame, SchemaName", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void U2R2CarriesEveryPortableAxisIndependently()
         {
             var qos = new FoxRunResolvedQos(

@@ -86,6 +86,11 @@ namespace Unity.FoxgloveSDK.Components
             _channels =
                 new Dictionary<FoxRunRawRecordingChannelDescriptor, uint>();
 
+        public bool TryGet(
+            FoxRunRawRecordingChannelDescriptor descriptor,
+            out uint channelId)
+            => _channels.TryGetValue(descriptor, out channelId);
+
         public uint GetOrAdd(
             FoxRunRawRecordingChannelDescriptor descriptor,
             Func<uint> allocateChannelId)

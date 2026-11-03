@@ -127,7 +127,7 @@ namespace Unity.FoxgloveSDK.Components
             var frame = BuildSensorCameraInfoFrame(unixNs);
 
             if (publishProvider)
-                PublishOrdinaryTransport(frame, SchemaName, unixNs);
+                PublishOrdinaryTransport(frame, typeof(SensorCameraInfoFrame).FullName, unixNs);
 
             if (publishNativeFrame)
                 InvokeCameraInfoSubscribers(frame);
