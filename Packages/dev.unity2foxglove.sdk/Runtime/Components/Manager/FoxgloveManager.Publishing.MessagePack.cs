@@ -13,7 +13,8 @@ namespace Unity.FoxgloveSDK.Components
             string topic,
             byte[] payload,
             ulong logTimeNs)
-            => PublishMsgPack(topic, payload, logTimeNs);
+            => PublishMsgPackCore(
+                topic, payload, logTimeNs, string.Empty, string.Empty, "FoxRun");
 
         /// <summary>
         /// Prepare a schemaless hidden MCAP channel for typed FoxRun
@@ -75,9 +76,13 @@ namespace Unity.FoxgloveSDK.Components
                 schemaName,
                 schemaEncoding,
                 schema);
-            channelId = _foxRunRawRecordingChannelCache.GetOrAdd(
-                descriptor,
-                () => (uint)_connectionState.NextChannelId++);
+            if (!_foxRunRawRecordingChannelCache.TryGet(descriptor, out channelId))
+            {
+                channelId = _foxRunRawRecordingChannelCache.GetOrAdd(
+                    descriptor,
+                    () => (uint)_connectionState.NextChannelId++);
+                RecordTopicContract(topic, schemaName, messageEncoding, "FoxRun");
+            }
 
             _runtime.RegisterRecordingOnlyChannel(
                 descriptor.ToChannel(channelId));

@@ -683,7 +683,7 @@ namespace Unity.FoxgloveSDK.Components
                                 route.LogTimeNs);
                             return FoxRunTransportPublishResult.Accepted();
                         case "protobuf":
-                            manager.PublishProto(
+                            manager.PublishProtoFromFoxRun(
                                 route.Topic,
                                 route.LogicalSchemaName,
                                 payload,

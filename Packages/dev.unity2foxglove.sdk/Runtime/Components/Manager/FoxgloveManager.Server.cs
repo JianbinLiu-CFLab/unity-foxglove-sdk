@@ -81,6 +81,7 @@ namespace Unity.FoxgloveSDK.Components
                 StartCertificateDistributorIfNeeded();
                 RegisterFoxRunSubscriptionCatalogService();
                 RegisterComponentPublishContractsService();
+                RegisterTopicContractService();
                 _runtime.StartWithSessionSetup(
                     _serverName,
                     _host,
@@ -123,6 +124,7 @@ namespace Unity.FoxgloveSDK.Components
             TryCleanupStartupStep(StopCertificateDistributor, "stop certificate distributor");
             TryCleanupStartupStep(UnregisterFoxRunSubscriptionCatalogService, "unregister FoxRun subscription catalog service");
             TryCleanupStartupStep(UnregisterComponentPublishContractsService, "unregister Component publish contracts service");
+            TryCleanupStartupStep(UnregisterTopicContractService, "unregister topic contract service");
             TryCleanupStartupStep(
                 () => DetachTransportForwarders(_runtime?.CleanupSession),
                 "detach transport forwarders after failed startup");
@@ -258,6 +260,7 @@ namespace Unity.FoxgloveSDK.Components
                     StopRemoteMcapFileServer,
                     StopReplayCursorEndpoint,
                     StopCertificateDistributor,
+                    UnregisterTopicContractService,
                     () => DetachTransportForwarders(cleanupSession),
                     () => DetachRuntimeForwarders(_runtime?.Session));
                 firstFailure ??= earlyFailure;
@@ -283,7 +286,8 @@ namespace Unity.FoxgloveSDK.Components
                     () => DetachTransportForwarders(cleanupSession),
                     () => DetachRuntimeForwarders(cleanupSession),
                     UnregisterFoxRunSubscriptionCatalogService,
-                    UnregisterComponentPublishContractsService);
+                    UnregisterComponentPublishContractsService,
+                    UnregisterTopicContractService);
                 firstFailure ??= preTailFailure;
 
                 FoxgloveManagerTeardownState.RunStopServer(
@@ -297,6 +301,7 @@ namespace Unity.FoxgloveSDK.Components
                         _channelCache.Clear();
                         _foxRunRecordingChannelCache.Clear();
                         _foxRunRawRecordingChannelCache.Clear();
+                        _topicContractLedger.Clear();
                     },
                     ClearClientEvents,
                     () => _connectionState.ResetChannelIds(FirstAutoChannelId),

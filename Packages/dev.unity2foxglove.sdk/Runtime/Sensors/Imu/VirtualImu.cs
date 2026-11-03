@@ -406,7 +406,7 @@ namespace Unity.FoxgloveSDK.Components
                 ImuAngularVelocityCovariance,
                 ImuLinearAccelerationCovariance);
 
-            _manager.PublishProto(_topic, ImuSchema.SchemaName, bytes, sample.TimestampNs);
+            _manager.PublishProtoFromVirtualImu(_topic, ImuSchema.SchemaName, bytes, sample.TimestampNs);
         }
 
         private int ResolveTargetRateHz()
