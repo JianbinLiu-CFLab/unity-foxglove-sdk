@@ -1,10 +1,10 @@
-using System.Linq;
-using System.IO;
-using System.Collections.Generic;
-using Unity.FoxgloveSDK.UnitTests.Harness;
-using System.Text.RegularExpressions;
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
 {
@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
         [Fact]
         public void ProductionRegistrationExitsMatchAllowlist()
         {
-            var repoRoot = FindRepoRoot();
+            var repoRoot = RepoRoot.Value;
             var actual = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var file in Directory.GetFiles(Path.Combine(repoRoot, "Packages"), "*.cs", SearchOption.AllDirectories))
             {
@@ -55,16 +55,19 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
                 if (normalized.Contains("/Tests/", StringComparison.OrdinalIgnoreCase))
                     continue;
                 var source = File.ReadAllText(file);
-                if (Regex.IsMatch(source, @"\.\s*(?:RegisterSchemaChannel|RegisterChannel)\s*\("))
+                source = Regex.Replace(source, @"//[^\r\n]*|/\*.*?\*/", string.Empty, RegexOptions.Singleline);
+                if (Regex.IsMatch(
+                        source,
+                        @"[A-Za-z0-9_\)\]]\s*\.\s*(?:RegisterSchemaChannel|RegisterChannel|RegisterRecordingOnlyChannel)\s*\("))
                     actual.Add(Path.GetRelativePath(repoRoot, file).Replace('\\', '/'));
             }
 
             var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.MessagePack.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.Publishing.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/Decomposed/FoxgloveSession/FoxgloveSession.SchemaChannels.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/Decomposed/FoxgloveSession/FoxgloveSession.TransportEvents.cs",
                 "Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeMcapCodecs.cs",
                 "Packages/dev.unity2foxglove.remotegateway.win64/Runtime/RemoteGatewayMirrorSink.cs"
@@ -72,6 +75,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
 
             Assert.Equal(expected.OrderBy(path => path), actual.OrderBy(path => path));
         }
+
+        private static readonly Lazy<string> RepoRoot = new Lazy<string>(FindRepoRoot);
 
         private static string FindRepoRoot()
         {
