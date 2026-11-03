@@ -311,7 +311,8 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 // Equivalent to generation != _captureGeneration, but with a cross-thread visible read.
-                if (!CameraCaptureGenerationPolicy.Accepts(
+                if (_destroyed
+                    || !CameraCaptureGenerationPolicy.Accepts(
                         _destroyed,
                         isActiveAndEnabled,
                         identity.Generation,
