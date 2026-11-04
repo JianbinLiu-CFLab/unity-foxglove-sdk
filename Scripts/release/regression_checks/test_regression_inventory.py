@@ -93,10 +93,10 @@ class RegressionInventoryTests(unittest.TestCase):
         )
         self.assertEqual(1, len(errors))
 
-    def test_maintained_name_guard_treats_phase_number_as_bounded(self):
-        """Phase numbers are matched as complete numeric components."""
+    def test_maintained_name_guard_rejects_single_digit_phase_paths(self):
+        """Single-digit phase numbers are rejected like multi-digit ones."""
         errors = maintained_name_path_guard.check_new_paths(
-            {"Scripts/phase1000_tool.py"},
+            {"Scripts/phase7_tool.py"},
             baseline_paths=set(),
             allowlist=set(),
         )
@@ -118,6 +118,7 @@ class RegressionInventoryTests(unittest.TestCase):
             subprocess.run(["git", "-C", str(repository), "add", "."], check=True)
             subprocess.run(["git", "-C", str(repository), "commit", "-q", "-m", "head"], check=True)
             head = subprocess.check_output(["git", "-C", str(repository), "rev-parse", "HEAD"], text=True).strip()
+            subprocess.run(["git", "-C", str(repository), "checkout", "-q", base], check=True)
             with mock.patch.dict(
                 os.environ,
                 {

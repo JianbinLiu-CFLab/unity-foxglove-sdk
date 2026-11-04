@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Iterable
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-PHASE_PATH_PATTERN = re.compile(r"(?i)phase\d+(?!\d)")
+PHASE_PATH_PATTERN = re.compile(r"(?i)phase\d+")
 ALLOWED_TYPESUPPORT_ARTIFACT_PATTERN = re.compile(
     r"^Packages/dev\.unity2foxglove\.foxrun\.ros2\.interfaces\.typesupport\."
     r"(?:humble|jazzy|lyrical)\.win64/"
@@ -27,7 +27,7 @@ ALLOWLISTED_PATH_PATTERNS = (
 
 def is_maintained_path(path: str) -> bool:
     """Return whether a repository-relative path is in the guarded roots."""
-    normalized = path.replace("\\", "/").lstrip("./")
+    normalized = path.replace("\\", "/").removeprefix("./")
     parts = normalized.split("/")
     if parts and parts[0] == "Scripts":
         return True
@@ -40,7 +40,7 @@ def is_maintained_path(path: str) -> bool:
 
 def is_allowlisted_path(path: str, allowlist: Iterable[str] = ()) -> bool:
     """Return whether a generated path is covered by the reviewed allowlist."""
-    normalized = path.replace("\\", "/").lstrip("./")
+    normalized = path.replace("\\", "/").removeprefix("./")
     return normalized in set(allowlist) or any(
         pattern.fullmatch(normalized) for pattern in ALLOWLISTED_PATH_PATTERNS
     )
@@ -108,6 +108,10 @@ def main(argv: list[str] | None = None) -> int:
     if errors:
         for error in errors:
             print(error)
+        print(
+            "Rename the path; reviewed generated typesupport artifacts are listed in "
+            "ALLOWED_TYPESUPPORT_ARTIFACT_PATTERN in Scripts/release/maintained_name_path_guard.py."
+        )
         return 1
     print("MAINTAINED_NAME_PATH_GUARD_OK")
     return 0
