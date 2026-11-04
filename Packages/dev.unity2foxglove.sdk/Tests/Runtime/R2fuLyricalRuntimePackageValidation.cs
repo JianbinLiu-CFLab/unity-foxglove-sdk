@@ -113,8 +113,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal)
                   && asmdef.Contains("\"WindowsStandalone64\"", StringComparison.Ordinal)
                   && asmdef.Contains("\"autoReferenced\": false", StringComparison.Ordinal)
-                  && !asmdef.Contains("defineConstraints", StringComparison.Ordinal),
-                "146B-A8: Lyrical runtime asmdef is Windows runtime scoped, explicit-reference only, and not define-gated");
+                  && Regex.IsMatch(
+                      asmdef,
+                      "\"defineConstraints\"\\s*:\\s*\\[\\s*\"UNITY_EDITOR_WIN \\|\\| UNITY_STANDALONE_WIN\"\\s*\\]")
+                  && !asmdef.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal),
+                "146B-A8: Lyrical runtime asmdef is Windows runtime scoped, explicit-reference only, and constrained by a platform-only define");
         }
 
         private static void LyricalScriptsAreDistroSpecific()

@@ -115,8 +115,11 @@ namespace Unity.FoxgloveSDK.Tests
             var asmdef = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64.asmdef");
             Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal)
                   && asmdef.Contains("\"WindowsStandalone64\"", StringComparison.Ordinal)
-                  && !asmdef.Contains("defineConstraints", StringComparison.Ordinal),
-                "161-A8: Jazzy runtime asmdef is Windows runtime scoped and not define-gated");
+                  && Regex.IsMatch(
+                      asmdef,
+                      "\"defineConstraints\"\\s*:\\s*\\[\\s*\"UNITY_EDITOR_WIN \\|\\| UNITY_STANDALONE_WIN\"\\s*\\]")
+                  && !asmdef.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal),
+                "161-A8: Jazzy runtime asmdef is Windows runtime scoped by a platform-only define constraint");
         }
 
         private static void RuntimePackageContainsJazzyDependencyFloor()
