@@ -235,6 +235,55 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StopFinalizesRecordingAndRestartCreatesSecondFile()
+        {
+            var firstPath = Path.Combine(
+                Path.GetTempPath(),
+                "u2f-phase185-stop-first-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var secondPath = Path.Combine(
+                Path.GetTempPath(),
+                "u2f-phase185-stop-second-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var runtime = new FoxgloveRuntime(
+                new NoopTransport(),
+                new SystemClock(),
+                new DefaultSchemaRegistry());
+
+            try
+            {
+                runtime.EnableRecording(firstPath);
+                runtime.Start("phase185-stop-first", port: 0);
+                runtime.RegisterRecordingOnlyChannel(RawMessagePackChannel(61, "/phase185/stop-first"));
+                runtime.PublishRecordingOnly(61, new byte[] { 0x01 }, 185_061UL);
+                runtime.Stop();
+                AssertSingleRecordedMessage(firstPath, "/phase185/stop-first", 0x01);
+
+                runtime.EnableRecording(secondPath);
+                runtime.Start("phase185-stop-second", port: 0);
+                runtime.RegisterRecordingOnlyChannel(RawMessagePackChannel(61, "/phase185/stop-second"));
+                runtime.PublishRecordingOnly(61, new byte[] { 0x02 }, 185_062UL);
+                runtime.Stop();
+                AssertSingleRecordedMessage(secondPath, "/phase185/stop-second", 0x02);
+            }
+            finally
+            {
+                runtime.Dispose();
+                File.Delete(firstPath);
+                File.Delete(secondPath);
+            }
+        }
+
+        private static void AssertSingleRecordedMessage(string path, string topic, byte data)
+        {
+            using (var stream = File.OpenRead(path))
+            using (var reader = new McapStreamingReader(stream))
+            {
+                var recording = reader.Read();
+                Assert.Equal(topic, Assert.Single(recording.Summary.Channels).Topic);
+                Assert.Equal(new[] { data }, Assert.Single(recording.Messages).Data);
+            }
+        }
+
+        [Fact]
         public void MsgPackChannelRecordsWithoutSchema()
         {
             var writer = new FoxgloveMsgPackWriter();

@@ -60,9 +60,26 @@ namespace Unity.FoxgloveSDK.Protocol
     [JsonObject(MemberSerialization.OptIn)]
     public class ServiceSchemaDescriptor
     {
+        private string _schemaEncoding;
+
         /// <summary>Service payload encoding type (for example <c>json</c> or <c>protobuf</c>), omitted if unknown.</summary>
         [JsonProperty("encoding", NullValueHandling = NullValueHandling.Ignore)]
         public string Encoding { get; set; }
+
+        /// <summary>Schema encoding used for the schema payload; defaults to <c>jsonschema</c> for <c>json</c> payloads.</summary>
+        [JsonProperty("schemaEncoding", NullValueHandling = NullValueHandling.Ignore)]
+        public string SchemaEncoding
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(_schemaEncoding))
+                    return _schemaEncoding;
+                return string.Equals(Encoding, "json", System.StringComparison.OrdinalIgnoreCase)
+                    ? "jsonschema"
+                    : null;
+            }
+            set => _schemaEncoding = value;
+        }
 
         /// <summary>Schema name (e.g. "foxglove.GetMapRequest").</summary>
         [JsonProperty("schemaName")]

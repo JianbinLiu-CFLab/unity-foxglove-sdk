@@ -327,6 +327,7 @@ namespace Unity.FoxgloveSDK.Components
             _channelCache.Clear();
             _foxRunRecordingChannelCache.Clear();
             _foxRunRawRecordingChannelCache.Clear();
+            _connectionState.ResetChannelIds(FirstAutoChannelId);
         }
 
         private static ExceptionDispatchInfo RunStopPreTailCleanup(params Action[] steps)

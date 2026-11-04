@@ -100,6 +100,45 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ServiceAdvertiseIncludesSchemaEncodingForJsonSchemas()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            session.RegisterService(new ServiceDescriptor
+            {
+                Name = "/svc", Type = "/svc",
+                Request = new ServiceSchemaDescriptor
+                {
+                    Encoding = "json",
+                    SchemaEncoding = "custom-schema",
+                    SchemaName = "/req",
+                    Schema = "{}"
+                },
+                Response = new ServiceSchemaDescriptor
+                {
+                    Encoding = "json",
+                    SchemaName = "/resp",
+                    Schema = "{}"
+                }
+            });
+
+            fake.SimulateConnect(1);
+            var advertise = JObject.Parse(
+                fake.SentTexts(1).Single(text => JObject.Parse(text)["op"]?.ToString() == "advertiseServices"));
+
+            Assert.Equal("custom-schema", advertise["services"]?[0]?["request"]?["schemaEncoding"]?.ToString());
+            Assert.Equal("jsonschema", advertise["services"]?[0]?["response"]?["schemaEncoding"]?.ToString());
+            foreach (var side in new[] { "request", "response" })
+            {
+                Assert.Equal(
+                    new[] { "encoding", "schema", "schemaEncoding", "schemaName" },
+                    ((JObject)advertise["services"]?[0]?[side]).Properties()
+                        .Select(property => property.Name)
+                        .OrderBy(name => name, StringComparer.Ordinal));
+            }
+        }
+
+        [Fact]
         public void BinaryServiceCodec()
         {
             var payload = Encoding.UTF8.GetBytes("{\"x\":1}");
