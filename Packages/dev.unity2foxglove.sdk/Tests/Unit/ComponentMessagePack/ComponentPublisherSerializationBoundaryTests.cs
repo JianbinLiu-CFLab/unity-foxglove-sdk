@@ -62,6 +62,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("TopicContractServiceName", contracts);
             Assert.Contains("RegisterTopicContractService", contracts);
             Assert.Contains("TopicContractItemSchema", contracts);
+            Assert.Contains(
+                "\\\"required\\\":[\\\"topic\\\",\\\"schemaName\\\",\\\"encoding\\\",\\\"ownerKind\\\",\\\"shapeIdentity\\\",\\\"schemaEncoding\\\",\\\"schemaFingerprint\\\",\\\"scope\\\"]",
+                contracts);
             Assert.Contains("\\\"scope\\\":{\\\"type\\\":\\\"string\\\",\\\"enum\\\":[\\\"Live\\\",\\\"Recording\\\"]}", contracts);
             Assert.Contains("internal enum TopicContractScope", guard);
             Assert.Contains("internal readonly struct TopicContract", guard);
