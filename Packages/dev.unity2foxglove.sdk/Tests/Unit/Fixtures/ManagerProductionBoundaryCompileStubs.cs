@@ -503,34 +503,60 @@ namespace Unity.FoxgloveSDK.Components
 
     internal sealed class BoundaryRuntime
     {
+        private readonly FoxgloveRuntime _runtime = new FoxgloveRuntime(
+            new BoundaryTransport(),
+            new SystemClock(),
+            new DefaultSchemaRegistry());
+
         internal event Action<string, byte[]> OnReplayMessage;
         internal event Action<ReplayMessageContext> OnReplayMessageContext;
         internal event Action<ReplayBatchContext> OnReplayBatchCompleted;
-        internal ISchemaRegistry Schemas { get; } = new DefaultSchemaRegistry();
-        internal FoxgloveSession Session => null;
-        internal FoxgloveSession CleanupSession => null;
-        internal bool HasPendingSessionCleanup => false;
+        internal ISchemaRegistry Schemas => _runtime.Schemas;
+        internal FoxgloveSession Session => _runtime.Session;
+        internal FoxgloveSession CleanupSession => _runtime.CleanupSession;
+        internal bool HasPendingSessionCleanup => _runtime.HasPendingSessionCleanup;
         internal int StartCount { get; private set; }
         internal Exception StopFailure { get; set; }
-        internal void EnableMessageEncoding(string encoding) { }
+        internal void EnableMessageEncoding(string encoding) => _runtime.EnableMessageEncoding(encoding);
 
         internal void StartWithSessionSetup(
             string name,
             string host,
             int port,
             Action<FoxgloveSession> beforeTransportStart)
-            => StartCount++;
+        {
+            StartCount++;
+            _runtime.StartWithSessionSetup(name, host, port, beforeTransportStart);
+        }
 
         internal void Stop()
         {
-            if (StopFailure != null)
-                throw StopFailure;
+            var failure = StopFailure;
+            try
+            {
+                _runtime.Stop();
+            }
+            finally
+            {
+                if (failure != null)
+                    throw failure;
+            }
         }
 
-        internal void DisableReplay() { }
-        internal void DisableRecording() { }
+        internal void DisableReplay() => _runtime.DisableReplay();
+        internal void DisableRecording() => _runtime.DisableRecording();
         internal bool UnregisterServiceDuringCleanup(uint serviceId) => true;
         internal void SetExternalReplayCursorEnabled(bool enabled) { }
+
+        internal void EnableRecordingForTest(string path) => _runtime.EnableRecording(path);
+
+        internal void RegisterRecordingOnlyChannelForTest(AdvertiseChannel channel)
+            => _runtime.RegisterRecordingOnlyChannel(channel);
+
+        internal bool PublishRecordingOnlyForTest(uint channelId, byte[] payload, ulong logTimeNs)
+            => _runtime.PublishRecordingOnly(channelId, payload, logTimeNs);
+
+        internal void DisposeForTest() => _runtime.Dispose();
 
         internal ExternalReplayCursorEnqueueResult TryEnqueueExternalReplayCursor(
             ReplayCursorRequest request,
@@ -546,18 +572,18 @@ namespace Unity.FoxgloveSDK.Components
 
     internal sealed class BoundaryTransport : IFoxgloveTransport
     {
-        public bool IsRunning => false;
+        public bool IsRunning { get; private set; }
         public event Action<uint> OnClientConnected;
         public event Action<uint> OnClientDisconnected;
         public event Action<uint, string> OnTextReceived;
         public event Action<uint, byte[]> OnBinaryReceived;
-        public void Start(string host, int port) { }
-        public void Stop() { }
+        public void Start(string host, int port) => IsRunning = true;
+        public void Stop() => IsRunning = false;
         public void BroadcastText(string json) { }
         public void BroadcastBinary(byte[] data) { }
         public void SendText(uint clientId, string json) { }
         public void SendBinary(uint clientId, byte[] data) { }
-        public void Dispose() { }
+        public void Dispose() => Stop();
 
         internal void RaiseClientConnected(uint clientId)
             => OnClientConnected?.Invoke(clientId);

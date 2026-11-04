@@ -17,6 +17,7 @@ using Unity.FoxgloveSDK.Components.Publishing;
 using Unity.FoxgloveSDK.Components.Publishing.Session;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.UnitTests.Harness;
 using UnityEngine;
 using Xunit;
@@ -132,6 +133,75 @@ namespace Unity.FoxgloveSDK.Tests.Manager
 
             Assert.Equal("runtime-stop", failure.Message);
             AssertPublishingSessionStateCleared(manager);
+        }
+
+        [Fact]
+        public void ManagerStopServerFinalizesRecordingAcrossRestart()
+        {
+            var firstPath = Path.Combine(
+                Path.GetTempPath(),
+                "manager-boundary-first-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var secondPath = Path.Combine(
+                Path.GetTempPath(),
+                "manager-boundary-second-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var setupCount = 0;
+            var manager = new FoxgloveManager { IsRunning = false };
+            manager.BoundarySetupRecording = () =>
+            {
+                manager.RuntimeForTest.EnableRecordingForTest(setupCount++ == 0 ? firstPath : secondPath);
+                return true;
+            };
+
+            try
+            {
+                manager.StartServer();
+                manager.IsRunning = true;
+                manager.RuntimeForTest.RegisterRecordingOnlyChannelForTest(new AdvertiseChannel
+                {
+                    Id = 61,
+                    Topic = "/manager/first",
+                    Encoding = "msgpack",
+                    SchemaName = "",
+                    SchemaEncoding = "",
+                    Schema = ""
+                });
+                Assert.True(manager.RuntimeForTest.PublishRecordingOnlyForTest(61, new byte[] { 0x01 }, 1UL));
+                manager.StopServer();
+                manager.IsRunning = false;
+
+                manager.StartServer();
+                manager.IsRunning = true;
+                manager.RuntimeForTest.RegisterRecordingOnlyChannelForTest(new AdvertiseChannel
+                {
+                    Id = 61,
+                    Topic = "/manager/second",
+                    Encoding = "msgpack",
+                    SchemaName = "",
+                    SchemaEncoding = "",
+                    Schema = ""
+                });
+                Assert.True(manager.RuntimeForTest.PublishRecordingOnlyForTest(61, new byte[] { 0x02 }, 2UL));
+                manager.StopServer();
+                manager.IsRunning = false;
+
+                AssertRecording(firstPath, "/manager/first", 0x01);
+                AssertRecording(secondPath, "/manager/second", 0x02);
+            }
+            finally
+            {
+                manager.RuntimeForTest.DisposeForTest();
+                File.Delete(firstPath);
+                File.Delete(secondPath);
+            }
+        }
+
+        private static void AssertRecording(string path, string topic, byte payload)
+        {
+            using var stream = File.OpenRead(path);
+            using var reader = new McapStreamingReader(stream);
+            var result = reader.Read();
+            Assert.Equal(topic, Assert.Single(result.Summary.Channels).Topic);
+            Assert.Equal(new[] { payload }, Assert.Single(result.Messages).Data);
         }
 
         private static void AssertPublishingSessionStateCleared(FoxgloveManager manager)

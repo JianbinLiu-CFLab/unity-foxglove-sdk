@@ -110,6 +110,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 Request = new ServiceSchemaDescriptor
                 {
                     Encoding = "json",
+                    SchemaEncoding = "custom-schema",
                     SchemaName = "/req",
                     Schema = "{}"
                 },
@@ -125,7 +126,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             var advertise = JObject.Parse(
                 fake.SentTexts(1).Single(text => JObject.Parse(text)["op"]?.ToString() == "advertiseServices"));
 
-            Assert.Equal("jsonschema", advertise["services"]?[0]?["request"]?["schemaEncoding"]?.ToString());
+            Assert.Equal("custom-schema", advertise["services"]?[0]?["request"]?["schemaEncoding"]?.ToString());
             Assert.Equal("jsonschema", advertise["services"]?[0]?["response"]?["schemaEncoding"]?.ToString());
 
             var protobuf = JObject.Parse(JsonConvert.SerializeObject(new ServiceSchemaDescriptor
