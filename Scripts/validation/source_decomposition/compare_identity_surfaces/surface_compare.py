@@ -83,11 +83,21 @@ def _surface(
                 validate_namespace=not phase121_configuration and not reviewed_identity_tooling_split,
                 repository_root=root,
             )
+            if reviewed_identity_tooling_split:
+                _section_exports(
+                    _without_function_bodies(section_source),
+                    str(section),
+                    reject_conditional=reject_conditional,
+                    reject_module_registry=False,
+                    validate_namespace=True,
+                    repository_root=root,
+                )
         section_exports.update(exports)
         for name in exports:
             owner_map.setdefault(name, set()).add(f"section:{section.stem}")
         section_export_map.append((section.stem, frozenset(exports)))
         risk_signatures.update(_namespace_risk_signatures(section_tree))
+        risk_signatures.update(_function_body_and_environment_risk_signatures(section_tree))
         for signature in _conditional_contract_signatures(section_tree):
             add_conditional_contract(f"section:{section.stem}:{signature}")
         conditional_names.update(
@@ -126,6 +136,7 @@ def _surface(
     for name in facade_symbols:
         owner_map.setdefault(name, set()).add("facade")
     risk_signatures.update(_namespace_risk_signatures(facade_tree))
+    risk_signatures.update(_function_body_and_environment_risk_signatures(facade_tree))
     for signature in _conditional_contract_signatures(facade_tree):
         add_conditional_contract(f"facade:{signature}")
     conditional_names.update(

@@ -231,6 +231,15 @@ def _entrypoint_contract(
                             ),
                             repository_root=repository_root,
                         )
+                        if reviewed_identity_tooling:
+                            _section_exports(
+                                _without_function_bodies(section_path.read_text(encoding="utf-8")),
+                                str(section_path),
+                                reject_conditional=reject_conditional,
+                                reject_module_registry=False,
+                                validate_namespace=True,
+                                repository_root=repository_root,
+                            )
                     package_exports.update(section_exports)
 
     relative_imports = top_level_relative_imports
