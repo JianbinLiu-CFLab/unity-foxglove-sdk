@@ -165,6 +165,17 @@ class _RunCiTestsPart4:
         self.assertNotRegex(live_workflow, r"(?m)^\s+push:")
         self.assertNotRegex(live_workflow, r"(?m)^\s+pull_request:")
 
+    def test_u2r2_native_container_uses_an_immutable_ros_digest(self) -> None:
+        """The required native gate must use a reviewed immutable ROS image."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        job = re.search(r"(?ms)^  u2r2-native:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:|\Z)", workflow)
+        self.assertIsNotNone(job)
+        container = re.search(r"(?ms)^    container:\n(?P<body>.*?)(?=^    [A-Za-z0-9_-]+:|\Z)", job.group("body"))
+        self.assertIsNotNone(container)
+        image = re.search(r"(?m)^      image:\s*(?P<image>[^\s#]+)", container.group("body"))
+        self.assertIsNotNone(image)
+        self.assertRegex(image.group("image"), r"^ros@sha256:[0-9a-f]{64}$")
+
     def test_only_help_lists_dotnet_lane_selectors(self) -> None:
         """CLI help should expose each direct dotnet lane selector."""
         with mock.patch.object(sys, "argv", ["run_ci.py", "--help"]):
