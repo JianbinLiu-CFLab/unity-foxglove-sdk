@@ -293,70 +293,6 @@ def _conditional_signature_names(signature: str) -> set[str]:
     name_text = payload.rsplit(":", 1)[0]
     return {name for name in name_text.split(",") if name}
 
-def _reviewed_validator_section_split(
-    relative: str,
-    base_sections: tuple[str, ...],
-    head_sections: tuple[str, ...],
-) -> bool:
-    """Recognize the reviewed Lyrical validator implementation split."""
-    return (
-        relative == "Scripts/ros2forunity/windows/lyrical/validate_r2fu_runtime_package.py"
-        and base_sections == ("implementation_lyrical",)
-        and head_sections == ("implementation_lyrical", "manifest_and_inventory", "runtime_checks")
-    )
-
-def _reviewed_template_registry_split(
-    relative: str,
-    base_nested_contract: tuple,
-    head_nested_contract: tuple,
-    base_relative_star_contract: tuple[str, ...],
-    head_relative_star_contract: tuple[str, ...],
-) -> bool:
-    """Recognize the reviewed template registry package split."""
-    expected_paths = (
-        "template_registry/closure_mutations.py",
-        "template_registry/critical_bindings.py",
-        "template_registry/registry_mutations.py",
-        "template_registry/template_helpers.py",
-    )
-    head_paths = tuple(item[0] for item in head_nested_contract)
-    relative_contract_matches = False
-    if (
-        head_relative_star_contract
-        and head_relative_star_contract[0].startswith(
-            "ImportFrom(module='template_registry',"
-        )
-        and len(head_relative_star_contract) == len(base_relative_star_contract)
-    ):
-        head_tail = head_relative_star_contract[1:]
-        relative_contract_matches = head_tail == base_relative_star_contract[1:]
-        if not relative_contract_matches and len(base_relative_star_contract) == len(head_tail) + 1:
-            relative_contract_matches = any(
-                base_relative_star_contract[:index] + base_relative_star_contract[index + 1:]
-                == head_tail
-                and base_relative_star_contract[index].startswith(
-                    "ImportFrom(module='foundation',"
-                )
-                for index in range(len(base_relative_star_contract))
-            )
-    elif len(base_relative_star_contract) == len(head_relative_star_contract) + 1:
-        relative_contract_matches = any(
-            base_relative_star_contract[:index] + base_relative_star_contract[index + 1:]
-            == head_relative_star_contract
-            and base_relative_star_contract[index].startswith(
-                "ImportFrom(module='foundation',"
-            )
-            for index in range(len(base_relative_star_contract))
-        )
-    return (
-        _canonical_source_decomposition_relative(relative)
-        == "Scripts/validation/source_decomposition/compare_identity_surfaces.py"
-        and not base_nested_contract
-        and set(head_paths) == set(expected_paths)
-        and len(head_paths) == len(expected_paths)
-        and len(head_relative_star_contract) >= 0
-        and relative_contract_matches
-    )
 
 
 def _normalize_migrated_source_decomposition_surfaces(
@@ -400,52 +336,15 @@ def _directory_migration_is_active(
     return bool(legacy_relative) and legacy_relative == current_relative
 
 
-_REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE = (
-    "Scripts/validation/source_decomposition/compare_identity_surfaces/template_registry.py"
-)
-_REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE = (
-    "Scripts/validation/source_decomposition/compare_identity_surfaces.py"
-)
-_REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST = (
-    "1e77da31a47e38d92709a9c4fb58a4b79921209cc3e9b2f29bc066f529b187fd"
-)
-_REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_DIGEST = (
-    "a268f53d880faeae3f88c265c50df5d2a783bcf0a2eeb6ef393cc103a0326123"
-)
 
 
-def _reviewed_template_registry_facade_transition(
-    relative: str,
-    source_digests: Mapping[str, str] | None,
-) -> bool:
-    """Recognize the exact reviewed template-registry facade loader transition."""
-    if source_digests is None:
-        return False
-    if relative == _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE:
-        return (
-            source_digests.get(_REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE)
-            == _REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST
-        )
-    if relative == _REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE:
-        return (
-            source_digests.get(_REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE)
-            == _REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_DIGEST
-        )
-    return False
 
-_REVIEWED_VALIDATOR_CLEANUP_SIGNATURE = (
-    "facade::7cdf800c9922e9368a642e72b34a53b8fa0049b842fda84b2ca8041537599915"
-)
 _IDENTITY_HELPER_RELATIVES = (
     "Scripts/validation/source_decomposition/identity_surface_conditions.py",
     "Scripts/validation/source_decomposition/identity_namespace_analysis.py",
     "Scripts/validation/source_decomposition/identity_namespace_scanner.py",
     "Scripts/validation/source_decomposition/identity_initializer_contracts.py",
 )
-_REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS = {
-    "Scripts/validation/source_decomposition/identity_namespace_analysis.py": "41685a4bd95a9c45e7979bf4501fb8d062a9b4fc404fcedf4ca071c1471ce947",
-    "Scripts/validation/source_decomposition/identity_namespace_scanner.py": "392e527bcc853bea3620c390bdc2844cd8e0c07c0ec957f00560e8046c40ed36",
-}
 
 
 def _normalized_source_digest(path: Path) -> str:
@@ -486,58 +385,12 @@ def _compare_identity_helper_contracts(
     base_map = dict(base_contract)
     head_map = dict(head_contract)
     errors: list[str] = []
-    reviewed_namespace_split = False
-    if (
-        base_root is not None
-        and head_root is not None
-        and not _resolve_source_decomposition_path(
-            base_root,
-            "Scripts/validation/source_decomposition/identity_namespace_scanner.py",
-        ).is_file()
-    ):
-        reviewed_namespace_split = all(
-            _resolve_source_decomposition_path(head_root, relative).is_file()
-            and _normalized_source_digest(
-                _resolve_source_decomposition_path(head_root, relative)
-            )
-            == digest
-            for relative, digest in _REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS.items()
-        )
     for relative in _IDENTITY_HELPER_RELATIVES:
         if base_map.get(relative) != head_map.get(relative):
-            if reviewed_namespace_split and relative in {
-                "Scripts/validation/source_decomposition/identity_namespace_analysis.py",
-                "Scripts/validation/source_decomposition/identity_namespace_scanner.py",
-            }:
-                continue
             errors.append(f"HELPER_SOURCE_CHANGED {relative}")
     return errors
 
 
-def _reviewed_validator_isolation_transition(
-    relative: str,
-    base_contract: tuple[str, ...],
-    head_contract: tuple[str, ...],
-) -> bool:
-    """Recognize the reviewed child-module cleanup added to legacy validators."""
-    if relative not in {
-        "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
-        "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
-    }:
-        return False
-    if relative.endswith("/humble/validate_ros2forunity_package.py"):
-        return (
-            len(head_contract) == len(base_contract) + 1
-            and head_contract[0] == _REVIEWED_VALIDATOR_CLEANUP_SIGNATURE
-            and head_contract[1:] == base_contract
-        )
-    return (
-        len(head_contract) == len(base_contract) + 1
-        and len(base_contract) > 0
-        and head_contract[0] == base_contract[0]
-        and head_contract[1] == _REVIEWED_VALIDATOR_CLEANUP_SIGNATURE
-        and head_contract[2:] == base_contract[1:]
-    )
 
 def _compare_surfaces(
     base_surfaces,
@@ -546,7 +399,6 @@ def _compare_surfaces(
     strict: bool = True,
     waived_symbols: Mapping[str, frozenset[str]] | None = None,
     allow_directory_migration: bool = False,
-    reviewed_source_digests: Mapping[str, str] | None = None,
 ) -> list[str]:
     """Compare identity surfaces using waivers from the trusted base revision."""
     errors: list[str] = []
@@ -618,36 +470,12 @@ def _compare_surfaces(
             head_public_symbols = frozenset(
                 name for name in head_symbols if not name.startswith("_")
             )
-        reviewed_entrypoint_transition = _reviewed_direct_entrypoint_transition(
-            relative,
-            tuple(base_entrypoint_contract or ()),
-            tuple(head_entrypoint_contract or ()),
-        )
-        reviewed_validator_split = _reviewed_validator_section_split(
-            relative,
-            tuple(base_sections),
-            tuple(head_sections),
-        )
-        reviewed_template_registry_split = _reviewed_template_registry_split(
-            relative,
-            tuple(base_nested_contract or ()),
-            tuple(head_nested_contract or ()),
-            tuple(base_relative_star_contract or ()),
-            tuple(head_relative_star_contract or ()),
-        )
-        reviewed_template_registry_facade = _reviewed_template_registry_facade_transition(
-            relative,
-            reviewed_source_digests,
-        )
         missing_sections = sorted(set(base_sections) - set(head_sections))
         extra_sections = sorted(set(head_sections) - set(base_sections))
         if strict:
             missing_symbols = sorted(set(base_symbols) - set(head_symbols))
         else:
-            effective_head_public_symbols = set(head_public_symbols)
-            if reviewed_validator_split:
-                effective_head_public_symbols.update(set(base_public_symbols) & set(head_symbols))
-            public_removals = set(base_public_symbols) - effective_head_public_symbols
+            public_removals = set(base_public_symbols) - set(head_public_symbols)
             waiver = set(waiver_map.get(relative, frozenset())) & set(base_public_symbols)
             missing_symbols = sorted(public_removals - waiver)
         extra_symbols = sorted(set(head_symbols) - set(base_symbols))
@@ -660,10 +488,7 @@ def _compare_surfaces(
             errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
         if strict and tuple(base_section_map or ()) != tuple(head_section_map or ()):
             errors.append(f"SECTION_EXPORT_OWNER_CHANGED {relative}")
-        if (
-            tuple(base_nested_contract or ()) != tuple(head_nested_contract or ())
-            and not reviewed_template_registry_split
-        ):
+        if tuple(base_nested_contract or ()) != tuple(head_nested_contract or ()):
             errors.append(f"NESTED_MODULE_CONTRACT_CHANGED {relative}")
         if strict and tuple(base_owner_map or ()) != tuple(head_owner_map or ()):
             errors.append(f"SYMBOL_OWNER_CHANGED {relative}")
@@ -673,22 +498,15 @@ def _compare_surfaces(
             (strict and base_relative != head_relative)
             or (
                 not strict
-                and not reviewed_template_registry_split
-                and not reviewed_template_registry_facade
                 and not _contract_preserves_order(base_relative, head_relative)
             )
         ):
             errors.append(f"RELATIVE_STAR_IMPORT_CHANGED {relative}")
-        if not strict and not reviewed_template_registry_facade and base_risks != head_risks:
+        if not strict and base_risks != head_risks:
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
         if not strict:
             base_contract = tuple(base_conditional_contract or ())
             head_contract = tuple(head_conditional_contract or ())
-            reviewed_validator_isolation = _reviewed_validator_isolation_transition(
-                relative,
-                base_contract,
-                head_contract,
-            )
             if (
                 relative == "Scripts/package/validate_source_generator_dll.py"
                 and base_contract != head_contract
@@ -720,9 +538,6 @@ def _compare_surfaces(
             }
             if (
                 not migrated_relative
-                and not reviewed_template_registry_facade
-                and not reviewed_validator_isolation
-                and not reviewed_template_registry_split
                 and (not preserves_order or added_existing_bindings)
             ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
@@ -743,12 +558,10 @@ def _compare_surfaces(
                 )
                 if (
                     entrypoint_changed
-                    and not reviewed_entrypoint_transition
                     and not migrated_relative
-                    and not reviewed_template_registry_facade
                 ):
                     errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
-        if not strict and base_owner_map and head_owner_map and not reviewed_template_registry_facade:
+        if not strict and base_owner_map and head_owner_map:
             base_owners = dict(base_owner_map)
             head_owners = dict(head_owner_map)
             owner_changes = sorted(
@@ -763,7 +576,7 @@ def _compare_surfaces(
                 errors.append(f"SYMBOL_OWNER_CHANGED {relative}: {','.join(owner_changes)}")
             if new_collisions:
                 errors.append(f"SYMBOL_OWNER_COLLISION {relative}: {','.join(new_collisions)}")
-        if not strict and base_section_map and head_section_map and not reviewed_template_registry_facade:
+        if not strict and base_section_map and head_section_map:
             base_exports_by_section = dict(base_section_map)
             head_exports_by_section = dict(head_section_map)
             def duplicate_exports(exports_by_section):
@@ -822,14 +635,7 @@ def _compare_surfaces(
                 | (set(head_section_exports) - set(base_section_exports)),
                 dict(head_section_map or ()),
             )
-        if reviewed_validator_split:
-            try:
-                _reviewed_validator_initializer_is_safe(head_initializer, relative)
-            except (SyntaxError, ValueError):
-                initializer_ok = False
-            else:
-                initializer_ok = True
-        if not initializer_ok and not migrated_relative and not reviewed_template_registry_facade:
+        if not initializer_ok and not migrated_relative:
             errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
         if not _sections_preserve_order(base_sections, head_sections):
             errors.append(f"SECTION_ORDER_CHANGED {relative}")
@@ -873,16 +679,6 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
             head_surfaces = _normalize_migrated_source_decomposition_surfaces(head_surfaces)
         base_helper_contract = _identity_helper_source_contract(base_root)
         head_helper_contract = _identity_helper_source_contract(head_root)
-        reviewed_source_digests: dict[str, str] = {}
-        for reviewed_relative in (
-            _REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE,
-            _REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE,
-        ):
-            reviewed_facade_path = head_root / reviewed_relative
-            if reviewed_facade_path.is_file():
-                reviewed_source_digests[reviewed_relative] = _normalized_source_digest(
-                    reviewed_facade_path
-                )
         helper_errors = _compare_identity_helper_contracts(
             base_helper_contract,
             head_helper_contract,
@@ -907,7 +703,6 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
         strict=strict,
         waived_symbols=base_waivers if not strict else None,
         allow_directory_migration=allow_directory_migration,
-        reviewed_source_digests=reviewed_source_digests,
     )
     errors = helper_errors + errors
     if errors:
@@ -944,4 +739,4 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     return compare_revisions(args.repository.resolve(), args.base, args.head, strict=args.strict)
 
-__all__ = ['_surface', '_surfaces', '_conditional_signature_names', '_reviewed_validator_section_split', '_reviewed_template_registry_split', '_normalize_migrated_source_decomposition_surfaces', '_directory_migration_is_active', '_reviewed_template_registry_facade_transition', '_REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE', '_REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE', '_REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST', '_REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_DIGEST', '_REVIEWED_VALIDATOR_CLEANUP_SIGNATURE', '_IDENTITY_HELPER_RELATIVES', '_REVIEWED_NAMESPACE_SPLIT_HELPER_DIGESTS', '_normalized_source_digest', '_identity_helper_source_contract', '_compare_identity_helper_contracts', '_reviewed_validator_isolation_transition', '_compare_surfaces', 'compare_revisions', 'main']
+__all__ = ['_surface', '_surfaces', '_conditional_signature_names', '_normalize_migrated_source_decomposition_surfaces', '_directory_migration_is_active', '_IDENTITY_HELPER_RELATIVES', '_normalized_source_digest', '_identity_helper_source_contract', '_compare_identity_helper_contracts', '_compare_surfaces', 'compare_revisions', 'main']

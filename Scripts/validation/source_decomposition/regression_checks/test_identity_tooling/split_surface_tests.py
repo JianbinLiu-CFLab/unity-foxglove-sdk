@@ -186,60 +186,6 @@ class SplitSurfaceTests(IdentityToolingBase):
             with self.subTest(section=section.name):
                 self.assertLess(len(section.read_text(encoding="utf-8").splitlines()), 1000)
 
-    def test_reviewed_template_registry_split_preserves_identity_contract(self) -> None:
-        """The reviewed template registry split has an exact compatibility transition."""
-        nested = tuple(
-            (f"template_registry/{name}.py", (), (), ())
-            for name in (
-                "closure_mutations",
-                "critical_bindings",
-                "registry_mutations",
-                "template_helpers",
-            )
-        )
-        base_relative = ("legacy-foundation", "legacy-surface")
-        head_relative = (
-            "ImportFrom(module='template_registry', names=[alias(name='*')], level=1)",
-            "legacy-surface",
-        )
-        self.assertTrue(
-            compare_identity_surfaces._reviewed_template_registry_split(
-                "Scripts/validation/source_decomposition/compare_identity_surfaces.py",
-                (),
-                nested,
-                base_relative,
-                head_relative,
-            )
-        )
-        self.assertTrue(
-            compare_identity_surfaces._reviewed_template_registry_split(
-                "Scripts/validation/source_decomposition/compare_identity_surfaces.py",
-                (),
-                nested,
-                (
-                    "ImportFrom(module='foundation', names=[alias(name='a')], level=1)",
-                    "legacy-middle",
-                    "ImportFrom(module='foundation', names=[alias(name='b')], level=1)",
-                    "legacy-surface",
-                ),
-                (
-                    "ImportFrom(module='template_registry', names=[alias(name='*')], level=1)",
-                    "ImportFrom(module='foundation', names=[alias(name='a')], level=1)",
-                    "legacy-middle",
-                    "legacy-surface",
-                ),
-            )
-        )
-        self.assertFalse(
-            compare_identity_surfaces._reviewed_template_registry_split(
-                "Scripts/validation/source_decomposition/compare_identity_surfaces.py",
-                (),
-                nested[:-1],
-                base_relative,
-                head_relative,
-            )
-        )
-
     def test_template_registry_facade_loads_via_fresh_module(self) -> None:
         """The nested facade remains loadable through the identity loader."""
         facade = (
@@ -274,43 +220,6 @@ assert hasattr(loaded, "_phase192_template_name")
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_reviewed_validator_isolation_transition_requires_exact_cleanup(self) -> None:
-        """Only the reviewed eight-module cleanup insertion is compatibility-waived."""
-        cleanup = "facade::7cdf800c9922e9368a642e72b34a53b8fa0049b842fda84b2ca8041537599915"
-        humble_base = ("facade:old", "facade:rest")
-        humble_head = (cleanup, *humble_base)
-        self.assertTrue(
-            compare_identity_surfaces._reviewed_validator_isolation_transition(
-                "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
-                humble_base,
-                humble_head,
-            )
-        )
-        for evil_head in (("facade:evil", *humble_base), ("facade:evil", "facade:old", "facade:rest")):
-            with self.subTest(evil_head=evil_head):
-                self.assertFalse(
-                    compare_identity_surfaces._reviewed_validator_isolation_transition(
-                        "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
-                        humble_base,
-                        evil_head,
-                    )
-                )
-        self.assertFalse(
-            compare_identity_surfaces._reviewed_validator_isolation_transition(
-                "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
-                humble_base,
-                ("facade::mutated-cleanup", *humble_base),
-            )
-        )
-        jazzy_base = ("section:core:stable", "facade:old", "facade:rest")
-        self.assertTrue(
-            compare_identity_surfaces._reviewed_validator_isolation_transition(
-                "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
-                jazzy_base,
-                (jazzy_base[0], cleanup, *jazzy_base[1:]),
-            )
-        )
-
     def test_identity_helper_source_contract_reports_helper_only_changes(self) -> None:
         """Identity tooling reports changes made only in imported helper implementations."""
         with tempfile.TemporaryDirectory() as temp:
@@ -330,69 +239,6 @@ assert hasattr(loaded, "_phase192_template_name")
                 "Scripts/validation/source_decomposition/identity_surface_conditions.py",
                 {entry[0] for entry in head},
             )
-
-    def test_reviewed_namespace_split_requires_exact_helper_digests(self) -> None:
-        """The reviewed namespace split waiver rejects any later helper mutation."""
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            base_root = root / "base"
-            head_root = root / "head"
-            for checkout in (base_root, head_root):
-                for relative in compare_identity_surfaces._IDENTITY_HELPER_RELATIVES:
-                    path = checkout / relative
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    if relative == "Scripts/validation/source_decomposition/identity_namespace_analysis.py":
-                        continue
-                    if relative == "Scripts/validation/source_decomposition/identity_namespace_scanner.py":
-                        continue
-                    path.write_text("VALUE = 1\n", encoding="utf-8")
-            base_revision = os.environ.get("SOURCE_DECOMPOSITION_BASE_SHA", "HEAD")
-            base_analysis = subprocess.check_output(
-                [
-                    "git",
-                    "show",
-                    f"{base_revision}:Scripts/validation/source_decomposition/identity_namespace_analysis.py",
-                ],
-                cwd=compare_identity_surfaces.REPOSITORY_ROOT,
-            )
-            head_analysis = (
-                compare_identity_surfaces.REPOSITORY_ROOT
-                / "Scripts/validation/source_decomposition/identity_namespace_analysis.py"
-            ).read_bytes()
-            head_scanner = (
-                compare_identity_surfaces.REPOSITORY_ROOT
-                / "Scripts/validation/source_decomposition/identity_namespace_scanner.py"
-            ).read_bytes()
-            (base_root / "Scripts/validation/source_decomposition/identity_namespace_analysis.py").write_bytes(base_analysis)
-            (head_root / "Scripts/validation/source_decomposition/identity_namespace_analysis.py").write_bytes(head_analysis)
-            (head_root / "Scripts/validation/source_decomposition/identity_namespace_scanner.py").write_bytes(head_scanner)
-            base_contract = compare_identity_surfaces._identity_helper_source_contract(base_root)
-            head_contract = compare_identity_surfaces._identity_helper_source_contract(head_root)
-            self.assertEqual(
-                [],
-                compare_identity_surfaces._compare_identity_helper_contracts(
-                    base_contract,
-                    head_contract,
-                    base_root=base_root,
-                    head_root=head_root,
-                ),
-            )
-            for relative in (
-                "Scripts/validation/source_decomposition/identity_namespace_analysis.py",
-                "Scripts/validation/source_decomposition/identity_namespace_scanner.py",
-            ):
-                with self.subTest(relative=relative):
-                    path = head_root / relative
-                    path.write_bytes(path.read_bytes() + b"\nMUTATION = True\n")
-                    mutated = compare_identity_surfaces._identity_helper_source_contract(head_root)
-                    errors = compare_identity_surfaces._compare_identity_helper_contracts(
-                        base_contract,
-                        mutated,
-                        base_root=base_root,
-                        head_root=head_root,
-                    )
-                    self.assertIn(f"HELPER_SOURCE_CHANGED {relative}", errors)
-                    path.write_bytes(head_analysis if relative.endswith("analysis.py") else head_scanner)
 
     def test_load_fresh_module_isolates_absolute_phase192_helpers_across_checkouts(self) -> None:
         """Fresh loads must replace Scripts.validation.source_decomposition helpers from checkout A with checkout B."""
