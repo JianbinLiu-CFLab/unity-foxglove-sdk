@@ -168,6 +168,7 @@ namespace Unity.FoxgloveSDK.Tests.Manager
                 Assert.True(manager.RuntimeForTest.PublishRecordingOnlyForTest(61, new byte[] { 0x01 }, 1UL));
                 manager.StopServer();
                 manager.IsRunning = false;
+                AssertRecording(firstPath, "/manager/first", 0x01);
 
                 manager.StartServer();
                 manager.IsRunning = true;
@@ -183,8 +184,6 @@ namespace Unity.FoxgloveSDK.Tests.Manager
                 Assert.True(manager.RuntimeForTest.PublishRecordingOnlyForTest(61, new byte[] { 0x02 }, 2UL));
                 manager.StopServer();
                 manager.IsRunning = false;
-
-                AssertRecording(firstPath, "/manager/first", 0x01);
                 AssertRecording(secondPath, "/manager/second", 0x02);
             }
             finally

@@ -17,7 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - `FoxgloveManager` clears topic contracts and publishing channel caches when
   startup fails or the server stops while not running, so a restarted session
-  does not inherit stale claims or channel IDs.
+  does not inherit stale claims or channel IDs. Every server session now starts
+  channel IDs from the first automatic ID.
+- Service `advertiseServices` request and response schemas now include
+  `schemaEncoding` (`jsonschema` for `json` payloads), matching the Foxglove
+  WebSocket protocol `MessageSchema` fields.
 
 ## 1.9.7 - 2026-11-02
 

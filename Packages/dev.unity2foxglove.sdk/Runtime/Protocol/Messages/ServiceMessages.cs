@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Protocol
         [JsonProperty("encoding", NullValueHandling = NullValueHandling.Ignore)]
         public string Encoding { get; set; }
 
-        /// <summary>Schema encoding used for the schema payload.</summary>
+        /// <summary>Schema encoding used for the schema payload; defaults to <c>jsonschema</c> for <c>json</c> payloads.</summary>
         [JsonProperty("schemaEncoding", NullValueHandling = NullValueHandling.Ignore)]
         public string SchemaEncoding
         {
@@ -74,13 +74,9 @@ namespace Unity.FoxgloveSDK.Protocol
             {
                 if (!string.IsNullOrEmpty(_schemaEncoding))
                     return _schemaEncoding;
-                if (string.Equals(Encoding, "json", System.StringComparison.OrdinalIgnoreCase))
-                    return "jsonschema";
-                if (string.Equals(Encoding, "protobuf", System.StringComparison.OrdinalIgnoreCase))
-                    return "protobuf";
-                if (string.Equals(Encoding, "jsonschema", System.StringComparison.OrdinalIgnoreCase))
-                    return "jsonschema";
-                return null;
+                return string.Equals(Encoding, "json", System.StringComparison.OrdinalIgnoreCase)
+                    ? "jsonschema"
+                    : null;
             }
             set => _schemaEncoding = value;
         }

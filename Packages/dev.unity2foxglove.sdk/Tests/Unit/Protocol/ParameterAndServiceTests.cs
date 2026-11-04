@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void ServiceAdvertiseIncludesSchemaEncodingForJsonAndProtobufSchemas()
+        public void ServiceAdvertiseIncludesSchemaEncodingForJsonSchemas()
         {
             var fake = new Phase6FakeTransport();
             var session = new FoxgloveSession("Test", fake);
@@ -128,21 +128,14 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             Assert.Equal("custom-schema", advertise["services"]?[0]?["request"]?["schemaEncoding"]?.ToString());
             Assert.Equal("jsonschema", advertise["services"]?[0]?["response"]?["schemaEncoding"]?.ToString());
-
-            var protobuf = JObject.Parse(JsonConvert.SerializeObject(new ServiceSchemaDescriptor
+            foreach (var side in new[] { "request", "response" })
             {
-                Encoding = "protobuf",
-                SchemaName = "/protobuf",
-                Schema = "AQI="
-            }));
-            Assert.Equal("protobuf", protobuf["schemaEncoding"]?.ToString());
-
-            var jsonWithoutSchema = JObject.Parse(JsonConvert.SerializeObject(new ServiceSchemaDescriptor
-            {
-                Encoding = "json",
-                SchemaName = "/json-without-schema"
-            }));
-            Assert.Equal("jsonschema", jsonWithoutSchema["schemaEncoding"]?.ToString());
+                Assert.Equal(
+                    new[] { "encoding", "schema", "schemaEncoding", "schemaName" },
+                    ((JObject)advertise["services"]?[0]?[side]).Properties()
+                        .Select(property => property.Name)
+                        .OrderBy(name => name, StringComparer.Ordinal));
+            }
         }
 
         [Fact]
