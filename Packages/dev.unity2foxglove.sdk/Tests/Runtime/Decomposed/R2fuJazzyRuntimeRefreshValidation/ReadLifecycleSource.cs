@@ -250,10 +250,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string[] RuntimePackageKeys(string json)
         {
-            var matches = Regex.Matches(
-                json ?? string.Empty,
-                "\"(dev\\.unity2foxglove\\.ros2forunity\\.runtime\\.[^\"]+)\"\\s*:");
-            return matches.Cast<Match>().Select(match => match.Groups[1].Value).ToArray();
+            const string runtimePackagePrefix = "dev.unity2foxglove.ros2forunity.runtime.";
+            var dependencies = JObject.Parse(json ?? string.Empty)["dependencies"] as JObject;
+            return dependencies?.Properties()
+                .Select(property => property.Name)
+                .Where(name => name.StartsWith(runtimePackagePrefix, StringComparison.Ordinal))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray()
+                ?? Array.Empty<string>();
         }
 
         private static string RuntimeId(string runtimeManifest)
