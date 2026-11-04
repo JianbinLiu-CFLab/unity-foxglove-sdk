@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .content_policy_tests import PackageContentPolicyTests
 from .foundation import *
+from .meta_contract_tests import PackageMetaContractTests
 from .notice_inventory_tests import PackageNoticeInventoryTests
 from .package_structure_tests import PackageStructureTests
 from .platform_boundary_tests import PackagePlatformBoundaryTests
@@ -17,6 +18,7 @@ from .source_generator_parity_tests import SourceGeneratorParityTests
 class ValidatePackageTests(
     PackagePlatformBoundaryTests,
     PackageStructureTests,
+    PackageMetaContractTests,
     PackageNoticeInventoryTests,
     PackageContentPolicyTests,
     unittest.TestCase,
