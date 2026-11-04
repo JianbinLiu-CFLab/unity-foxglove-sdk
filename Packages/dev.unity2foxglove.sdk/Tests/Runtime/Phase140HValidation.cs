@@ -131,7 +131,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !virtualImu.Contains("ShouldPublishNowFixed()", StringComparison.Ordinal),
                 "140H-5B: VirtualImu is not accidentally moved onto base scheduler helpers");
             Check(virtualImu.Contains("ImuNativeFrameReady", StringComparison.Ordinal)
-                  && virtualImu.Contains("_manager.PublishProto(_topic", StringComparison.Ordinal),
+                  && virtualImu.Contains("_manager.PublishProtoFromVirtualImu(_topic", StringComparison.Ordinal),
                 "140H-5C: validation acknowledges IMU has both WebSocket and native frame lanes");
         }
 

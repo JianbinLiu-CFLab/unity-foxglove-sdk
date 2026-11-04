@@ -50,10 +50,90 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             Assert.Single((JArray)filtered["conflicts"]);
             Assert.Equal(1, (int)filtered["conflictCount"]);
 
-            manager.ClearTopicContractLedger();
+            manager.ClearTopicContractSessionState();
             var cleared = (JObject)manager.HandleTopicContractRequest(new JObject());
             Assert.Equal(0, (int)cleared["claimCount"]);
             Assert.Equal(0, (int)cleared["conflictCount"]);
+        }
+
+        [Fact]
+        public void StopServerClearsPublishingSessionStateBeforeRestart()
+        {
+            Debug.Reset();
+            var manager = new FoxgloveManager { IsRunning = false };
+            manager.StartServer();
+            Assert.Equal(1, manager.RuntimeForTest.StartCount);
+            manager.IsRunning = true;
+            manager.SeedChannelCachesForTest();
+            manager.RecordTopicContract("/conflict", "schema.one", "json", "component");
+            var warnings = Debug.WarningCount;
+            manager.RecordTopicContract("/conflict", "schema.two", "json", "component");
+            Assert.Equal(warnings + 1, Debug.WarningCount);
+
+            manager.StopServer();
+            manager.IsRunning = false;
+            AssertPublishingSessionStateCleared(manager);
+
+            manager.StartServer();
+            Assert.Equal(2, manager.RuntimeForTest.StartCount);
+            AssertPublishingSessionStateCleared(manager);
+            manager.RecordTopicContract("/conflict", "schema.one", "json", "component");
+            warnings = Debug.WarningCount;
+            manager.RecordTopicContract("/conflict", "schema.two", "json", "component");
+            Assert.Equal(warnings + 1, Debug.WarningCount);
+        }
+
+        [Fact]
+        public void StopServerWhileStoppedClearsPublishingSessionState()
+        {
+            var manager = new FoxgloveManager { IsRunning = false };
+            manager.SeedChannelCachesForTest();
+            manager.RecordTopicContract("/stale", "schema.one", "json", "component");
+            manager.RecordTopicContract("/stale", "schema.two", "json", "component");
+
+            manager.StopServer();
+
+            AssertPublishingSessionStateCleared(manager);
+        }
+
+        [Fact]
+        public void FailedStartupClearsPublishingSessionState()
+        {
+            var manager = new FoxgloveManager { IsRunning = false };
+            manager.BoundarySetupRecording = () =>
+            {
+                manager.SeedChannelCachesForTest();
+                manager.RecordTopicContract("/startup", "schema.one", "json", "component");
+                manager.RecordTopicContract("/startup", "schema.two", "json", "component");
+                return false;
+            };
+
+            manager.StartServer();
+
+            Assert.Equal(0, manager.RuntimeForTest.StartCount);
+            AssertPublishingSessionStateCleared(manager);
+        }
+
+        [Fact]
+        public void StopServerClearsPublishingSessionStateWhenRuntimeStopFails()
+        {
+            var manager = new FoxgloveManager();
+            manager.SeedChannelCachesForTest();
+            manager.RecordTopicContract("/stale", "schema.one", "json", "component");
+            manager.RuntimeForTest.StopFailure = new InvalidOperationException("runtime-stop");
+
+            var failure = Assert.Throws<InvalidOperationException>(() => manager.StopServer());
+
+            Assert.Equal("runtime-stop", failure.Message);
+            AssertPublishingSessionStateCleared(manager);
+        }
+
+        private static void AssertPublishingSessionStateCleared(FoxgloveManager manager)
+        {
+            var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+            Assert.Equal(0, (int)response["totalClaimCount"]);
+            Assert.Equal(0, (int)response["totalConflictCount"]);
+            Assert.Equal(0, manager.ChannelCacheCountForTest);
         }
 
         [Fact]

@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+### Changed
+
+- The `/foxglove/topic-contracts` response schema now declares all claim fields
+  and the `Live`/`Recording` scope enum.
+
+### Fixed
+
+- `FoxgloveManager` clears topic contracts and publishing channel caches when
+  startup fails or the server stops while not running, so a restarted session
+  does not inherit stale claims or channel IDs.
+
 ## 1.9.7 - 2026-11-02
 
 ### Added

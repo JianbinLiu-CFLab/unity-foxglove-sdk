@@ -18,7 +18,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
     public sealed class TopicContractRegistrationExitTests
     {
         private const string RegistrationCall =
-            @"[A-Za-z0-9_\)\]]\s*\.\s*(?:RegisterSchemaChannel|RegisterChannel|RegisterRecordingOnlyChannel)\s*\(";
+            @"[A-Za-z0-9_?\)\]]\s*\.\s*(?:RegisterSchemaChannel|RegisterChannel|RegisterRecordingOnlyChannel)\s*\(";
         private const string StringsAndComments =
             @"@""(?:""""|[^""])*""|""(?:\\.|[^""\\\r\n])*""|'(?:\\.|[^'\\\r\n])+'|//[^\r\n]*|/\*.*?\*/";
 
@@ -53,6 +53,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
         [Theory]
         [InlineData("var u = \"ws://h\"; rt.RegisterChannel(c);", true)]
+        [InlineData("var u = \"ws://h\"; rt?.RegisterChannel(c);", true)]
         [InlineData("session\n    .RegisterRecordingOnlyChannel(c);", true)]
         [InlineData("// rt.RegisterChannel(c);", false)]
         [InlineData("/* rt.RegisterChannel(c); */", false)]

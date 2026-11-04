@@ -17,8 +17,10 @@ namespace Unity.FoxgloveSDK.Components
         internal const int TopicContractMaxResults = 256;
         private const string TopicContractRequestSchema =
             "{\"type\":\"object\",\"properties\":{\"topic\":{\"type\":\"string\"}}}";
+        private const string TopicContractItemSchema =
+            "{\"type\":\"object\",\"properties\":{\"topic\":{\"type\":\"string\"},\"schemaName\":{\"type\":\"string\"},\"encoding\":{\"type\":\"string\"},\"ownerKind\":{\"type\":\"string\"},\"shapeIdentity\":{\"type\":\"string\"},\"schemaEncoding\":{\"type\":\"string\"},\"schemaFingerprint\":{\"type\":\"string\"},\"scope\":{\"type\":\"string\",\"enum\":[\"Live\",\"Recording\"]}}}";
         private const string TopicContractResponseSchema =
-            "{\"type\":\"object\",\"properties\":{\"contractVersion\":{\"type\":\"integer\"},\"claimCount\":{\"type\":\"integer\"},\"conflictCount\":{\"type\":\"integer\"},\"totalClaimCount\":{\"type\":\"integer\"},\"totalConflictCount\":{\"type\":\"integer\"},\"responseTruncated\":{\"type\":\"boolean\"},\"error\":{\"type\":\"string\"},\"claims\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}},\"conflicts\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}}}";
+            "{\"type\":\"object\",\"properties\":{\"contractVersion\":{\"type\":\"integer\"},\"claimCount\":{\"type\":\"integer\"},\"conflictCount\":{\"type\":\"integer\"},\"totalClaimCount\":{\"type\":\"integer\"},\"totalConflictCount\":{\"type\":\"integer\"},\"responseTruncated\":{\"type\":\"boolean\"},\"error\":{\"type\":\"string\"},\"claims\":{\"type\":\"array\",\"items\":" + TopicContractItemSchema + "},\"conflicts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"existing\":" + TopicContractItemSchema + ",\"incoming\":" + TopicContractItemSchema + "}}}}}";
         private uint _topicContractServiceId;
         private readonly TopicContractLedger _topicContractLedger = new TopicContractLedger();
 
@@ -305,7 +307,7 @@ namespace Unity.FoxgloveSDK.Components
                 ["conflicts"] = new JArray()
             };
 
-        internal void ClearTopicContractLedger()
+        internal void ClearTopicContractSessionState()
             => _topicContractLedger.Clear();
 
         private static JObject ToTopicContractJson(TopicContract contract)

@@ -52,6 +52,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             var rawRecording = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.MessagePack.cs");
+            var guard = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/Session/ComponentPublisherChannelContractGuard.cs");
             var imu = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var foxRun = TestSources.Text(
@@ -59,6 +61,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
 
             Assert.Contains("TopicContractServiceName", contracts);
             Assert.Contains("RegisterTopicContractService", contracts);
+            Assert.Contains("TopicContractItemSchema", contracts);
+            Assert.Contains("\\\"scope\\\":{\\\"type\\\":\\\"string\\\",\\\"enum\\\":[\\\"Live\\\",\\\"Recording\\\"]}", contracts);
+            Assert.Contains("internal enum TopicContractScope", guard);
+            Assert.Contains("internal readonly struct TopicContract", guard);
+            Assert.Contains("internal readonly struct TopicContractConflict", guard);
+            Assert.Contains("internal readonly struct TopicContractRegistration", guard);
+            Assert.Contains("internal sealed class TopicContractLedger", guard);
             Assert.Contains("RecordTopicContract", publishing);
             Assert.Contains(
                 "RecordTopicContract(\n                topic,\n                key.schemaName,",
@@ -67,14 +76,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("ComputeSchemaFingerprint(schema)", rawRecording);
             Assert.Contains("TopicContractScope.Recording", rawRecording);
             Assert.Contains("requestedTopic", contracts);
-            Assert.Contains("ClearTopicContractLedger();", server);
-            Assert.Contains("ClearTopicContractLedger);", server);
-            var stoppedPathIndex = server.IndexOf("if (!IsRunning)", StringComparison.Ordinal);
-            var stoppedPathClearIndex = server.IndexOf(
-                "ClearTopicContractLedger);",
-                stoppedPathIndex,
-                StringComparison.Ordinal);
-            Assert.True(stoppedPathIndex >= 0 && stoppedPathClearIndex > stoppedPathIndex);
+            Assert.Contains("ClearPublishingSessionState();", server);
+            Assert.Contains(
+                "ClearPublishingSessionState, \"clear publishing session state after failed startup\"",
+                server);
             Assert.Contains("if (!_foxRunRawRecordingChannelCache.TryGet(descriptor, out channelId))", rawRecording);
             var cacheHitIndex = publishing.IndexOf(
                 "if (_channelCache.TryGetValue(key, out var id))",
@@ -88,7 +93,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("PublishProtoFromFoxRun", foxRun);
             Assert.Contains("RegisterTopicContractService();", server);
             Assert.Contains("UnregisterTopicContractService", server);
-            Assert.Contains("ClearTopicContractLedger();", server);
+            Assert.Contains("ClearPublishingSessionState();", server);
         }
     }
 }
