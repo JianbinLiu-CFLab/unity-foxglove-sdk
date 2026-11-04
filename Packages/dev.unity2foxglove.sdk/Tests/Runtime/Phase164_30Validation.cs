@@ -22,12 +22,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyHumbleRuntimeValidatorFastPaths()
         {
-            var source = Read("Scripts/ros2forunity/windows/humble/validate_r2fu_runtime_package.py");
-            var inventory = Slice(source, "def check_inventory", "\n\ndef check_runtime_files");
+            var foundation = Read("Scripts/ros2forunity/windows/humble/validate_r2fu_runtime_package_sections/checks_foundation.py");
+            var source = Read("Scripts/ros2forunity/windows/humble/validate_r2fu_runtime_package_sections/checks_runtime.py");
+            var inventory = Slice(foundation, "def check_inventory", "\n\ndef ");
             var boundaries = Slice(source, "def check_package_boundaries", "\n\ndef core_runtime_has_forbidden_tokens");
             var coreScan = Slice(source, "def core_runtime_has_forbidden_tokens", "\n\ndef run_checks");
             var parseArgs = Slice(source, "def parse_args", "\n\ndef main");
-            var main = Slice(source, "def main", "\n\nif __name__");
+            var main = Slice(source, "def main", "\n\ndef ");
 
             Check(inventory.Contains("should_hash_dlls = release_gate or not skip_dll_hash", StringComparison.Ordinal)
                   && inventory.Contains("if should_hash_dlls and expected_hash and file_sha256(package_path) != expected_hash", StringComparison.Ordinal)
@@ -60,7 +61,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-30B-1: Humble meta generation reuses rglob results instead of statting each meta path");
             Check(inspect.Contains("force: bool = False", StringComparison.Ordinal)
                   && inspect.Contains("parser.add_argument(\"--force\"", StringComparison.Ordinal)
-                  && inspectZip.Contains("read_cached_inventory(paths.output, artifact_hash, inspector_hash)", StringComparison.Ordinal)
+                  && inspectZip.Contains("read_cached_inventory(paths.output, paths.artifact, artifact_hash, inspector_hash)", StringComparison.Ordinal)
                   && cachedInventory.Contains("data.get(\"sha256\") == artifact_hash", StringComparison.Ordinal)
                   && cachedInventory.Contains("data.get(\"inspectorSha256\") == inspector_hash", StringComparison.Ordinal),
                 "164-30B-2: Humble artifact inspect reuses an inventory only when artifact and inspector hashes are unchanged");
