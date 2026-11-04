@@ -112,12 +112,12 @@ namespace Unity.FoxgloveSDK.Tests
             var asmdef = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef");
             Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal)
                   && asmdef.Contains("\"WindowsStandalone64\"", StringComparison.Ordinal)
-                  && asmdef.Contains("\"autoReferenced\": false", StringComparison.Ordinal)
+                  && asmdef.Contains("\"autoReferenced\": true", StringComparison.Ordinal)
                   && Regex.IsMatch(
                       asmdef,
                       "\"defineConstraints\"\\s*:\\s*\\[\\s*\"UNITY_EDITOR_WIN \\|\\| UNITY_STANDALONE_WIN\"\\s*\\]")
                   && !asmdef.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal),
-                "146B-A8: Lyrical runtime asmdef is Windows runtime scoped, explicit-reference only, and constrained by a platform-only define");
+                "146B-A8: Lyrical runtime asmdef is Windows runtime scoped, auto-referenced, and constrained by a platform-only define");
         }
 
         private static void LyricalScriptsAreDistroSpecific()
@@ -145,7 +145,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && build.Contains("ValidateRmwImplementation", StringComparison.Ordinal),
                 "146B-B2: Lyrical builder regenerates the RMW guard");
 
-            var orchestrator = ReadRepoText(LyricalScripts + "/phase146b_r2fu_lyrical_windows_build.py");
+            var orchestrator = File.ReadAllText(RepoPath(LyricalScripts + "/phase146b_r2fu_lyrical_windows_build.py"));
             var orchestratorImplementation = ReadRepoText(LyricalScripts + "/phase146b_r2fu_lyrical_windows_build/implementation.py");
             Check(orchestratorImplementation.Contains("r2fu-lyrical-win64", StringComparison.Ordinal)
                   && orchestratorImplementation.Contains("default_ros2_root(\"lyrical\")", StringComparison.Ordinal)
