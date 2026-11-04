@@ -26,6 +26,11 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var distro in new[] { "humble", "lyrical" })
             {
                 var source = Read($"Scripts/ros2forunity/windows/{distro}/validate_r2fu_runtime_package.py");
+                if (distro == "humble")
+                {
+                    source += Read("Scripts/ros2forunity/windows/humble/validate_r2fu_runtime_package_sections/checks_foundation.py")
+                        + Read("Scripts/ros2forunity/windows/humble/validate_r2fu_runtime_package_sections/checks_runtime.py");
+                }
                 Check(source.Contains("\"--fast\"", StringComparison.Ordinal)
                       && source.Contains("\"--skip-dll-hash\"", StringComparison.Ordinal)
                       && source.Contains("should_hash_dlls = release_gate or not skip_dll_hash", StringComparison.Ordinal)
@@ -37,9 +42,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRealProjectSmokeUsesBoundedWaits()
         {
             var source = Read("Scripts/smoke/ros2/phase127_r2fu_real_project_acceptance.py");
-            var waitForSubscription = SourceMethod(source, "def wait_for_subscription(");
-            var echoUnityTick = SourceMethod(source, "def echo_unity_tick(");
-            var parseArgs = SourceMethod(source, "def parse_args(argv: list[str]) -> argparse.Namespace:");
+            var waitForSubscription = PythonSourceMethod(source, "def wait_for_subscription(");
+            var echoUnityTick = PythonSourceMethod(source, "def echo_unity_tick(");
+            var parseArgs = PythonSourceMethod(source, "def parse_args(argv: list[str]) -> argparse.Namespace:");
 
             Check(source.Contains("default=45.0", StringComparison.Ordinal)
                   && source.Contains("default=10.0", StringComparison.Ordinal)
@@ -59,7 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyHumblePackageValidationCachesTextReads()
         {
             var source = Read("Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py");
-            var textBoundaries = SourceMethod(source, "def check_text_boundaries(results: list[CheckResult]) -> None:");
+            var textBoundaries = PythonSourceMethod(source, "def check_text_boundaries(results: list[CheckResult]) -> None:");
 
             Check(source.Contains("TEXT_CACHE: dict[Path, str] = {}", StringComparison.Ordinal)
                   && source.Contains("def read_text_cached(path: Path) -> str:", StringComparison.Ordinal)
@@ -77,7 +82,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyJazzyPackageBuilderSkipsUnchangedTextWrites()
         {
             var source = Read("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
-            var writeText = SourceMethod(source, "def write_text(path: Path, content: str) -> None:");
+            var writeText = PythonSourceMethod(source, "def write_text(path: Path, content: str) -> None:");
 
             Check(writeText.Contains("normalized = content.rstrip() + \"\\n\"", StringComparison.Ordinal)
                   && writeText.Contains("if path.exists():", StringComparison.Ordinal)
@@ -90,14 +95,19 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyManualSmokeCachesReflectionAndHandlesAllLocalDistroEntrypoints()
         {
             var source = Read("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase127R2FURealProjectSmoke.cs");
-            var batchRunner = PhaseValidationSourceHelpers.SourceType(source, "private sealed class BatchRunner");
+            var batchRunnerStart = source.IndexOf("private sealed class BatchRunner", StringComparison.Ordinal);
+            var batchRunnerEnd = source.LastIndexOf("#endif", StringComparison.Ordinal);
+            var batchRunner = batchRunnerStart < 0 || batchRunnerEnd < batchRunnerStart
+                ? string.Empty
+                : PhaseValidationSourceHelpers.SourceType(
+                    source.Substring(batchRunnerStart, batchRunnerEnd - batchRunnerStart),
+                    "private sealed class BatchRunner");
             var ensureExecutor = SourceMethod(batchRunner, "private void EnsureExecutorStarted()");
 
             Check(batchRunner.Contains("private readonly MethodInfo _startExecutor;", StringComparison.Ordinal)
                   && batchRunner.Contains("_startExecutor = typeof(ROS2UnityComponent).GetMethod(", StringComparison.Ordinal),
                 "164-52E-1: Phase127 batch smoke caches StartExecutor reflection once");
-            Check(ensureExecutor.Contains("if (_startExecutor == null)", StringComparison.Ordinal)
-                  && ensureExecutor.Contains("_startExecutor.Invoke(_ros2Unity, null);", StringComparison.Ordinal)
+            Check(ensureExecutor.Contains("_startExecutor == null ? null : () => _startExecutor.Invoke(_ros2Unity, null)", StringComparison.Ordinal)
                   && !ensureExecutor.Contains("typeof(ROS2UnityComponent).GetMethod", StringComparison.Ordinal),
                 "164-52E-2: Phase127 batch smoke does not reflect in the editor update loop");
             Check(CountOccurrences(source, "normalized.Contains(\"ros2_humble\")") == 2
@@ -129,6 +139,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string SourceMethod(string source, string signature)
             => PhaseValidationSourceHelpers.SourceMethod(source, signature);
+
+        private static string PythonSourceMethod(string source, string signature)
+        {
+            var start = source.IndexOf(signature, StringComparison.Ordinal);
+            if (start < 0 || source.IndexOf(signature, start + signature.Length, StringComparison.Ordinal) >= 0)
+                throw new InvalidOperationException("Could not resolve exactly one Python function for: " + signature);
+
+            var next = source.IndexOf("\ndef ", start + signature.Length, StringComparison.Ordinal);
+            return next < 0 ? source.Substring(start) : source.Substring(start, next - start);
+        }
 
         private static string Read(string relativePath)
             => relativePath.EndsWith(".py", StringComparison.Ordinal)

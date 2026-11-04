@@ -126,11 +126,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && !runtimeSource.Contains("ThrowIfUninitialized", StringComparison.Ordinal)
                   && runtimeSource.Contains("LoadMetadata() must complete before metadata-backed properties are read.", StringComparison.Ordinal),
                 "160-A7c: Humble ROS2ForUnity avoids duplicate standalone env setup and stale reload handlers");
-            var dispose = ExtractMethodBody(runtimeSource, "Dispose");
-            Check(runtimeSource.Contains("internal class ROS2ForUnity : IDisposable", StringComparison.Ordinal)
+            var lifecycleSource = ReadRepoText(
+                RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/Decomposed/ROS2ForUnity/ROS2ForUnity.Lifecycle.cs");
+            var dispose = ExtractMethodBody(lifecycleSource, "Dispose");
+            Check(runtimeSource.Contains("internal partial class ROS2ForUnity : IDisposable", StringComparison.Ordinal)
                   && dispose.Contains("DestroyROS2ForUnity();", StringComparison.Ordinal)
                   && dispose.Contains("GC.SuppressFinalize(this);", StringComparison.Ordinal)
-                  && !runtimeSource.Contains("~ROS2ForUnity", StringComparison.Ordinal),
+                  && !runtimeSource.Contains("~ROS2ForUnity", StringComparison.Ordinal)
+                  && !lifecycleSource.Contains("~ROS2ForUnity", StringComparison.Ordinal),
                 "160-A7d: Humble ROS2ForUnity implements deterministic Dispose without a native finalizer");
 
             var asmdef = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.HumbleWin64.asmdef");
@@ -243,7 +246,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && build.Contains("dev.unity2foxglove.ros2forunity.runtime.humble.win64", StringComparison.Ordinal),
                 "160-C2: Humble builder uses Humble artifact, runtime id, and package name");
 
-            var validator = ReadRepoText(HumbleScripts + "/validate_r2fu_runtime_package.py");
+            var validator = ReadRepoText(HumbleScripts + "/validate_r2fu_runtime_package.py")
+                + ReadRepoText(HumbleScripts + "/validate_r2fu_runtime_package_sections/checks_foundation.py")
+                + ReadRepoText(HumbleScripts + "/validate_r2fu_runtime_package_sections/checks_runtime.py");
             Check(validator.Contains("rosgraph_msgs", StringComparison.Ordinal)
                   && validator.Contains("HUMBLE_HANDOFF_FAMILIES", StringComparison.Ordinal)
                   && validator.Contains("rmw_fastrtps_cpp", StringComparison.Ordinal)
@@ -264,7 +269,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var ros2Env = ReadRepoText(Ros2SmokeScripts + "/_ros2_windows_env.py");
             Check(ros2Env.Contains("\"humble\" in root_text", StringComparison.Ordinal)
-                  && ros2Env.Contains("return \"humble\"", StringComparison.Ordinal),
+                  && ros2Env.Contains("path_distro = \"humble\"", StringComparison.Ordinal),
                 "160-C5: shared ROS2 smoke environment infers Humble from the repo-local entrypoint");
             Check(ros2Env.Contains("Library\" / \"plugins", StringComparison.Ordinal)
                   && ros2Env.Contains("QT_QPA_PLATFORM_PLUGIN_PATH", StringComparison.Ordinal),

@@ -63,15 +63,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void UnityIl2CppBuildPreflightsGeneratedArtifacts()
         {
-            var build = PhaseValidationSourceHelpers.ReadSplitPythonSource("Scripts/unity_build/unity_il2cpp.py");
+            var build = ReadRepoText("Scripts/unity_build/unity_il2cpp/parts/cli.py");
+            var buildFoundation = ReadRepoText("Scripts/unity_build/unity_il2cpp/parts/foundation.py");
             var tests = ReadRepoText("Scripts/release/regression_checks/test_release_tooling.py");
             var dryRunIndex = build.IndexOf("if args.dry_run:", StringComparison.Ordinal);
             var preflightIndex = build.IndexOf("generated_failures = validate_generated_artifacts(root)", StringComparison.Ordinal);
 
-            Check(build.Contains("REQUIRED_GENERATED_ARTIFACTS", StringComparison.Ordinal)
-                  && build.Contains("FoxgloveLogSourceGenerator.dll", StringComparison.Ordinal)
-                  && build.Contains("FoxgloveRos2MsgSchemaCatalog.cs", StringComparison.Ordinal)
-                  && build.Contains("Ros2CdrGeneratedSerializers.g.cs", StringComparison.Ordinal),
+            Check(buildFoundation.Contains("REQUIRED_GENERATED_ARTIFACTS = (", StringComparison.Ordinal)
+                  && buildFoundation.Contains("FoxgloveLogSourceGenerator.dll", StringComparison.Ordinal)
+                  && buildFoundation.Contains("FoxgloveRos2MsgSchemaCatalog.cs", StringComparison.Ordinal)
+                  && buildFoundation.Contains("Ros2CdrGeneratedSerializers.g.cs", StringComparison.Ordinal),
                 "163-24C-1: IL2CPP build driver declares required generated artifacts");
             Check(preflightIndex >= 0 && dryRunIndex > preflightIndex,
                 "163-24C-2: IL2CPP build driver checks generated artifacts before dry-run or Unity launch");

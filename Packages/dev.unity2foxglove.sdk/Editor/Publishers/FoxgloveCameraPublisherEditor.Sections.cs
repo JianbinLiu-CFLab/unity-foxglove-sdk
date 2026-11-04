@@ -1,5 +1,8 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
+//
+// Module: Editor/Publishers
+// Purpose: Dedicated Inspector for the unified camera publisher.
 
 using System;
 using System.Collections.Generic;

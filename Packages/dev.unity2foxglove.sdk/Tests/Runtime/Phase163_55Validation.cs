@@ -122,7 +122,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMethodExtractorsIgnoreLiteralBraces()
         {
-            var phase139d = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase139DValidation.cs");
+            var phase139d = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase139DValidation.cs")
+                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Decomposed/Phase139DValidation/VerifyMethodExtractorHandlesLiteralBraces.cs");
             var unit = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RemoteTimelineOptimizationTests.cs");
 
             Check(phase139d.Contains("VerifyMethodExtractorHandlesLiteralBraces", StringComparison.Ordinal)
