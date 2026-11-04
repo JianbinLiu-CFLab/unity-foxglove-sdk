@@ -573,6 +573,7 @@ namespace Unity.FoxgloveSDK.Core
             return new ServiceSchemaDescriptor
             {
                 Encoding = descriptor.Encoding,
+                SchemaEncoding = descriptor.SchemaEncoding,
                 SchemaName = descriptor.SchemaName,
                 Schema = descriptor.Schema
             };

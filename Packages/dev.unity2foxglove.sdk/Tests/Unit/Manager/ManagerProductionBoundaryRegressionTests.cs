@@ -64,6 +64,7 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             manager.StartServer();
             Assert.Equal(1, manager.RuntimeForTest.StartCount);
             manager.IsRunning = true;
+            manager.SetNextChannelIdForTest(9);
             manager.SeedChannelCachesForTest();
             manager.RecordTopicContract("/conflict", "schema.one", "json", "component");
             var warnings = Debug.WarningCount;
@@ -73,6 +74,7 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             manager.StopServer();
             manager.IsRunning = false;
             AssertPublishingSessionStateCleared(manager);
+            Assert.Equal(1, manager.NextChannelIdForTest);
 
             manager.StartServer();
             Assert.Equal(2, manager.RuntimeForTest.StartCount);
@@ -88,18 +90,21 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         {
             var manager = new FoxgloveManager { IsRunning = false };
             manager.SeedChannelCachesForTest();
+            manager.SetNextChannelIdForTest(9);
             manager.RecordTopicContract("/stale", "schema.one", "json", "component");
             manager.RecordTopicContract("/stale", "schema.two", "json", "component");
 
             manager.StopServer();
 
             AssertPublishingSessionStateCleared(manager);
+            Assert.Equal(1, manager.NextChannelIdForTest);
         }
 
         [Fact]
         public void FailedStartupClearsPublishingSessionState()
         {
             var manager = new FoxgloveManager { IsRunning = false };
+            manager.SetNextChannelIdForTest(9);
             manager.BoundarySetupRecording = () =>
             {
                 manager.SeedChannelCachesForTest();
@@ -112,6 +117,7 @@ namespace Unity.FoxgloveSDK.Tests.Manager
 
             Assert.Equal(0, manager.RuntimeForTest.StartCount);
             AssertPublishingSessionStateCleared(manager);
+            Assert.Equal(1, manager.NextChannelIdForTest);
         }
 
         [Fact]

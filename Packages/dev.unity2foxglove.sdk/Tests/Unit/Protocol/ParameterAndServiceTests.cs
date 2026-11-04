@@ -100,6 +100,51 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ServiceAdvertiseIncludesSchemaEncodingForJsonAndProtobufSchemas()
+        {
+            var fake = new Phase6FakeTransport();
+            var session = new FoxgloveSession("Test", fake);
+            session.RegisterService(new ServiceDescriptor
+            {
+                Name = "/svc", Type = "/svc",
+                Request = new ServiceSchemaDescriptor
+                {
+                    Encoding = "json",
+                    SchemaName = "/req",
+                    Schema = "{}"
+                },
+                Response = new ServiceSchemaDescriptor
+                {
+                    Encoding = "json",
+                    SchemaName = "/resp",
+                    Schema = "{}"
+                }
+            });
+
+            fake.SimulateConnect(1);
+            var advertise = JObject.Parse(
+                fake.SentTexts(1).Single(text => JObject.Parse(text)["op"]?.ToString() == "advertiseServices"));
+
+            Assert.Equal("jsonschema", advertise["services"]?[0]?["request"]?["schemaEncoding"]?.ToString());
+            Assert.Equal("jsonschema", advertise["services"]?[0]?["response"]?["schemaEncoding"]?.ToString());
+
+            var protobuf = JObject.Parse(JsonConvert.SerializeObject(new ServiceSchemaDescriptor
+            {
+                Encoding = "protobuf",
+                SchemaName = "/protobuf",
+                Schema = "AQI="
+            }));
+            Assert.Equal("protobuf", protobuf["schemaEncoding"]?.ToString());
+
+            var jsonWithoutSchema = JObject.Parse(JsonConvert.SerializeObject(new ServiceSchemaDescriptor
+            {
+                Encoding = "json",
+                SchemaName = "/json-without-schema"
+            }));
+            Assert.Equal("jsonschema", jsonWithoutSchema["schemaEncoding"]?.ToString());
+        }
+
+        [Fact]
         public void BinaryServiceCodec()
         {
             var payload = Encoding.UTF8.GetBytes("{\"x\":1}");

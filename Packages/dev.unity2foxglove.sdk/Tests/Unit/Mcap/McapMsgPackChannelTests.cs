@@ -235,6 +235,64 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StopFinalizesRecordingAndRestartCreatesSecondFile()
+        {
+            var firstPath = Path.Combine(
+                Path.GetTempPath(),
+                "u2f-phase185-stop-first-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var secondPath = Path.Combine(
+                Path.GetTempPath(),
+                "u2f-phase185-stop-second-" + Guid.NewGuid().ToString("N") + ".mcap");
+            var runtime = new FoxgloveRuntime(
+                new NoopTransport(),
+                new SystemClock(),
+                new DefaultSchemaRegistry());
+
+            try
+            {
+                runtime.EnableRecording(firstPath);
+                runtime.Start("phase185-stop-first", port: 0);
+                runtime.RegisterRecordingOnlyChannel(RawMessagePackChannel(61, "/phase185/stop-first"));
+                runtime.PublishRecordingOnly(61, new byte[] { 0x01 }, 185_061UL);
+                runtime.Stop();
+
+                runtime.EnableRecording(secondPath);
+                runtime.Start("phase185-stop-second", port: 0);
+                runtime.RegisterRecordingOnlyChannel(RawMessagePackChannel(61, "/phase185/stop-second"));
+                runtime.PublishRecordingOnly(61, new byte[] { 0x02 }, 185_062UL);
+                runtime.Stop();
+            }
+            finally
+            {
+                runtime.Dispose();
+            }
+
+            try
+            {
+                using (var firstStream = File.OpenRead(firstPath))
+                using (var firstReader = new McapStreamingReader(firstStream))
+                {
+                    var first = firstReader.Read();
+                    Assert.Equal("/phase185/stop-first", Assert.Single(first.Summary.Channels).Topic);
+                    Assert.Equal(new byte[] { 0x01 }, Assert.Single(first.Messages).Data);
+                }
+
+                using (var secondStream = File.OpenRead(secondPath))
+                using (var secondReader = new McapStreamingReader(secondStream))
+                {
+                    var second = secondReader.Read();
+                    Assert.Equal("/phase185/stop-second", Assert.Single(second.Summary.Channels).Topic);
+                    Assert.Equal(new byte[] { 0x02 }, Assert.Single(second.Messages).Data);
+                }
+            }
+            finally
+            {
+                File.Delete(firstPath);
+                File.Delete(secondPath);
+            }
+        }
+
+        [Fact]
         public void MsgPackChannelRecordsWithoutSchema()
         {
             var writer = new FoxgloveMsgPackWriter();

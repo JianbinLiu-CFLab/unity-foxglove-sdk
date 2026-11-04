@@ -392,6 +392,11 @@ namespace Unity.FoxgloveSDK.Components
                + _foxRunRecordingChannelCache.Count
                + (_foxRunRawRecordingChannelCache.TryGet(BoundaryRawRecordingDescriptor, out _) ? 1 : 0);
 
+        internal int NextChannelIdForTest => _connectionState.NextChannelId;
+
+        internal void SetNextChannelIdForTest(int value)
+            => _connectionState.NextChannelId = value;
+
         private bool BeginFoxRunTransportSessionIfNeeded() => true;
         private void BeginFoxRunSubscriptionSessionIfNeeded() { }
         private void EnsureRuntimeCreated() { }

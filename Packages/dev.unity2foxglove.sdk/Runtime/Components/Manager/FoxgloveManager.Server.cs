@@ -323,6 +323,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ClearPublishingSessionState()
         {
+            _connectionState.ResetChannelIds(FirstAutoChannelId);
             ClearTopicContractSessionState();
             _channelCache.Clear();
             _foxRunRecordingChannelCache.Clear();
