@@ -213,6 +213,9 @@ jobs:
         run: python3 Scripts/release/run_ci.py --only phase186-bridge-tooling
       - name: Run package and sample closure lane
         if: always()
+        env:
+          SOURCE_DECOMPOSITION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SOURCE_DECOMPOSITION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python3 -B Scripts/release/run_ci.py --only packages
       - name: Run Workstream F native cleanup regression
         if: always()

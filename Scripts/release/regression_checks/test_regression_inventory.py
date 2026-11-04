@@ -4,6 +4,7 @@
 import builtins
 import dis
 import importlib
+import os
 import subprocess
 import sys
 import types
@@ -59,12 +60,104 @@ class RegressionInventoryTests(unittest.TestCase):
         errors = maintained_name_path_guard.check_new_paths(
             {
                 "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64/"
-                "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/generated_phase181.dll"
+                "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/"
+                "unity2foxglove_foxrun_interfaces_v1_phase181_state48_d288_ed82_f1__"
+                "rosidl_typesupport_c_native.dll"
             },
             baseline_paths=set(),
             allowlist=set(),
         )
         self.assertEqual([], errors)
+
+    def test_maintained_name_guard_rejects_unknown_typesupport_package(self):
+        """Unknown ROS distro packages cannot bypass the path guard."""
+        errors = maintained_name_path_guard.check_new_paths(
+            {
+                "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.evil.win64/"
+                "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/phase999/Unexpected.dll"
+            },
+            baseline_paths=set(),
+            allowlist=set(),
+        )
+        self.assertEqual(1, len(errors))
+
+    def test_maintained_name_guard_rejects_unreviewed_typesupport_artifact(self):
+        """Known ROS distro packages only allow reviewed generated artifacts."""
+        errors = maintained_name_path_guard.check_new_paths(
+            {
+                "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64/"
+                "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/phase999/Unexpected.dll"
+            },
+            baseline_paths=set(),
+            allowlist=set(),
+        )
+        self.assertEqual(1, len(errors))
+
+    def test_maintained_name_guard_rejects_single_digit_phase_paths(self):
+        """Single-digit phase numbers are rejected like multi-digit ones."""
+        errors = maintained_name_path_guard.check_new_paths(
+            {"Scripts/phase7_tool.py"},
+            baseline_paths=set(),
+            allowlist=set(),
+        )
+        self.assertEqual(1, len(errors))
+
+    def test_maintained_name_guard_cli_uses_frozen_environment_revisions(self):
+        """The CLI compares the revisions supplied by the CI environment."""
+        with TemporaryDirectory() as directory:
+            repository = Path(directory)
+            subprocess.run(["git", "init", "-q", str(repository)], check=True)
+            subprocess.run(["git", "-C", str(repository), "config", "user.name", "test"], check=True)
+            subprocess.run(["git", "-C", str(repository), "config", "user.email", "test@example.invalid"], check=True)
+            (repository / "Scripts").mkdir()
+            (repository / "Scripts" / "phase181_existing.py").write_text("", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repository), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(repository), "commit", "-q", "-m", "base"], check=True)
+            base = subprocess.check_output(["git", "-C", str(repository), "rev-parse", "HEAD"], text=True).strip()
+            (repository / "Scripts" / "phase196_new.py").write_text("", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repository), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(repository), "commit", "-q", "-m", "head"], check=True)
+            head = subprocess.check_output(["git", "-C", str(repository), "rev-parse", "HEAD"], text=True).strip()
+            subprocess.run(["git", "-C", str(repository), "checkout", "-q", base], check=True)
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "SOURCE_DECOMPOSITION_BASE_SHA": base,
+                    "SOURCE_DECOMPOSITION_HEAD_SHA": head,
+                },
+                clear=False,
+            ):
+                self.assertEqual(1, maintained_name_path_guard.main(["--repository", str(repository)]))
+
+    def test_maintained_name_guard_requires_frozen_base_in_ci(self):
+        """CI invocation fails instead of silently falling back to origin/main."""
+        with mock.patch.dict(
+            os.environ,
+            {"CI": "true"},
+            clear=True,
+        ):
+            with self.assertRaises(RuntimeError):
+                maintained_name_path_guard.main(["--repository", str(Path.cwd())])
+
+    def test_maintained_name_guard_requires_frozen_head_in_ci(self):
+        """CI invocation fails instead of silently falling back to HEAD."""
+        with mock.patch.dict(
+            os.environ,
+            {
+                "CI": "true",
+                "SOURCE_DECOMPOSITION_BASE_SHA": "HEAD",
+            },
+            clear=True,
+        ):
+            with self.assertRaises(RuntimeError):
+                maintained_name_path_guard.main(["--repository", str(Path.cwd())])
+
+    def test_package_lane_wires_frozen_revisions(self):
+        """The package workflow step passes immutable base and head revisions."""
+        workflow = (Path(__file__).resolve().parents[3] / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
+        step = workflow.split("- name: Run package and sample closure lane", 1)[1].split("- name:", 1)[0]
+        self.assertIn("SOURCE_DECOMPOSITION_BASE_SHA:", step)
+        self.assertIn("SOURCE_DECOMPOSITION_HEAD_SHA:", step)
 
     def test_decomposed_python_regression_surfaces_keep_expected_counts(self):
         """Explicit package loading keeps the four migrated suites complete."""

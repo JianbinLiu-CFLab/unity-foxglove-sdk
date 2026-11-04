@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 
 - The `/foxglove/topic-contracts` response schema now declares all claim fields
-  and the `Live`/`Recording` scope enum.
+  and the `Live`/`Recording` scope enum, with all claim fields marked required.
 
 ### Fixed
 
