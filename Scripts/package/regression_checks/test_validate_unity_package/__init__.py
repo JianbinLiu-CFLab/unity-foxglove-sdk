@@ -22,6 +22,7 @@ from . import source_generator_contract_tests as _phase192_section_5
 from . import source_generator_parity_tests as _phase192_section_6
 from . import source_generator_artifact_tests as _phase192_section_7
 from . import matrix_tests as _phase192_section_8
+from . import meta_contract_tests as _phase192_section_9
 
 _PHASE192_SECTION_MODULES = (
     _phase192_section_0,
@@ -33,6 +34,7 @@ _PHASE192_SECTION_MODULES = (
     _phase192_section_6,
     _phase192_section_7,
     _phase192_section_8,
+    _phase192_section_9,
 )
 _PHASE192_EXPORT_NAMES = set()
 for _phase192_section in _PHASE192_SECTION_MODULES:

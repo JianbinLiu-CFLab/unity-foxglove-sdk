@@ -41,6 +41,12 @@ ROS2_BRIDGE_PACKAGE = (
 )
 REMOTE_GATEWAY_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.remotegateway.win64"
 CONSUMER_PACKAGES_LOCK = ROOT / "Unity2Foxglove" / "Packages" / "packages-lock.json"
+UNITY_SOURCE_PACKAGES = (
+    PACKAGE,
+    ROS2_FOR_UNITY_PACKAGE,
+    ROS2_BRIDGE_PACKAGE,
+    REMOTE_GATEWAY_PACKAGE,
+)
 ROS2_RUNTIME_PACKAGES = (
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
     ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
@@ -65,6 +71,16 @@ CONSUMER_LOCAL_DEPENDENCY_PREFIXES = (
 )
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
+SDK_DECOMPOSED_TESTS = PACKAGE / "Tests" / "Unit" / "Decomposed"
+SDK_OPTIONAL_MISSING_META_PATHS = frozenset(
+    {
+        "Editor/SourceGenerators/build.meta",
+        "Plugins/native.meta",
+        "Tests/Editor.meta",
+        "Tests/Runtime/build.meta",
+        "Tests/Unit/build.meta",
+    }
+)
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 UNITY_DEMO_SCRIPTS = ROOT / "Unity2Foxglove" / "Assets" / "Scripts"
 UNITY_DEMO_ASSETS = ROOT / "Unity2Foxglove" / "Assets"
@@ -94,9 +110,11 @@ UNITY_META_EXTENSIONS = {
     ".json",
     ".mat",
     ".otf",
+    ".pb",
     ".physicmaterial",
     ".png",
     ".prefab",
+    ".proto",
     ".preset",
     ".rendertexture",
     ".shader",
@@ -110,6 +128,7 @@ UNITY_META_EXTENSIONS = {
     ".wav",
     ".xml",
 }
+NON_UNITY_BUILD_META_SUFFIXES = {".csproj", ".props"}
 
 # Text patterns that must not leak into public docs or sample files.
 FORBIDDEN_PUBLIC_PATTERNS = (
@@ -177,6 +196,10 @@ THIRD_PARTY_NOTICE_REQUIREMENTS = (
 
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 META_GUID_RE = re.compile(r"(?mi)^guid:\s*([0-9a-f]{32})\s*$")
+META_FOLDER_ASSET_RE = re.compile(r"(?mi)^folderAsset:\s*yes\s*$")
+META_IMPORTER_RE = re.compile(
+    r"(?m)^([A-Za-z][A-Za-z0-9]*Importer)\s*:"
+)
 VALIDATION_PHASE_FILENAME_RE = re.compile(r"^Phase(?P<phase>\d+)(?P<trailing>[A-Za-z0-9_-]*)Validation\.cs$")
 VALIDATION_PHASE_FILENAME_INDEX_RE = re.compile(r"^[_-](?P<index>\d+)")
 LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE = 164
@@ -241,7 +264,71 @@ def iter_bridge_asset_files(package: Path | None = None) -> list[Path]:
             part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES
             for part in path.relative_to(root).parts
         )
+        and not path_is_relative_to(path, root / "Documentation~")
     ]
+
+
+def iter_bridge_asset_directories(package: Path | None = None) -> list[Path]:
+    """Return Bridge asset folders while excluding package-only and build roots."""
+    root = package if package is not None else ROS2_BRIDGE_PACKAGE
+    if not root.exists():
+        return []
+    documentation_root = root / "Documentation~"
+    samples_root = root / "Samples~"
+    return [
+        path
+        for path in root.rglob("*")
+        if path.is_dir()
+        and path != samples_root
+        and not path_is_relative_to(path, documentation_root)
+        and not any(
+            part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES
+            for part in path.relative_to(root).parts
+        )
+    ]
+
+
+def _csharp_meta_importer_is_valid(text: str) -> bool:
+    """Accept minimal C# metadata and reject non-Mono importers."""
+    importers = [match.group(1) for match in META_IMPORTER_RE.finditer(text)]
+    return not importers or importers == ["MonoImporter"]
+
+
+def _iter_package_assets(package: Path) -> tuple[list[Path], list[Path]]:
+    """Return Unity-tracked files and folders for one first-party package."""
+    files: list[Path] = []
+    folders: list[Path] = []
+    for path in package.rglob("*"):
+        relative = path.relative_to(package)
+        if any(part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES for part in relative.parts):
+            continue
+        if any(part in {"Documentation~", "Ros2Package~"} for part in relative.parts):
+            continue
+        if path.is_file() and path.suffix.casefold() in UNITY_META_EXTENSIONS:
+            files.append(path)
+        elif path.is_dir() and path != package and path.name != "Samples~":
+            folders.append(path)
+    return files, folders
+
+
+def _iter_scoped_meta_files(package: Path) -> Iterable[Path]:
+    """Yield package metadata in the validated Unity asset scope."""
+    if not package.is_dir():
+        return ()
+    metas: list[Path] = []
+    for meta in package.rglob("*.meta"):
+        if not meta.is_file():
+            continue
+        relative = meta.relative_to(package)
+        if any(part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES for part in relative.parts):
+            continue
+        if any(part in {"Documentation~", "Ros2Package~"} for part in relative.parts):
+            continue
+        asset = Path(str(meta)[:-len(".meta")])
+        if asset.is_file() and asset.suffix.casefold() in NON_UNITY_BUILD_META_SUFFIXES:
+            continue
+        metas.append(meta)
+    return sorted(metas, key=rel)
 
 
 def path_is_relative_to(path: Path, root: Path) -> bool:
@@ -297,7 +384,10 @@ __all__ = [
     'LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE',
     'MAX_REPORTED_MISSING_META',
     'MAX_REPORTED_OFFENDERS',
+    'META_FOLDER_ASSET_RE',
     'META_GUID_RE',
+    'META_IMPORTER_RE',
+    'NON_UNITY_BUILD_META_SUFFIXES',
     'PACKAGE',
     'PACKAGE_BUILD_DIRECTORY_NAMES',
     'Path',
@@ -309,17 +399,24 @@ __all__ = [
     'ROS2_RUNTIME_PACKAGES',
     'ROS2_TYPESUPPORT_PACKAGES',
     'SAMPLES',
+    'SDK_DECOMPOSED_TESTS',
+    'SDK_OPTIONAL_MISSING_META_PATHS',
     'THIRD_PARTY_NOTICES',
     'THIRD_PARTY_NOTICE_REQUIREMENTS',
     'UNITY_DEMO_ASSETS',
     'UNITY_DEMO_SCRIPTS',
     'UNITY_META_EXTENSIONS',
+    'UNITY_SOURCE_PACKAGES',
     'VALIDATION_PHASE_FILENAME_INDEX_RE',
     'VALIDATION_PHASE_FILENAME_RE',
     'VERSION_RE',
+    '_csharp_meta_importer_is_valid',
+    '_iter_package_assets',
+    '_iter_scoped_meta_files',
     'add',
     'annotations',
     'dataclass',
+    'iter_bridge_asset_directories',
     'iter_bridge_asset_files',
     'iter_files',
     'json',
