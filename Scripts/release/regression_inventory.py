@@ -99,6 +99,7 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
         "Scripts.smoke.ros2.regression_checks.test_phase138u_followup",
     ),
     "packages": (
+        "Scripts.architecture.regression_checks.test_structure_guards",
         "Scripts.release.regression_checks.test_release_tooling",
         "Scripts.samples.regression_checks.test_sample_sync_tooling",
         "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling",
