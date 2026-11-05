@@ -136,7 +136,10 @@ class RegressionInventoryTests(unittest.TestCase):
             {"CI": "true"},
             clear=True,
         ):
-            with self.assertRaises(RuntimeError):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "SOURCE_DECOMPOSITION_BASE_SHA is required in CI",
+            ):
                 maintained_name_path_guard.main(["--repository", str(Path.cwd())])
 
     def test_maintained_name_guard_requires_frozen_head_in_ci(self):
@@ -149,15 +152,24 @@ class RegressionInventoryTests(unittest.TestCase):
             },
             clear=True,
         ):
-            with self.assertRaises(RuntimeError):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "SOURCE_DECOMPOSITION_HEAD_SHA is required in CI",
+            ):
                 maintained_name_path_guard.main(["--repository", str(Path.cwd())])
 
     def test_package_lane_wires_frozen_revisions(self):
         """The package workflow step passes immutable base and head revisions."""
         workflow = (Path(__file__).resolve().parents[3] / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
         step = workflow.split("- name: Run package and sample closure lane", 1)[1].split("- name:", 1)[0]
-        self.assertIn("SOURCE_DECOMPOSITION_BASE_SHA:", step)
-        self.assertIn("SOURCE_DECOMPOSITION_HEAD_SHA:", step)
+        self.assertIn(
+            "SOURCE_DECOMPOSITION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}",
+            step,
+        )
+        self.assertIn(
+            "SOURCE_DECOMPOSITION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+            step,
+        )
 
     def test_decomposed_python_regression_surfaces_keep_expected_counts(self):
         """Explicit package loading keeps the four migrated suites complete."""
