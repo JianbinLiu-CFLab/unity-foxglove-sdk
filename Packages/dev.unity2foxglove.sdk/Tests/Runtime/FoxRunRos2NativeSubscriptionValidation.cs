@@ -207,7 +207,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && providers.Contains(
                       "FoxgloveWebSocketTransport.Id",
                       StringComparison.Ordinal)
-                  && providers.Contains(
+                  && !providers.Contains(
                       "string.IsNullOrWhiteSpace(_foxRunSubscribeTransportId)",
                       StringComparison.Ordinal)
                   && inbound.Contains(

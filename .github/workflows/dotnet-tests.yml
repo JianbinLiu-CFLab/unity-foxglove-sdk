@@ -478,6 +478,27 @@ jobs:
           path: build/TestResults/OptionalRos2Native
           if-no-files-found: error
 
+  optional-ros2-runtime-validation:
+    name: "Linux: optional ROS2 runtime validations"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0"
+
+      - name: Build optional ROS2 adapter runtime validation project
+        run: dotnet build Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -p:IncludeRos2ForUnityAdapter=true
+
+      - name: Run Phase179 R2FU subscription Provider boundary validation
+        run: dotnet run --no-build --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -p:IncludeRos2ForUnityAdapter=true -- --phase179
+
+      - name: Run Phase181 custom R2FU interface interop release gate validation
+        run: dotnet run --no-build --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -p:IncludeRos2ForUnityAdapter=true -- --phase181
+
   u2r2-native:
     name: "Linux: U2R2 C++ native gtest"
     runs-on: ubuntu-latest
@@ -642,6 +663,7 @@ jobs:
       - linux-conformance-panels
       - optional-ros2-adapter
       - optional-ros2-native
+      - optional-ros2-runtime-validation
       - u2r2-native
       - windows-parity
       - analyzer-freshness
@@ -656,6 +678,7 @@ jobs:
           LINUX_CONFORMANCE_RESULT: ${{ needs['linux-conformance-panels'].result }}
           ADAPTER_RESULT: ${{ needs['optional-ros2-adapter'].result }}
           NATIVE_RESULT: ${{ needs['optional-ros2-native'].result }}
+          RUNTIME_VALIDATION_RESULT: ${{ needs['optional-ros2-runtime-validation'].result }}
           U2R2_RESULT: ${{ needs['u2r2-native'].result }}
           WINDOWS_RESULT: ${{ needs['windows-parity'].result }}
           ANALYZER_RESULT: ${{ needs['analyzer-freshness'].result }}
@@ -670,6 +693,7 @@ jobs:
             "linux-conformance-panels=$LINUX_CONFORMANCE_RESULT" \
             "optional-ros2-adapter=$ADAPTER_RESULT" \
             "optional-ros2-native=$NATIVE_RESULT" \
+            "optional-ros2-runtime-validation=$RUNTIME_VALIDATION_RESULT" \
             "u2r2-native=$U2R2_RESULT" \
             "windows-parity=$WINDOWS_RESULT" \
             "analyzer-freshness=$ANALYZER_RESULT"; do

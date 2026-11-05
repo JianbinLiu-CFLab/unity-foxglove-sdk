@@ -133,10 +133,16 @@ class _RunCiTestsPart2:
             "linux-conformance-panels",
             "optional-ros2-adapter",
             "optional-ros2-native",
+            "optional-ros2-runtime-validation",
             "windows-parity",
             "analyzer-freshness",
         ):
             self.assertIn(dependency, job_ids)
+        for flag in ("--phase179", "--phase181"):
+            self.assertIn(
+                "FoxgloveSdk.Tests.csproj -p:IncludeRos2ForUnityAdapter=true -- " + flag,
+                workflow,
+            )
         aggregate = workflow[workflow.index("\n  test:\n", workflow.index("jobs:")) :]
         self.assertIn("if: always()", aggregate)
         for dependency in job_ids:
