@@ -73,6 +73,27 @@ namespace Unity.FoxgloveSDK.Tests
                   && program.Contains("RunAllCiSafeValidations", StringComparison.Ordinal)
                   && registrySource.Contains("CiSafeValidations", StringComparison.Ordinal),
                 "126B-1b: the runner exposes an explicit all-CI-safe registry gate");
+            var parsedKnown = global::Program.ParseCiSafeKnownFailures("--a  # first\r\n\n# comment only\n--b\n");
+            var ratchetProblems = global::Program.EvaluateCiSafeRatchet(
+                new[] { "--a", "--b", "--c" },
+                new[] { "--a", "--c" },
+                new HashSet<string>(new[] { "--a", "--b", "--gone" }, StringComparer.Ordinal));
+            Check(parsedKnown.SetEquals(new[] { "--a", "--b" })
+                  && ratchetProblems.Count == 3
+                  && ratchetProblems.Any(item => item.StartsWith("--c fails but is not a known failure", StringComparison.Ordinal))
+                  && ratchetProblems.Any(item => item.StartsWith("--b passes now", StringComparison.Ordinal))
+                  && ratchetProblems.Any(item => item.StartsWith("--gone is listed", StringComparison.Ordinal)),
+                "126B-1c: the CI-safe ratchet rejects new failures, fixed known failures, and unknown baseline flags");
+            var defaultFlags = new HashSet<string>(
+                PhaseValidationRegistry.DefaultValidations(includeLocalEvidence: false).Select(item => item.Flag),
+                StringComparer.Ordinal);
+            var ciSafeFlags = new HashSet<string>(
+                PhaseValidationRegistry.CiSafeValidations().Select(item => item.Flag),
+                StringComparer.Ordinal);
+            var baseline = global::Program.ParseCiSafeKnownFailures(
+                ReadRepoText(global::Program.CiSafeKnownFailuresPath));
+            Check(baseline.All(flag => ciSafeFlags.Contains(flag) && !defaultFlags.Contains(flag)),
+                "126B-1d: every known CI-safe failure is a CI-safe validation outside the default sweep");
             Check(phase126 != null
                   && phase126.Category == ValidationCategory.CiSafe
                   && phase126.Evidence == ValidationEvidence.Structural

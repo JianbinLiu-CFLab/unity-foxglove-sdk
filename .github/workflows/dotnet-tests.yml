@@ -139,6 +139,10 @@ jobs:
         if: always()
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
+      - name: Run CI-safe known-failure ratchet
+        if: always()
+        run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --ci-safe-ratchet
+
       - name: Run Workstream F explicit runtime closure validations
         if: always()
         run: |

@@ -1,0 +1,68 @@
+# CI-safe runtime validations known to fail on main (one flag per line; text after # is ignored).
+# Used by: dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --ci-safe-ratchet
+# A new failure must be fixed, not added here. When an entry passes, the ratchet fails until it is removed.
+
+--phase124     # Phase 124: validation for decoded MCAP DataLoader iteration
+--phase125     # Phase 125: validation for typed ROS2 CDR MCAP decode
+--phase137g    # Phase 137G
+--phase146a    # Phase 146A: validation for the project-level R2FU active runtime selector
+--phase150     # Phase 150: validation for SDK-style channel facade API boundaries
+--phase161     # Phase 161: validation for the R2FU Jazzy Win64 runtime refresh
+--phase162     # Phase 162: phase 146B validation for the R2FU Lyrical Win64 runtime package
+--phase165     # R2FU native bridge hot path performance
+--phase168     # Phase 168: validation for MessagePack raw channel encoding support
+--phase171     # Phase 171: optional Remote Access Gateway package boundary
+--phase176     # Phase 176: FoxRun Subscribe Data and Publish panel
+--phase163-4   # Phase 163-4: phase163-4 review regression checks for registries, assets, parameters, and s
+--phase163-8   # Phase 163-8: phase163-8 review regression checks for replay controller, cursor, and timeli
+--phase163-10  # Phase 163-10: phase163-10 review regression checks for MCAP reader parsing
+--phase163-11  # Phase 163-11: validation for MCAP DataLoader, Remote File, and Replay Engine review fixes
+--phase163-12  # Phase 163-12: validation for schema catalog and identity review fixes
+--phase163-14  # Phase 163-14: validation for publisher base, cadence, and output policy review fixes
+--phase163-15  # Phase 163-15: validation for camera publisher and editor review fixes
+--phase163-19  # Phase 163-19: validation for ROS2 CDR writer and generator review fixes
+--phase163-20  # Phase 163-20: validation for ROS2 Bridge and R2FU boundary review fixes
+--phase163-21  # Phase 163-21: validation for FoxRun runtime bus, sinks, and inbound gates
+--phase163-26  # Phase 163-26: validation for editor native helper, certificate,
+--phase163-27  # Phase 163-27: validation for R2FU runtime selection and play-mode guards
+--phase163-28  # Phase 163-28: validation for R2FU native bridge lifecycle hardening
+--phase163-29  # Phase 163-29: validation for R2FU runtime package governance
+--phase163-30  # Phase 163-30: validation for Humble runtime import and FastRTPS package path hardening
+--phase163-31  # Phase 163-31: validation for Jazzy runtime refresh and package path hardening
+--phase163-32  # Phase 163-32: validation for Lyrical runtime selection and Zenoh package hardening
+--phase163-33  # Phase 163-33: validation for R2FU sample and RViz acceptance hardening
+--phase163-36  # Phase 163-36: phase163-36 Unity demo scene and project-settings review closure
+--phase163-37  # Phase 163-37: phase163-37 SDK sample and public package example review closure
+--phase163-39  # Phase 163-39: phase163-39 ROS2 bridge sidecar and launch tooling review closure
+--phase163-40  # Phase 163-40: phase163-40 release, packaging, and CI script review closure
+--phase163-45  # Phase 163-45: phase163-45 early protocol and runtime validation review closure
+--phase163-52  # Phase 163-52: review closure for real-project and R2FU smoke validations
+--phase163-56  # Phase 163-56: phase163-56 review regression coverage for runtime validation hygiene
+--phase164-1   # Phase 164-1: phase164-1 optimization regression coverage for repository validation paths
+--phase164-2   # Phase 164-2: phase164-2 optimization regression coverage for runtime lifecycle hot paths
+--phase164-3   # Phase 164-3: phase164-3 optimization regression coverage for session routing hot paths
+--phase164-5   # Phase 164-5
+--phase164-9   # Phase 164-9
+--phase164-10  # Phase 164-10
+--phase164-18  # Phase 164-18
+--phase164-20  # Phase 164-20
+--phase164-26  # Phase 164-26
+--phase164-27  # Phase 164-27
+--phase164-28  # Phase 164-28
+--phase164-29  # Phase 164-29
+--phase164-31  # Phase 164-31
+--phase164-32  # Phase 164-32
+--phase164-35  # Phase 164-35
+--phase164-39  # Phase 164-39
+--phase164-40  # Phase 164-40
+--phase164-45  # Phase 164-45
+--phase164-54  # Phase 164-54
+--phase164-56  # Phase 164-56: optimization guards for latest runtime validations
+--phase138j    # Phase 138J: validation for async JPEG camera budget and payload rules
+--phase139b    # Phase 139B: validation for the official Remote Data Loader HTTP backend contract
+--phase140-1   # Phase 140-1: validates Phase 140-1 runtime facade and lifecycle review fixes
+--phase140-3   # Phase 140-3: validates Phase 140-3 recording/replay controller review fixes
+--phase140-6   # Phase 140-6: validates Phase 140-6 transport, clock, and backpressure review fixes
+--phase140-10  # Phase 140-10: validates Phase 140-10 MCAP replay engine review fixes
+--phase140-11  # Phase 140-11: validates Phase 140-11 MCAP DataLoader and remote-file review fixes
+--phase140-12  # Phase 140-12: validates Phase 140-12 schema registry and message definition review fixes

@@ -143,6 +143,8 @@ class _RunCiTestsPart2:
                 "FoxgloveSdk.Tests.csproj -p:IncludeRos2ForUnityAdapter=true -- " + flag,
                 workflow,
             )
+        runtime_job = workflow.split("\n  linux-runtime:\n", 1)[1].split("\n  linux-python-regressions:\n", 1)[0]
+        self.assertIn("FoxgloveSdk.Tests.csproj -- --ci-safe-ratchet", runtime_job)
         aggregate = workflow[workflow.index("\n  test:\n", workflow.index("jobs:")) :]
         self.assertIn("if: always()", aggregate)
         for dependency in job_ids:
