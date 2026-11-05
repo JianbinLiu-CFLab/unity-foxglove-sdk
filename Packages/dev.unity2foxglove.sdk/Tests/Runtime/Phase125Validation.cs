@@ -180,10 +180,9 @@ namespace Unity.FoxgloveSDK.Tests
             var path = CreateDecodedFixture();
             using var loader = new McapDataLoader(path, McapSequentialReadLimits.UnlimitedForTests);
 
-            var typed = loader.CreateDecodedIterator(new McapDataLoaderQuery
-            {
-                Topics = new List<string> { "/phase125/typed" }
-            }).Single();
+            var typed = loader.CreateDecodedIterator(
+                new McapDataLoaderQuery { Topics = new List<string> { "/phase125/typed" } },
+                Ros2DecodeOptions(McapDecodeFailurePolicy.RawWithProblem)).Single();
             Check(typed.Payload.Kind == McapDecodedPayloadKind.Provider
                   && typed.Payload.Value is Foxglove.Log typedLog
                   && typedLog.Message == "phase125 typed"
@@ -191,20 +190,18 @@ namespace Unity.FoxgloveSDK.Tests
                   && typed.Payload.RawData.SequenceEqual(typed.Raw.Data),
                 "125-G1: decoded DataLoader returns Ros2CdrTyped IMessage for supported ros2msg+cdr");
 
-            var unknown = loader.CreateDecodedIterator(new McapDataLoaderQuery
-            {
-                Topics = new List<string> { "/phase125/unknown" }
-            }).Single();
+            var unknown = loader.CreateDecodedIterator(
+                new McapDataLoaderQuery { Topics = new List<string> { "/phase125/unknown" } },
+                Ros2DecodeOptions(McapDecodeFailurePolicy.RawWithProblem)).Single();
             var unknownDiagnostic = unknown.Payload.Value as Ros2CdrDiagnosticPayload;
             Check(unknown.Payload.Kind == McapDecodedPayloadKind.Provider
                   && unknownDiagnostic != null
                   && !unknownDiagnostic.SchemaKnown,
                 "125-G2: unsupported ROS2 schema falls back to diagnostic payload");
 
-            var malformed = loader.CreateDecodedIterator(new McapDataLoaderQuery
-            {
-                Topics = new List<string> { "/phase125/malformed" }
-            }).Single();
+            var malformed = loader.CreateDecodedIterator(
+                new McapDataLoaderQuery { Topics = new List<string> { "/phase125/malformed" } },
+                Ros2DecodeOptions(McapDecodeFailurePolicy.RawWithProblem)).Single();
             Check(malformed.Payload.Kind == McapDecodedPayloadKind.Provider
                   && malformed.Problems.Count == 1
                   && malformed.Problems[0].Code == "McapRos2CdrTypedDecodeFailed",
@@ -213,17 +210,28 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Throws<InvalidDataException>(() =>
                     loader.CreateDecodedIterator(
                         new McapDataLoaderQuery { Topics = new List<string> { "/phase125/malformed" } },
-                        new McapDecodeOptions { FailurePolicy = McapDecodeFailurePolicy.Throw }).ToList()),
+                        Ros2DecodeOptions(McapDecodeFailurePolicy.Throw)).ToList()),
                 "125-G4: Throw policy propagates typed decode failures");
 
-            var fallbackFailed = loader.CreateDecodedIterator(new McapDataLoaderQuery
-            {
-                Topics = new List<string> { "/phase125/fallback-failed" }
-            }).Single();
+            var fallbackFailed = loader.CreateDecodedIterator(
+                new McapDataLoaderQuery { Topics = new List<string> { "/phase125/fallback-failed" } },
+                Ros2DecodeOptions(McapDecodeFailurePolicy.RawWithProblem)).Single();
             Check(fallbackFailed.Payload.Kind == McapDecodedPayloadKind.Failed
                   && fallbackFailed.Problems.Any(problem => problem.Code == "McapDecodeFailed")
-                  && fallbackFailed.Problems.Any(problem => problem.Code == "McapRos2CdrDiagnosticFallbackFailed"),
+                  && fallbackFailed.Problems.Any(problem => problem.Code == "McapDecodeDiagnosticFallbackFailed"),
                 "125-G5: diagnostic fallback failures are reported instead of being silently swallowed");
+
+            var mismatchPath = CreateSchemaMismatchFixture();
+            using (var mismatchLoader = new McapDataLoader(mismatchPath, McapSequentialReadLimits.UnlimitedForTests))
+            {
+                var mismatched = mismatchLoader.CreateDecodedIterator(
+                    new McapDataLoaderQuery { Topics = new List<string> { "/phase125/schema-mismatch" } },
+                    Ros2DecodeOptions(McapDecodeFailurePolicy.RawWithProblem)).Single();
+                Check(mismatched.Payload.Kind == McapDecodedPayloadKind.Provider
+                      && mismatched.Payload.Value is Ros2CdrDiagnosticPayload
+                      && !(mismatched.Payload.Value is Foxglove.Log),
+                    "125-G6: typed decode requires the recorded ros2msg schema to match the bundled definition");
+            }
         }
 
         private static void VerifySourceWiring()
@@ -231,16 +239,20 @@ namespace Unity.FoxgloveSDK.Tests
             var validationRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDecodeRegistry.cs");
+            var bridgeCodecs = ReadRepoText("Packages/dev.unity2foxglove.ros2bridge/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgeMcapCodecs.cs");
             var generator = ReadRepoText("Scripts/schema/generate_ros2_cdr_serializers.py");
 
             Check(validationRegistry.Contains("--phase125", StringComparison.Ordinal)
                   && validationRegistry.Contains("Phase125Validation.Validate", StringComparison.Ordinal)
                   && project.Contains("Phase125Validation.cs", StringComparison.Ordinal),
                 "125-H1: PhaseValidationRegistry and test project wire --phase125");
-            Check(registry.Contains("McapRos2CdrTypedDecoderFactory", StringComparison.Ordinal)
-                  && registry.IndexOf("TryCreateRos2CdrTypedFactory", StringComparison.Ordinal) <
-                  registry.IndexOf("McapRos2CdrDiagnosticDecoderFactory", StringComparison.Ordinal),
-                "125-H2: typed ROS2 CDR factory is installed before diagnostic fallback");
+            var factoryOrder = Ros2BridgeMcapCodecs.CreateFactories();
+            Check(factoryOrder.Count == 2
+                  && factoryOrder[0] is McapRos2CdrTypedDecoderFactory
+                  && factoryOrder[1] is McapRos2CdrDiagnosticDecoderFactory
+                  && bridgeCodecs.Contains("The SDK never discovers these factories through reflection.", StringComparison.Ordinal)
+                  && !registry.Contains("Ros2", StringComparison.Ordinal),
+                "125-H2: the Bridge supplies the typed ROS2 CDR factory before diagnostic fallback, and the core registry stays ROS-free");
             Check(generator.Contains("generate_deserializers", StringComparison.Ordinal)
                   && generator.Contains("generate_deserializer_registry", StringComparison.Ordinal),
                 "125-H3: generator owns deserializer source and registry output");
@@ -267,18 +279,45 @@ namespace Unity.FoxgloveSDK.Tests
                     Line = 125
                 };
                 var typedPayload = Ros2CdrSerializerRegistry.Serialize("foxglove_msgs/msg/Log", log);
-                recorder.AddChannel(1, "/phase125/typed", "cdr", "foxglove_msgs/msg/Log", FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, string.Empty);
+                recorder.AddChannel(1, "/phase125/typed", "cdr", "foxglove_msgs/msg/Log", FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, BundledLogSchema());
                 recorder.WriteMessage(1, 10, typedPayload);
 
                 recorder.AddChannel(2, "/phase125/unknown", "cdr", "unknown_msgs/msg/Nope", FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, string.Empty);
                 recorder.WriteMessage(2, 20, new byte[] { 0, 1, 0, 0 });
 
-                recorder.AddChannel(3, "/phase125/malformed", "cdr", "foxglove_msgs/msg/Log", FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, string.Empty);
+                recorder.AddChannel(3, "/phase125/malformed", "cdr", "foxglove_msgs/msg/Log", FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, BundledLogSchema());
                 recorder.WriteMessage(3, 30, new byte[] { 0, 1, 0, 0 });
 
-                recorder.AddChannel(4, "/phase125/fallback-failed", "cdr", "foxglove_msgs/msg/Log", FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, string.Empty);
+                recorder.AddChannel(4, "/phase125/fallback-failed", "cdr", "foxglove_msgs/msg/Log", FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, BundledLogSchema());
                 recorder.WriteMessage(4, 40, new byte[] { 0 });
 
+                recorder.Close();
+            }
+
+            return path;
+        }
+
+        private static McapDecodeOptions Ros2DecodeOptions(McapDecodeFailurePolicy policy)
+            => new McapDecodeOptions
+            {
+                DecoderFactories = Ros2BridgeMcapCodecs.CreateFactories().ToList(),
+                FailurePolicy = policy
+            };
+
+        private static string BundledLogSchema()
+            => FoxgloveRos2MsgSchemaCatalog.TryGet("foxglove_msgs/msg/Log", out var entry)
+                ? entry.Content
+                : throw new InvalidOperationException("Bundled foxglove_msgs/msg/Log schema is missing.");
+
+        private static string CreateSchemaMismatchFixture()
+        {
+            var path = TempMcapHelper.CreatePath("phase125-mismatch");
+            using (var fs = File.Create(path))
+            using (var recorder = new McapRecorder(fs, null, new McapWriterOptions { UseChunking = false, EnableDataCrcs = true }, leaveOpen: true))
+            {
+                var log = new Foxglove.Log { Level = Foxglove.Log.Types.Level.Info, Message = "phase125 mismatch" };
+                recorder.AddChannel(1, "/phase125/schema-mismatch", "cdr", "foxglove_msgs/msg/Log", FoxgloveRos2MsgSchemaCatalog.SchemaEncoding, "string unrelated_field");
+                recorder.WriteMessage(1, 10, Ros2CdrSerializerRegistry.Serialize("foxglove_msgs/msg/Log", log));
                 recorder.Close();
             }
 

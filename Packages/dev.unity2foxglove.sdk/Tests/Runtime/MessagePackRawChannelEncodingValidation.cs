@@ -173,10 +173,10 @@ namespace Unity.FoxgloveSDK.Tests
             var msgPackChannel = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/MsgPack/FoxgloveMsgPackChannel.cs");
             var editorLabels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/PublisherEncodingEditorLabels.cs");
 
-            var publishMsgPack = PhaseValidationSourceHelpers.SourceMethod(managerPublishing, "public void PublishMsgPack");
+            var publishMsgPack = PhaseValidationSourceHelpers.SourceMethod(managerPublishing, "private void PublishMsgPackCore");
             Check(managerPublishing.Contains("private const string MsgPackEncoding = \"msgpack\"", StringComparison.Ordinal)
                   && managerPublishing.Contains("TryPrepareMsgPackPublish", StringComparison.Ordinal)
-                  && publishMsgPack.Contains("GetOrRegisterChannel(topic, MsgPackEncoding)", StringComparison.Ordinal)
+                  && publishMsgPack.Contains("GetOrRegisterChannel(\n                topic,\n                MsgPackEncoding,", StringComparison.Ordinal)
                   && publishMsgPack.Contains("_runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), logTimeNs)", StringComparison.Ordinal)
                   && publishMsgPack.Contains("RecordPublishCadence(topic, MsgPackEncoding)", StringComparison.Ordinal)
                   && !publishMsgPack.Contains("GetOrRegisterSchemaChannel", StringComparison.Ordinal),
@@ -191,7 +191,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(publisherBase.Contains("public virtual bool SupportsMsgPackEncoding => false", StringComparison.Ordinal)
                   && publisherBase.Contains("protected void PublishMsgPack(byte[] payload", StringComparison.Ordinal)
-                  && publisherBase.Contains("_manager.TryPrepareMsgPackPublish(_topic", StringComparison.Ordinal)
+                  && publisherBase.Contains("_manager.TryPrepareMsgPackPublish(this, out channelId, requireDemand: true)", StringComparison.Ordinal)
                   && publisherBase.Contains("SupportsMsgPackEncoding", StringComparison.Ordinal)
                   && publisherBase.Contains("MsgPack", StringComparison.Ordinal),
                 "168-13: publisher base exposes opt-in MsgPack support without enabling it by default");
@@ -218,8 +218,11 @@ namespace Unity.FoxgloveSDK.Tests
             var publisherCatalog = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/FoxgloveSdkPublisherCatalog.cs");
             Check(manifestModel.Contains("public bool SupportsMsgPack", StringComparison.Ordinal)
                   && manifestWriter.Contains("\"supportsMsgPack\"", StringComparison.Ordinal)
-                  && publisherCatalog.Contains("supportsMsgPack: false", StringComparison.Ordinal),
-                "168-16: schema manifest can represent MsgPack support without enabling built-in publishers");
+                  && manifestModel.Contains("public string MessagePackSupportMode", StringComparison.Ordinal)
+                  && manifestWriter.Contains("\"messagePackSupportMode\"", StringComparison.Ordinal)
+                  && publisherCatalog.Contains("supportsMsgPack: messagePackSupportMode == \"always\"", StringComparison.Ordinal)
+                  && publisherCatalog.Contains("string messagePackSupportMode = \"unsupported\")", StringComparison.Ordinal),
+                "168-16: schema manifest derives MsgPack support from each publisher's declared MessagePack support mode");
         }
 
         private static void VerifyCompileSurfaces()

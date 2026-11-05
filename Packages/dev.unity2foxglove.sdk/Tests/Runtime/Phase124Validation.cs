@@ -99,10 +99,30 @@ namespace Unity.FoxgloveSDK.Tests
                   && proto.Payload.Text.Contains("phase124 protobuf", StringComparison.Ordinal),
                 "124-B2: packaged Foxglove protobuf decoder returns IMessage payload and diagnostic JSON");
 
-            var ros2 = loader.CreateDecodedIterator(new McapDataLoaderQuery
+            var guardPath = CreateDescriptorGuardFixture();
+            using (var guardLoader = new McapDataLoader(guardPath, McapSequentialReadLimits.UnlimitedForTests))
             {
-                Topics = new List<string> { "/phase124/ros2" }
-            }).Single();
+                var missing = guardLoader.CreateDecodedIterator(new McapDataLoaderQuery
+                {
+                    Topics = new List<string> { "/phase124/proto-missing-descriptor" }
+                }).Single();
+                var mismatched = guardLoader.CreateDecodedIterator(new McapDataLoaderQuery
+                {
+                    Topics = new List<string> { "/phase124/proto-mismatched-descriptor" }
+                }).Single();
+                Check(missing.Payload.Kind == McapDecodedPayloadKind.Failed
+                      && missing.Payload.Text.Contains("descriptor is missing", StringComparison.Ordinal)
+                      && mismatched.Payload.Kind == McapDecodedPayloadKind.Failed
+                      && mismatched.Payload.Text.Contains("does not match the bundled snapshot", StringComparison.Ordinal),
+                    "124-B2b: packaged protobuf decoding rejects missing or mismatched recorded descriptors");
+            }
+
+            var ros2 = loader.CreateDecodedIterator(
+                new McapDataLoaderQuery { Topics = new List<string> { "/phase124/ros2" } },
+                new McapDecodeOptions
+                {
+                    DecoderFactories = new List<IMcapMessageDecoderFactory> { new McapRos2CdrDiagnosticDecoderFactory() }
+                }).Single();
             var diagnostic = ros2.Payload.Value as Ros2CdrDiagnosticPayload;
             Check(ros2.Payload.Kind == McapDecodedPayloadKind.Provider
                   && diagnostic != null
@@ -240,10 +260,10 @@ namespace Unity.FoxgloveSDK.Tests
                     Message = "phase124 protobuf",
                     Name = "Phase124Validation"
                 };
-                recorder.AddChannel(2, "/phase124/proto", "protobuf", "foxglove.Log", "protobuf", string.Empty);
+                recorder.AddChannel(2, "/phase124/proto", "protobuf", "foxglove.Log", "protobuf", BundledProtobufDescriptorBase64("foxglove.Log"));
                 recorder.WriteMessage(2, 20, log.ToByteArray());
 
-                recorder.AddChannel(3, "/phase124/ros2", "cdr", "foxglove_msgs/msg/Log", "ros2msg", string.Empty);
+                recorder.AddChannel(3, "/phase124/ros2", "cdr", "foxglove_msgs/msg/Log", "ros2msg", BundledRos2MsgSchema("foxglove_msgs/msg/Log"));
                 recorder.WriteMessage(3, 30, new byte[] { 0, 1, 0, 0, 1, 2, 3 });
 
                 recorder.AddChannel(4, "/phase124/unknown", "binary", "phase124.Binary", "binaryschema", string.Empty);
@@ -276,6 +296,34 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException("Could not find repository root.");
             return root;
         }
+
+        private static string CreateDescriptorGuardFixture()
+        {
+            var path = TempMcapHelper.CreatePath("phase124-descriptor");
+            using (var fs = File.Create(path))
+            using (var recorder = new McapRecorder(fs, null, new McapWriterOptions { UseChunking = false, EnableDataCrcs = true }, leaveOpen: true))
+            {
+                var log = new Foxglove.Log { Level = Foxglove.Log.Types.Level.Info, Message = "phase124 guard" };
+                recorder.AddChannel(1, "/phase124/proto-missing-descriptor", "protobuf", "foxglove.Log", "protobuf", string.Empty);
+                recorder.WriteMessage(1, 10, log.ToByteArray());
+                recorder.AddChannel(2, "/phase124/proto-mismatched-descriptor", "protobuf", "foxglove.Log", "protobuf", BundledProtobufDescriptorBase64("foxglove.Color"));
+                recorder.WriteMessage(2, 20, log.ToByteArray());
+                recorder.Close();
+            }
+
+            return path;
+        }
+
+        private static string BundledProtobufDescriptorBase64(string schemaName)
+            => Convert.ToBase64String(
+                global::Foxglove.Schemas.ProtobufSchemaRegistryLoader
+                    .FromDefault(new global::Unity.FoxgloveSDK.Schemas.DefaultSchemaRegistry())
+                    .GetFileDescriptorSet(schemaName));
+
+        private static string BundledRos2MsgSchema(string schemaName)
+            => global::Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg.FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out var entry)
+                ? entry.Content
+                : throw new InvalidOperationException("Bundled ros2msg schema is missing: " + schemaName);
 
         private static void Check(bool condition, string name)
         {

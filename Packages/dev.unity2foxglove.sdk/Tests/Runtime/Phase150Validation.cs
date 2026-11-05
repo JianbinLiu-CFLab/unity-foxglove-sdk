@@ -78,7 +78,18 @@ namespace Unity.FoxgloveSDK.Tests
                   && manager.Contains("InvalidOperationException", StringComparison.Ordinal),
                 "150-5: manager publish helpers validate captured channel session generation");
 
-            Check(server.Contains("AdvanceChannelSessionGeneration", StringComparison.Ordinal)
+            var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
+            var stopServer = server.IndexOf("private void StopServer(bool restoreLivePublishers)", StringComparison.Ordinal);
+            var retireIngress = stopServer >= 0
+                ? server.IndexOf("RetireClientEventIngress();", stopServer, StringComparison.Ordinal)
+                : -1;
+            var recycleIds = retireIngress >= 0
+                ? server.IndexOf("_connectionState.ResetChannelIds(FirstAutoChannelId)", retireIngress, StringComparison.Ordinal)
+                : -1;
+            Check(retireIngress > stopServer
+                  && recycleIds > retireIngress
+                  && PhaseValidationSourceHelpers.SourceMethod(clientEvents, "private void RetireClientEventIngress")
+                      .Contains("AdvanceChannelSessionGeneration();", StringComparison.Ordinal)
                   && server.Contains("_channelCache.Clear()", StringComparison.Ordinal)
                   && state.Contains("internal void ResetChannelIds(int firstAutoChannelId)", StringComparison.Ordinal)
                   && server.Contains("_connectionState.ResetChannelIds(FirstAutoChannelId)", StringComparison.Ordinal),

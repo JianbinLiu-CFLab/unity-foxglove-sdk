@@ -159,6 +159,15 @@ namespace Unity.FoxgloveSDK.Tests
                     "139B-3C: HTTP manifest is serialized with official source shape");
                 Check(((string)json["sources"][0]["url"]).StartsWith("/v1/data?recordingId=phase139b-http", StringComparison.Ordinal),
                     "139B-3D: HTTP manifest points at official data route");
+                var recordingId = ManifestRecordingId(json);
+                Check(recordingId.StartsWith("phase139b-http@", StringComparison.Ordinal)
+                      && recordingId.Length > "phase139b-http@".Length,
+                    "139B-3D5: manifest recording id carries the MCAP content generation stamp");
+                var staleData = client.GetAsync(baseUrl + "/v1/data?recordingId=phase139b-http&startTime=2026-06-05T12:00:01Z&endTime=2026-06-05T12:00:01Z")
+                    .GetAwaiter()
+                    .GetResult();
+                Check(staleData.StatusCode == HttpStatusCode.NotFound,
+                    "139B-3D6: a recording id without the current content stamp returns 404");
 
                 // Foxglove's stock Remote files dialog requires a URL ending
                 // in a filename; /v1/manifest is still the backend contract,
@@ -195,7 +204,7 @@ namespace Unity.FoxgloveSDK.Tests
                       && string.Equals(allowPrivateNetwork, "true", StringComparison.OrdinalIgnoreCase),
                     "139B-3D4: direct .mcap route accepts Foxglove browser CORS preflight");
 
-                var data = client.GetAsync(baseUrl + "/v1/data?recordingId=phase139b-http&startTime=2026-06-05T12:00:01Z&endTime=2026-06-05T12:00:01Z")
+                var data = client.GetAsync(baseUrl + "/v1/data?recordingId=" + Uri.EscapeDataString(recordingId) + "&startTime=2026-06-05T12:00:01Z&endTime=2026-06-05T12:00:01Z")
                     .GetAwaiter()
                     .GetResult();
                 var dataBytes = data.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
@@ -206,7 +215,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "139B-3F: data response uses application/octet-stream");
                 VerifyRangeSlice(dataBytes);
 
-                var invalidRange = client.GetAsync(baseUrl + "/v1/data?recordingId=phase139b-http&startTime=2026-06-05T12:00:02Z&endTime=2026-06-05T12:00:01Z")
+                var invalidRange = client.GetAsync(baseUrl + "/v1/data?recordingId=" + Uri.EscapeDataString(recordingId) + "&startTime=2026-06-05T12:00:02Z&endTime=2026-06-05T12:00:01Z")
                     .GetAwaiter()
                     .GetResult();
                 Check(invalidRange.StatusCode == HttpStatusCode.BadRequest,
@@ -275,10 +284,12 @@ namespace Unity.FoxgloveSDK.Tests
                 var manifestWithToken = client.SendAsync(goodManifest).GetAwaiter().GetResult();
                 Check(manifestWithToken.StatusCode == HttpStatusCode.OK,
                     "139B-4C: manifest requests with the configured bearer token succeed");
+                var authRecordingId = ManifestRecordingId(
+                    ParseJson(manifestWithToken.Content.ReadAsStringAsync().GetAwaiter().GetResult()));
 
                 var goodData = new HttpRequestMessage(
                     HttpMethod.Get,
-                    server.BaseUrl + "/v1/data?recordingId=phase139b-auth&startTime=2026-06-05T12:00:01Z&endTime=2026-06-05T12:00:01Z");
+                    server.BaseUrl + "/v1/data?recordingId=" + Uri.EscapeDataString(authRecordingId) + "&startTime=2026-06-05T12:00:01Z&endTime=2026-06-05T12:00:01Z");
                 goodData.Headers.TryAddWithoutValidation("Authorization", "Bearer phase139b-token");
                 var dataWithToken = client.SendAsync(goodData).GetAwaiter().GetResult();
                 Check(dataWithToken.StatusCode == HttpStatusCode.OK
@@ -315,7 +326,9 @@ namespace Unity.FoxgloveSDK.Tests
             using (var server = StartRemoteMcapServerWithRetry(options))
             using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
             {
-                var data = client.GetAsync(server.BaseUrl + "/v1/data?recordingId=phase139b-ns&startTime=1970-01-01T00:00:00.00000002Z&endTime=1970-01-01T00:00:00.00000002Z")
+                var nsRecordingId = ManifestRecordingId(ParseJson(
+                    client.GetStringAsync(server.BaseUrl + "/v1/manifest").GetAwaiter().GetResult()));
+                var data = client.GetAsync(server.BaseUrl + "/v1/data?recordingId=" + Uri.EscapeDataString(nsRecordingId) + "&startTime=1970-01-01T00:00:00.00000002Z&endTime=1970-01-01T00:00:00.00000002Z")
                     .GetAwaiter()
                     .GetResult();
                 var dataBytes = data.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
@@ -358,6 +371,19 @@ namespace Unity.FoxgloveSDK.Tests
                 "139B-2B: registry points Phase139B at the validation entrypoint");
             Check(project.Contains("Phase139BValidation.cs", StringComparison.Ordinal),
                 "139B-2C: test project compiles Phase139BValidation");
+        }
+
+        private static string ManifestRecordingId(JObject manifest)
+        {
+            var url = (string)manifest["sources"][0]["url"];
+            var query = url.Substring(url.IndexOf('?') + 1);
+            foreach (var part in query.Split('&'))
+            {
+                if (part.StartsWith("recordingId=", StringComparison.Ordinal))
+                    return Uri.UnescapeDataString(part.Substring("recordingId=".Length));
+            }
+
+            throw new InvalidOperationException("Manifest source URL has no recordingId: " + url);
         }
 
         private static JObject ParseJson(string json)

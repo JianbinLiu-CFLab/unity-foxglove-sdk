@@ -2,15 +2,11 @@
 # Used by: dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --ci-safe-ratchet
 # A new failure must be fixed, not added here. When an entry passes, the ratchet fails until it is removed.
 
---phase124     # Phase 124: validation for decoded MCAP DataLoader iteration
---phase125     # Phase 125: validation for typed ROS2 CDR MCAP decode
 --phase137g    # Phase 137G
 --phase146a    # Phase 146A: validation for the project-level R2FU active runtime selector
---phase150     # Phase 150: validation for SDK-style channel facade API boundaries
 --phase161     # Phase 161: validation for the R2FU Jazzy Win64 runtime refresh
 --phase162     # Phase 162: phase 146B validation for the R2FU Lyrical Win64 runtime package
 --phase165     # R2FU native bridge hot path performance
---phase168     # Phase 168: validation for MessagePack raw channel encoding support
 --phase171     # Phase 171: optional Remote Access Gateway package boundary
 --phase176     # Phase 176: FoxRun Subscribe Data and Publish panel
 --phase163-4   # Phase 163-4: phase163-4 review regression checks for registries, assets, parameters, and s
@@ -59,7 +55,6 @@
 --phase164-54  # Phase 164-54
 --phase164-56  # Phase 164-56: optimization guards for latest runtime validations
 --phase138j    # Phase 138J: validation for async JPEG camera budget and payload rules
---phase139b    # Phase 139B: validation for the official Remote Data Loader HTTP backend contract
 --phase140-1   # Phase 140-1: validates Phase 140-1 runtime facade and lifecycle review fixes
 --phase140-3   # Phase 140-3: validates Phase 140-3 recording/replay controller review fixes
 --phase140-6   # Phase 140-6: validates Phase 140-6 transport, clock, and backpressure review fixes
