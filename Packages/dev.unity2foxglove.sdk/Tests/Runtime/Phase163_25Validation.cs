@@ -49,15 +49,19 @@ namespace Unity.FoxgloveSDK.Tests
             Check(managerDisable.Contains("_mcapReplayPreflight.Dispose();", StringComparison.Ordinal)
                   && !manager.Contains("_ros2BridgeHealthDrawer", StringComparison.Ordinal)
                   && bridgeProviderDrawer.Contains("private readonly Ros2BridgeHealthDrawer", StringComparison.Ordinal)
-                  && bridgeHealthDrawer.Contains("AssemblyReloadEvents.beforeAssemblyReload += CancelHealthCheck", StringComparison.Ordinal),
+                  && bridgeHealthDrawer.Contains("AssemblyReloadEvents.beforeAssemblyReload += BeforeAssemblyReload", StringComparison.Ordinal)
+                  && PhaseValidationSourceHelpers.SourceMethod(bridgeHealthDrawer, "BeforeAssemblyReload")
+                      .Contains("CancelHealthCheck();", StringComparison.Ordinal),
                 "163-25A-3: core Manager owns MCAP cleanup while the Bridge package owns health-drawer cleanup");
             Check(drawer.Contains("var sizeBytes = new FileInfo(path).Length;", StringComparison.Ordinal)
                   && drawer.IndexOf("var sizeBytes = new FileInfo(path).Length;", StringComparison.Ordinal)
                   < drawer.IndexOf("using var indexed = McapIndexedReader.OpenRead(path);", StringComparison.Ordinal),
                 "173-023A: MCAP preflight captures file size before opening the indexed reader");
-            Check(drawer.Contains("LatestRecordingCandidate.FromPath(paths[i])", StringComparison.Ordinal)
-                  && drawer.Contains("right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc)", StringComparison.Ordinal),
-                "173-023B: latest recording search sorts by precomputed write timestamps");
+            Check(drawer.Contains("Directory.EnumerateFiles(recordingsDir, \"*.mcap\", SearchOption.AllDirectories)", StringComparison.Ordinal)
+                  && drawer.Contains("LatestRecordingCandidate.FromPath(path)", StringComparison.Ordinal)
+                  && drawer.Contains("candidate.LastWriteTimeUtc <= latestReadable.LastWriteTimeUtc", StringComparison.Ordinal)
+                  && !drawer.Contains("right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc)", StringComparison.Ordinal),
+                "173-023B: latest recording search streams candidates and compares precomputed write timestamps");
         }
 
         private static void CameraInfoInspectorHandlesOptionalFields()
@@ -109,7 +113,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !camera.Contains("private static bool _showDiagnostics", StringComparison.Ordinal)
                   && !camera.Contains("_showRos2Outputs", StringComparison.Ordinal),
                 "163-25E-1: camera publisher foldout state is instance-scoped");
-            Check(Slice(camera, "private void OnDisable()", "private static GUIContent Label").Contains("_openH264CheckTask = null;", StringComparison.Ordinal),
+            Check(Slice(camera, "private void OnDisable()", "\n        }").Contains("_openH264CheckTask = null;", StringComparison.Ordinal),
                 "163-25E-2: camera publisher editor drops OpenH264 task reference on disable");
         }
 
