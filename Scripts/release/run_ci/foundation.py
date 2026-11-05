@@ -192,6 +192,7 @@ SAMPLE_SYNC_TOOLING_REGRESSION = (
     "Scripts.samples.regression_checks.test_sample_sync_tooling"
 )
 PACKAGE_LANE_REGRESSION_MODULES = (
+    "Scripts.architecture.regression_checks.test_structure_guards",
     "Scripts.release.regression_checks.test_regression_inventory",
     "Scripts.native.regression_checks.test_native_sources",
     "Scripts.package.regression_checks.test_validate_local_entrypoints",
