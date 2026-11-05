@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.Tests
                 RuntimePackageRecordsInventoryDelta();
                 AdapterAdoptionManifestRecordsRefreshedJazzyRuntime();
                 JazzyScriptsArePinnedToHandoffArtifact();
-                UnityProjectResolvesOnlyJazzyRuntime();
+                UnityProjectResolvesActiveRuntime();
                 ValidationRegistryWiresPhase161();
                 _passed += ValidateNativeBridgeLifecycleGuards("161-G");
 
@@ -306,7 +306,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "161-C-adoption-baseline: adapter adoption manifest preserves rosgraph asset-critical files");
         }
 
-        private static void UnityProjectResolvesOnlyJazzyRuntime()
+        private static void UnityProjectResolvesActiveRuntime()
         {
             var manifest = ReadRepoText(UnityManifestPath);
             var lockFile = ReadRepoText(UnityLockPath);
@@ -321,9 +321,14 @@ namespace Unity.FoxgloveSDK.Tests
                 return;
 
             var activeRuntimePackage = manifestRuntimes[0];
-            Check(manifest.Contains("file:../../Packages/" + activeRuntimePackage, StringComparison.Ordinal)
-                  && lockFile.Contains("\"source\": \"local\"", StringComparison.Ordinal),
-                "161-E3: active runtime is referenced from the repository Packages candidate directory");
+            var lockRoot = JObject.Parse(lockFile);
+            var activeLockEntry = lockRoot["dependencies"]?[activeRuntimePackage] as JObject;
+            var expectedVersion = "file:../../Packages/" + activeRuntimePackage;
+            Check(manifest.Contains(expectedVersion, StringComparison.Ordinal)
+                  && activeLockEntry != null
+                  && string.Equals((string)activeLockEntry["version"], expectedVersion, StringComparison.Ordinal)
+                  && string.Equals((string)activeLockEntry["source"], "local", StringComparison.Ordinal),
+                "161-E3: active runtime manifest and lock entry resolve the repository Packages candidate");
 
             var activeRuntimeManifest = ReadRepoText("Packages/" + activeRuntimePackage + "/RuntimeSupport/runtime-manifest.json");
             Check(RuntimeId(activeRuntimeManifest) == ExpectedRuntimeId(activeRuntimePackage),

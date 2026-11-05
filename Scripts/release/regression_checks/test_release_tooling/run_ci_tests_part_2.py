@@ -69,6 +69,10 @@ class _RunCiTestsPart2:
             [sys.executable, "Scripts/samples/sync_maze_demo.py", "--dry-run"],
             calls,
         )
+        self.assertNotIn(
+            [sys.executable, self.run_ci.SCHEMA_GENERATED_OUTPUT_VALIDATOR],
+            calls,
+        )
 
     def test_packages_lane_executes_all_maintained_python_regression_modules(self) -> None:
         """Default package CI must execute maintained regression modules, not only validators."""
@@ -82,7 +86,6 @@ class _RunCiTestsPart2:
             "Scripts.smoke.test_core_smoke_scripts",
             "Scripts.smoke.ros2.regression_checks.test_phase162_lyrical_zenoh_player_smoke",
             "Scripts.smoke.ros2.regression_checks.test_ros2_windows_env",
-            "Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup",
             "Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe",
             "Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual",
             "Scripts.validation.conformance.regression_checks.test_phase190_validators",

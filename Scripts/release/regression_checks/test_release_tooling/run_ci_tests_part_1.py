@@ -271,10 +271,10 @@ class _RunCiTestsPart1:
         step = active_workflow_line_index(workflow, "- name: Run package and sample closure lane")
         command = active_workflow_line_index(workflow, "run: python3 -B Scripts/release/run_ci.py --only packages")
         self.assertLess(step, command)
-        self.assertIn(
-            "Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup",
-            RUN_CI_PATH.read_text(encoding="utf-8"),
-        )
+        inventory = (ROOT / "Scripts/release/regression_inventory.py").read_text(encoding="utf-8")
+        package_runner = (ROOT / "Scripts/release/run_ci/foundation.py").read_text(encoding="utf-8")
+        self.assertIn("Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup", inventory)
+        self.assertNotIn("Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup", package_runner)
 
     def test_dotnet_workflow_runs_workstream_f_runtime_closure_validations(self) -> None:
         """The required workflow runs every explicit Workstream F runtime selector."""

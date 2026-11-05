@@ -12,7 +12,7 @@
 
 """Run local CI checks (dotnet tests + package validators)."""
 
-# Package closure regression module: Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup
+# Portable regression module: Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup
 
 from __future__ import annotations
 

@@ -669,6 +669,30 @@ class PackageMetaContractTests:
         self.assertFalse(results[-1].ok)
         self.assertIn("duplicates", results[-1].detail)
 
+    def test_all_package_guid_scan_converts_metadata_read_errors_to_failures(self) -> None:
+        """Package GUID metadata read errors must become structured failures."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "Packages"
+            meta = root / "dev.unity2foxglove.sdk" / "Runtime" / "Example.cs.meta"
+            meta.parent.mkdir(parents=True)
+            meta.with_suffix("").write_text("class Example {}", encoding="utf-8")
+            meta.write_text("fileFormatVersion: 2\nguid: 78787878787878787878787878787878\n", encoding="utf-8")
+
+            original_read_text = Path.read_text
+
+            def fail_target(path: Path, *args, **kwargs) -> str:
+                """Raise for the target metadata while delegating other reads."""
+                if path == meta:
+                    raise OSError("denied")
+                return original_read_text(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "read_text", autospec=True, side_effect=fail_target):
+                results = []
+                self.validator.check_packages_meta_guid_uniqueness(results, root)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("could not be read", results[-1].detail)
+
     def test_package_asset_meta_rejects_orphan_sidecar(self) -> None:
         """R2FU and Remote Gateway package scans must reject orphan metadata."""
         with tempfile.TemporaryDirectory() as temp:
@@ -739,6 +763,25 @@ class PackageMetaContractTests:
 
         self.assertFalse(results[-1].ok)
         self.assertIn("Nested.meta", results[-1].detail)
+
+    def test_decomposed_folder_meta_converts_read_errors_to_failures(self) -> None:
+        """Decomposed folder metadata read errors must become structured failures."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "Decomposed"
+            root.mkdir(parents=True)
+            meta = Path(str(root) + ".meta")
+            meta.write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 89898989898989898989898989898989\n"
+                "folderAsset: yes\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(Path, "read_text", side_effect=OSError("denied")):
+                results = []
+                self.validator.check_sdk_decomposed_folder_meta(results, root)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Decomposed.meta", results[-1].detail)
 
     def test_csharp_meta_without_importer_is_valid(self) -> None:
         """Minimal C# metadata remains valid when Unity omits an importer block."""

@@ -556,7 +556,6 @@ def main() -> int:
             ),
             ("sync_maze_demo.py", [sys.executable, "Scripts/samples/sync_maze_demo.py", "--dry-run"]),
             ("sync_ros2_samples.py", [sys.executable, "Scripts/samples/sync_ros2_samples.py", "--dry-run"]),
-            ("validate_schema_generated_outputs.py", [sys.executable, SCHEMA_GENERATED_OUTPUT_VALIDATOR]),
             *(
                 (label, [sys.executable, path])
                 for label, path in R2FU_PACKAGE_VALIDATORS
@@ -583,7 +582,6 @@ def main() -> int:
         ]
         results["validate-maze-demo-sync"] = package_results["sync_maze_demo.py"]
         results["validate-ros2-samples-sync"] = package_results["sync_ros2_samples.py"]
-        results["validate-schema-generated"] = package_results["validate_schema_generated_outputs.py"]
         for label, _path in R2FU_PACKAGE_VALIDATORS:
             results[label] = package_results[label]
 

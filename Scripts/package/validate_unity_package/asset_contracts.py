@@ -49,7 +49,7 @@ def check_sample_meta(
             continue
         try:
             text = meta.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeError):
             malformed.append(rel(meta))
             continue
         match = META_GUID_RE.search(text)
@@ -154,7 +154,11 @@ def check_packages_meta_guid_uniqueness(
                 if relative_meta not in optional_missing:
                     offenders.append(f"{rel(meta)} is an orphan metadata sidecar")
                     continue
-            text = meta.read_text(encoding="utf-8", errors="replace")
+            try:
+                text = meta.read_text(encoding="utf-8", errors="replace")
+            except (OSError, UnicodeError):
+                offenders.append(f"{rel(meta)} could not be read")
+                continue
             match = META_GUID_RE.search(text)
             if match is None:
                 offenders.append(f"{rel(meta)} has no valid GUID")
@@ -202,7 +206,7 @@ def check_sdk_script_meta(
             continue
         try:
             text = meta.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeError):
             malformed.append(rel(meta))
             continue
         match = META_GUID_RE.search(text)
@@ -342,7 +346,7 @@ def check_sdk_decomposed_folder_meta(
             continue
         try:
             meta_text = meta.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeError):
             malformed.append(rel(meta))
             continue
         guid_match = META_GUID_RE.search(meta_text)
@@ -557,7 +561,7 @@ def check_package_meta_yaml(
         for meta in root.rglob("*.meta"):
             try:
                 text = meta.read_text(encoding="utf-8")
-            except OSError:
+            except (OSError, UnicodeError):
                 malformed.append(rel(meta))
                 continue
             if "`" in text or not re.search(r"(?m)^fileFormatVersion:\s*2\s*$", text):
