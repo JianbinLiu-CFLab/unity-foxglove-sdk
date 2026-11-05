@@ -102,6 +102,7 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
         "Scripts.release.regression_checks.test_release_tooling",
         "Scripts.samples.regression_checks.test_sample_sync_tooling",
         "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling",
+        "Scripts.validation.regression_checks.test_source_text_inventory",
         "Scripts.architecture.regression_checks.test_structure_guards",
         "Scripts.release.regression_checks.test_regression_inventory",
         "Scripts.native.regression_checks.test_native_sources",

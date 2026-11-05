@@ -77,6 +77,7 @@ class _RunCiTestsPart2:
     def test_packages_lane_executes_all_maintained_python_regression_modules(self) -> None:
         """Default package CI must execute maintained regression modules, not only validators."""
         expected = (
+            "Scripts.validation.regression_checks.test_source_text_inventory",
             "Scripts.architecture.regression_checks.test_structure_guards",
             "Scripts.release.regression_checks.test_regression_inventory",
             "Scripts.native.regression_checks.test_native_sources",
