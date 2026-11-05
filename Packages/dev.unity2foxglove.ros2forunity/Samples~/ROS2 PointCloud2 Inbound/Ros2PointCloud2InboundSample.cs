@@ -6,7 +6,7 @@
 
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
@@ -22,7 +22,7 @@ public sealed class Ros2PointCloud2InboundSample : MonoBehaviour
     [SerializeField] private long _droppedFrames;
     [SerializeField] private Bounds _latestBounds;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     [SerializeField] private Ros2ForUnityPointCloud2InboundBridge _bridge;
     private float _nextLogAt;
     private bool _subscribed;
