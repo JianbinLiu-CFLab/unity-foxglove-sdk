@@ -327,7 +327,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         }
     }
 
-    internal static class PointCloudPackedByteBufferPool
+    /// <summary>Shared bounded byte-buffer pool for inbound point-cloud adapters.</summary>
+    public static class PointCloudPackedByteBufferPool
     {
         private const int MaxBuffersPerSize = 4;
         private const int MaxPreferredSizes = 4;
