@@ -127,6 +127,81 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             return true;
         }
 
+        /// <summary>Maps a message while transferring ownership of its data buffer to the frame.</summary>
+        public static bool TryMapOwned(
+            PointCloud2InboundMessage message,
+            long maxBytes,
+            string topic,
+            out PackedPointCloudFrame frame,
+            out string error)
+            => TryMapCore(message, maxBytes, topic, copyData: false, ownsPooledData: true, out frame, out error);
+
+        private static bool TryMapCore(
+            PointCloud2InboundMessage message,
+            long maxBytes,
+            string topic,
+            bool copyData,
+            bool ownsPooledData,
+            out PackedPointCloudFrame frame,
+            out string error)
+        {
+            frame = null;
+            error = string.Empty;
+            if (message == null)
+                return Reject("message is null", out error);
+            if (maxBytes <= 0)
+                return Reject("maxBytes must be positive", out error);
+            if (message.IsBigEndian)
+                return Reject("big-endian PointCloud2 is not supported", out error);
+            if (message.Height == 0 || message.Width == 0 || message.PointStep == 0)
+                return Reject("height, width, and pointStep must be positive", out error);
+
+            ulong expectedRowStep;
+            ulong expectedBytes;
+            try
+            {
+                expectedRowStep = checked((ulong)message.Width * message.PointStep);
+                expectedBytes = checked(expectedRowStep * message.Height);
+            }
+            catch (OverflowException)
+            {
+                return Reject("PointCloud2 dimensions overflow", out error);
+            }
+
+            if (message.RowStep != expectedRowStep)
+                return Reject("rowStep does not equal width * pointStep", out error);
+            if ((ulong)message.Data.Length != expectedBytes)
+                return Reject("data length does not equal height * rowStep", out error);
+            if (expectedBytes > (ulong)maxBytes)
+                return Reject("PointCloud2 frame exceeds maxBytes", out error);
+
+            var fields = new List<PointCloudPackedField>(message.Fields.Count);
+            foreach (var field in message.Fields)
+            {
+                if (field == null || field.Count != 1)
+                    return Reject("PointCloud2 fields must have count 1", out error);
+                if (!TryMapDatatype(field.Datatype, out var type))
+                    return Reject("PointCloud2 field has an unknown datatype", out error);
+                fields.Add(new PointCloudPackedField(field.Name, field.Offset, type));
+            }
+
+            var data = copyData ? new byte[message.Data.Length] : message.Data;
+            if (copyData)
+                Buffer.BlockCopy(message.Data, 0, data, 0, data.Length);
+            frame = new PackedPointCloudFrame(
+                message.UnixNs,
+                message.FrameId,
+                message.Height,
+                message.Width,
+                fields,
+                message.PointStep,
+                data,
+                message.IsDense,
+                topic,
+                ownsPooledData: ownsPooledData);
+            return true;
+        }
+
         private static bool Reject(string message, out string error)
         {
             error = message;
@@ -161,6 +236,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         private long _delivered;
         private long _dropped;
         private long _rejected;
+        private string _lastError = string.Empty;
 
         public PackedPointCloudFrameSlot(int capacity = 1)
         {
@@ -169,7 +245,22 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         }
 
         public PackedPointCloudSlotStats Stats
-            => new PackedPointCloudSlotStats(_received, _delivered, _dropped, _rejected);
+        {
+            get
+            {
+                lock (_sync)
+                    return new PackedPointCloudSlotStats(_received, _delivered, _dropped, _rejected, _lastError);
+            }
+        }
+
+        public void RecordRejected(string error)
+        {
+            lock (_sync)
+            {
+                _rejected++;
+                _lastError = error ?? string.Empty;
+            }
+        }
 
         public bool Publish(PackedPointCloudFrame frame)
         {
@@ -180,6 +271,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 if (_disposed)
                 {
                     _rejected++;
+                    _lastError = "slot is disposed";
                     frame.RecycleData();
                     return false;
                 }
@@ -224,17 +316,19 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
     /// <summary>Observed counters for one inbound point-cloud slot.</summary>
     public readonly struct PackedPointCloudSlotStats
     {
-        public PackedPointCloudSlotStats(long received, long delivered, long dropped, long rejected)
+        public PackedPointCloudSlotStats(long received, long delivered, long dropped, long rejected, string lastError = "")
         {
             Received = received;
             Delivered = delivered;
             Dropped = dropped;
             Rejected = rejected;
+            LastError = lastError ?? string.Empty;
         }
 
         public long Received { get; }
         public long Delivered { get; }
         public long Dropped { get; }
         public long Rejected { get; }
+        public string LastError { get; }
     }
 }

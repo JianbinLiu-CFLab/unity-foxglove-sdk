@@ -76,6 +76,29 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             slot.Dispose();
             Assert.False(slot.Publish(CreateFrame(1)));
             Assert.Equal(1, slot.Stats.Rejected);
+            Assert.Equal("slot is disposed", slot.Stats.LastError);
+        }
+
+        [Fact]
+        public void OwnedMapperTransfersBufferUntilFrameDispose()
+        {
+            var data = PointCloudPackedByteBufferPool.Rent(4);
+            var message = new PointCloud2InboundMessage(
+                42,
+                "laser",
+                1,
+                1,
+                Array.Empty<PointCloud2InboundField>(),
+                4,
+                4,
+                data,
+                false,
+                true);
+
+            Assert.True(PointCloud2InboundMapper.TryMapOwned(message, 1024, "/points", out var frame, out var error));
+            Assert.Equal(string.Empty, error);
+            frame.Dispose();
+            PointCloudPackedByteBufferPool.Return(PointCloudPackedByteBufferPool.Rent(4));
         }
 
         private static PackedPointCloudFrame CreateFrame(ulong timestamp)
