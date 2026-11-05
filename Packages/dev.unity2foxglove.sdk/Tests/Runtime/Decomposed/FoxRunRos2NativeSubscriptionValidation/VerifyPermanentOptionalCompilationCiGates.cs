@@ -42,6 +42,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && workflow.Contains("name: \"Linux: optional ROS2 adapter xUnit\"", StringComparison.Ordinal)
                   && workflow.Contains("optional-ros2-native:", StringComparison.Ordinal)
                   && workflow.Contains("name: \"Linux: optional ROS2 Native compile surface\"", StringComparison.Ordinal)
+                  && workflow.Contains("optional-ros2-runtime-validation:", StringComparison.Ordinal)
+                  && workflow.Contains("-p:IncludeRos2ForUnityAdapter=true -- --phase179", StringComparison.Ordinal)
+                  && workflow.Contains("-p:IncludeRos2ForUnityAdapter=true -- --phase181", StringComparison.Ordinal)
                   && workflow.Contains("-p:IncludeRos2ForUnityAdapter=true", StringComparison.Ordinal)
                   && workflow.Contains("-p:IncludeRos2ForUnityNative=true", StringComparison.Ordinal),
                 "GitHub Actions keeps the default test check and names permanent optional adapter and Native gates");
