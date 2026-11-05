@@ -255,6 +255,8 @@ def iter_bridge_asset_files(package: Path | None = None) -> list[Path]:
     root = package if package is not None else ROS2_BRIDGE_PACKAGE
     if not root.exists():
         return []
+    documentation_root = root / "Documentation~"
+    ros2_package_root = root / "Ros2Package~"
     return [
         path
         for path in root.rglob("*")
@@ -264,7 +266,8 @@ def iter_bridge_asset_files(package: Path | None = None) -> list[Path]:
             part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES
             for part in path.relative_to(root).parts
         )
-        and not path_is_relative_to(path, root / "Documentation~")
+        and not path_is_relative_to(path, documentation_root)
+        and not path_is_relative_to(path, ros2_package_root)
     ]
 
 
@@ -274,6 +277,7 @@ def iter_bridge_asset_directories(package: Path | None = None) -> list[Path]:
     if not root.exists():
         return []
     documentation_root = root / "Documentation~"
+    ros2_package_root = root / "Ros2Package~"
     samples_root = root / "Samples~"
     return [
         path
@@ -281,6 +285,7 @@ def iter_bridge_asset_directories(package: Path | None = None) -> list[Path]:
         if path.is_dir()
         and path != samples_root
         and not path_is_relative_to(path, documentation_root)
+        and not path_is_relative_to(path, ros2_package_root)
         and not any(
             part.casefold() in PACKAGE_BUILD_DIRECTORY_NAMES
             for part in path.relative_to(root).parts

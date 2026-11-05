@@ -37,6 +37,7 @@ def main() -> int:
     check_sample_meta(results, samples_files, bridge_files)
     sdk_meta_guids: dict[str, str] = {}
     check_sdk_script_meta(results, package_files, sdk_meta_guids)
+    check_sdk_non_csharp_asset_meta(results)
     check_sdk_decomposed_folder_meta(results, known_guids=sdk_meta_guids)
     check_sdk_meta_guid_uniqueness(results)
     check_package_meta_yaml(results)

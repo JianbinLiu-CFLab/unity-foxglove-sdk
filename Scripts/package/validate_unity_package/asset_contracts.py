@@ -96,7 +96,11 @@ def check_package_asset_meta(
         if not meta.is_file():
             missing.append(rel(meta))
             continue
-        text = meta.read_text(encoding="utf-8", errors="replace")
+        try:
+            text = meta.read_text(encoding="utf-8", errors="replace")
+        except (OSError, UnicodeError):
+            malformed.append(rel(meta))
+            continue
         if META_GUID_RE.search(text) is None or (
             asset.suffix.casefold() == ".cs" and not _csharp_meta_importer_is_valid(text)
         ):
@@ -106,7 +110,11 @@ def check_package_asset_meta(
         if not meta.is_file():
             missing.append(rel(meta))
             continue
-        text = meta.read_text(encoding="utf-8", errors="replace")
+        try:
+            text = meta.read_text(encoding="utf-8", errors="replace")
+        except (OSError, UnicodeError):
+            malformed.append(rel(meta))
+            continue
         if META_GUID_RE.search(text) is None or META_FOLDER_ASSET_RE.search(text) is None:
             malformed.append(rel(meta))
     offenders = (
@@ -214,6 +222,46 @@ def check_sdk_script_meta(
         "SDK C# source .meta files",
         not missing and not malformed,
         "; ".join(offenders) if offenders else f"{len(local_guids)} SDK C# sources have valid unique metas",
+    )
+
+
+def check_sdk_non_csharp_asset_meta(
+    results: list[CheckResult],
+    sdk_files: list[Path] | None = None,
+) -> None:
+    """Ensure non-C# Unity-tracked SDK assets have valid metadata sidecars."""
+    files = sdk_files
+    if files is None:
+        files = [
+            path
+            for path in _iter_package_assets(PACKAGE)[0]
+            if path.suffix.casefold() != ".cs"
+            and not path_is_relative_to(path, SAMPLES)
+        ]
+    missing: list[str] = []
+    malformed: list[str] = []
+    for asset in files:
+        if not asset.is_file() or asset.suffix.casefold() == ".cs":
+            continue
+        meta = Path(str(asset) + ".meta")
+        if not meta.is_file():
+            missing.append(rel(meta))
+            continue
+        try:
+            text = meta.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            malformed.append(rel(meta))
+            continue
+        if META_GUID_RE.search(text) is None:
+            malformed.append(rel(meta))
+    offenders = missing[:MAX_REPORTED_MISSING_META] + malformed[:MAX_REPORTED_MISSING_META]
+    add(
+        results,
+        "SDK non-C# Unity asset .meta files",
+        not offenders,
+        "; ".join(offenders)
+        if offenders
+        else f"{len(files)} non-C# SDK assets have valid metas",
     )
 
 
@@ -498,7 +546,10 @@ def check_package_meta_yaml(
     package_roots: Iterable[Path] | None = None,
 ) -> None:
     """Ensure tracked Unity metadata keeps the basic YAML identity shape."""
-    roots = tuple(package_roots or (PACKAGE, ROS2_FOR_UNITY_PACKAGE, ROS2_BRIDGE_PACKAGE))
+    roots = tuple(
+        package_roots
+        or (PACKAGE, ROS2_FOR_UNITY_PACKAGE, ROS2_BRIDGE_PACKAGE, REMOTE_GATEWAY_PACKAGE)
+    )
     malformed: list[str] = []
     for root in roots:
         if not root.is_dir():
@@ -566,6 +617,7 @@ __all__ = [
     'check_sample_boundaries',
     'check_sample_meta',
     'check_sdk_script_meta',
+    'check_sdk_non_csharp_asset_meta',
     'check_package_meta_yaml',
     'check_package_asset_meta',
     'check_packages_meta_guid_uniqueness',

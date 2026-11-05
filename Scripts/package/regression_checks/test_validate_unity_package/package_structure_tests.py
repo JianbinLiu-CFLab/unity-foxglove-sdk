@@ -96,6 +96,28 @@ class PackageStructureTests:
         self.assertFalse(results[-1].ok)
         self.assertIn("Editor.meta", results[-1].detail)
 
+    def test_package_meta_yaml_checks_remote_gateway_by_default(self) -> None:
+        """The default YAML shape gate must include the Remote Gateway package."""
+        with tempfile.TemporaryDirectory() as temp:
+            gateway = Path(temp) / "dev.unity2foxglove.remotegateway.win64"
+            meta = gateway / "Runtime.meta"
+            gateway.mkdir(parents=True)
+            meta.write_text(
+                "fileFormatVersion: 1\n"
+                "guid: 0123456789abcdef0123456789abcdef\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(self.validator, "PACKAGE", gateway / "sdk"), \
+                mock.patch.object(self.validator, "ROS2_FOR_UNITY_PACKAGE", gateway / "r2fu"), \
+                mock.patch.object(self.validator, "ROS2_BRIDGE_PACKAGE", gateway / "bridge"), \
+                mock.patch.object(self.validator, "REMOTE_GATEWAY_PACKAGE", gateway):
+                results = []
+                self.validator.check_package_meta_yaml(results)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Runtime.meta", results[-1].detail)
+
     def test_sample_meta_checks_prefab_files(self) -> None:
         """Common Unity assets such as prefabs need stable .meta sidecars."""
         with tempfile.TemporaryDirectory() as temp:
@@ -269,6 +291,13 @@ class PackageStructureTests:
     def test_main_invokes_the_package_matrix_gate(self) -> None:
         """The release entry point must execute the independent matrix gate."""
         with mock.patch.object(self.validator, "check_package_matrix") as gate:
+            with mock.patch.object(self.validator, "load_package_json", return_value={}):
+                self.assertEqual(0, self.validator.main())
+        gate.assert_called_once_with(mock.ANY)
+
+    def test_main_invokes_the_sdk_non_csharp_asset_meta_gate(self) -> None:
+        """The release entry point must execute the SDK non-C# asset metadata gate."""
+        with mock.patch.object(self.validator, "check_sdk_non_csharp_asset_meta") as gate:
             with mock.patch.object(self.validator, "load_package_json", return_value={}):
                 self.assertEqual(0, self.validator.main())
         gate.assert_called_once_with(mock.ANY)

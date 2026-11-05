@@ -24,6 +24,25 @@ class PackageMetaContractTests:
         self.assertNotIn(documentation, assets)
         self.assertIn(runtime, assets)
 
+    def test_bridge_asset_inventory_excludes_ros2_package_outputs(self) -> None:
+        """Exclude generated Ros2Package files and folders from the Bridge asset inventory."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+            generated = package / "Ros2Package~" / "Generated" / "Route.proto"
+            runtime = package / "Runtime" / "Route.proto"
+            generated.parent.mkdir(parents=True)
+            runtime.parent.mkdir(parents=True)
+            generated.write_text("syntax = \"proto3\";", encoding="utf-8")
+            runtime.write_text("syntax = \"proto3\";", encoding="utf-8")
+
+            assets = self.validator.iter_bridge_asset_files(package)
+            folders = self.validator.iter_bridge_asset_directories(package)
+
+        self.assertNotIn(generated, assets)
+        self.assertIn(runtime, assets)
+        self.assertNotIn(generated.parents[1], folders)
+        self.assertNotIn(generated.parents[2], folders)
+
     def test_bridge_guid_scan_rejects_orphan_sidecars(self) -> None:
         """Reject orphan Unity metadata sidecars during the Bridge GUID scan."""
         with tempfile.TemporaryDirectory() as temp:
@@ -336,6 +355,42 @@ class PackageMetaContractTests:
         self.assertFalse(results[-1].ok)
         self.assertIn("duplicates", results[-1].detail)
 
+    def test_sdk_non_csharp_asset_meta_requires_proto_sidecars(self) -> None:
+        """Non-C# SDK Unity assets must have metadata sidecars."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "Packages" / "dev.unity2foxglove.sdk"
+            asset = package / "Runtime" / "Route.proto"
+            asset.parent.mkdir(parents=True)
+            asset.write_text("syntax = \"proto3\";", encoding="utf-8")
+
+            with mock.patch.object(self.validator, "PACKAGE", package):
+                results = []
+                self.validator.check_sdk_non_csharp_asset_meta(results)
+            self.assertFalse(results[-1].ok)
+            self.assertIn("Route.proto.meta", results[-1].detail)
+
+            Path(str(asset) + ".meta").write_text(
+                "fileFormatVersion: 2\n"
+                "guid: malformed\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(self.validator, "PACKAGE", package):
+                results = []
+                self.validator.check_sdk_non_csharp_asset_meta(results)
+            self.assertFalse(results[-1].ok)
+            self.assertIn("Route.proto.meta", results[-1].detail)
+
+            Path(str(asset) + ".meta").write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 78787878787878787878787878787878\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(self.validator, "PACKAGE", package):
+                results = []
+                self.validator.check_sdk_non_csharp_asset_meta(results)
+
+        self.assertTrue(results[-1].ok)
+
     def test_sdk_decomposed_folder_meta_rejects_malformed_metadata(self) -> None:
         """Folder metadata must contain a valid GUID and folderAsset marker."""
         with tempfile.TemporaryDirectory() as temp:
@@ -630,6 +685,60 @@ class PackageMetaContractTests:
 
         self.assertFalse(results[-1].ok)
         self.assertIn("Deleted.cs.meta", results[-1].detail)
+
+    def test_package_asset_meta_converts_metadata_read_errors_to_failures(self) -> None:
+        """Metadata read errors must become structured validation failures."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2forunity"
+            asset = package / "Runtime" / "Example.asset"
+            asset.parent.mkdir(parents=True)
+            asset.write_text("asset", encoding="utf-8")
+            Path(str(asset) + ".meta").write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 56565656565656565656565656565656\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(Path, "read_text", side_effect=OSError("denied")):
+                results = []
+                self.validator.check_package_asset_meta(results, package, "R2FU")
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Example.asset.meta", results[-1].detail)
+
+    def test_package_asset_meta_converts_folder_metadata_read_errors_to_failures(self) -> None:
+        """Folder metadata read errors must become structured validation failures."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2forunity"
+            folder = package / "Runtime" / "Nested"
+            folder.mkdir(parents=True)
+            for directory, guid in (
+                (folder.parent, "56565656565656565656565656565656"),
+                (folder, "67676767676767676767676767676767"),
+            ):
+                Path(str(directory) + ".meta").write_text(
+                    "fileFormatVersion: 2\n"
+                    f"guid: {guid}\n"
+                    "folderAsset: yes\n",
+                    encoding="utf-8",
+                )
+
+            original_read_text = Path.read_text
+
+            def fail_nested_folder_meta(path: Path, *args, **kwargs) -> str:
+                """Raise for the nested folder metadata while delegating other reads."""
+                if path == Path(str(folder) + ".meta"):
+                    raise OSError("denied")
+                return original_read_text(path, *args, **kwargs)
+
+            with mock.patch.object(
+                Path, "read_text", autospec=True, side_effect=fail_nested_folder_meta
+            ):
+                results = []
+                self.validator.check_package_asset_meta(results, package, "R2FU")
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Nested.meta", results[-1].detail)
 
     def test_csharp_meta_without_importer_is_valid(self) -> None:
         """Minimal C# metadata remains valid when Unity omits an importer block."""
