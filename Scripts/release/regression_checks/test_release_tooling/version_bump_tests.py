@@ -469,6 +469,53 @@ class VersionBumpTests(unittest.TestCase):
             self.assertIn('version: "2.0.0"', text)
             self.assertIn('date-released: "2026-06-08"', text)
 
+    def test_dry_run_bump_plans_every_release_pin_in_the_repository(self) -> None:
+        """A full dry-run bump of this repository plans every release-pinned file and writes nothing."""
+        expected = {
+            "CHANGELOG.md",
+            "CITATION.cff",
+            "README.md",
+            "Packages/dev.unity2foxglove.sdk/package.json",
+            "Packages/dev.unity2foxglove.sdk/README.md",
+            "Packages/dev.unity2foxglove.remotegateway.win64/package.json",
+            "Packages/dev.unity2foxglove.ros2bridge/package.json",
+            "Packages/dev.unity2foxglove.ros2forunity/package.json",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Decomposed/Phase16Validation/IsPythonDocstringLine.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxRunMessagePackArtifactAcceptanceValidation.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase107Validation.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase108Validation.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138HValidation.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138IValidation.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138MValidation.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase138Validation.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_29Validation.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Unit/Architecture/UnityDemoSamplesAssetsTests.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/EditorSchemaAndSampleReviewTests.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/WorkstreamFClosureTests.cs",
+            "Packages/dev.unity2foxglove.sdk/Tests/Unit/SdkRosBoundaryValidation/RosFreeCoreProductionBoundaryTests.cs",
+            "Scripts/package/regression_checks/test_validate_phase186_package_matrix/cross_package_boundary_tests.py",
+            "Scripts/package/regression_checks/test_validate_phase186_package_matrix/package_manifest_tests.py",
+            "Scripts/package/regression_checks/test_validate_unity_package/package_structure_tests.py",
+            "Scripts/package/validate_phase186_package_matrix.py",
+            "Scripts/package/validate_unity_package/package_contracts.py",
+            "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package/package_metadata.py",
+            "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package/package_metadata.py",
+            "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package/package_metadata.py",
+            "Scripts/samples/regression_checks/test_sample_sync_tooling/bridge_sample_tests.py",
+            "Unity2Foxglove/Packages/packages-lock.json",
+            "docs/releases/RELEASE_NOTES_v99.0.0.md",
+        }
+
+        bump = self.bump_module.VersionBump(ROOT, "99.0.0", "2099-01-01", True)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, bump.run())
+
+        planned = {bump.rel(change.path) for change in bump.changes}
+        self.assertEqual([], sorted(expected - planned), "release pins missing from the bump plan")
+        self.assertEqual([], sorted(planned - expected), "new release pins: add them to this contract")
+        self.assertEqual({}, bump._original_files)
+        self.assertFalse((ROOT / "docs/releases/RELEASE_NOTES_v99.0.0.md").exists())
+
 VersionBumpTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
 
 __all__ = ["VersionBumpTests"]
