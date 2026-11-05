@@ -14,7 +14,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
     /// Prepared PackedPointCloud-compatible payload metadata and packed point bytes.
     /// This type intentionally has no optional Provider dependency.
     /// </summary>
-    public sealed class PackedPointCloudFrame
+    public sealed class PackedPointCloudFrame : IDisposable
     {
         /// <summary>Create a prepared PackedPointCloud frame handoff.</summary>
         public PackedPointCloudFrame(
@@ -127,6 +127,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
             PointCloudPackedByteBufferPool.Return(Data, _preferPooledDataRetention);
         }
+
+        /// <summary>Returns pooled frame data; safe to call more than once.</summary>
+        public void Dispose()
+            => RecycleData();
     }
 
     internal static class PointCloudPublishRateGate
