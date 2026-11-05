@@ -7,6 +7,7 @@
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
@@ -199,6 +200,94 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             {
                 if (Interlocked.Increment(ref _disposeCount) != 1)
                     throw new InvalidOperationException("Child disposed more than once.");
+            }
+        }
+    }
+
+    [Trait("Phase", "200-W4")]
+    [Trait("Domain", "Ros2ImuMeasurement")]
+    public sealed class FoxRunRos2ImuMeasurementTests
+    {
+        [Fact]
+        public void GeneratedImuCopyMeasurementCoversDecisionRates()
+        {
+            var source = new FakeImu("imu_link");
+            foreach (var hertz in new[] { 200, 500, 1000 })
+            {
+                var slot = new FoxRunRos2OwnedLatestSlot<FakeImu>(message => message.Dispose());
+                for (var index = 0; index < 32; index++)
+                    PublishAndApply(slot, source);
+
+                var beforeBytes = GC.GetAllocatedBytesForCurrentThread();
+                var beforeTicks = Stopwatch.GetTimestamp();
+                var iterations = hertz / 10;
+                for (var index = 0; index < iterations; index++)
+                    PublishAndApply(slot, source);
+                var elapsedTicks = Stopwatch.GetTimestamp() - beforeTicks;
+                var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - beforeBytes;
+                var allocatedPerMessage = allocatedBytes / (double)iterations;
+                var copyMicroseconds = elapsedTicks * 1_000_000d
+                                       / Stopwatch.Frequency
+                                       / iterations;
+
+                Console.WriteLine(
+                    $"IMU_MEASUREMENT hz={hertz} copy_us={copyMicroseconds:F2} "
+                    + $"allocated_bytes_per_message={allocatedPerMessage:F2} "
+                    + $"drops={slot.ReplacedCount}");
+                Assert.Equal(0, slot.ReplacedCount);
+                Assert.True(allocatedPerMessage > 0);
+                slot.Stop(_ => false);
+            }
+        }
+
+        private static void PublishAndApply(
+            FoxRunRos2OwnedLatestSlot<FakeImu> slot,
+            FakeImu source)
+        {
+            Assert.True(slot.TryPublish(source, CopyImu));
+            Assert.True(slot.TryApplyLatest(_ => { }, _ => false));
+        }
+
+        private static FakeImu CopyImu(FakeImu source)
+        {
+            var context = new FoxRunRos2CopyContext(1024);
+            context.RequireBytes(source.FrameId.Length * sizeof(char));
+            context.RequireBytes(checked((source.Orientation.Length
+                                          + source.AngularVelocity.Length
+                                          + source.LinearAcceleration.Length) * sizeof(double)));
+            return new FakeImu(
+                new string(source.FrameId.ToCharArray()),
+                (double[])source.Orientation.Clone(),
+                (double[])source.AngularVelocity.Clone(),
+                (double[])source.LinearAcceleration.Clone());
+        }
+
+        private sealed class FakeImu
+        {
+            public FakeImu(string frameId)
+                : this(frameId, new double[4], new double[3], new double[3])
+            {
+            }
+
+            public FakeImu(
+                string frameId,
+                double[] orientation,
+                double[] angularVelocity,
+                double[] linearAcceleration)
+            {
+                FrameId = frameId;
+                Orientation = orientation;
+                AngularVelocity = angularVelocity;
+                LinearAcceleration = linearAcceleration;
+            }
+
+            public string FrameId { get; }
+            public double[] Orientation { get; }
+            public double[] AngularVelocity { get; }
+            public double[] LinearAcceleration { get; }
+
+            public void Dispose()
+            {
             }
         }
     }
