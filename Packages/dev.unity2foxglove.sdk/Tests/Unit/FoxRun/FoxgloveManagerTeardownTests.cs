@@ -152,6 +152,61 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void LifecycleCharacterizationCoversRunningAndNotRunningStopServerOwnership()
+        {
+            var method = TeardownMethod("ShouldRunStopServer");
+
+            Assert.True((bool)method.Invoke(null, new object[] { true, false, false }));
+            Assert.True((bool)method.Invoke(null, new object[] { false, true, false }));
+            Assert.True((bool)method.Invoke(null, new object[] { false, false, true }));
+            Assert.False((bool)method.Invoke(null, new object[] { false, false, false }));
+        }
+
+        [Fact]
+        public void LifecycleCharacterizationPreservesStartupFailureCleanupOrder()
+        {
+            var calls = new List<string>();
+            var failure = FoxgloveManagerTeardownState.RunCleanupReturningFirstFailure(
+                Step(calls, "events", new InvalidOperationException("startup-failure")),
+                Step(calls, "services"),
+                Step(calls, "runtime"));
+
+            Assert.Equal("startup-failure", failure.SourceException.Message);
+            Assert.Equal(new[] { "events", "services", "runtime" }, calls);
+        }
+
+        [Fact]
+        public void LifecycleCharacterizationPreservesDisableAndDestroyOrders()
+        {
+            var disable = new List<string>();
+            var destroy = new List<string>();
+
+            FoxgloveManagerTeardownState.RunDisable(
+                Step(disable, "subscription"),
+                Step(disable, "transport"),
+                Step(disable, "server"),
+                Step(disable, "publish"),
+                Step(disable, "output"),
+                Step(disable, "profiler"));
+            FoxgloveManagerTeardownState.RunDestroy(
+                Step(destroy, "subscription"),
+                Step(destroy, "server"),
+                Step(destroy, "transport"),
+                Step(destroy, "replay"),
+                Step(destroy, "certificate"),
+                Step(destroy, "runtime"),
+                Step(destroy, "publish"),
+                Step(destroy, "profiler"));
+
+            Assert.Equal(
+                new[] { "subscription", "transport", "server", "publish", "output", "profiler" },
+                disable);
+            Assert.Equal(
+                new[] { "subscription", "server", "transport", "replay", "certificate", "runtime", "publish", "profiler" },
+                destroy);
+        }
+
+        [Fact]
         public void PreTailCleanupRunsEveryStepAndReturnsTheFirstFailure()
         {
             var calls = new List<string>();
