@@ -293,9 +293,10 @@ namespace Unity.FoxgloveSDK.Components
         internal uint RegisterService(
             ServiceDescriptor descriptor,
             Func<JToken, JToken> handler)
-            => 1U;
+            => _runtime.RegisterService(descriptor, handler);
 
-        internal bool UnregisterServiceDuringCleanup(uint serviceId) => true;
+        internal bool UnregisterServiceDuringCleanup(uint serviceId)
+            => _runtime.UnregisterServiceDuringCleanup(serviceId);
 
         internal ComponentPublisherSessionSnapshot CaptureForTest(ulong generation)
             => CaptureComponentPublisherSession(generation);
@@ -514,10 +515,13 @@ namespace Unity.FoxgloveSDK.Components
         internal ISchemaRegistry Schemas => _runtime.Schemas;
         internal FoxgloveSession Session => _runtime.Session;
         internal FoxgloveSession CleanupSession => _runtime.CleanupSession;
+        internal IReadOnlyCollection<ServiceDescriptor> ServicesForTest => _runtime.GetServicesSnapshot();
         internal bool HasPendingSessionCleanup => _runtime.HasPendingSessionCleanup;
         internal int StartCount { get; private set; }
         internal Exception StopFailure { get; set; }
         internal void EnableMessageEncoding(string encoding) => _runtime.EnableMessageEncoding(encoding);
+        internal uint RegisterService(ServiceDescriptor descriptor, Func<JToken, JToken> handler)
+            => _runtime.RegisterService(descriptor, handler);
 
         internal void StartWithSessionSetup(
             string name,
@@ -545,7 +549,8 @@ namespace Unity.FoxgloveSDK.Components
 
         internal void DisableReplay() => _runtime.DisableReplay();
         internal void DisableRecording() => _runtime.DisableRecording();
-        internal bool UnregisterServiceDuringCleanup(uint serviceId) => true;
+        internal bool UnregisterServiceDuringCleanup(uint serviceId)
+            => _runtime.UnregisterServiceDuringCleanup(serviceId);
         internal void SetExternalReplayCursorEnabled(bool enabled) { }
 
         internal void EnableRecordingForTest(string path) => _runtime.EnableRecording(path);

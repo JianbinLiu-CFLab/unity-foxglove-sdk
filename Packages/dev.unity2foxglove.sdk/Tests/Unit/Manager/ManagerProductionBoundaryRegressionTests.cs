@@ -10,7 +10,6 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
@@ -61,44 +60,52 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         [Fact]
         public void TopicContractResponseSchemaMatchesLegacyClaimAndConflictInstances()
         {
-            var schemaField = typeof(FoxgloveManager).GetField(
-                "TopicContractResponseSchema",
-                BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.NotNull(schemaField);
-            var responseSchema = JObject.Parse((string)schemaField.GetRawConstantValue());
-            var itemSchema = (JObject)responseSchema["properties"]["claims"]["items"];
-            var required = (JArray)itemSchema["required"];
-            var fields = new[]
+            var manager = new FoxgloveManager { IsRunning = false };
+            manager.StartServer();
+            manager.IsRunning = true;
+
+            try
             {
-                "topic",
-                "schemaName",
-                "encoding",
-                "ownerKind",
-                "shapeIdentity",
-                "schemaEncoding",
-                "schemaFingerprint",
-                "scope"
-            };
+                var service = Assert.Single(
+                    manager.RuntimeForTest.ServicesForTest,
+                    item => item.Name == "/foxglove/topic-contracts");
+                var responseSchema = JObject.Parse(service.Response.Schema);
+                var itemSchema = (JObject)responseSchema["properties"]["claims"]["items"];
+                var required = (JArray)itemSchema["required"];
+                var fields = new[]
+                {
+                    "topic",
+                    "schemaName",
+                    "encoding",
+                    "ownerKind",
+                    "shapeIdentity",
+                    "schemaEncoding",
+                    "schemaFingerprint",
+                    "scope"
+                };
 
-            Assert.Equal(fields.Length, required.Count);
-            for (var index = 0; index < fields.Length; index++)
-                Assert.Equal(fields[index], (string)required[index]);
+                Assert.Equal(fields.OrderBy(field => field), required.Values<string>().OrderBy(field => field));
 
-            var manager = new FoxgloveManager();
-            manager.RecordTopicContract("/legacy", null, null, null);
-            manager.RecordTopicContract("/conflict", "schema.one", "json", "component");
-            manager.RecordTopicContract("/conflict", "schema.two", "json", "component");
+                manager.RecordTopicContract("/legacy", null, null, null);
+                manager.RecordTopicContract("/conflict", "schema.one", "json", "component");
+                manager.RecordTopicContract("/conflict", "schema.two", "json", "component");
 
-            var response = (JObject)manager.HandleTopicContractRequest(new JObject());
-            var legacy = (JObject)((JArray)response["claims"])
-                .Single(item => (string)item["topic"] == "/legacy");
-            AssertRequiredTopicContractFields(legacy, fields);
-            Assert.Equal(string.Empty, (string)legacy["schemaName"]);
-            Assert.Equal("Live", (string)legacy["scope"]);
+                var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+                var legacy = (JObject)((JArray)response["claims"])
+                    .Single(item => (string)item["topic"] == "/legacy");
+                AssertRequiredTopicContractFields(legacy, fields);
+                Assert.Equal(string.Empty, (string)legacy["schemaName"]);
+                Assert.Equal("Live", (string)legacy["scope"]);
 
-            var conflict = (JObject)Assert.Single((JArray)response["conflicts"]);
-            AssertRequiredTopicContractFields((JObject)conflict["existing"], fields);
-            AssertRequiredTopicContractFields((JObject)conflict["incoming"], fields);
+                var conflict = (JObject)Assert.Single((JArray)response["conflicts"]);
+                AssertRequiredTopicContractFields((JObject)conflict["existing"], fields);
+                AssertRequiredTopicContractFields((JObject)conflict["incoming"], fields);
+            }
+            finally
+            {
+                manager.StopServer();
+                manager.IsRunning = false;
+            }
         }
 
         private static void AssertRequiredTopicContractFields(JObject item, string[] fields)
