@@ -78,40 +78,7 @@ def _entrypoint_contract_signatures(tree: ast.Module) -> tuple[str, ...]:
     )
 
 
-def _reviewed_direct_entrypoint_transition(
-    relative: str,
-    base_contract: tuple[str, ...],
-    head_contract: tuple[str, ...],
-) -> bool:
-    """Recognize the reviewed Lyrical direct-path bootstrap transition."""
-    if relative not in _REVIEWED_DIRECT_ENTRYPOINTS:
-        return False
-    package_module = Path(relative).stem
-    package_import = (
-        "Scripts.ros2forunity.windows.lyrical.regression_checks."
-        f"{package_module}"
-    )
-    base_source = (
-        "from __future__ import annotations\n"
-        "import unittest\n"
-        "from . import *\n"
-        "if __name__ == '__main__':\n"
-        "    raise SystemExit(unittest.main(module=None))\n"
-    )
-    head_source = (
-        "from __future__ import annotations\n"
-        "import unittest\n"
-        "import sys\n"
-        "from pathlib import Path\n"
-        "sys.path.insert(0, str(Path(__file__).resolve().parents[6]))\n"
-        f"from {package_import} import *\n"
-        "if __name__ == '__main__':\n"
-        "    raise SystemExit(unittest.main(module=__name__))\n"
-    )
-    return (
-        tuple(base_contract) == _entrypoint_contract_signatures(ast.parse(base_source))
-        and tuple(head_contract) == _entrypoint_contract_signatures(ast.parse(head_source))
-    )
+
 
 
 def _reviewed_direct_entrypoint_absolute_import(
@@ -231,6 +198,15 @@ def _entrypoint_contract(
                             ),
                             repository_root=repository_root,
                         )
+                        if reviewed_identity_tooling:
+                            _section_exports(
+                                _without_function_bodies(section_path.read_text(encoding="utf-8")),
+                                str(section_path),
+                                reject_conditional=reject_conditional,
+                                reject_module_registry=False,
+                                validate_namespace=True,
+                                repository_root=repository_root,
+                            )
                     package_exports.update(section_exports)
 
     relative_imports = top_level_relative_imports
@@ -824,4 +800,4 @@ from Scripts.validation.source_decomposition.identity_initializer_contracts impo
     _statement_loaded_names,
 )
 
-__all__ = ['_is_safe_unittest_main_call', '_is_unittest_module_entrypoint', '_entrypoint_contract_signatures', '_reviewed_direct_entrypoint_transition', '_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_statement_loaded_names']
+__all__ = ['_is_safe_unittest_main_call', '_is_unittest_module_entrypoint', '_entrypoint_contract_signatures', '_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_statement_loaded_names']

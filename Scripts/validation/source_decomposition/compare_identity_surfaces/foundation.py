@@ -172,7 +172,9 @@ def _extract_archive_safely(archive: tarfile.TarFile, destination: Path) -> None
 @contextmanager
 def _revision_checkout(repository: Path, revision: str) -> Iterator[Path]:
     """Extract a revision without registering a persistent Git worktree."""
-    with tempfile.TemporaryDirectory(prefix="phase192-identity-") as temporary:
+    scratch_root = Path(repository).resolve() / "build" / "identity-gate"
+    scratch_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="phase192-identity-", dir=scratch_root) as temporary:
         checkout = Path(temporary) / "tree"
         checkout.mkdir()
         archive_path = Path(temporary) / "revision.tar"
@@ -196,6 +198,99 @@ def _revision_checkout(repository: Path, revision: str) -> Iterator[Path]:
         with tarfile.open(archive_path, mode="r") as archive:
             _extract_archive_safely(archive, checkout)
         yield checkout
+
+_FUNCTION_BODY_RISK_NAMES = frozenset({"__import__", "compile", "eval", "exec", "globals", "locals", "vars"})
+_ENVIRONMENT_MUTATORS = frozenset({"clear", "pop", "popitem", "setdefault", "update"})
+
+def _without_function_bodies(source: str) -> str:
+    """Return source whose function bodies are replaced by pass, keeping import-time statements."""
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            node.body = [ast.Pass()]
+    return ast.unparse(ast.fix_missing_locations(tree)) + "\n"
+
+def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[str]:
+    """Return signatures for code-execution builtins in function bodies and import-time environment writes."""
+    os_names = {"os"}
+    environ_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "os":
+                    os_names.add(alias.asname or "os")
+        elif isinstance(node, ast.ImportFrom) and node.module == "os" and not node.level:
+            for alias in node.names:
+                if alias.name == "environ":
+                    environ_names.add(alias.asname or "environ")
+
+    def is_environ(node: ast.AST) -> bool:
+        """Return whether an expression names os.environ."""
+        if isinstance(node, ast.Name):
+            return node.id in environ_names
+        return (
+            isinstance(node, ast.Attribute)
+            and node.attr == "environ"
+            and isinstance(node.value, ast.Name)
+            and node.value.id in os_names
+        )
+
+    def writes_environment(statement: ast.AST) -> bool:
+        """Return whether one import-time statement writes the process environment."""
+        if isinstance(statement, ast.Assign):
+            targets = statement.targets
+        elif isinstance(statement, (ast.AugAssign, ast.AnnAssign)):
+            targets = [statement.target]
+        elif isinstance(statement, ast.Delete):
+            targets = statement.targets
+        else:
+            targets = []
+        for target in targets:
+            if is_environ(target) or (isinstance(target, ast.Subscript) and is_environ(target.value)):
+                return True
+        for node in ast.walk(statement):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr in _ENVIRONMENT_MUTATORS and is_environ(node.func.value):
+                return True
+            if (
+                node.func.attr in {"putenv", "unsetenv"}
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in os_names
+            ):
+                return True
+        return False
+
+    signatures: set[str] = set()
+
+    def visit(node: ast.AST, scope: tuple[str, ...], in_function: bool) -> None:
+        """Collect signatures while tracking the enclosing definition scope."""
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                visit(child, scope + (child.name,), True)
+                continue
+            if isinstance(child, ast.Lambda):
+                visit(child, scope + ("<lambda>",), True)
+                continue
+            if isinstance(child, ast.ClassDef):
+                visit(child, scope + (child.name,), in_function)
+                continue
+            qualified = ".".join(scope) or "<module>"
+            if (
+                in_function
+                and isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Name)
+                and child.func.id in _FUNCTION_BODY_RISK_NAMES
+            ):
+                signatures.add(f"function-body-risk:{qualified}:{child.func.id}")
+            if not in_function and isinstance(child, ast.stmt) and writes_environment(child):
+                signatures.add(
+                    f"import-time-environment:{qualified}:{ast.dump(child, include_attributes=False)}"
+                )
+            visit(child, scope, in_function)
+
+    visit(tree, (), False)
+    return frozenset(signatures)
 
 def _parse_source(source: str, path: str | Path) -> ast.Module:
     """Compile and parse source so syntax-only identity checks match Python imports."""
@@ -404,4 +499,4 @@ _PHASE192_TEMPLATE_METHODS = frozenset({
     "__class__", "__delattr__", "__dict__", "__setattr__", "add", "get", "insert", "main", "pop", "resolve", "startswith",
 })
 
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS']
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS']

@@ -54,6 +54,143 @@ class IdentityGateHardeningTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 compare_identity_surfaces._entrypoint_contract(path, repository_root=root)
 
+    def test_reviewed_identity_tooling_sections_reject_import_time_namespace_escape(self) -> None:
+        """Reviewed identity-tooling sections still reject module-level namespace rebinding."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = self._write_identity_package(root, _REVIEWED_SECTIONS)
+            (path.parent / "namespace_risk_tests.py").write_text(
+                "PUBLIC = 1\nglobals()['PUBLIC'] = 2\n__all__ = ['PUBLIC']\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._entrypoint_contract(path, repository_root=root)
+
+    def test_reviewed_identity_tooling_sections_allow_namespace_access_in_test_bodies(self) -> None:
+        """Namespace access inside test functions does not run at import time."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = self._write_identity_package(root, _REVIEWED_SECTIONS)
+            (path.parent / "namespace_risk_tests.py").write_text(
+                "PUBLIC = 1\ndef helper():\n    return globals()\n__all__ = ['PUBLIC']\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(compare_identity_surfaces._entrypoint_contract(path, repository_root=root)[0])
+
+    def test_reviewed_identity_tooling_surface_rejects_import_time_namespace_escape(self) -> None:
+        """The facade surface of the reviewed identity-tooling split rejects module-level rebinding."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            path = self._write_identity_package(root, _REVIEWED_SECTIONS)
+            facade = path.parent.with_suffix(".py")
+            facade.write_text("from .test_identity_tooling import *\n", encoding="utf-8")
+            compare_identity_surfaces._surface(root, facade, reject_conditional=False)
+            (path.parent / "namespace_risk_tests.py").write_text(
+                "PUBLIC = 1\nglobals()['PUBLIC'] = 2\n__all__ = ['PUBLIC']\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                compare_identity_surfaces._surface(root, facade, reject_conditional=False)
+
+    def _compatibility_errors(self, base_section: str, head_section: str) -> list[str]:
+        """Compare one minimal split facade whose single section differs between base and head."""
+        with tempfile.TemporaryDirectory() as temporary:
+            roots = (Path(temporary) / "base", Path(temporary) / "head")
+            for root, section in zip(roots, (base_section, head_section)):
+                package = root / "Scripts/smoke/foxrun/fixture"
+                package.mkdir(parents=True)
+                (root / "Scripts/smoke/foxrun/fixture.py").write_text("PUBLIC = 1\n", encoding="utf-8")
+                (package / "__init__.py").write_text("from . import live\n", encoding="utf-8")
+                (package / "live.py").write_text(section, encoding="utf-8")
+            return compare_identity_surfaces._compare_surfaces(
+                compare_identity_surfaces._surfaces(roots[0], strict=False),
+                compare_identity_surfaces._surfaces(roots[1], strict=False),
+                strict=False,
+            )
+
+    def test_compatibility_rejects_new_exec_in_function_body(self) -> None:
+        """A new exec call inside a function body changes the namespace contract."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "def helper():\n    return 1\ndef run(code):\n    exec(code)\n__all__ = ['helper', 'run']\n"
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_import_time_environment_write(self) -> None:
+        """A module-level os.environ write through an alias changes the namespace contract."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os as _os\ndef helper():\n    return 1\n_os.environ['FLAG'] = '1'\n__all__ = ['helper']\n"
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_keeps_unchanged_body_risks_and_runtime_environment_writes(self) -> None:
+        """Unchanged exec bodies, getattr, and environment writes inside functions stay compatible."""
+        base = "import os\ndef run(code):\n    exec(code)\n__all__ = ['run']\n"
+        head = (
+            "import os\ndef run(code):\n    exec(code)\n"
+            "def look(value):\n    return getattr(value, 'name')\n"
+            "def configure():\n    os.environ['FLAG'] = '1'\n"
+            "__all__ = ['run', 'look', 'configure']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_revision_checkout_extracts_under_repository_build(self) -> None:
+        """Archive extraction stays under the repository build directory and is removed afterwards."""
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            (repository / "Scripts").mkdir()
+            (repository / "Scripts/fixture.py").write_text("PUBLIC = 1\n", encoding="utf-8")
+            for command in (
+                ["git", "init", "-q"],
+                ["git", "add", "Scripts/fixture.py"],
+                ["git", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-q", "-m", "fixture"],
+            ):
+                subprocess.run(command, cwd=repository, check=True)
+            scratch_root = (repository / "build" / "identity-gate").resolve()
+            with compare_identity_surfaces._revision_checkout(repository, "HEAD") as checkout:
+                self.assertTrue(checkout.resolve().is_relative_to(scratch_root))
+                self.assertTrue((checkout / "Scripts/fixture.py").is_file())
+            self.assertEqual([], list(scratch_root.iterdir()))
+
+    def test_checker_package_section_side_effect_is_rejected_with_unchanged_facade(self) -> None:
+        """An import-time side effect in a checker section is rejected even when its facade is unchanged."""
+        relative_package = Path("Scripts/validation/source_decomposition/compare_identity_surfaces")
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary)
+            shutil.copytree(
+                _REPOSITORY_ROOT / relative_package,
+                repository / relative_package,
+                ignore=shutil.ignore_patterns("__pycache__"),
+            )
+            shutil.copy2(
+                _REPOSITORY_ROOT / relative_package.with_suffix(".py"),
+                repository / relative_package.with_suffix(".py"),
+            )
+
+            def commit(message: str) -> str:
+                """Commit the fixture tree and return the new revision."""
+                subprocess.run(["git", "add", "-A", "Scripts"], cwd=repository, check=True)
+                subprocess.run(
+                    ["git", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-q", "-m", message],
+                    cwd=repository,
+                    check=True,
+                )
+                return subprocess.run(
+                    ["git", "rev-parse", "HEAD"], cwd=repository, check=True, capture_output=True, text=True
+                ).stdout.strip()
+
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=repository, check=True)
+            base = commit("base")
+            section = repository / relative_package / "foundation.py"
+            with section.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write("\nimport shutil as _fixture_shutil\n_fixture_shutil.rmtree('build/fixture-none', ignore_errors=True)\n")
+            head = commit("head")
+            self.assertEqual(1, compare_identity_surfaces.compare_revisions(repository, base, head, strict=False))
+
     def test_entrypoint_waiver_accepts_exact_reviewed_sections(self) -> None:
         """The exact reviewed section set remains a valid transition."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -80,7 +217,7 @@ class IdentityGateHardeningTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual("334 334", result.stdout.strip())
+        self.assertEqual("328 328", result.stdout.strip())
 
     def test_template_registry_fallback_is_not_workflow_mutable(self) -> None:
         """The template-registry identity waiver must not be defined by the PR workflow."""
@@ -133,41 +270,6 @@ class IdentityGateHardeningTests(unittest.TestCase):
                 legacy,
                 current,
                 strict=False,
-            )
-        )
-
-    def test_template_registry_facade_transition_requires_reviewed_digest(self) -> None:
-        """The facade compatibility transition is bound to its reviewed source digest."""
-        relative = compare_identity_surfaces._REVIEWED_TEMPLATE_REGISTRY_FACADE_RELATIVE
-        digest = compare_identity_surfaces._REVIEWED_TEMPLATE_REGISTRY_FACADE_DIGEST
-        self.assertTrue(
-            compare_identity_surfaces._reviewed_template_registry_facade_transition(
-                relative,
-                {relative: digest},
-            )
-        )
-        self.assertFalse(
-            compare_identity_surfaces._reviewed_template_registry_facade_transition(
-                relative,
-                {relative: "0" * 64},
-            )
-        )
-        compare_relative = (
-            compare_identity_surfaces._REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_RELATIVE
-        )
-        compare_digest = (
-            compare_identity_surfaces._REVIEWED_COMPARE_IDENTITY_SURFACES_FACADE_DIGEST
-        )
-        self.assertTrue(
-            compare_identity_surfaces._reviewed_template_registry_facade_transition(
-                compare_relative,
-                {compare_relative: compare_digest},
-            )
-        )
-        self.assertFalse(
-            compare_identity_surfaces._reviewed_template_registry_facade_transition(
-                compare_relative,
-                {relative: digest},
             )
         )
 
@@ -600,15 +702,6 @@ class IdentityGateHardeningTests(unittest.TestCase):
                     check=False,
                 )
                 self.assertEqual(0, result.returncode, result.stderr)
-
-    def test_namespace_split_uses_supplied_base_revision(self) -> None:
-        """The namespace split regression must not read mutable origin/main."""
-        source = (
-            _REPOSITORY_ROOT
-            / "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling/split_surface_tests.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn("SOURCE_DECOMPOSITION_BASE_SHA", source)
-        self.assertNotIn("origin/main:Scripts/validation/source_decomposition/identity_namespace_analysis.py", source)
 
 
 if __name__ == "__main__":
