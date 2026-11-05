@@ -119,6 +119,87 @@ jobs:
           path: build/unity-batch-compile
           if-no-files-found: warn
 
+  unity-tests:
+    name: unity-tests
+    needs: unity_compile
+    if: >-
+      needs.unity_compile.result == 'success'
+      && vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'
+      && (github.event_name != 'pull_request'
+          || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
+    steps:
+      - name: Bootstrap PowerShell 7 on PATH
+        shell: cmd
+        run: |
+          set "POWERSHELL7=C:\Program Files\PowerShell\7"
+          if not exist "%POWERSHELL7%\pwsh.exe" (
+            echo PowerShell 7 MSI installation is required.
+            exit /b 1
+          )
+          echo %POWERSHELL7%>>"%GITHUB_PATH%"
+          set "PATH=%POWERSHELL7%;%PATH%"
+          where pwsh
+          pwsh -NoLogo -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"
+
+      - name: Enable Git long-path support
+        shell: pwsh
+        run: |
+          $globalConfig = Join-Path $env:RUNNER_TEMP ("git-global-{0}.config" -f $env:GITHUB_RUN_ID)
+          "GIT_CONFIG_GLOBAL=$globalConfig" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:GIT_CONFIG_GLOBAL = $globalConfig
+          git config --global core.longpaths true
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+
+      - name: Clean runner workspace while preserving Unity Library
+        shell: pwsh
+        run: git clean -ffdx -e Unity2Foxglove/Library/
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Unity test process ownership dependency
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check --no-input psutil==7.0.0
+
+      - name: Run Unity EditMode tests
+        if: always()
+        shell: pwsh
+        run: >-
+          python -B Scripts/release/run_unity_tests.py
+          --project-path Unity2Foxglove
+          --test-platform EditMode
+          --test-results build/unity-tests/editmode/results.xml
+          --log-file build/unity-tests/editmode/unity.log
+          --timeout-seconds 3600
+          --nographics
+
+      - name: Run Unity PlayMode tests
+        if: always()
+        shell: pwsh
+        run: >-
+          python -B Scripts/release/run_unity_tests.py
+          --project-path Unity2Foxglove
+          --test-platform PlayMode
+          --test-results build/unity-tests/playmode/results.xml
+          --log-file build/unity-tests/playmode/unity.log
+          --timeout-seconds 3600
+          --nographics
+
+      - name: Upload Unity Test Runner diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unity-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/unity-tests
+          if-no-files-found: warn
+
   unity_required:
     name: unity-required
     needs:
