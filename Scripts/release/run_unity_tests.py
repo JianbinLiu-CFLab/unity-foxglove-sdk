@@ -148,7 +148,7 @@ def run(
             exit_code = 124
             residual = tree.terminate()
         else:
-            residual = await_tree_quiescence(tree, 2.0)
+            residual = await_tree_quiescence(tree, 10.0)
             if residual:
                 tree.terminate()
     finally:
