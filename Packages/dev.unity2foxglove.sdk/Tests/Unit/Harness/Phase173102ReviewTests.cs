@@ -48,9 +48,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void DotnetWorkflowRunsLocalEntrypointValidation()
         {
             var source = TestSources.Text(".github/workflows/dotnet-tests.yml");
+            var packageLane = TestSources.Text("Scripts/release/run_ci/cli.py");
 
-            Assert.Contains("Validate local entrypoints", source, StringComparison.Ordinal);
-            Assert.Contains("Scripts/package/validate_local_entrypoints.py", source, StringComparison.Ordinal);
+            Assert.Contains("python3 -B Scripts/release/run_ci.py --only packages", source, StringComparison.Ordinal);
+            Assert.Contains("\"Scripts/package/validate_local_entrypoints.py\"", packageLane, StringComparison.Ordinal);
+            Assert.Contains("results[\"validate-entrypoints\"]", packageLane, StringComparison.Ordinal);
         }
 
         [Fact]

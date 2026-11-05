@@ -459,6 +459,20 @@ jobs:
                 modules,
             )
 
+    def test_packages_lane_inventory_matches_run_ci_package_lane(self):
+        """The inventory expansion of run_ci.py --only packages lists exactly the lane's unittest modules."""
+        from Scripts.release.run_ci import foundation as run_ci_foundation
+
+        expected = (
+            run_ci_foundation.RELEASE_TOOLING_REGRESSION,
+            run_ci_foundation.SAMPLE_SYNC_TOOLING_REGRESSION,
+            "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling",
+            *run_ci_foundation.PACKAGE_LANE_REGRESSION_MODULES,
+        )
+        self.assertEqual(expected, regression_inventory._WORKFLOW_RUNNER_MODULES["packages"])
+        workflow = (Path(__file__).resolve().parents[3] / ".github/workflows/dotnet-tests.yml").read_text(encoding="utf-8")
+        self.assertIn("python3 -B Scripts/release/run_ci.py --only packages", workflow)
+
     def test_portable_modules_stay_in_the_portable_ci_lane(self):
         """Fixture-free regression checks execute in the required portable lane."""
         linux_lane = regression_inventory._WORKFLOW_RUNNER_MODULES[
