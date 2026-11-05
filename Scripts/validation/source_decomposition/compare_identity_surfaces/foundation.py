@@ -270,10 +270,21 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
 
     signatures: set[str] = set()
 
+    def record_import_time_environment(
+        node: ast.AST, scope: tuple[str, ...], in_function: bool
+    ) -> None:
+        """Record an environment write that executes during a definition."""
+        if not in_function and writes_environment(node):
+            qualified = ".".join(scope) or "<module>"
+            signatures.add(
+                f"import-time-environment:{qualified}:{ast.dump(node, include_attributes=False)}"
+            )
+
     def visit(node: ast.AST, scope: tuple[str, ...], in_function: bool) -> None:
         """Collect signatures while tracking the enclosing definition scope."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for decorator in node.decorator_list:
+                record_import_time_environment(decorator, scope, in_function)
                 visit(decorator, scope, in_function)
             arguments = node.args
             definition_expressions = [
@@ -297,6 +308,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             if node.returns is not None:
                 definition_expressions.append(node.returns)
             for expression in definition_expressions:
+                record_import_time_environment(expression, scope, in_function)
                 visit(expression, scope, in_function)
             function_scope = scope + (node.name,)
             for statement in node.body:
@@ -305,21 +317,34 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         if isinstance(node, ast.Lambda):
             for expression in (*node.args.defaults, *node.args.kw_defaults):
                 if expression is not None:
+                    record_import_time_environment(expression, scope, in_function)
                     visit(expression, scope, in_function)
             visit(node.body, scope + ("<lambda>",), True)
             return
         if isinstance(node, ast.ClassDef):
             for decorator in node.decorator_list:
+                record_import_time_environment(decorator, scope, in_function)
                 visit(decorator, scope, in_function)
             for base in node.bases:
+                record_import_time_environment(base, scope, in_function)
                 visit(base, scope, in_function)
             for keyword in node.keywords:
+                record_import_time_environment(keyword.value, scope, in_function)
                 visit(keyword.value, scope, in_function)
             class_scope = scope + (node.name,)
             for statement in node.body:
                 visit(statement, class_scope, in_function)
             return
         for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                visit(child, scope, in_function)
+                continue
+            if isinstance(child, ast.Lambda):
+                visit(child, scope, in_function)
+                continue
+            if isinstance(child, ast.ClassDef):
+                visit(child, scope, in_function)
+                continue
             qualified = ".".join(scope) or "<module>"
             if (
                 in_function
@@ -328,7 +353,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 and child.func.id in _FUNCTION_BODY_RISK_NAMES
             ):
                 signatures.add(f"function-body-risk:{qualified}:{child.func.id}")
-            if not in_function and writes_environment(child):
+            if not in_function and isinstance(child, ast.stmt) and writes_environment(child):
                 signatures.add(
                     f"import-time-environment:{qualified}:{ast.dump(child, include_attributes=False)}"
                 )

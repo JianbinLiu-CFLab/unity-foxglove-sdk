@@ -69,7 +69,7 @@ class _RunCiTestsPart2:
             [sys.executable, "Scripts/samples/sync_maze_demo.py", "--dry-run"],
             calls,
         )
-        self.assertNotIn(
+        self.assertIn(
             [sys.executable, self.run_ci.SCHEMA_GENERATED_OUTPUT_VALIDATOR],
             calls,
         )

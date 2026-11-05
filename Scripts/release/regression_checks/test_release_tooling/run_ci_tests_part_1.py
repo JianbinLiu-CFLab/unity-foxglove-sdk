@@ -234,29 +234,14 @@ class _RunCiTestsPart1:
     def test_dotnet_workflow_runs_schema_generated_output_freshness(self) -> None:
         """Remote CI must compare outputs against its pinned Foxglove checkout."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
-        checkout = active_workflow_line_index(
-            workflow,
-            "repository: foxglove/foxglove-sdk",
-        )
-        pinned_ref = active_workflow_line_index(
-            workflow,
-            "ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba",
-            checkout + 1,
-        )
-        checkout_path = active_workflow_line_index(
-            workflow,
-            "path: third-party/foxglove-sdk",
-            pinned_ref + 1,
-        )
-        validation = active_workflow_line_index(
-            workflow,
+        self.assertNotIn(
             "run: python3 Scripts/schema/validate_schema_generated_outputs.py",
-            checkout_path + 1,
+            workflow,
         )
-
-        self.assertLess(checkout, pinned_ref)
-        self.assertLess(pinned_ref, checkout_path)
-        self.assertLess(checkout_path, validation)
+        self.assertIn(
+            "validate_schema_generated_outputs.py",
+            (ROOT / "Scripts/release/run_ci/cli.py").read_text(encoding="utf-8"),
+        )
 
     def test_dotnet_workflow_runs_xunit_before_runtime_gate(self) -> None:
         """The unit-test gate must not be hidden behind an earlier runtime failure."""
@@ -294,7 +279,6 @@ class _RunCiTestsPart1:
             "- name: Run xUnit unit tests",
             "- name: Run FoxRun publish panel behavior tests",
             "- name: Validate source generator DLL freshness script",
-            "- name: Validate generated ROS2 schema output freshness",
             "- name: Run default runtime validation suite",
             "- name: Run Phase179 ROS2 acceptance helper regressions",
             "- name: Run Phase181 custom ROS2 acceptance helper regressions",
