@@ -138,6 +138,42 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
+        [Theory]
+        [InlineData("json", "jsonschema")]
+        [InlineData("JSON", "jsonschema")]
+        [InlineData("protobuf", null)]
+        public void ServiceSchemaDescriptorDefaultsSchemaEncodingByPayloadEncoding(
+            string encoding,
+            string expectedSchemaEncoding)
+        {
+            var descriptor = new ServiceSchemaDescriptor
+            {
+                Encoding = encoding,
+                SchemaName = "/schema",
+                Schema = "{}"
+            };
+
+            Assert.Equal(expectedSchemaEncoding, descriptor.SchemaEncoding);
+
+            var json = JObject.Parse(JsonConvert.SerializeObject(descriptor));
+            if (expectedSchemaEncoding == null)
+                Assert.Null(json["schemaEncoding"]);
+            else
+                Assert.Equal(expectedSchemaEncoding, (string)json["schemaEncoding"]);
+        }
+
+        [Fact]
+        public void ServiceSchemaDescriptorEmptyExplicitSchemaEncodingUsesJsonDefault()
+        {
+            var descriptor = new ServiceSchemaDescriptor
+            {
+                Encoding = "json",
+                SchemaEncoding = string.Empty
+            };
+
+            Assert.Equal("jsonschema", descriptor.SchemaEncoding);
+        }
+
         [Fact]
         public void BinaryServiceCodec()
         {
