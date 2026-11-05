@@ -53,6 +53,11 @@
       "displayName": "Virtual LiDAR PointCloud2 Digital Twin",
       "description": "Imports a source-only ROS2 For Unity sample that publishes prepared PointCloud2 Native frames to sensor_msgs/msg/PointCloud2 on /points.",
       "path": "Samples~/Virtual LiDAR PointCloud2 Digital Twin"
+    },
+    {
+      "displayName": "ROS2 PointCloud2 Inbound",
+      "description": "Imports a minimal consumer for native PointCloud2 inbound frames with bounded count and bounds diagnostics.",
+      "path": "Samples~/ROS2 PointCloud2 Inbound"
     }
   ],
   "keywords": [
