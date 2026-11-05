@@ -109,6 +109,17 @@ partial class Program
             return RunAllCiSafeValidations();
         }
 
+        if (argSet.Contains("--ci-safe-ratchet"))
+        {
+            if (argList.Count != 1)
+            {
+                Console.Error.WriteLine("--ci-safe-ratchet cannot be combined with other validation options.");
+                return 1;
+            }
+
+            return RunCiSafeRatchet();
+        }
+
         if (TryRunRegisteredValidation(argList, argSet, out var registeredValidationExitCode))
             return registeredValidationExitCode;
 

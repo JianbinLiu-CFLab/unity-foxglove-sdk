@@ -302,6 +302,81 @@ partial class Program
         return 1;
     }
 
+    internal const string CiSafeKnownFailuresPath = "Scripts/validation/ci_safe_known_failures.txt";
+
+    /// <summary>
+    /// Runs every CI-safe validation and fails only when the failing set differs from the
+    /// checked-in known-failure baseline, so the backlog cannot grow and fixed entries
+    /// cannot silently break again.
+    /// </summary>
+    private static int RunCiSafeRatchet()
+    {
+        var known = ParseCiSafeKnownFailures(
+            PhaseValidationSourceHelpers.ReadRequiredRepoText(CiSafeKnownFailuresPath));
+        var validations = PhaseValidationRegistry.CiSafeValidations().ToList();
+        var failing = new List<string>();
+
+        Console.WriteLine("=== FoxgloveSDK CI-safe known-failure ratchet ===\n");
+        foreach (var validation in validations)
+        {
+            if (RunValidation(validation) != 0)
+                failing.Add(validation.Flag);
+        }
+
+        var problems = EvaluateCiSafeRatchet(
+            validations.Select(item => item.Flag).ToList(),
+            failing,
+            known);
+        Console.WriteLine(
+            $"\nCI-safe ratchet: failed={failing.Count} known={known.Count} total={validations.Count}");
+        if (problems.Count == 0)
+        {
+            Console.WriteLine("CI-safe ratchet passed: the failing set matches " + CiSafeKnownFailuresPath + ".");
+            return 0;
+        }
+
+        foreach (var problem in problems)
+            Console.Error.WriteLine("[FAIL] CI-safe ratchet: " + problem);
+        return 1;
+    }
+
+    /// <summary>Parses one flag per line; text after <c>#</c> and blank lines are ignored.</summary>
+    internal static HashSet<string> ParseCiSafeKnownFailures(string text)
+    {
+        var known = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var raw in (text ?? string.Empty).Replace("\r\n", "\n").Split('\n'))
+        {
+            var comment = raw.IndexOf('#');
+            var flag = (comment >= 0 ? raw.Substring(0, comment) : raw).Trim();
+            if (flag.Length > 0)
+                known.Add(flag);
+        }
+
+        return known;
+    }
+
+    /// <summary>Lists every difference between the observed failing flags and the known-failure baseline.</summary>
+    internal static List<string> EvaluateCiSafeRatchet(
+        IReadOnlyCollection<string> ciSafeFlags,
+        IReadOnlyCollection<string> failingFlags,
+        ISet<string> knownFailures)
+    {
+        var ciSafe = new HashSet<string>(ciSafeFlags, StringComparer.Ordinal);
+        var failing = new HashSet<string>(failingFlags, StringComparer.Ordinal);
+        var problems = new List<string>();
+        foreach (var flag in failingFlags.Where(flag => !knownFailures.Contains(flag)))
+            problems.Add(flag + " fails but is not a known failure in " + CiSafeKnownFailuresPath);
+        foreach (var flag in knownFailures.OrderBy(flag => flag, StringComparer.Ordinal))
+        {
+            if (!ciSafe.Contains(flag))
+                problems.Add(flag + " is listed in " + CiSafeKnownFailuresPath + " but is not a CI-safe validation");
+            else if (!failing.Contains(flag))
+                problems.Add(flag + " passes now; remove it from " + CiSafeKnownFailuresPath);
+        }
+
+        return problems;
+    }
+
     /// <summary>Runs the manual Phase139B loopback server used by browser and Python acceptance probes.</summary>
     private static string ValueAfter(List<string> args, string flag)
     {
