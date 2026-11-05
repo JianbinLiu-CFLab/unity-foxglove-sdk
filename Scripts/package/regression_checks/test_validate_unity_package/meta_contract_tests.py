@@ -726,6 +726,7 @@ class PackageMetaContractTests:
             original_read_text = Path.read_text
 
             def fail_nested_folder_meta(path: Path, *args, **kwargs) -> str:
+                """Raise for the nested folder metadata while delegating other reads."""
                 if path == Path(str(folder) + ".meta"):
                     raise OSError("denied")
                 return original_read_text(path, *args, **kwargs)
