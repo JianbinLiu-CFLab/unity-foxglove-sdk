@@ -5,9 +5,11 @@
 // Purpose: Structural guard for the Phase181 custom ROS2 DTO interface boundary.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Xml.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2ForUnity.Native;
 
@@ -190,6 +192,53 @@ namespace Unity.FoxgloveSDK.Tests
                   && !sourceGeneratorProject.Contains("FoxRunRos2InterfaceJsonWriter.cs", StringComparison.Ordinal)
                   && !descriptorWriter.Contains("using Unity.FoxgloveSDK.Components;", StringComparison.Ordinal),
                 "181B-8: static-package editor helpers stay out of the analyzer compile surface");
+
+            var mapperDirectory = Path.Combine(
+                PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Editor",
+                "Native",
+                "FoxRun",
+                "Decomposed",
+                "Ros2CustomDtoMapperEmitter");
+            var projectDirectory = Path.GetDirectoryName(
+                Path.Combine(
+                    PhaseValidationSourceHelpers.FindRequiredRepoRoot(),
+                    "Packages",
+                    "dev.unity2foxglove.ros2forunity",
+                    "Editor",
+                    "SourceGenerators",
+                    "FoxRunR2fuSourceGenerator.csproj"));
+            var mapperRoot = Path.GetFullPath(mapperDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var actualMapperFiles = Directory.GetFiles(mapperDirectory, "*.cs", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(mapperDirectory, path).Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
+            var compileMapperFiles = XDocument.Parse(sourceGeneratorProject)
+                .Descendants()
+                .Where(element => element.Name.LocalName == "Compile")
+                .SelectMany(element => (element.Attribute("Include")?.Value ?? string.Empty)
+                    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                .Select(value => Path.GetFullPath(Path.Combine(
+                    projectDirectory!,
+                    value.Replace('\\', Path.DirectorySeparatorChar))))
+                .Where(path => path.StartsWith(mapperRoot, StringComparison.OrdinalIgnoreCase))
+                .Select(path => Path.GetRelativePath(mapperDirectory, path).Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
+            var expectedMapperFiles = new HashSet<string>(
+                new[]
+                {
+                    "Ros2CustomDtoMapperEmitter.Mapping.cs",
+                    "Ros2CustomDtoMapperEmitter.RosPayload.cs",
+                    "Ros2CustomDtoMapperEmitter.Equality.cs",
+                    "Ros2CustomDtoMapperEmitter.Utilities.cs",
+                },
+                StringComparer.Ordinal);
+            Check(expectedMapperFiles.SetEquals(actualMapperFiles)
+                  && expectedMapperFiles.SetEquals(compileMapperFiles),
+                "181B-9: R2FU source-generator Compile entries exactly cover the canonical mapper source set");
         }
 
         private static void VerifyRegistryEntry()
@@ -270,7 +319,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "181D-1: custom typed input and output retain one demand-created node lease host");
 
             var resolveQos = customPublisherHub.IndexOf("contract.ResolveQos(", StringComparison.Ordinal);
-            var resolveTopology = customPublisherHub.IndexOf("ShouldRegisterNativePublisher(", StringComparison.Ordinal);
+            var resolveTopology = customPublisherHub.IndexOf("!ShouldRegisterNativePublisher(", StringComparison.Ordinal);
             var readinessGate = customPublisherHub.IndexOf("!readiness.IsReady", StringComparison.Ordinal);
             var acquireBackend = customPublisherHub.IndexOf("TryAcquirePublisherBackend", StringComparison.Ordinal);
             var beginPublisher = customPublisherHub.IndexOf(
@@ -290,11 +339,12 @@ namespace Unity.FoxgloveSDK.Tests
                 ? customPublisherBinding.Substring(stopStart, stopEnd - stopStart)
                 : string.Empty;
             var unsubscribe = stopBody.IndexOf("_bus.Unsubscribe", StringComparison.Ordinal);
-            var detachToken = stopBody.IndexOf("Interlocked.Exchange(ref _token, null)", StringComparison.Ordinal);
             var removePublisher = stopBody.IndexOf("TryRemovePublisher(token)", StringComparison.Ordinal);
-            var releaseNode = stopBody.IndexOf("_backend.ReleaseNodeOwnership", StringComparison.Ordinal);
+            var detachToken = stopBody.IndexOf("Interlocked.CompareExchange(ref _token, null, token)", StringComparison.Ordinal);
+            var releaseNode = stopBody.IndexOf("TryReleaseNodeOwnership()", StringComparison.Ordinal);
+            var backendReleaseNode = stopBody.IndexOf("_backend.ReleaseNodeOwnership", StringComparison.Ordinal);
             var removeHelper = customPublisherBinding.IndexOf(
-                "private void TryRemovePublisher", StringComparison.Ordinal);
+                "private bool TryRemovePublisher", StringComparison.Ordinal);
             var backendRemove = removeHelper >= 0
                 ? customPublisherBinding.IndexOf("_backend.RemovePublisher(token)", removeHelper, StringComparison.Ordinal)
                 : -1;
@@ -303,15 +353,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && customPublisherBinding.Contains("FoxRunRos2CustomSequenceSource", StringComparison.Ordinal)
                   && customPublisherBinding.Contains("FoxRunRos2CustomOutboundMappingPolicy.CreateContext", StringComparison.Ordinal)
                   && unsubscribe >= 0
-                  && detachToken > unsubscribe
-                  && removePublisher > detachToken
-                  && releaseNode > removePublisher
+                  && removePublisher > unsubscribe
+                  && detachToken > removePublisher
+                  && releaseNode > detachToken
+                  && backendReleaseNode > releaseNode
                   && backendRemove > removeHelper
                   && customPublisherBinding.IndexOf(
                       "FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception)",
                       backendRemove,
                       StringComparison.Ordinal) > backendRemove,
-                "181D-3: typed publisher unsubscribes, detaches its endpoint token, and protects native teardown before node release");
+                "181D-3: typed publisher unsubscribes, removes its endpoint before detaching the token, and protects retryable native teardown before node release");
 
             Check(subscriptionBinding.Contains("dropBeforeApply", StringComparison.Ordinal)
                   && subscriptionBinding.Contains("SameOriginDropCount", StringComparison.Ordinal)

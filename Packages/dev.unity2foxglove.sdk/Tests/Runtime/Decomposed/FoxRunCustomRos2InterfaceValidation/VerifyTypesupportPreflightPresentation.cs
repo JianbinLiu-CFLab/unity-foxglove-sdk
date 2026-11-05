@@ -53,7 +53,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && inspector.Contains("|| EditorApplication.isCompiling", StringComparison.Ordinal)
                   && inspector.Contains("|| EditorApplication.isUpdating", StringComparison.Ordinal)
                   && inspector.Contains("catch (InvalidOperationException exception)", StringComparison.Ordinal)
-                  && inspector.Contains("+ exception.Message", StringComparison.Ordinal)
+                  && inspector.Contains("Ros2ForUnityEditorDiagnostics.ReportSelectorFailure(", StringComparison.Ordinal)
                   && inspector.Contains("Generate ROS2 Interface Source Package", StringComparison.Ordinal)
                   && inspector.Contains("Validate ROS2 Interface Source Package", StringComparison.Ordinal)
                   && inspector.Contains("Open ROS2 Interface Source Package", StringComparison.Ordinal)
@@ -186,7 +186,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && sample.Contains("FoxRunFlow.PublishAndSubscribe", StringComparison.Ordinal)
                   && sample.Contains("PublishTransportIds = new[]", StringComparison.Ordinal)
                   && sample.Contains("SubscribeTransportId =", StringComparison.Ordinal)
-                  && sample.Contains("FoxRunRos2TransportProvider.IdValue", StringComparison.Ordinal)
+                  && sample.Contains("NativeTransportId = \"unity2foxglove.r2fu\"", StringComparison.Ordinal)
                   && sample.Contains("FoxgloveWebSocketTransport.Id", StringComparison.Ordinal)
                   && sample.Contains("Encoding = FoxRunEncoding.JSON", StringComparison.Ordinal)
                   && sample.Contains("byte[]", StringComparison.Ordinal)
@@ -254,7 +254,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "181F-3: acceptance component correlates the exact custom DTO proof through bounded diagnostics without creating a ROS2 node");
 
             const string acceptanceInputPort = "[SerializeField] private Phase181State _inputPort";
-            const string unavailableGuard = "#if !(UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES)";
+            const string unavailableGuard = "#if !(UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN))";
             Check(acceptanceComponent.IndexOf(acceptanceInputPort, StringComparison.Ordinal) >= 0
                   && acceptanceComponent.IndexOf(acceptanceInputPort, StringComparison.Ordinal)
                      < acceptanceComponent.IndexOf(unavailableGuard, StringComparison.Ordinal)
