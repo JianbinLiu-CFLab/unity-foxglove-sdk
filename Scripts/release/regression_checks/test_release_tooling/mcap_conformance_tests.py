@@ -1,8 +1,22 @@
 from .foundation import *
 
 
+_MCAP_TIMEOUT_HELPERS = frozenset({"invoke_command_capture", "run_package_manager"})
+_MCAP_HELPER_RECEIVERS = frozenset({"_configuration", "configuration", "_measurement", "measurement"})
+
+def _is_mcap_timeout_helper(function: ast.expr) -> bool:
+    """Return whether a call targets one of the conformance helper APIs."""
+    if isinstance(function, ast.Name):
+        return function.id in _MCAP_TIMEOUT_HELPERS
+    return (
+        isinstance(function, ast.Attribute)
+        and function.attr in _MCAP_TIMEOUT_HELPERS
+        and isinstance(function.value, ast.Name)
+        and function.value.id in _MCAP_HELPER_RECEIVERS
+    )
+
 def _mcap_timeout_calls(source_paths: list[Path]) -> list[tuple[str, int]]:
-    """Return qualified MCAP helper calls that introduce a fixed timeout."""
+    """Return known MCAP helper calls that introduce a fixed timeout."""
 
     timeout_calls: list[tuple[str, int]] = []
     for source_path in source_paths:
@@ -12,13 +26,7 @@ def _mcap_timeout_calls(source_paths: list[Path]) -> list[tuple[str, int]]:
                 continue
             if not any(keyword.arg == "timeout_seconds" for keyword in node.keywords):
                 continue
-            if isinstance(node.func, ast.Name):
-                function_name = node.func.id
-            elif isinstance(node.func, ast.Attribute):
-                function_name = node.func.attr
-            else:
-                function_name = ""
-            if function_name in {"invoke_command_capture", "run_package_manager"}:
+            if _is_mcap_timeout_helper(node.func):
                 timeout_calls.append((source_path.name, node.lineno))
     return timeout_calls
 
@@ -52,6 +60,16 @@ class McapConformanceToolTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual([("fixture.py", 1)], _mcap_timeout_calls([fixture]))
+
+    def test_timeout_guard_ignores_unrelated_attribute_calls(self) -> None:
+        """The timeout guard must not flag unrelated objects with the same method name."""
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Path(temporary) / "fixture.py"
+            fixture.write_text(
+                "third_party.invoke_command_capture(['tool'], timeout_seconds=60)\n",
+                encoding="utf-8",
+            )
+            self.assertEqual([], _mcap_timeout_calls([fixture]))
 
     def test_public_configuration_state_tracks_configuration_module(self) -> None:
         """Facade configuration values stay synchronized after runtime updates."""

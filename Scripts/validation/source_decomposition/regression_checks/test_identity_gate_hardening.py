@@ -126,6 +126,54 @@ class IdentityGateHardeningTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_compatibility_rejects_environment_write_in_function_default(self) -> None:
+        """A function default expression executes while the module is imported."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef helper(value=os.environ.setdefault('FLAG', '1')):\n    return value\n__all__ = ['helper']\n"
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_environment_write_in_function_decorator(self) -> None:
+        """A function decorator expression executes while the module is imported."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\n@os.environ.setdefault('FLAG', '1')\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_environment_write_in_class_base(self) -> None:
+        """A class base expression executes while the module is imported."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nclass Helper(os.environ.setdefault('FLAG', '1')):\n    pass\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_imported_environment_function_alias(self) -> None:
+        """Imported putenv aliases are import-time environment writes too."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "from os import putenv as set_flag\nset_flag('FLAG', '1')\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_allows_runtime_environment_writes_in_new_function_bodies(self) -> None:
+        """Environment writes in a function body must remain runtime-only signatures."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\ndef helper():\n    return 1\n"
+            "def configure():\n"
+            "    os.environ.setdefault('FLAG', '1')\n"
+            "    os.putenv('FLAG', '1')\n"
+            "__all__ = ['configure', 'helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
     def test_compatibility_keeps_unchanged_body_risks_and_runtime_environment_writes(self) -> None:
         """Unchanged exec bodies, getattr, and environment writes inside functions stay compatible."""
         base = "import os\ndef run(code):\n    exec(code)\n__all__ = ['run']\n"

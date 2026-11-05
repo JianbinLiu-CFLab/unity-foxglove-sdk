@@ -54,7 +54,7 @@ namespace Unity.FoxgloveSDK.Tests
             RunCheckGroup("humble scripts", HumbleScriptsAreDistroSpecific);
             RunCheckGroup("adapter manifest", AdapterManifestRecordsHumbleRuntime);
             RunCheckGroup("runtime selector", SelectorDiscoversHumbleByConvention);
-            RunCheckGroup("unity project runtime", UnityProjectResolvesOnlyHumbleRuntime);
+            RunCheckGroup("unity project runtime", UnityProjectResolvesActiveRuntime);
             RunCheckGroup("embedded runtime candidates", RuntimeCandidatesAreNotEmbedded);
             RunCheckGroup("validation registry", ValidationRegistryWiresPhase160);
 
@@ -323,7 +323,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "160-E2: runtime selector keeps the single active runtime guard");
         }
 
-        private static void UnityProjectResolvesOnlyHumbleRuntime()
+        private static void UnityProjectResolvesActiveRuntime()
         {
             var manifest = ReadRepoText(UnityManifestPath);
             var lockFile = ReadRepoText(UnityLockPath);
@@ -338,9 +338,14 @@ namespace Unity.FoxgloveSDK.Tests
                 return;
 
             var activeRuntimePackage = manifestRuntimes[0];
-            Check(manifest.Contains("file:../../Packages/" + activeRuntimePackage, StringComparison.Ordinal)
-                  && lockFile.Contains("\"source\": \"local\"", StringComparison.Ordinal),
-                "160-F3: active runtime is referenced from the repository Packages candidate directory");
+            var lockRoot = JObject.Parse(lockFile);
+            var activeLockEntry = lockRoot["dependencies"]?[activeRuntimePackage] as JObject;
+            var expectedVersion = "file:../../Packages/" + activeRuntimePackage;
+            Check(manifest.Contains(expectedVersion, StringComparison.Ordinal)
+                  && activeLockEntry != null
+                  && string.Equals((string)activeLockEntry["version"], expectedVersion, StringComparison.Ordinal)
+                  && string.Equals((string)activeLockEntry["source"], "local", StringComparison.Ordinal),
+                "160-F3: active runtime manifest and lock entry resolve the repository Packages candidate");
 
             var activeRuntimeManifest = ReadRepoText("Packages/" + activeRuntimePackage + "/RuntimeSupport/runtime-manifest.json");
             Check(RuntimeId(activeRuntimeManifest) == ExpectedRuntimeId(activeRuntimePackage),

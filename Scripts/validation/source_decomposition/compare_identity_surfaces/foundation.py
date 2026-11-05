@@ -201,6 +201,7 @@ def _revision_checkout(repository: Path, revision: str) -> Iterator[Path]:
 
 _FUNCTION_BODY_RISK_NAMES = frozenset({"__import__", "compile", "eval", "exec", "globals", "locals", "vars"})
 _ENVIRONMENT_MUTATORS = frozenset({"clear", "pop", "popitem", "setdefault", "update"})
+_ENVIRONMENT_FUNCTIONS = frozenset({"putenv", "unsetenv"})
 
 def _without_function_bodies(source: str) -> str:
     """Return source whose function bodies are replaced by pass, keeping import-time statements."""
@@ -214,6 +215,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
     """Return signatures for code-execution builtins in function bodies and import-time environment writes."""
     os_names = {"os"}
     environ_names: set[str] = set()
+    environment_function_names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -223,6 +225,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             for alias in node.names:
                 if alias.name == "environ":
                     environ_names.add(alias.asname or "environ")
+                elif alias.name in _ENVIRONMENT_FUNCTIONS:
+                    environment_function_names.add(alias.asname or alias.name)
 
     def is_environ(node: ast.AST) -> bool:
         """Return whether an expression names os.environ."""
@@ -249,31 +253,97 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             if is_environ(target) or (isinstance(target, ast.Subscript) and is_environ(target.value)):
                 return True
         for node in ast.walk(statement):
-            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            if not isinstance(node, ast.Call):
                 continue
-            if node.func.attr in _ENVIRONMENT_MUTATORS and is_environ(node.func.value):
-                return True
-            if (
-                node.func.attr in {"putenv", "unsetenv"}
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id in os_names
-            ):
+            if isinstance(node.func, ast.Attribute):
+                if node.func.attr in _ENVIRONMENT_MUTATORS and is_environ(node.func.value):
+                    return True
+                if (
+                    node.func.attr in _ENVIRONMENT_FUNCTIONS
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id in os_names
+                ):
+                    return True
+            elif isinstance(node.func, ast.Name) and node.func.id in environment_function_names:
                 return True
         return False
 
     signatures: set[str] = set()
 
+    def record_import_time_environment(
+        node: ast.AST, scope: tuple[str, ...], in_function: bool
+    ) -> None:
+        """Record an environment write that executes during a definition."""
+        if not in_function and writes_environment(node):
+            qualified = ".".join(scope) or "<module>"
+            signatures.add(
+                f"import-time-environment:{qualified}:{ast.dump(node, include_attributes=False)}"
+            )
+
     def visit(node: ast.AST, scope: tuple[str, ...], in_function: bool) -> None:
         """Collect signatures while tracking the enclosing definition scope."""
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for decorator in node.decorator_list:
+                record_import_time_environment(decorator, scope, in_function)
+                visit(decorator, scope, in_function)
+            arguments = node.args
+            definition_expressions = [
+                expression
+                for expression in (*arguments.defaults, *arguments.kw_defaults)
+                if expression is not None
+            ]
+            definition_expressions.extend(
+                argument.annotation
+                for argument in (
+                    *getattr(arguments, "posonlyargs", ()),
+                    *arguments.args,
+                    *arguments.kwonlyargs,
+                )
+                if argument.annotation is not None
+            )
+            if arguments.vararg is not None and arguments.vararg.annotation is not None:
+                definition_expressions.append(arguments.vararg.annotation)
+            if arguments.kwarg is not None and arguments.kwarg.annotation is not None:
+                definition_expressions.append(arguments.kwarg.annotation)
+            if node.returns is not None:
+                definition_expressions.append(node.returns)
+            for expression in definition_expressions:
+                record_import_time_environment(expression, scope, in_function)
+                visit(expression, scope, in_function)
+            function_scope = scope + (node.name,)
+            for statement in node.body:
+                visit(statement, function_scope, True)
+            return
+        if isinstance(node, ast.Lambda):
+            for expression in (*node.args.defaults, *node.args.kw_defaults):
+                if expression is not None:
+                    record_import_time_environment(expression, scope, in_function)
+                    visit(expression, scope, in_function)
+            visit(node.body, scope + ("<lambda>",), True)
+            return
+        if isinstance(node, ast.ClassDef):
+            for decorator in node.decorator_list:
+                record_import_time_environment(decorator, scope, in_function)
+                visit(decorator, scope, in_function)
+            for base in node.bases:
+                record_import_time_environment(base, scope, in_function)
+                visit(base, scope, in_function)
+            for keyword in node.keywords:
+                record_import_time_environment(keyword.value, scope, in_function)
+                visit(keyword.value, scope, in_function)
+            class_scope = scope + (node.name,)
+            for statement in node.body:
+                visit(statement, class_scope, in_function)
+            return
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                visit(child, scope + (child.name,), True)
+                visit(child, scope, in_function)
                 continue
             if isinstance(child, ast.Lambda):
-                visit(child, scope + ("<lambda>",), True)
+                visit(child, scope, in_function)
                 continue
             if isinstance(child, ast.ClassDef):
-                visit(child, scope + (child.name,), in_function)
+                visit(child, scope, in_function)
                 continue
             qualified = ".".join(scope) or "<module>"
             if (
