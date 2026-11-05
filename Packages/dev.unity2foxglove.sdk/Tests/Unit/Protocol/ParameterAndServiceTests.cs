@@ -142,6 +142,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [InlineData("json", "jsonschema")]
         [InlineData("JSON", "jsonschema")]
         [InlineData("protobuf", null)]
+        [InlineData(null, null)]
         public void ServiceSchemaDescriptorDefaultsSchemaEncodingByPayloadEncoding(
             string encoding,
             string expectedSchemaEncoding)
@@ -172,6 +173,9 @@ namespace Unity.FoxgloveSDK.UnitTests
             };
 
             Assert.Equal("jsonschema", descriptor.SchemaEncoding);
+
+            var json = JObject.Parse(JsonConvert.SerializeObject(descriptor));
+            Assert.Equal("jsonschema", (string)json["schemaEncoding"]);
         }
 
         [Fact]
