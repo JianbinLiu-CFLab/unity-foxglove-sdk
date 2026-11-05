@@ -58,6 +58,63 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void TopicContractResponseSchemaMatchesLegacyClaimAndConflictInstances()
+        {
+            var manager = new FoxgloveManager { IsRunning = false };
+            manager.StartServer();
+            manager.IsRunning = true;
+
+            try
+            {
+                var service = Assert.Single(
+                    manager.RuntimeForTest.ServicesForTest,
+                    item => item.Name == "/foxglove/topic-contracts");
+                var responseSchema = JObject.Parse(service.Response.Schema);
+                var itemSchema = (JObject)responseSchema["properties"]["claims"]["items"];
+                var required = (JArray)itemSchema["required"];
+                var fields = new[]
+                {
+                    "topic",
+                    "schemaName",
+                    "encoding",
+                    "ownerKind",
+                    "shapeIdentity",
+                    "schemaEncoding",
+                    "schemaFingerprint",
+                    "scope"
+                };
+
+                Assert.Equal(fields.OrderBy(field => field), required.Values<string>().OrderBy(field => field));
+
+                manager.RecordTopicContract("/legacy", null, null, null);
+                manager.RecordTopicContract("/conflict", "schema.one", "json", "component");
+                manager.RecordTopicContract("/conflict", "schema.two", "json", "component");
+
+                var response = (JObject)manager.HandleTopicContractRequest(new JObject());
+                var legacy = (JObject)((JArray)response["claims"])
+                    .Single(item => (string)item["topic"] == "/legacy");
+                AssertRequiredTopicContractFields(legacy, fields);
+                Assert.Equal(string.Empty, (string)legacy["schemaName"]);
+                Assert.Equal("Live", (string)legacy["scope"]);
+
+                var conflict = (JObject)Assert.Single((JArray)response["conflicts"]);
+                AssertRequiredTopicContractFields((JObject)conflict["existing"], fields);
+                AssertRequiredTopicContractFields((JObject)conflict["incoming"], fields);
+            }
+            finally
+            {
+                manager.StopServer();
+                manager.IsRunning = false;
+            }
+        }
+
+        private static void AssertRequiredTopicContractFields(JObject item, string[] fields)
+        {
+            foreach (var field in fields)
+                Assert.True(item.TryGetValue(field, out var value) && value.Type != JTokenType.Null, "Missing topic contract field: " + field);
+        }
+
+        [Fact]
         public void StopServerClearsPublishingSessionStateBeforeRestart()
         {
             Debug.Reset();
