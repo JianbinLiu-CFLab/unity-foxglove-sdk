@@ -27,6 +27,15 @@
       "maxAllocatedBytesPerMessage": 67108864.0,
       "maxAllocatedBytesTotal": 67108864.0,
       "maxGen2Collections": 0
+    },
+    "LargePayloadFanout": {
+      "maxElapsedMs": 120000,
+      "minMessagesPerSecond": 1.0,
+      "maxAllocatedBytesPerMessage": 67108864.0,
+      "maxAllocatedBytesTotal": 1099511627776.0,
+      "maxGen0Collections": 1000,
+      "maxGen1Collections": 500,
+      "maxGen2Collections": 500
     }
   },
   "modes": {

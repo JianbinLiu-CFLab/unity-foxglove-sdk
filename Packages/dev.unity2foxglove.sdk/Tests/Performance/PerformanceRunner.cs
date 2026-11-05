@@ -306,6 +306,10 @@ namespace Unity.FoxgloveSDK.Performance
             results.Add(RunMcapRecordAttachmentSummary(activeThresholds));
             results.Add(RunCameraBackpressurePolicyMicro(activeThresholds));
             results.Add(RunTransportQueueMicro(activeThresholds));
+            results.Add(RunFoxRunStreamIngest(warmup, messages, activeThresholds));
+            results.Add(RunFoxRunPublishPayload(warmup, topics, clients, messages, activeThresholds));
+            results.Add(RunWsSendQueueLargeFrame(activeThresholds));
+            results.Add(RunLargePayloadFanout(warmup, messages, activeThresholds));
 
             return results;
         }

@@ -225,6 +225,13 @@ class PerformanceToolingTests(unittest.TestCase):
 
         terminate.assert_called_once_with(process)
 
+    def test_performance_workflow_pins_ci_thresholds_and_baseline_command(self) -> None:
+        """Keep the report-only performance lane wired to its CI thresholds."""
+        workflow = (ROOT / ".github" / "workflows" / "performance.yml").read_text(encoding="utf-8")
+        self.assertIn("Scripts/performance/run_baseline.py --quick", workflow)
+        self.assertIn("performance-thresholds.ci.json", workflow)
+        self.assertIn("upload-artifact", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

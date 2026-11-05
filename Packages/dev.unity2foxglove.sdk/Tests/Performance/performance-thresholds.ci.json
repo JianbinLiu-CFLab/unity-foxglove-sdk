@@ -1,0 +1,49 @@
+{
+  "enabled": true,
+  "transportScope": "CI performance harness with report-only throughput",
+  "calibratedOn": "Phase199 initial CI allocation gate",
+  "defaults": {
+    "maxElapsedMs": 600000,
+    "minMessagesPerSecond": 0,
+    "maxAllocatedBytesPerMessage": 67108864,
+    "maxAllocatedBytesTotal": 1099511627776,
+    "maxGen0Collections": 10000,
+    "maxGen1Collections": 1000,
+    "maxGen2Collections": 50
+  },
+  "scenarios": {
+    "LargePayloadFanout": {
+      "maxElapsedMs": 600000,
+      "minMessagesPerSecond": 0,
+      "maxAllocatedBytesPerMessage": 67108864,
+      "maxAllocatedBytesTotal": 1099511627776,
+      "maxGen0Collections": 10000,
+      "maxGen1Collections": 1000,
+      "maxGen2Collections": 1000
+    }
+  },
+  "modes": {
+    "quick": {
+      "defaults": {
+        "maxElapsedMs": 600000,
+        "minMessagesPerSecond": 0,
+        "maxAllocatedBytesPerMessage": 67108864,
+        "maxAllocatedBytesTotal": 1099511627776,
+        "maxGen0Collections": 10000,
+        "maxGen1Collections": 1000,
+        "maxGen2Collections": 50
+      }
+    },
+    "full": {
+      "defaults": {
+        "maxElapsedMs": 600000,
+        "minMessagesPerSecond": 0,
+        "maxAllocatedBytesPerMessage": 67108864,
+        "maxAllocatedBytesTotal": 1099511627776,
+        "maxGen0Collections": 10000,
+        "maxGen1Collections": 1000,
+        "maxGen2Collections": 50
+      }
+    }
+  }
+}

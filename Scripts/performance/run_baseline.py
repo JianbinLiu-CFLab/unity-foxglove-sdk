@@ -169,6 +169,7 @@ def main() -> int:
     parser.add_argument("--quick", action="store_true", help="Quick mode (~1 minute)")
     parser.add_argument("--full", action="store_true", help="Full mode (release candidate)")
     parser.add_argument("--output", type=str, default=None, help="Output directory for JSON results")
+    parser.add_argument("--thresholds", type=str, default=None, help="Threshold JSON path forwarded to the .NET harness")
     parser.add_argument(
         "--timeout-minutes",
         type=int,
@@ -207,6 +208,8 @@ def main() -> int:
         "--project", os.path.join(REPO_ROOT, PROJECT),
         "--", f"--{mode}", "--output", output_dir, "--result-prefix", RESULT_FILE_PREFIX
     ]
+    if args.thresholds:
+        cmd.extend(["--thresholds", args.thresholds])
     print(f"[perf-baseline] Running: {' '.join(cmd)}")
     before_results = _result_snapshot(output_dir)
 
