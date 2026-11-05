@@ -11,7 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  linux-test:
+  linux-xunit:
+    name: "Linux: SDK and Bridge xUnit, performance regression"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository with provenance history
@@ -20,34 +21,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Checkout pinned official Foxglove schema reference
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: foxglove/foxglove-sdk
-          ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
-          path: third-party/foxglove-sdk
-          persist-credentials: false
-
-      - name: Checkout pinned official ROS-TCP-Connector reference
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          repository: Unity-Technologies/ROS-TCP-Connector
-          ref: c27f00c6cf750d2d0564349b3039d19aa3925e7c
-          path: third-party/ROS-TCP-Connector
-          persist-credentials: false
-
-      - name: Normalize the provenance reference origin
-        run: git -C third-party/ROS-TCP-Connector remote set-url origin https://github.com/Unity-Technologies/ROS-TCP-Connector.git
-
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
-      - name: Install pinned Phase186 Python runtime dependency
+      - name: Install pinned Python test dependencies
         run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0 websockets==15.0.1 mcap==1.3.1
-
-      - name: Verify remote gateway manifest against pinned source
-        run: python3 -c "from Scripts.remotegateway.regression_checks.test_remote_gateway_tooling import verify_pinned_source_manifest; verify_pinned_source_manifest()"
 
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
@@ -59,14 +38,6 @@ jobs:
       - name: Run xUnit unit tests
         if: always()
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
-
-      - name: Restore Manager production-boundary xUnit lane
-        if: always()
-        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeManagerProductionBoundary=true
-
-      - name: Run Manager production-boundary xUnit lane
-        if: always()
-        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeManagerProductionBoundary=true --logger "trx;LogFileName=unit-tests-manager-boundary.trx" --results-directory build/TestResults/ManagerProductionBoundary
 
       - name: Restore ROS2 Bridge behavioral xUnit tests
         if: always()
@@ -92,31 +63,61 @@ jobs:
         if: always()
         run: python3 -m unittest Scripts.performance.regression_checks.test_performance_tooling Scripts.performance.regression_checks.test_phase188_replay
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: Upload xUnit test results
         if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          node-version: "22"
+          name: unit-test-results
+          path: build/TestResults/Unit
+          if-no-files-found: error
 
-      - name: Run FoxRun publish panel behavior tests
-        if: always()
-        working-directory: Tools/foxglove-extensions/foxrun-publish-panel
-        run: |
-          npm ci
-          npm run typecheck
-          npm test
+  linux-runtime:
+    name: "Linux: Manager boundary xUnit and runtime validation"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with provenance history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Run Unity cursor bridge tests
-        if: always()
-        working-directory: Tools/foxglove-extensions/unity-cursor-bridge
-        run: |
-          npm ci
-          npm run typecheck
-          npm test
-          npm run build
+      - name: Checkout pinned official Foxglove schema reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: foxglove/foxglove-sdk
+          ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
+          path: third-party/foxglove-sdk
+          persist-credentials: false
 
-      - name: Enable Corepack for the pinned official MCAP harness
+      - name: Checkout pinned official ROS-TCP-Connector reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Unity-Technologies/ROS-TCP-Connector
+          ref: c27f00c6cf750d2d0564349b3039d19aa3925e7c
+          path: third-party/ROS-TCP-Connector
+          persist-credentials: false
+
+      - name: Normalize ROS-TCP-Connector reference origin
+        run: git -C third-party/ROS-TCP-Connector remote set-url origin https://github.com/Unity-Technologies/ROS-TCP-Connector.git
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned Python test dependencies
+        run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0 websockets==15.0.1 mcap==1.3.1
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0"
+
+      - name: Restore Manager production-boundary xUnit lane
         if: always()
-        run: corepack enable
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeManagerProductionBoundary=true
+
+      - name: Run Manager production-boundary xUnit lane
+        if: always()
+        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeManagerProductionBoundary=true --logger "trx;LogFileName=unit-tests-manager-boundary.trx" --results-directory build/TestResults/ManagerProductionBoundary
 
       - name: Restore Roslyn analyzer project
         if: always()
@@ -134,9 +135,10 @@ jobs:
         if: always()
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
-      - name: Run validation suite
+      - name: Run default runtime validation suite
         if: always()
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
+
       - name: Run Workstream F explicit runtime closure validations
         if: always()
         run: |
@@ -146,6 +148,57 @@ jobs:
             dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- "$flag" || status=$?
           done
           exit "$status"
+
+      - name: Upload Manager production-boundary test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: manager-production-boundary-test-results
+          path: build/TestResults/ManagerProductionBoundary
+          if-no-files-found: error
+
+  linux-python-regressions:
+    name: "Linux: Python regressions and package closure"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with provenance history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout pinned official Foxglove schema reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: foxglove/foxglove-sdk
+          ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
+          path: third-party/foxglove-sdk
+          persist-credentials: false
+
+      - name: Checkout pinned official ROS-TCP-Connector reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Unity-Technologies/ROS-TCP-Connector
+          ref: c27f00c6cf750d2d0564349b3039d19aa3925e7c
+          path: third-party/ROS-TCP-Connector
+          persist-credentials: false
+
+      - name: Normalize ROS-TCP-Connector reference origin
+        run: git -C third-party/ROS-TCP-Connector remote set-url origin https://github.com/Unity-Technologies/ROS-TCP-Connector.git
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned Python test dependencies
+        run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0 websockets==15.0.1 mcap==1.3.1
+
+      - name: Verify remote gateway manifest against pinned source
+        run: python3 -c "from Scripts.remotegateway.regression_checks.test_remote_gateway_tooling import verify_pinned_source_manifest; verify_pinned_source_manifest()"
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0"
 
       - name: Run Phase179 ROS2 acceptance helper regressions
         if: always()
@@ -180,46 +233,37 @@ jobs:
         if: always()
         run: python3 -B Scripts/release/regression_inventory.py --run-lane portable-regression-tooling
 
-      - name: Run complete Python regression inventory
+      - name: Check Python regression inventory coverage
         if: always()
         env:
           SOURCE_DECOMPOSITION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          python3 -B Scripts/release/regression_inventory.py
-          python3 -B -m unittest \
-            Scripts.native.regression_checks.test_native_sources \
-            Scripts.package.regression_checks.test_validate_local_entrypoints \
-            Scripts.package.regression_checks.test_validate_phase186_package_matrix \
-            Scripts.package.regression_checks.test_validate_unity_package \
-            Scripts.validation.conformance.regression_checks.test_phase190_script_documentation \
-            Scripts.validation.conformance.regression_checks.test_phase190_validators \
-            Scripts.validation.conformance.regression_checks.test_run_conformance \
-            Scripts.validation.source_decomposition.regression_checks.test_identity_tooling \
-            Scripts.validation.source_decomposition.regression_checks.test_freeze_baseline \
-            Scripts.validation.source_decomposition.regression_checks.test_u2r2_protocol_limits \
-            Scripts.validation.source_decomposition.regression_checks.test_identity_gate_hardening \
-            Scripts.release.regression_checks.test_regression_inventory \
-            Scripts.release.regression_checks.test_release_tooling \
-            Scripts.samples.regression_checks.test_sample_sync_tooling \
-            Scripts.schema.regression_checks.test_schema_tooling \
-            Scripts.smoke.foxrun.regression_checks.test_phase185_foxrun_messagepack_probe \
-            Scripts.smoke.foxrun.regression_checks.test_phase186_bridge_manual \
-            Scripts.smoke.replay.regression_checks.test_phase188_deterministic_replay_acceptance \
-            Scripts.smoke.ros2.regression_checks.test_phase162_lyrical_zenoh_player_smoke \
-            Scripts.smoke.ros2.regression_checks.test_ros2_windows_env
+        run: python3 -B Scripts/release/regression_inventory.py
 
       - name: Run Phase186 Bridge tooling and package-composition gate
         if: always()
         run: python3 Scripts/release/run_ci.py --only phase186-bridge-tooling
+
       - name: Run package and sample closure lane
         if: always()
         env:
           SOURCE_DECOMPOSITION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           SOURCE_DECOMPOSITION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python3 -B Scripts/release/run_ci.py --only packages
-      - name: Run Workstream F native cleanup regression
-        if: always()
-        run: python3 -B -m unittest Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup
+
+  linux-identity-gate:
+    name: "Linux: source-decomposition identity gate"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with provenance history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
       - name: Run source-decomposition base-head identity equivalence gate
         if: always()
         env:
@@ -321,29 +365,56 @@ jobs:
             --repository . \
             --compatibility
 
+  linux-conformance-panels:
+    name: "Linux: MCAP conformance and Foxglove panels"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with provenance history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned Python test dependencies
+        run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0 websockets==15.0.1 mcap==1.3.1
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: always()
+        with:
+          node-version: "22"
+
+      - name: Run FoxRun publish panel behavior tests
+        if: always()
+        working-directory: Tools/foxglove-extensions/foxrun-publish-panel
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Run Unity cursor bridge tests
+        if: always()
+        working-directory: Tools/foxglove-extensions/unity-cursor-bridge
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Enable Corepack for the pinned official MCAP harness
+        if: always()
+        run: corepack enable
+
       - name: Run official MCAP differential conformance
         if: always()
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/${{ github.run_id }}-${{ github.run_attempt }}/phase121-conformance-report.json
-
-      - name: Validate local entrypoints
-        if: always()
-        run: python3 Scripts/package/validate_local_entrypoints.py
-
-      - name: Upload xUnit test results
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: unit-test-results
-          path: build/TestResults/Unit
-          if-no-files-found: error
-
-      - name: Upload Manager production-boundary test results
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: manager-production-boundary-test-results
-          path: build/TestResults/ManagerProductionBoundary
-          if-no-files-found: error
 
       - name: Upload MCAP differential report
         if: always()
@@ -354,7 +425,7 @@ jobs:
           if-no-files-found: warn
 
   optional-ros2-adapter:
-    name: optional ROS2 adapter gate
+    name: "Linux: optional ROS2 adapter xUnit"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -382,7 +453,7 @@ jobs:
   optional-ros2-native:
     # This lane validates managed compile-surface contracts only. Win64 native
     # loading and ROS/RMW runtime certification remain in phase186 live workflow.
-    name: optional ROS2 Native compile-surface gate
+    name: "Linux: optional ROS2 Native compile surface"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -408,7 +479,7 @@ jobs:
           if-no-files-found: error
 
   u2r2-native:
-    name: U2R2 C++ native gtest
+    name: "Linux: U2R2 C++ native gtest"
     runs-on: ubuntu-latest
     container:
       image: ros@sha256:066420e07f60aa18262f2479981def87ebcfcec42eefb0c0c57c4a46098348ca
@@ -457,7 +528,7 @@ jobs:
           colcon test-result --test-result-base build/u2r2-native/build
 
   windows-parity:
-    name: Windows runtime, xUnit, panel, and package parity
+    name: "Windows: runtime, xUnit, panel, and package parity"
     runs-on: windows-latest
     steps:
       - name: Configure Git long paths for Windows parity
@@ -564,7 +635,11 @@ jobs:
     name: test
     if: always()
     needs:
-      - linux-test
+      - linux-xunit
+      - linux-runtime
+      - linux-python-regressions
+      - linux-identity-gate
+      - linux-conformance-panels
       - optional-ros2-adapter
       - optional-ros2-native
       - u2r2-native
@@ -574,7 +649,11 @@ jobs:
     steps:
       - name: Require every validation lane to succeed
         env:
-          LINUX_RESULT: ${{ needs['linux-test'].result }}
+          LINUX_XUNIT_RESULT: ${{ needs['linux-xunit'].result }}
+          LINUX_RUNTIME_RESULT: ${{ needs['linux-runtime'].result }}
+          LINUX_PYTHON_RESULT: ${{ needs['linux-python-regressions'].result }}
+          LINUX_IDENTITY_RESULT: ${{ needs['linux-identity-gate'].result }}
+          LINUX_CONFORMANCE_RESULT: ${{ needs['linux-conformance-panels'].result }}
           ADAPTER_RESULT: ${{ needs['optional-ros2-adapter'].result }}
           NATIVE_RESULT: ${{ needs['optional-ros2-native'].result }}
           U2R2_RESULT: ${{ needs['u2r2-native'].result }}
@@ -584,7 +663,11 @@ jobs:
           set -eu
           failed=0
           for result in \
-            "linux-test=$LINUX_RESULT" \
+            "linux-xunit=$LINUX_XUNIT_RESULT" \
+            "linux-runtime=$LINUX_RUNTIME_RESULT" \
+            "linux-python-regressions=$LINUX_PYTHON_RESULT" \
+            "linux-identity-gate=$LINUX_IDENTITY_RESULT" \
+            "linux-conformance-panels=$LINUX_CONFORMANCE_RESULT" \
             "optional-ros2-adapter=$ADAPTER_RESULT" \
             "optional-ros2-native=$NATIVE_RESULT" \
             "u2r2-native=$U2R2_RESULT" \

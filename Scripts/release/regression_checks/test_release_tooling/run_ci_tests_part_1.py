@@ -262,7 +262,7 @@ class _RunCiTestsPart1:
         """The unit-test gate must not be hidden behind an earlier runtime failure."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
         xunit = active_workflow_line_index(workflow, "- name: Run xUnit unit tests")
-        runtime = active_workflow_line_index(workflow, "- name: Run validation suite")
+        runtime = active_workflow_line_index(workflow, "- name: Run default runtime validation suite")
         self.assertLess(xunit, runtime)
 
     def test_dotnet_workflow_runs_package_sample_closure_lane(self) -> None:
@@ -274,10 +274,6 @@ class _RunCiTestsPart1:
         self.assertIn(
             "Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup",
             RUN_CI_PATH.read_text(encoding="utf-8"),
-        )
-        self.assertIn(
-            "-m unittest Scripts.smoke.ros2.regression_checks.test_i10_native_cleanup",
-            workflow,
         )
 
     def test_dotnet_workflow_runs_workstream_f_runtime_closure_validations(self) -> None:
@@ -299,14 +295,13 @@ class _RunCiTestsPart1:
             "- name: Run FoxRun publish panel behavior tests",
             "- name: Validate source generator DLL freshness script",
             "- name: Validate generated ROS2 schema output freshness",
-            "- name: Run validation suite",
+            "- name: Run default runtime validation suite",
             "- name: Run Phase179 ROS2 acceptance helper regressions",
             "- name: Run Phase181 custom ROS2 acceptance helper regressions",
-            "- name: Run complete Python regression inventory",
+            "- name: Check Python regression inventory coverage",
             "- name: Run Phase186 Bridge tooling and package-composition gate",
             "- name: Run source-decomposition base-head identity equivalence gate",
             "- name: Run official MCAP differential conformance",
-            "- name: Validate local entrypoints",
         ):
             start = active_workflow_line_index(workflow, step)
             lines = workflow.splitlines()

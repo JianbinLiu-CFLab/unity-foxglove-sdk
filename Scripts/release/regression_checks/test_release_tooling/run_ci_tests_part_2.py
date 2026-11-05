@@ -122,17 +122,29 @@ class _RunCiTestsPart2:
     def test_required_test_context_aggregates_all_managed_lanes(self) -> None:
         """The protected test context must fail when any managed lane fails."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
-        self.assertIn("  linux-test:", workflow)
-        aggregate = workflow[workflow.index("\n  test:\n", workflow.index("jobs:")) :]
-        self.assertIn("if: always()", aggregate)
+        jobs_section = workflow[workflow.index("\njobs:\n") :]
+        job_ids = re.findall(r"(?m)^  ([A-Za-z0-9_-]+):$", jobs_section)
+        self.assertIn("test", job_ids)
         for dependency in (
-            "linux-test",
+            "linux-xunit",
+            "linux-runtime",
+            "linux-python-regressions",
+            "linux-identity-gate",
+            "linux-conformance-panels",
             "optional-ros2-adapter",
             "optional-ros2-native",
             "windows-parity",
             "analyzer-freshness",
         ):
-            self.assertIn(f"- {dependency}", aggregate)
+            self.assertIn(dependency, job_ids)
+        aggregate = workflow[workflow.index("\n  test:\n", workflow.index("jobs:")) :]
+        self.assertIn("if: always()", aggregate)
+        for dependency in job_ids:
+            if dependency == "test":
+                continue
+            self.assertIn(f"      - {dependency}\n", aggregate, dependency)
+            self.assertIn(f"needs['{dependency}'].result", aggregate, dependency)
+            self.assertRegex(aggregate, rf'"{re.escape(dependency)}=\$[A-Z0-9_]+"', dependency)
         self.assertIn("Validation aggregate failed.", aggregate)
 
     def test_unity_batch_gate_is_present_and_path_aware(self) -> None:

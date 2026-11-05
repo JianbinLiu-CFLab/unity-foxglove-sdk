@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Tests
             var workflow = ReadRepoText(".github/workflows/dotnet-tests.yml");
             var runCi = ReadRepoText("Scripts/release/run_ci.py");
 
-            Check(workflow.Contains("Run validation suite", StringComparison.Ordinal)
+            Check(workflow.Contains("Run default runtime validation suite", StringComparison.Ordinal)
                   && workflow.Contains("Run xUnit unit tests", StringComparison.Ordinal),
                 "163-57D-1: GitHub workflow keeps both runtime validation and xUnit tracks");
             Check(runCi.Contains("\"dotnet\"", StringComparison.Ordinal)
