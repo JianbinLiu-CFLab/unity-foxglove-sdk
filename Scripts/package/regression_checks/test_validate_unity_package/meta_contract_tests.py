@@ -371,6 +371,17 @@ class PackageMetaContractTests:
 
             Path(str(asset) + ".meta").write_text(
                 "fileFormatVersion: 2\n"
+                "guid: malformed\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(self.validator, "PACKAGE", package):
+                results = []
+                self.validator.check_sdk_non_csharp_asset_meta(results)
+            self.assertFalse(results[-1].ok)
+            self.assertIn("Route.proto.meta", results[-1].detail)
+
+            Path(str(asset) + ".meta").write_text(
+                "fileFormatVersion: 2\n"
                 "guid: 78787878787878787878787878787878\n",
                 encoding="utf-8",
             )
@@ -694,6 +705,39 @@ class PackageMetaContractTests:
 
         self.assertFalse(results[-1].ok)
         self.assertIn("Example.asset.meta", results[-1].detail)
+
+    def test_package_asset_meta_converts_folder_metadata_read_errors_to_failures(self) -> None:
+        """Folder metadata read errors must become structured validation failures."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2forunity"
+            folder = package / "Runtime" / "Nested"
+            folder.mkdir(parents=True)
+            for directory, guid in (
+                (folder.parent, "56565656565656565656565656565656"),
+                (folder, "67676767676767676767676767676767"),
+            ):
+                Path(str(directory) + ".meta").write_text(
+                    "fileFormatVersion: 2\n"
+                    f"guid: {guid}\n"
+                    "folderAsset: yes\n",
+                    encoding="utf-8",
+                )
+
+            original_read_text = Path.read_text
+
+            def fail_nested_folder_meta(path: Path, *args, **kwargs) -> str:
+                if path == Path(str(folder) + ".meta"):
+                    raise OSError("denied")
+                return original_read_text(path, *args, **kwargs)
+
+            with mock.patch.object(
+                Path, "read_text", autospec=True, side_effect=fail_nested_folder_meta
+            ):
+                results = []
+                self.validator.check_package_asset_meta(results, package, "R2FU")
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Nested.meta", results[-1].detail)
 
     def test_csharp_meta_without_importer_is_valid(self) -> None:
         """Minimal C# metadata remains valid when Unity omits an importer block."""

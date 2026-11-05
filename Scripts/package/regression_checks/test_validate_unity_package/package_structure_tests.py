@@ -295,6 +295,13 @@ class PackageStructureTests:
                 self.assertEqual(0, self.validator.main())
         gate.assert_called_once_with(mock.ANY)
 
+    def test_main_invokes_the_sdk_non_csharp_asset_meta_gate(self) -> None:
+        """The release entry point must execute the SDK non-C# asset metadata gate."""
+        with mock.patch.object(self.validator, "check_sdk_non_csharp_asset_meta") as gate:
+            with mock.patch.object(self.validator, "load_package_json", return_value={}):
+                self.assertEqual(0, self.validator.main())
+        gate.assert_called_once_with(mock.ANY)
+
     def test_ros2_bridge_package_requires_the_duplex_sample_surface(self) -> None:
         """A distributable Bridge sample includes its behavior, builder, and guide."""
         with tempfile.TemporaryDirectory() as temp:
