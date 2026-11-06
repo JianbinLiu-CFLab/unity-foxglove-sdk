@@ -14,13 +14,13 @@ class CiSafeBaselineTests(unittest.TestCase):
         self.assertEqual(["--a", "--b", "--a", "--a"], entries)
         self.assertEqual(["--a"], duplicates)
 
-    def test_baseline_problems_rejects_additions_and_duplicates(self):
+    def test_baseline_problems_rejects_net_additions_and_duplicates(self):
         """Reject a new known failure and a duplicated head entry."""
         problems = baseline_problems("--a\n", "--a\n--b\n--b\n")
         self.assertEqual(
             [
                 "duplicate baseline entry: --b",
-                "baseline entry added without reviewed base change: --b",
+                "baseline entry added without reviewed replacement: --b",
             ],
             problems,
         )
@@ -28,6 +28,10 @@ class CiSafeBaselineTests(unittest.TestCase):
     def test_baseline_problems_allows_removals(self):
         """Allow deleting a known failure after it is fixed."""
         self.assertEqual([], baseline_problems("--a\n--b\n", "--a\n"))
+
+    def test_baseline_problems_allows_reviewed_renames(self):
+        """Allow one baseline key to be replaced by one renamed key."""
+        self.assertEqual([], baseline_problems("--old\n", "--new\n"))
 
 
 if __name__ == "__main__":

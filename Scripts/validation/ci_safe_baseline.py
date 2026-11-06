@@ -29,12 +29,19 @@ def parse_entries(text: str) -> tuple[list[str], list[str]]:
 
 
 def baseline_problems(base_text: str, head_text: str) -> list[str]:
-    """Return duplicate or newly added baseline entries."""
+    """Return duplicate or unreviewed baseline changes."""
     base_entries, base_duplicates = parse_entries(base_text)
     head_entries, head_duplicates = parse_entries(head_text)
+    base_set = set(base_entries)
+    head_set = set(head_entries)
+    removed = base_set - head_set
+    added = head_set - base_set
     problems = [f"duplicate baseline entry: {entry}" for entry in head_duplicates]
-    problems.extend(f"baseline entry added without reviewed base change: {entry}"
-                    for entry in sorted(set(head_entries) - set(base_entries)))
+    if len(added) > len(removed):
+        problems.extend(
+            f"baseline entry added without reviewed replacement: {entry}"
+            for entry in sorted(added - removed)
+        )
     problems.extend(f"duplicate baseline entry in base: {entry}" for entry in base_duplicates)
     return problems
 

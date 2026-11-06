@@ -46,6 +46,15 @@ class VersionBump:
         planned = {self.rel(change.path) for change in self.changes}
         unplanned: list[str] = []
         try:
+            repository_root = subprocess.run(
+                ["git", "-C", str(self.root), "rev-parse", "--show-toplevel"],
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            ).stdout.strip()
+            if Path(repository_root).resolve() != self.root.resolve():
+                raise subprocess.CalledProcessError(1, "git rev-parse")
             tracked = subprocess.run(
                 ["git", "-C", str(self.root), "ls-files", "-z"],
                 check=True,
@@ -63,10 +72,13 @@ class VersionBump:
             if any(relative == excluded or relative.startswith(excluded + "/") for excluded in self.RELEASE_PIN_EXCLUSIONS):
                 continue
             try:
-                text = self.read(path)
+                data = path.read_bytes()
+                if b"\0" in data:
+                    continue
+                text = data.decode("utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
-            if old_version in text and relative not in planned:
+            if re.search(rf"(?<![0-9.]){re.escape(old_version)}(?![0-9.])", text) and relative not in planned:
                 unplanned.append(relative)
         return sorted(unplanned)
 

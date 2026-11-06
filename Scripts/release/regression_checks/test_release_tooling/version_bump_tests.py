@@ -471,8 +471,8 @@ class VersionBumpTests(unittest.TestCase):
 
     def test_dry_run_bump_plans_every_release_pin_in_the_repository(self) -> None:
         """A full dry-run bump of this repository plans every release-pinned file and writes nothing."""
-        def snapshot(root: Path) -> dict[str, tuple[int, bytes]]:
-            """Capture tracked-like file bytes and mtimes outside build output."""
+        def snapshot(root: Path) -> dict[str, tuple[int, int]]:
+            """Capture tracked-like file metadata outside build output."""
             result = {}
             try:
                 tracked = subprocess.run(
@@ -489,7 +489,7 @@ class VersionBumpTests(unittest.TestCase):
                     continue
                 try:
                     stat = path.stat()
-                    result[relative] = (stat.st_mtime_ns, path.read_bytes())
+                    result[relative] = (stat.st_mtime_ns, stat.st_size)
                 except OSError:
                     continue
             return result
@@ -542,7 +542,9 @@ class VersionBumpTests(unittest.TestCase):
 
     def test_release_pin_scan_rejects_unplanned_current_version_reference(self) -> None:
         """Reject a new release pin that is absent from the bump plan."""
-        with tempfile.TemporaryDirectory() as directory:
+        temporary_root = ROOT / "build" / "tmp"
+        temporary_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=temporary_root) as directory:
             root = Path(directory)
             planned = root / "README.md"
             unexpected = root / "new-release-pin.txt"

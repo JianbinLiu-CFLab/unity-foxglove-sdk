@@ -327,9 +327,6 @@ partial class Program
             validations.Select(CiSafeFailureKey).ToList(),
             failing,
             known);
-        foreach (var duplicate in FindDuplicateCiSafeKnownFailures(
-                     PhaseValidationSourceHelpers.ReadRequiredRepoText(CiSafeKnownFailuresPath)))
-            problems.Add(duplicate + " is duplicated in " + CiSafeKnownFailuresPath);
         Console.WriteLine(
             $"\nCI-safe ratchet: failed={failing.Count} known={known.Count} total={validations.Count}");
         if (problems.Count == 0)
@@ -356,22 +353,6 @@ partial class Program
         }
 
         return known;
-    }
-
-    /// <summary>Returns duplicate baseline keys in source order, ignoring comments and blank lines.</summary>
-    internal static List<string> FindDuplicateCiSafeKnownFailures(string text)
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var duplicates = new List<string>();
-        foreach (var raw in (text ?? string.Empty).Replace("\r\n", "\n").Split('\n'))
-        {
-            var comment = raw.IndexOf('#');
-            var flag = (comment >= 0 ? raw.Substring(0, comment) : raw).Trim();
-            if (flag.Length > 0 && !seen.Add(flag) && !duplicates.Contains(flag, StringComparer.Ordinal))
-                duplicates.Add(flag);
-        }
-
-        return duplicates;
     }
 
     /// <summary>Returns a stable key for every validation included in the CI-safe ratchet.</summary>

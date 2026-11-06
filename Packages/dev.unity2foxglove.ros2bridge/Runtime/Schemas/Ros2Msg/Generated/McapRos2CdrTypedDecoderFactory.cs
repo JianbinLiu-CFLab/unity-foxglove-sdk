@@ -33,15 +33,7 @@ namespace Unity2Foxglove.Ros2Bridge
                 return null;
             if (!Ros2CdrDeserializerRegistry.TryGetBySchemaName(schema?.Name ?? string.Empty, out var entry))
                 return null;
-            if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schema.Name, out var catalogEntry)
-                || schema.Data == null)
-                return null;
-
-            // Empty schema data is a supported legacy MCAP form. When content
-            // is present, compare the complete merged ros2msg definition so a
-            // same-name schema cannot select the wrong typed deserializer.
-            if (schema.Data.Length > 0
-                && !SchemaContentEqual(schema.Data, catalogEntry.Content))
+            if (!SchemaContentMatches(schema))
                 return null;
 
             return new Decoder(schema.Name, channel.Topic, entry);
@@ -59,7 +51,9 @@ namespace Unity2Foxglove.Ros2Bridge
         {
             if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schema?.Name ?? string.Empty, out var catalogEntry))
                 return false;
-            if (schema.Data == null || schema.Data.Length == 0)
+            if (schema.Data == null)
+                return false;
+            if (schema.Data.Length == 0)
                 return true;
             return SchemaContentEqual(schema.Data, catalogEntry.Content);
         }

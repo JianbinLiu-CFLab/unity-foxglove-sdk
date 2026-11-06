@@ -74,13 +74,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && registrySource.Contains("CiSafeValidations", StringComparison.Ordinal),
                 "126B-1b: the runner exposes an explicit all-CI-safe registry gate");
             var parsedKnown = global::Program.ParseCiSafeKnownFailures("--a  # first\r\n\n# comment only\n--b\n");
-            var duplicateKnown = global::Program.FindDuplicateCiSafeKnownFailures("--a\n--a # duplicate\n--b\n--a\n");
             var ratchetProblems = global::Program.EvaluateCiSafeRatchet(
                 new[] { "--a", "--b", "--c" },
                 new[] { "--a", "--c" },
                 new HashSet<string>(new[] { "--a", "--b", "--gone" }, StringComparer.Ordinal));
             Check(parsedKnown.SetEquals(new[] { "--a", "--b" })
-                  && duplicateKnown.SequenceEqual(new[] { "--a" })
                   && ratchetProblems.Count == 3
                   && ratchetProblems.Any(item => item.StartsWith("--c fails but is not a known failure", StringComparison.Ordinal))
                   && ratchetProblems.Any(item => item.StartsWith("--b passes now", StringComparison.Ordinal))
