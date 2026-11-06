@@ -18,7 +18,8 @@ from . import audit_lib
 
 PROJECT = audit_lib.ROOT / "Packages" / "dev.unity2foxglove.ros2bridge" / "Tests" / "Unit" / "Unity2Foxglove.Ros2Bridge.UnitTests.csproj"
 TEST_NAME = "GeneratedSubscribersShareOnePhysicalLeaseAndApplyOnPumpThread"
-FILTER = f"FullyQualifiedName~{TEST_NAME}"
+FULL_TEST_NAME = f"Unity2Foxglove.Ros2Bridge.Tests.Ros2BridgeConnectionTests.{TEST_NAME}"
+FILTER = f"FullyQualifiedName={FULL_TEST_NAME}"
 PROJECT_DISPLAY = "Packages/dev.unity2foxglove.ros2bridge/Tests/Unit/Unity2Foxglove.Ros2Bridge.UnitTests.csproj"
 
 
@@ -171,13 +172,18 @@ def _one_result(trx: Path) -> tuple[bool, str]:
     except ElementTree.ParseError as exc:
         return False, f"invalid TRX: {exc}"
     results = [node for node in root.iter() if node.tag.endswith("UnitTestResult")]
-    matching = [node for node in results if TEST_NAME.lower() in node.attrib.get("testName", "").lower()]
+    matching = [node for node in results if node.attrib.get("testName", "") == FULL_TEST_NAME]
     outcomes = [node.attrib.get("outcome", "").lower() for node in matching]
     if len(results) != 1 or len(matching) != 1:
         return False, f"TRX result count={len(results)}, matching={len(matching)}"
     if outcomes != ["passed"]:
         return False, f"selected test outcome={outcomes[0] if outcomes else 'missing'}"
     return True, "one matching UnitTestResult with outcome Passed"
+
+
+def _discovery_has_exact_test(output: object) -> bool:
+    """Return whether test discovery lists the exact fully qualified target."""
+    return any(line.strip() == FULL_TEST_NAME for line in str(output).splitlines())
 
 
 def _local100_impl(output: Path) -> audit_lib.Check:
@@ -196,7 +202,7 @@ def _local100_impl(output: Path) -> audit_lib.Check:
         return _check("NOT_RUN", " ".join(build_cmd), logs / "w0-local100-build.log", f"{runtime_detail}; build failed", "auto")
     discovery_cmd = prefix + ["test", "--no-build", "--no-restore", PROJECT_DISPLAY, "--list-tests"]
     discovery = audit_lib.run(discovery_cmd, logs / "w0-local100-discovery.log", 180)
-    if discovery["exit_code"] != 0 or TEST_NAME not in str(discovery["output"]):
+    if discovery["exit_code"] != 0 or not _discovery_has_exact_test(discovery["output"]):
         return _check("FAIL", " ".join(discovery_cmd), logs / "w0-local100-discovery.log", f"{runtime_detail}; target test was not discovered", "auto")
     outcomes: list[bool] = []
     details: list[str] = []

@@ -166,6 +166,36 @@ class PlanAuditLibraryTests(unittest.TestCase):
             second = bridge_history._worktree_tree_sha(root)
         self.assertNotEqual(first, second)
 
+    def test_bridge_test_identity_requires_exact_fully_qualified_name(self) -> None:
+        """Bridge acceptance rejects lookalike and duplicate test identities."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            exact = bridge_history.FULL_TEST_NAME
+            passed = root / "passed.trx"
+            passed.write_text(
+                f'<TestRun><Results><UnitTestResult testName="{exact}" outcome="Passed" /></Results></TestRun>',
+                encoding="utf-8",
+            )
+            self.assertEqual((True, "one matching UnitTestResult with outcome Passed"), bridge_history._one_result(passed))
+
+            lookalike = root / "lookalike.trx"
+            lookalike.write_text(
+                f'<TestRun><Results><UnitTestResult testName="{exact}Backdoor" outcome="Passed" /></Results></TestRun>',
+                encoding="utf-8",
+            )
+            self.assertEqual((False, "TRX result count=1, matching=0"), bridge_history._one_result(lookalike))
+
+            duplicate = root / "duplicate.trx"
+            duplicate.write_text(
+                f'<TestRun><Results><UnitTestResult testName="{exact}" outcome="Passed" />'
+                f'<UnitTestResult testName="{exact}" outcome="Passed" /></Results></TestRun>',
+                encoding="utf-8",
+            )
+            self.assertEqual((False, "TRX result count=2, matching=2"), bridge_history._one_result(duplicate))
+
+        self.assertTrue(bridge_history._discovery_has_exact_test(f"{bridge_history.FULL_TEST_NAME}\n"))
+        self.assertFalse(bridge_history._discovery_has_exact_test(f"{bridge_history.FULL_TEST_NAME}Backdoor\n"))
+
     def test_preflight_allows_unheld_stale_lockfile(self) -> None:
         """A stale lockfile that opens exclusively does not block Unity."""
         with tempfile.TemporaryDirectory() as temp:
