@@ -193,10 +193,16 @@ def _workflow_w4(checks: list[audit_lib.Check], output: Path) -> None:
     evidence = output / "logs" / "w4.log"
     evidence.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{name}={needle in text}" for name, needle in required.items()]
-    lines.append(f"distro_paths={bool(re.search(r'Packages/dev\\.unity2foxglove\\.ros2forunity\\.runtime\\.(?:humble|lyrical)\\.win64', text))}")
+    distro_path_markers = (
+        r"Packages/dev\.unity2foxglove\.ros2forunity\.runtime\.(humble|lyrical)\.win64",
+        "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+        "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+    )
+    distro_paths = any(marker in text for marker in distro_path_markers)
+    lines.append(f"distro_paths={distro_paths}")
     evidence.write_text("\n".join(lines) + "\n", encoding="utf-8")
     missing = [name for name, needle in required.items() if needle not in text]
-    if not re.search(r"Packages/dev\.unity2foxglove\.ros2forunity\.runtime\.(?:humble|lyrical)\.win64", text):
+    if not distro_paths:
         missing.append("distro_paths")
     if missing:
         _record(checks, "195-W4", "auto", "MISSING", "Get-Content .github/workflows/unity-compile.yml", evidence, f"missing workflow requirements={missing}")

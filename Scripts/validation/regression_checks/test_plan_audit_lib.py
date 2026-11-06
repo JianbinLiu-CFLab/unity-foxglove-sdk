@@ -146,6 +146,23 @@ class PlanAuditLibraryTests(unittest.TestCase):
         self.assertIn("195-W2", check.detail)
         self.assertIn("195-W4", check.detail)
 
+    def test_w4_workflow_accepts_escaped_package_paths(self) -> None:
+        """W4 recognizes the escaped package path used by the shell workflow."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            with mock.patch.object(
+                unity_coverage.subprocess,
+                "run",
+                side_effect=[SimpleNamespace(stdout="feature/test\n"), SimpleNamespace(stdout="head\n")],
+            ), mock.patch.object(
+                unity_coverage.audit_lib,
+                "run",
+                return_value={"exit_code": 0, "output": "[]"},
+            ):
+                checks: list[audit_lib.Check] = []
+                unity_coverage._workflow_w4(checks, Path(temp))
+            self.assertEqual("195-W4", checks[0].id)
+            self.assertNotEqual("MISSING", checks[0].status)
+
     def test_local100_does_not_trust_cached_summary(self) -> None:
         """A cached 100-run summary never bypasses a fresh acceptance loop."""
         audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
