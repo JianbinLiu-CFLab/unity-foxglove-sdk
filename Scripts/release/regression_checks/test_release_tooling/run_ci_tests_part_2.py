@@ -348,7 +348,14 @@ printf '%s' "$required"
         self.assertIn("git status --porcelain", job)
         self.assertIn("Library(?:-[A-Za-z0-9._-]+)?", job)
         self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library*/'", job)
-        self.assertIn("dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.{0}.win64", job)
+        self.assertIn(
+            '("dev.unity2foxglove.ros2forunity.runtime.{0}.win64" -f $env:DISTRO)',
+            job,
+        )
+        self.assertIn(
+            '("dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.{0}.win64" -f $env:DISTRO)',
+            job,
+        )
         self.assertNotIn("junction", job.lower())
 
     def test_phase186_live_workflow_preserves_library_and_bootstraps_powershell(self) -> None:
