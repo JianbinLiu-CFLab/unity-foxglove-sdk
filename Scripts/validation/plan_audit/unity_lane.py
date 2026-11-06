@@ -108,9 +108,9 @@ def _workflow(checks: list[audit_lib.Check], output: Path, base: str) -> None:
     _record(checks, "195-W1-workflow", "auto", "PASS" if not missing else "FAIL", "read .github/workflows/unity-compile.yml", evidence, f"branch missing={missing or 'none'}; base was audited at {base}")
 
 
-def _dispatch(checks: list[audit_lib.Check], output: Path) -> None:
+def _dispatch(checks: list[audit_lib.Check], output: Path, base: str) -> None:
     """Inspect workflow dispatch history without triggering a run."""
-    command = ["gh", "run", "list", "--workflow", "unity-compile.yml", "--event", "workflow_dispatch", "--branch", "main", "--limit", "20", "--json", "databaseId,conclusion"]
+    command = ["gh", "run", "list", "--workflow", "unity-compile.yml", "--event", "workflow_dispatch", "--branch", "main", "--limit", "20", "--json", "databaseId,conclusion,headSha"]
     result = audit_lib.run(command, output / "logs" / "w1-dispatch.log", 120)
     if result["exit_code"] != 0:
         status, detail = "NOT_RUN", "GitHub history unavailable"
@@ -119,7 +119,7 @@ def _dispatch(checks: list[audit_lib.Check], output: Path) -> None:
             runs = json.loads(str(result["output"]))
         except json.JSONDecodeError:
             runs = []
-        successful = [run for run in runs if run.get("conclusion") == "success"]
+        successful = [run for run in runs if run.get("conclusion") == "success" and run.get("headSha") == base]
         verified = []
         for run in successful[:5]:
             view = audit_lib.run(["gh", "run", "view", str(run["databaseId"]), "--json", "jobs"], output / "logs" / f"w1-dispatch-{run['databaseId']}.log", 120)
@@ -130,7 +130,7 @@ def _dispatch(checks: list[audit_lib.Check], output: Path) -> None:
             if any(job.get("name") == "unity-tests" and job.get("conclusion") == "success" for job in jobs):
                 verified.append(run["databaseId"])
         status = "PASS" if verified else "MANUAL"
-        detail = f"verified runs={verified}" if verified else "no successful smoke run; user trigger required"
+        detail = f"base={base}; verified runs={verified}" if verified else f"base={base}; no successful smoke run for audited revision; user trigger required"
     _record(checks, "195-W1-dispatch", "history", status, " ".join(command), output / "logs" / "w1-dispatch.log", detail)
 
 
@@ -313,7 +313,7 @@ def lane_checks(output: Path) -> list[audit_lib.Check]:
     _assets(checks, output, base)
     _script(checks, output)
     _workflow(checks, output, base)
-    _dispatch(checks, output)
+    _dispatch(checks, output, base)
     _zero_tests(checks, output, base)
     _red(checks, output)
     return checks

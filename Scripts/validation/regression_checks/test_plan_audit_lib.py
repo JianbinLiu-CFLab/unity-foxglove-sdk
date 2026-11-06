@@ -201,6 +201,34 @@ class PlanAuditLibraryTests(unittest.TestCase):
         self.assertTrue(bridge_history._discovery_has_exact_test(f"{bridge_history.FULL_TEST_NAME}\n"))
         self.assertFalse(bridge_history._discovery_has_exact_test(f"{bridge_history.FULL_TEST_NAME}Backdoor\n"))
 
+    def test_dispatch_evidence_requires_audited_revision(self) -> None:
+        """Dispatch evidence from another revision cannot satisfy the audit."""
+        audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+
+            def fake_run(command, log_path, timeout, cwd=audit_lib.ROOT):
+                """Return one stale and one audited successful dispatch run."""
+                del timeout, cwd
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                if command[1:3] == ["run", "list"]:
+                    return {
+                        "exit_code": 0,
+                        "output": json.dumps(
+                            [
+                                {"databaseId": 1, "conclusion": "success", "headSha": "stale"},
+                                {"databaseId": 2, "conclusion": "success", "headSha": "audited"},
+                            ]
+                        ),
+                    }
+                return {"exit_code": 0, "output": '{"jobs":[{"name":"unity-tests","conclusion":"success"}]}' }
+
+            checks: list[audit_lib.Check] = []
+            with mock.patch.object(unity_lane.audit_lib, "run", side_effect=fake_run):
+                unity_lane._dispatch(checks, output, "audited")
+            self.assertEqual("PASS", checks[0].status)
+            self.assertIn("verified runs=[2]", checks[0].detail)
+
     def test_preflight_allows_unheld_stale_lockfile(self) -> None:
         """A stale lockfile that opens exclusively does not block Unity."""
         with tempfile.TemporaryDirectory() as temp:
