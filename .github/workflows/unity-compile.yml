@@ -397,8 +397,11 @@ jobs:
             if (Test-Path -LiteralPath $jazzy) { Move-Item -LiteralPath $jazzy -Destination $library }
             Remove-Item -LiteralPath $marker -Force
           }
-          $status = git status --porcelain
-          if ($status) { Write-Error ("Distro workspace is dirty after restoration:`n{0}" -f ($status -join "`n")); exit 1 }
+          $status = @(git status --porcelain)
+          $unexpected = @($status | Where-Object {
+            $_ -notmatch '^\?\? Unity2Foxglove/Library(?:-[A-Za-z0-9._-]+)?/$'
+          })
+          if ($unexpected) { Write-Error ("Distro workspace is dirty after restoration:`n{0}" -f ($unexpected -join "`n")); exit 1 }
 
       - name: Upload distro Unity diagnostics
         if: always()

@@ -346,6 +346,7 @@ printf '%s' "$required"
         self.assertIn("phase195-distro-swap-", job)
         self.assertIn("if: always()", job)
         self.assertIn("git status --porcelain", job)
+        self.assertIn("Library(?:-[A-Za-z0-9._-]+)?", job)
         self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library*/'", job)
         self.assertNotIn("junction", job.lower())
 
