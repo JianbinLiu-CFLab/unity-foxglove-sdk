@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from Scripts.validation.plan_audit import audit_lib
+from Scripts.validation.plan_audit import bridge_history
+from Scripts.validation.plan_audit import unity_acceptance
 
 
 class PlanAuditLibraryTests(unittest.TestCase):
@@ -65,6 +69,63 @@ class PlanAuditLibraryTests(unittest.TestCase):
             )
             self.assertEqual(0, result["exit_code"])
             self.assertEqual(destination.resolve().as_posix().lower(), str(result["output"]).strip().replace("\\", "/").lower())
+
+    def test_history_marks_log_retrieval_failure_as_not_run(self) -> None:
+        """A failed GitHub log fetch cannot be reported as clean history."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+
+            def fake_run(command, log_path, timeout, cwd=audit_lib.ROOT):
+                del timeout, cwd
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                if command[1:3] == ["run", "list"]:
+                    log_path.write_text('[{"databaseId": 123, "conclusion": "failure"}]\n', encoding="utf-8")
+                    return {"exit_code": 0, "output": '[{"databaseId": 123, "conclusion": "failure"}]'}
+                log_path.write_text("permission denied\n", encoding="utf-8")
+                return {"exit_code": 1, "output": "permission denied"}
+
+            with mock.patch.object(bridge_history.audit_lib, "run", side_effect=fake_run):
+                check = bridge_history._history(output)
+            self.assertEqual("NOT_RUN", check.status)
+            self.assertIn("123", check.detail)
+
+    def test_plan_check_reports_missing_plan_file(self) -> None:
+        """A missing plan artifact produces a controlled audit result."""
+        with mock.patch.object(unity_acceptance, "PLAN", Path("build/plan-audit/missing-plan.md")):
+            check = unity_acceptance._plan_check("base")
+        self.assertEqual("MISSING", check.status)
+
+    def test_definition_of_done_rejects_not_run_and_manual(self) -> None:
+        """Required checks must have PASS evidence before DoD can pass."""
+        checks = [
+            audit_lib.Check("195-PLAN", "Plan", "history", "PASS", "true", "build/a", ""),
+            audit_lib.Check("195-W0-local100", "Plan", "auto", "PASS", "true", "build/b", ""),
+            audit_lib.Check("195-W1-assets", "Plan", "auto", "PASS", "true", "build/c", ""),
+            audit_lib.Check("195-W1-script", "Plan", "auto", "PASS", "true", "build/d", ""),
+            audit_lib.Check("195-W1-workflow", "Plan", "auto", "PASS", "true", "build/e", ""),
+            audit_lib.Check("195-W2", "Plan", "probe", "NOT_RUN", "true", "build/f", ""),
+            audit_lib.Check("195-W3", "Plan", "probe", "PASS", "true", "build/g", ""),
+            audit_lib.Check("195-W4", "Plan", "history", "MANUAL", "true", "build/h", ""),
+        ]
+        check = unity_acceptance._dod_check(checks)
+        self.assertEqual("FAIL", check.status)
+        self.assertIn("195-W2", check.detail)
+        self.assertIn("195-W4", check.detail)
+
+    def test_local100_cache_rejects_mismatched_source_identity(self) -> None:
+        """A cached 100-run result is rerun when the audited source identity changes."""
+        audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            summary = output / "logs" / "w0-local100-summary.json"
+            summary.parent.mkdir(parents=True, exist_ok=True)
+            summary.write_text(json.dumps({"base_sha": "old", "source_tree_sha": "old", "runs": 100, "passes": 100}), encoding="utf-8")
+            with mock.patch.object(bridge_history, "_cache_identity", return_value=("new", "new")), mock.patch.object(
+                bridge_history, "_local100_impl", return_value=audit_lib.Check("x", "Plan", "auto", "PASS", "true", "build/x", "rerun")
+            ) as implementation:
+                check = bridge_history._local100(output)
+            implementation.assert_called_once_with(output)
+            self.assertEqual("PASS", check.status)
 
 
 __all__ = ["PlanAuditLibraryTests"]

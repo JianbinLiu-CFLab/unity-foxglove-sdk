@@ -99,17 +99,23 @@ def _history(output: Path) -> audit_lib.Check:
             return _check("NOT_RUN", "gh run list --workflow dotnet-tests.yml --branch main --limit 50 --json databaseId,conclusion,headSha,createdAt", list_log, "gh returned invalid JSON", "history")
         failures = [run for run in runs if run.get("conclusion") == "failure"]
         matches: list[str] = []
+        retrieval_failures: list[str] = []
         for run in failures:
-            run_id = str(run.get("databaseId", ""))
+            raw_run_id = run.get("databaseId")
+            run_id = str(raw_run_id) if raw_run_id else ""
             if not run_id:
+                retrieval_failures.append("missing-run-id")
                 continue
             run_log = logs / f"w0-history-{run_id}.log"
             detail = audit_lib.run(["gh", "run", "view", run_id, "--log-failed"], run_log, 180)
+            if detail["exit_code"] != 0:
+                retrieval_failures.append(run_id)
+                continue
             text = str(detail["output"]).lower()
             if TEST_NAME.lower() in text or "did not complete hello" in text:
                 matches.append(run_id)
-        status = "PASS" if not matches else "FAIL"
-        detail = f"failed runs={len(failures)}; matching hello failures={matches or 'none'}"
+        status = "NOT_RUN" if retrieval_failures else ("PASS" if not matches else "FAIL")
+        detail = f"failed runs={len(failures)}; matching hello failures={matches or 'none'}; log retrieval failures={retrieval_failures or 'none'}"
         return _check(status, "gh run list --workflow dotnet-tests.yml --branch main --limit 50 --json databaseId,conclusion,headSha,createdAt", list_log, detail, "history")
     finally:
         for key, value in saved.items():
