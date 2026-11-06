@@ -4,6 +4,7 @@
   "references": [
     "Unity.FoxgloveSDK",
     "Unity.FoxgloveSDK.Sensors",
+    "Unity.FoxgloveSDK.Proto",
     "UnityEngine.TestRunner"
   ],
   "includePlatforms": [],

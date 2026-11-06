@@ -78,6 +78,7 @@ class _RunCiTestsPart2:
         """Default package CI must execute maintained regression modules, not only validators."""
         expected = (
             "Scripts.validation.regression_checks.test_ci_safe_baseline",
+            "Scripts.validation.regression_checks.test_plan_audit_lib",
             "Scripts.validation.regression_checks.test_source_text_inventory",
             "Scripts.architecture.regression_checks.test_structure_guards",
             "Scripts.release.regression_checks.test_regression_inventory",
@@ -314,13 +315,49 @@ printf '%s' "$required"
         workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
         compile_job = workflow.split("  unity_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
         self.assertIn("clean: false", compile_job)
-        self.assertIn("git clean -ffdx -e Unity2Foxglove/Library/", compile_job)
+        self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library*/'", compile_job)
         self.assertIn("--timeout-seconds 3600", compile_job)
         self.assertIn(
             "group: unity-compile-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}",
             workflow,
         )
         self.assertIn("cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}", workflow)
+
+    def test_unity_tests_separate_graphics_acceptance_from_headless_runs(self) -> None:
+        """Run graphics acceptance tests with a real display and exclude them from headless lanes."""
+        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        unity_tests = workflow.split("  unity-tests:\n", 1)[1].split("  unity_required:\n", 1)[0]
+        self.assertIn('--test-category "!GraphicsAcceptance"', unity_tests)
+        graphics = unity_tests.split("      - name: Run Unity graphics acceptance tests", 1)[1]
+        graphics_run = graphics.split("      - name: Upload Unity graphics acceptance diagnostics", 1)[0]
+        self.assertIn("--test-category GraphicsAcceptance", graphics_run)
+        self.assertNotIn("--nographics", graphics_run)
+        self.assertIn("build/unity-tests/graphics", graphics)
+
+    def test_unity_distro_compile_job_is_matrixed_and_restores_workspace(self) -> None:
+        """Distro compile coverage must isolate Humble/Lyrical caches and restore the checkout."""
+        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("distro:", workflow.split("  unity_distro_compile:\n", 1)[1].split("  unity_required:\n", 1)[0])
+        job = workflow.split("  unity_distro_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
+        self.assertIn("matrix:", job)
+        self.assertIn("distro: [humble, lyrical]", job)
+        self.assertIn("workflow_dispatch", workflow)
+        self.assertIn("inputs:", workflow)
+        self.assertIn("phase195-distro-swap-", job)
+        self.assertIn("if: always()", job)
+        self.assertIn("git status --porcelain", job)
+        self.assertIn("Library(?:-[A-Za-z0-9._-]+)?", job)
+        self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library*/'", job)
+        self.assertIn("-e 'build/unity-batch-compile/'", job)
+        self.assertIn(
+            '("dev.unity2foxglove.ros2forunity.runtime.{0}.win64" -f $env:DISTRO)',
+            job,
+        )
+        self.assertIn(
+            '("dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.{0}.win64" -f $env:DISTRO)',
+            job,
+        )
+        self.assertNotIn("junction", job.lower())
 
     def test_phase186_live_workflow_preserves_library_and_bootstraps_powershell(self) -> None:
         """The live certification lane must reuse the Unity cache and resolve PowerShell 7."""

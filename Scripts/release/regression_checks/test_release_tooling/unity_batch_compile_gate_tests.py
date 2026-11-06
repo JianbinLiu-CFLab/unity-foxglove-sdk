@@ -241,6 +241,59 @@ class UnityTestRunnerTests(unittest.TestCase):
         self.assertEqual("FAIL", verdict)
         self.assertEqual(["Smoke.Fails"], failed)
 
+    def test_parse_nunit_results_rejects_empty_run(self) -> None:
+        """Reject a Unity run that discovered no tests."""
+        with tempfile.TemporaryDirectory() as temp:
+            results = Path(temp) / "results.xml"
+            results.write_text(
+                '<test-run total="0" passed="0" failed="0" inconclusive="0" skipped="0" />',
+                encoding="utf-8",
+            )
+            verdict, failed, counts = self.runner.parse_nunit_results(results)
+        self.assertEqual("FAIL", verdict)
+        self.assertEqual([], failed)
+        self.assertEqual(0, counts["total"])
+
+    def test_parse_nunit_results_rejects_all_skipped(self) -> None:
+        """Reject a Unity run where every discovered test was skipped."""
+        with tempfile.TemporaryDirectory() as temp:
+            results = Path(temp) / "results.xml"
+            results.write_text('<test-run total="3" passed="0" failed="0" inconclusive="0" skipped="3" />', encoding="utf-8")
+            verdict, failed, counts = self.runner.parse_nunit_results(results)
+        self.assertEqual("FAIL", verdict)
+        self.assertEqual([], failed)
+        self.assertEqual(3, counts["skipped"])
+
+    def test_parse_nunit_results_rejects_all_inconclusive(self) -> None:
+        """Reject a Unity run where every discovered test was inconclusive."""
+        with tempfile.TemporaryDirectory() as temp:
+            results = Path(temp) / "results.xml"
+            results.write_text('<test-run total="2" passed="0" failed="0" inconclusive="2" skipped="0" />', encoding="utf-8")
+            verdict, failed, counts = self.runner.parse_nunit_results(results)
+        self.assertEqual("FAIL", verdict)
+        self.assertEqual([], failed)
+        self.assertEqual(2, counts["inconclusive"])
+
+    def test_parse_nunit_results_passes_mixed_passed_and_skipped(self) -> None:
+        """Accept a Unity run when at least one discovered test passed."""
+        with tempfile.TemporaryDirectory() as temp:
+            results = Path(temp) / "results.xml"
+            results.write_text('<test-run total="3" passed="1" failed="0" inconclusive="0" skipped="2" />', encoding="utf-8")
+            verdict, failed, counts = self.runner.parse_nunit_results(results)
+        self.assertEqual("PASS", verdict)
+        self.assertEqual([], failed)
+        self.assertEqual(1, counts["passed"])
+
+    def test_parse_nunit_results_rejects_missing_summary(self) -> None:
+        """Reject malformed NUnit XML without a summary element."""
+        with tempfile.TemporaryDirectory() as temp:
+            results = Path(temp) / "results.xml"
+            results.write_text("<test-suite />", encoding="utf-8")
+            verdict, failed, counts = self.runner.parse_nunit_results(results)
+        self.assertEqual("FAIL", verdict)
+        self.assertTrue(failed)
+        self.assertEqual({}, counts)
+
     def test_run_marks_missing_environment_not_run(self) -> None:
         """Classify missing Unity environment variables as NOT_RUN."""
         with tempfile.TemporaryDirectory() as temp:
@@ -329,7 +382,28 @@ class UnityTestRunnerTests(unittest.TestCase):
                 ),
             )
         self.assertEqual("EditMode", run.call_args.args[2])
-        self.assertTrue(run.call_args.args[-1])
+        self.assertTrue(run.call_args.args[6])
+        self.assertIsNone(run.call_args.args[7])
+
+    def test_main_forwards_test_category(self) -> None:
+        """Forward a Unity test category filter to the runner."""
+        with mock.patch.object(self.runner, "run", return_value=0) as run:
+            self.assertEqual(
+                0,
+                self.runner.main(
+                    [
+                        "--test-platform",
+                        "PlayMode",
+                        "--test-results",
+                        "results.xml",
+                        "--log-file",
+                        "unity.log",
+                        "--test-category",
+                        "GraphicsAcceptance",
+                    ]
+                ),
+            )
+        self.assertEqual("GraphicsAcceptance", run.call_args.args[7])
 
 
 UnityTestRunnerTests.__module__ = "Scripts.release.regression_checks.test_release_tooling"

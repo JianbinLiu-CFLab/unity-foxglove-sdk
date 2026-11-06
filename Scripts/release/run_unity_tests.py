@@ -40,8 +40,11 @@ def parse_nunit_results(results_path: Path) -> tuple[str, list[str], dict[str, i
         if result in {"failed", "error"}:
             failed.append(testcase.attrib.get("fullname") or testcase.attrib.get("name") or "<unnamed>")
     summary = root if root.tag == "test-run" else root.find("./test-suite")
-    counts = {key: int(summary.attrib.get(key, "0")) if summary is not None else 0 for key in ("total", "passed", "failed", "inconclusive", "skipped")}
-    return ("FAIL" if failed or counts.get("failed", 0) else "PASS"), failed, counts
+    if summary is None:
+        return "FAIL", ["Unity results did not contain a test summary"], {}
+    counts = {key: int(summary.attrib.get(key, "0")) for key in ("total", "passed", "failed", "inconclusive", "skipped")}
+    no_passing_tests = counts["passed"] == 0
+    return ("FAIL" if failed or counts["failed"] or no_passing_tests else "PASS"), failed, counts
 
 
 def _active_unity_project(project_path: Path) -> bool:
@@ -90,6 +93,7 @@ def run(
     log_path: Path,
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     nographics: bool = False,
+    test_category: str | None = None,
 ) -> int:
     """Run one owned Unity test process and classify NUnit results."""
     if platform not in VALID_PLATFORMS:
@@ -132,6 +136,8 @@ def run(
     ]
     if nographics:
         command.insert(1, "-nographics")
+    if test_category:
+        command.extend(["-testCategory", test_category])
     from Scripts.unity_build.unity_il2cpp import await_tree_quiescence, start_owned_process
 
     try:
@@ -191,6 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--log-file", type=Path, required=True)
     parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument("--nographics", action="store_true")
+    parser.add_argument("--test-category")
     args = parser.parse_args(argv)
     return run(
         args.unity,
@@ -200,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         args.log_file,
         args.timeout_seconds,
         args.nographics,
+        args.test_category,
     )
 
 

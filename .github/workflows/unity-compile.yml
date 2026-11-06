@@ -2,6 +2,16 @@ name: Unity batch compile and path-aware gate
 
 on:
   workflow_dispatch:
+    inputs:
+      distro:
+        description: Runtime distro to compile in the Unity workspace
+        required: false
+        default: both
+        type: choice
+        options:
+          - humble
+          - lyrical
+          - both
   push:
     branches: [main]
   pull_request:
@@ -21,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       unity_required: ${{ steps.scope.outputs.unity_required }}
+      distro_compile: ${{ steps.scope.outputs.distro_compile }}
     steps:
       - name: Checkout comparison tree
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -33,15 +44,20 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          DISTRO_INPUT: ${{ github.event.inputs.distro }}
           BEFORE_SHA: ${{ github.event.before }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           required=false
+          distro_compile=false
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             changed="$(git diff-tree --no-commit-id --no-renames --name-only -r "$HEAD_SHA")"
             required=true
+            if [ "${DISTRO_INPUT:-both}" = "humble" ] || [ "${DISTRO_INPUT:-both}" = "lyrical" ] || [ "${DISTRO_INPUT:-both}" = "both" ]; then
+              distro_compile=true
+            fi
           elif [ "$EVENT_NAME" = "pull_request" ]; then
             changed="$(git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA")"
           elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
@@ -54,8 +70,13 @@ jobs:
             required=true
           fi
 
+          if printf '%s\n' "$changed" | grep -E '^Packages/dev\.unity2foxglove\.ros2forunity\.runtime\.(humble|lyrical)\.win64/' >/dev/null; then
+            distro_compile=true
+          fi
+
           printf 'Changed paths:\n%s\n' "$changed"
           printf 'unity_required=%s\n' "$required" >> "$GITHUB_OUTPUT"
+          printf 'distro_compile=%s\n' "$distro_compile" >> "$GITHUB_OUTPUT"
 
   unity_compile:
     name: unity-compile
@@ -97,7 +118,7 @@ jobs:
 
       - name: Clean runner workspace while preserving Unity Library
         shell: pwsh
-        run: git clean -ffdx -e Unity2Foxglove/Library/
+        run: git clean -ffdx -e 'Unity2Foxglove/Library*/'
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -158,7 +179,7 @@ jobs:
 
       - name: Clean runner workspace while preserving Unity Library
         shell: pwsh
-        run: git clean -ffdx -e Unity2Foxglove/Library/
+        run: git clean -ffdx -e 'Unity2Foxglove/Library*/'
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -178,6 +199,7 @@ jobs:
           --test-results build/unity-tests/editmode/results.xml
           --log-file build/unity-tests/editmode/unity.log
           --timeout-seconds 3600
+          --test-category "!GraphicsAcceptance"
           --nographics
 
       - name: Run Unity PlayMode tests
@@ -190,7 +212,28 @@ jobs:
           --test-results build/unity-tests/playmode/results.xml
           --log-file build/unity-tests/playmode/unity.log
           --timeout-seconds 3600
+          --test-category "!GraphicsAcceptance"
           --nographics
+
+      - name: Run Unity graphics acceptance tests
+        if: always()
+        shell: pwsh
+        run: >-
+          python -B Scripts/release/run_unity_tests.py
+          --project-path Unity2Foxglove
+          --test-platform PlayMode
+          --test-category GraphicsAcceptance
+          --test-results build/unity-tests/graphics/playmode/results.xml
+          --log-file build/unity-tests/graphics/playmode/unity.log
+          --timeout-seconds 3600
+
+      - name: Upload Unity graphics acceptance diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unity-graphics-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/unity-tests/graphics
+          if-no-files-found: warn
 
       - name: Upload Unity Test Runner diagnostics
         if: always()
@@ -198,6 +241,182 @@ jobs:
         with:
           name: unity-tests-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/unity-tests
+          if-no-files-found: warn
+
+  unity_distro_compile:
+    name: unity-distro-compile (${{ matrix.distro }})
+    needs: unity_scope
+    strategy:
+      max-parallel: 1
+      matrix:
+        distro: [humble, lyrical]
+    if: >-
+      needs.unity_scope.outputs.distro_compile == 'true'
+      && vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'
+      && (github.event_name != 'pull_request'
+          || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
+    env:
+      DISTRO: ${{ matrix.distro }}
+    steps:
+      - name: Bootstrap PowerShell 7 on PATH
+        shell: cmd
+        run: |
+          set "POWERSHELL7=C:\Program Files\PowerShell\7"
+          if not exist "%POWERSHELL7%\pwsh.exe" (
+            echo PowerShell 7 MSI installation is required.
+            exit /b 1
+          )
+          echo %POWERSHELL7%>>"%GITHUB_PATH%"
+          set "PATH=%POWERSHELL7%;%PATH%"
+          where pwsh
+          pwsh -NoLogo -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"
+
+      - name: Enable Git long-path support
+        shell: pwsh
+        run: |
+          $globalConfig = Join-Path $env:RUNNER_TEMP ("git-global-{0}.config" -f $env:GITHUB_RUN_ID)
+          "GIT_CONFIG_GLOBAL=$globalConfig" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:GIT_CONFIG_GLOBAL = $globalConfig
+          git config --global core.longpaths true
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+
+      - name: Select requested distro
+        id: select_distro
+        shell: pwsh
+        run: |
+          $requested = "${{ github.event.inputs.distro }}"
+          $runDistro = "${{ github.event_name }}" -ne "workflow_dispatch" -or [string]::IsNullOrWhiteSpace($requested) -or $requested -eq "both" -or $requested -eq $env:DISTRO
+          "run_distro=$($runDistro.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Recover interrupted distro workspace swap
+        if: steps.select_distro.outputs.run_distro == 'true'
+        shell: pwsh
+        run: |
+          $markers = @(Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'build') -Filter 'phase195-distro-swap-*.json' -File -ErrorAction SilentlyContinue)
+          foreach ($markerFile in $markers) {
+            $state = Get-Content -LiteralPath $markerFile.FullName -Raw | ConvertFrom-Json
+            $project = Join-Path $env:GITHUB_WORKSPACE 'Unity2Foxglove'
+            $library = Join-Path $project 'Library'
+            $jazzy = Join-Path $project 'Library-jazzy'
+            $target = Join-Path $project ("Library-{0}" -f $state.distro)
+            if (-not (Test-Path -LiteralPath $library)) {
+              if (Test-Path -LiteralPath $jazzy) { Move-Item -LiteralPath $jazzy -Destination $library }
+              elseif (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target -Destination $library }
+            }
+            if (Test-Path -LiteralPath $state.manifest_backup) { Copy-Item -LiteralPath $state.manifest_backup -Destination $state.manifest -Force }
+            if (Test-Path -LiteralPath $state.lock_backup) { Copy-Item -LiteralPath $state.lock_backup -Destination $state.lock -Force }
+            Remove-Item -LiteralPath $markerFile.FullName -Force
+          }
+
+      - name: Clean runner workspace while preserving all Unity Library caches
+        if: steps.select_distro.outputs.run_distro == 'true'
+        shell: pwsh
+        run: git clean -ffdx -e 'Unity2Foxglove/Library*/'
+
+      - name: Prepare distro manifest and isolated Library
+        if: steps.select_distro.outputs.run_distro == 'true'
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:GITHUB_WORKSPACE 'Unity2Foxglove'
+          $manifest = Join-Path $project 'Packages/manifest.json'
+          $lock = Join-Path $project 'Packages/packages-lock.json'
+          $manifestBackup = Join-Path $env:GITHUB_WORKSPACE ("build/phase195-manifest-{0}.json" -f $env:DISTRO)
+          $lockBackup = Join-Path $env:GITHUB_WORKSPACE ("build/phase195-lock-{0}.json" -f $env:DISTRO)
+          New-Item -ItemType Directory -Force -Path (Split-Path $manifestBackup) | Out-Null
+          Copy-Item -LiteralPath $manifest -Destination $manifestBackup -Force
+          if (Test-Path -LiteralPath $lock) { Copy-Item -LiteralPath $lock -Destination $lockBackup -Force } else { Remove-Item -LiteralPath $lockBackup -Force -ErrorAction SilentlyContinue }
+          $marker = Join-Path $env:GITHUB_WORKSPACE ("build/phase195-distro-swap-{0}.json" -f $env:DISTRO)
+          @{ distro = $env:DISTRO; manifest = $manifest; lock = $lock; manifest_backup = $manifestBackup; lock_backup = $lockBackup } | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding utf8
+
+          $library = Join-Path $project 'Library'
+          $jazzy = Join-Path $project 'Library-jazzy'
+          $target = Join-Path $project ("Library-{0}" -f $env:DISTRO)
+          if (Test-Path -LiteralPath $library) {
+            if (Test-Path -LiteralPath $jazzy) {
+              $prior = Join-Path $project ("Library-jazzy-prior-{0}" -f $env:GITHUB_RUN_ID)
+              Move-Item -LiteralPath $jazzy -Destination $prior
+            }
+            Move-Item -LiteralPath $library -Destination $jazzy
+          }
+          if (Test-Path -LiteralPath $target) {
+            Move-Item -LiteralPath $target -Destination $library
+          }
+
+          $manifestObject = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+          foreach ($name in @(
+            'dev.unity2foxglove.ros2forunity.runtime.humble.win64',
+            'dev.unity2foxglove.ros2forunity.runtime.jazzy.win64',
+            'dev.unity2foxglove.ros2forunity.runtime.lyrical.win64',
+            'dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64',
+            'dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64',
+            'dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64'
+          )) { $manifestObject.dependencies.PSObject.Properties.Remove($name) }
+          foreach ($packageName in @(
+            ("dev.unity2foxglove.ros2forunity.runtime.{0}.win64" -f $env:DISTRO),
+            ("dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.{0}.win64" -f $env:DISTRO)
+          )) {
+            $manifestObject.dependencies | Add-Member -NotePropertyName $packageName -NotePropertyValue ("file:../../Packages/{0}" -f $packageName)
+          }
+          $manifestObject | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $manifest -Encoding utf8
+          Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        if: steps.select_distro.outputs.run_distro == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install Unity gate process ownership dependency
+        if: steps.select_distro.outputs.run_distro == 'true'
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check --no-input psutil==7.0.0
+
+      - name: Run distro Unity batch import and compile gate
+        if: steps.select_distro.outputs.run_distro == 'true'
+        shell: pwsh
+        run: python -B Scripts/release/run_unity_batch_compile.py --project-path Unity2Foxglove --timeout-seconds 3600
+
+      - name: Restore distro manifest and Library
+        if: always() && steps.select_distro.outputs.run_distro == 'true'
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:GITHUB_WORKSPACE 'Unity2Foxglove'
+          $marker = Join-Path $env:GITHUB_WORKSPACE ("build/phase195-distro-swap-{0}.json" -f $env:DISTRO)
+          if (Test-Path -LiteralPath $marker) {
+            $state = Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
+            if (Test-Path -LiteralPath $state.manifest_backup) { Copy-Item -LiteralPath $state.manifest_backup -Destination $state.manifest -Force }
+            if (Test-Path -LiteralPath $state.lock_backup) { Copy-Item -LiteralPath $state.lock_backup -Destination $state.lock -Force } else { Remove-Item -LiteralPath $state.lock -Force -ErrorAction SilentlyContinue }
+            $library = Join-Path $project 'Library'
+            $jazzy = Join-Path $project 'Library-jazzy'
+            $target = Join-Path $project ("Library-{0}" -f $env:DISTRO)
+            if (Test-Path -LiteralPath $library) {
+              if (Test-Path -LiteralPath $target) {
+                $prior = Join-Path $project ("Library-{0}-prior-{1}" -f $env:DISTRO, $env:GITHUB_RUN_ID)
+                Move-Item -LiteralPath $target -Destination $prior
+              }
+              Move-Item -LiteralPath $library -Destination $target
+            }
+            if (Test-Path -LiteralPath $jazzy) { Move-Item -LiteralPath $jazzy -Destination $library }
+            Remove-Item -LiteralPath $marker -Force
+          }
+          git clean -ffdx -e 'Unity2Foxglove/Library*/' -e 'build/unity-batch-compile/'
+          $status = @(git status --porcelain)
+          $unexpected = @($status | Where-Object {
+            $_ -notmatch '^\?\? Unity2Foxglove/Library(?:-[A-Za-z0-9._-]+)?/$'
+          })
+          if ($unexpected) { Write-Error ("Distro workspace is dirty after restoration:`n{0}" -f ($unexpected -join "`n")); exit 1 }
+
+      - name: Upload distro Unity diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unity-distro-${{ matrix.distro }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/unity-batch-compile
           if-no-files-found: warn
 
   unity_required:
