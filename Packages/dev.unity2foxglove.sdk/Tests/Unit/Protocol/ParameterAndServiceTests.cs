@@ -158,9 +158,27 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             var json = JObject.Parse(JsonConvert.SerializeObject(descriptor));
             if (expectedSchemaEncoding == null)
-                Assert.Null(json["schemaEncoding"]);
+                Assert.Null(json.Property("schemaEncoding"));
             else
                 Assert.Equal(expectedSchemaEncoding, (string)json["schemaEncoding"]);
+        }
+
+        [Theory]
+        [InlineData("protobuf")]
+        [InlineData("custom-schema")]
+        public void ServiceSchemaDescriptorPreservesExplicitNonJsonSchemaEncoding(string schemaEncoding)
+        {
+            var descriptor = new ServiceSchemaDescriptor
+            {
+                Encoding = "protobuf",
+                SchemaEncoding = schemaEncoding,
+                SchemaName = "/schema",
+                Schema = "{}"
+            };
+
+            Assert.Equal(schemaEncoding, descriptor.SchemaEncoding);
+            var json = JObject.Parse(JsonConvert.SerializeObject(descriptor));
+            Assert.Equal(schemaEncoding, (string)json["schemaEncoding"]);
         }
 
         [Fact]

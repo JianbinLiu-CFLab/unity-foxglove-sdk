@@ -153,6 +153,41 @@ class IdentityGateHardeningTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_compatibility_rejects_environment_write_in_top_level_class_body(self) -> None:
+        """A top-level class body executes while the module is imported."""
+        base = "class Settings:\n    VALUE = 1\n__all__ = ['Settings']\n"
+        head = (
+            "import os\nclass Settings:\n"
+            "    VALUE = 1\n"
+            "    os.environ.setdefault('FLAG', '1')\n"
+            "__all__ = ['Settings']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_allows_deferred_lambda_and_generator_environment_writes(self) -> None:
+        """Deferred lambda and generator bodies do not execute during import."""
+        base = "class Settings:\n    VALUE = 1\n__all__ = ['Settings']\n"
+        head = (
+            "import os\nclass Settings:\n"
+            "    callback = lambda: os.environ.setdefault('FLAG', '1')\n"
+            "    values = (os.environ.setdefault('OTHER', '1') for _ in ())\n"
+            "__all__ = ['Settings']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_allows_postponed_annotation_environment_expression(self) -> None:
+        """Future annotations preserve deferred annotation evaluation semantics."""
+        base = "def helper(value):\n    return value\n__all__ = ['helper']\n"
+        head = (
+            "from __future__ import annotations\nimport os\n"
+            "def helper(value: os.environ.setdefault('FLAG', '1')) -> os.environ.setdefault('OTHER', '1'):\n"
+            "    return value\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
     def test_compatibility_rejects_imported_environment_function_alias(self) -> None:
         """Imported putenv aliases are import-time environment writes too."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
