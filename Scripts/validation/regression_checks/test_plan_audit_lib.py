@@ -154,5 +154,16 @@ class PlanAuditLibraryTests(unittest.TestCase):
             implementation.assert_called_once_with(output)
             self.assertEqual("PASS", check.status)
 
+    def test_worktree_tree_hash_changes_when_source_bytes_change(self) -> None:
+        """The cache identity includes current worktree bytes rather than only a ref."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source.cs"
+            source.write_text("VALUE = 1\n", encoding="utf-8")
+            first = bridge_history._worktree_tree_sha(root)
+            source.write_text("VALUE = 2\n", encoding="utf-8")
+            second = bridge_history._worktree_tree_sha(root)
+        self.assertNotEqual(first, second)
+
 
 __all__ = ["PlanAuditLibraryTests"]

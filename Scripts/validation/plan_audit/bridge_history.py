@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -239,8 +240,21 @@ def _cache_identity(output: Path) -> tuple[str, str]:
     """Return the audited base SHA and bridge source tree SHA for cache validation."""
     marker = output / "base.txt"
     base_sha = marker.read_text(encoding="utf-8").strip() if marker.is_file() else audit_lib.resolve_revision()
-    source_tree_sha = subprocess.check_output(["git", "rev-parse", f"{base_sha}:Packages/dev.unity2foxglove.ros2bridge"], cwd=audit_lib.ROOT, text=True).strip()
+    source_tree_sha = _worktree_tree_sha(audit_lib.ROOT / "Packages" / "dev.unity2foxglove.ros2bridge")
     return base_sha, source_tree_sha
+
+
+def _worktree_tree_sha(root: Path) -> str:
+    """Hash every file in the audited bridge worktree, including dirty changes."""
+    digest = hashlib.sha256()
+    for path in sorted(path for path in root.rglob("*") if path.is_file()):
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        content = path.read_bytes()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return digest.hexdigest()
 
 
 def bridge_checks(output: Path) -> list[audit_lib.Check]:
