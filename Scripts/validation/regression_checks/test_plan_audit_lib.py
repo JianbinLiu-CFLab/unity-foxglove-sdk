@@ -72,6 +72,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
 
     def test_history_marks_log_retrieval_failure_as_not_run(self) -> None:
         """A failed GitHub log fetch cannot be reported as clean history."""
+        audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
             output = Path(temp)
 
