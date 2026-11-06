@@ -95,8 +95,12 @@ def _workflow(checks: list[audit_lib.Check], output: Path, base: str) -> None:
     tests_block = text[tests_at:required_at] if tests_at >= 0 and required_at > tests_at else ""
     if "runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]" not in tests_block:
         missing.append("same runner")
-    if required_at < 0 or "unity-tests" in text[required_at:]:
-        missing.append("not required")
+    required_block = text[required_at:] if required_at >= 0 else ""
+    needs_at = required_block.find("\n    needs:")
+    needs_block = required_block[needs_at:] if needs_at >= 0 else ""
+    needs_block = needs_block.split("\n    if:", 1)[0] if needs_block else ""
+    if required_at < 0 or needs_at < 0 or "unity-tests" in needs_block:
+        missing.append("unity-tests must remain non-required")
     evidence = output / "logs" / "w1-workflow.log"
     evidence.parent.mkdir(parents=True, exist_ok=True)
     evidence.write_text(json.dumps({"base_has_workflow": _git_show(base, WORKFLOW) is not None, "missing": missing}, indent=2) + "\n", encoding="utf-8")

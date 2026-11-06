@@ -238,7 +238,7 @@ def _local100(output: Path) -> audit_lib.Check:
 def _cache_identity(output: Path) -> tuple[str, str]:
     """Return the audited base SHA and bridge source tree SHA for cache validation."""
     marker = output / "base.txt"
-    base_sha = marker.read_text(encoding="utf-8").strip() if marker.is_file() else subprocess.check_output(["git", "rev-parse", "origin/main"], cwd=audit_lib.ROOT, text=True).strip()
+    base_sha = marker.read_text(encoding="utf-8").strip() if marker.is_file() else audit_lib.resolve_revision()
     source_tree_sha = subprocess.check_output(["git", "rev-parse", f"{base_sha}:Packages/dev.unity2foxglove.ros2bridge"], cwd=audit_lib.ROOT, text=True).strip()
     return base_sha, source_tree_sha
 

@@ -7,6 +7,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from Scripts.validation.plan_audit import audit_lib
@@ -96,6 +97,30 @@ class PlanAuditLibraryTests(unittest.TestCase):
         with mock.patch.object(unity_acceptance, "PLAN", Path("build/plan-audit/missing-plan.md")):
             check = unity_acceptance._plan_check("base")
         self.assertEqual("MISSING", check.status)
+
+    def test_plan_check_rejects_missing_or_unrecognized_status(self) -> None:
+        """A plan must declare a recognized delivered status before passing."""
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "plan.md"
+            with mock.patch.object(unity_acceptance, "PLAN", path):
+                path.write_text("# Plan\n", encoding="utf-8")
+                self.assertEqual("FAIL", unity_acceptance._plan_check("base").status)
+                path.write_text("Status: Blocked\n", encoding="utf-8")
+                self.assertEqual("FAIL", unity_acceptance._plan_check("base").status)
+                path.write_text("Status: implemented\n", encoding="utf-8")
+                self.assertEqual("PASS", unity_acceptance._plan_check("base").status)
+
+    def test_resolve_revision_falls_back_when_origin_main_is_missing(self) -> None:
+        """Revision resolution remains usable without a fetched origin/main ref."""
+        def fake_run(command, **kwargs):
+            """Return only the fallback HEAD revision as available."""
+            del kwargs
+            if command[-1] == "HEAD":
+                return SimpleNamespace(returncode=0, stdout="head-sha\n")
+            return SimpleNamespace(returncode=128, stdout="")
+
+        with mock.patch.object(audit_lib.subprocess, "run", side_effect=fake_run):
+            self.assertEqual("head-sha", audit_lib.resolve_revision())
 
     def test_definition_of_done_rejects_not_run_and_manual(self) -> None:
         """Required checks must have PASS evidence before DoD can pass."""

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import subprocess
+import re
 from pathlib import Path
 
 from . import audit_lib
@@ -29,16 +29,19 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
         )
     text = PLAN.read_text(encoding="utf-8")
     status_line = next((line for line in text.splitlines() if "Status:" in line), "")
-    stale = "plan only" in status_line.lower()
-    status = "FAIL" if stale else "PASS"
+    status_value = status_line.split("Status:", 1)[1].strip().lower() if "Status:" in status_line else ""
+    stale = "plan only" in status_value
+    recognized = bool(re.search(r"\b(?:implemented|complete|completed|delivered|accepted|verified)\b", status_value))
+    status = "PASS" if recognized and not stale else "FAIL"
+    detail = status_line if recognized and not stale else f"{status_line or 'Status line missing'}; status is missing or unrecognized"
     return audit_lib.Check(
         "195-PLAN",
         "Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md",
         "history",
         status,
-        "git rev-parse origin/main; read Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md",
+        "git rev-parse origin/main/main/HEAD; read Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md",
         "build/plan-audit/unity_acceptance/base.txt",
-        f"live origin/main={base_sha}; {status_line or 'Status line missing'}; status is stale" if stale else f"live origin/main={base_sha}; {status_line}",
+        f"live base={base_sha}; {detail}",
     )
 
 
@@ -72,7 +75,7 @@ def main() -> int:
     OUTPUT.mkdir(parents=True, exist_ok=True)
     before, before_sha = audit_lib.worktree_snapshot(exclude=("build/",))
     (OUTPUT / "state-before.txt").write_text(before, encoding="utf-8")
-    base_sha = subprocess.check_output(["git", "rev-parse", "origin/main"], cwd=audit_lib.ROOT, text=True).strip()
+    base_sha = audit_lib.resolve_revision()
     (OUTPUT / "base.txt").write_text(base_sha + "\n", encoding="utf-8")
     checks = [_plan_check(base_sha)]
     checks.extend(bridge_history.bridge_checks(OUTPUT))

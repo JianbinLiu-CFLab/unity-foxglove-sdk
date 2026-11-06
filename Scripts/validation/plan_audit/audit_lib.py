@@ -19,6 +19,23 @@ BUILD_ROOT = ROOT / "build" / "plan-audit"
 VALID_STATUSES = frozenset({"PASS", "FAIL", "MISSING", "NOT_RUN", "MANUAL"})
 
 
+def resolve_revision() -> str:
+    """Resolve the first available repository revision for audit evidence."""
+    for reference in ("origin/main", "main", "HEAD"):
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", reference],
+            cwd=ROOT,
+            env=_audit_environment(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        revision = result.stdout.strip()
+        if result.returncode == 0 and revision:
+            return revision
+    raise RuntimeError("no usable audit revision found: origin/main, main, and HEAD are unavailable")
+
+
 @dataclass(frozen=True)
 class Check:
     """Represent one audit result."""
