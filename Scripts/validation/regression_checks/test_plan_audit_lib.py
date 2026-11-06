@@ -76,6 +76,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
             output = Path(temp)
 
             def fake_run(command, log_path, timeout, cwd=audit_lib.ROOT):
+                """Return one failed history listing followed by an inaccessible log."""
                 del timeout, cwd
                 log_path.parent.mkdir(parents=True, exist_ok=True)
                 if command[1:3] == ["run", "list"]:
