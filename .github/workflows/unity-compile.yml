@@ -178,6 +178,7 @@ jobs:
           --test-results build/unity-tests/editmode/results.xml
           --log-file build/unity-tests/editmode/unity.log
           --timeout-seconds 3600
+          --test-category "!GraphicsAcceptance"
           --nographics
 
       - name: Run Unity PlayMode tests
@@ -190,7 +191,28 @@ jobs:
           --test-results build/unity-tests/playmode/results.xml
           --log-file build/unity-tests/playmode/unity.log
           --timeout-seconds 3600
+          --test-category "!GraphicsAcceptance"
           --nographics
+
+      - name: Run Unity graphics acceptance tests
+        if: always()
+        shell: pwsh
+        run: >-
+          python -B Scripts/release/run_unity_tests.py
+          --project-path Unity2Foxglove
+          --test-platform PlayMode
+          --test-category GraphicsAcceptance
+          --test-results build/unity-tests/graphics/playmode/results.xml
+          --log-file build/unity-tests/graphics/playmode/unity.log
+          --timeout-seconds 3600
+
+      - name: Upload Unity graphics acceptance diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unity-graphics-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/unity-tests/graphics
+          if-no-files-found: warn
 
       - name: Upload Unity Test Runner diagnostics
         if: always()

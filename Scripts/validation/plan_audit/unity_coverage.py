@@ -43,6 +43,8 @@ def _unity_acceptance_result(results: Path, category: str) -> tuple[str, str]:
     failed = [case.attrib.get("fullname") or case.attrib.get("name") or "<unnamed>" for case in cases if case.attrib.get("result", "").lower() != "passed"]
     if not cases:
         return "FAIL", f"no Unity test cases selected by category {category}"
+    if all(case.attrib.get("result", "").lower() in {"skipped", "ignored", "inconclusive"} for case in cases):
+        return "MANUAL", f"category={category}; cases={len(cases)}; graphics device unavailable"
     return ("PASS" if not failed else "FAIL"), f"category={category}; cases={len(cases)}; failed={failed or 'none'}"
 
 
@@ -59,8 +61,50 @@ def _coverage(checks: list[audit_lib.Check], output: Path, workstream: str, term
         results = audit_lib.BUILD_ROOT / "unity_acceptance" / "w3" / "playmode.xml"
         status, detail = _unity_acceptance_result(results, "LidarAcceptance")
         _record(checks, "195-W3", "probe", status, "python -B Scripts/release/run_unity_tests.py --test-platform PlayMode", results, detail)
+    elif workstream == "W2":
+        results = audit_lib.BUILD_ROOT / "unity_acceptance" / "w2" / "playmode.xml"
+        status, detail = _unity_acceptance_result(results, "GraphicsAcceptance")
+        _record(checks, "195-W2", "probe", status, "python -B Scripts/release/run_unity_tests.py --test-platform PlayMode --test-category GraphicsAcceptance", results, detail)
     else:
         _record(checks, f"195-{workstream}", "probe", "NOT_RUN", f"python -B -m Scripts.validation.plan_audit.unity_acceptance --platform {platform}", evidence, f"candidate files={len(named)}; Unity execution and defect mutation are required")
+
+
+def _w2_mutation(checks: list[audit_lib.Check], output: Path) -> None:
+    """Require camera resize acceptance to fail when retired render textures release immediately."""
+    source = audit_lib.ROOT / "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraCaptureResources.cs"
+    evidence = output / "logs" / "w2-mutation.log"
+    command = [
+        sys.executable,
+        "-B",
+        "Scripts/release/run_unity_tests.py",
+        "--project-path",
+        "Unity2Foxglove",
+        "--test-platform",
+        "PlayMode",
+        "--test-category",
+        "GraphicsAcceptance",
+        "--test-results",
+        "build/plan-audit/unity_acceptance/w2/red/playmode.xml",
+        "--log-file",
+        "build/plan-audit/unity_acceptance/w2/red/playmode.log",
+    ]
+    old = "                RetireRenderTexture();"
+    new = "                DestroyRenderTexture();"
+    try:
+        with audit_lib.mutate(source, old, new):
+            result = audit_lib.run(command, evidence, 3600)
+        payload_path = audit_lib.BUILD_ROOT / "unity_acceptance" / "w2" / "red" / "playmode.json"
+        try:
+            payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        status = "PASS" if result["exit_code"] != 0 and payload.get("verdict") == "FAIL" else "FAIL"
+        detail = f"mutated retired render texture release; exit={result['exit_code']}; verdict={payload.get('verdict', 'missing')}"
+    except (OSError, ValueError, RuntimeError) as exc:
+        status = "NOT_RUN"
+        detail = f"mutation not run: {exc}"
+        evidence.write_text(detail + "\n", encoding="utf-8")
+    _record(checks, "195-W2-mutation", "mutation", status, "mutate CameraCaptureResources retired texture release and run GraphicsAcceptance", evidence, detail)
 
 
 def _w3_mutation(checks: list[audit_lib.Check], output: Path) -> None:
@@ -166,6 +210,8 @@ def coverage_checks(output: Path) -> list[audit_lib.Check]:
     checks: list[audit_lib.Check] = []
     _coverage(checks, output, "W2", ("Camera", "Readback"), "PlayMode")
     _coverage(checks, output, "W3", ("Lidar", "LiDAR"), "PlayMode")
+    if any(check.id == "195-W2" and check.status == "PASS" for check in checks):
+        _w2_mutation(checks, output)
     if any(check.id == "195-W3" and check.status == "PASS" for check in checks):
         _w3_mutation(checks, output)
     _workflow_w4(checks, output)

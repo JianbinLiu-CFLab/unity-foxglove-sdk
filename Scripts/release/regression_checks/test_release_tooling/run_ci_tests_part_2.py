@@ -323,6 +323,17 @@ printf '%s' "$required"
         )
         self.assertIn("cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}", workflow)
 
+    def test_unity_tests_separate_graphics_acceptance_from_headless_runs(self) -> None:
+        """Run graphics acceptance tests with a real display and exclude them from headless lanes."""
+        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        unity_tests = workflow.split("  unity-tests:\n", 1)[1].split("  unity_required:\n", 1)[0]
+        self.assertIn('--test-category "!GraphicsAcceptance"', unity_tests)
+        graphics = unity_tests.split("      - name: Run Unity graphics acceptance tests", 1)[1]
+        graphics_run = graphics.split("      - name: Upload Unity graphics acceptance diagnostics", 1)[0]
+        self.assertIn("--test-category GraphicsAcceptance", graphics_run)
+        self.assertNotIn("--nographics", graphics_run)
+        self.assertIn("build/unity-tests/graphics", graphics)
+
     def test_phase186_live_workflow_preserves_library_and_bootstraps_powershell(self) -> None:
         """The live certification lane must reuse the Unity cache and resolve PowerShell 7."""
         workflow = PHASE186_WINDOWS_LIVE_WORKFLOW_PATH.read_text(encoding="utf-8")

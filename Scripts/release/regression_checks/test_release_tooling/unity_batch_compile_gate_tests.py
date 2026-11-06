@@ -382,7 +382,28 @@ class UnityTestRunnerTests(unittest.TestCase):
                 ),
             )
         self.assertEqual("EditMode", run.call_args.args[2])
-        self.assertTrue(run.call_args.args[-1])
+        self.assertTrue(run.call_args.args[6])
+        self.assertIsNone(run.call_args.args[7])
+
+    def test_main_forwards_test_category(self) -> None:
+        """Forward a Unity test category filter to the runner."""
+        with mock.patch.object(self.runner, "run", return_value=0) as run:
+            self.assertEqual(
+                0,
+                self.runner.main(
+                    [
+                        "--test-platform",
+                        "PlayMode",
+                        "--test-results",
+                        "results.xml",
+                        "--log-file",
+                        "unity.log",
+                        "--test-category",
+                        "GraphicsAcceptance",
+                    ]
+                ),
+            )
+        self.assertEqual("GraphicsAcceptance", run.call_args.args[7])
 
 
 UnityTestRunnerTests.__module__ = "Scripts.release.regression_checks.test_release_tooling"
