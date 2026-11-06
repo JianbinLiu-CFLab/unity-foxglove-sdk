@@ -224,7 +224,7 @@ def manual_steps(checks: list[audit_lib.Check]) -> str:
     return """# Phase 195 manual acceptance
 
 ## W1 red run and dispatch
-1. Confirm `Unity2Foxglove/Temp/UnityLockfile` is absent and no Unity Editor process owns the project.
+1. Confirm no Unity Editor process owns the project and, if `Unity2Foxglove/Temp/UnityLockfile` exists, verify it can be opened exclusively. A readable residual lockfile does not block the run.
 2. Save the target EditMode smoke test bytes and insert `Assert.Fail(\"plan audit red run\")` in exactly one test.
 3. Run `python -B Scripts/release/run_unity_tests.py --project-path Unity2Foxglove --test-platform EditMode --test-results build/plan-audit/unity_acceptance/red/editmode.xml --log-file build/plan-audit/unity_acceptance/red/editmode.log --nographics`.
 4. Record non-zero exit code, `FAIL` verdict, and failing test name. Restore bytes and verify the hash.
