@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ElementTree
+from contextlib import closing
 from pathlib import Path
 from types import ModuleType
 
@@ -166,14 +167,46 @@ def _zero_tests(checks: list[audit_lib.Check], output: Path, base: str) -> None:
     _record(checks, "195-W1-zero-tests", "probe", status, "parse_nunit_results total=0, all skipped, all inconclusive", evidence, f"base={base_outcomes}; branch={branch_outcomes}")
 
 
+def _lockfile_is_held(path: Path) -> bool:
+    """Return whether the Unity lockfile cannot be opened exclusively."""
+    if not path.exists():
+        return False
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        kernel32.CreateFileW.restype = wintypes.HANDLE
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel32.CreateFileW(str(path), 0x80000000 | 0x40000000, 0, None, 3, 0x80, None)
+        invalid = ctypes.c_void_p(-1).value
+        if handle == invalid:
+            return True
+        kernel32.CloseHandle(handle)
+        return False
+    try:
+        import fcntl
+    except ImportError:
+        return True
+    try:
+        with closing(path.open("a+b")) as stream:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+            return False
+    except (BlockingIOError, OSError):
+        return True
+
+
 def _preflight() -> tuple[bool, str]:
-    """Refuse Unity launch when lock, ownership, or C: writes are possible."""
+    """Refuse Unity launch when the project is actively owned by another process."""
     unity = Path(os.environ.get("UNITY_EXECUTABLE", r"C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe"))
     project = audit_lib.ROOT / "Unity2Foxglove"
     if not unity.is_file():
         return False, f"Unity executable not found: {unity}"
-    if (project / "Temp" / "UnityLockfile").exists():
-        return False, "Unity2Foxglove/Temp/UnityLockfile exists"
+    lockfile = project / "Temp" / "UnityLockfile"
+    if _lockfile_is_held(lockfile):
+        return False, "Unity2Foxglove/Temp/UnityLockfile is held"
     processes = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Unity.exe"], capture_output=True, text=True, check=False)
     if "Unity.exe" in processes.stdout:
         return False, "Unity.exe is active and ownership is not exclusive"

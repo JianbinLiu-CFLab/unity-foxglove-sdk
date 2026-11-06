@@ -13,6 +13,7 @@ from unittest import mock
 from Scripts.validation.plan_audit import audit_lib
 from Scripts.validation.plan_audit import bridge_history
 from Scripts.validation.plan_audit import unity_acceptance
+from Scripts.validation.plan_audit import unity_lane
 
 
 class PlanAuditLibraryTests(unittest.TestCase):
@@ -164,6 +165,34 @@ class PlanAuditLibraryTests(unittest.TestCase):
             source.write_text("VALUE = 2\n", encoding="utf-8")
             second = bridge_history._worktree_tree_sha(root)
         self.assertNotEqual(first, second)
+
+    def test_preflight_allows_unheld_stale_lockfile(self) -> None:
+        """A stale lockfile that opens exclusively does not block Unity."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            unity = root / "Unity.exe"
+            unity.write_bytes(b"")
+            lockfile = root / "Unity2Foxglove" / "Temp" / "UnityLockfile"
+            lockfile.parent.mkdir(parents=True)
+            lockfile.write_bytes(b"")
+            with mock.patch.object(unity_lane.audit_lib, "ROOT", root), mock.patch.dict(
+                unity_lane.os.environ, {"UNITY_EXECUTABLE": str(unity)}, clear=False
+            ), mock.patch.object(unity_lane.subprocess, "run", return_value=SimpleNamespace(stdout="")):
+                self.assertFalse(unity_lane._lockfile_is_held(lockfile))
+                self.assertEqual((True, "preflight passed"), unity_lane._preflight())
+
+    def test_preflight_rejects_held_lockfile(self) -> None:
+        """A lockfile held by another owner blocks the Unity red run."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            unity = root / "Unity.exe"
+            unity.write_bytes(b"")
+            with mock.patch.object(unity_lane.audit_lib, "ROOT", root), mock.patch.dict(
+                unity_lane.os.environ, {"UNITY_EXECUTABLE": str(unity)}, clear=False
+            ), mock.patch.object(unity_lane, "_lockfile_is_held", return_value=True), mock.patch.object(
+                unity_lane.subprocess, "run", return_value=SimpleNamespace(stdout="")
+            ):
+                self.assertEqual((False, "Unity2Foxglove/Temp/UnityLockfile is held"), unity_lane._preflight())
 
 
 __all__ = ["PlanAuditLibraryTests"]
