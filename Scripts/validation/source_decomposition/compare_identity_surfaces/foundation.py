@@ -250,9 +250,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         """Find environment writes that execute in the current expression."""
 
         def __init__(self) -> None:
-            """Initialize the deferred-expression execution state."""
+            """Initialize the environment-write result state."""
             self.found = False
-            self.execute_deferred = False
 
         def _check_targets(self, targets: list[ast.AST]) -> None:
             """Check assignment targets for direct environment mutation."""
@@ -288,7 +287,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.generic_visit(node)
 
         def visit_Call(self, node: ast.Call) -> None:
-            """Visit calls and conservatively execute callback expressions."""
+            """Visit calls and their eagerly evaluated expressions."""
             if isinstance(node.func, ast.Attribute):
                 if node.func.attr in _ENVIRONMENT_MUTATORS and is_environ(node.func.value):
                     self.found = True
@@ -300,20 +299,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     self.found = True
             elif isinstance(node.func, ast.Name) and node.func.id in environment_function_names:
                 self.found = True
-            if isinstance(node.func, (ast.Lambda, ast.GeneratorExp)):
-                self._visit_deferred(node.func)
-            else:
-                self.visit(node.func)
-            for argument in node.args:
-                if isinstance(argument, (ast.Lambda, ast.GeneratorExp)):
-                    self._visit_deferred(argument)
-                else:
-                    self.visit(argument)
-            for keyword in node.keywords:
-                if isinstance(keyword.value, (ast.Lambda, ast.GeneratorExp)):
-                    self._visit_deferred(keyword.value)
-                else:
-                    self.visit(keyword.value)
+            self.generic_visit(node)
 
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
             """Visit function definition expressions without entering its body."""
@@ -342,12 +328,11 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.visit_FunctionDef(node)
 
         def visit_Lambda(self, node: ast.Lambda) -> None:
-            """Visit lambda defaults and optionally its eagerly executed body."""
+            """Visit lambda defaults and body conservatively."""
             for expression in (*node.args.defaults, *node.args.kw_defaults):
                 if expression is not None:
                     self.visit(expression)
-            if self.execute_deferred:
-                self.visit(node.body)
+            self.visit(node.body)
 
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
             """Visit class definition expressions and its executing body."""
@@ -361,24 +346,12 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self.visit(statement)
 
         def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
-            """Visit eager generator iterables and forced generator bodies."""
-            if self.execute_deferred:
-                self.generic_visit(node)
-                return
-            if node.generators:
-                self.visit(node.generators[0].iter)
+            """Visit generator iterables and bodies conservatively."""
+            self.generic_visit(node)
 
-        def _visit_deferred(self, node: ast.AST) -> None:
-            """Visit a deferred expression when its enclosing call executes it."""
-            previous = self.execute_deferred
-            self.execute_deferred = True
-            self.visit(node)
-            self.execute_deferred = previous
-
-    def writes_environment(statement: ast.AST, *, execute_deferred: bool = False) -> bool:
+    def writes_environment(statement: ast.AST) -> bool:
         """Return whether one import-time statement writes the process environment."""
         visitor = EnvironmentWriteVisitor()
-        visitor.execute_deferred = execute_deferred
         visitor.visit(statement)
         return visitor.found
 
@@ -388,11 +361,9 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         node: ast.AST,
         scope: tuple[str, ...],
         in_function: bool,
-        *,
-        execute_deferred: bool = False,
     ) -> None:
         """Record an environment write that executes during a definition."""
-        if not in_function and writes_environment(node, execute_deferred=execute_deferred):
+        if not in_function and writes_environment(node):
             qualified = ".".join(scope) or "<module>"
             signatures.add(
                 f"import-time-environment:{qualified}:{ast.dump(node, include_attributes=False)}"
@@ -402,9 +373,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         """Collect signatures while tracking the enclosing definition scope."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for decorator in node.decorator_list:
-                record_import_time_environment(
-                    decorator, scope, in_function, execute_deferred=True
-                )
+                record_import_time_environment(decorator, scope, in_function)
                 visit(decorator, scope, in_function)
             arguments = node.args
             definition_expressions = [
@@ -444,9 +413,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             return
         if isinstance(node, ast.ClassDef):
             for decorator in node.decorator_list:
-                record_import_time_environment(
-                    decorator, scope, in_function, execute_deferred=True
-                )
+                record_import_time_environment(decorator, scope, in_function)
                 visit(decorator, scope, in_function)
             for base in node.bases:
                 record_import_time_environment(base, scope, in_function)

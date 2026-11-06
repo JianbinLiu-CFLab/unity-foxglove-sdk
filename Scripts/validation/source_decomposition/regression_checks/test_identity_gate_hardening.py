@@ -181,25 +181,21 @@ class IdentityGateHardeningTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
-    def test_compatibility_allows_deferred_lambda_and_generator_environment_writes(self) -> None:
-        """Deferred lambda and generator bodies do not execute during import."""
-        base = "class Settings:\n    VALUE = 1\n__all__ = ['Settings']\n"
-        head = (
-            "import os\nclass Settings:\n"
-            "    callback = lambda: os.environ.setdefault('FLAG', '1')\n"
-            "    values = (os.environ.setdefault('OTHER', '1') for _ in ())\n"
-            "__all__ = ['Settings']\n"
-        )
-        self.assertEqual([], self._compatibility_errors(base, head))
-
     def test_compatibility_rejects_executed_lambda_and_generator_environment_writes(self) -> None:
-        """Calls and eager consumers execute deferred expression bodies during import."""
+        """Import-time lambda and generator expressions remain fail-closed."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
         head = (
             "import os\n"
             "list(os.environ.setdefault('A', '1') for _ in [1])\n"
             "list(map(lambda key: os.environ.setdefault(key, '1'), ['B']))\n"
             "(lambda: os.putenv('C', '1'))()\n"
+            "f = lambda: os.putenv('E', '1')\n"
+            "f()\n"
+            "g = (os.putenv(key, '1') for key in ['F'])\n"
+            "list(g)\n"
+            "for _ in (os.putenv('G', '1') for _ in [1]):\n    pass\n"
+            "[* (os.putenv('H', '1') for _ in [1])]\n"
+            "a, = (os.putenv('I', '1') for _ in [1])\n"
             "@lambda value: os.environ.setdefault('D', '1')\n"
             "def helper():\n    return 1\n__all__ = ['helper']\n"
         )
